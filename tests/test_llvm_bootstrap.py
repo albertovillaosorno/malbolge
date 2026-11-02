@@ -4905,6 +4905,70 @@ def test_llvm_resource_preflight_rejects_forged_recursive_members(
     assert outside.read_bytes() == b"foreign resource content"
 
 
+@pytest.mark.parametrize("hidden", ["file", "directory"])
+def test_llvm_resource_preflight_rejects_suppressed_walk_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hidden: str
+) -> None:
+    """A recursive walk cannot silently omit a physical direct child."""
+    root = tmp_path / "resources"
+    root.mkdir()
+    hidden_file = root / "omitted.h"
+    _ = hidden_file.write_bytes(RESOURCE_BYTES)
+    hidden_dir = root / "omitted-dir"
+    hidden_dir.mkdir()
+    native_walk = Path.walk
+
+    def suppress_member(path: Path, **kwargs: object):  # type: ignore[no-untyped-def]
+        if path == root:
+            for directory, folders, files in native_walk(path, **kwargs):  # type: ignore[arg-type]
+                if directory == root:
+                    if hidden == "file":
+                        files[:] = [file for file in files if file != hidden_file.name]
+                    else:
+                        folders[:] = [
+                            folder for folder in folders if folder != hidden_dir.name
+                        ]
+                yield directory, folders, files
+        else:
+            yield from native_walk(path, **kwargs)  # type: ignore[arg-type]
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "walk", suppress_member)
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource member"):
+            llvm_validation._require_physical_resources(  # pyright: ignore[reportPrivateUsage]
+                root
+            )
+    assert hidden_file.read_bytes() == RESOURCE_BYTES
+    assert hidden_dir.is_dir()
+
+
+def test_llvm_resource_preflight_rejects_directory_misclassified_as_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unvisited nested tree cannot disappear inside the walk file list."""
+    root = tmp_path / "resources"
+    include = root / "include"
+    include.mkdir(parents=True)
+    header = include / "stddef.h"
+    _ = header.write_bytes(RESOURCE_BYTES)
+    native_walk = Path.walk
+
+    def misclassified_walk(path: Path, **kwargs: object):  # type: ignore[no-untyped-def]
+        for directory, folders, files in native_walk(path, **kwargs):  # type: ignore[arg-type]
+            if directory == root:
+                folders.remove(include.name)
+                files.append(include.name)
+            yield directory, folders, files
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "walk", misclassified_walk)
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource member"):
+            llvm_validation._require_physical_resources(  # pyright: ignore[reportPrivateUsage]
+                root
+            )
+    assert header.read_bytes() == RESOURCE_BYTES
+
+
 @pytest.mark.parametrize("kind", ["file", "directory", "foreign-type", "dotdot"])
 def test_llvm_resource_copy_refuses_foreign_iterator_members(
     tmp_path: Path,

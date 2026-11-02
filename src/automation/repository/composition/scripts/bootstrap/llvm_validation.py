@@ -751,7 +751,27 @@ def _require_physical_resources(root: Path) -> dict[Path, tuple[int, ...]]:
                 or not _physical_directory(directory)
             ):
                 _fail("host LLVM resource member directory must be physical")
-            for name in (*folders, *files):
+            # A recursive walk may supply a native-looking but incomplete
+            # folders/files list. Independently enumerate the direct children
+            # so omitted headers or empty directories cannot become ready.
+            direct_members = tuple(directory.iterdir())
+            if any(
+                type(member) is not type(directory)
+                or member.parent != directory
+                or member.name in ("", ".", "..")
+                for member in direct_members
+            ):
+                _fail("host LLVM resource member enumeration is not physical")
+            walked_names = (*folders, *files)
+            folder_names, file_names = set(folders), set(files)
+            direct_names = tuple(member.name for member in direct_members)
+            if (
+                len(folder_names) + len(file_names) != len(walked_names)
+                or len(set(direct_names)) != len(direct_names)
+                or folder_names | file_names != set(direct_names)
+            ):
+                _fail("host LLVM resource member enumeration is incomplete")
+            for name in walked_names:
                 if (
                     type(name) is not str
                     or not name
@@ -765,6 +785,10 @@ def _require_physical_resources(root: Path) -> dict[Path, tuple[int, ...]]:
                     _physical_file(member) or _physical_directory(member)
                 ):
                     _fail(f"host LLVM resource member must be physical: {member}")
+                if (name in folder_names and not _physical_directory(member)) or (
+                    name in file_names and not _physical_file(member)
+                ):
+                    _fail("host LLVM resource member walk category is incorrect")
                 relative = member.relative_to(root)
                 if relative in inventory:
                     _fail("host LLVM resource member enumeration is duplicate")
