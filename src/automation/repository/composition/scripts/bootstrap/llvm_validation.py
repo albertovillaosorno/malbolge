@@ -1711,7 +1711,13 @@ def _remove_pinned_import_contents(parent_fd: int) -> None:
     # True can suppress an invalid staged-member rejection mid-cleanup.
     members = os.scandir(parent_fd)
     try:
-        for member in members:
+        # Drive the admitted scanner's next method rather than dispatching
+        # a foreign __iter__ hook that could redirect to an empty sequence.
+        while True:
+            try:
+                member = next(members)
+            except StopIteration:
+                break
             if type(member) is not os.DirEntry:
                 _fail("LLVM staging cleanup member receipt must be native")
             name = member.name

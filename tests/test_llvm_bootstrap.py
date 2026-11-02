@@ -6573,6 +6573,7 @@ def test_linux_import_cleanup_preserves_nested_directory_swapped_after_open(
     [
         "suppressed-member",
         "redirected-entry",
+        "iterator-redirect",
         "bad-close",
         "close-fault",
         "body-close-fault",
@@ -6598,8 +6599,8 @@ def test_linux_staging_cleanup_scandir_cannot_suppress_invalid_members(
         def __exit__(self, *_args: object) -> bool:
             return True
 
-        def __iter__(self) -> ForgedScan:
-            return self
+        def __iter__(self) -> object:
+            return iter(()) if forgery == "iterator-redirect" else self
 
         def __next__(self) -> object:
             if forgery in ("bad-close", "close-fault"):
