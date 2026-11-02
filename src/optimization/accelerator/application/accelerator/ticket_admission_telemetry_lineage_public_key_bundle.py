@@ -40,7 +40,6 @@ from dataclasses import dataclass
 from dataclasses import field
 from hashlib import sha256
 import json
-from json import dumps as _SOURCE_JSON_DUMPS
 from pathlib import Path
 from secrets import token_hex
 from typing import Final
@@ -50,6 +49,8 @@ from typing import cast
 from accelerator import (
     ticket_admission_telemetry_lineage_memory_public_key_provider as memory,
 )
+
+_SOURCE_JSON_ENCODER = json.JSONEncoder
 
 _BUNDLE_ID: Final = "ticket-admission-telemetry-lineage-public-key-bundle-v1"
 TICKET_ADMISSION_TELEMETRY_LINEAGE_PUBLIC_KEY_BUNDLE_ID: Final = _BUNDLE_ID
@@ -181,13 +182,14 @@ def _canonical_json(mapping: dict[str, object]) -> str:
     try:
         # Capture source-owned canonical content before a replaced writer can
         # alter the mapping or produce unrelated public-key bytes.
-        source_text = _SOURCE_JSON_DUMPS(
-            mapping,
+        # An import-bound json.dumps still consults public JSONEncoder at
+        # call time. Bind the class before adapter substitutions can occur.
+        source_text = _SOURCE_JSON_ENCODER(
             allow_nan=False,
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,
-        )
+        ).encode(mapping)
         rendered = json.dumps(
             mapping,
             allow_nan=False,

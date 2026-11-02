@@ -1176,10 +1176,11 @@ as
 lowercase hexadecimal. Construction reuses the memory provider to validate exact
 bytes, fingerprints, identities, windows, uniqueness, cardinality, and reference
 ordering. Encoding uses sorted keys and one trailing newline. The public JSON
-writer is corroborated against a source-bound standard-library writer, capturing
-canonical bytes before any substituted writer can alter the key mapping. Joint
-public decoder/writer substitution cannot invent detached key material absent
-from exact source bytes; shared JSON internals remain a trust dependency.
+writer is corroborated against an import-bound `JSONEncoder` class, capturing
+canonical bytes before any substituted writer can alter the key mapping.
+Binding `json.dumps` alone consults the mutable encoder class; encoder-only
+and jointly substituted public providers cannot invent detached key material
+absent from exact source bytes. Python runtime internals remain trusted.
 Decoding requires byte identity with that canonical encoding, rejects duplicate
 or unknown JSON keys,
 and

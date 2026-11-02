@@ -849,6 +849,48 @@ def test_bundle_rejects_joint_json_decoder_writer_substitution(
         _ = _decode_bundle(empty_payload)
 
 
+@pytest.mark.parametrize("providers", ("encoder-only", "encoder-and-dumps"))
+def test_bundle_rejects_forged_json_encoder(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Mutable JSONEncoder cannot mint detached keys from an empty bundle."""
+    empty = _bundle(entries=())
+    canonical = _encode_bundle(empty)
+    forged = _encode_bundle(_bundle()).decode("utf-8").removesuffix("\n")
+    assert canonical != f"{forged}\n".encode()
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(bundle.json, "JSONEncoder", ForgedEncoder)
+        if providers == "encoder-and-dumps":
+            patch.setattr(bundle.json, "dumps", lambda *_args, **_kwargs: forged)
+        with pytest.raises(BundleError, match="serializer disagrees with source"):
+            _ = _encode_bundle(empty)
+        with pytest.raises(BundleError, match="serializer disagrees with source"):
+            _ = _decode_bundle(canonical)
+
+
+def test_bundle_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent public encoder class retains exact bundle bytes."""
+    native_encoder = bundle.json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(bundle.json, "JSONEncoder", EquivalentEncoder)
+        value = _bundle()
+        assert _decode_bundle(_encode_bundle(value)) == value
+
+
 def test_bundle_rejects_forged_json_writer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
