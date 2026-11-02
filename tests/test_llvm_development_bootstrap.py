@@ -807,6 +807,73 @@ def test_rpm_overlay_rejects_conflicting_header_bytes(
     assert previous.read_bytes() == (incoming if accepted else existing)
 
 
+@pytest.mark.parametrize("replacement", ["symlink", "hardlink"])
+def test_rpm_overlay_preserves_late_foreign_destination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """A destination swapped after comparison must never receive copied bytes."""
+    source = tmp_path / "package/usr/include/clang/AST.h"
+    source.parent.mkdir(parents=True)
+    _ = source.write_bytes(HEADER_BYTES)
+    destination = tmp_path / "development/include/clang/AST.h"
+    destination.parent.mkdir(parents=True)
+    _ = destination.write_bytes(HEADER_BYTES)
+    outside = tmp_path / "external-header"
+    _ = outside.write_bytes(FOREIGN_CONTENT_BYTES)
+    native_copytree = shutil.copytree
+
+    def replace_during_copy(
+        src: Path, dst: Path, *args: object, **kwargs: object
+    ) -> Path:
+        destination.unlink()
+        try:
+            if replacement == "symlink":
+                _ = destination.symlink_to(outside)
+            else:
+                os.link(outside, destination)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"filesystem aliases unavailable: {error}")
+        return cast("Callable[..., Path]", native_copytree)(
+            src, dst, *args, **kwargs
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(shutil, "copytree", replace_during_copy)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="conflicting header",
+        ):
+            llvm_development_validation._copy_rpm_include_tree(
+                source.parent.parent, destination.parent.parent
+            )
+    assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
+
+
+def test_rpm_overlay_identical_header_preserves_existing_metadata(
+    tmp_path: Path,
+) -> None:
+    """An already equal header does not need an in-place overwrite."""
+    source = tmp_path / "package/usr/include/clang/AST.h"
+    source.parent.mkdir(parents=True)
+    _ = source.write_bytes(HEADER_BYTES)
+    destination = tmp_path / "development/include/clang/AST.h"
+    destination.parent.mkdir(parents=True)
+    _ = destination.write_bytes(HEADER_BYTES)
+    initial_mtime = 1_000_000_000
+    os.utime(destination, ns=(initial_mtime, initial_mtime))
+    identity = destination.stat()
+
+    llvm_development_validation._copy_rpm_include_tree(
+        source.parent.parent, destination.parent.parent
+    )
+    after = destination.stat()
+    assert (after.st_dev, after.st_ino) == (identity.st_dev, identity.st_ino)
+    assert after.st_mtime_ns == initial_mtime
+    assert destination.read_bytes() == HEADER_BYTES
+
+
 def test_rpm_overlay_rechecks_bytes_after_same_mtime_source_mutation(
     tmp_path: Path,
 ) -> None:

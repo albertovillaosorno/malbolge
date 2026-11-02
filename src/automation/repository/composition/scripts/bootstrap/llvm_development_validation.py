@@ -519,6 +519,26 @@ def _same_header_bytes(source: Path, destination: Path) -> bool:
                 return True
 
 
+def _copy_header_no_replace(source: str, destination: str) -> str:
+    """Keep an existing header immutable and create new ones exclusively."""
+    target = Path(destination)
+    if (
+        _preflight_path_status(target, target.is_symlink, "staging")
+        or _preflight_path_status(target, target.is_junction, "staging")
+    ):
+        _fail("LLVM RPM overlay has conflicting header bytes")
+    if _preflight_path_status(target, target.exists, "staging"):
+        if not _direct_regular(target) or not _same_header_bytes(Path(source), target):
+            _fail("LLVM RPM overlay has conflicting header bytes")
+    else:
+        with Path(source).open("rb") as incoming:
+            content = incoming.read(MAX_RPM_DOWNLOAD_BYTES + 1)
+        if type(content) is not bytes or len(content) > MAX_RPM_DOWNLOAD_BYTES:
+            _fail("LLVM RPM header exceeds bounded native extraction size")
+        _write_verified_staging_bytes(target, content)
+    return destination
+
+
 def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> None:
     """Allow shared headers only when their existing bytes match exactly."""
     try:
@@ -538,6 +558,7 @@ def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> Non
             destination_include,
             dirs_exist_ok=True,
             symlinks=True,
+            copy_function=_copy_header_no_replace,
         )
     except LlvmDevelopmentProvisionError:
         raise
