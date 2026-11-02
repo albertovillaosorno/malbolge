@@ -172,6 +172,35 @@ def test_maximum_sample_bound_and_above_limit() -> None:
     assert success_intervals.success_interval_95(0, limit + 1) is None
 
 
+@pytest.mark.parametrize("attempts", [32, 128, success_intervals.MAX_ATTEMPTS])
+def test_large_extreme_counts_use_exact_outward_binomial_grid(
+    attempts: int,
+) -> None:
+    """Independent power tails pin the precise all-failure/success endpoints."""
+    failures = success_intervals.success_interval_95(0, attempts)
+    successes = success_intervals.success_interval_95(attempts, attempts)
+    assert failures is not None
+    assert successes is not None
+    assert failures["lower"] == [0, 1]
+    assert successes["upper"] == [1, 1]
+
+    upper = int(Fraction(*failures["upper"]) * GRID)
+    lower = int(Fraction(*successes["lower"]) * GRID)
+    assert 0 < upper < GRID
+    assert lower == GRID - upper
+
+    # For zero successes the one-sided Clopper-Pearson tail is (1-p)^n.
+    # The outward grid endpoint is the first point with tail <= 1/40.
+    whole = GRID**attempts
+    assert 40 * (GRID - upper) ** attempts <= whole
+    assert 40 * (GRID - upper + 1) ** attempts > whole
+
+    # For all successes the opposite tail is p^n, so the lower endpoint
+    # is the last grid point with tail <= 1/40.
+    assert 40 * lower**attempts <= whole
+    assert 40 * (lower + 1) ** attempts > whole
+
+
 @pytest.mark.parametrize(
     ("verified", "attempts"),
     [(0, 0), (1, 0), (-1, 2), (3, 2), (True, 2), (1, False), (1.5, 2)],
