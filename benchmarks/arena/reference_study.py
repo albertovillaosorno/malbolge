@@ -764,7 +764,12 @@ def _confirm_retained_bytes(path: Path, expected: bytes) -> None:
 
 
 def _write_retained_bytes(path: Path, content: bytes) -> None:
-    """Reject short or foreign byte acknowledgements for retained evidence."""
+    """Admit bounded native bytes before any retained filesystem write."""
+    if (
+        type(content) is not bytes
+        or not 0 < len(content) <= evidence.MAX_EVIDENCE_BYTES
+    ):
+        _fail(f"host-C retained {path.name} requires bounded exact bytes")
     try:
         written = path.write_bytes(content)
     except Exception as error:
@@ -775,14 +780,27 @@ def _write_retained_bytes(path: Path, content: bytes) -> None:
 
 
 def _write_retained_text(path: Path, content: str) -> None:
-    """Require complete text writes before admitting a retained study."""
+    """Admit bounded strict UTF-8 before complete retained text writes."""
+    if (
+        type(content) is not str
+        or not content
+        or len(content) > evidence.MAX_EVIDENCE_BYTES
+    ):
+        _fail(f"host-C retained {path.name} requires bounded UTF-8 text")
+    try:
+        encoded = content.encode("utf-8", errors="strict")
+    except UnicodeError as error:
+        message = f"host-C retained {path.name} requires strict UTF-8 text"
+        raise ReferenceStudyError(message) from error
+    if len(encoded) > evidence.MAX_EVIDENCE_BYTES:
+        _fail(f"host-C retained {path.name} requires bounded UTF-8 text")
     try:
         written = path.write_text(content, encoding="utf-8")
     except Exception as error:
         _retained_write_failure(path, error)
     if type(written) is not int or written != len(content):
         _fail(f"host-C retained {path.name} has invalid write count")
-    _confirm_retained_bytes(path, content.encode("utf-8"))
+    _confirm_retained_bytes(path, encoded)
 
 
 MAX_HOST_COMPONENT_LENGTH = 256

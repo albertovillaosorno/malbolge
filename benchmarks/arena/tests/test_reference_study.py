@@ -347,6 +347,87 @@ def test_retained_writer_does_not_trust_complete_count_without_matching_file(
             )
 
 
+class _ForeignRetainedBytes(bytes):  # ruff: ignore[subclass-builtin]
+    """A subclass must not control size or equality after publication."""
+
+
+class _ForeignRetainedText(str):  # ruff: ignore[subclass-builtin]
+    """A string subclass must not bypass admission before host writes."""
+
+
+@pytest.mark.parametrize(
+    ("kind", "payload"),
+    [
+        ("binary", b""),
+        ("binary", bytearray(b"mutable")),
+        ("binary", _ForeignRetainedBytes(b"foreign")),
+        ("binary", b"x" * (evidence.MAX_EVIDENCE_BYTES + 1)),
+        ("text", ""),
+        ("text", b"not Unicode text"),
+        ("text", _ForeignRetainedText("foreign")),
+        ("text", "\ud800"),
+        ("text", "x" * (evidence.MAX_EVIDENCE_BYTES + 1)),
+    ],
+    ids=[
+        "empty-binary",
+        "mutable-binary",
+        "subclass-binary",
+        "oversized-binary",
+        "empty-text",
+        "binary-as-text",
+        "subclass-text",
+        "surrogate-text",
+        "oversized-text",
+    ],
+)
+def test_retained_writers_reject_invalid_payload_before_host_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    payload: object,
+) -> None:
+    """Unadmitted content must never reach an observable filesystem write."""
+    path = tmp_path / "untrusted-record"
+    attempted: list[object] = []
+
+    def writing(_target: Path, content: object, **_kwargs: object) -> int:
+        attempted.append(content)
+        return len(cast("Any", content))
+
+    if kind == "binary":
+        monkeypatch.setattr(type(path), "write_bytes", writing)
+        writer = reference_study._write_retained_bytes
+    else:
+        monkeypatch.setattr(type(path), "write_text", writing)
+        writer = reference_study._write_retained_text
+    with pytest.raises(reference_study.ReferenceStudyError, match="bounded|UTF-8"):
+        writer(path, cast("Any", payload))
+    assert attempted == []
+    assert not path.exists()
+
+
+def test_retained_writer_rejects_expanded_utf8_before_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A short Unicode string can exceed the bounded byte budget after encoding."""
+    path = tmp_path / "utf8-record"
+    monkeypatch.setattr(evidence, "MAX_EVIDENCE_BYTES", 8)
+    attempted: list[str] = []
+
+    def writing(
+        _path: Path, content: str, *, encoding: str | None = None
+    ) -> int:
+        attempted.append(content)
+        assert encoding == "utf-8"
+        return len(content)
+
+    monkeypatch.setattr(type(path), "write_text", writing)
+    with pytest.raises(reference_study.ReferenceStudyError, match="bounded UTF-8"):
+        reference_study._write_retained_text(path, "🦉🦉🦉")
+    assert attempted == []
+    assert not path.exists()
+
+
 @pytest.mark.parametrize("kind", ["binary", "text"])
 def test_retained_writer_accepts_exact_file_bytes(
     tmp_path: Path,
