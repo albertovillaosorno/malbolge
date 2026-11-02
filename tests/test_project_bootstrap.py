@@ -1504,6 +1504,80 @@ def test_initialize_project_pins_relative_root_across_callbacks(
     assert observed == [selected, selected, selected]
 
 
+@pytest.mark.parametrize("provision_python", [True, False])
+def test_project_report_distinguishes_verified_and_skipped_python(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provision_python: bool,
+) -> None:
+    """--skip-python reports an unchecked path, never a ready environment."""
+    observed: list[Path] = []
+    layout = python_validation.validation_layout(tmp_path)
+    optional = project.ComponentStatus(
+        detail="not installed",
+        name="optional",
+        path=None,
+        state=project.ComponentState.MISSING,
+    )
+
+    def provision(root: Path) -> python_validation.ValidationEnvironmentLayout:
+        observed.append(root)
+        return layout
+
+    def noop_root(_root: Path) -> None:
+        pass
+
+    def empty_directories(_root: Path) -> tuple[Path, ...]:
+        return ()
+
+    def layout_for_root(_root: Path) -> python_validation.ValidationEnvironmentLayout:
+        return layout
+
+    def local_platform() -> str:
+        return LINUX_PLATFORM
+
+    def no_optional(*_args: object, **_kwargs: object) -> None:
+        pass
+
+    def no_host_git(_platform: str) -> None:
+        pass
+
+    def no_rust(_root: Path, _platform: str) -> tuple[Path, ...]:
+        return ()
+
+    def missing(*_args: object, **_kwargs: object) -> project.ComponentStatus:
+        return optional
+
+    monkeypatch.setattr(project, "validate_repository", noop_root)
+    monkeypatch.setattr(project, "initialize_local_directories", empty_directories)
+    monkeypatch.setattr(python_validation, "initialize", provision)
+    monkeypatch.setattr(python_validation, "validation_layout", layout_for_root)
+    monkeypatch.setattr(project, "host_platform_id", local_platform)
+    monkeypatch.setattr(project, "provision_llvm_development_if_requested", no_optional)
+    monkeypatch.setattr(project, "provision_cuda_if_requested", no_optional)
+    monkeypatch.setattr(project, "observe_host_git", no_host_git)
+    monkeypatch.setattr(project, "import_host_rust_toolchains", no_rust)
+    for method in (
+        "inspect_cuda",
+        "inspect_rust",
+        "inspect_jig",
+        "prepare_llvm",
+        "inspect_llvm_development",
+    ):
+        monkeypatch.setattr(project, method, missing)
+
+    report = project.initialize_project(tmp_path, provision_python=provision_python)
+    assert report.python_provisioned is provision_python
+    assert observed == ([tmp_path] if provision_python else [])
+    python_line = project.render_report(report).splitlines()[1]
+    if provision_python:
+        assert python_line == f"python: ready ({layout.environment})"
+    else:
+        assert python_line == (
+            f"python: skipped (--skip-python; not verified) ({layout.environment})"
+        )
+
+
 def test_python_initializer_routes_layout_to_requested_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

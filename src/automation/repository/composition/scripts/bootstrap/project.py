@@ -155,6 +155,7 @@ class ProjectInitializationReport:
     llvm_development: ComponentStatus
     platform_id: str
     python_environment: Path
+    python_provisioned: bool
     rust: ComponentStatus
 
 
@@ -2872,6 +2873,7 @@ def initialize_project(
         llvm_development=llvm_development,
         platform_id=platform_id,
         python_environment=layout.environment,
+        python_provisioned=provision_python,
         rust=rust,
     )
 
@@ -2883,9 +2885,12 @@ def render_report(report: ProjectInitializationReport) -> str:
         Newline-terminated report text.
 
     """
+    python_state = (
+        "ready" if report.python_provisioned else "skipped (--skip-python; not verified)"
+    )
     lines = [
         f"project initialized for {report.platform_id}",
-        f"python: ready ({report.python_environment})",
+        f"python: {python_state} ({report.python_environment})",
     ]
     for component in (
         report.rust,
