@@ -48,9 +48,21 @@ stream ownership transfers. Native stream-wrapper
 failures, including TypeError, close the already-open source descriptor and
 produce typed correspondence errors with the original host cause. Source read
 receipts must be exact native bytes; text, lists, and caller-owned byte
-subclasses cannot establish executable equation evidence. Malformed UTF-8
+subclasses cannot establish executable equation evidence. Source streams must
+be exact native buffered readers over native raw file objects bound to the
+opened descriptor. A caller-owned reader that reports a matching file number,
+or another native reader of a duplicated descriptor, is not an authenticated
+source. Malformed UTF-8
 remains a typed correspondence error with its original decoder cause, and the
 command-line error boundary does not invoke foreign host exception formatters.
+Mathematics discovery only accepts exact native walker entries from the
+requested root and previously discovered child directories. Child names must
+be native, portable, unique within a directory, and not repeated across file
+and directory classifications; omitted or duplicate directory visits fail
+closed. This prevents unbound walker entries from adding unrelated TeX sources.
+CLI success requires a complete native text-write count and successful flush;
+output delivery failures return nonzero even when the graph itself is valid.
+A failed stderr delivery does not turn an invalid graph into success.
 These read-time checks do not claim files can never change after validation
 finishes.
 

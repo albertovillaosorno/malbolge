@@ -34,13 +34,14 @@
 
 from __future__ import annotations
 
+import io
 import os
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import Never, cast
+from typing import Never, TextIO, cast
 
 import tomllib
 
@@ -273,16 +274,38 @@ def _read_source_descriptor(
         except OSError:
             pass
         raise
+    # A foreign wrapper may claim the opened fileno yet fabricate its bytes.
+    # The exact native buffered/raw pair must own the original descriptor.
+    if type(stream) is not io.BufferedReader:
+        os.close(descriptor)
+        _fail(f"{context} requires a native stream receipt")
+    raw = stream.raw
+    if (
+        type(raw) is not io.FileIO
+        or type(raw.name) is not int
+        or raw.name != descriptor
+        or raw.fileno() != descriptor
+        or stream.fileno() != descriptor
+    ):
+        # Do not close a substituted stream: it may own another descriptor.
+        os.close(descriptor)
+        _fail(f"{context} requires a native stream receipt")
     with stream:
-        if _source_fingerprint(os.fstat(stream.fileno()), context) != expected:
+        opened = stream.fileno()
+        if type(opened) is not int or opened != descriptor:
+            _fail(f"{context} stream descriptor changed before read")
+        if _source_fingerprint(os.fstat(opened), context) != expected:
             _fail(f"{context} changed before read")
         payload = stream.read(MAX_CORRESPONDENCE_SOURCE_BYTES + 1)
         if type(payload) is not bytes:
             _fail(f"{context} requires a native byte receipt")
+        after = stream.fileno()
+        if type(after) is not int or after != descriptor:
+            _fail(f"{context} stream descriptor changed during read")
         if len(payload) != expected[2]:
             _fail(f"{context} changed during read or exceeds byte limit")
         if (
-            _source_fingerprint(os.fstat(stream.fileno()), context) != expected
+            _source_fingerprint(os.fstat(after), context) != expected
             or _source_fingerprint(path.lstat(), context) != expected
         ):
             _fail(f"{context} changed during read")
@@ -360,9 +383,33 @@ def _append_tex_candidates(
             sources.append(candidate)
 
 
+def _math_walk_names(names: object, context: str) -> list[str]:
+    """Admit distinct exact native names in one source scan directory."""
+    if type(names) is not list:
+        _fail(f"mathematics evidence scan requires native {context} list")
+    admitted = cast("list[object]", names)
+    seen: set[str] = set()
+    result: list[str] = []
+    for name in admitted:
+        if (
+            type(name) is not str
+            or not name
+            or name in (".", PARENT_SEGMENT)
+            or "/" in name
+            or "\\" in name
+        ):
+            _fail(f"mathematics evidence scan requires native child {context}")
+        if name in seen:
+            _fail(f"mathematics evidence scan repeats {context} entry: {name}")
+        seen.add(name)
+        result.append(name)
+    return result
+
+
 def _tex_sources() -> tuple[Path, ...]:
     _physical_repository_path(MATH_ROOT, "mathematics root", directory=True)
     sources: list[Path] = []
+    pending = {MATH_ROOT}
 
     def fail_walk(error: OSError) -> None:
         detail = _host_error_detail(error)
@@ -371,13 +418,25 @@ def _tex_sources() -> tuple[Path, ...]:
         ) from error
 
     try:
-        for parent, directories, filenames in MATH_ROOT.walk(on_error=fail_walk):
+        for receipt in MATH_ROOT.walk(on_error=fail_walk):
+            if type(receipt) is not tuple or len(receipt) != 3:
+                _fail("mathematics evidence scan requires native walk entry")
+            parent, directories, filenames = receipt
+            if type(parent) is not type(MATH_ROOT) or parent not in pending:
+                _fail("mathematics evidence scan returned unbound directory")
+            pending.remove(parent)
             _physical_repository_path(parent, "mathematics directory", directory=True)
-            for name in directories:
-                _physical_repository_path(
-                    parent / name, "mathematics directory", directory=True
-                )
-            _append_tex_candidates(parent, filenames, sources)
+            child_dirs = _math_walk_names(directories, "directory")
+            child_files = _math_walk_names(filenames, "file")
+            if set(child_dirs) & set(child_files):
+                _fail("mathematics evidence scan repeats child across entry kinds")
+            for name in child_dirs:
+                child = parent / name
+                _physical_repository_path(child, "mathematics directory", directory=True)
+                if child in pending:
+                    _fail("mathematics evidence scan repeats directory")
+                pending.add(child)
+            _append_tex_candidates(parent, child_files, sources)
     except CorrespondenceError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -385,6 +444,8 @@ def _tex_sources() -> tuple[Path, ...]:
         raise CorrespondenceError(
             f"mathematics evidence scan failed: {detail}"
         ) from error
+    if pending:
+        _fail("mathematics evidence scan omitted discovered directories")
     return tuple(sorted(sources))
 
 
@@ -587,26 +648,45 @@ def validate_repository() -> tuple[Correspondence, ...]:
     return validate_text(_read_source_text(MANIFEST, "correspondence manifest"))
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Return whether an exact native text write and flush both completed."""
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate equation/test traceability and return process status.
 
     Returns:
-        Zero for a closed correspondence graph, otherwise one.
+        Zero for a closed correspondence graph with delivered CLI output.
 
     """
     try:
         entries = validate_repository()
+        message = f"mathematical correspondence valid: {len(entries)} equations\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("mathematical correspondence CLI output write or flush failed")
     except (OSError, CorrespondenceError) as error:
         detail = (
             str(error)
             if type(error) is CorrespondenceError
             else _host_error_detail(error)
         )
-        _ = sys.stderr.write(f"error: {detail}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {detail}\n")
         return 1
-    _ = sys.stdout.write(
-        f"mathematical correspondence valid: {len(entries)} equations\n"
-    )
     return 0
 
 

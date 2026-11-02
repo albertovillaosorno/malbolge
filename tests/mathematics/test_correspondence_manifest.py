@@ -40,7 +40,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import BinaryIO, Self, cast, override
+from typing import BinaryIO, Self, TextIO, cast, override
 
 import pytest
 
@@ -116,6 +116,7 @@ def test_correspondence_source_host_faults_are_typed(
     source = tmp_path / "witness.rs"
     _ = source.write_text("fn witness() {}\n", encoding="utf-8")
     monkeypatch.setattr(validator, "ROOT", tmp_path)
+    bad_streams: list[BadReadStream] = []
     if operation in {"lstat", "post_lstat"}:
         original_lstat = Path.lstat
         inspected = 0
@@ -178,11 +179,20 @@ def test_correspondence_source_host_faults_are_typed(
             def read(self, _size: int) -> bytes:
                 raise fault_type("injected evidence read failure")
 
-        monkeypatch.setattr(
-            os, "fdopen", lambda descriptor, _mode: BadReadStream(descriptor)
-        )
+        def wrap_bad_stream(descriptor: int, _mode: str) -> BadReadStream:
+            stream = BadReadStream(descriptor)
+            bad_streams.append(stream)
+            return stream
+
+        monkeypatch.setattr(os, "fdopen", wrap_bad_stream)
     with pytest.raises(validator.CorrespondenceError, match="witness"):
         _ = validator._read_source_text(source, "witness")
+    if operation == "read":
+        for stream in bad_streams:
+            try:
+                stream._stream.close()
+            except OSError:
+                pass
 
 
 @pytest.mark.parametrize(
@@ -263,15 +273,25 @@ def test_correspondence_rejects_foreign_stream_read_receipt(
         "list": list(native_bytes),
     }
 
+    forged: list[_ForgedReadStream] = []
+
     def wrap_stream(descriptor: int, mode: str) -> _ForgedReadStream:
         del mode
-        return _ForgedReadStream(
-            native_fdopen(descriptor, "rb"), receipts[payload_kind]
+        stream = _ForgedReadStream(
+            cast("BinaryIO", native_fdopen(descriptor, "rb")),
+            receipts[payload_kind],
         )
+        forged.append(stream)
+        return stream
 
     monkeypatch.setattr(os, "fdopen", wrap_stream)
-    with pytest.raises(validator.CorrespondenceError, match="native byte"):
+    with pytest.raises(validator.CorrespondenceError, match="native stream"):
         _ = validator._read_source_bytes(source, "witness")
+    for stream in forged:
+        try:
+            stream._stream.close()
+        except OSError:
+            pass
 
 
 @pytest.mark.parametrize("receipt", [True, False, -1])
@@ -474,6 +494,149 @@ def test_correspondence_math_walk_host_faults_are_typed(
     monkeypatch.setattr(Path, "walk", fail_walk)
     with pytest.raises(validator.CorrespondenceError, match="scan"):
         _ = validator._tex_sources()
+
+
+def test_correspondence_rejects_substituted_native_length_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A matching fileno and byte count do not authenticate a foreign reader."""
+    source = tmp_path / "witness.rs"
+    payload = b"fn witness() {}\n"
+    _ = source.write_bytes(payload)
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    native_fdopen = os.fdopen
+
+    forged: list[_ForgedReadStream] = []
+
+    def swapped_stream(descriptor: int, mode: str) -> _ForgedReadStream:
+        stream = _ForgedReadStream(
+            cast("BinaryIO", native_fdopen(descriptor, mode)),
+            b"x" * len(payload),
+        )
+        forged.append(stream)
+        return stream
+
+    monkeypatch.setattr(os, "fdopen", swapped_stream)
+    with pytest.raises(validator.CorrespondenceError, match="native stream"):
+        _ = validator._read_source_bytes(source, "witness")
+    for stream in forged:
+        try:
+            stream._stream.close()
+        except OSError:
+            pass
+
+
+def test_correspondence_rejects_native_reader_on_duplicate_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same-inode native readers cannot substitute another descriptor owner."""
+    source = tmp_path / "witness.rs"
+    _ = source.write_bytes(b"fn witness() {}\n")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    native_fdopen = os.fdopen
+    duplicates: list[BinaryIO] = []
+
+    def swapped_stream(descriptor: int, mode: str) -> BinaryIO:
+        duplicate = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        duplicates.append(duplicate)
+        return duplicate
+
+    monkeypatch.setattr(os, "fdopen", swapped_stream)
+    try:
+        with pytest.raises(validator.CorrespondenceError, match="native stream"):
+            _ = validator._read_source_bytes(source, "witness")
+        assert len(duplicates) == 1
+        assert duplicates[0].readable()
+        _ = os.fstat(duplicates[0].fileno())
+    finally:
+        for stream in duplicates:
+            stream.close()
+
+
+@pytest.mark.parametrize(
+    "case",
+    (
+        "outside-root",
+        "duplicate-file",
+        "missing-child",
+        "duplicate-parent",
+        "duplicate-directory",
+        "traversal-file",
+        "cross-kind",
+        "foreign-name",
+    ),
+)
+def test_correspondence_rejects_unbound_math_walk_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    """A source walk cannot introduce foreign or duplicate discovery claims."""
+    math_root = tmp_path / "math"
+    math_root.mkdir()
+    other = tmp_path / "other"
+    other.mkdir()
+    child = math_root / "child"
+    child.mkdir()
+    _ = (math_root / "eq.tex").write_text("\\label{eq:found}")
+    _ = (other / "foreign.tex").write_text("\\label{eq:foreign}")
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    monkeypatch.setattr(validator, "MATH_ROOT", math_root)
+
+    def forged_walk(
+        path: Path, *, on_error: Callable[[OSError], object] | None = None
+    ) -> object:
+        del path, on_error
+        if case == "outside-root":
+            return iter(((other, list[str](), ["foreign.tex"]),))
+        if case == "duplicate-file":
+            return iter(((math_root, list[str](), ["eq.tex", "eq.tex"]),))
+        if case == "duplicate-parent":
+            entry = (math_root, list[str](), ["eq.tex"])
+            return iter((entry, entry))
+        if case == "duplicate-directory":
+            return iter(((math_root, ["child", "child"], ["eq.tex"]),))
+        if case == "traversal-file":
+            return iter(((math_root, list[str](), ["../foreign.tex"]),))
+        if case == "cross-kind":
+            return iter(((math_root, ["child"], ["child"]),))
+        if case == "foreign-name":
+
+            class ForeignName(str):
+                """Subclass must not certify an enumerated file name."""
+
+            return iter(((math_root, list[str](), [ForeignName("eq.tex")]),))
+        return iter(((math_root, ["child"], ["eq.tex"]),))
+
+    monkeypatch.setattr(Path, "walk", forged_walk)
+    with pytest.raises(validator.CorrespondenceError, match="scan"):
+        _ = validator._tex_sources()
+
+
+@pytest.mark.parametrize("case", ("short", "foreign-count", "failed-flush"))
+def test_correspondence_cli_requires_delivered_success_record(
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    """Success requires a complete native write and a successful flush."""
+
+    class FakeOutput:
+        def write(self, text: str) -> int:
+            if case == "short":
+                return len(text) - 1
+            if case == "foreign-count":
+                return cast("int", True)
+            return len(text)
+
+        def flush(self) -> None:
+            if case == "failed-flush":
+                raise OSError("injected flush failure")
+
+    monkeypatch.setattr(validator, "validate_repository", lambda: ())
+    monkeypatch.setattr(validator.sys, "stdout", cast("TextIO", cast("object", FakeOutput())))
+    assert validator.main() == 1
 
 
 def test_repository_correspondence_graph_is_closed() -> None:
