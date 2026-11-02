@@ -1938,6 +1938,19 @@ def _verify_jig_alias_stage_bytes(
         temporary, identity, expected_size=len(payload)
     ):
         _fail("Jig alias stage changed during byte verification")
+    # The final descriptor close may execute host callbacks that rewrite the
+    # same inode. Require its named mutation timestamps to match the bytes
+    # observed before close, even if the original mtime was restored.
+    try:
+        named = _jig_stage_descriptor_identity(
+            temporary.lstat(), identity, len(payload)
+        )
+    except ProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise ProvisionError("Jig alias post-close status failed") from error
+    if named != final:
+        _fail("Jig alias stage metadata changed after byte verification")
 
 
 def _replace_jig_alias_stage(

@@ -618,3 +618,51 @@ def test_jig_alias_rejects_published_mutation_during_final_stage_cleanup(
         assert target.read_bytes() != BINARY
     else:
         assert not target.exists()
+
+
+@pytest.mark.parametrize("restore_mtime", [False, True])
+def test_jig_alias_rejects_last_readback_close_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, restore_mtime: bool
+) -> None:
+    """A descriptor-close callback cannot rewrite the final verified alias."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    _ = target.write_bytes(b"previous-verified-alias")
+    native_open = os.open
+    native_close = os.close
+    target_fds: list[int] = []
+    changed = False
+
+    def track_open(
+        path: Path | str,
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if path == target:
+            target_fds.append(descriptor)
+        return descriptor
+
+    def mutate_on_last_close(descriptor: int) -> None:
+        nonlocal changed
+        native_close(descriptor)
+        if len(target_fds) == 2 and descriptor == target_fds[1] and not changed:
+            before = target.stat()
+            _ = target.write_bytes(b"!" + BINARY[1:])
+            if restore_mtime:
+                os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+            changed = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_open)
+        isolated.setattr(os, "close", mutate_on_last_close)
+        with pytest.raises(python_validation.ProvisionError, match="Jig alias"):
+            python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+                target, BINARY, windows=False
+            )
+    assert changed
+    assert len(target_fds) == 2
+    assert target.read_bytes() != BINARY
