@@ -582,7 +582,10 @@ def _has_calendar_date(text: str) -> bool:
 
 
 def _validate_dated_uncertainty(text: str, label: str) -> None:
-    if not _has_calendar_date(text):
+    provenance_sections = ("## Status", "## Provenance", "## Sources")
+    if not any(
+        _has_calendar_date(_section(text, heading)) for heading in provenance_sections
+    ):
         _fail(f"{label} lacks a dated retrieval/review provenance marker")
     evidence = _section(text, "## Evidence")
     if evidence.splitlines().count(UNRESOLVED_HEADING) != 1:

@@ -173,6 +173,19 @@ def test_source_record_rejects_impossible_provenance_date() -> None:
     _expect_failure(text, "lacks a dated retrieval/review provenance marker")
 
 
+def test_source_record_rejects_unrelated_version_date_as_provenance() -> None:
+    """A version date cannot stand in for a source review or access date."""
+    text = _c_record()
+    for value in ("2026-07-26", "2026-08-08", "2026-08-09"):
+        text = text.replace(value, "undated")
+    text = text.replace(
+        "## Identity And Version",
+        "## Identity And Version\n\n- Software version: 2026-08-09",
+        1,
+    )
+    _expect_failure(text, "lacks a dated retrieval/review provenance marker")
+
+
 def test_source_record_requires_standalone_unresolved_heading() -> None:
     """An inline uncertainty mention is not a Markdown evidence heading."""
     text = _c_record().replace("### Unresolved", "Prose mentions ### Unresolved", 1)
