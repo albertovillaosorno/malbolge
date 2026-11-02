@@ -16140,3 +16140,97 @@ def test_mutable_pointer_parent_descriptor_close_keeps_committed_path(
     assert captured.value.published_path == destination
     assert captured.value.__cause__ is fault
     assert destination.read_bytes() == payload
+
+
+@pytest.mark.parametrize("failure_type", (ERROR, RuntimeError))
+def test_writer_publication_lock_rejects_suppressed_body_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure_type: type[Exception]
+) -> None:
+    """A foreign context exit cannot certify a rejected publication body."""
+    lock_path = tmp_path / PROGRESS_NAME
+    primary = failure_type("injected pointer validation failure")
+    observed = False
+
+    class SuppressingWriterLock:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, *_args: object) -> bool:
+            nonlocal observed
+            observed = True
+            return True
+
+    publication_lock = cast(
+        "Callable[[Path], object]", vars(progress)["_writer_publication_lock"]
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_writer_lock", lambda _: SuppressingWriterLock())
+        with pytest.raises(failure_type) as caught:
+            with cast("AbstractContextManager[object]", publication_lock(lock_path)):
+                raise primary
+    assert caught.value is primary
+    assert observed
+    assert not lock_path.exists()
+
+
+def test_pointer_write_rejects_suppressed_writer_lock_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Swallowed validation must not return success without a pointer."""
+    sidecar = _sidecar(tmp_path)
+    target = Path(sidecar.progress_path)
+    primary = ERROR("injected transition rejection")
+    observed = False
+
+    class SuppressingWriterLock:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, *_args: object) -> bool:
+            nonlocal observed
+            observed = True
+            return True
+
+    def fail_preflight(*_args: object) -> None:
+        raise primary
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_writer_lock", lambda _: SuppressingWriterLock())
+        context.setattr(progress, "_validate_existing_pointer", fail_preflight)
+        with pytest.raises(ERROR) as caught:
+            _ = progress.write_atomic(sidecar)
+    assert caught.value is primary
+    assert observed
+    assert not target.exists()
+
+
+def test_writer_publication_lock_preserves_body_error_over_foreign_exit_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second lock-context failure cannot replace an earlier rejection."""
+    primary = ERROR("original pointer admission rejection")
+    secondary = RuntimeError("injected lock exit failure")
+    observed = False
+
+    class FailingWriterLock:
+        def __enter__(self) -> object:
+            return object()
+
+        def __exit__(self, *_args: object) -> None:
+            nonlocal observed
+            observed = True
+            raise secondary
+
+    publication_lock = cast(
+        "Callable[[Path], object]", vars(progress)["_writer_publication_lock"]
+    )
+    with monkeypatch.context() as context:
+        context.setattr(progress, "_writer_lock", lambda _: FailingWriterLock())
+        with pytest.raises(ERROR) as caught:
+            with cast("AbstractContextManager[object]", publication_lock(tmp_path)):
+                raise primary
+    assert observed
+    assert caught.value is primary
+    assert getattr(primary, "__notes__", None) == [
+        "writer lock context cleanup also failed"
+    ]

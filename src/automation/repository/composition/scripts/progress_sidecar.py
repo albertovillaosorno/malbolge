@@ -2379,13 +2379,25 @@ def _writer_lock(destination: Path) -> Generator[_LockStream]:
 @contextmanager
 def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
     publication_completed = False
+    body_error: BaseException | None = None
     try:
         with _writer_lock(destination) as stream:
-            yield stream
+            try:
+                yield stream
+            except BaseException as error:
+                # A substituted writer context cannot swallow a rejected body.
+                body_error = error
+                raise
             publication_completed = True
-    except ProgressSidecarCommittedError:
+    except ProgressSidecarCommittedError as error:
+        if body_error is not None and error is not body_error:
+            BaseException.add_note(body_error, "writer lock context cleanup also failed")
+            raise body_error
         raise
     except Exception as error:
+        if body_error is not None and error is not body_error:
+            BaseException.add_note(body_error, "writer lock context cleanup also failed")
+            raise body_error
         if not publication_completed:
             raise
         message = (
@@ -2399,6 +2411,8 @@ def _writer_publication_lock(destination: Path) -> Generator[_LockStream]:
             else error
         )
         raise ProgressSidecarCommittedError(message, destination) from source
+    if body_error is not None:
+        raise body_error
 
 
 def _owned_temporary_still_named(
