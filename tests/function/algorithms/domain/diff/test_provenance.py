@@ -36,20 +36,20 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff import provenance as provenance_module
-from algorithms.diff.provenance import SourcePin
-from algorithms.diff.provenance import SourcePinError
-from algorithms.diff.provenance import SourcePinEvidence
-from algorithms.diff.provenance import require_source_pin
-from algorithms.diff.provenance import source_snapshot_evidence
 import pytest
+from algorithms.diff import provenance as provenance_module
+from algorithms.diff.provenance import (
+    SourcePin,
+    SourcePinError,
+    SourcePinEvidence,
+    require_source_pin,
+    source_snapshot_evidence,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _EXPECTED_FILE_COUNT = 3
@@ -168,9 +168,7 @@ def test_source_pin_rejects_linked_directory_after_enumeration(
     )
     changed = False
 
-    def replace_after_discovery(
-        root: Path, roots: tuple[str, ...]
-    ) -> tuple[Path, ...]:
+    def replace_after_discovery(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
         nonlocal changed
         files = original_pinned_files(root, roots)
         _ = (root / "src/nested").rename(root / "src/actual")
@@ -183,9 +181,7 @@ def test_source_pin_rejects_linked_directory_after_enumeration(
         changed = True
         return files
 
-    monkeypatch.setattr(
-        provenance_module, "_pinned_files", replace_after_discovery
-    )
+    monkeypatch.setattr(provenance_module, "_pinned_files", replace_after_discovery)
     with pytest.raises(SourcePinError, match="symlink"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
     _expect(changed, "post-enumeration alias fixture was not installed")
@@ -231,9 +227,7 @@ def test_pinned_snapshot_rejects_byte_or_path_change(tmp_path: Path) -> None:
         _ = require_source_pin(tmp_path, pin)
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_pinned_source_root_status_error_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -270,9 +264,7 @@ def test_pinned_source_root_resolution_errors_fail_typed(
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
-    with pytest.raises(
-        SourcePinError, match="pinned source root resolution failed"
-    ):
+    with pytest.raises(SourcePinError, match="pinned source root resolution failed"):
         _ = source_snapshot_evidence(tmp_path, ("README",))
 
 
@@ -393,9 +385,7 @@ def test_pinned_source_walk_iterator_errors_fail_typed(
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_pinned_entry_status_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -468,7 +458,9 @@ def test_pinned_source_rejects_symlink_swapped_after_status(
         return status
 
     monkeypatch.setattr(Path, "lstat", swap_after_status)
-    with pytest.raises(SourcePinError, match="pinned source read failed"):
+    with pytest.raises(
+        SourcePinError, match=r"pinned source (read failed|file changed)"
+    ):
         _ = source_snapshot_evidence(root, ("README",))
     _expect(swapped, "source pin symlink substitution did not execute")
 
@@ -552,3 +544,83 @@ def test_snapshot_and_pin_public_inputs_fail_typed(tmp_path: Path) -> None:
         _ = source_snapshot_evidence(tmp_path, ())
     with pytest.raises(SourcePinError, match="exact SourcePin"):
         _ = require_source_pin(tmp_path, cast("SourcePin", object()))
+
+
+@pytest.mark.parametrize("mutation", ["add", "remove"])
+def test_source_pin_rejects_file_set_mutation_during_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A matching pin cannot ignore entries changed after initial discovery."""
+    _write(tmp_path, "src/a.c", b"first")
+    _write(tmp_path, "src/z.c", b"last")
+    roots = ("src",)
+    original = source_snapshot_evidence(tmp_path, roots)
+    pin = SourcePin(
+        repository="repo",
+        commit=_COMMIT,
+        roots=roots,
+        file_count=original.file_count,
+        snapshot_sha256=original.snapshot_sha256,
+    )
+    actual_read = provenance_module._read_pinned_source
+    changed = False
+
+    def mutate_after_last_read(root: Path, path: Path, relative: str) -> bytes:
+        nonlocal changed
+        data = actual_read(root, path, relative)
+        if relative == "src/z.c" and not changed:
+            if mutation == "add":
+                _write(tmp_path, "src/new.c", b"undetected extra file")
+            else:
+                (tmp_path / "src" / "a.c").unlink()
+            changed = True
+        return data
+
+    monkeypatch.setattr(
+        provenance_module, "_read_pinned_source", mutate_after_last_read
+    )
+    with pytest.raises(SourcePinError, match="changed during snapshot"):
+        _ = require_source_pin(tmp_path, pin)
+    _expect(changed, "the during-read file-set mutation did not execute")
+
+
+@pytest.mark.parametrize("mutation", ["rewrite", "replace"])
+def test_source_pin_rejects_file_mutation_after_earlier_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """File identity must survive the entire snapshot, not one read."""
+    original_file = tmp_path / "src" / "a.c"
+    _write(tmp_path, "src/a.c", b"original")
+    _write(tmp_path, "src/z.c", b"last")
+    roots = ("src",)
+    baseline = source_snapshot_evidence(tmp_path, roots)
+    pin = SourcePin(
+        "repo", _COMMIT, roots, baseline.file_count, baseline.snapshot_sha256
+    )
+    timestamp = original_file.stat()
+    read_original = provenance_module._read_pinned_source
+    changed = False
+
+    def mutate_after_last_read(root: Path, path: Path, relative: str) -> bytes:
+        nonlocal changed
+        data = read_original(root, path, relative)
+        if relative == "src/z.c" and not changed:
+            if mutation == "rewrite":
+                _ = original_file.write_bytes(b"tampered")
+            else:
+                replacement = tmp_path / "replacement"
+                _ = replacement.write_bytes(b"original")
+                replacement.replace(original_file)
+            os.utime(
+                original_file,
+                ns=(timestamp.st_atime_ns, timestamp.st_mtime_ns),
+            )
+            changed = True
+        return data
+
+    monkeypatch.setattr(
+        provenance_module, "_read_pinned_source", mutate_after_last_read
+    )
+    with pytest.raises(SourcePinError, match="changed during snapshot"):
+        _ = require_source_pin(tmp_path, pin)
+    _expect(changed, "the during-snapshot content mutation did not execute")

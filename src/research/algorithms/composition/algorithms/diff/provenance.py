@@ -34,19 +34,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import cast
 
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import read_exact_regular_file
+from algorithms.diff.exact import ExactTreeError, read_exact_regular_file
 
 _ZERO = 0
 _ONE = 1
@@ -104,9 +99,7 @@ def _is_lower_hex(value: str, length: int) -> bool:
 
 def _validate_commit(commit: object) -> None:
     if type(commit) is not str or not _is_lower_hex(commit, _COMMIT_HEX_LENGTH):
-        message = (
-            "source pin commit must be 40 lowercase hexadecimal characters"
-        )
+        message = "source pin commit must be 40 lowercase hexadecimal characters"
         raise SourcePinError(message)
 
 
@@ -276,9 +269,7 @@ def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
             files.append(path)
             continue
         if not S_ISDIR(mode):
-            message = (
-                f"special entry is not accepted in pinned source: {relative}"
-            )
+            message = f"special entry is not accepted in pinned source: {relative}"
             raise SourcePinError(message)
     return tuple(files)
 
@@ -291,16 +282,12 @@ def _collect_root(root: Path, relative_root: str) -> tuple[Path, ...]:
 
 
 def _pinned_files(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
-    files = tuple(
-        path for relative in roots for path in _collect_root(root, relative)
-    )
+    files = tuple(path for relative in roots for path in _collect_root(root, relative))
     unique = {path.relative_to(root).as_posix() for path in files}
     if len(unique) != len(files):
         message = "pinned source roots overlap"
         raise SourcePinError(message)
-    return tuple(
-        sorted(files, key=lambda path: path.relative_to(root).as_posix())
-    )
+    return tuple(sorted(files, key=lambda path: path.relative_to(root).as_posix()))
 
 
 def _validate_root_path(root: object) -> None:
@@ -344,9 +331,27 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
         raise failure from error
 
 
-def source_snapshot_evidence(
-    root: Path, roots: tuple[str, ...]
-) -> SourcePinEvidence:
+def _pinned_file_receipt(path: Path, relative: str) -> tuple[int, ...]:
+    """Capture a physical file identity that survives mtime restoration."""
+    try:
+        status = path.lstat()
+    except (OSError, ValueError, RuntimeError, TypeError) as error:
+        message = f"pinned source file changed during snapshot: {relative}"
+        raise SourcePinError(message) from error
+    if not S_ISREG(status.st_mode):
+        message = f"pinned source file changed during snapshot: {relative}"
+        raise SourcePinError(message)
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_mode,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
+def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvidence:
     """Hash selected source roots by normalized path and exact file bytes.
 
     Returns:
@@ -360,12 +365,24 @@ def source_snapshot_evidence(
     resolved_root = _resolved_source_root(root)
     files = _pinned_files(resolved_root, roots)
     digest.update(_u64(len(files)))
+    receipts: list[tuple[int, ...]] = []
     for path in files:
         relative_text = path.relative_to(resolved_root).as_posix()
         relative = _utf8_pinned_path(relative_text)
+        receipts.append(_pinned_file_receipt(path, relative_text))
         data = _read_pinned_source(resolved_root, path, relative_text)
         digest.update(_frame(relative))
         digest.update(_frame(hashlib.sha256(data).digest()))
+    # Entries added or removed after discovery must not be absent from the
+    # returned pin just because all initially enumerated bytes were stable.
+    if _pinned_files(resolved_root, roots) != files:
+        message = "pinned source file set changed during snapshot"
+        raise SourcePinError(message)
+    for path, before in zip(files, receipts, strict=True):
+        relative_text = path.relative_to(resolved_root).as_posix()
+        if _pinned_file_receipt(path, relative_text) != before:
+            message = f"pinned source file changed during snapshot: {relative_text}"
+            raise SourcePinError(message)
     return SourcePinEvidence(
         file_count=len(files),
         snapshot_sha256=digest.hexdigest(),
@@ -393,8 +410,6 @@ def require_source_pin(root: Path, pin: SourcePin) -> SourcePinEvidence:
         )
         raise SourcePinError(message)
     if observed.snapshot_sha256 != pin.snapshot_sha256:
-        message = (
-            f"pinned source snapshot mismatch for {pin.repository}@{pin.commit}"
-        )
+        message = f"pinned source snapshot mismatch for {pin.repository}@{pin.commit}"
         raise SourcePinError(message)
     return observed
