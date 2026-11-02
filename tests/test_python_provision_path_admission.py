@@ -93,9 +93,11 @@ def test_python_provision_rejects_redirected_environment_before_pip(
     with pytest.raises(python_validation.ProvisionError, match="redirect"):
         python_validation._provision(layout, root=root)
     assert commands == []
-    assert (target / "bin" / "python" if link == "environment" else (
-        target / "3.14.7" / "bin" / "python" if link == "ancestor" else target
-    )).read_bytes() == PAYLOAD
+    assert (
+        target / "bin" / "python"
+        if link == "environment"
+        else (target / "3.14.7" / "bin" / "python" if link == "ancestor" else target)
+    ).read_bytes() == PAYLOAD
     assert redirected.is_symlink()
 
 
