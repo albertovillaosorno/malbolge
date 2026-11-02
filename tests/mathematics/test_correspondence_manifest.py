@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import BinaryIO, Self, TextIO, cast, override
 
 import pytest
+import tomllib
 
 from scripts.validate import math_correspondence as validator
 
@@ -104,6 +105,32 @@ def test_correspondence_refuses_substituted_native_toml_provider(
         with pytest.raises(validator.CorrespondenceError, match="TOML.*provider"):
             _ = validator._parse(source)
     assert validator._parse(validator.MANIFEST.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("tamper", ["syntax", "schema", "equation-id"])
+def test_correspondence_rejects_self_restoring_toml_provider(
+    monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    """A provider restored inside its own call cannot forge TOML evidence."""
+    source = validator.MANIFEST.read_text(encoding="utf-8")
+    original_loads = tomllib.loads
+    forged = original_loads(source)
+    if tamper == "syntax":
+        source = "this is not correspondence TOML"
+    elif tamper == "schema":
+        source = source.replace("schema_version = 1", "schema_version = 2")
+    else:
+        forged["correspondence"][0]["id"] = "forged-source-equation"
+
+    with monkeypatch.context() as context:
+
+        def restore_and_forge(_text: str) -> object:
+            context.setattr(tomllib, "loads", original_loads)
+            return forged
+
+        context.setattr(tomllib, "loads", restore_and_forge)
+        with pytest.raises(validator.CorrespondenceError, match="TOML.*provider"):
+            _ = validator._parse(source)
 
 
 @pytest.mark.parametrize(

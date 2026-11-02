@@ -40,6 +40,8 @@ The manifest reader also refuses replacement of its imported standard-library
 TOML decoder provider. Three red-first regressions demonstrated that a
 substitute could otherwise return valid native-looking equation mappings for
 invalid source syntax, a changed schema version, or a forged equation ID.
+Provider identity is captured before the decoder call, so an injected
+provider cannot restore the module entry mid-call to hide fabricated mappings.
 This pins the local parser provider, not source provenance or semantic proof.
 The validator requires physical in-repository regular manifest, equation, and
 evidence files and rejects redirected source ancestors, including symlinked

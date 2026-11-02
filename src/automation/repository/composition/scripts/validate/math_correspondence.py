@@ -542,8 +542,11 @@ def _admit_source_text(text: str) -> None:
 
 def _parse(text: str) -> tuple[Correspondence, ...]:
     _admit_source_text(text)
+    # Bind the provider before invocation: an injected decoder can restore
+    # tomllib.loads during its call and otherwise conceal fabricated entries.
+    decoder = tomllib.loads
     try:
-        parsed = cast("object", tomllib.loads(text))
+        parsed = cast("object", decoder(text))
     except tomllib.TOMLDecodeError as error:
         detail = (
             str(error)
@@ -567,8 +570,8 @@ def _parse(text: str) -> tuple[Correspondence, ...]:
         _fail("manifest.correspondence must not be empty")
     entries = tuple(_entry(value, index) for index, value in enumerate(values))
     # Preserve explicit malformed-field diagnostics before refusing a swapped
-    # parser that otherwise claims valid native records from different bytes.
-    if tomllib.loads is not _NATIVE_TOML_LOADS:
+    # parser, including one that restored its module entry during execution.
+    if decoder is not _NATIVE_TOML_LOADS:
         _fail("correspondence TOML decoder provider changed")
     return entries
 
