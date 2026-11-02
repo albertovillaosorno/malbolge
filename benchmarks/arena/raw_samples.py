@@ -300,7 +300,9 @@ def _checked_sha256(raw: bytes) -> str:
         _fail("arena raw CSV SHA-256 requires exact bytes")
     try:
         reported = sha256(raw).hexdigest()
-        independent = hashlib.sha256(raw).hexdigest()
+        # Keep the cross-check on a separate provider entrypoint: the module
+        # attribute hashlib.sha256 can be replaced alongside the bound alias.
+        independent = hashlib.new("sha256", raw).hexdigest()
     except Exception as error:
         message = "arena raw CSV SHA-256 dependency failed"
         raise RawSampleError(message) from error

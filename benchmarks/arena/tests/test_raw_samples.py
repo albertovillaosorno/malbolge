@@ -194,6 +194,29 @@ def test_exact_raw_rows_reject_unverified_hash_provider_receipts(
         assert caught.value.__cause__ is fault
 
 
+def test_raw_digest_rejects_jointly_substituted_sha256_providers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equal receipts from one substituted provider cannot attest source bytes."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation])
+    forged = "0" * analyze.SHA256_HEX_LENGTH
+    assert forged != sha256(raw).hexdigest()
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return forged
+
+    def replaced(_raw: bytes) -> ForgedHash:
+        return ForgedHash()
+
+    monkeypatch.setattr(raw_samples, "sha256", replaced)
+    monkeypatch.setattr(raw_samples.hashlib, "sha256", replaced)
+    with pytest.raises(raw_samples.RawSampleError, match="SHA-256 receipt differs"):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
 def test_raw_admission_never_hashes_different_bytes_than_decoded_csv(
     tmp_path: Path,
 ) -> None:
