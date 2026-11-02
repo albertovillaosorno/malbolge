@@ -2185,6 +2185,87 @@ def test_llvm_import_hardlink_does_not_follow_late_destination_parent_swap(
     assert not (foreign_tree / destination.name).exists()
 
 
+def test_llvm_copy_file_rejects_existing_parent_replaced_during_mkdir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An idempotent mkdir cannot silently replace the admitted import tree."""
+    if os.name != "posix":
+        pytest.skip("POSIX import parent identity boundary")
+    source = tmp_path / "host-source"
+    _ = source.write_bytes(b"physical host source")
+    parent = tmp_path / "owned-parent"
+    parent.mkdir()
+    destination = parent / "clang"
+    parked = tmp_path / "parked-parent"
+    foreign = tmp_path / "foreign-parent"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"foreign sentinel")
+    native_mkdir = Path.mkdir
+    swapped = False
+
+    def swap_after_existing_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        nonlocal swapped
+        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        if path == parent and not swapped:
+            _ = parent.rename(parked)
+            _ = foreign.rename(parent)
+            swapped = True
+
+    monkeypatch.setattr(Path, "mkdir", swap_after_existing_mkdir)
+    with pytest.raises(llvm_validation.LlvmImportError, match="parent"):
+        llvm_validation._copy_file(  # pyright: ignore[reportPrivateUsage]
+            source, destination
+        )
+    assert swapped
+    assert (parent / sentinel.name).read_bytes() == b"foreign sentinel"
+    assert not destination.exists()
+
+
+def test_llvm_copy_file_preserves_initial_parent_identity_across_reopen(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A later reopen must match the parent admitted before idempotent mkdir."""
+    if os.name != "posix":
+        pytest.skip("POSIX import parent identity boundary")
+    source = tmp_path / "host-source"
+    _ = source.write_bytes(b"host binary")
+    parent = tmp_path / "owned-parent"
+    parent.mkdir()
+    destination = parent / "clang"
+    parked = tmp_path / "parked-parent"
+    foreign = tmp_path / "foreign-parent"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"foreign data")
+    native_open_parent = llvm_validation._open_physical_import_parent  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def swap_before_directory_reopen(path: Path, label: str) -> int:
+        nonlocal swapped
+        if path == parent and not swapped:
+            _ = parent.rename(parked)
+            _ = foreign.rename(parent)
+            swapped = True
+        return native_open_parent(path, label)
+
+    monkeypatch.setattr(
+        llvm_validation, "_open_physical_import_parent", swap_before_directory_reopen
+    )
+    with pytest.raises(llvm_validation.LlvmImportError, match="parent"):
+        llvm_validation._copy_file(  # pyright: ignore[reportPrivateUsage]
+            source, destination
+        )
+    assert swapped
+    assert (parent / sentinel.name).read_bytes() == b"foreign data"
+    assert not destination.exists()
+
+
 @pytest.mark.parametrize("replacement", ("symlink", "physical"))
 def test_llvm_import_fallback_copy_does_not_write_to_swapped_parent(
     tmp_path: Path,

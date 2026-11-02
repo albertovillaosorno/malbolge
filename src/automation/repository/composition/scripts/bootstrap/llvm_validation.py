@@ -343,18 +343,41 @@ def _exclusive_import_target(
     return stream
 
 
-def _link_or_copy(source: str, destination: str) -> str:
+def _link_or_copy(
+    source: str,
+    destination: str,
+    *,
+    expected_parent_inode: tuple[int, int] | None = None,
+) -> str:
     """Import a new file without overwriting a raced destination link."""
     source_path = Path(source)
     destination_path = Path(destination)
     if not _physical_directory(destination_path.parent):
         _fail("LLVM import destination parent must be physical")
+    if (
+        expected_parent_inode is not None
+        and _native_directory_inode(destination_path.parent) != expected_parent_inode
+    ):
+        _fail("LLVM import destination parent changed before opening")
     parent_descriptor = (
         _open_physical_import_parent(destination_path.parent, "LLVM import destination")
         if os.name == "posix"
         else None
     )
     try:
+        if expected_parent_inode is not None and parent_descriptor is not None:
+            try:
+                opened_parent = os.fstat(parent_descriptor)
+                if (
+                    type(opened_parent) is not os.stat_result
+                    or (opened_parent.st_dev, opened_parent.st_ino)
+                    != expected_parent_inode
+                ):
+                    _fail("LLVM import destination parent changed during opening")
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmImportError(
+                    f"LLVM import destination parent status failed: {type(error).__name__}"
+                ) from error
         return _link_or_copy_in_parent(source_path, destination_path, parent_descriptor)
     finally:
         if parent_descriptor is not None:
@@ -477,8 +500,16 @@ def _link_or_copy_in_parent(
 
 
 def _copy_file(source: Path, destination: Path) -> None:
+    admitted_parent = _native_directory_inode(destination.parent)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    _ = _link_or_copy(str(source), str(destination))
+    if (
+        admitted_parent is not None
+        and _native_directory_inode(destination.parent) != admitted_parent
+    ):
+        _fail("LLVM import destination parent changed during mkdir")
+    _ = _link_or_copy(
+        str(source), str(destination), expected_parent_inode=admitted_parent
+    )
 
 
 def _require_physical_resources(root: Path) -> None:
