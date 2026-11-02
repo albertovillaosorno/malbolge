@@ -1833,6 +1833,143 @@ def test_guest_abi_source_accepts_native_translation_unit_ast() -> None:
     assert parsed["inner"] == [{}]
 
 
+@pytest.mark.parametrize(
+    ("source", "diagnostic"),
+    [
+        (
+            '{"kind":"TranslationUnitDecl","id":"root","inner":[{"kind":"PackedAttr"}]}',
+            "decoder provider differs from source",
+        ),
+        (
+            '{"kind":"FunctionDecl","id":"root","inner":[{}]}',
+            "decoder provider differs from source",
+        ),
+        ("{]", "invalid Clang AST JSON"),
+        (
+            '{"kind":"TranslationUnitDecl","kind":"TranslationUnitDecl","id":"root","inner":[{}]}',
+            "duplicate Clang AST JSON key",
+        ),
+        (
+            '{"kind":"TranslationUnitDecl","id":"root","inner":[{"x":NaN}]}',
+            "nonfinite Clang AST JSON number",
+        ),
+    ],
+)
+def test_guest_abi_source_ast_parser_rejects_substituted_native_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    diagnostic: str,
+) -> None:
+    """Clang AST parse results cannot omit rejected fields from stdout."""
+    canonical = '{"kind":"TranslationUnitDecl","id":"root","inner":[{}]}'
+    native_loads = json.loads
+    forged = native_loads(canonical)
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: forged)
+    with pytest.raises(c_abi_source.SourceAnalysisError, match=diagnostic):
+        _ = c_abi_source._parse_ast_output(source, Path("input.c"))
+
+
+def test_guest_abi_source_ast_parser_allows_equivalent_delegating_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact native value delegation remains admissible for Clang AST JSON."""
+    native_loads = json.loads
+
+    def delegating(
+        text: str,
+        *,
+        object_pairs_hook: object,
+        parse_constant: object,
+        parse_float: object,
+    ) -> object:
+        return native_loads(
+            text,
+            object_pairs_hook=cast(
+                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+            ),
+            parse_constant=cast("Callable[[str], object]", parse_constant),
+            parse_float=cast("Callable[[str], float]", parse_float),
+        )
+
+    monkeypatch.setattr(json, "loads", delegating)
+    source = '{"kind":"TranslationUnitDecl","id":"root","inner":[{}]}'
+    parsed = c_abi_source._parse_ast_output(source, Path("input.c"))
+    assert parsed["inner"] == [{}]
+
+
+def test_guest_abi_source_ast_parser_rejects_foreign_nested_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nested foreign keys fail without invoking a colliding equality hook."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign AST key equality executed")
+
+    source = '{"kind":"TranslationUnitDecl","id":"root","inner":[{"kind":"PackedAttr"}]}'
+    parsed: dict[str, object] = {
+        "kind": "TranslationUnitDecl",
+        "id": "root",
+        "inner": [{ForeignKey("kind"): "PackedAttr"}],
+    }
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: parsed)
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="non-native string key"):
+        _ = c_abi_source._parse_ast_output(source, Path("input.c"))
+
+
+def test_guest_abi_source_run_ast_rejects_forged_clang_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public Clang subprocess path also refuses a fabricated AST parse."""
+    source = Path("input.c")
+    actual = (
+        '{"kind":"TranslationUnitDecl","id":"root",'
+        '"inner":[{"kind":"PackedAttr"}]}'
+    )
+    native_loads = json.loads
+    forged = native_loads('{"kind":"TranslationUnitDecl","id":"root","inner":[{}]}')
+
+    def fake_run(argv: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(argv, 0, stdout=actual, stderr="")
+
+    monkeypatch.setattr(c_abi_source.sp, "run", fake_run)
+    monkeypatch.setattr(c_abi_source, "_require_ast_inputs", lambda *_: None)
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: forged)
+    with pytest.raises(
+        c_abi_source.SourceAnalysisError, match="decoder provider differs from source"
+    ):
+        _ = c_abi_source._run_ast(source, Path("clang"), "wasm32-unknown-unknown")
+
+
+@pytest.mark.parametrize("fault_type", [TypeError, RuntimeError])
+def test_guest_abi_source_ast_parser_types_foreign_decoder_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Host parser failures retain their cause without untrusted formatting."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign AST decoder formatter executed")
+
+    foreign = type("ForeignAstDecoderFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("private")
+
+    def fail(*_args: object, **_kwargs: object) -> object:
+        raise fault
+
+    monkeypatch.setattr(json, "loads", fail)
+    with pytest.raises(c_abi_source.SourceAnalysisError, match="invalid Clang AST JSON") as caught:
+        _ = c_abi_source._parse_ast_output("{}", Path("input.c"))
+    assert caught.value.__cause__ is fault
+
+
 def test_guest_abi_source_ast_traversal_overflow_is_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

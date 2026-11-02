@@ -38,10 +38,10 @@ import argparse
 import io
 import json
 import os
-from math import isfinite
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from stat import S_ISREG
 from typing import TYPE_CHECKING, Never, cast, override
@@ -58,6 +58,7 @@ from scripts.repository_root import repository_root
 from scripts.validate import c_abi
 
 ROOT = repository_root(Path(__file__))
+_NATIVE_AST_JSON_LOADS = json.loads
 PINNED_LLVM_VERSION = "22.1.8"
 PINNED_CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 GUEST_LIBC_INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
@@ -357,6 +358,31 @@ def _finite_ast_float(value: str) -> float:
     return result
 
 
+def _same_native_ast_json(actual: object, expected: object) -> bool:
+    """Compare native AST values without invoking foreign object hooks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        observed = cast("dict[object, object]", actual)
+        original = cast("dict[object, object]", expected)
+        # Do not probe native keys while a foreign subclass could collide.
+        if any(type(key) is not str for key in observed):
+            _fail("Clang AST JSON contains a non-native string key")
+        return len(observed) == len(original) and all(
+            key in observed and _same_native_ast_json(observed[key], value)
+            for key, value in original.items()
+        )
+    if kind is list:
+        observed_list = cast("list[object]", actual)
+        original_list = cast("list[object]", expected)
+        return len(observed_list) == len(original_list) and all(
+            _same_native_ast_json(left, right)
+            for left, right in zip(observed_list, original_list, strict=True)
+        )
+    return kind in (bool, int, float, str, type(None)) and actual == expected
+
+
 def _parse_ast_output(text: str, source: Path) -> JsonObject:
     if type(text) is not str:
         _fail("Clang AST JSON requires exact native text")
@@ -372,9 +398,33 @@ def _parse_ast_output(text: str, source: Path) -> JsonObject:
         )
     except SourceAnalysisError:
         raise
-    except (ValueError, RecursionError) as error:
+    except (TypeError, ValueError, RuntimeError, RecursionError) as error:
         message = f"invalid Clang AST JSON for {source}"
         raise SourceAnalysisError(message) from error
+    # A substituted public JSON loader must not suppress Clang's real AST
+    # nodes, invalid source syntax, duplicate keys, or nonfinite constants.
+    if json.loads is not _NATIVE_AST_JSON_LOADS:
+        try:
+            original = cast(
+                "object",
+                _NATIVE_AST_JSON_LOADS(
+                    text,
+                    object_pairs_hook=_unique_ast_fields,
+                    parse_constant=_reject_nonfinite_ast_constant,
+                    parse_float=_finite_ast_float,
+                ),
+            )
+            equivalent = _same_native_ast_json(parsed, original)
+        except SourceAnalysisError:
+            raise
+        except json.JSONDecodeError as error:
+            raise SourceAnalysisError(f"invalid Clang AST JSON for {source}") from error
+        except (TypeError, ValueError, RuntimeError, RecursionError) as error:
+            raise SourceAnalysisError(
+                f"Clang AST JSON decoder provider differs from source: {source}"
+            ) from error
+        if not equivalent:
+            _fail(f"Clang AST JSON decoder provider differs from source: {source}")
     if type(parsed) is not dict:
         _fail(f"Clang AST root must be an object for {source}")
     root = cast("JsonObject", parsed)
