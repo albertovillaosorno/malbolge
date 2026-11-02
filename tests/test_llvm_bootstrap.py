@@ -4113,6 +4113,7 @@ def test_linux_import_cleanup_pins_stage_before_recursive_child_removal(
     _ = (foreign / "preserve").write_bytes(b"foreign recursive cleanup")
     original_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
     original_remove = shutil.rmtree
+    original_open = os.open
     swapped = False
 
     def fail_after_staging(
@@ -4137,9 +4138,27 @@ def test_linux_import_cleanup_pins_stage_before_recursive_child_removal(
             swapped = True
         original_remove(path, dir_fd=dir_fd)
 
+    def swap_before_nested_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and path == "bin" and dir_fd is not None:
+            staging.rename(parked)
+            if replacement == "physical":
+                foreign.rename(staging)
+            else:
+                staging.symlink_to(foreign, target_is_directory=True)
+            swapped = True
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
     with monkeypatch.context() as isolated:
         isolated.setattr(llvm_validation, "_stage_linux_llvm", fail_after_staging)
         isolated.setattr(shutil, "rmtree", swap_during_remove)
+        isolated.setattr(os, "open", swap_before_nested_open)
         with pytest.raises(llvm_validation.LlvmImportError):
             _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert swapped
@@ -4226,3 +4245,119 @@ def test_linux_import_cleanup_rejects_child_swapped_after_status(
     outside = child if replacement == "physical" else foreign
     assert (outside / "preserve").read_bytes() == b"foreign child content"
     assert (parked / "bin/clang").read_bytes() == CLANG_BYTES
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory handles")
+@pytest.mark.parametrize("replacement", ("physical", "symlink"))
+def test_linux_import_cleanup_preserves_swapped_nested_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """Late nested directory swaps cannot make recursive cleanup delete foreign data."""
+    observation = _host_observation(tmp_path)
+    bin_dir = tmp_path / ".temp/llvm-import-linux-x86_64/llvm/bin"
+    parked = tmp_path / "parked-nested-cleanup"
+    foreign = tmp_path / "foreign-nested-cleanup"
+    foreign.mkdir()
+    _ = (foreign / "preserve").write_bytes(b"foreign nested data")
+    original_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
+    native_remove = shutil.rmtree
+    native_open = os.open
+    swapped = False
+
+    def fail_after_staging(
+        staged: Path,
+        observed: llvm_validation.LlvmHostObservation,
+        *,
+        expected_staged_inode: tuple[int, int] | None = None,
+    ) -> None:
+        original_stage(staged, observed, expected_staged_inode=expected_staged_inode)
+        raise llvm_validation.LlvmImportError("expected staging error")
+
+    def swap_bin() -> None:
+        nonlocal swapped
+        bin_dir.rename(parked)
+        if replacement == "physical":
+            foreign.rename(bin_dir)
+        else:
+            bin_dir.symlink_to(foreign, target_is_directory=True)
+        swapped = True
+
+    def swap_before_rmtree(
+        path: str | os.PathLike[str], *, dir_fd: int | None = None
+    ) -> None:
+        if not swapped and path == "bin" and dir_fd is not None:
+            swap_bin()
+        native_remove(path, dir_fd=dir_fd)
+
+    def swap_before_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if not swapped and path == "bin" and dir_fd is not None:
+            swap_bin()
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_stage_linux_llvm", fail_after_staging)
+        isolated.setattr(shutil, "rmtree", swap_before_rmtree)
+        isolated.setattr(os, "open", swap_before_open)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert swapped
+    outside = bin_dir if replacement == "physical" else foreign
+    assert (outside / "preserve").read_bytes() == b"foreign nested data"
+    assert (parked / "clang").read_bytes() == CLANG_BYTES
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory handles")
+@pytest.mark.parametrize("replacement", ("physical", "symlink"))
+def test_linux_import_cleanup_preserves_nested_directory_swapped_after_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """An opened nested directory remains bound when its pathname is replaced."""
+    observation = _host_observation(tmp_path)
+    bin_dir = tmp_path / ".temp/llvm-import-linux-x86_64/llvm/bin"
+    parked = tmp_path / "parked-open-nested"
+    foreign = tmp_path / "foreign-open-nested"
+    foreign.mkdir()
+    _ = (foreign / "preserve").write_bytes(b"foreign-after-open")
+    original_stage = llvm_validation._stage_linux_llvm  # pyright: ignore[reportPrivateUsage]
+    native_scandir = os.scandir
+    swapped = False
+
+    def fail_after_staging(
+        staged: Path,
+        observed: llvm_validation.LlvmHostObservation,
+        *,
+        expected_staged_inode: tuple[int, int] | None = None,
+    ) -> None:
+        original_stage(staged, observed, expected_staged_inode=expected_staged_inode)
+        raise llvm_validation.LlvmImportError("expected staging error")
+
+    def swap_before_scandir(
+        path: str | os.PathLike[str] | int,
+    ) -> os.ScandirIterator[str]:
+        nonlocal swapped
+        if type(path) is int and not swapped and bin_dir.is_dir():
+            opened = os.fstat(path)
+            named = bin_dir.lstat()
+            if (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino):
+                bin_dir.rename(parked)
+                if replacement == "physical":
+                    foreign.rename(bin_dir)
+                else:
+                    bin_dir.symlink_to(foreign, target_is_directory=True)
+                swapped = True
+        return native_scandir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation, "_stage_linux_llvm", fail_after_staging)
+        isolated.setattr(os, "scandir", swap_before_scandir)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert swapped
+    outside = bin_dir if replacement == "physical" else foreign
+    assert (outside / "preserve").read_bytes() == b"foreign-after-open"

@@ -1188,6 +1188,63 @@ def _owned_staging_safe_to_clean(
     return owned_child is not None and _native_directory_inode(staged) == owned_child
 
 
+def _remove_pinned_import_contents(parent_fd: int) -> None:
+    """Delete staged members only under physically pinned directory handles."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    with os.scandir(parent_fd) as members:
+        for member in members:
+            admitted = member.stat(follow_symlinks=False)
+            if type(admitted) is not os.stat_result:
+                _fail("LLVM staging cleanup member status must be native")
+            expected_inode = admitted.st_dev, admitted.st_ino
+            if S_ISDIR(admitted.st_mode):
+                child_fd: int | None = None
+                try:
+                    child_fd = os.open(member.name, flags, dir_fd=parent_fd)
+                    if type(cast("object", child_fd)) is not int or child_fd < 0:
+                        _fail("LLVM staging cleanup member descriptor must be native")
+                    opened = os.fstat(child_fd)
+                    if (
+                        type(opened) is not os.stat_result
+                        or not S_ISDIR(opened.st_mode)
+                        or (opened.st_dev, opened.st_ino) != expected_inode
+                    ):
+                        _fail("LLVM staging cleanup member changed before recursion")
+                    _remove_pinned_import_contents(child_fd)
+                    named = os.stat(
+                        member.name, dir_fd=parent_fd, follow_symlinks=False
+                    )
+                    if (
+                        type(named) is not os.stat_result
+                        or not S_ISDIR(named.st_mode)
+                        or (named.st_dev, named.st_ino) != expected_inode
+                    ):
+                        _fail("LLVM staging cleanup member changed before removal")
+                    receipt = os.rmdir(member.name, dir_fd=parent_fd)
+                    if receipt is not None:
+                        _fail(
+                            "LLVM staging cleanup member removal receipt must be native"
+                        )
+                finally:
+                    if type(child_fd) is int and child_fd >= 0:
+                        os.close(child_fd)
+            elif S_ISREG(admitted.st_mode):
+                named = os.stat(member.name, dir_fd=parent_fd, follow_symlinks=False)
+                if (
+                    type(named) is not os.stat_result
+                    or not S_ISREG(named.st_mode)
+                    or (named.st_dev, named.st_ino) != expected_inode
+                ):
+                    _fail("LLVM staging cleanup file changed before unlink")
+                receipt = os.unlink(member.name, dir_fd=parent_fd)
+                if receipt is not None:
+                    _fail("LLVM staging cleanup unlink receipt must be native")
+            else:
+                _fail(
+                    "LLVM staging cleanup member must be a physical file or directory"
+                )
+
+
 def _cleanup_owned_linux_staging(
     staging: Path,
     staged: Path,
@@ -1240,12 +1297,7 @@ def _cleanup_owned_linux_staging(
                 or (opened_child.st_dev, opened_child.st_ino) != owned_child
             ):
                 _fail("LLVM staging cleanup child descriptor identity changed")
-            with os.scandir(child_fd) as members:
-                for member in members:
-                    if member.is_dir(follow_symlinks=False):
-                        shutil.rmtree(member.name, dir_fd=child_fd)
-                    else:
-                        os.unlink(member.name, dir_fd=child_fd)
+            _remove_pinned_import_contents(child_fd)
             named_child = os.stat(staged.name, dir_fd=staging_fd, follow_symlinks=False)
             if (
                 type(named_child) is not os.stat_result
