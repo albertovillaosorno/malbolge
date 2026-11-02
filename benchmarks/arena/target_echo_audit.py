@@ -779,9 +779,11 @@ def _require_git_commit(commit: str) -> None:
         message = "target audit Git environment inspection failed"
         raise TargetEchoAuditError(message) from error
     command = [executable, "cat-file", "-t", commit]
+    # A copied success receipt does not identify the argv used by this child.
+    prepared = command.copy()
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command.copy(),
+            prepared,
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             check=False,
@@ -802,6 +804,7 @@ def _require_git_commit(commit: str) -> None:
     if (
         type(completed) is not sp.CompletedProcess
         or type(completed.args) is not list
+        or completed.args is not prepared
         or any(type(argument) is not str for argument in completed.args)
         or completed.args != command
         or type(completed.returncode) is not int

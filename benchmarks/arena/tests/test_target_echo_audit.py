@@ -2368,6 +2368,19 @@ def test_target_audit_git_rejects_forged_child_command_receipt(
         audit._require_git_commit("a" * 40)
 
 
+def test_target_audit_git_rejects_copied_successful_command_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A different argv list cannot attest this specific Git child invocation."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        return sp.CompletedProcess(command.copy(), 0, b"commit\n", b"")
+
+    monkeypatch.setattr(audit.sp, "run", forged)
+    with pytest.raises(audit.TargetEchoAuditError, match="Git commit object"):
+        audit._require_git_commit("a" * 40)
+
+
 @pytest.mark.parametrize(
     "stdout",
     [b"commit", b" commit\n", b"commit\n\n", b"commit \n"],
