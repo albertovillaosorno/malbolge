@@ -237,6 +237,7 @@ def _uv_manifest_identity(status: os.stat_result) -> tuple[int, ...]:
         type(field) is not int
         for field in (
             status.st_mode,
+            status.st_nlink,
             status.st_dev,
             status.st_ino,
             status.st_size,
@@ -247,6 +248,8 @@ def _uv_manifest_identity(status: os.stat_result) -> tuple[int, ...]:
         _fail("uv toolchain manifest requires native file status")
     if not stat.S_ISREG(status.st_mode):
         _fail("uv toolchain manifest must be a regular file")
+    if status.st_nlink != 1:
+        _fail("uv toolchain manifest must be single-link")
     if status.st_size < 0 or status.st_size > MAX_UV_MANIFEST_BYTES:
         _fail("uv toolchain manifest exceeds byte limit")
     return (

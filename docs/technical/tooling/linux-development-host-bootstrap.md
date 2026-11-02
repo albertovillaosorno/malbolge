@@ -42,8 +42,9 @@ open/read failures preserve their original causes without formatting arbitrary
 host exceptions. If wrapping an opened bootstrap authority descriptor as a
 stream fails, bootstrap closes the descriptor and retains the failure cause.
 The pinned `uv-toolchain.json`
-uses the same one-MiB physical regular-file admission and stable descriptor
-checks before its URL, version, artifact, and digest fields are interpreted.
+uses the same one-MiB physical single-link regular-file admission and stable
+descriptor checks before its URL, version, artifact, and digest fields are
+interpreted. Externally hardlinked manifest files are not trusted.
 Manifest descriptor reads also require exact immutable native `bytes` before
 size or JSON decoding, so mutable stream proxies cannot supply trusted records.
 Manifest ancestry is also checked through native physical directory `lstat`

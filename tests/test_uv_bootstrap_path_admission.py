@@ -632,6 +632,24 @@ def test_uv_zip_rejects_duplicate_selected_executable() -> None:
         _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
 
 
+def test_uv_manifest_rejects_hardlinked_external_authority(
+    tmp_path: Path,
+) -> None:
+    """A multiply linked manifest cannot inherit authority from an outside path."""
+    external = tmp_path / "outside-manifest.json"
+    _ = external.write_bytes(python_validation.UV_MANIFEST.read_bytes())
+    linked = tmp_path / "pinned-manifest.json"
+    try:
+        os.link(external, linked)
+    except OSError as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv toolchain manifest.*single-link"
+    ):
+        _ = python_validation.uv_artifact(PLATFORM_ID, linked)
+    assert external.read_bytes() == python_validation.UV_MANIFEST.read_bytes()
+
+
 @pytest.mark.parametrize("authority", ["uv-manifest", "jig-binary"])
 def test_binary_authority_rejects_forged_fdopen_content(
     tmp_path: Path,
