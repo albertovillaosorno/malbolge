@@ -818,6 +818,38 @@ def test_cuda_never_publishes_hardlinked_completion_marker(
     assert external.read_bytes().startswith(b'{"manifest_sha256"')
 
 
+def test_cuda_never_replaces_late_occupied_toolkit_destination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late-arriving empty destination belongs to a different owner."""
+    payload = _payload()
+    manifest_path = _manifest(tmp_path, payload)
+    destination = tmp_path / TOOLKIT_ROOT
+    native_writer = cuda_validation._write_staged_file_exclusively
+    occupied = False
+
+    def occupy_destination(path: Path, data: bytes, label: str) -> None:
+        nonlocal occupied
+        native_writer(path, data, label)
+        if label == "CUDA completion marker":
+            destination.mkdir(parents=True)
+            occupied = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            cuda_validation, "_write_staged_file_exclusively", occupy_destination
+        )
+        with pytest.raises(cuda_validation.CudaProvisionError, match="destination"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest_path, LINUX_PLATFORM,
+                downloader=_download_fixture(payload),
+            )
+    assert occupied
+    assert destination.is_dir()
+    assert not list(destination.iterdir())
+
+
 def test_provision_is_idempotent_after_exact_marker(tmp_path: Path) -> None:
     """A completed exact toolkit never redownloads admitted package bytes."""
     payload = _payload()

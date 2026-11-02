@@ -610,6 +610,20 @@ def _require_toolkit_destination(path: Path) -> None:
     _require_physical_directories(path, "toolkit destination")
 
 
+def _require_unoccupied_toolkit_destination(path: Path) -> None:
+    """Reject a newly occupied destination, including empty directories."""
+    _require_toolkit_destination(path.parent)
+    try:
+        _ = path.lstat()
+    except FileNotFoundError:
+        return
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            "CUDA toolkit destination status failed"
+        ) from error
+    _fail("CUDA toolkit destination already occupied")
+
+
 def _prepare_staging(path: Path) -> None:
     _require_physical_directories(path, "staging")
     if path.exists():
@@ -878,6 +892,7 @@ def provision_cuda_manifest(
         _require_toolkit_destination(manifest.toolkit_root)
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
         _require_toolkit_destination(manifest.toolkit_root)
+        _require_unoccupied_toolkit_destination(manifest.toolkit_root)
         _ = staged_toolkit.replace(manifest.toolkit_root)
     finally:
         _require_owned_staging(staging, staging_identity)
