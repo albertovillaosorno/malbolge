@@ -544,6 +544,20 @@ def test_linux_import_rejects_untrusted_staging_before_copy(
     assert not tuple(outside.iterdir())
 
 
+
+def test_linux_import_preserves_occupied_staging_directory(tmp_path: Path) -> None:
+    """A prior unrelated staging tree has no ownership receipt for deletion."""
+    observation = _host_observation(tmp_path)
+    staging = tmp_path / ".temp/llvm-import-linux-x86_64"
+    staging.mkdir(parents=True)
+    sentinel = staging / "preserve-existing-stage"
+    _ = sentinel.write_bytes(b"preexisting unrelated data")
+    with pytest.raises(llvm_validation.LlvmImportError, match="staging"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert sentinel.read_bytes() == b"preexisting unrelated data"
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
 @pytest.mark.parametrize("redirected", ("dependencies", "llvm-parent"))
 def test_linux_import_rejects_redirected_final_parent(
     tmp_path: Path, redirected: str

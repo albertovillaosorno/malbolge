@@ -846,14 +846,27 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         _fail("repository-local LLVM exists without the exact import marker")
     staging = root / ".temp" / "llvm-import-linux-x86_64"
     _admit_linux_import_staging(root, staging)
-    if staging.exists():
-        shutil.rmtree(staging)
+    try:
+        _ = staging.lstat()
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import staging occupancy status failed: {type(error).__name__}"
+        ) from error
+    else:
+        _fail("LLVM import staging is occupied without an ownership receipt")
     _admit_linux_import_staging(root, staging)
     staged = staging / "llvm"
     owned_staging: tuple[int, int] | None = None
     owned_child: tuple[int, int] | None = None
     try:
-        staging.mkdir()
+        try:
+            staging.mkdir()
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM import staging exclusive creation failed: {type(error).__name__}"
+            ) from error
         owned_staging = _native_directory_inode(staging)
         if owned_staging is None:
             _fail("LLVM import staging directory must be physical")
