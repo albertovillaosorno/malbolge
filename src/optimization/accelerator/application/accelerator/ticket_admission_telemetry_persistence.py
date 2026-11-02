@@ -40,6 +40,7 @@ from __future__ import annotations
 from dataclasses import asdict
 from dataclasses import dataclass
 import json
+from json import dumps as _SOURCE_JSON_DUMPS
 import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -198,14 +199,35 @@ def encode_ticket_admission_telemetry_document(
 
     """
     state = _validated_document(document)
-    text = json.dumps(
-        asdict(state),
-        allow_nan=False,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    text = _canonical_json(asdict(state))
     return f"{text}\n".encode()
+
+
+def _canonical_json(document: dict[str, object]) -> str:
+    """Require canonical bytes independent of public serializer substitution."""
+    try:
+        # Establish canonical bytes before a public writer can mutate the
+        # validated tree in-place, or return an unrelated document's text.
+        source_text = _SOURCE_JSON_DUMPS(
+            document,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        rendered = json.dumps(
+            document,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:  # noqa: BLE001 - external writer faults stay typed
+        message = f"telemetry JSON serializer failed: {type(error).__name__}"
+        raise TicketAdmissionTelemetryPersistenceError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        _raise_persistence("telemetry JSON serializer disagrees with source")
+    return source_text
 
 
 def decode_ticket_admission_telemetry_document(

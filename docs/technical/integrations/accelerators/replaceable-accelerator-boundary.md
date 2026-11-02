@@ -679,9 +679,14 @@ completion-only executors remain unchanged.
 `ticket-admission-telemetry-document-v1` captures both snapshots as compact,
 sorted-key schema-v1 JSON. Decoding defaults to a 1 MiB byte limit and 4,096
 observations per FIFO, rejects duplicate, unknown, oversized, and noncanonical
-input, and restores exact sequence and eviction state. File reads and writes are
-
-explicit; writes use a same-directory temporary file and atomic replacement.
+input, and restores exact sequence and eviction state. Canonical encoding and
+decoding now corroborate the public JSON writer against the standard-library
+writer bound at import, capturing source-owned bytes before any public writer
+mutation. Joint substitution of public decoder and writer cannot invent
+recorded FIFO events absent from exact stored bytes. This does not protect
+against compromise of the shared underlying JSON implementation. File reads
+and writes are explicit; writes use a same-directory temporary file and atomic
+replacement.
 `caller-owned-ticket-admission-telemetry-store-v1` defines an explicit
 put/get/remove/snapshot port and a bounded caller-owned memory adapter.
 Defaults are 4,096 unique documents, 4,096 observations per FIFO, and 16 MiB

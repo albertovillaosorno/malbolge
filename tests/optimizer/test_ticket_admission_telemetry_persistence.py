@@ -418,3 +418,118 @@ def test_encoder_rejects_forged_typed_document_state() -> None:
         _ = encode_ticket_admission_telemetry_document(
             replace(document, completed=malformed_snapshot)
         )
+
+
+def test_telemetry_persistence_rejects_joint_json_provider_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No decoder/serializer pair can invent persisted FIFO events."""
+    empty_document = capture_ticket_admission_telemetry_document(_attempts())
+    empty_payload = encode_ticket_admission_telemetry_document(empty_document)
+    attempts = _attempts()
+    _ = attempts.record_completed(_report(), elapsed_ns=FIRST_ELAPSED_NS)
+    fabricated = json.loads(
+        encode_ticket_admission_telemetry_document(
+            capture_ticket_admission_telemetry_document(attempts)
+        )
+    )
+    empty_json = empty_payload.decode("utf-8").removesuffix("\n")
+
+    def invented_decoder(_text: str, **_kwargs: object) -> object:
+        return fabricated
+
+    monkeypatch.setattr(json, "loads", invented_decoder)
+    monkeypatch.setattr(json, "dumps", lambda *_args, **_kwargs: empty_json)
+    with pytest.raises(
+        TicketAdmissionTelemetryPersistenceError,
+        match="serializer|not canonical",
+    ):
+        _ = decode_ticket_admission_telemetry_document(empty_payload)
+
+
+def test_telemetry_persistence_rejects_modified_json_serialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutating an encoder document cannot erase completed events."""
+    attempts = _attempts()
+    _ = attempts.record_completed(_report(), elapsed_ns=FIRST_ELAPSED_NS)
+    original_dumps = json.dumps
+
+    def forged_writer(document: dict[str, object], **kwargs: object) -> str:
+        completed = document["completed"]
+        assert isinstance(completed, dict)
+        completed["observations"] = []
+        return original_dumps(document, **kwargs)
+
+    monkeypatch.setattr(json, "dumps", forged_writer)
+    with pytest.raises(TicketAdmissionTelemetryPersistenceError, match="serializer"):
+        _ = encode_ticket_admission_telemetry_document(
+            capture_ticket_admission_telemetry_document(attempts)
+        )
+
+
+def test_telemetry_persistence_accepts_equivalent_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent public writer preserves canonical v1 roundtrip."""
+    original_dumps = json.dumps
+    monkeypatch.setattr(
+        json, "dumps", lambda *args, **kwargs: original_dumps(*args, **kwargs)
+    )
+    document = capture_ticket_admission_telemetry_document(_attempts())
+    assert decode_ticket_admission_telemetry_document(
+        encode_ticket_admission_telemetry_document(document)
+    ) == document
+
+
+class _ForeignJsonText(str):
+    """An injected serializer return may have executable comparison methods."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign JSON comparison invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param(b"{}", id="bytes"),
+        pytest.param(_ForeignJsonText("{}"), id="foreign-string"),
+    ],
+)
+def test_telemetry_persistence_rejects_non_native_json_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only a native writer receipt can be compared with source-owned text."""
+    monkeypatch.setattr(json, "dumps", lambda *_args, **_kwargs: receipt)
+    with pytest.raises(TicketAdmissionTelemetryPersistenceError, match="serializer"):
+        _ = encode_ticket_admission_telemetry_document(
+            capture_ticket_admission_telemetry_document(_attempts())
+        )
+
+
+@pytest.mark.parametrize(
+    "error_type", [RuntimeError, AttributeError, IndexError, OverflowError]
+)
+def test_telemetry_persistence_contains_json_serializer_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    """Unexpected writer failures retain exact causes in a typed error."""
+    failure = error_type("untrusted serializer failure")
+
+    def fail_writer(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    monkeypatch.setattr(json, "dumps", fail_writer)
+    with pytest.raises(
+        TicketAdmissionTelemetryPersistenceError, match="serializer failed"
+    ) as caught:
+        _ = encode_ticket_admission_telemetry_document(
+            capture_ticket_admission_telemetry_document(_attempts())
+        )
+    assert caught.value.__cause__ is failure
