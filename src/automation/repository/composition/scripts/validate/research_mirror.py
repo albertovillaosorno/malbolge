@@ -288,7 +288,7 @@ def _out_is_ignored(entry: MirrorEntry) -> bool:
     # jig-ignore-next-line: indivisible reviewed identifier
     try:
         completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] - fixed Git argv, no shell.
-            command,
+            command.copy(),
             cwd=ROOT,
             check=False,
             shell=False,

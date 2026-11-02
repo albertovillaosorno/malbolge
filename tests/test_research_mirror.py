@@ -1000,3 +1000,32 @@ def test_mirror_direct_junction_receipt_must_be_native_bool(
             _ = validator._physical_status(  # pyright: ignore[reportPrivateUsage]
                 evidence, "research evidence"
             )
+
+
+@pytest.mark.parametrize(
+    ("index", "replacement"),
+    [
+        (0, "foreign-git"),
+        (1, "status"),
+        (-1, "algorithms/foreign/out/"),
+    ],
+)
+def test_mirror_git_probe_cannot_mutate_borrowed_command_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    index: int,
+    replacement: str,
+) -> None:
+    """Mutating the launched argv cannot rewrite the expected Git invocation."""
+    entry = validator.MirrorEntry(
+        document=validator.ROOT / "docs/fixture",
+        executable=validator.ROOT / "algorithms/fixture",
+        research_id="fixture",
+    )
+
+    def mutated_run(argv: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        argv[index] = replacement
+        return sp.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(sp, "run", mutated_run)
+    with pytest.raises(validator.ResearchMirrorError, match="malformed Git"):
+        _ = validator._out_is_ignored(entry)  # pyright: ignore[reportPrivateUsage]

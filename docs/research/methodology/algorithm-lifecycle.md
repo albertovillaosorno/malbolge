@@ -156,6 +156,9 @@ lifecycle state.
 - `tests/test_research_mirror.py` keeps the two-sided mirror identity and
   ignored
   output contract intact while lifecycle metadata becomes mandatory.
+  The Git ignore probe authenticates its exact launched command against a
+  separate immutable expectation, so a wrapper cannot mutate borrowed argv
+  and submit its altered command as valid ignore evidence.
 
 ## Results
 
