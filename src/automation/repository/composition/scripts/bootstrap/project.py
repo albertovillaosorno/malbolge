@@ -859,6 +859,7 @@ def import_git_installation(
 
     """
     _admit_import_destination(destination, "Git")
+    destination.mkdir(parents=True, exist_ok=False)
     native_name = "git.exe" if windows else "git"
     native = destination / "bin" / native_name
     native.parent.mkdir(parents=True)

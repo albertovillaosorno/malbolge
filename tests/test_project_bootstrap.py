@@ -3307,6 +3307,44 @@ def test_git_import_preserves_runtime_tree_and_neutral_alias(
     assert project.git_import_complete(destination)
 
 
+def test_git_import_rejects_late_occupied_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A directory that appears after admission must not receive Git files."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    helpers = tmp_path / "helpers"
+    helpers.mkdir()
+    destination = tmp_path / "git" / GIT_VERSION
+    destination.parent.mkdir()
+    sentinel = destination / "foreign-sentinel"
+    native_mkdir = Path.mkdir
+    occupied = False
+
+    def occupy_on_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        nonlocal occupied
+        if path == destination and not occupied:
+            occupied = True
+            native_mkdir(destination)
+            _ = sentinel.write_bytes(b"retain foreign file")
+        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "mkdir", occupy_on_mkdir)
+        with pytest.raises(FileExistsError):
+            _ = project.import_git_installation(
+                source, helpers, destination, windows=False
+            )
+    assert occupied
+    assert sentinel.read_bytes() == b"retain foreign file"
+    assert not (destination / "bin").exists()
+
+
 @pytest.mark.parametrize("component", ["git", "rust"])
 def test_toolchain_import_rejects_linked_parent_before_copy(
     tmp_path: Path, component: str
