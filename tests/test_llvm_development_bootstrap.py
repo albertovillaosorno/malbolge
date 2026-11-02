@@ -1164,6 +1164,77 @@ def test_rpm_cleanup_preserves_swapped_foreign_package_directory(
     assert (preserved / PACKAGE_NAME).read_bytes() == PACKAGE_BYTES
 
 
+@pytest.mark.parametrize("cleanup", ["package", "staging"])
+@pytest.mark.parametrize("failure_type", [OSError, shutil.Error, RuntimeError])
+def test_llvm_development_cleanup_host_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cleanup: str,
+    failure_type: type[Exception],
+) -> None:
+    """Failed cleanup must retain host cause behind the provisioning boundary."""
+    identity = _identity(tmp_path)
+    fault = failure_type("synthetic development cleanup failure")
+    native_rmtree = shutil.rmtree
+    target = (
+        PACKAGE_NAME.removesuffix(".rpm")
+        if cleanup == "package"
+        else f"llvm-development-provision-{LINUX_PLATFORM}"
+    )
+
+    def fail_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name == target:
+            raise fault
+        _ = native_rmtree(path, *args, **kwargs)
+
+    def synthetic_cpio(
+        arguments: list[str],
+        *,
+        cwd: Path | None = None,
+        stdin: bytes | None = None,
+        pass_fds: tuple[int, ...] = (),
+    ) -> bytes:
+        del stdin, pass_fds
+        if arguments[0] == "cpio" and cwd is not None:
+            header = cwd / "usr/include/clang/AST/AST.h"
+            header.parent.mkdir(parents=True)
+            _ = header.write_bytes(HEADER_BYTES)
+        return b""
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(shutil, "rmtree", fail_cleanup)
+        if cleanup == "package":
+            isolated.setattr(
+                llvm_development_validation,
+                "_cpio_payload",
+                _synthetic_hardlinked_payload,
+            )
+            isolated.setattr(
+                llvm_development_validation,
+                "_cpio_members",
+                _synthetic_hardlinked_members,
+            )
+            isolated.setattr(
+                llvm_development_validation, "_command_bytes", synthetic_cpio
+            )
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="cleanup",
+        ) as observed:
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=(
+                    None if cleanup == "package" else _extract_headers
+                ),
+            )
+    assert observed.value.__cause__ is fault
+    assert identity.development_root.exists() == (cleanup == "staging")
+    if cleanup == "staging":
+        assert llvm_development_validation.development_root_matches(identity)
+
+
 @pytest.mark.parametrize("location", ["staging", "package"])
 def test_development_parent_descriptor_close_fault_is_typed(
     tmp_path: Path,

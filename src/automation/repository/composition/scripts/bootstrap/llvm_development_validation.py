@@ -610,7 +610,12 @@ def _extract_rpm_headers(
         _reject_include_symlinks(include_root, require_single_link=True)
     finally:
         require_owned_package()
-    shutil.rmtree(package_staging)
+    try:
+        shutil.rmtree(package_staging)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            "LLVM development package stage cleanup failed"
+        ) from error
 
 
 def _asset_url(
@@ -1346,7 +1351,12 @@ def provision_development_identity(
                 _assert_owned_staged_child(
                     staged_root, child_identity, missing_ok=True
                 )
-            shutil.rmtree(staging)
+            try:
+                shutil.rmtree(staging)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmDevelopmentProvisionError(
+                    "LLVM development staging cleanup failed"
+                ) from error
     return identity.development_root
 
 
