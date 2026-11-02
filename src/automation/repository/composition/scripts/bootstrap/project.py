@@ -1429,7 +1429,15 @@ def _linux_adapter_script_ready(linker: Path) -> bool:
             or physical.st_nlink != 1
         ):
             return False
+        identity = _authority_identity(physical)
         content = _read_authority_bytes(linker)
+        current = linker.lstat()
+        if (
+            type(current) is not os.stat_result
+            or current.st_nlink != 1
+            or _authority_identity(current) != identity
+        ):
+            return False
     except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
         return False
     return (

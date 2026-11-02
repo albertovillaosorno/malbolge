@@ -3096,6 +3096,44 @@ def test_rust_inspection_rejects_hardlinked_linux_adapter_artifact(
     )
 
 
+@pytest.mark.parametrize("mutation", ["hardlink", "same-content-swap"])
+def test_rust_inspection_rejects_linker_mutated_after_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """Readiness must bind linker metadata across its content observation."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    linker = toolchain / "bin/cc"
+    outside = tmp_path / "outside-cc"
+    native_read = project._read_authority_bytes  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def mutate_after_read(path: Path) -> bytes:
+        nonlocal mutated
+        content = native_read(path)
+        if path == linker and not mutated:
+            mutated = True
+            if mutation == "hardlink":
+                os.link(linker, outside)
+            else:
+                _ = linker.replace(outside)
+                replacement = tmp_path / "replacement-cc"
+                _ = replacement.write_bytes(content)
+                replacement.chmod(0o700)
+                _ = replacement.replace(linker)
+        return content
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "_read_authority_bytes", mutate_after_read)
+        assert (
+            project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+            is project.ComponentState.MISSING
+        )
+    assert mutated
+    assert outside.read_bytes().startswith(b"#!/bin/sh")
+
+
 def test_rust_inspection_rejects_linked_linux_adapter_executable(
     tmp_path: Path,
 ) -> None:
