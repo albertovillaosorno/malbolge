@@ -1593,6 +1593,44 @@ def test_compatible_publication_collision_preserves_foreign_output(
     assert not (tmp_path / ".out.compatible-staging").exists()
 
 
+
+@pytest.mark.parametrize(
+    "late_change", ["published-modify", "published-create", "candidate-modify"]
+)
+def test_compatible_publication_rejects_late_tree_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, late_change: str
+) -> None:
+    """The published tree and candidate must still match the accepted bytes."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    original_publish = compatible_module.publish_directory_no_replace
+    mutated = False
+
+    def corrupt_during_publish(staging: Path, destination: Path) -> None:
+        nonlocal mutated
+        original_publish(staging, destination)
+        if late_change == "published-modify":
+            _ = (destination / "code.src").write_bytes(b"late unvalidated bytes")
+        elif late_change == "published-create":
+            _write(destination, "unvalidated-new.bin", b"unvalidated")
+        else:
+            _write(candidate, "upstream.cfg", b"late candidate rewrite")
+        mutated = True
+
+    monkeypatch.setattr(
+        compatible_module,
+        "publish_directory_no_replace",
+        corrupt_during_publish,
+    )
+    expected = "candidate" if late_change == "candidate-modify" else "published"
+    with pytest.raises(CompatiblePlanError, match=expected + " tree changed"):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    assert mutated
+    assert output.is_dir()
+    assert not (tmp_path / ".out.compatible-staging").exists()
+
+
 def test_postcondition_failures_are_wrapped_and_cleaned(
     tmp_path: Path,
 ) -> None:

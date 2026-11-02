@@ -1269,12 +1269,13 @@ def _check_staged_output(
     request: CompatibleMaterializeRequest,
     candidate: TreeSnapshot,
     staging: Path,
-) -> None:
-    """Run the quality callback without permitting input or output drift."""
+) -> TreeSnapshot:
+    """Run quality checks and retain the accepted staging byte snapshot."""
     staged = _snapshot_compatible_tree(staging, "staging")
     _require_postcondition(request.postcondition, staging)
     _require_tree_unchanged(request.candidate_root, candidate, "candidate")
     _require_tree_unchanged(staging, staged, "staging")
+    return staged
 
 
 def _cleanup_compatible_staging(path: Path) -> str | None:
@@ -1310,6 +1311,10 @@ def materialize_compatible_plan(
     Returns:
         Passing conjunctive source-lineage and behavior evidence.
 
+    Raises:
+        CompatiblePlanError: Late publication drift is rejected; a renamed
+            output may remain on disk when a post-rename check fails.
+
     """
     request = _require_materialize_request(request)
     _require_output_outside_candidate(request)
@@ -1321,8 +1326,16 @@ def materialize_compatible_plan(
     staging = _prepare_staging(request.output_root)
     try:
         _populate_staging(request, candidate, staging)
-        _check_staged_output(request, candidate, staging)
+        staged = _check_staged_output(request, candidate, staging)
         _publish_compatible_output(staging, request.output_root)
+        # Publication can take time or invoke host callbacks; do not report
+        # success if the candidate or published bytes drifted during rename.
+        _require_tree_unchanged(
+            request.output_root, staged, "published", phase="publication"
+        )
+        _require_tree_unchanged(
+            request.candidate_root, candidate, "candidate", phase="publication"
+        )
     except Exception as error:
         cleanup_error = _cleanup_compatible_staging(staging)
         if cleanup_error is not None:
