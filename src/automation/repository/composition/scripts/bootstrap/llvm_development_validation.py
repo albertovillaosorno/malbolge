@@ -72,6 +72,10 @@ class LlvmDevelopmentProvisionError(RuntimeError):
     """Pinned Linux LLVM development package lifecycle is invalid."""
 
 
+class _StagingOwnershipChanged(LlvmDevelopmentProvisionError):
+    """A foreign staging replacement must never be recursively removed."""
+
+
 @dataclass(frozen=True, slots=True)
 class _ProvisionFunctions:
     download: Callable[[str], bytes] | None
@@ -318,33 +322,49 @@ def _extract_rpm_headers(
     staging: Path,
 ) -> None:
     verify_development_asset(data, asset)
+    _require_physical_directories(staging, "staging")
     package_staging = staging / asset.name.removesuffix(RPM_SUFFIX)
     package_staging.mkdir(parents=True)
-    rpm_path = package_staging / asset.name
-    _write_verified_staging_bytes(rpm_path, data)
-    payload = _cpio_payload(rpm_path)
-    _ = _cpio_members(payload)
-    _ = _command_bytes(
-        [
-            "cpio",
-            "-idm",
-            "--quiet",
-            "--no-absolute-filenames",
-            CPIO_INCLUDE_PATTERN,
-        ],
-        cwd=package_staging,
-        stdin=payload,
-    )
-    include_root = package_staging / "usr/include"
-    if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
-        _fail(f"LLVM development package has no /usr/include: {asset.name}")
-    _reject_include_symlinks(include_root)
-    _ = shutil.copytree(
-        include_root,
-        destination / "include",
-        dirs_exist_ok=True,
-        symlinks=True,
-    )
+    parent_identity = _staging_directory_identity(staging)
+    package_identity = _staging_directory_identity(package_staging)
+
+    def require_owned_package() -> None:
+        _assert_owned_staged_child(staging, parent_identity)
+        _assert_owned_staged_child(package_staging, package_identity)
+        _require_physical_directories(package_staging, "staging")
+
+    require_owned_package()
+    try:
+        rpm_path = package_staging / asset.name
+        _write_verified_staging_bytes(rpm_path, data)
+        payload = _cpio_payload(rpm_path)
+        require_owned_package()
+        _ = _cpio_members(payload)
+        require_owned_package()
+        _ = _command_bytes(
+            [
+                "cpio",
+                "-idm",
+                "--quiet",
+                "--no-absolute-filenames",
+                CPIO_INCLUDE_PATTERN,
+            ],
+            cwd=package_staging,
+            stdin=payload,
+        )
+        require_owned_package()
+        include_root = package_staging / "usr/include"
+        if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
+            _fail(f"LLVM development package has no /usr/include: {asset.name}")
+        _reject_include_symlinks(include_root)
+        _ = shutil.copytree(
+            include_root,
+            destination / "include",
+            dirs_exist_ok=True,
+            symlinks=True,
+        )
+    finally:
+        require_owned_package()
     shutil.rmtree(package_staging)
 
 
@@ -687,7 +707,9 @@ def _assert_owned_staged_child(
     except FileNotFoundError:
         if missing_ok:
             return
-        _fail(f"LLVM development staging child identity changed: {path}")
+        raise _StagingOwnershipChanged(
+            f"LLVM development staging child identity changed: {path}"
+        )
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise LlvmDevelopmentProvisionError(
             f"LLVM development staging child identity check failed: {path}"
@@ -696,7 +718,9 @@ def _assert_owned_staged_child(
         not _native_directory_status(physical)
         or (physical.st_dev, physical.st_ino) != original
     ):
-        _fail(f"LLVM development staging child identity changed: {path}")
+        raise _StagingOwnershipChanged(
+            f"LLVM development staging child identity changed: {path}"
+        )
 
 
 def _stage_development_assets(
@@ -769,6 +793,7 @@ def provision_development_identity(
         extract=extractor or _extract_rpm_headers,
     )
     child_identity: tuple[int, int] | None = None
+    cleanup_permitted = True
     try:
         try:
             staged_root.mkdir()
@@ -804,9 +829,17 @@ def provision_development_identity(
         _assert_owned_staged_child(staged_root, child_identity)
         _require_physical_directories(staged_root, "staging")
         _ = staged_root.replace(identity.development_root)
+    except _StagingOwnershipChanged:
+        # The package stage can contain an attacker-replaced child. Leave the
+        # staging tree intact rather than deleting that foreign directory.
+        cleanup_permitted = False
+        raise
     finally:
-        _require_physical_directories(staging, "staging")
-        if _preflight_path_status(staging, staging.exists, "staging"):
+        if cleanup_permitted:
+            _require_physical_directories(staging, "staging")
+        if cleanup_permitted and _preflight_path_status(
+            staging, staging.exists, "staging"
+        ):
             if _staging_directory_identity(staging) != staging_identity:
                 _fail(f"LLVM development staging ownership changed: {staging}")
             if child_identity is not None:

@@ -247,6 +247,98 @@ def test_rpm_copy_rejects_header_swapped_to_link(
     assert not identity.development_root.exists()
 
 
+@pytest.mark.parametrize("via_provision", [False, True])
+@pytest.mark.parametrize("swap_phase", ["after-copy", "tool-fault"])
+def test_rpm_cleanup_preserves_swapped_foreign_package_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    via_provision: bool,
+    swap_phase: str,
+) -> None:
+    """Direct and outer cleanup must preserve a substituted package directory."""
+    if via_provision:
+        staging = (
+            tmp_path / ".temp/llvm-development-provision-linux-x86_64/packages"
+        )
+        destination = _identity(tmp_path).development_root
+    else:
+        staging = tmp_path / "packages"
+        staging.mkdir()
+        destination = tmp_path / "development"
+        destination.mkdir()
+    package_stage = staging / PACKAGE_NAME.removesuffix(".rpm")
+    preserved = tmp_path / "preserved-package"
+    sentinel = package_stage / "foreign-sentinel"
+    native_copytree = shutil.copytree
+
+    def swap_package() -> None:
+        package_stage.rename(preserved)
+        package_stage.mkdir()
+        _ = sentinel.write_bytes(FOREIGN_CONTENT_BYTES)
+
+    def synthetic_payload(_rpm: Path) -> bytes:
+        if swap_phase == "tool-fault":
+            swap_package()
+            raise OSError("synthetic RPM tool fault after stage swap")
+        return b"cpio"
+
+    def synthetic_cpio(
+        arguments: list[str],
+        *,
+        cwd: Path | None = None,
+        stdin: bytes | None = None,
+    ) -> bytes:
+        del stdin
+        if arguments[0] == "cpio" and cwd is not None:
+            header = cwd / "usr/include/clang/AST/AST.h"
+            header.parent.mkdir(parents=True)
+            _ = header.write_bytes(HEADER_BYTES)
+        return b""
+
+    def swapped_copytree(
+        src: Path | os.DirEntry[str],
+        dst: Path | os.DirEntry[str],
+        *args: object,
+        **kwargs: object,
+    ) -> Path:
+        result = cast("Callable[..., Path]", native_copytree)(
+            src, dst, *args, **kwargs
+        )
+        if (
+            swap_phase == "after-copy"
+            and isinstance(src, Path)
+            and src.name == "include"
+        ):
+            swap_package()
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation, "_cpio_payload", synthetic_payload
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            lambda _data: ("./usr/include/clang/AST/AST.h",),
+        )
+        isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
+        isolated.setattr(shutil, "copytree", swapped_copytree)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging child identity changed",
+        ):
+            if via_provision:
+                _ = llvm_development_validation.provision_development_identity(
+                    tmp_path, _identity(tmp_path), downloader=_downloader([])
+                )
+            else:
+                llvm_development_validation._extract_rpm_headers(
+                    PACKAGE_BYTES, _asset(), destination, staging=staging
+                )
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert (preserved / PACKAGE_NAME).read_bytes() == PACKAGE_BYTES
+
+
 def test_provision_is_marker_bound_and_idempotent(tmp_path: Path) -> None:
     """An exact completed development root never redownloads package bytes."""
     identity = _identity(tmp_path)
