@@ -1482,6 +1482,37 @@ def test_snapshot_rejects_same_inode_rewrite_during_descriptor_read(
     _expect(changed, "in-place rewrite did not execute")
 
 
+@pytest.mark.parametrize("attack", ["inplace-rewrite", "inode-replacement"])
+def test_exact_reader_rejects_postclose_source_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, attack: str
+) -> None:
+    """Close callbacks cannot authorize stale file bytes with restored mtime."""
+    leaf = tmp_path / "leaf"
+    _ = leaf.write_bytes(b"accepted")
+    before = leaf.stat()
+    replacement = tmp_path / "replacement"
+    _ = replacement.write_bytes(b"tampered")
+    native_close = os.close
+    changed = False
+
+    def mutate_after_close(descriptor: int) -> None:
+        nonlocal changed
+        native_close(descriptor)
+        if attack == "inplace-rewrite":
+            _ = leaf.write_bytes(b"tampered")
+        else:
+            replacement.replace(leaf)
+        os.utime(leaf, ns=(before.st_atime_ns, before.st_mtime_ns))
+        changed = True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "close", mutate_after_close)
+        with pytest.raises(ExactTreeError, match="changed after descriptor close"):
+            _ = exact_module.read_exact_regular_file(leaf, "tree entry")
+    _expect(changed, "the descriptor close mutation did not execute")
+    assert leaf.read_bytes() == b"tampered"
+
+
 def test_snapshot_excluding_does_not_read_passthrough_payload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

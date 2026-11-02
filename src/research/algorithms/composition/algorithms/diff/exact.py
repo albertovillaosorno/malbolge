@@ -347,7 +347,6 @@ def _read_bound_file(path: Path, context: str) -> bytes:
         if _file_identity(before) != _file_identity(after):
             message = f"{context} read inode changed during acquisition"
             raise ExactTreeError(message)
-        return payload
     finally:
         primary = sys.exception()
         try:
@@ -361,6 +360,21 @@ def _read_bound_file(path: Path, context: str) -> bytes:
                 primary,
                 "file descriptor close also failed: " + _safe_host_error_detail(error),
             )
+    # Finalizers may change or replace the named file after the last fstat.
+    # Check the physical identity after closing, before releasing the bytes.
+    try:
+        final = path.lstat()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"{context} status failed after descriptor close: {path}"
+        raise ExactTreeError(message) from error
+    if (
+        not S_ISREG(final.st_mode)
+        or _is_redirect(path, final.st_mode)
+        or _file_identity(after) != _file_identity(final)
+    ):
+        message = f"{context} source changed after descriptor close: {path}"
+        raise ExactTreeError(message)
+    return payload
 
 
 def read_exact_regular_file(path: Path, context: str) -> bytes:
