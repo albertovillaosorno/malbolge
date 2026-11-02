@@ -933,14 +933,19 @@ def _stage_linux_llvm(
 
 def _admit_linux_import_staging(root: Path, staging: Path) -> None:
     """Fail closed before cleanup or writes through redirected staging paths."""
-    if not _physical_directory(root):
+    root_inode = _native_directory_inode(root)
+    if root_inode is None:
         _fail("LLVM import staging repository root must be physical")
     temporary_root = root / ".temp"
     if temporary_root.is_symlink() or temporary_root.is_junction():
         _fail("LLVM import staging root must not redirect")
     if not temporary_root.exists():
         try:
-            temporary_root.mkdir()
+            _create_physical_import_directory(
+                temporary_root,
+                label="LLVM import staging root",
+                expected_parent_inode=root_inode,
+            )
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             raise LlvmImportError(
                 f"LLVM import staging root creation failed: {type(error).__name__}"
@@ -953,27 +958,48 @@ def _admit_linux_import_staging(root: Path, staging: Path) -> None:
         _fail("LLVM import staging directory must be physical")
 
 
-def _create_physical_import_directory(path: Path, *, label: str) -> None:
-    """Create one owned import directory below a pinned physical parent."""
+def _create_physical_import_directory(
+    path: Path,
+    *,
+    label: str,
+    expected_parent_inode: tuple[int, int] | None = None,
+    exist_ok: bool = False,
+) -> None:
+    """Create or admit a directory under its original pinned physical parent."""
     if not _MKDIR_SUPPORTS_DIR_FD:
         if os.supports_dir_fd:
             _fail(f"{label} requires native directory-descriptor mkdir support")
         # Windows has no dir_fd support; Linux stages require pinned parents.
         try:
-            path.mkdir()
+            path.mkdir(exist_ok=exist_ok)
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             raise LlvmImportError(
                 f"{label} directory creation failed: {type(error).__name__}"
             ) from error
+        if expected_parent_inode is not None and (
+            _native_directory_inode(path.parent) != expected_parent_inode
+        ):
+            _fail(f"{label} parent changed during directory creation")
+        if _native_directory_inode(path) is None:
+            _fail(f"{label} created directory must be physical")
         return
     parent_descriptor = _open_physical_import_parent(path.parent, label)
     try:
         opened = os.fstat(parent_descriptor)
         if type(opened) is not os.stat_result or not S_ISDIR(opened.st_mode):
             _fail(f"{label} parent descriptor status must be native")
-        os.mkdir(path.name, dir_fd=parent_descriptor)
-        if _native_directory_inode(path.parent) != (opened.st_dev, opened.st_ino):
+        opened_inode = (opened.st_dev, opened.st_ino)
+        if expected_parent_inode is not None and opened_inode != expected_parent_inode:
+            _fail(f"{label} parent changed before directory creation")
+        try:
+            os.mkdir(path.name, dir_fd=parent_descriptor)
+        except FileExistsError:
+            if not exist_ok:
+                raise
+        if _native_directory_inode(path.parent) != opened_inode:
             _fail(f"{label} parent changed during directory creation")
+        if _native_directory_inode(path) is None:
+            _fail(f"{label} created directory must be physical")
     except LlvmImportError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -1035,22 +1061,22 @@ def _require_absent_import_destination(destination: Path) -> None:
 
 def _ensure_physical_import_parent(root: Path) -> Path:
     """Create and admit the final destination without following parent aliases."""
-    if not _physical_directory(root):
+    parent_inode = _native_directory_inode(root)
+    if parent_inode is None:
         _fail("LLVM import destination repository root must be physical")
     parent = root
     for component in (".dependencies", "llvm"):
-        parent = parent / component
-        try:
-            parent.mkdir()
-        except FileExistsError:
-            pass
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            error_type = type(error).__name__
-            raise LlvmImportError(
-                f"LLVM import destination parent creation failed: {error_type}"
-            ) from error
-        if not _physical_directory(parent):
+        child = parent / component
+        _create_physical_import_directory(
+            child,
+            label="LLVM import destination parent",
+            expected_parent_inode=parent_inode,
+            exist_ok=True,
+        )
+        child_inode = _native_directory_inode(child)
+        if child_inode is None:
             _fail("LLVM import destination parent must be physical")
+        parent, parent_inode = child, child_inode
     return parent
 
 

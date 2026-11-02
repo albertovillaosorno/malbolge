@@ -845,19 +845,20 @@ def test_linux_import_does_not_overwrite_late_occupied_destination(
     """A newly occupied final LLVM directory may not be replaced."""
     observation = _host_observation(tmp_path)
     destination = tmp_path / llvm_validation.LLVM_ROOT
-    native_mkdir = Path.mkdir
+    native_ensure = llvm_validation._ensure_physical_import_parent  # pyright: ignore[reportPrivateUsage]
     inserted = False
 
-    def racing_mkdir(
-        path: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
-    ) -> None:
+    def occupy_after_parent_creation(root: Path) -> Path:
         nonlocal inserted
-        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
-        if path == destination.parent and not inserted:
+        parent = native_ensure(root)
+        if parent == destination.parent and not inserted:
             inserted = True
             destination.mkdir()
+        return parent
 
-    monkeypatch.setattr(Path, "mkdir", racing_mkdir)
+    monkeypatch.setattr(
+        llvm_validation, "_ensure_physical_import_parent", occupy_after_parent_creation
+    )
     with pytest.raises(llvm_validation.LlvmImportError, match="destination"):
         _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert inserted
@@ -3375,7 +3376,16 @@ def test_llvm_publish_types_staging_parent_close_fault(
     destination = tmp_path / ".dependencies" / "llvm" / LLVM_VERSION
     native_open = os.open
     native_close = os.close
+    native_ensure = llvm_validation._ensure_physical_import_parent  # pyright: ignore[reportPrivateUsage]
     source_descriptors: set[int] = set()
+    destination_ready = False
+
+    def ensure_then_track(root: Path) -> Path:
+        nonlocal destination_ready
+        parent = native_ensure(root)
+        destination_ready = True
+        return parent
+
     close_fault = fault("foreign staging close fault")
 
     def track_open(
@@ -3386,7 +3396,7 @@ def test_llvm_publish_types_staging_parent_close_fault(
         dir_fd: int | None = None,
     ) -> int:
         descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
-        if Path(path) == staged.parent:
+        if destination_ready and Path(path) == staged.parent:
             source_descriptors.add(descriptor)
         return descriptor
 
@@ -3399,6 +3409,9 @@ def test_llvm_publish_types_staging_parent_close_fault(
     with monkeypatch.context() as isolated:
         isolated.setattr(os, "open", track_open)
         isolated.setattr(os, "close", fail_source_close)
+        isolated.setattr(
+            llvm_validation, "_ensure_physical_import_parent", ensure_then_track
+        )
         with pytest.raises(
             llvm_validation.LlvmImportError, match="staging source parent close"
         ) as caught:
@@ -3541,3 +3554,97 @@ def test_linux_import_does_not_create_aliases_in_swapped_stage(
     assert (foreign_tree / "sentinel").read_bytes() == b"unrelated alias parent"
     assert not (foreign_tree / alias_root.name).exists()
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+def test_linux_staging_root_creation_does_not_write_to_swapped_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """An ancestor swap while creating .temp must not create foreign state."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    parked = tmp_path / "parked-checkout"
+    foreign = tmp_path / "foreign-checkout"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"unrelated checkout")
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def swap_during_temp_creation(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (Path(path) == root / ".temp" or path == ".temp"):
+            _ = root.rename(parked)
+            if replacement == "symlink":
+                _ = root.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(root)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_during_temp_creation)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            llvm_validation._admit_linux_import_staging(  # pyright: ignore[reportPrivateUsage]
+                root, root / ".temp/llvm-import-linux-x86_64"
+            )
+    assert swapped
+    foreign_root = foreign if replacement == "symlink" else root
+    assert (foreign_root / "sentinel").read_bytes() == b"unrelated checkout"
+    assert not (foreign_root / ".temp").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+@pytest.mark.parametrize("component", [".dependencies", "llvm"])
+def test_linux_destination_parent_creation_does_not_write_to_swapped_ancestor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+    component: str,
+) -> None:
+    """Creating the import parent cannot populate a substituted ancestor."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    dependencies = root / ".dependencies"
+    if component == "llvm":
+        dependencies.mkdir()
+    ancestor = root if component == ".dependencies" else dependencies
+    parked = tmp_path / "parked-ancestor"
+    foreign = tmp_path / "foreign-ancestor"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"unrelated ancestor")
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def swap_during_parent_creation(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (Path(path) == ancestor / component or path == component):
+            _ = ancestor.rename(parked)
+            if replacement == "symlink":
+                _ = ancestor.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(ancestor)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_during_parent_creation)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            llvm_validation._ensure_physical_import_parent(  # pyright: ignore[reportPrivateUsage]
+                root
+            )
+    assert swapped
+    foreign_root = foreign if replacement == "symlink" else ancestor
+    assert (foreign_root / "sentinel").read_bytes() == b"unrelated ancestor"
+    assert not (foreign_root / component).exists()
