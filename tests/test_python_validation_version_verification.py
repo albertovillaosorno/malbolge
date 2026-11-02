@@ -302,3 +302,31 @@ def test_python_version_probe_accepts_single_native_line_ending(
     pv = python_validation
     output = pv._run(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     assert output == expected
+
+
+def test_python_command_error_does_not_read_foreign_metaclass_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The subprocess failure boundary must not invoke a class-name hook."""
+    class_name_attribute = "__name__"
+
+    class HostileMeta(type):
+        def __getattribute__(cls, key: str) -> object:
+            if key == class_name_attribute:
+                raise AssertionError
+            return super().__getattribute__(key)
+
+    class HostileCommandError(OSError, metaclass=HostileMeta):
+        pass
+
+    fault = HostileCommandError(object())
+
+    def fake_run(argv: list[str], **kwargs: object) -> None:
+        assert argv == ["tool", "--version"]
+        assert kwargs["cwd"] == python_validation.ROOT
+        raise fault
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    pv = python_validation
+    with pytest.raises(pv.ProvisionError, match="HostileCommandError"):
+        _ = pv._run(["tool", "--version"])  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]

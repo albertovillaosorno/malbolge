@@ -139,6 +139,19 @@ class ProvisionError(RuntimeError):
     """Deterministic local Python provisioning failure."""
 
 
+def _native_error_name(error: BaseException) -> str:
+    """Read the real class name without foreign metaclass hooks.
+
+    Returns:
+        Native exception class name.
+
+    """
+    name = type.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+        type(error), "__name__"
+    )
+    return cast("str", name)
+
+
 def uv_platform_id(
     *,
     system: str | None = None,
@@ -329,7 +342,10 @@ def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
         TypeError,
         RuntimeError,
     ) as error:
-        message = f"cannot read uv toolchain manifest: {type(error).__name__}"
+        message = (
+            "cannot read uv toolchain manifest: "
+            f"{_native_error_name(error)}"
+        )
         raise ProvisionError(message) from error
     if not isinstance(parsed, dict):
         _fail("uv toolchain manifest must be an object")
@@ -449,7 +465,10 @@ def _download_uv_archive(artifact: UvArtifact) -> bytes:
         with response:
             data = response.read(MAX_UV_ARCHIVE_BYTES + 1)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
-        message = f"cannot download pinned uv artifact: {type(error).__name__}"
+        message = (
+            "cannot download pinned uv artifact: "
+            f"{_native_error_name(error)}"
+        )
         raise ProvisionError(message) from error
     verify_uv_archive(data, artifact.sha256)
     return data
@@ -553,7 +572,10 @@ def _uv_member_bytes(data: bytes, artifact: UvArtifact) -> bytes:
         zlib.error,
         zstd.ZstdError,
     ) as error:
-        message = f"cannot extract pinned uv artifact: {type(error).__name__}"
+        message = (
+            "cannot extract pinned uv artifact: "
+            f"{_native_error_name(error)}"
+        )
         raise ProvisionError(message) from error
 
 
@@ -1326,7 +1348,11 @@ def _run(command: list[str]) -> str:
             TypeError,
             RuntimeError,
         }
-        detail = str(error) if type(error) in native_types else type(error).__name__
+        detail = (
+            str(error)
+            if type(error) in native_types
+            else _native_error_name(error)
+        )
         if (
             type(error) is subprocess.CalledProcessError
             and type(error.returncode) is int
@@ -1665,7 +1691,8 @@ def _read_jig_binary_source(source: Path) -> bytes:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = (
-            f"Jig alias source read failed: {source}: {type(error).__name__}"
+            "Jig alias source read failed: "
+            f"{source}: {_native_error_name(error)}"
         )
         raise ProvisionError(message) from error
     if type(data) is not bytes:
@@ -1785,7 +1812,10 @@ def _open_jig_alias_write_stream(descriptor: int) -> BinaryIO:
     except ProvisionError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
-        message = f"Jig alias temporary stream failed: {type(error).__name__}"
+        message = (
+            "Jig alias temporary stream failed: "
+            f"{_native_error_name(error)}"
+        )
         raise ProvisionError(message) from error
 
 
@@ -2164,7 +2194,7 @@ def _native_exception_detail(error: BaseException) -> str:
         and type(native_args[0]) is str
     ):
         return cast("str", native_args[0])
-    return type(error).__name__
+    return _native_error_name(error)
 
 
 def main() -> int:

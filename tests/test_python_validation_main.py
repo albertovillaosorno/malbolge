@@ -31,8 +31,7 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-from typing import Never
-from typing import override
+from typing import Never, override
 
 import pytest
 from scripts.bootstrap import python_validation
@@ -216,3 +215,35 @@ def test_python_validation_cli_flushes_complete_readiness_report(
         f"python validation environment ready: {layout.environment}\n",
         "flush",
     ]
+
+
+def test_python_validation_cli_does_not_read_foreign_metaclass_name(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A hostile exception metaclass cannot format the fallback error name."""
+    class_name_attribute = "__name__"
+    expected_line = "error: HostileProvisionError\n"
+
+    class HostileMeta(type):
+        @override
+        def __getattribute__(cls, key: str) -> object:
+            if key == class_name_attribute:
+                raise AssertionError
+            return super().__getattribute__(key)
+
+    class HostileProvisionError(
+        python_validation.ProvisionError, metaclass=HostileMeta
+    ):
+        pass
+
+    fault = HostileProvisionError(object())
+
+    def fail_initialize() -> Never:
+        raise fault
+
+    monkeypatch.setattr(python_validation, "initialize", fail_initialize)
+    assert python_validation.main() == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert captured.err == expected_line
