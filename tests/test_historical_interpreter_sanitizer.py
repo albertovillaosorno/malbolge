@@ -1399,3 +1399,125 @@ def test_sanitizer_preserves_native_directory_creation_failure_text(
     with pytest.raises(harness.SanitizerHarnessError, match="native creation denied") as failure:
         harness._admit_temporary_root(root)  # pyright: ignore[reportPrivateUsage]
     assert failure.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("stage", ["summary", "json", "help", "error"])
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "short",
+        "boolean",
+        "foreign-count",
+        "missing-count",
+        "write-error",
+        "missing-flush",
+        "foreign-flush",
+        "flush-error",
+    ],
+)
+def test_sanitizer_cli_rejects_incomplete_output_delivery(
+    monkeypatch: pytest.MonkeyPatch, stage: str, failure: str
+) -> None:
+    """Host streams cannot certify successful or incomplete CLI delivery."""
+
+    class ForeignCount(int):
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign sanitizer count compared")
+
+    @final
+    class Sink:
+        def __init__(self, mode: str) -> None:
+            self.mode = mode
+            self.records: list[str] = []
+            self.flushes = 0
+
+        def write(self, record: str) -> object:
+            self.records.append(record)
+            if self.mode == "write-error":
+                raise OSError("synthetic stream failure")
+            if self.mode == "short":
+                return len(record) - 1
+            if self.mode == "boolean":
+                return True
+            if self.mode == "foreign-count":
+                return ForeignCount(len(record))
+            if self.mode == "missing-count":
+                return None
+            return len(record)
+
+        def flush(self) -> object:
+            self.flushes += 1
+            if self.mode == "flush-error":
+                raise OSError("synthetic flush failure")
+            if self.mode == "foreign-flush":
+                return False
+            return None
+
+    sink = Sink(failure)
+    if failure == "missing-flush":
+        monkeypatch.delattr(Sink, "flush")
+    if stage == "error":
+        monkeypatch.setattr(sys, "stderr", sink)
+
+        def invalid_harness() -> Never:
+            raise harness.SanitizerHarnessError("invalid sanitizer evidence")
+
+        monkeypatch.setattr(harness, "_verified_harness", invalid_harness)
+    else:
+        monkeypatch.setattr(sys, "stdout", sink)
+        monkeypatch.setattr(harness, "_verified_harness", lambda: {"schema_version": 1})
+    arguments = ["historical-sanitizer"]
+    if stage == "json":
+        arguments.append("--print-json")
+    elif stage == "help":
+        arguments.append("--help")
+    monkeypatch.setattr(sys, "argv", arguments)
+    assert harness.main() == 1
+    assert len(sink.records) == 1
+    if stage == "summary":
+        assert sink.records == ["historical interpreter sanitizer evidence valid\n"]
+    elif stage == "error":
+        assert sink.records == ["error: invalid sanitizer evidence\n"]
+    else:
+        assert sink.records[0]
+
+
+@pytest.mark.parametrize("stage", ["summary", "json", "help"])
+def test_sanitizer_cli_accepts_complete_native_output(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Complete and flushed CLI records preserve the intended status."""
+
+    @final
+    class NativeSink:
+        def __init__(self) -> None:
+            self.records: list[str] = []
+            self.flushed = False
+
+        def write(self, record: str) -> int:
+            self.records.append(record)
+            return len(record)
+
+        def flush(self) -> None:
+            self.flushed = True
+
+    sink = NativeSink()
+    monkeypatch.setattr(sys, "stdout", sink)
+    monkeypatch.setattr(harness, "_verified_harness", lambda: {"schema_version": 1})
+    arguments = ["historical-sanitizer"]
+    if stage == "json":
+        arguments.append("--print-json")
+    elif stage == "help":
+        arguments.append("--help")
+    monkeypatch.setattr(sys, "argv", arguments)
+    if stage == "help":
+        with pytest.raises(SystemExit) as caught:
+            _ = harness.main()
+        assert caught.value.code == 0
+    else:
+        assert harness.main() == 0
+    assert len(sink.records) == 1
+    assert sink.flushed

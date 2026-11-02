@@ -47,7 +47,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never, TextIO, cast, override
 
 from scripts.repository_root import repository_root
 
@@ -733,8 +733,47 @@ def run_harness() -> JsonObject:
     }
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Require a full native text-write acknowledgement and completed flush.
+
+    Returns:
+        Whether the complete CLI record was emitted.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+def _require_output(stream: TextIO, message: str) -> None:
+    if not _write_cli_record(stream, message):
+        _fail("sanitizer CLI output write or flush failed")
+
+
+class _DeliveryParser(argparse.ArgumentParser):
+    """Authenticate argparse help and argument-error diagnostic delivery."""
+
+    @override
+    def _print_message(self, message: str, file: object = None) -> None:
+        if message:
+            stream = sys.stderr if file is None else cast("TextIO", file)
+            _require_output(stream, message)
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = _DeliveryParser(description=__doc__)
     _ = parser.add_argument(
         "--print-json",
         action="store_true",
@@ -770,9 +809,14 @@ def main() -> int:
         Zero when evidence matches, otherwise one.
 
     """
-    arguments = _parse_arguments()
     try:
+        arguments = _parse_arguments()
         actual = _verified_harness()
+        if arguments.print_json:
+            message = json.dumps(actual, indent=2) + "\n"
+        else:
+            message = "historical interpreter sanitizer evidence valid\n"
+        _require_output(sys.stdout, message)
     except (
         OSError,
         SanitizerHarnessError,
@@ -790,13 +834,8 @@ def main() -> int:
             }
             else type(error).__name__
         )
-        _ = sys.stderr.write(f"error: {detail}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {detail}\n")
         return 1
-    if arguments.print_json:
-        _ = sys.stdout.write(json.dumps(actual, indent=2) + "\n")
-    else:
-        message = "historical interpreter sanitizer evidence valid\n"
-        _ = sys.stdout.write(message)
     return 0
 
 

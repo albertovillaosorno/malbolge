@@ -84,6 +84,9 @@ Contradictory directory predicates and linked physical modes are rejected.
 Native creation/stat errors retain diagnostic text and their original cause;
 foreign exception string hooks are not evaluated. These preflight checks do
 not make concurrent pathname replacement atomic.
+The sanitizer CLI accepts success and argparse help only after complete native
+text writes and a successful flush. Malformed, partial, or undelivered output
+never certifies verified evidence; failed stderr diagnostics remain nonzero.
 FIFO and symlink substitutions fail without waiting for external input.
 Case identifiers must be portable ASCII filename stems (at most 128 characters),
 excluding path
