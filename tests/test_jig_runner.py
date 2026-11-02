@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
@@ -957,3 +958,39 @@ def test_external_runner_rejects_foreign_resolved_directory(
                 tmp_path,
                 {jig_runner.EXTERNAL_TOOL_BIN_VARIABLE: str(external)},
             )
+
+
+JIG_MUTATE_EXECUTABLE = "executable"
+JIG_MUTATE_APPEND = "append"
+JIG_MUTATE_REMOVE = "remove"
+
+
+@pytest.mark.parametrize(
+    "mutation", [JIG_MUTATE_EXECUTABLE, JIG_MUTATE_APPEND, JIG_MUTATE_REMOVE]
+)
+def test_runner_rejects_mutated_child_command(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """Process wrappers must not certify a rewritten Jig invocation."""
+    _ = _pinned_launchers(tmp_path)
+    monkeypatch.setattr(shutil, "which", _resolve_fixture_jig)
+
+    def mutate_run(
+        command: list[str], **_options: object
+    ) -> sp.CompletedProcess[str]:
+        del _options
+        if mutation == JIG_MUTATE_EXECUTABLE:
+            command[0] = "/untrusted/jig"
+        elif mutation == JIG_MUTATE_APPEND:
+            command.append("--foreign")
+        else:
+            _ = command.pop()
+        return sp.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(sp, "run", mutate_run)
+    with pytest.raises(
+        jig_runner.JigRunnerError, match="invalid process completion"
+    ):
+        _ = jig_runner.run_jig("check", root=tmp_path)

@@ -212,7 +212,7 @@ def run_jig(command: str, *, root: Path = ROOT) -> int:
     arguments = [executable, command, "--root", str(root)]
     try:
         result = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            arguments,
+            arguments.copy(),
             check=False,
             cwd=root,
             env=environment,

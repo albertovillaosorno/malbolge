@@ -128,8 +128,10 @@ Jig still owns version/digest attestation, launcher regeneration, validation
 policy and exact exit status; the runner does not bypass any tool proof. The
 runner admits an exact native executable path from discovery and accepts only an
 exact `CompletedProcess` with native integer return code, the invoked argument
-list, and no captured output for this inherited-I/O launch. Forged process
-receipts or foreign error formatting cannot falsely report a successful check.
+list, and no captured output for this inherited-I/O launch. Expected command
+arguments stay separate from the launched list, so a mutating process wrapper
+cannot forge matching completion evidence. Forged process receipts or foreign
+error formatting cannot falsely report a successful check.
 Prefer a dedicated directory containing only the intended external tool if
 additional user-local commands should not be visible to Jig.
 
