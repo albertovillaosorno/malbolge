@@ -1085,6 +1085,38 @@ def test_uv_zip_ignores_substituted_getinfo_selection(
     assert python_validation._zip_member_bytes(output.getvalue(), "uv.exe") == BINARY
 
 
+@pytest.mark.parametrize("forgery", ["object", "subclass"])
+def test_uv_zip_rejects_foreign_inventory_entry_before_name_access(
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """ZIP scanning cannot evaluate foreign entry names before admission."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("uv.exe", BINARY)
+
+    class Trap:
+        @property
+        def filename(self) -> str:
+            raise AssertionError("foreign ZIP entry name evaluated")
+
+    class ZipInfoTrap(zipfile.ZipInfo):
+        def __getattribute__(self, name: str) -> object:
+            if name == "filename":
+                raise AssertionError("foreign ZIP entry name evaluated")
+            return super().__getattribute__(name)
+
+    replacement = Trap() if forgery == "object" else ZipInfoTrap("unused")
+
+    def injected_enter(archive: zipfile.ZipFile) -> zipfile.ZipFile:
+        archive.filelist.append(cast("zipfile.ZipInfo", cast("object", replacement)))
+        return archive
+
+    monkeypatch.setattr(zipfile.ZipFile, "__enter__", injected_enter)
+    with pytest.raises(python_validation.ProvisionError, match="native.*metadata"):
+        _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
+
+
 def test_uv_zip_rejects_duplicate_selected_executable() -> None:
     """Ambiguous duplicate ZIP names cannot select executable contents."""
     output = io.BytesIO()

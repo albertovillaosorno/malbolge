@@ -528,6 +528,8 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
             _fail("uv zip archive requires native member inventory")
         if len(inventory) > MAX_UV_ARCHIVE_MEMBERS:
             _fail("uv archive exceeds member limit")
+        if any(type(item) is not zipfile.ZipInfo for item in inventory):
+            _fail("uv zip inventory requires native entry metadata")
         selected = [item for item in inventory if item.filename == member]
         if not selected:
             raise KeyError(member)
