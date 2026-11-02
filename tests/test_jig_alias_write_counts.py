@@ -35,14 +35,11 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING, BinaryIO, Self, cast
+from pathlib import Path
+from typing import BinaryIO, Self, cast
 
 import pytest
 from scripts.bootstrap import python_validation
-
-if TYPE_CHECKING:
-    from pathlib import Path
-
 
 _BAD_RESULTS = ("short", "overlong", "boolean", "missing")
 _TOOL_ALIAS = "tool"
@@ -223,3 +220,35 @@ def test_jig_alias_stage_host_fault_preserves_prior_alias(
     assert caught.value.__cause__ is fault
     assert target.read_bytes() == _STABLE_BYTES
     assert not list(target.parent.glob(".ruff.bin.*"))
+
+
+
+def test_jig_alias_failed_stage_cleanup_is_typed_and_preserves_prior_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A denied private-stage unlink cannot leak an untyped host error."""
+    target = tmp_path / "jig-bin" / "ruff.bin"
+    target.parent.mkdir()
+    _ = target.write_bytes(_STABLE_BYTES)
+    fault = PermissionError("private stage unlink denied")
+    native_unlink = Path.unlink
+    _inject_defective_jig_writer(monkeypatch, "short")
+
+    def deny_stage_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path.parent == target.parent and path.name.startswith(".ruff.bin."):
+            raise fault
+        native_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "unlink", deny_stage_unlink)
+        with pytest.raises(
+            python_validation.ProvisionError, match="Jig alias stage cleanup"
+        ) as caught:
+            python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+                target, b"replacement-alias", windows=True
+            )
+    assert caught.value.__cause__ is fault
+    assert target.read_bytes() == _STABLE_BYTES
+    leftovers = list(target.parent.glob(".ruff.bin.*"))
+    assert len(leftovers) == 1
+    leftovers[0].unlink()

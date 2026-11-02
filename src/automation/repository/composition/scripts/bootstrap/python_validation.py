@@ -2065,7 +2065,10 @@ def _publish_jig_tool_alias(
         )
     finally:
         if _jig_alias_stage_is_owned(temporary, identity):
-            temporary.unlink(missing_ok=True)
+            try:
+                temporary.unlink(missing_ok=True)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise ProvisionError("Jig alias stage cleanup failed") from error
     # The final owned-stage cleanup may run filesystem callbacks after the
     # previous readback. Admit the published name again before returning.
     _ = _check_jig_alias_path(target, directory=False, required=True)

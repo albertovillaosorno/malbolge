@@ -181,6 +181,7 @@ faults become typed failures with their original causes before any replacement.
 Promotion requires a bounded native readback equal to the selected alias bytes
 from that same single-link inode. Cleanup unlinks only the original owned
 inode, leaving foreign symlink or hardlink replacements untouched on rejection.
+A denied owned-stage unlink is a typed causal failure, not a raw host exception.
 The published alias is read back again after final stage cleanup, so cleanup
 callbacks cannot replace, remove, or rewrite the admitted bytes before return.
 Jig tool-source and alias ancestry checks require native physical `lstat`
