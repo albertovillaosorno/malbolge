@@ -1619,6 +1619,8 @@ def _admit_jig_alias_temporary(
         ProvisionError: The receipt is nonnative, foreign, or unverifiable.
 
     """
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("Jig alias temporary descriptor must be native and nonnegative")
     if type(temporary_name) is not str:
         _fail("Jig alias temporary receipt must be a native pathname")
     temporary = Path(temporary_name)
@@ -1829,11 +1831,20 @@ def _publish_jig_tool_alias(
     windows: bool,
 ) -> None:
     """Atomically replace an admitted alias instead of following its leaf."""
+    if type(payload) is not bytes:
+        _fail("Jig alias payload requires native bytes")
+    if len(payload) > MAX_JIG_TOOL_BINARY_BYTES:
+        _fail("Jig alias payload exceeds byte limit")
     alias_root = target.parent
     _ = _check_jig_alias_path(alias_root, directory=True, required=True)
     _ = _check_jig_alias_path(target, directory=False, required=False)
     prefix = f".{target.name}."
-    descriptor, temporary_name = tempfile.mkstemp(prefix=prefix, dir=alias_root)
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(prefix=prefix, dir=alias_root)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise ProvisionError("Jig alias temporary creation failed") from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("Jig alias temporary descriptor must be native and nonnegative")
     try:
         temporary, identity = _admit_jig_alias_temporary(
             descriptor,

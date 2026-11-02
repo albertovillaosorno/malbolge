@@ -124,10 +124,13 @@ alias directory and the open descriptor's regular-file inode before any write,
 replacement, or cleanup. A single-link inode is required so hardlinked stages
 cannot modify foreign files by writing through a shared inode. A forged foreign
 pathname is rejected without unlinking or replacing that foreign file; the
-owned descriptor is closed on rejection. A failed temporary-output stream
-wrapper likewise closes its descriptor, retains the original host error as the
-cause of a typed bootstrap failure, and preserves any previously committed
-alias or launcher. Before replacement, stage identity, regular-file type,
+owned descriptor is closed on rejection. Alias publication requires exact
+native bounded bytes before creating the temporary file, and malformed or
+negative `mkstemp` handles are rejected without closing unrelated host handles.
+Host temporary-creation faults remain typed and preserve their original cause.
+A failed temporary-output stream wrapper likewise closes its descriptor,
+retains the original host error as the cause of a typed bootstrap failure,
+and preserves any previously committed alias or launcher. Before replacement, stage identity, regular-file type,
 exclusive link count and exact byte size are rechecked against the admitted
 original descriptor. The writable stage stream must be a native buffered writer
 backed by the owned file descriptor, and promotion requires a bounded native

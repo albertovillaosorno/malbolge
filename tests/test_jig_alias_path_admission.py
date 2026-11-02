@@ -305,3 +305,123 @@ def test_jig_alias_rejects_bytes_changed_during_atomic_replace(
         )
     assert mutated
     assert target.read_bytes() != BINARY
+
+
+class _UnprintableAliasCreationError(OSError):
+    """Host errors must not be formatted on the alias trust boundary."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign alias creation error formatted")
+
+
+def test_jig_alias_types_temporary_creation_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failure to create an alias stage cannot escape as a raw host error."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    fault = _UnprintableAliasCreationError("unprintable mkstemp fault")
+
+    def fail_mkstemp(*, prefix: str, dir: Path) -> tuple[int, str]:
+        assert prefix == ".ruff.bin."
+        assert dir == alias_root
+        raise fault
+
+    monkeypatch.setattr(tempfile, "mkstemp", fail_mkstemp)
+    with pytest.raises(
+        python_validation.ProvisionError, match="Jig alias temporary creation"
+    ) as captured:
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, BINARY, windows=True
+        )
+    assert captured.value.__cause__ is fault
+    assert not target.exists()
+    assert list(alias_root.iterdir()) == []
+
+
+@pytest.mark.parametrize("foreign_descriptor", [False, -1, "not-a-descriptor"])
+def test_jig_alias_rejects_nonnative_temporary_handle_without_closing_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    foreign_descriptor: object,
+) -> None:
+    """A forged mkstemp handle cannot redirect an attempted close to stdin."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+    temporary = alias_root / ".ruff.bin.unowned"
+    _ = temporary.write_bytes(BINARY)
+    closed: list[object] = []
+    native_close = os.close
+
+    def forged_mkstemp(*, prefix: str, dir: Path) -> tuple[int, str]:
+        assert prefix == ".ruff.bin."
+        assert dir == alias_root
+        return cast("int", foreign_descriptor), str(temporary)
+
+    def watch_close(descriptor: int) -> None:
+        if descriptor is foreign_descriptor:
+            closed.append(descriptor)
+            return
+        native_close(descriptor)
+
+    monkeypatch.setattr(tempfile, "mkstemp", forged_mkstemp)
+    monkeypatch.setattr(os, "close", watch_close)
+    with pytest.raises(
+        python_validation.ProvisionError, match="Jig alias temporary.*descriptor"
+    ):
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, BINARY, windows=True
+        )
+    assert not closed
+    assert temporary.read_bytes() == BINARY
+    assert not target.exists()
+
+
+class _ForeignJigPayload(bytes):
+    """A byte subclass is not an admitted immutable native alias payload."""
+
+
+@pytest.mark.parametrize("payload", [bytearray(BINARY), _ForeignJigPayload(BINARY)])
+def test_jig_alias_rejects_nonnative_payload_before_staging(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    payload: object,
+) -> None:
+    """Hostile mutable or subclassed payloads cannot reach a stage writer."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+
+    def forbidden_mkstemp(*, prefix: str, dir: Path) -> tuple[int, str]:
+        raise AssertionError("invalid alias payload reached stage creation")
+
+    monkeypatch.setattr(tempfile, "mkstemp", forbidden_mkstemp)
+    with pytest.raises(python_validation.ProvisionError, match="native bytes"):
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, cast("bytes", payload), windows=True
+        )
+    assert list(alias_root.iterdir()) == []
+
+
+def test_jig_alias_rejects_oversized_payload_before_staging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Oversized alias bytes are not staged even when their type is valid."""
+    alias_root = tmp_path / "jig-bin"
+    alias_root.mkdir()
+    target = alias_root / "ruff.bin"
+
+    def forbidden_mkstemp(*, prefix: str, dir: Path) -> tuple[int, str]:
+        raise AssertionError("oversized alias payload reached stage creation")
+
+    monkeypatch.setattr(
+        python_validation, "MAX_JIG_TOOL_BINARY_BYTES", len(BINARY) - 1
+    )
+    monkeypatch.setattr(tempfile, "mkstemp", forbidden_mkstemp)
+    with pytest.raises(python_validation.ProvisionError, match="byte limit"):
+        python_validation._publish_jig_tool_alias(  # pyright: ignore[reportPrivateUsage]
+            target, BINARY, windows=True
+        )
+    assert list(alias_root.iterdir()) == []
