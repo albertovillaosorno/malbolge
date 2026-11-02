@@ -651,58 +651,122 @@ def _discard_owned_file(marker: Path, inode: tuple[int, int]) -> None:
         marker.unlink()
 
 
+def _open_physical_marker_parent(root: Path) -> int:
+    """Pin an admitted POSIX directory before writing a marker below it."""
+    if not _physical_directory(root):
+        _fail("LLVM import marker parent must be physical")
+    try:
+        initial = root.lstat()
+        if type(initial) is not os.stat_result or not S_ISDIR(initial.st_mode):
+            _fail("LLVM import marker parent status must be native")
+        flags = (
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        )
+        descriptor = os.open(root, flags)
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import marker parent open failed: {type(error).__name__}"
+        ) from error
+    if type(cast("object", descriptor)) is not int or descriptor < 0:
+        _fail("LLVM import marker parent descriptor must be native")
+    try:
+        opened = os.fstat(descriptor)
+        named = root.lstat()
+        if (
+            not _physical_directory(root)
+            or type(opened) is not os.stat_result
+            or type(named) is not os.stat_result
+            or not S_ISDIR(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+            or (opened.st_dev, opened.st_ino) != (initial.st_dev, initial.st_ino)
+        ):
+            _fail("LLVM import marker parent descriptor does not match the path")
+    except (LlvmImportError, OSError, ValueError, TypeError, RuntimeError) as error:
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError):
+            pass
+        if isinstance(error, LlvmImportError):
+            raise
+        raise LlvmImportError(
+            f"LLVM import marker parent status failed: {type(error).__name__}"
+        ) from error
+    return descriptor
+
+
 def _write_import_marker(root: Path, platform_id: str) -> None:
     """Publish an exclusive marker or reuse only exact physical evidence."""
     if _existing_import_marker(root, platform_id):
         return
     marker = root / LLVM_IMPORT_MARKER
     content = _marker_bytes(platform_id)
-    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+    parent_descriptor = (
+        _open_physical_marker_parent(root) if os.name == "posix" else None
+    )
     try:
-        descriptor = os.open(marker, flags, 0o600)
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        raise LlvmImportError(
-            f"LLVM import marker exclusive creation failed: {type(error).__name__}"
-        ) from error
-    if type(cast("object", descriptor)) is not int or descriptor < 0:
-        _fail("LLVM import marker descriptor must be a native integer")
-    owned_inode: tuple[int, int] | None = None
-    try:
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
         try:
-            if not _owned_exclusive_descriptor(marker, descriptor):
-                _fail("LLVM import marker descriptor does not own its physical leaf")
-            opened = os.fstat(descriptor)
-            if type(cast("object", opened)) is not os.stat_result:
-                _fail("LLVM import marker descriptor status must be native")
-            owned_inode = (opened.st_dev, opened.st_ino)
-            written = os.write(descriptor, content)
-        finally:
-            os.close(descriptor)
-    except LlvmImportError:
-        raise
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
+            descriptor = (
+                os.open(marker.name, flags, 0o600, dir_fd=parent_descriptor)
+                if parent_descriptor is not None
+                else os.open(marker, flags, 0o600)
+            )
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM import marker exclusive creation failed: {type(error).__name__}"
+            ) from error
+        if type(cast("object", descriptor)) is not int or descriptor < 0:
+            _fail("LLVM import marker descriptor must be a native integer")
+        owned_inode: tuple[int, int] | None = None
+        try:
+            try:
+                if not _owned_exclusive_descriptor(marker, descriptor):
+                    _fail(
+                        "LLVM import marker descriptor does not own its physical leaf"
+                    )
+                opened = os.fstat(descriptor)
+                if type(cast("object", opened)) is not os.stat_result:
+                    _fail("LLVM import marker descriptor status must be native")
+                owned_inode = (opened.st_dev, opened.st_ino)
+                written = os.write(descriptor, content)
+            finally:
+                os.close(descriptor)
+        except LlvmImportError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            if owned_inode is not None:
+                try:
+                    _discard_owned_file(marker, owned_inode)
+                except (OSError, ValueError, TypeError, RuntimeError):
+                    pass
+            raise LlvmImportError(
+                f"LLVM import marker write failed: {type(error).__name__}"
+            ) from error
+        if (
+            type(written) is int
+            and written == len(content)
+            and _valid_marker(root, platform_id)
+        ):
+            return
         if owned_inode is not None:
             try:
                 _discard_owned_file(marker, owned_inode)
-            except (OSError, ValueError, TypeError, RuntimeError):
-                pass
-        raise LlvmImportError(
-            f"LLVM import marker write failed: {type(error).__name__}"
-        ) from error
-    if (
-        type(written) is int
-        and written == len(content)
-        and _valid_marker(root, platform_id)
-    ):
-        return
-    if owned_inode is not None:
-        try:
-            _discard_owned_file(marker, owned_inode)
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise LlvmImportError(
-                f"LLVM marker write count mismatch; cleanup failed: {type(error).__name__}"
-            ) from error
-    _fail("LLVM marker write count or content verification mismatch")
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmImportError(
+                    f"LLVM marker write count mismatch; cleanup failed: {type(error).__name__}"
+                ) from error
+        _fail("LLVM marker write count or content verification mismatch")
+
+    finally:
+        if parent_descriptor is not None:
+            try:
+                os.close(parent_descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmImportError(
+                    f"LLVM import marker parent close failed: {type(error).__name__}"
+                ) from error
 
 
 def _write_linux_aliases(root: Path) -> tuple[Path, ...]:

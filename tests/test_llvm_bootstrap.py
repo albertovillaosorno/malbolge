@@ -146,11 +146,15 @@ def test_llvm_marker_writer_rejects_substituted_open_descriptor(
     native_open = os.open
 
     def foreign_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        if Path(path) == marker:
+        if Path(path) == marker or (path == marker.name and dir_fd is not None):
             return native_open(outside, os.O_WRONLY)
-        return native_open(path, flags, mode)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
 
     monkeypatch.setattr(os, "open", foreign_open)
     with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
@@ -159,6 +163,154 @@ def test_llvm_marker_writer_rejects_substituted_open_descriptor(
         )
     assert outside.read_bytes() == original
     assert not marker.exists()
+
+
+@pytest.mark.parametrize("replacement", ("symlink", "physical"))
+def test_llvm_marker_writer_does_not_follow_late_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """An imported marker cannot escape through a raced parent name."""
+    if os.name != "posix":
+        pytest.skip("POSIX marker parent descriptor boundary")
+    root = tmp_path / "owned-marker-parent"
+    root.mkdir()
+    marker = root / llvm_validation.LLVM_IMPORT_MARKER
+    parked = tmp_path / "parked-marker-parent"
+    outside = tmp_path / "outside-marker-parent"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"foreign marker data")
+    native_open = os.open
+    native_write = os.write
+    swapped = False
+    wrote_foreign = False
+
+    def swap_parent_at_marker_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if not swapped and (
+            Path(path) == marker or (path == marker.name and dir_fd is not None)
+        ):
+            _ = root.rename(parked)
+            if replacement == "symlink":
+                _ = root.symlink_to(outside, target_is_directory=True)
+            else:
+                _ = outside.rename(root)
+            swapped = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    def monitor_write(fd: int, data: bytes) -> int:
+        nonlocal wrote_foreign
+        foreign = outside if replacement == "symlink" else root
+        if (foreign / marker.name).exists():
+            wrote_foreign = True
+        return native_write(fd, data)
+
+    monkeypatch.setattr(os, "open", swap_parent_at_marker_open)
+    monkeypatch.setattr(os, "write", monitor_write)
+    with pytest.raises(llvm_validation.LlvmImportError, match="marker"):
+        llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+            root, LINUX_PLATFORM
+        )
+    assert swapped
+    assert not wrote_foreign
+    foreign = outside if replacement == "symlink" else root
+    assert (foreign / sentinel.name).read_bytes() == b"foreign marker data"
+    assert not (foreign / marker.name).exists()
+
+
+def test_llvm_marker_rejects_physical_parent_replacement_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A physical replacement cannot impersonate the admitted marker parent."""
+    if os.name != "posix":
+        pytest.skip("POSIX marker parent descriptor boundary")
+    root = tmp_path / "owned-marker-parent"
+    root.mkdir()
+    parked = tmp_path / "parked-marker-parent"
+    foreign = tmp_path / "foreign-marker-parent"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"foreign marker directory")
+    native_open = os.open
+    replaced = False
+
+    def swap_before_parent_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal replaced
+        if Path(path) == root and not replaced:
+            _ = root.rename(parked)
+            _ = foreign.rename(root)
+            replaced = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", swap_before_parent_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="parent descriptor"):
+        llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+            root, LINUX_PLATFORM
+        )
+    assert replaced
+    assert (root / sentinel.name).read_bytes() == b"foreign marker directory"
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
+def test_llvm_marker_parent_close_failure_is_typed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed close of the owned marker parent preserves its native cause."""
+    if os.name != "posix":
+        pytest.skip("POSIX marker parent descriptor boundary")
+    root = tmp_path / "runtime"
+    root.mkdir()
+    native_open = os.open
+    native_close = os.close
+    opened_parent: set[int] = set()
+    fault = OSError("synthetic marker parent close fault")
+
+    def track_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == root:
+            opened_parent.add(fd)
+        return fd
+
+    def fail_parent_close(fd: int) -> None:
+        native_close(fd)
+        if fd in opened_parent:
+            opened_parent.remove(fd)
+            raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_open)
+        isolated.setattr(os, "close", fail_parent_close)
+        with pytest.raises(
+            llvm_validation.LlvmImportError, match="marker parent close failed"
+        ) as caught:
+            llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
+                root, LINUX_PLATFORM
+            )
+    assert caught.value.__cause__ is fault
+    assert not opened_parent
+    assert (root / llvm_validation.LLVM_IMPORT_MARKER).read_bytes() == (
+        f"llvm={LLVM_VERSION}\nplatform={LINUX_PLATFORM}\n".encode()
+    )
 
 
 @pytest.mark.parametrize("invalid_descriptor", [None, True, -1])
@@ -170,17 +322,34 @@ def test_llvm_marker_writer_rejects_noninteger_open_receipt(
     """Invalid marker open receipts must not be written or closed."""
     root = tmp_path / "runtime"
     root.mkdir()
+    native_open = os.open
+    native_close = os.close
+    parent_descriptors: set[int] = set()
 
     def foreign_open(
-        _path: str | os.PathLike[str], _flags: int, _mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        return cast("int", invalid_descriptor)
+        if (path == llvm_validation.LLVM_IMPORT_MARKER and dir_fd is not None) or (
+            Path(path) == root / llvm_validation.LLVM_IMPORT_MARKER
+        ):
+            return cast("int", invalid_descriptor)
+        opened = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == root:
+            parent_descriptors.add(opened)
+        return opened
 
     def unexpected_write(_fd: int, _content: bytes) -> int:
         raise AssertionError("foreign marker descriptor was written")
 
-    def unexpected_close(_fd: int) -> None:
-        raise AssertionError("foreign marker descriptor was closed")
+    def unexpected_close(fd: int) -> None:
+        if fd not in parent_descriptors:
+            raise AssertionError("foreign marker descriptor was closed")
+        native_close(fd)
+        parent_descriptors.remove(fd)
 
     monkeypatch.setattr(os, "open", foreign_open)
     monkeypatch.setattr(os, "write", unexpected_write)
@@ -189,6 +358,8 @@ def test_llvm_marker_writer_rejects_noninteger_open_receipt(
         llvm_validation._write_import_marker(  # pyright: ignore[reportPrivateUsage]
             root, LINUX_PLATFORM
         )
+
+    assert not parent_descriptors
 
 
 @pytest.mark.parametrize("status_source", ["descriptor", "path"])
@@ -214,7 +385,8 @@ def test_llvm_marker_writer_rejects_foreign_stat_receipt(
             self.st_size = status.st_size
 
     def false_fstat(descriptor: int) -> object:
-        return ForeignStatus(native_fstat(descriptor))
+        status = native_fstat(descriptor)
+        return ForeignStatus(status) if S_ISREG(status.st_mode) else status
 
     def false_lstat(path: Path) -> object:
         status = native_lstat(path)
@@ -243,10 +415,14 @@ def test_llvm_marker_writer_rejects_hardlink_after_open(
     native_open = os.open
 
     def linked_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        fd = native_open(path, flags, mode)
-        if Path(path) == marker:
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == marker or (path == marker.name and dir_fd is not None):
             os.link(marker, outside)
         return fd
 
@@ -2066,13 +2242,19 @@ def test_windows_aliases_cannot_follow_marker_inserted_during_create(
     _ = sentinel.write_bytes(b"outside-bytes")
     original = os.open
 
-    def racing_open(path: str | os.PathLike[str], flags: int, mode: int = 0o777) -> int:
-        if Path(path) == marker:
+    def racing_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if Path(path) == marker or (path == marker.name and dir_fd is not None):
             try:
                 marker.symlink_to(sentinel)
             except (OSError, NotImplementedError) as error:
                 pytest.skip(f"symlinks unavailable: {error}")
-        return original(path, flags, mode)
+        return original(path, flags, mode, dir_fd=dir_fd)
 
     monkeypatch.setattr(os, "open", racing_open)
     with pytest.raises(llvm_validation.LlvmImportError, match="exclusive creation"):
