@@ -37,13 +37,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+from datetime import datetime
+from datetime import time
+from datetime import timezone
 from hashlib import sha256
 import json
+from json import JSONDecoder as _SOURCE_JSON_DECODER
 import os
 from pathlib import Path
 from stat import S_ISREG
 import sys
 import tomllib
+from tomllib import loads as _SOURCE_TOML_LOADS
 from typing import cast
 
 from scripts.repository_root import repository_root
@@ -633,17 +639,33 @@ def _read_retained_source(path: Path) -> bytes:
 
 def _json_object(path: Path, payload: bytes) -> dict[str, object]:
     try:
-        parsed = cast(
+        text = payload.decode("utf-8")
+        provider_parsed = cast(
             "object",
-            json.loads(
-                payload.decode("utf-8"),
-                object_pairs_hook=_reject_duplicate_pairs,
-            ),
+            json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
         )
-    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        # Keep a decoder constructor bound at import, not public
+        # json.loads, which itself resolves the mutable json.JSONDecoder.
+        source_parsed = cast(
+            "object",
+            _SOURCE_JSON_DECODER(
+                object_pairs_hook=_reject_duplicate_pairs
+            ).decode(text),
+        )
+    except ProfileManifestError:
+        raise
+    except (json.JSONDecodeError, UnicodeDecodeError, RecursionError) as error:
         message = f"cannot read retained JSON evidence {path}: {error}"
         raise ProfileManifestError(message) from error
-    return _object(parsed, str(path))
+    except Exception as error:  # noqa: BLE001 - foreign parser fault
+        message = (
+            f"cannot read retained JSON evidence {path}: {type(error).__name__}"
+        )
+        raise ProfileManifestError(message) from error
+    if not _source_equivalent(provider_parsed, source_parsed):
+        message = f"retained JSON evidence parser disagrees with source: {path}"
+        raise ProfileManifestError(message)
+    return _object(source_parsed, str(path))
 
 
 def _reject_duplicate_pairs(
@@ -660,14 +682,84 @@ def _reject_duplicate_pairs(
 
 def _toml_object(path: Path) -> dict[str, object]:
     try:
-        parsed = cast(
-            "object",
-            tomllib.loads(_read_retained_source(path).decode("utf-8")),
-        )
-    except (UnicodeDecodeError, tomllib.TOMLDecodeError) as error:
+        text = _read_retained_source(path).decode("utf-8")
+        provider_parsed = cast("object", tomllib.loads(text))
+        source_parsed = cast("object", _SOURCE_TOML_LOADS(text))
+    except ProfileManifestError:
+        raise
+    except (UnicodeDecodeError, tomllib.TOMLDecodeError, RecursionError) as error:
         message = f"cannot read retained TOML evidence {path}: {error}"
         raise ProfileManifestError(message) from error
-    return _object(parsed, str(path))
+    except Exception as error:  # noqa: BLE001 - foreign parser fault
+        message = (
+            f"cannot read retained TOML evidence {path}: {type(error).__name__}"
+        )
+        raise ProfileManifestError(message) from error
+    if not _source_equivalent(provider_parsed, source_parsed):
+        message = f"retained TOML evidence parser disagrees with source: {path}"
+        raise ProfileManifestError(message)
+    return _object(source_parsed, str(path))
+
+
+def _source_equivalent(provider: object, source: object) -> bool:
+    """Compare parser trees without invoking foreign container or value hooks.
+
+    Returns:
+        Whether all source fields match exact native provider values.
+
+    """
+    pending: list[tuple[object, object]] = [(provider, source)]
+    while pending:
+        found, expected = pending.pop()
+        if type(found) is not type(expected):
+            return False
+        if type(expected) is dict:
+            found_map = cast("dict[object, object]", found)
+            source_map = cast("dict[str, object]", expected)
+            if len(found_map) != len(source_map):
+                return False
+            if any(type(key) is not str for key in found_map):
+                return False
+            for key, value in source_map.items():
+                if key not in found_map:
+                    return False
+                pending.append((found_map[key], value))
+        elif type(expected) is list:
+            found_list = cast("list[object]", found)
+            source_list = cast("list[object]", expected)
+            if len(found_list) != len(source_list):
+                return False
+            pending.extend(zip(found_list, source_list, strict=True))
+        elif type(expected) is float:
+            if cast("float", found).hex() != cast("float", expected).hex():
+                return False
+        elif type(expected) is datetime:
+            found_datetime = cast("datetime", found)
+            expected_datetime = cast("datetime", expected)
+            if (
+                type(found_datetime.tzinfo) not in {type(None), timezone}
+                or type(expected_datetime.tzinfo) not in {type(None), timezone}
+                or repr(found_datetime) != repr(expected_datetime)
+            ):
+                return False
+        elif type(expected) is time:
+            found_time = cast("time", found)
+            expected_time = cast("time", expected)
+            if (
+                type(found_time.tzinfo) not in {type(None), timezone}
+                or type(expected_time.tzinfo) not in {type(None), timezone}
+                or repr(found_time) != repr(expected_time)
+            ):
+                return False
+        elif type(expected) is date:
+            if found != expected:
+                return False
+        elif type(expected) in {str, int, bool, type(None)}:
+            if found != expected:
+                return False
+        else:
+            return False
+    return True
 
 
 def _read_text(path: Path) -> str:

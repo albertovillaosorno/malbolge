@@ -36,6 +36,10 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import datetime
+from datetime import timedelta
+from datetime import timezone
+from datetime import tzinfo
 import json
 import os
 from pathlib import Path
@@ -681,3 +685,110 @@ def test_retained_generator_rejects_in_place_source_edit_after_read(
     ):
         _ = profile_manifest(root)
     assert observed == SOURCE_RECHECK
+
+
+def test_retained_generator_rejects_forged_json_parser_route(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid original hash cannot authorize a fabricated route measurement."""
+    original_loads = json.loads
+
+    def changed_parser(text: str, **kwargs: object) -> object:
+        decoded = original_loads(text, **kwargs)
+        if isinstance(decoded, dict) and "routes" in decoded:
+            routes = cast("dict[str, object]", decoded["routes"])
+            baseline = cast("dict[str, object]", routes["synchronous-sequential-1"])
+            median = baseline["median_ns"]
+            assert type(median) is int
+            baseline["median_ns"] = median + 1
+        return decoded
+
+    monkeypatch.setattr(json, "loads", changed_parser)
+    with pytest.raises(generator.ProfileManifestError, match="parser.*source"):
+        _ = profile_manifest_text()
+
+
+def test_retained_generator_rejects_invalid_toml_with_forged_parser(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced TOML provider cannot turn malformed source into evidence."""
+    root = _retained_fixture(tmp_path)
+    experiment = root / generator.EVIDENCE_RELATIVE / "experiment.toml"
+    trusted = generator.tomllib.loads(experiment.read_text(encoding="utf-8"))
+    _ = experiment.write_text("schema_version = ]\n", encoding="utf-8")
+    monkeypatch.setattr(generator.tomllib, "loads", lambda _text: trusted)
+    with pytest.raises(generator.ProfileManifestError, match="TOML evidence"):
+        _ = profile_manifest_text(root)
+
+
+def test_retained_generator_rejects_json_decoder_class_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Source reference stays independent of the mutable JSONDecoder class."""
+    original_decoder = json.JSONDecoder
+
+    class ForgedDecoder(original_decoder):
+        def decode(self, text: str, **kwargs: object) -> object:
+            decoded = super().decode(text, **kwargs)
+            if isinstance(decoded, dict) and "routes" in decoded:
+                routes = cast("dict[str, object]", decoded["routes"])
+                baseline = cast("dict[str, object]", routes["synchronous-sequential-1"])
+                baseline["median_ns"] = 1
+            return decoded
+
+    monkeypatch.setattr(json, "JSONDecoder", ForgedDecoder)
+    with pytest.raises(generator.ProfileManifestError, match="parser.*source"):
+        _ = profile_manifest_text()
+
+
+class _ForeignRoutes(dict[str, object]):
+    """A parser-produced route table may have executable traversal hooks."""
+
+    def items(self) -> object:
+        raise AssertionError("foreign route-table method invoked")
+
+
+def test_retained_generator_rejects_foreign_nested_json_table(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign nested mappings are rejected before their methods run."""
+    original_loads = json.loads
+
+    def foreign_parser(text: str, **kwargs: object) -> object:
+        decoded = original_loads(text, **kwargs)
+        if isinstance(decoded, dict) and "routes" in decoded:
+            decoded["routes"] = _ForeignRoutes(
+                cast("dict[str, object]", decoded["routes"])
+            )
+        return decoded
+
+    monkeypatch.setattr(json, "loads", foreign_parser)
+    with pytest.raises(generator.ProfileManifestError, match="parser.*source"):
+        _ = profile_manifest_text()
+
+
+class _ForeignTimezone(tzinfo):
+    """Injected TOML date metadata cannot execute timezone hooks."""
+
+    def utcoffset(self, dt: datetime | None) -> timedelta:
+        del dt
+        raise AssertionError("foreign timezone utcoffset invoked")
+
+    def dst(self, dt: datetime | None) -> timedelta:
+        del dt
+        raise AssertionError("foreign timezone dst invoked")
+
+    def tzname(self, dt: datetime | None) -> str:
+        del dt
+        raise AssertionError("foreign timezone name invoked")
+
+    def __repr__(self) -> str:
+        raise AssertionError("foreign timezone repr invoked")
+
+
+def test_retained_source_tree_does_not_invoke_foreign_timezone() -> None:
+    """Even native datetime wrappers need native timezone objects."""
+    expected = datetime(2026, 7, 29, tzinfo=timezone.utc)
+    injected = datetime(2026, 7, 29, tzinfo=_ForeignTimezone())
+    assert not generator._source_equivalent(injected, expected)

@@ -1325,8 +1325,14 @@ not Python source.
 reconstructs those
 canonical bytes from bounded, nonredirected stable regular JSON/TOML and raw
 sources. A throughput/toolchain JSON document is interpreted and hashed from
-one shared byte snapshot rather than rereading a changing pathname. The
-source commit, exact raw/structured-output hashes, tracked CUDA toolchain,
+one shared byte snapshot rather than rereading a changing pathname. JSON
+and TOML decoder trees are corroborated against source-owned standard-library
+parses of those exact retained bytes, including native nested data and key
+identities, before route measurements can reach a product manifest. A replaced
+public decoder cannot rewrite route measurements under an authentic SHA-256 or
+accept invalid TOML; the shared standard-library implementation itself remains
+a trust dependency. The source commit, exact raw/structured-output hashes,
+tracked CUDA toolchain,
 retained driver build, and host/Python context remain mandatory. Twelve manifest tests require byte equality and reject
 duplicate or unknown keys, unsupported schema, duplicate routes, malformed
 display
