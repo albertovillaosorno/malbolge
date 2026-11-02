@@ -88,6 +88,7 @@ PATH_SEPARATORS: Final = frozenset(("/", "\\"))
 UV_RELEASE_BASE: Final = "https://github.com/astral-sh/uv/releases/download/"
 UV_SCHEMA_VERSION: Final = 1
 MAX_UV_MANIFEST_BYTES: Final = 1_048_576
+MAX_UV_ARCHIVE_BYTES: Final = 128 * 1024 * 1024
 MAX_JIG_TOOL_BINARY_BYTES: Final = 256 * 1024 * 1024
 UV_BINARY_MODE: Final = 0o755
 JIG_BINARY_MODE: Final = 0o755
@@ -400,6 +401,8 @@ def verify_uv_archive(data: bytes, expected_sha256: str) -> None:
     """Require native uv archive bytes with the exact tracked SHA-256."""
     if type(data) is not bytes:
         _fail("uv archive must contain native bytes")
+    if len(data) > MAX_UV_ARCHIVE_BYTES:
+        _fail("uv archive exceeds byte limit")
     observed = hashlib.sha256(data).hexdigest()
     if observed != expected_sha256:
         _fail(
@@ -427,7 +430,7 @@ def _download_uv_archive(artifact: UvArtifact) -> bytes:
             ),
         )
         with response:
-            data = response.read()
+            data = response.read(MAX_UV_ARCHIVE_BYTES + 1)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = f"cannot download pinned uv artifact: {type(error).__name__}"
         raise ProvisionError(message) from error

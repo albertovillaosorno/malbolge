@@ -684,7 +684,7 @@ def test_uv_download_accepts_native_verified_archive(
         def __exit__(self, *_args: object) -> None:
             return None
 
-        def read(self) -> bytes:
+        def read(self, _size: int) -> bytes:
             return payload
 
     def fake_urlopen(*_args: object, **_kwargs: object) -> Response:
@@ -692,6 +692,44 @@ def test_uv_download_accepts_native_verified_archive(
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     assert python_validation._download_uv_archive(artifact) == payload
+
+
+@pytest.mark.parametrize("oversized", [False, True])
+def test_uv_download_bounds_response_body_before_hashing(
+    monkeypatch: pytest.MonkeyPatch,
+    oversized: bool,
+) -> None:
+    """A bounded read rejects oversized release data before digest work."""
+    bound = 8
+    monkeypatch.setattr(python_validation, "MAX_UV_ARCHIVE_BYTES", bound)
+    payload = b"largebody" if oversized else b"native"
+    artifact = replace(
+        python_validation.uv_artifact(LINUX_PLATFORM),
+        sha256=hashlib.sha256(payload).hexdigest(),
+    )
+    requested: list[int] = []
+
+    class Response:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, size: int) -> bytes:
+            requested.append(size)
+            return payload[:size]
+
+    def fake_urlopen(*_args: object, **_kwargs: object) -> Response:
+        return Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    if oversized:
+        with pytest.raises(python_validation.ProvisionError, match="byte limit"):
+            _ = python_validation._download_uv_archive(artifact)
+    else:
+        assert python_validation._download_uv_archive(artifact) == payload
+    assert requested == [bound + 1]
 
 
 class _UvArchiveBytesSubclass(bytes):
@@ -723,7 +761,7 @@ def test_uv_download_rejects_nonnative_archive_bytes(
         def __exit__(self, *_args: object) -> None:
             return None
 
-        def read(self) -> object:
+        def read(self, _size: int) -> object:
             return archive
 
     def fake_urlopen(*_args: object, **_kwargs: object) -> Response:
@@ -778,7 +816,7 @@ def test_uv_download_normalizes_host_faults_without_foreign_formatting(
         def __exit__(self, *_args: object) -> None:
             return None
 
-        def read(self) -> bytes:
+        def read(self, _size: int) -> bytes:
             raise failure
 
     def fake_urlopen(*_args: object, **_kwargs: object) -> Response:

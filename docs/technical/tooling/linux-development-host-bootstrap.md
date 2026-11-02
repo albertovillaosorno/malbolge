@@ -44,8 +44,9 @@ parent traversal. Leaf and parent redirect predicates require exact booleans;
 file identity requires native regular-file status with native integers.
 Failed uv manifest stream wrapping closes its owned descriptor and surfaces
 a typed bootstrap error with the original host failure as its cause.
-Pinned uv release downloads accept only exact native byte responses; an
-otherwise matching digest on a bytearray, view, or bytes subclass cannot
+Pinned uv release downloads use a bounded 128-MiB response read and reject
+oversized archives before hashing. They accept only exact native byte responses;
+an otherwise matching digest on a bytearray, view, or bytes subclass cannot
 satisfy archive verification. Network and response-read host failures become
 typed provisioning errors that preserve their original cause without evaluating
 foreign exception formatters.
