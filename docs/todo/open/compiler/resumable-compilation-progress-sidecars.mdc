@@ -771,6 +771,20 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   all five command modes and both diagnostic failure phases, without claiming
   that an interrupted binary stdout stream is a verified checkpoint.
 
+  Three further red-first publication-admission fixes are delivered in
+  `ed77a799c`, `307ecf58a`, and `c8e177aad`. Six pointer/checkpoint
+  read regressions reject byte rewrites, same-byte inode replacement, and
+  unlink during raw stream close, using a final named-inode/timestamp receipt.
+  Two staging regressions reject same-length, original-mtime byte rewrites
+  during staged-reader close *before* mutable or immutable publication,
+  instead of reporting only postcommit corruption. Six POSIX no-replace
+  publication regressions require a native `None` hard-link receipt: forged
+  success after an actual link reports uncertain durability with the exact
+  committed member path, while a missing or foreign destination never claims
+  commitment or overwrites foreign bytes. The reference reader and publisher
+  preserve existing bounded-check semantics, with no guarantee against
+  mutations after their final physical-path observation.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact
