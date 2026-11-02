@@ -559,8 +559,8 @@ def _same_native_toml(actual: object, expected: object) -> bool:
     return kind in (str, int, float, bool, date, datetime, time) and actual == expected
 
 
-def _require_source_toml(document: object, text: str) -> None:
-    """Bind native parser receipts to the retained exact TOML source text."""
+def _require_source_toml(document: object, text: str) -> dict[str, Any]:
+    """Corroborate TOML and return the independently decoded source tree."""
     try:
         source = _SOURCE_TOML_LOADS(text)
         matches = _same_native_toml(document, source)
@@ -569,6 +569,9 @@ def _require_source_toml(document: object, text: str) -> None:
         raise HistoricalEvidenceError(message) from error
     if not matches:
         _fail("historical decoded values differ from source TOML")
+    # A substituted equivalent parser may hold a mutable alias to its receipt.
+    # Retain only the independent parser's objects after full-tree comparison.
+    return source
 
 
 def _admit_benchmark_data(text: str) -> dict[str, Any]:
@@ -582,8 +585,7 @@ def _admit_benchmark_data(text: str) -> dict[str, Any]:
         table = document.get(name)
         if type(table) is not dict or any(type(key) is not str for key in table):
             _fail("historical benchmark TOML requires native string keys")
-    _require_source_toml(document, text)
-    return document
+    return _require_source_toml(document, text)
 
 
 def _load_source(root: Path, relative: str) -> _StudySources:
@@ -598,7 +600,7 @@ def _load_source(root: Path, relative: str) -> _StudySources:
     benchmark_text = sources["benchmark.toml"][0]
     manifest_data = tomllib.loads(manifest_text)
     _ = _extension(manifest_data)
-    _require_source_toml(manifest_data, manifest_text)
+    manifest_data = _require_source_toml(manifest_data, manifest_text)
     extension_name = next(
         name for name in EXTENSION_CONFIG if name in manifest_data
     )

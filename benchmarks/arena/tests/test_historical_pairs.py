@@ -1509,6 +1509,43 @@ def test_historical_benchmark_source_preserves_equivalent_loader_wrapper(
     assert historical_pairs._admit_benchmark_data(original) == native(original)
 
 
+@pytest.mark.parametrize("kind", ["benchmark", "manifest"])
+def test_historical_equivalent_loader_cannot_mutate_admitted_toml(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Source-matched maps cannot retain aliases owned by a wrapper decoder."""
+    root = _copy_source(tmp_path, PREFIX)
+    leaf = "benchmark.toml" if kind == "benchmark" else "experiment.toml"
+    original = (root / leaf).read_text(encoding="utf-8")
+    native = historical_pairs.tomllib.loads
+    returned: list[dict[str, Any]] = []
+
+    def delegated(text: str) -> dict[str, Any]:
+        receipt = native(text)
+        if text == original:
+            returned.append(receipt)
+            if kind == "manifest":
+                # Later core manifest decoding requires the original provider.
+                monkeypatch.setattr(historical_pairs.tomllib, "loads", native)
+        return receipt
+
+    monkeypatch.setattr(historical_pairs.tomllib, "loads", delegated)
+    if kind == "benchmark":
+        admitted = historical_pairs._admit_benchmark_data(original)
+        field, key, forged = "study", "id", "forged-history"
+    else:
+        admitted = historical_pairs._load_source(tmp_path, TEMP).manifest_data
+        field, key, forged = "budget", "seconds", 999
+    assert returned
+    assert admitted == returned[0]
+    assert admitted is not returned[0]
+    foreign_nested = cast("dict[str, Any]", returned[0][field])
+    foreign_nested[key] = forged
+    assert admitted[field][key] != forged
+
+
 @pytest.mark.parametrize("raw", ["true", "1.0"])
 def test_historical_benchmark_rejects_equal_but_nonnative_source_number(
     tmp_path: Path,
