@@ -3665,6 +3665,210 @@ def test_linux_destination_parent_creation_does_not_write_to_swapped_ancestor(
     assert not (foreign_root / component).exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX physical inodes")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+def test_llvm_resource_copy_rejects_source_swapped_after_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """Completed resource admission cannot be transferred to a new directory."""
+    source = tmp_path / "host-resources"
+    source.mkdir()
+    _ = (source / "stdlib.h").write_bytes(RESOURCE_BYTES)
+    stage = tmp_path / "stage/lib/clang"
+    stage.mkdir(parents=True)
+    destination = stage / "22"
+    parked = tmp_path / "parked-resources"
+    foreign = tmp_path / "foreign-resources"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"unrelated host resource")
+    original_check = llvm_validation._require_physical_resources  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def swap_after_preflight(path: Path) -> None:
+        nonlocal swapped
+        original_check(path)
+        if path == source and not swapped:
+            _ = source.rename(parked)
+            if replacement == "symlink":
+                _ = source.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(source)
+            swapped = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_validation, "_require_physical_resources", swap_after_preflight
+        )
+        with pytest.raises(llvm_validation.LlvmImportError):
+            llvm_validation._copy_resource_tree(  # pyright: ignore[reportPrivateUsage]
+                source, destination
+            )
+    assert swapped
+    foreign_path = foreign if replacement == "symlink" else source
+    assert (foreign_path / "sentinel").read_bytes() == b"unrelated host resource"
+    assert not destination.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX physical inodes")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+@pytest.mark.parametrize("delivery", ["hardlink", "copy"])
+def test_llvm_resource_copy_rejects_file_swapped_at_hardlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+    delivery: str,
+) -> None:
+    """A renamed host header must not silently authorize foreign file bytes."""
+    source = tmp_path / "host-resources"
+    source.mkdir()
+    header = source / "stdlib.h"
+    _ = header.write_bytes(RESOURCE_BYTES)
+    stage = tmp_path / "stage/lib/clang"
+    stage.mkdir(parents=True)
+    destination = stage / "22"
+    parked = tmp_path / "parked-header"
+    foreign = tmp_path / "foreign-header"
+    _ = foreign.write_bytes(b"foreign resource bytes")
+    native_link = os.link
+    swapped = False
+
+    def swapped_link(
+        original: str | os.PathLike[str],
+        target: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        if Path(original) == header and not swapped:
+            _ = header.rename(parked)
+            if replacement == "symlink":
+                _ = header.symlink_to(foreign)
+            else:
+                _ = foreign.rename(header)
+            swapped = True
+        if delivery == "copy" and Path(original) == header:
+            raise OSError("simulated cross-device hardlink failure")
+        native_link(
+            original,
+            target,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", swapped_link)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            llvm_validation._copy_resource_tree(  # pyright: ignore[reportPrivateUsage]
+                source, destination
+            )
+    assert swapped
+    assert parked.read_bytes() == RESOURCE_BYTES
+    foreign_path = foreign if replacement == "symlink" else header
+    assert foreign_path.read_bytes() == b"foreign resource bytes"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX physical inodes")
+def test_linux_import_does_not_publish_late_substituted_host_resource(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A substituted resource header must not reach the final LLVM import."""
+    observation = _host_observation(tmp_path)
+    header = observation.resource_dir / "stddef.h"
+    parked = tmp_path / "parked-stddef"
+    foreign = tmp_path / "foreign-header"
+    _ = foreign.write_bytes(b"untrusted imported resource")
+    native_link = os.link
+    swapped = False
+
+    def swap_header_at_link(
+        original: str | os.PathLike[str],
+        target: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        if Path(original) == header and not swapped:
+            _ = header.rename(parked)
+            _ = foreign.rename(header)
+            swapped = True
+        native_link(
+            original,
+            target,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", swap_header_at_link)
+        with pytest.raises(
+            llvm_validation.LlvmImportError,
+            match="host LLVM resource file changed during copying",
+        ):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert swapped
+    assert parked.read_bytes() == RESOURCE_BYTES
+    assert header.read_bytes() == b"untrusted imported resource"
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+    assert not (tmp_path / ".temp/llvm-import-linux-x86_64").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX physical inodes")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+@pytest.mark.parametrize("depth", ["root", "nested"])
+def test_llvm_resource_copy_rejects_late_source_directory_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+    depth: str,
+) -> None:
+    """A substituted host resource directory cannot become import authority."""
+    source = tmp_path / "host-resources"
+    (source / "include").mkdir(parents=True)
+    _ = (source / "include/stdlib.h").write_bytes(RESOURCE_BYTES)
+    stage = tmp_path / "stage/lib/clang"
+    stage.mkdir(parents=True)
+    destination = stage / "22"
+    original = source if depth == "root" else source / "include"
+    parked = tmp_path / "parked-resources"
+    foreign = tmp_path / "foreign-resources"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"unrelated host bytes")
+    _ = (foreign / "malicious.h").write_bytes(b"foreign resource bytes")
+    native_iterdir = Path.iterdir
+    swapped = False
+
+    def swapped_iterdir(directory: Path):  # type: ignore[no-untyped-def]
+        nonlocal swapped
+        if directory == original and not swapped:
+            _ = original.rename(parked)
+            if replacement == "symlink":
+                _ = original.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(original)
+            swapped = True
+        return native_iterdir(directory)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "iterdir", swapped_iterdir)
+        with pytest.raises(llvm_validation.LlvmImportError):
+            llvm_validation._copy_resource_tree(  # pyright: ignore[reportPrivateUsage]
+                source, destination
+            )
+    assert swapped
+    foreign_root = foreign if replacement == "symlink" else original
+    assert (foreign_root / "sentinel").read_bytes() == b"unrelated host bytes"
+    assert not (destination / "malicious.h").exists()
+    assert not (destination / "include/malicious.h").exists()
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
 @pytest.mark.parametrize("replacement", ["physical", "symlink"])
 @pytest.mark.parametrize("depth", ["root", "nested"])

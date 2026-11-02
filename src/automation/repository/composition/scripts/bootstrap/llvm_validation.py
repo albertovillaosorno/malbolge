@@ -578,7 +578,12 @@ def _require_physical_resources(root: Path) -> None:
 
 def _copy_resource_tree(source: Path, destination: Path) -> None:
     """Copy LLVM resources without creating through replaceable parent names."""
+    source_inode = _native_directory_inode(source)
+    if source_inode is None:
+        _fail("host LLVM resource root must be physical")
     _require_physical_resources(source)
+    if _native_directory_inode(source) != source_inode:
+        _fail("host LLVM resource root changed during preflight")
     ancestor_inode = _native_directory_inode(destination.parent.parent)
     if ancestor_inode is None:
         _fail("LLVM resource destination ancestor must be physical")
@@ -595,8 +600,11 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
     def copy_directory(
         source_directory: Path,
         destination_directory: Path,
+        expected_source_inode: tuple[int, int],
         expected_parent_inode: tuple[int, int],
     ) -> None:
+        if _native_directory_inode(source_directory) != expected_source_inode:
+            _fail("host LLVM resource directory changed before copying")
         _create_physical_import_directory(
             destination_directory,
             label="LLVM resource member directory",
@@ -607,13 +615,42 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
             _fail("LLVM resource member directory must be physical")
         try:
             for member in source_directory.iterdir():
+                if _native_directory_inode(source_directory) != expected_source_inode:
+                    _fail("host LLVM resource directory changed during copying")
                 target = destination_directory / member.name
                 if _physical_directory(member):
-                    copy_directory(member, target, owned_inode)
+                    child_inode = _native_directory_inode(member)
+                    if child_inode is None:
+                        _fail("host LLVM resource child directory must be physical")
+                    copy_directory(member, target, child_inode, owned_inode)
                 elif _physical_file(member):
+                    initial = member.lstat()
+                    if type(initial) is not os.stat_result:
+                        _fail("host LLVM resource file status must be native")
+                    # Hardlink creation can change ctime and nlink, but may
+                    # not substitute or modify the admitted header inode.
+                    identity = (
+                        initial.st_dev,
+                        initial.st_ino,
+                        initial.st_size,
+                        initial.st_mtime_ns,
+                    )
                     _ = _link_or_copy(
                         str(member), str(target), expected_parent_inode=owned_inode
                     )
+                    current = member.lstat()
+                    if (
+                        not _physical_file(member)
+                        or type(current) is not os.stat_result
+                        or (
+                            current.st_dev,
+                            current.st_ino,
+                            current.st_size,
+                            current.st_mtime_ns,
+                        )
+                        != identity
+                    ):
+                        _fail("host LLVM resource file changed during copying")
                 else:
                     _fail(f"host LLVM resource member must be physical: {member}")
         except LlvmImportError:
@@ -622,10 +659,12 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
             raise LlvmImportError(
                 f"host LLVM resource traversal failed: {type(error).__name__}"
             ) from error
+        if _native_directory_inode(source_directory) != expected_source_inode:
+            _fail("host LLVM resource directory changed after copying")
         if _native_directory_inode(destination_directory) != owned_inode:
             _fail("LLVM resource destination directory changed during copy")
 
-    copy_directory(source, destination, parent_inode)
+    copy_directory(source, destination, source_inode, parent_inode)
     _require_physical_resources(destination)
 
 
