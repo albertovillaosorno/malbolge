@@ -631,6 +631,11 @@ def _canonical_payload(
     return generated
 
 
+# The imported scanner provider must own workspace inventory. A native scan
+# iterator redirected to another empty directory is not admission evidence.
+_SYSTEM_SCANDIR = os.scandir
+
+
 def _admit_native_workspace_receipt(receipt: object, *, prefix: str) -> Path:
     """Reject redirected temporary paths before writing or trusting cleanup.
 
@@ -663,6 +668,8 @@ def _admit_native_workspace_receipt(receipt: object, *, prefix: str) -> Path:
         # nonempty check. Inspect the iterator itself and close it explicitly.
         entries = os.scandir(directory)
         try:
+            if os.scandir is not _SYSTEM_SCANDIR:
+                _fail("host-C workspace context returned foreign scan provider")
             occupied = next(entries, None) is not None
         finally:
             if entries.close() is not None:

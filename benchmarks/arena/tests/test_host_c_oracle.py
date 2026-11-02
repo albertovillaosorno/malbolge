@@ -2546,6 +2546,46 @@ def test_host_c_workspace_scandir_cannot_certify_unsafe_entry(
     assert marker.read_bytes() == b"untouched"
 
 
+@pytest.mark.parametrize("forgery", ["false-empty", "redirected-native"])
+def test_host_c_workspace_rejects_substituted_empty_scanner_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Neither foreign nor redirected native scans certify occupied workspaces."""
+    folder = tmp_path / "arena-host-c-oracle-foreign"
+    folder.mkdir()
+    marker = folder / "preserve.txt"
+    marker.write_bytes(b"untouched")
+    decoy = tmp_path / "empty-decoy"
+    decoy.mkdir()
+    closed = False
+    native_scandir = host_c_oracle.os.scandir
+
+    class FalseEmptyScan:
+        def __iter__(self) -> FalseEmptyScan:
+            return self
+
+        def __next__(self) -> object:
+            raise StopIteration
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    def fake_scandir(_path: Path) -> object:
+        return native_scandir(decoy) if forgery == "redirected-native" else FalseEmptyScan()
+
+    monkeypatch.setattr(host_c_oracle, "_TEMP", tmp_path)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(host_c_oracle.os, "scandir", fake_scandir)
+        with pytest.raises(host_c_oracle.HostOracleError, match="workspace"):
+            host_c_oracle._admit_native_workspace_receipt(
+                str(folder), prefix="arena-host-c-oracle-"
+            )
+    if forgery == "false-empty":
+        assert closed
+    assert marker.read_bytes() == b"untouched"
+
+
 @pytest.mark.parametrize(
     "kind",
     [
