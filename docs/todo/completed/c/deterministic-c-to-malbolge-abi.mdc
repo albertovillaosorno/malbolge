@@ -84,6 +84,10 @@ policy for undefined or target-dependent C behavior.
   The Clang decoder is captured on entry and source-equivalent wrappers return
   a source-owned tree, preventing self-restoring forgery and mutable AST aliases;
   malformed/duplicate/nonfinite JSON and foreign parser faults remain typed.
+- 2026-11-02 Clang AST JSONDecoder follow-up: three red-first substitutions
+  (decoder only, jointly replaced providers, and restoring providers) could
+  hide rejected attributes in genuine stdout. Every AST now corroborates
+  against the import-bound decoder class and returns its source-owned tree.
 - `tests/tidy/accepted/` proves canonical layout plus recursion, function
   pointers, variadics, VLAs, flexible arrays, enums, and admitted alignment;
   `tests/tidy/rejected/` independently exercises every ABI diagnostic family.

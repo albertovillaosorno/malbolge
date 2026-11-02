@@ -58,7 +58,7 @@ from scripts.repository_root import repository_root
 from scripts.validate import c_abi
 
 ROOT = repository_root(Path(__file__))
-_NATIVE_AST_JSON_LOADS = json.loads
+_NATIVE_AST_JSON_DECODER = json.JSONDecoder
 PINNED_LLVM_VERSION = "22.1.8"
 PINNED_CLANG = ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
 GUEST_LIBC_INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
@@ -404,32 +404,31 @@ def _parse_ast_output(text: str, source: Path) -> JsonObject:
     except (TypeError, ValueError, RuntimeError, RecursionError) as error:
         message = f"invalid Clang AST JSON for {source}"
         raise SourceAnalysisError(message) from error
-    # A substituted public JSON loader must not suppress Clang's real AST
-    # nodes, invalid source syntax, duplicate keys, or nonfinite constants.
-    if decoder is not _NATIVE_AST_JSON_LOADS:
-        try:
-            original = cast(
-                "object",
-                _NATIVE_AST_JSON_LOADS(
-                    text,
-                    object_pairs_hook=_unique_ast_fields,
-                    parse_constant=_reject_nonfinite_ast_constant,
-                    parse_float=_finite_ast_float,
-                ),
-            )
-            equivalent = _same_native_ast_json(parsed, original)
-        except SourceAnalysisError:
-            raise
-        except json.JSONDecodeError as error:
-            raise SourceAnalysisError(f"invalid Clang AST JSON for {source}") from error
-        except (TypeError, ValueError, RuntimeError, RecursionError) as error:
-            raise SourceAnalysisError(
-                f"Clang AST JSON decoder provider differs from source: {source}"
-            ) from error
-        if not equivalent:
-            _fail(f"Clang AST JSON decoder provider differs from source: {source}")
-        # Do not return an adapter-owned tree that can change after validation.
-        parsed = original
+    # The bound json.loads still reads the public JSONDecoder at call time.
+    # Compare every AST receipt to independently decoded stdout using the
+    # import-bound class so replacing both providers cannot conceal nodes.
+    try:
+        original = cast(
+            "object",
+            _NATIVE_AST_JSON_DECODER(
+                object_pairs_hook=_unique_ast_fields,
+                parse_constant=_reject_nonfinite_ast_constant,
+                parse_float=_finite_ast_float,
+            ).decode(text),
+        )
+        equivalent = _same_native_ast_json(parsed, original)
+    except SourceAnalysisError:
+        raise
+    except json.JSONDecodeError as error:
+        raise SourceAnalysisError(f"invalid Clang AST JSON for {source}") from error
+    except (TypeError, ValueError, RuntimeError, RecursionError) as error:
+        raise SourceAnalysisError(
+            f"Clang AST JSON decoder provider differs from source: {source}"
+        ) from error
+    if not equivalent:
+        _fail(f"Clang AST JSON decoder provider differs from source: {source}")
+    # Do not return an adapter-owned tree that can change after validation.
+    parsed = original
     if type(parsed) is not dict:
         _fail(f"Clang AST root must be an object for {source}")
     root = cast("JsonObject", parsed)

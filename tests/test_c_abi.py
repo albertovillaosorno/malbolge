@@ -1966,6 +1966,43 @@ def test_guest_abi_source_ast_parser_rejects_substituted_native_receipt(
         _ = c_abi_source._parse_ast_output(source, Path("input.c"))
 
 
+@pytest.mark.parametrize(
+    "providers", ("decoder-only", "joint", "self-restoring-decoder")
+)
+def test_guest_abi_ast_json_reference_rejects_joint_provider_forgery(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Public JSONDecoder cannot hide a forbidden AST node from Clang output."""
+    canonical = '{"kind":"TranslationUnitDecl","id":"root","inner":[{}]}'
+    actual = (
+        '{"kind":"TranslationUnitDecl","id":"root",'
+        '"inner":[{"kind":"PackedAttr"}]}'
+    )
+    forged = cast("dict[str, object]", json.loads(canonical))
+    native_decoder = json.JSONDecoder
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring-decoder":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            c_abi_source.SourceAnalysisError,
+            match="decoder provider differs from source",
+        ):
+            _ = c_abi_source._parse_ast_output(actual, Path("input.c"))
+
+
 @pytest.mark.parametrize("entrypoint", ["parser", "process"])
 def test_guest_abi_ast_rejects_self_restoring_decoder(
     monkeypatch: pytest.MonkeyPatch,
