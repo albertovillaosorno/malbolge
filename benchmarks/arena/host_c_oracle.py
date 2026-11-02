@@ -636,7 +636,8 @@ def _canonical_payload(
     )
     try:
         digest = sha256(generated.source).hexdigest()
-        independent = hashlib.sha256(generated.source).hexdigest()
+        # The mutable hashlib.sha256 attribute may alias a forged provider.
+        independent = hashlib.new("sha256", generated.source).hexdigest()
     except Exception as error:
         # Hashing is a dependency; its faults must remain typed replay
         # failures without invoking foreign exception formatting hooks.

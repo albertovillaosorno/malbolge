@@ -42,6 +42,7 @@ import sys
 import time
 from hashlib import sha256
 from pathlib import Path
+from types import SimpleNamespace
 from typing import IO, Any, cast
 
 import pytest
@@ -817,6 +818,30 @@ def test_host_c_replay_rejects_fabricated_equal_source_hash_receipt(
             return false_digest
 
     monkeypatch.setattr(host_c_oracle, "sha256", lambda _source: ForgedHash())
+    with pytest.raises(host_c_oracle.HostOracleError, match="source.*identity"):
+        host_c_oracle._canonical_payload(_case(), PROFILE, false_digest)
+
+
+def test_host_c_oracle_rejects_jointly_substituted_sha256_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One forged digest provider cannot certify canonical challenge source."""
+    false_digest = "0" * 64
+    assert _digest() != false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    def forged_hash(_source: bytes) -> ForgedHash:
+        return ForgedHash()
+
+    monkeypatch.setattr(host_c_oracle, "sha256", forged_hash)
+    monkeypatch.setattr(
+        host_c_oracle,
+        "hashlib",
+        SimpleNamespace(sha256=forged_hash, new=host_c_oracle.hashlib.new),
+    )
     with pytest.raises(host_c_oracle.HostOracleError, match="source.*identity"):
         host_c_oracle._canonical_payload(_case(), PROFILE, false_digest)
 
