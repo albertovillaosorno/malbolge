@@ -4029,3 +4029,44 @@ def test_measured_rss_requires_exact_bounded_native_child_completion(
         target_process.TargetProcessError, match="invalid child completion"
     ):
         target_process.invoke_limited_measured(_child("print('never')"))
+
+
+@pytest.mark.parametrize("failure", ["tool", "deadline"])
+def test_measured_rss_rejects_suppressed_directory_body_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Foreign workspace cleanup cannot hide rejected measured child work."""
+    primary = (
+        target_process.TargetProcessError("injected resource validation failure")
+        if failure == "tool"
+        else sp.TimeoutExpired([sys.executable], LARGE_TIMEOUT_SECONDS)
+    )
+    exited = False
+
+    class SuppressingRssDirectory:
+        def __enter__(self) -> Path:
+            return tmp_path
+
+        def __exit__(self, *_args: object) -> bool:
+            nonlocal exited
+            exited = True
+            return True
+
+    def reject_child_limits(*_args: object, **_kwargs: object) -> None:
+        raise primary
+
+    with monkeypatch.context() as context:
+        context.setattr(target_process, "_rss_workspace", lambda: tmp_path)
+        context.setattr(target_process, "require_child_rss_measurement", lambda: None)
+        context.setattr(target_process, "_system_tool", lambda _: "/usr/bin/time")
+        context.setattr(
+            target_process, "_rss_report_directory", lambda _: SuppressingRssDirectory()
+        )
+        context.setattr(target_process, "_limited_command", reject_child_limits)
+        with pytest.raises(type(primary)) as captured:
+            _ = target_process._measured_limited(
+                [sys.executable], input_bytes=None, timeout_seconds=LARGE_TIMEOUT_SECONDS
+            )
+    assert captured.value is primary
+    assert exited
+    assert list(tmp_path.iterdir()) == []

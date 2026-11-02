@@ -959,6 +959,9 @@ def _measured_limited(
             raise primary from error
         message = "bounded target RSS directory access failed"
         raise TargetProcessError(message) from error
+    # A substituted directory __exit__ might suppress the child failure.
+    if primary is not None:
+        raise primary
 
 
 def invoke_limited_measured(
