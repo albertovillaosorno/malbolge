@@ -36,24 +36,22 @@ from __future__ import annotations
 
 import argparse
 import ctypes
-from dataclasses import dataclass
 import errno
 import hashlib
 import json
 import os
-from pathlib import Path
 import shutil
 import stat
 import sys
-from typing import Final
-from typing import Never
-from typing import Protocol
-from typing import cast
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final, Never, Protocol, cast
 
 _WINDOWS_OS_NAME: Final = "nt"
 _LINUX_PLATFORM: Final = "linux"
 _AT_FDCWD: Final = -100
 _RENAME_NOREPLACE: Final = 1
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 _ARITHMETIC_DAG_FAMILY: Final = "arithmetic-dag"
 _BRANCH_MIX_FAMILY: Final = "branch-mix"
@@ -131,7 +129,9 @@ if str(_COMPOSITION_ROOT) not in sys.path:
     sys.path.insert(0, str(_COMPOSITION_ROOT))
 
 # jig-ignore-next-line: import follows repository-local sys.path setup.
-from scripts.validate import target_profile  # ruff: ignore[module-import-not-at-top-of-file]
+from scripts.validate import (
+    target_profile,  # ruff: ignore[module-import-not-at-top-of-file]
+)
 
 _PROFILE_MANIFEST: Final = target_profile.FINGERPRINT_MANIFEST
 _EXPECTED_ARTIFACTS: Final = frozenset({
@@ -1320,8 +1320,20 @@ def _manifest_bytes(
             "unsigned_arithmetic": "modulo-2-to-32",
         },
     }
-    text = json.dumps(manifest_object, sort_keys=True, separators=(",", ":"))
-    return f"{text}\n".encode()
+    try:
+        # The manifest is replay authority for the exact generated C source
+        # and independent oracle; public JSON adapters may not rewrite it.
+        source_text = _SOURCE_JSON_ENCODER(
+            sort_keys=True, separators=(",", ":"),
+        ).encode(manifest_object)
+        rendered = json.dumps(
+            manifest_object, sort_keys=True, separators=(",", ":")
+        )
+    except Exception as error:  # noqa: BLE001 - public serializer is untrusted
+        _fail(f"challenge manifest JSON writer failed: {type(error).__name__}", error)
+    if type(rendered) is not str or rendered != source_text:
+        _fail("challenge manifest JSON writer differs from source")
+    return f"{source_text}\n".encode()
 
 
 def _validated_identity(value: object) -> ChallengeIdentity:

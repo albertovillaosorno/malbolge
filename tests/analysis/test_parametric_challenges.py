@@ -40,25 +40,24 @@ import hashlib
 import importlib.util
 import json
 import os
-from pathlib import Path
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Protocol
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from pathlib import Path
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Protocol, cast, override
 
 import pytest
 
-from scripts.validate import c_abi_source
-from scripts.validate import c_frontend_build
-from scripts.validate import c_frontend_build_linux
-from scripts.validate import c_libc_source
-from scripts.validate import target_profile
+from scripts.validate import (
+    c_abi_source,
+    c_frontend_build,
+    c_frontend_build_linux,
+    c_libc_source,
+    target_profile,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 _ROOT = Path(__file__).resolve().parents[2]
 _GENERATOR = _ROOT / "benchmarks" / "challenges" / "generate.py"
@@ -1657,7 +1656,7 @@ def test_raced_existing_artifact_fifo_rejected_without_blocking(
         # Windows-targeted type analysis lacks this guarded POSIX symbol.
         fifo = cast(
             "Callable[[Path], None]",
-            getattr(os, "mkfifo"),  # ruff: ignore[get-attr-with-constant]
+            getattr(os, "mkfifo"),  # noqa: B009 - Windows stubs omit POSIX API
         )
         fifo(oracle)
         return paths
@@ -1976,3 +1975,108 @@ def test_cli_replays_manifest_and_files(
     snapshot = _snapshot(output)
     assert _GENERATOR_MODULE.main() == 0
     assert snapshot == _snapshot(output)
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+def test_challenge_manifest_rejects_forged_json_artifact_hashes(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """Public writers cannot falsify canonical oracle or source provenance."""
+    identity = _replay_identity()
+    baseline = _GENERATOR_MODULE.generate(identity)
+    original = cast("dict[str, object]", json.loads(baseline.manifest))
+    artifacts = cast("dict[str, object]", original["artifacts"])
+    oracle_sha = cast("str", artifacts["oracle_sha256"])
+    forged = baseline.manifest.decode("utf-8").replace(
+        oracle_sha, "0" * _SHA256_HEX_LENGTH
+    ).removesuffix("\n")
+    assert oracle_sha not in forged
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _document: object) -> str:
+            return forged
+
+    def forged_writer(*_args: object, **_kwargs: object) -> str:
+        return forged
+
+    def encoder_writer(*_args: object, **_kwargs: object) -> str:
+        return ForgedEncoder().encode(None)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            _GENERATOR_MODULE,
+            "json",
+            SimpleNamespace(
+                JSONEncoder=ForgedEncoder if provider != "writer" else json.JSONEncoder,
+                dumps=encoder_writer if provider == "encoder" else forged_writer,
+            ),
+        )
+        with pytest.raises(
+            _GENERATOR_MODULE.ChallengeError,
+            match="challenge manifest JSON writer differs from source",
+        ):
+            _ = _GENERATOR_MODULE.generate(identity)
+
+
+@pytest.mark.parametrize("fault", (RuntimeError, OverflowError))
+def test_challenge_manifest_wraps_public_json_writer_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Untrusted JSON dependency exceptions retain a typed failure cause."""
+    failure = fault("untrusted writer failure")
+
+    def broken_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            _GENERATOR_MODULE, "json", SimpleNamespace(dumps=broken_writer)
+        )
+        with pytest.raises(
+            _GENERATOR_MODULE.ChallengeError,
+            match="challenge manifest JSON writer failed",
+        ) as captured:
+            _ = _GENERATOR_MODULE.generate(_replay_identity())
+        assert captured.value.__cause__ is failure
+
+
+def test_challenge_manifest_rejects_nontext_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign writer receipts cannot be published as a canonical manifest."""
+    def invalid_writer(*_args: object, **_kwargs: object) -> object:
+        return object()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            _GENERATOR_MODULE, "json", SimpleNamespace(dumps=invalid_writer)
+        )
+        with pytest.raises(
+            _GENERATOR_MODULE.ChallengeError,
+            match="challenge manifest JSON writer differs from source",
+        ):
+            _ = _GENERATOR_MODULE.generate(_replay_identity())
+
+
+def test_challenge_manifest_accepts_source_equivalent_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent public adapters preserve the frozen manifest replay hash."""
+    identity = _replay_identity()
+    baseline = _GENERATOR_MODULE.generate(identity)
+    native_writer = json.dumps
+
+    def equivalent_writer(*args: object, **kwargs: object) -> str:
+        return native_writer(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            _GENERATOR_MODULE, "json", SimpleNamespace(dumps=equivalent_writer)
+        )
+        generated = _GENERATOR_MODULE.generate(identity)
+        assert generated.manifest == baseline.manifest

@@ -37,7 +37,10 @@ closed-form modulo-`2^32` oracle. This separates generated runtime-work growth
 from generator/oracle complexity.
 
 Each generated directory contains `program.c`, `oracle.bin`, and
-`manifest.json`. The manifest binds source and oracle SHA-256 digests. The C
+`manifest.json`. The manifest binds source and oracle SHA-256 digests. Before
+publishing, its canonical JSON text is corroborated against the native encoder
+bound at import; a replaced public JSON writer or encoder cannot silently forge
+source or oracle identities. Python's underlying encoder remains trusted. The C
 source exposes `uint32_t malbolge_challenge(void)`; `oracle.bin` is the exact
 little-endian return value of that entry. The standalone `main` keeps only the
 low 31 bits for a portable process status and is explicitly not oracle
