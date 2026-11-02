@@ -1676,15 +1676,37 @@ def extract_cuda_package(
     package_staging = staging / package.name
     _prepare_staging(package_staging)
     package_staging_identity = _owned_staging_identity(package_staging)
-    if package.relative_path.endswith(".zip"):
-        extracted = _safe_zip_extract(data, package_staging)
-    else:
-        extracted = _safe_tar_extract(data, package_staging)
-    extracted_identity = _owned_staging_identity(extracted)
-    _require_toolkit_destination(destination)
-    _ensure_toolkit_destination_parent(destination)
-    _require_toolkit_destination(destination)
-    _copy_cuda_overlay(extracted, destination, extracted_identity)
+    try:
+        if package.relative_path.endswith(".zip"):
+            extracted = _safe_zip_extract(data, package_staging)
+        else:
+            extracted = _safe_tar_extract(data, package_staging)
+        extracted_identity = _owned_staging_identity(extracted)
+        _require_toolkit_destination(destination)
+        _ensure_toolkit_destination_parent(destination)
+        _require_toolkit_destination(destination)
+        _copy_cuda_overlay(extracted, destination, extracted_identity)
+    except CudaProvisionError:
+        # Failed extraction may contain a directory swapped in by another
+        # process. Only discard the still-owned stage when it is empty.
+        _require_owned_staging(package_staging, package_staging_identity)
+        try:
+            package_staging.rmdir()
+        except OSError as error:
+            if error.errno not in (errno.ENOTEMPTY, errno.EEXIST):
+                raise CudaProvisionError("CUDA empty package staging cleanup failed") from error
+        except (TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError("CUDA empty package staging cleanup failed") from error
+        else:
+            try:
+                _ = package_staging.lstat()
+            except FileNotFoundError:
+                pass
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError("CUDA empty package staging receipt failed") from error
+            else:
+                _fail("CUDA empty package staging cleanup did not remove stage")
+        raise
     _cleanup_owned_staging(package_staging, package_staging_identity)
 
 

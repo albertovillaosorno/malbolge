@@ -754,6 +754,79 @@ def test_tar_extraction_rejects_parent_escape(tmp_path: Path) -> None:
     assert not (tmp_path / "escape").exists()
 
 
+@pytest.mark.parametrize("archive_format", ("tar", "zip"))
+def test_cuda_failed_direct_extract_cleans_package_stage_for_retry(
+    tmp_path: Path, archive_format: str
+) -> None:
+    """A rejected archive must not block a later valid package with the same name."""
+    if archive_format == "zip":
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, mode="w") as archive:
+            archive.writestr(f"{ARCHIVE_ROOT}/../../escape", b"forged")
+        malicious = stream.getvalue()
+        relative_path = _ZIP_PACKAGE_PATH
+    else:
+        malicious = _tar_xz({f"{ARCHIVE_ROOT}/../../escape": b"forged"})
+        relative_path = PACKAGE_PATH
+    malicious_package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, malicious, {"relative_path": relative_path}),
+        LINUX_PLATFORM,
+    ).packages[0]
+    stage = tmp_path / "packages"
+    destination = tmp_path / "toolkit"
+    with pytest.raises(cuda_validation.CudaProvisionError, match="archive member escapes"):
+        cuda_validation.extract_cuda_package(
+            malicious, malicious_package, destination, staging=stage
+        )
+    assert not (stage / PACKAGE_NAME).exists()
+    assert not destination.exists()
+
+    valid = _zip_payload() if archive_format == "zip" else _payload()
+    valid_package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, valid, {"relative_path": relative_path}),
+        LINUX_PLATFORM,
+    ).packages[0]
+    cuda_validation.extract_cuda_package(valid, valid_package, destination, staging=stage)
+    assert (destination / "lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
+    assert not (stage / PACKAGE_NAME).exists()
+
+
+@pytest.mark.parametrize("fault", ("false-success", "runtime"))
+def test_cuda_failed_extract_cleanup_requires_native_removal_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    """An empty-stage cleanup host fault must not be silently accepted."""
+    payload = _tar_xz({f"{ARCHIVE_ROOT}/../../escape": b"untrusted"})
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+    stage = tmp_path / "staging" / PACKAGE_NAME
+    native_rmdir = Path.rmdir
+    called = False
+
+    def rmdir_fault(path: Path) -> None:
+        nonlocal called
+        if path != stage:
+            native_rmdir(path)
+            return
+        called = True
+        if fault == "runtime":
+            raise RuntimeError("untrusted cleanup failure")
+        # Host falsely reports successful removal while retaining the stage.
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "rmdir", rmdir_fault)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError,
+            match="empty package staging cleanup",
+        ):
+            cuda_validation.extract_cuda_package(
+                payload, package, tmp_path / "toolkit", staging=stage.parent
+            )
+    assert called
+    assert stage.is_dir()
+
+
 @pytest.mark.parametrize(
     ("link_target", "error_match"),
     [
