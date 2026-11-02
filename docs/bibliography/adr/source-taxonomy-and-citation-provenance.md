@@ -101,6 +101,7 @@ requires native bytes, and invalid UTF-8 retains its native decoder cause.
 Filesystem status failures and operator reports remain typed without running
 foreign exception formatter hooks. Recursive catalog and durable-reference scans
 require native immediate-child names, nonduplicate entries, and a complete
-root-bound directory walk before discovered paths may supply evidence.
+root-bound directory walk before discovered paths may supply evidence. The
+first-level taxonomy enumeration likewise rejects foreign or repeated paths.
 The operator CLI returns success only after a complete native text write and
 flush; failed diagnostics cannot turn rejection into a successful exit.

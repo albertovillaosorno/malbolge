@@ -489,9 +489,20 @@ def _source_record_paths() -> tuple[Path, ...]:
 
 def _validate_first_level_taxonomy() -> None:
     expected = frozenset((*CATEGORIES, ADR_DIR))
-    actual = frozenset(
-        path.name for path in BIBLIOGRAPHY_ROOT.iterdir() if _is_directory(path)
-    )
+    actual: set[str] = set()
+    seen: set[str] = set()
+    for path in BIBLIOGRAPHY_ROOT.iterdir():
+        if (
+            type(path) is not type(BIBLIOGRAPHY_ROOT)
+            or path.parent != BIBLIOGRAPHY_ROOT
+        ):
+            _fail("bibliography taxonomy requires native immediate-child paths")
+        name = path.name
+        if name in seen:
+            _fail("bibliography taxonomy returned duplicate child path")
+        seen.add(name)
+        if _is_directory(path):
+            actual.add(name)
     if actual != expected:
         _fail(f"bibliography first-level taxonomy mismatch: {sorted(actual)}")
 

@@ -351,6 +351,50 @@ def test_filesystem_walk_errors_fail_closed() -> None:
     assert caught.value.__cause__ is None
 
 
+@pytest.mark.parametrize("forgery", ["outside-root", "duplicate", "foreign-path"])
+def test_bibliography_taxonomy_rejects_unbound_first_level_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A forged iterdir listing cannot manufacture the closed taxonomy."""
+    root = tmp_path / "catalog"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    expected = (*validator.CATEGORIES, "adr")
+    for name in expected:
+        (outside / name).mkdir()
+        (root / name).mkdir()
+
+    class ForeignPath(type(root)):
+        @property
+        @override
+        def name(self) -> str:
+            raise AssertionError("foreign pathname property executed")
+
+    original_iterdir = Path.iterdir
+
+    def forged_iterdir(path: Path) -> Iterator[Path]:
+        if path != root:
+            yield from original_iterdir(path)
+            return
+        if forgery == "outside-root":
+            yield from (outside / name for name in expected)
+        elif forgery == "duplicate":
+            yield from (root / name for name in expected)
+            yield root / "languages"
+        else:
+            yield ForeignPath(root / "languages")
+
+    monkeypatch.setattr(Path, "iterdir", forged_iterdir)
+    monkeypatch.setattr(validator, "BIBLIOGRAPHY_ROOT", root)
+    with pytest.raises(
+        validator.BibliographyValidationError, match="bibliography.*taxonomy"
+    ):
+        validator._validate_first_level_taxonomy()  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize("scanner", ["catalog", "durable"])
 @pytest.mark.parametrize(
     "forgery",
