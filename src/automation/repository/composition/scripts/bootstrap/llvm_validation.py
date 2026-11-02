@@ -708,6 +708,81 @@ def _require_physical_resources(root: Path) -> dict[Path, tuple[int, ...]]:
         ) from error
 
 
+def _require_matching_resource_bytes(
+    source: Path,
+    destination: Path,
+    source_receipt: tuple[int, ...],
+    destination_receipt: tuple[int, ...],
+) -> None:
+    """Compare staged resource bytes with their original physical source."""
+    size = source_receipt[3]
+    if (
+        source_receipt[0] != 0
+        or destination_receipt[0] != 0
+        or _resource_member_receipt(source) != source_receipt
+        or _resource_member_receipt(destination) != destination_receipt
+    ):
+        _fail("LLVM resource copy changed before byte verification")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptors: list[int] = []
+    try:
+        for path in (source, destination):
+            descriptor = os.open(path, flags)
+            if type(cast("object", descriptor)) is not int or descriptor < 0:
+                _fail("LLVM resource copy descriptor must be native")
+            descriptors.append(descriptor)
+        original, imported = descriptors
+        if not (
+            _matches_open_import_file(source, original, size)
+            and _matches_open_import_file(destination, imported, size)
+        ):
+            _fail("LLVM resource copy opened a substituted file")
+
+        def read_exact(descriptor: int, count: int) -> bytes:
+            content = bytearray()
+            while len(content) < count:
+                chunk = os.read(descriptor, count - len(content))
+                if type(chunk) is not bytes or not chunk:
+                    _fail("LLVM resource copy read was truncated or nonnative")
+                content.extend(chunk)
+            return bytes(content)
+
+        remaining = size
+        while remaining:
+            count = min(65536, remaining)
+            if read_exact(original, count) != read_exact(imported, count):
+                _fail("LLVM resource copy bytes differ from original source")
+            remaining -= count
+        if os.read(original, 1) != b"" or os.read(imported, 1) != b"":
+            _fail("LLVM resource copy contains unexpected trailing bytes")
+        if not (
+            _matches_open_import_file(source, original, size)
+            and _matches_open_import_file(destination, imported, size)
+            and _resource_member_receipt(source) == source_receipt
+            and _resource_member_receipt(destination) == destination_receipt
+        ):
+            _fail("LLVM resource copy changed during byte verification")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM resource copy byte verification failed: {type(error).__name__}"
+        ) from error
+    finally:
+        for descriptor in descriptors:
+            try:
+                os.close(descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmImportError(
+                    f"LLVM resource copy descriptor close failed: {type(error).__name__}"
+                ) from error
+
+
 def _copy_resource_tree(source: Path, destination: Path) -> None:
     """Copy LLVM resources without creating through replaceable parent names."""
     source_inode = _native_directory_inode(source)
@@ -792,6 +867,14 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
         for name in expected_resources
     ):
         _fail("LLVM resource destination inventory differs from the source")
+    for name, source_receipt in expected_resources.items():
+        if source_receipt[0] == 0:
+            _require_matching_resource_bytes(
+                source / name,
+                destination / name,
+                source_receipt,
+                copied_resources[name],
+            )
 
 
 def _linux_wrapper(tool: str) -> str:

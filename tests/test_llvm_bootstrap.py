@@ -1985,6 +1985,58 @@ def test_linux_import_rejects_incomplete_resource_enumeration(
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
 
+@pytest.mark.parametrize("tamper", ("overwrite", "replace"))
+def test_linux_resource_copy_rejects_late_same_size_corruption(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    """An earlier detached header must remain exact after later copying."""
+    observation = _host_observation(tmp_path)
+    _ = (observation.resource_dir / "additional.h").write_bytes(b"other header bytes")
+    native_link = os.link
+    native_copy = llvm_validation._link_or_copy  # pyright: ignore[reportPrivateUsage]
+    copied: list[Path] = []
+    corrupted = False
+
+    def force_resource_copy(
+        source: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        **kwargs: object,
+    ) -> None:
+        if Path(source).parent == observation.resource_dir:
+            raise OSError("simulated cross-device resource hardlink")
+        native_link(source, destination, **kwargs)  # type: ignore[arg-type]
+
+    def corrupt_previous_resource(
+        source: str,
+        destination: str,
+        *,
+        expected_parent_inode: tuple[int, int] | None = None,
+    ) -> str:
+        nonlocal corrupted
+        result = native_copy(
+            source, destination, expected_parent_inode=expected_parent_inode
+        )
+        if Path(source).parent == observation.resource_dir:
+            if copied:
+                previous = copied[0]
+                size = previous.stat().st_size
+                if tamper == "replace":
+                    previous.unlink()
+                _ = previous.write_bytes(b"x" * size)
+                corrupted = True
+            else:
+                copied.append(Path(destination))
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", force_resource_copy)
+        isolated.setattr(llvm_validation, "_link_or_copy", corrupt_previous_resource)
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource"):
+            _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert corrupted
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
 def test_linux_import_preserves_physical_nested_resource_files(
     tmp_path: Path,
 ) -> None:
