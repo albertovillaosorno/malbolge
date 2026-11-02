@@ -960,6 +960,72 @@ def test_study_stream_construction_preserves_primary_when_close_fails(
     ]
 
 
+def test_study_reader_rejects_suppressed_close_receipt_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign context exit cannot swallow a failed completed-read receipt."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+
+    class ForgedCloseStream:
+        def __init__(self, backing: BinaryIO) -> None:
+            self.backing = backing
+
+        def fileno(self) -> int:
+            return self.backing.fileno()
+
+        def read(self, count: int) -> bytes:
+            return self.backing.read(count)
+
+        def close(self) -> None:
+            return cast("None", 1)
+
+    @contextmanager
+    def masking_open(target: Path) -> Iterator[BinaryIO]:
+        with original_open(target) as backing:
+            try:
+                yield cast("BinaryIO", ForgedCloseStream(backing))
+            except study_file.StudyFileError:
+                # A substituted context manager tries to convert a failed
+                # close receipt into a successful study-file admission.
+                pass
+
+    monkeypatch.setattr(study_file, "_open_study", masking_open)
+    with pytest.raises(study_file.StudyFileError, match="close completion"):
+        _ = study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+
+
+def test_study_reader_rejects_suppressed_read_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A context that swallows an early read failure cannot publish bytes."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    original_open = study_file._open_study
+    rejected = study_file.StudyFileError("injected primary read failure")
+
+    @contextmanager
+    def masking_open(target: Path) -> Iterator[BinaryIO]:
+        with original_open(target) as stream:
+            try:
+                yield stream
+            except study_file.StudyFileError:
+                pass
+
+    def fail_read(_stream: BinaryIO, *, size: int) -> bytes:
+        del size
+        raise rejected
+
+    monkeypatch.setattr(study_file, "_open_study", masking_open)
+    monkeypatch.setattr(study_file, "_read_complete", fail_read)
+    with pytest.raises(study_file.StudyFileError, match="primary read") as caught:
+        _ = study_file.read_study_bytes(path, limit=analyze.MAX_INPUT_BYTES)
+    assert caught.value is rejected
+
+
 @pytest.mark.parametrize("receipt", [False, True, 0, 1, "closed", b"closed"])
 def test_study_reader_requires_native_close_completion(
     tmp_path: Path,

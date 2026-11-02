@@ -229,6 +229,15 @@ def _read_descriptor(
             raise error  # ruff: ignore[TRY201]
         message = "arena input stream access failed"
         raise StudyFileError(message) from error
+    # A substituted context manager may return a truthy __exit__ receipt and
+    # swallow the rejection raised by the admitted read or final close. The
+    # inner catch retains that original failure even when the with block exits
+    # without propagating it, so such a stream cannot certify source bytes.
+    if primary is not None:
+        if isinstance(primary, StudyFileError):
+            raise primary
+        message = "arena input stream access failed"
+        raise StudyFileError(message) from primary
     return data, opened
 
 
