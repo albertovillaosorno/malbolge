@@ -80,8 +80,11 @@ empty, singly linked regular-file `fstat` receipts before writing. Untrusted
 staging descriptor status closes the opened descriptor instead of publishing.
 Stage ownership rechecks likewise reject foreign stat proxies.
 Existing staging paths are not truncated, and executables that appear during
-provisioning are not overwritten. These checks do not make
-arbitrary concurrent ancestor directory swaps atomic.
+provisioning are not overwritten. Both existing and newly installed executables
+retain their native device, inode, size, mode, link count, and modification
+metadata across the pinned `--version` probe; a changed identity or contents
+mutation rejects the tool even if the reported version still matches. These
+checks do not make arbitrary concurrent ancestor directory swaps atomic.
 UV manifest and Jig tool-source readers require a native buffered binary
 reader backed by the original native raw file descriptor. A foreign stream
 wrapper or a native reader bound to a substitute descriptor cannot supply

@@ -539,6 +539,50 @@ def test_uv_rejects_mutation_after_stage_descriptor_closes(
     assert not stage.exists()
 
 
+@pytest.mark.parametrize("installed", [False, True])
+@pytest.mark.parametrize("mutation", ["inode-swap", "in-place"])
+def test_uv_rejects_executable_change_during_version_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    installed: bool,
+    mutation: str,
+) -> None:
+    """Version output cannot endorse a different executable after the probe."""
+    artifact = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(artifact, root)
+    preserved = tmp_path / "original-uv"
+    if installed:
+        executable.parent.mkdir(parents=True)
+        _ = executable.write_bytes(BINARY)
+
+    def mutate_during_probe(command: list[str]) -> str:
+        assert command == [str(executable), VERSION_FLAG]
+        if mutation == "inode-swap":
+            _ = executable.replace(preserved)
+            _ = executable.write_bytes(BINARY)
+        else:
+            previous = executable.stat()
+            with executable.open("r+b") as stream:
+                assert stream.write(b"!") == 1
+            os.utime(executable, ns=(
+                previous.st_atime_ns, previous.st_mtime_ns + 1_000_000_000
+            ))
+        return f"uv {artifact.version}"
+
+    monkeypatch.setattr(python_validation, "_run", mutate_during_probe)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv executable changed"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    if mutation == "inode-swap":
+        assert preserved.read_bytes() == BINARY
+        assert executable.read_bytes() == BINARY
+    else:
+        assert executable.read_bytes() != BINARY
+
+
 @pytest.mark.parametrize("authority", ["uv-manifest", "jig-binary"])
 def test_binary_authority_rejects_forged_fdopen_content(
     tmp_path: Path,

@@ -901,6 +901,32 @@ def _provision_uv_binary(
             temporary.unlink(missing_ok=True)
 
 
+def _uv_executable_identity(status: os.stat_result) -> tuple[int, ...]:
+    """Bind a version probe to one native executable identity and mutation state."""
+    if type(status) is not os.stat_result or any(
+        type(field) is not int
+        for field in (
+            status.st_mode,
+            status.st_nlink,
+            status.st_dev,
+            status.st_ino,
+            status.st_size,
+            status.st_mtime_ns,
+            status.st_ctime_ns,
+        )
+    ):
+        _fail("uv executable requires native file status")
+    return (
+        status.st_mode,
+        status.st_nlink,
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
 def ensure_uv(
     root: Path = ROOT,
     *,
@@ -915,9 +941,13 @@ def ensure_uv(
     selected = platform_id or uv_platform_id()
     artifact = uv_artifact(selected)
     executable = uv_executable(artifact, root)
-    if _admit_uv_provision_path(executable) is not None:
+    installed = _admit_uv_provision_path(executable)
+    if installed is not None:
+        original = _uv_executable_identity(installed)
         output = _run([str(executable), "--version"])
-        _ = _admit_uv_provision_path(executable, required=True)
+        checked = _admit_uv_provision_path(executable, required=True)
+        if checked is None or _uv_executable_identity(checked) != original:
+            _fail("uv executable changed during version probe")
         if _uv_version_matches(output, artifact.version):
             return executable
         _fail(f"unexpected uv version at {executable}: {output!r}")
@@ -926,9 +956,14 @@ def ensure_uv(
     _provision_uv_binary(
         executable, binary, windows=selected.startswith("windows-")
     )
-    _ = _admit_uv_provision_path(executable, required=True)
+    installed = _admit_uv_provision_path(executable, required=True)
+    if installed is None:
+        _fail("uv executable disappeared before version probe")
+    original = _uv_executable_identity(installed)
     output = _run([str(executable), "--version"])
-    _ = _admit_uv_provision_path(executable, required=True)
+    checked = _admit_uv_provision_path(executable, required=True)
+    if checked is None or _uv_executable_identity(checked) != original:
+        _fail("uv executable changed during version probe")
     if not _uv_version_matches(output, artifact.version):
         _fail(f"unexpected provisioned uv version: {output!r}")
     return executable
