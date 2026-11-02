@@ -38,6 +38,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
+from typing import Callable, cast
 
 from accelerator.cuda import toolchain
 import pytest
@@ -160,6 +161,150 @@ def test_selects_linux_runtime_contract(tmp_path: Path) -> None:
     assert selected.preload_libraries == (
         selected.toolkit_root / LINUX_BUILTINS,
     )
+
+
+@pytest.mark.parametrize("entrypoint", ("reader", "selection"))
+@pytest.mark.parametrize(
+    "providers", ("decoder-only", "joint", "self-restoring-decoder")
+)
+def test_cuda_selector_json_reference_rejects_forged_loader(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+    providers: str,
+) -> None:
+    """Tracked source cannot authorize an invented platform library loader."""
+    _write_complete_fixture(tmp_path)
+    index = tmp_path / toolchain.CUDA_TOOLCHAIN_INDEX
+    forged = json.loads(index.read_text(encoding="utf-8"))
+    forged["platforms"][LINUX_PLATFORM]["loader"] = "windll"
+    native_decoder = json.JSONDecoder
+
+    class ForgedDecoder:
+        def __init__(self, *, object_pairs_hook: object = None) -> None:
+            self.object_pairs_hook = object_pairs_hook
+            if providers == "self-restoring-decoder":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, value: str) -> object:
+            if '"platforms"' in value:
+                return forged
+            return native_decoder(
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object] | None",
+                    self.object_pairs_hook,
+                )
+            ).decode(value)
+
+    def forged_loads(value: str, **kwargs: object) -> object:
+        return ForgedDecoder(
+            object_pairs_hook=kwargs.get("object_pairs_hook")
+        ).decode(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            toolchain.CudaToolchainSelectionError,
+            match="JSON decoder differs from source",
+        ):
+            if entrypoint == "reader":
+                _ = toolchain._read_document_and_bytes(index, "CUDA toolchain index")
+            else:
+                _ = toolchain.select_cuda_toolchain(tmp_path, LINUX_PLATFORM)
+
+
+def test_cuda_selector_equivalent_adapter_returns_source_owned_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Equivalent public wrappers may not mutate selected native metadata."""
+    index = _write_index(tmp_path)
+    native_loads = json.loads
+    received: list[object] = []
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        result = native_loads(
+            text,
+            object_pairs_hook=cast(
+                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+            ),
+        )
+        received.append(result)
+        return result
+
+    monkeypatch.setattr(json, "loads", delegated)
+    selected, _ = toolchain._read_document_and_bytes(index, "CUDA toolchain index")
+    assert selected == received[0]
+    assert selected is not received[0]
+    returned_platforms = cast(
+        "dict[str, dict[str, object]]", selected["platforms"]
+    )
+    foreign_root = cast("dict[str, object]", received[0])
+    foreign_platforms = cast(
+        "dict[str, dict[str, object]]", foreign_root["platforms"]
+    )
+    foreign_platforms[LINUX_PLATFORM]["loader"] = "windll"
+    assert returned_platforms[LINUX_PLATFORM]["loader"] == "cdll"
+
+
+def test_cuda_selector_rejects_foreign_key_without_equality_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Source comparison never runs hostile equality on a colliding key."""
+
+    class HostileKey(str):
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign key equality executed")
+
+    index = _write_index(tmp_path)
+    forged = json.loads(index.read_text(encoding="utf-8"))
+    value = forged.pop("platforms")
+    forged[HostileKey("platforms")] = value
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: forged)
+    with pytest.raises(toolchain.CudaToolchainSelectionError, match="decoder differs"):
+        _ = toolchain._read_document_and_bytes(index, "CUDA toolchain index")
+
+
+def test_cuda_selector_forged_loader_cannot_hide_invalid_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The import-bound source decoder still rejects malformed source bytes."""
+    index = _write_index(tmp_path)
+    forged = json.loads(index.read_text(encoding="utf-8"))
+    _ = index.write_text('{"schema_version": 1,,}', encoding="utf-8")
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: forged)
+    with pytest.raises(
+        toolchain.CudaToolchainSelectionError, match="cannot read"
+    ) as error:
+        _ = toolchain._read_document_and_bytes(index, "CUDA toolchain index")
+    assert type(error.value.__cause__) is json.JSONDecodeError
+
+
+def test_cuda_selector_foreign_loader_failure_keeps_typed_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Host decoder faults cannot execute foreign exception formatters."""
+
+    class ForeignFault(ValueError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign decoder error formatter executed")
+
+    index = _write_index(tmp_path)
+    fault = ForeignFault("forged loader")
+
+    def fail(_text: str, **_kwargs: object) -> object:
+        raise fault
+
+    monkeypatch.setattr(json, "loads", fail)
+    with pytest.raises(
+        toolchain.CudaToolchainSelectionError, match="cannot read"
+    ) as error:
+        _ = toolchain._read_document_and_bytes(index, "CUDA toolchain index")
+    assert error.value.__cause__ is fault
 
 
 def test_unknown_platform_is_rejected(tmp_path: Path) -> None:

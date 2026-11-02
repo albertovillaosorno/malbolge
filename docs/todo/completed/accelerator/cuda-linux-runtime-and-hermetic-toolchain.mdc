@@ -122,6 +122,11 @@ fallback, verifier authority, and existing Windows support.
   joint-substitution, and self-restoring class cases could forge a native
   package hash. The manifest reader now checks every receipt against original
   source decoded by the import-bound class, returning its source-owned tree.
+- 2026-11-02 runtime selector follow-up: six red-first direct/selection
+  decoder-only, joint and self-restoring provider cases could invent a CUDA
+  loader kind from unchanged tracked index bytes. The adapter now parses each
+  index/manifest with the bound JSON decoder class and returns source-owned
+  nested values only; unexpected loader dependency faults remain typed.
 - Foundation completion evidence: `linux-development-host-bootstrap` and
   `documentation-readiness-and-implementation-gate`. The active
   `cuda-exact-vm-adapter` supplies the implementation surface being ported but

@@ -177,7 +177,12 @@ this Fedora session.
 - The tracked CUDA selector index and platform JSON are admitted as bounded,
   nonredirected regular files with stable inode, byte count, and timestamps
   across each read. Symlinked directories, file aliases, and changing manifest
-  evidence do not authorize CUDA library selection.
+  evidence do not authorize CUDA library selection. The runtime selector also
+  cross-checks every parsed JSON value against an import-bound `JSONDecoder`
+  applied to exactly those bytes, instead of trusting mutable public providers.
+  Joint or self-restoring decoder substitutions cannot invent a library loader,
+  and equivalent wrappers yield only source-owned data. Foreign key equality
+  and exception formatter hooks are never required for this comparison.
 - The runtime resolves its toolkit root and NVRTC library from the selected
   manifest; it does not embed `13.3.1` or `.dll` in generic execution logic.
 - Measured runtime identity hashes only bounded, unchanged, nonredirected

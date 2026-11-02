@@ -56,6 +56,7 @@ CUDA_TOOLCHAIN_INDEX: Final = (
 )
 _INDEX_SCHEMA_VERSION: Final = 1
 _MAX_DOCUMENT_BYTES: Final = 1024 * 1024
+_NATIVE_JSON_DECODER: Final = json.JSONDecoder
 _MANIFEST_SCHEMA_VERSION: Final = 1
 _ALLOWED_LOADERS: Final = frozenset(("windll", "cdll"))
 _PATH_SEPARATORS: Final = frozenset(("/", "\\"))
@@ -159,6 +160,30 @@ def _read_regular_document(path: Path, label: str) -> bytes:
         return raw
 
 
+def _same_native_json(actual: object, source: object) -> bool:
+    """Compare complete source JSON without calling untrusted equality hooks."""
+    kind = type(source)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        received = cast("dict[object, object]", actual)
+        original = cast("dict[object, object]", source)
+        if any(type(key) is not str for key in received):
+            return False
+        return len(received) == len(original) and all(
+            key in received and _same_native_json(received[key], value)
+            for key, value in original.items()
+        )
+    if kind is list:
+        received_items = cast("list[object]", actual)
+        original_items = cast("list[object]", source)
+        return len(received_items) == len(original_items) and all(
+            _same_native_json(left, right)
+            for left, right in zip(received_items, original_items, strict=True)
+        )
+    return kind in (str, int, float, bool, type(None)) and actual == source
+
+
 def _read_document_and_bytes(
     path: Path,
     label: str,
@@ -171,16 +196,39 @@ def _read_document_and_bytes(
     """
     try:
         source = _read_regular_document(path, label)
+        text = source.decode("utf-8")
         parsed = cast(
+            "object", json.loads(text, object_pairs_hook=_reject_duplicate_pairs)
+        )
+        # json.loads consults the mutable public JSONDecoder class even when
+        # the function itself is import-bound. Decode the original file bytes
+        # with the class bound at import, then reject every forged nested value.
+        original = cast(
             "object",
-            json.loads(
-                source.decode("utf-8"),
-                object_pairs_hook=_reject_duplicate_pairs,
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                text
             ),
         )
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as error:
-        _fail(f"cannot read {label}: {error}")
-    return _mapping(parsed, label), source
+        if not _same_native_json(parsed, original):
+            _fail(f"CUDA toolchain JSON decoder differs from source: {label}")
+    except CudaToolchainSelectionError:
+        raise
+    except (
+        AttributeError,
+        LookupError,
+        OSError,
+        OverflowError,
+        RecursionError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
+        # Do not invoke formatter hooks of foreign host exception subclasses.
+        raise CudaToolchainSelectionError(
+            f"cannot read {label}: {type(error).__name__}"
+        ) from error
+    # Only the independent source tree is admitted, never a public parser alias.
+    return _mapping(original, label), source
 
 
 def _read_document(path: Path, label: str) -> dict[str, object]:
