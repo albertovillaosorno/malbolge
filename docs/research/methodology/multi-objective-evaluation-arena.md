@@ -1246,6 +1246,16 @@ The original study records remain the result authority.
   mutations during either stage reject before returning a preflight report;
   these two bounded reads do not establish an atomic snapshot against ongoing
   writers or promise post-return filesystem immutability.
+- The challenge-bundle replay, host-C reference-study producer, and host-C
+  canonical source oracle now corroborate SHA-256 using `hashlib.new` rather
+  than mutable aliases of one `hashlib.sha256` provider. In each boundary, a
+  red-first test substituted both callable aliases with the same false digest:
+  earlier checks admitted it, while the independent constructor now rejects.
+  Signed fixes `dc6ad2e8d`, `bf20baa17`, and `85751188e` passed 84, 333,
+  and 393 focused module tests respectively; overlapping postcommit integration
+  groups passed 785 and 477 tests with zero arena type errors. These tests
+  establish local byte-to-receipt agreement, not OS, generator, or historic
+  measurement authenticity against an entirely substituted hashing backend.
 - One end-to-end synthetic admission test composes strict per-trial run
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent

@@ -556,6 +556,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   Eight red-first native/foreign/fault tests include an explicit no-compiler-
   workspace assertion for equality-spoofing receipts. This checks dependency
   receipts, not host-C attestation.
+- Three independently claimed SHA-256 receipt fixes (`dc6ad2e8d`,
+  `bf20baa17`, `85751188e`) replace the mutable `hashlib.sha256` corroborator
+  with `hashlib.new("sha256", bytes)` in challenge-bundle regeneration, the
+  host-C study producer, and the host-C replay oracle. Red-first paired
+  provider substitutions once admitted the same false hash at all three
+  boundaries; native separate-constructor checks now reject. The focused
+  module suites passed 84, 333, and 393 tests, with postcommit 785/477
+  integration checks and arena BasedPyright zero errors. This is local source
+  fingerprint consistency, not generator, OS or historical measurement proof.
 - The target-echo producer re-reads retained study JSON only after the
   separate read-only source audit, and now requires its own SHA-256 result
   to be exact native lowercase text corroborated by a second standard hash
