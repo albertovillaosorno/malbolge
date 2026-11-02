@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import csv
 from io import StringIO
+from itertools import product
 from random import Random
 from typing import cast
 
@@ -121,3 +122,27 @@ def test_seeded_csv_writer_preserves_quoted_delimiter_counts() -> None:
         assert csv_admission.within_column_limit(text, count)
         if count > 1:
             assert not csv_admission.within_column_limit(text, count - 1)
+
+
+def test_short_valid_csv_differential_oracle_matches_exact_field_counts() -> None:
+    """Independent parser agrees on every short valid quote/delimiter shape.
+
+    This tests the preflight's field-count decision, not CSV authenticity or
+    a substitute for the strict parsing and schema checks that follow it.
+    """
+    alphabet = ("a", ",", '"', "\r", "\n")
+    for length in range(8):
+        for tokens in product(alphabet, repeat=length):
+            text = "".join(tokens)
+            try:
+                counts = [
+                    len(row)
+                    for row in csv.reader(StringIO(text, newline=""), strict=True)
+                ]
+            except csv.Error:
+                # The downstream parser rejects malformed records. The
+                # delimiter preflight is not responsible for that judgment.
+                continue
+            for maximum in (1, 2, 3):
+                expected = all(count <= maximum for count in counts)
+                assert csv_admission.within_column_limit(text, maximum) is expected
