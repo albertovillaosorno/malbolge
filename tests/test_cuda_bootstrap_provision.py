@@ -1842,6 +1842,39 @@ def test_cuda_tar_rejects_excess_member_count_before_link_resolution(
         ("s\u00e4mple.dll", "sa\u0308mple.dll"),
     ],
 )
+def test_cuda_tar_rejects_cross_platform_path_aliases(
+    tmp_path: Path, first: str, second: str,
+) -> None:
+    """TAR member spellings cannot collide when installed on Windows."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:xz") as archive:
+        for name in (first, second):
+            member = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/{name}")
+            member.size = len(NVRTC_BYTES)
+            archive.addfile(member, io.BytesIO(NVRTC_BYTES))
+    payload = output.getvalue()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM,
+    ).packages[0]
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="TAR member path alias",
+    ):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "stage",
+        )
+    if (tmp_path / "toolkit").exists():
+        pytest.fail("aliased TAR members published a toolkit")
+
+
+@pytest.mark.parametrize(
+    ("first", "second"),
+    [
+        ("nvrtc.dll", "NVRTC.dll"),
+        ("subdir/nvrtc.dll", "subdir/./nvrtc.dll"),
+        ("subdir/nvrtc.dll", "subdir//nvrtc.dll"),
+        ("s\u00e4mple.dll", "sa\u0308mple.dll"),
+    ],
+)
 def test_cuda_zip_rejects_cross_platform_path_aliases(
     tmp_path: Path, first: str, second: str
 ) -> None:

@@ -509,6 +509,13 @@ def _archive_member_path(value: str) -> PurePosixPath:
     return path
 
 
+def _portable_archive_member_identity(name: str) -> str:
+    """Normalize archive member names across supported host filesystems."""
+    return unicodedata.normalize(
+        "NFC", _archive_member_path(name).as_posix().casefold(),
+    )
+
+
 def _common_archive_root(names: tuple[str, ...]) -> str:
     paths = tuple(_archive_member_path(name) for name in names if name)
     if not paths:
@@ -591,8 +598,12 @@ def _tar_members(
     members = tuple(admitted)
     names = tuple(member.name for member in members)
     root_name = _common_archive_root(names)
+    seen_paths: set[str] = set()
     for member in members:
-        _ = _archive_member_path(member.name)
+        portable_name = _portable_archive_member_identity(member.name)
+        if portable_name in seen_paths:
+            _fail("CUDA TAR member path alias is ambiguous across platforms")
+        seen_paths.add(portable_name)
         if member.isdev() or member.isfifo():
             _fail("CUDA archive contains an unsupported special member")
         if member.islnk():
@@ -744,9 +755,7 @@ def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
     seen_paths: set[str] = set()
     for info in infos:
         _admit_zip_member_type(info)
-        portable_name = unicodedata.normalize(
-            "NFC", _archive_member_path(info.filename).as_posix().casefold()
-        )
+        portable_name = _portable_archive_member_identity(info.filename)
         if portable_name in seen_paths:
             _fail("CUDA ZIP member path alias is ambiguous across platforms")
         seen_paths.add(portable_name)
