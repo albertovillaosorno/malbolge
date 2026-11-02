@@ -1243,7 +1243,12 @@ and benchmark-protocol parsers, requires the exact paired trial population,
 checks preregistered baselines, matched workload/host/profile identities,
 and compares retained quality-map and structural counts against the recorded
 measurement declarations. The independent retained `source-commit.txt` pin
-must agree with the experiment-run commit. Only the registered CSV column sets
+must agree with the experiment-run commit. Both imported experiment and
+benchmark TOML maps are independently re-parsed from the same source text and
+compared as complete native TOML trees. A substituted public decoder cannot
+alter report labels, registered limits or extension identities without a typed
+source mismatch; this does not authenticate the original measurements.
+Only the registered CSV column sets
 are admitted. It fingerprints the exact experiment, benchmark, raw and source
 commit file bytes in `historical_evidence.source_sha256`, then reopens all four
 bounded sources and rejects any changed digest before report publication. This

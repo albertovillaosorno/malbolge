@@ -1448,3 +1448,124 @@ def test_historical_benchmark_reparse_admits_native_mapping_keys(
     ):
         historical_pairs.build_report(tmp_path, TEMP)
     assert benchmark_reads == 2
+
+
+@pytest.mark.parametrize("field", ["study", "resources"])
+def test_historical_benchmark_rejects_substituted_native_source_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Native benchmark values must reflect the original retained TOML."""
+    root = _copy_source(tmp_path, PREFIX)
+    original = (root / "benchmark.toml").read_text(encoding="utf-8")
+    native = historical_pairs.tomllib.loads
+    forged = native(original)
+    if field == "study":
+        forged["study"]["id"] = "forged-history"
+    else:
+        forged["resources"]["memory_mib"] += 1
+    monkeypatch.setattr(historical_pairs.tomllib, "loads", lambda *_a: forged)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="source TOML"):
+        historical_pairs._admit_benchmark_data(original)
+
+
+@pytest.mark.parametrize("field", ["baseline", "budget"])
+def test_historical_manifest_rejects_substituted_native_source_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """The historical manifest extension and limits require source values."""
+    _copy_source(tmp_path, PREFIX)
+    name = TEMP + "/experiment.toml"
+    original = (tmp_path / name).read_text(encoding="utf-8")
+    native = historical_pairs.tomllib.loads
+    forged = native(original)
+    if field == "baseline":
+        forged["prefix_decomposition_measurement"]["baseline_strategy"] = "forged"
+    else:
+        forged["budget"]["seconds"] += 1
+
+    def tamper(text: str) -> dict[str, Any]:
+        return forged if text == original else native(text)
+
+    monkeypatch.setattr(historical_pairs.tomllib, "loads", tamper)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="source TOML"):
+        historical_pairs._load_source(tmp_path, TEMP)
+
+
+def test_historical_benchmark_source_preserves_equivalent_loader_wrapper(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A decoder with equivalent native values remains allowed."""
+    root = _copy_source(tmp_path, PREFIX)
+    original = (root / "benchmark.toml").read_text(encoding="utf-8")
+    native = historical_pairs.tomllib.loads
+    monkeypatch.setattr(
+        historical_pairs.tomllib, "loads", lambda text: native(text)
+    )
+    assert historical_pairs._admit_benchmark_data(original) == native(original)
+
+
+@pytest.mark.parametrize("raw", ["true", "1.0"])
+def test_historical_benchmark_rejects_equal_but_nonnative_source_number(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    raw: str,
+) -> None:
+    """A forged 1 must not match source bool or float under Python ==."""
+    root = _copy_source(tmp_path, PREFIX)
+    original = (root / "benchmark.toml").read_text(encoding="utf-8")
+    source = original + f"\n[unchecked_integer_test]\nvalue = {raw}\n"
+    native = historical_pairs.tomllib.loads
+    forged = native(source)
+    forged["unchecked_integer_test"]["value"] = 1
+    monkeypatch.setattr(historical_pairs.tomllib, "loads", lambda *_a: forged)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="source TOML"):
+        historical_pairs._admit_benchmark_data(source)
+
+
+def test_historical_import_cli_rejects_forged_manifest_without_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """No historical comparison is published from substituted run limits."""
+    root = _copy_source(tmp_path, PREFIX)
+    manifest = (root / "experiment.toml").read_text(encoding="utf-8")
+    native = historical_pairs.tomllib.loads
+
+    def forged(text: str) -> dict[str, Any]:
+        document = native(text)
+        if text == manifest:
+            document["budget"]["seconds"] += 1
+        return document
+
+    monkeypatch.setattr(historical_pairs.tomllib, "loads", forged)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["historical-pairs", TEMP, "--root", str(tmp_path)],
+    )
+    with pytest.raises(SystemExit, match="2"):
+        historical_pairs.main()
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "source TOML" in captured.err
+
+
+def test_historical_native_toml_comparator_rejects_foreign_nested_key() -> None:
+    """Nested adversarial key equality must not be invoked during matching."""
+
+    class HostileKey:
+        def __hash__(self) -> int:
+            return hash("identity")
+
+        def __eq__(self, _other: object) -> bool:
+            raise AssertionError("foreign historical TOML key equality executed")
+
+    expected = {"measurements": [{"identity": "v1"}]}
+    observed = {"measurements": [{HostileKey(): "v1"}]}
+    assert not historical_pairs._same_native_toml(observed, expected)

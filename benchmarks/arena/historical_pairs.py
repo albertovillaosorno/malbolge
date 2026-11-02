@@ -41,10 +41,12 @@ import json
 import string
 import sys
 from dataclasses import dataclass
+from datetime import date, datetime, time
 from hashlib import sha256
 from io import StringIO
+from math import isnan
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Never
+from typing import TYPE_CHECKING, Any, Never, cast
 
 import tomllib
 
@@ -53,6 +55,9 @@ if TYPE_CHECKING:
 
 from benchmarks.arena import analyze, csv_admission, evidence, report_output
 from scripts.validate import benchmark_protocol, experiment_manifest
+
+# Preserve source parsing even if a mutable provider is replaced by a caller.
+_SOURCE_TOML_LOADS = tomllib.loads
 
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
 MAX_CSV_HEADER_CHARS = 512
@@ -527,6 +532,45 @@ class _StudySources:
     source_commit: str
 
 
+def _same_native_toml(actual: object, expected: object) -> bool:
+    """Compare entire parsed TOML trees without foreign equality callbacks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        left = cast("dict[object, object]", actual)
+        right = cast("dict[object, object]", expected)
+        if len(left) != len(right) or any(type(key) is not str for key in left):
+            return False
+        return all(
+            type(key) is str
+            and key in left
+            and _same_native_toml(left[key], value)
+            for key, value in right.items()
+        )
+    if kind is list:
+        left = cast("list[object]", actual)
+        right = cast("list[object]", expected)
+        return len(left) == len(right) and all(
+            _same_native_toml(a, b) for a, b in zip(left, right, strict=True)
+        )
+    if kind is float and isnan(cast("float", expected)):
+        return isnan(cast("float", actual))
+    return kind in (str, int, float, bool, date, datetime, time) and actual == expected
+
+
+def _require_source_toml(document: object, text: str) -> None:
+    """Bind native parser receipts to the retained exact TOML source text."""
+    try:
+        source = _SOURCE_TOML_LOADS(text)
+        matches = _same_native_toml(document, source)
+    except Exception as error:
+        message = "historical source TOML validation failed"
+        raise HistoricalEvidenceError(message) from error
+    if not matches:
+        _fail("historical decoded values differ from source TOML")
+
+
 def _admit_benchmark_data(text: str) -> dict[str, Any]:
     """Admit only native benchmark maps after independent protocol parsing."""
     document = tomllib.loads(text)
@@ -538,6 +582,7 @@ def _admit_benchmark_data(text: str) -> dict[str, Any]:
         table = document.get(name)
         if type(table) is not dict or any(type(key) is not str for key in table):
             _fail("historical benchmark TOML requires native string keys")
+    _require_source_toml(document, text)
     return document
 
 
@@ -553,6 +598,7 @@ def _load_source(root: Path, relative: str) -> _StudySources:
     benchmark_text = sources["benchmark.toml"][0]
     manifest_data = tomllib.loads(manifest_text)
     _ = _extension(manifest_data)
+    _require_source_toml(manifest_data, manifest_text)
     extension_name = next(
         name for name in EXTENSION_CONFIG if name in manifest_data
     )
