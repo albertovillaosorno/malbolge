@@ -151,6 +151,30 @@ def test_bounded_maximum_and_one_above_limit() -> None:
     assert median_intervals.median_interval_95(within) is None
 
 
+@pytest.mark.parametrize("sample_count", [256, 1024, 4096])
+def test_large_median_rank_has_exact_independent_95_percent_boundary(
+    sample_count: int,
+) -> None:
+    """Independently verify coverage and the first failing adjacent rank."""
+    observed = median_intervals.median_interval_95(list(range(sample_count)))
+    assert observed is not None
+    rank = observed["lower"] + 1
+    assert 0 < rank < sample_count // 2
+    assert observed["upper"] == sample_count - rank
+    assert observed["sample_count"] == sample_count
+
+    # Independently compute exact binomial coefficients with math.comb, not
+    # the production recurrence. The next inward rank must already under-cover.
+    denominator = 1 << sample_count
+    tail = sum(comb(sample_count, j) for j in range(rank))
+    coverage = Fraction(denominator - 2 * tail, denominator)
+    next_tail = tail + comb(sample_count, rank)
+    next_coverage = Fraction(denominator - 2 * next_tail, denominator)
+    assert Fraction(*observed["coverage"]) == coverage
+    assert coverage >= TARGET
+    assert next_coverage < TARGET
+
+
 @pytest.mark.parametrize(
     "invalid",
     [True, 6.0, float("nan"), float("inf"), "6", None, Fraction(6)],
