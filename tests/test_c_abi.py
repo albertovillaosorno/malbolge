@@ -1928,6 +1928,66 @@ def test_guest_abi_source_ast_parser_rejects_substituted_native_receipt(
         _ = c_abi_source._parse_ast_output(source, Path("input.c"))
 
 
+@pytest.mark.parametrize("entrypoint", ["parser", "process"])
+def test_guest_abi_ast_rejects_self_restoring_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    """A self-restoring public loader cannot forge real Clang stdout."""
+    canonical = '{"kind":"TranslationUnitDecl","id":"root","inner":[{}]}'
+    actual = (
+        '{"kind":"TranslationUnitDecl","id":"root","inner":[{"kind":"PackedAttr"}]}'
+    )
+    native_loads = json.loads
+    forged = cast("dict[str, object]", native_loads(canonical))
+
+    def self_restoring(_text: str, **_kwargs: object) -> object:
+        monkeypatch.setattr(json, "loads", native_loads)
+        return forged
+
+    def fake_run(argv: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(argv, 0, stdout=actual, stderr="")
+
+    def accepted_inputs(_source: Path, _clang: Path) -> None:
+        pass
+
+    monkeypatch.setattr(json, "loads", self_restoring)
+    with pytest.raises(
+        c_abi_source.SourceAnalysisError,
+        match="decoder provider differs from source",
+    ):
+        if entrypoint == "parser":
+            _ = c_abi_source._parse_ast_output(actual, Path("input.c"))
+        else:
+            monkeypatch.setattr(c_abi_source, "_require_ast_inputs", accepted_inputs)
+            monkeypatch.setattr(sp, "run", fake_run)
+            _ = c_abi_source._run_ast(Path("input.c"), Path("clang"), "target")
+
+
+@pytest.mark.parametrize("restore_during_call", [False, True])
+def test_guest_abi_ast_returns_source_owned_nested_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    restore_during_call: bool,
+) -> None:
+    """Equivalent adapters may not mutate accepted AST nodes after parsing."""
+    canonical = '{"kind":"TranslationUnitDecl","id":"root","inner":[{}]}'
+    native_loads = json.loads
+    shared = cast("dict[str, object]", native_loads(canonical))
+
+    def shared_receipt(_text: str, **_kwargs: object) -> object:
+        if restore_during_call:
+            monkeypatch.setattr(json, "loads", native_loads)
+        return shared
+
+    monkeypatch.setattr(json, "loads", shared_receipt)
+    parsed = c_abi_source._parse_ast_output(canonical, Path("input.c"))
+    assert parsed is not shared
+    assert parsed["inner"] is not shared["inner"]
+    children = cast("list[object]", shared["inner"])
+    cast("dict[str, object]", children[0])["kind"] = "PackedAttr"
+    assert parsed["inner"] == [{}]
+
+
 def test_guest_abi_source_ast_parser_allows_equivalent_delegating_loader(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

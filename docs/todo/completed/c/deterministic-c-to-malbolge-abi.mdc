@@ -75,7 +75,9 @@ policy for undefined or target-dependent C behavior.
   source-located `MALBOLGE-ABI-001` through `MALBOLGE-ABI-008` diagnostics for
   v1 layout exclusions and requires pinned Clang 22.1.8. Its AST JSON parser
   independently corroborates substituted native-looking loader receipts against
-  Clang stdout, including nested attributes, with exact native key admission;
+  Clang stdout, including nested attributes, with exact native key admission.
+  The Clang decoder is captured on entry and source-equivalent wrappers return
+  a source-owned tree, preventing self-restoring forgery and mutable AST aliases;
   malformed/duplicate/nonfinite JSON and foreign parser faults remain typed.
 - `tests/tidy/accepted/` proves canonical layout plus recursion, function
   pointers, variadics, VLAs, flexible arrays, enums, and admitted alignment;

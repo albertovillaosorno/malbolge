@@ -386,10 +386,13 @@ def _same_native_ast_json(actual: object, expected: object) -> bool:
 def _parse_ast_output(text: str, source: Path) -> JsonObject:
     if type(text) is not str:
         _fail("Clang AST JSON requires exact native text")
+    # Capture before invocation: a substitute can restore json.loads within
+    # its own callback and hide a fabricated AST receipt.
+    decoder = json.loads
     try:
         parsed = cast(
             "object",
-            json.loads(
+            decoder(
                 text,
                 object_pairs_hook=_unique_ast_fields,
                 parse_constant=_reject_nonfinite_ast_constant,
@@ -403,7 +406,7 @@ def _parse_ast_output(text: str, source: Path) -> JsonObject:
         raise SourceAnalysisError(message) from error
     # A substituted public JSON loader must not suppress Clang's real AST
     # nodes, invalid source syntax, duplicate keys, or nonfinite constants.
-    if json.loads is not _NATIVE_AST_JSON_LOADS:
+    if decoder is not _NATIVE_AST_JSON_LOADS:
         try:
             original = cast(
                 "object",
@@ -425,6 +428,8 @@ def _parse_ast_output(text: str, source: Path) -> JsonObject:
             ) from error
         if not equivalent:
             _fail(f"Clang AST JSON decoder provider differs from source: {source}")
+        # Do not return an adapter-owned tree that can change after validation.
+        parsed = original
     if type(parsed) is not dict:
         _fail(f"Clang AST root must be an object for {source}")
     root = cast("JsonObject", parsed)
