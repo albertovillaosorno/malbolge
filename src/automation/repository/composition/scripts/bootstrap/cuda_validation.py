@@ -200,7 +200,14 @@ def _read_manifest_source(
     with stream:
         if _manifest_identity(os.fstat(stream.fileno()), label) != expected:
             _fail(f"{label} changed before read")
-        payload = stream.read(max_bytes + 1)
+        try:
+            payload = stream.read(max_bytes + 1)
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                f"cannot read {label}: host read failed ({type(error).__name__})"
+            ) from error
+        if type(payload) is not bytes:
+            _fail(f"{label} must return native bytes")
         if len(payload) != admitted.st_size:
             _fail(f"{label} changed during read or exceeds byte limit")
         if (

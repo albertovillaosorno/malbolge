@@ -1426,3 +1426,123 @@ def test_cuda_manifest_rejects_foreign_stat_proxy(
             _ = cuda_validation.load_cuda_provision_manifest(
                 tmp_path, source, LINUX_PLATFORM
             )
+
+
+@pytest.mark.parametrize("source_kind", ["manifest", "marker"])
+@pytest.mark.parametrize("value_kind", ["mutable", "subclass", "string", "missing"])
+def test_cuda_source_rejects_foreign_stream_read_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    value_kind: str,
+) -> None:
+    """Named marker and manifest authority require exact immutable read bytes."""
+    payload = _payload()
+    source = _manifest(tmp_path, payload)
+    manifest = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, source, LINUX_PLATFORM
+    )
+    if source_kind == "marker":
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path, source, LINUX_PLATFORM, downloader=_download_fixture(payload)
+        )
+        raw = (manifest.toolkit_root / cuda_validation.CUDA_PROVISION_MARKER).read_bytes()
+    else:
+        raw = source.read_bytes()
+    foreign: dict[str, object] = {
+        "mutable": bytearray(raw),
+        "subclass": _BytesSubclass(raw),
+        "string": "x" * len(raw),
+        "missing": None,
+    }
+    native_fdopen = os.fdopen
+    opened: list[object] = []
+
+    class _ForeignReadStream:
+        def __init__(self, native: object) -> None:
+            self.native = native
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            _ = cast("io.BufferedReader", self.native).close()
+
+        def fileno(self) -> int:
+            return cast("io.BufferedReader", self.native).fileno()
+
+        def read(self, _max_bytes: int) -> bytes:
+            return cast("bytes", foreign[value_kind])
+
+    def fake_fdopen(descriptor: int, mode: str) -> io.BufferedReader:
+        native = native_fdopen(descriptor, mode)
+        opened.append(native)
+        return cast("io.BufferedReader", cast("object", _ForeignReadStream(native)))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", fake_fdopen)
+        if source_kind == "manifest":
+            with pytest.raises(cuda_validation.CudaProvisionError, match="native bytes"):
+                _ = cuda_validation.load_cuda_provision_manifest(
+                    tmp_path, source, LINUX_PLATFORM
+                )
+        else:
+            assert not cuda_validation._completed_toolkit_matches(manifest)
+    assert len(opened) == 1
+    assert cast("io.BufferedReader", opened[0]).closed
+
+
+@pytest.mark.parametrize("source_kind", ["manifest", "marker"])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, TypeError, ValueError, UnprintableHostRuntimeError]
+)
+def test_cuda_source_read_types_host_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source_kind: str,
+    fault_type: type[Exception],
+) -> None:
+    """A host read exception preserves its cause and closes the source handle."""
+    payload = _payload()
+    source = _manifest(tmp_path, payload)
+    if source_kind == "marker":
+        installed = cuda_validation.provision_cuda_manifest(
+            tmp_path, source, LINUX_PLATFORM, downloader=_download_fixture(payload)
+        )
+        subject = installed / cuda_validation.CUDA_PROVISION_MARKER
+    else:
+        subject = source
+    failure = fault_type("host stream read failure")
+    native_fdopen = os.fdopen
+    opened: list[io.BufferedReader] = []
+
+    class _ReadFailureStream:
+        def __init__(self, native: io.BufferedReader) -> None:
+            self.native = native
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.native.close()
+
+        def fileno(self) -> int:
+            return self.native.fileno()
+
+        def read(self, _size: int) -> bytes:
+            raise failure
+
+    def fake_fdopen(descriptor: int, mode: str) -> io.BufferedReader:
+        native = cast("io.BufferedReader", native_fdopen(descriptor, mode))
+        opened.append(native)
+        return cast("io.BufferedReader", cast("object", _ReadFailureStream(native)))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", fake_fdopen)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="host read failed"
+        ) as caught:
+            _ = cuda_validation._read_manifest_source(subject, "CUDA authority")
+    assert caught.value.__cause__ is failure
+    assert len(opened) == 1
+    assert opened[0].closed

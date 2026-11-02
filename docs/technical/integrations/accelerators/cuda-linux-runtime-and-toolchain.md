@@ -65,6 +65,9 @@ physical directories; linked leaves and untrusted junction status cannot be
 hidden behind false-like host predicates, and status faults fail typed.
 The same physical ancestry check governs CUDA manifest and completion-marker
 reads; only native `os.stat_result` metadata may attest a tracked source inode.
+The admitted source read itself must return exact immutable native `bytes`,
+not a matching-size mutable buffer or subclass. Read-adapter faults become typed
+CUDA provision failures with the original cause retained.
 Normal bootstrap remains offline with respect to CUDA and reports a missing
 toolkit instead of installing one implicitly. The current Linux package
 surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed
