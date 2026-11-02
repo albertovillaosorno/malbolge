@@ -51,28 +51,36 @@ Protocol files and their linked experiment manifests reject invalid UTF-8
 through the stable benchmark-protocol error boundary before TOML admission.
 TOML parser capacity errors, such as oversized decimal integer tokens, also
 produce typed benchmark-protocol failures.
+
 The validator admits only physical regular evidence files whose parent
 components are unlinked directories, before reading and again after. It pins
 the opened descriptor to its device, inode, byte length, and modification/change
 timestamps. Parent and leaf statuses, and opened-descriptor checks before and
 after reading, require exact native stat receipts with integer mode, device,
 inode, size, and nanosecond timestamp identity fields before interpreting any
-status. Negative file sizes are rejected. Junction/redirect verdicts for source
-parents, initial source leaves, and
+status. Negative file sizes are rejected.
+
+Junction/redirect verdicts for source parents, initial source leaves, and
 post-read source leaves must be exact native booleans before truthiness checks.
+
 The reader rejects parent redirects, post-admission leaf replacement or in-place
 mutation, uses nonblocking/no-follow opens where available, and reads
 text in at most 64 KiB chunks under a 1 MiB admission limit. Host file
 opening must return an exact native signed descriptor before stream wrapping
-or cleanup; the wrapped stream must report that same descriptor both before and
-after reading, and mismatches cannot authorize byte checks. Linked run manifests
-and retained raw CSV evidence obey the same physical-parent boundary.
+or cleanup; the wrapped reader and raw file must be native objects bound to
+the exact opened descriptor before its context hooks can run. Descriptor
+identity is also checked before and after reading.
+
+Linked run manifests and retained raw CSV evidence obey the same
+physical-parent boundary.
 Each raw-read chunk must be exact native bytes before truthiness or length
 inspection. Native UTF-8 decoding errors retain their detail and chained cause;
 foreign decoder and CLI host exceptions never invoke their custom formatters.
+
 The retained raw CSV is checked for regular-file presence and nonzero size, not
 parsed as performance proof. TOML-escaped NUL bytes are rejected in linked run
 and raw sample paths before any host filesystem access.
+
 A performance record must reference an
 Experiment Manifest v1 with `record_kind = "run"`; commit, workload SHA-256,
 toolchain, run outcome, and canonical target-profile fingerprint where

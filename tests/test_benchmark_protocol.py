@@ -41,7 +41,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Never, Self, cast, final, override
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
+    from typing import BinaryIO
 
 import pytest
 
@@ -891,6 +892,91 @@ def test_benchmark_open_requires_native_descriptor(
         )
 
 
+def test_benchmark_stream_requires_native_reader_before_foreign_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fabricated stream cannot certify the source just by claiming its fd."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+    opened: list[int] = []
+    calls: list[str] = []
+
+    @final
+    class ForgedStream:
+        def __init__(self, descriptor: int, _mode: str) -> None:
+            opened.append(descriptor)
+            self.descriptor = descriptor
+
+        def __enter__(self) -> Self:
+            calls.append("enter")
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            calls.append("exit")
+            os.close(self.descriptor)
+
+        def fileno(self) -> int:
+            calls.append("fileno")
+            return self.descriptor
+
+        def read(self, _size: int) -> bytes:
+            calls.append("read")
+            return b"schema_version = 1\n"
+
+    monkeypatch.setattr(os, "fdopen", ForgedStream)
+    with pytest.raises(validator.BenchmarkProtocolError, match="native stream"):
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            protocol, "benchmark protocol", admitted
+        )
+    assert len(opened) == 1
+    assert calls == []
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
+@pytest.fixture
+def borrowed_benchmark_streams() -> Iterator[list[BinaryIO]]:
+    """Close duplicated descriptors owned by adversarial test wrappers."""
+    handles: list[BinaryIO] = []
+    yield handles
+    for handle in reversed(handles):
+        handle.close()
+
+
+def test_benchmark_rejects_native_reader_on_another_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    borrowed_benchmark_streams: list[BinaryIO],
+) -> None:
+    """A real native reader still must wrap the exact original descriptor."""
+    _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
+    admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
+        protocol, "benchmark protocol"
+    )
+    assert admitted is not None
+    native_fdopen = os.fdopen
+    opened: list[int] = []
+
+    def duplicate_reader(descriptor: int, mode: str) -> BinaryIO:
+        opened.append(descriptor)
+        reader = cast("BinaryIO", native_fdopen(os.dup(descriptor), mode))
+        borrowed_benchmark_streams.append(reader)
+        return reader
+
+    monkeypatch.setattr(os, "fdopen", duplicate_reader)
+    with pytest.raises(validator.BenchmarkProtocolError, match="native stream"):
+        _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
+            protocol, "benchmark protocol", admitted
+        )
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(opened[0])
+
+
 @pytest.mark.parametrize(
     "receipt",
     [
@@ -906,6 +992,7 @@ def test_benchmark_open_requires_native_descriptor(
 def test_benchmark_stream_requires_bound_native_descriptor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    borrowed_benchmark_streams: list[BinaryIO],
     receipt: object,
 ) -> None:
     """A forged stream handle cannot authorize a different OS descriptor."""
@@ -921,7 +1008,8 @@ def test_benchmark_stream_requires_bound_native_descriptor(
     @final
     class ForgedStream:
         def __init__(self, descriptor: int, mode: str) -> None:
-            self.real_stream = real_fdopen(descriptor, mode)
+            self.real_stream = cast("BinaryIO", real_fdopen(os.dup(descriptor), mode))
+            borrowed_benchmark_streams.append(self.real_stream)
             opened.append(descriptor)
 
         def __enter__(self) -> Self:
@@ -940,7 +1028,7 @@ def test_benchmark_stream_requires_bound_native_descriptor(
 
     monkeypatch.setattr(os, "fdopen", ForgedStream)
     monkeypatch.setattr(os, "fstat", forbidden_fstat)
-    with pytest.raises(validator.BenchmarkProtocolError, match="stream descriptor"):
+    with pytest.raises(validator.BenchmarkProtocolError, match="native stream"):
         _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
             protocol, "benchmark protocol", admitted
         )
@@ -949,11 +1037,12 @@ def test_benchmark_stream_requires_bound_native_descriptor(
         _ = real_fstat(opened[0])
 
 
-def test_benchmark_stream_rejects_descriptor_switch_after_read(
+def test_benchmark_rejects_switching_foreign_stream_before_hooks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    borrowed_benchmark_streams: list[BinaryIO],
 ) -> None:
-    """A mutable stream handle cannot change its identity after byte checks."""
+    """A mutable foreign handle cannot execute its descriptor hooks."""
     _, protocol, _ = _isolated_benchmark_fixture(tmp_path, monkeypatch)
     admitted = validator._regular_file_status(  # pyright: ignore[reportPrivateUsage]
         protocol, "benchmark protocol"
@@ -965,7 +1054,8 @@ def test_benchmark_stream_rejects_descriptor_switch_after_read(
     @final
     class SwitchingStream:
         def __init__(self, descriptor: int, mode: str) -> None:
-            self.real_stream = real_fdopen(descriptor, mode)
+            self.real_stream = cast("BinaryIO", real_fdopen(os.dup(descriptor), mode))
+            borrowed_benchmark_streams.append(self.real_stream)
             self.descriptor = descriptor
 
         def __enter__(self) -> Self:
@@ -979,11 +1069,11 @@ def test_benchmark_stream_rejects_descriptor_switch_after_read(
             return self.descriptor if len(calls) == 1 else -1
 
     monkeypatch.setattr(os, "fdopen", SwitchingStream)
-    with pytest.raises(validator.BenchmarkProtocolError, match="stream descriptor"):
+    with pytest.raises(validator.BenchmarkProtocolError, match="native stream"):
         _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
             protocol, "benchmark protocol", admitted
         )
-    assert len(calls) == 2
+    assert calls == []
 
 
 def test_repository_protocol_examples_are_valid_and_retain_raw_data() -> None:

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import ntpath
 import os
 import sys
@@ -495,7 +496,7 @@ def parse_protocol(text: str) -> BenchmarkProtocolRecord:
     )
 
 
-def _native_stat(status: os.stat_result, context: str) -> os.stat_result:
+def _native_stat(status: object, context: str) -> os.stat_result:
     """Admit only exact OS stat metadata before inspecting any fields.
 
     Returns:
@@ -632,6 +633,28 @@ def _read_utf8(path: Path, context: str, admitted: os.stat_result) -> str:
             except OSError:
                 pass
             raise
+        # A foreign context manager can claim the opened descriptor while
+        # executing its own hooks. Accept only the native reader and raw file
+        # object backed by the descriptor that this function owns.
+        if type(stream) is not io.BufferedReader:
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            _fail(f"{context} requires native stream receipt")
+        raw_stream = stream.raw
+        if (
+            type(raw_stream) is not io.FileIO
+            or type(raw_stream.name) is not int
+            or raw_stream.name != descriptor
+            or raw_stream.fileno() != descriptor
+            or stream.fileno() != descriptor
+        ):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
+            _fail(f"{context} requires native stream receipt")
         with stream:
             opened = stream.fileno()
             if type(opened) is not int or opened != descriptor:
