@@ -93,9 +93,12 @@ Stage ownership rechecks likewise reject foreign stat proxies.
 Existing staging paths are not truncated, and executables that appear during
 provisioning are not overwritten. Both existing and newly installed executables
 retain their native device, inode, size, mode, link count, and modification
-metadata across the pinned `--version` probe; a changed identity or contents
-mutation rejects the tool even if the reported version still matches. These
-checks do not make arbitrary concurrent ancestor directory swaps atomic.
+metadata across the pinned `--version` probe. Accepted version banners are the
+exact pinned release or that release with the selected archive's native target
+triple in parentheses; arbitrary suffixes and multiline output are rejected.
+Changed identity or contents mutation rejects the tool even when a version
+matches. These checks do not make arbitrary concurrent ancestor directory
+swaps atomic.
 UV manifest and Jig tool-source readers require a native buffered binary
 reader backed by the original native raw file descriptor. A foreign stream
 wrapper or a native reader bound to a substitute descriptor cannot supply

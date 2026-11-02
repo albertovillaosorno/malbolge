@@ -1386,3 +1386,63 @@ def test_uv_parent_walk_close_failure_does_not_leak_new_child(
             native_close(opened_children[0])
         except OSError:
             pass
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "uv 0.12.20 arbitrary",
+        "uv 0.12.20 (wrong-target)",
+        "uv 0.12.20 (x86_64-unknown-linux-gnu) trailing",
+        "uv 0.12.20 (x86_64-unknown-linux-gnu)\nother output",
+        "uv 0.12.20 \nother output",
+        "uv 0.12.20\t(x86_64-unknown-linux-gnu)",
+        "uv 0.12.20 (x86_64-unknown-linux-gnu);command",
+    ],
+)
+def test_uv_rejects_noncanonical_version_banner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output: str
+) -> None:
+    """An installed uv cannot assert pin identity with arbitrary suffix text."""
+    artifact = python_validation.uv_artifact(PLATFORM_ID)
+    root = tmp_path / "checkout"
+    executable = python_validation.uv_executable(artifact, root)
+    executable.parent.mkdir(parents=True)
+    _ = executable.write_bytes(BINARY)
+    monkeypatch.setattr(python_validation, "_run", lambda _command: output)
+    with pytest.raises(python_validation.ProvisionError, match="unexpected uv version"):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert executable.read_bytes() == BINARY
+
+
+@pytest.mark.parametrize(
+    "platform_id, banner",
+    [
+        ("linux-x86_64", "uv 0.12.20 (x86_64-unknown-linux-gnu)"),
+        ("linux-aarch64", "uv 0.12.20 (aarch64-unknown-linux-gnu)"),
+        ("macos-x86_64", "uv 0.12.20 (x86_64-apple-darwin)"),
+        ("macos-aarch64", "uv 0.12.20 (aarch64-apple-darwin)"),
+        ("windows-x86_64", "uv 0.12.20 (x86_64-pc-windows-msvc)"),
+    ],
+)
+def test_uv_accepts_canonical_target_triple_banner(
+    platform_id: str, banner: str
+) -> None:
+    """The selected native artifact's real release format remains admitted."""
+    artifact = python_validation.uv_artifact(platform_id)
+    assert python_validation._uv_version_matches(banner, artifact)
+    assert python_validation._uv_version_matches(f"uv {artifact.version}", artifact)
+
+
+class _ForeignUvVersionOutput(str):
+    """Untrusted process output must not provide foreign comparison behavior."""
+
+    def __eq__(self, _other: object) -> bool:
+        raise AssertionError("foreign version comparison executed")
+
+
+def test_uv_version_rejects_nonnative_output_without_hooks() -> None:
+    """Only an exact native version-output string may certify pinned uv."""
+    artifact = python_validation.uv_artifact(PLATFORM_ID)
+    output = _ForeignUvVersionOutput(f"uv {artifact.version}")
+    assert not python_validation._uv_version_matches(output, artifact)

@@ -516,9 +516,23 @@ def _uv_member_bytes(data: bytes, artifact: UvArtifact) -> bytes:
         raise ProvisionError(message) from error
 
 
-def _uv_version_matches(output: str, version: str) -> bool:
-    expected = f"uv {version}"
-    return output == expected or output.startswith(f"{expected} ")
+def _uv_version_matches(output: str, artifact: UvArtifact) -> bool:
+    """Admit only the exact pinned uv banner and its artifact target triple."""
+    if type(output) is not str:
+        return False
+    expected = f"uv {artifact.version}"
+    if output == expected:
+        return True
+    if not artifact.asset.startswith("uv-"):
+        return False
+    if artifact.asset.endswith(".tar.gz"):
+        extension = ".tar.gz"
+    elif artifact.asset.endswith(".zip"):
+        extension = ".zip"
+    else:
+        return False
+    target = artifact.asset[3 : -len(extension)]
+    return bool(target) and output == f"{expected} ({target})"
 
 
 def _uv_physical_provision_status(
@@ -1170,7 +1184,7 @@ def ensure_uv(
         checked = _admit_uv_provision_path(executable, required=True)
         if checked is None or _uv_executable_identity(checked) != original:
             _fail("uv executable changed during version probe")
-        if _uv_version_matches(output, artifact.version):
+        if _uv_version_matches(output, artifact):
             return executable
         _fail(f"unexpected uv version at {executable}: {output!r}")
     data = _download_uv_archive(artifact)
@@ -1186,7 +1200,7 @@ def ensure_uv(
     checked = _admit_uv_provision_path(executable, required=True)
     if checked is None or _uv_executable_identity(checked) != original:
         _fail("uv executable changed during version probe")
-    if not _uv_version_matches(output, artifact.version):
+    if not _uv_version_matches(output, artifact):
         _fail(f"unexpected provisioned uv version: {output!r}")
     return executable
 
