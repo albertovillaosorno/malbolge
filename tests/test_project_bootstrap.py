@@ -3414,6 +3414,71 @@ def test_rust_import_alias_copy_fallback_keeps_original_tool_mode(
     assert project.rust_toolchain_import_complete(destination)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX import alias identity")
+@pytest.mark.parametrize(
+    "transport", ["hardlink", "hardlink-restored-mtime", "copy", "copy-restored-mtime"]
+)
+def test_rust_import_alias_rejects_same_inode_native_tool_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, transport: str
+) -> None:
+    """A changed imported tool must not certify its neutral Cargo alias."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    native = destination / "bin/cargo"
+    alias = destination / "bin/cargo.bin"
+    original_link = os.link
+    original_status = cast(
+        "Callable[[Path, int | None], os.stat_result]",
+        vars(project)["_rust_import_alias_status"],
+    )
+    mutated = False
+
+    def link_or_copy(  # ruff: ignore[too-many-arguments]
+        source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        destination_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        if transport.startswith("copy") and destination_path == "cargo.bin":
+            raise OSError("hardlink refused for neutral alias")
+        original_link(
+            source_path, destination_path, src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd, follow_symlinks=follow_symlinks,
+        )
+
+    def change_after_alias_observation(
+        path: Path, parent_fd: int | None
+    ) -> os.stat_result:
+        nonlocal mutated
+        result = original_status(path, parent_fd)
+        if path == alias and not mutated:
+            before = native.stat()
+            _ = native.write_bytes(b"X" * len(RUST_CARGO_BYTES))
+            changed_mtime = (
+                before.st_mtime_ns if transport.endswith("restored-mtime")
+                else before.st_mtime_ns + 1_000_000_000
+            )
+            os.utime(native, ns=(before.st_atime_ns, changed_mtime))
+            mutated = True
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", link_or_copy)
+        isolated.setattr(
+            project, "_rust_import_alias_status", change_after_alias_observation
+        )
+        with pytest.raises(project.InitializationError, match="changed"):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert mutated
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
 def test_rust_import_rejects_native_leaf_replaced_before_hardlink(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

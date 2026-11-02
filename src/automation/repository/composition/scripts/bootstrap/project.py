@@ -1252,8 +1252,8 @@ def _verify_import_source_unchanged(
     original: os.stat_result,
     *,
     hardlinked: bool,
-) -> None:
-    """Reject host source changes, allowing only a hardlink's ctime update."""
+) -> os.stat_result:
+    """Return verified host source status, allowing a hardlink's ctime update."""
     current = os.stat(source, dir_fd=source_fd, follow_symlinks=False)
     if (
         type(current) is not os.stat_result
@@ -1265,6 +1265,7 @@ def _verify_import_source_unchanged(
         or (not hardlinked and current.st_ctime_ns != original.st_ctime_ns)
     ):
         _fail("import file changed during copy")
+    return current
 
 
 def _verify_import_destination_unchanged(
@@ -1321,7 +1322,7 @@ def _link_or_copy_import_file(
             )
         finally:
             os.close(input_fd)
-    _verify_import_source_unchanged(
+    _ = _verify_import_source_unchanged(
         source, source_fd, original, hardlinked=hardlinked
     )
     _verify_import_destination_unchanged(
@@ -2001,6 +2002,7 @@ def _create_rust_import_alias_at_parent(
     expected = native_status.st_dev, native_status.st_ino
     created: tuple[int, int] | None = None
     complete = False
+    source_status = native_status
     try:
         try:
             os.link(
@@ -2009,6 +2011,9 @@ def _create_rust_import_alias_at_parent(
                 src_dir_fd=parent_fd,
                 dst_dir_fd=parent_fd,
                 follow_symlinks=False,
+            )
+            source_status = _verify_import_source_unchanged(
+                native.name, parent_fd, native_status, hardlinked=True
             )
         except FileExistsError as error:
             raise InitializationError(
@@ -2083,6 +2088,9 @@ def _create_rust_import_alias_at_parent(
             or (current.st_dev, current.st_ino) != expected
         ):
             _fail("imported Rust alias changed during creation")
+        _ = _verify_import_source_unchanged(
+            native.name, parent_fd, source_status, hardlinked=False
+        )
         complete = True
     except InitializationError:
         raise

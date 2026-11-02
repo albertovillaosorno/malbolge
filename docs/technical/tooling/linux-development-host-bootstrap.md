@@ -199,7 +199,9 @@ result.
 POSIX Git and Rust imports pin physical destination directories, and reject
 in-place host binary changes in size, modification time, or executable mode
 after hardlink/copy. Copy fallbacks also reject source ctime changes; successful
-hardlinks account for their expected source ctime update.
+hardlinks account for their expected source ctime update. Rust neutral
+aliases pin post-link metadata so even changes with restored modification
+times must fail before completion.
 Git and Rust import-completion markers are created exclusively through a
 no-follow native file descriptor, so an existing regular or linked marker
 cannot be overwritten.
