@@ -138,6 +138,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   requested command. Red-first fake-receipt and real-child regressions cover
   these three boundaries. None independently attests OS execution, detached
   descendant cleanup, or the authenticity of guest measurements.
+- The target producer now binds native emitter and VM completion argument
+  lists to exact prepared launch commands before interpreting their output;
+  the emitter receives a copy so in-place mutation cannot rewrite the expected
+  command. Eight swapped/foreign-argv negatives, one mutated-command negative
+  and one patterned-input/steps positive pass in 412 post-commit target tests.
+  This is local receipt consistency, not independent child attestation.
 - Before asking a selector to register either child pipe, transport now
   requires native signed C-int stdout/stderr descriptors that are distinct;
   registration and later stream receipts must retain the same identities.
@@ -437,6 +443,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   claims. Missing, extra, linked or altered binaries fail instead of silently
   entering local stage comparisons. Candidate Malbolge verification remains
   unimplemented.
+- Retained host-C binary and text writers now preflight native, nonempty,
+  at-most-16-MiB bytes before any host write. Text also requires strict UTF-8
+  and checks encoded size, not only character length. Ten adversarial prewrite
+  tests and 331 post-commit reference-study tests pass; this cannot attest
+  durable storage or provenance after publication.
 - Newly produced host-C studies retain version-two
   `resource-controls.json` describing configured per-child Linux limits and
   the GNU `time` per-stage RSS measurement method. The runner now records

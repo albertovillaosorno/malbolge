@@ -259,6 +259,15 @@ capture allocations; it is not an OS memory quota, process sandbox, complete
 descendant containment (detached sessions remain outside the group), or a
 physically enforced study-wide budget. The pilot requires POSIX for this
 subprocess boundary and makes no Windows process-supervision claim.
+
+The target-echo producer also checks each native completed emitter and VM
+receipt against the full original launch command. This rejects a process
+result with a foreign, nonstring, or unrelated argument list; an emitter
+cannot mutate its input command to change what was requested. Ten new
+regression/positive cases and 412 post-commit target-echo tests cover native
+EOF, patterned stdin, and instruction-reporting command shapes. It confirms
+local launch/receipt consistency, not independent process or OS attestation.
+
 The cleanup signal path now requires one exact positive native child PID
 distinct from the caller's positive native process group before any group
 kill, poll or direct-child kill call. Boolean, zero, negative, caller-group,
@@ -822,6 +831,14 @@ named ordinary file; fabricated full-count acknowledgements with missing or
 altered bytes reject, including the final `study.json` emitted after analysis.
 This checks the contents observed at read-back time, not `fsync` durability,
 atomic multi-file publication, or authenticated source provenance.
+
+The producer now also rejects empty, foreign, or over-limit binary and
+text payloads **before** calling either retained-file writer. Native text is
+encoded once with strict UTF-8 and tested against the same 16-MiB byte limit
+before publication; even short text whose UTF-8 expansion exceeds that bound
+rejects. Ten pre-write negative regressions and 331 post-commit reference
+study tests cover this boundary. Read-back still cannot prove durability or
+prevent a later file mutation.
 
 The host-C reference-study producer now also uses that same checked stdout
 publisher. A short text write or flush failure causes a nonzero operator exit
