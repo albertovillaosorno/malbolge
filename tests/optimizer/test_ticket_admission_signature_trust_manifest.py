@@ -992,6 +992,69 @@ def test_signature_manifest_rejects_joint_json_provider_substitution(
         _ = decode_manifest(original_bytes)
 
 
+@pytest.mark.parametrize(
+    "providers",
+    ("encoder-only", "encoder-and-writer", "encoder-and-reader"),
+)
+def test_signature_manifest_rejects_substituted_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+    providers: str,
+) -> None:
+    """A mutable encoder class cannot erase stored signature trust keys."""
+    empty_text = encode_manifest(build_manifest(())).decode().removesuffix("\n")
+    rotated = _rotation_manifest()
+    rotated_bytes = encode_manifest(rotated)
+    rotated_mapping = _mapping(rotated_bytes)
+    assert rotated_bytes != f"{empty_text}\n".encode()
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return empty_text
+
+    with monkeypatch.context() as patch:
+        patch.setattr(manifest.json, "JSONEncoder", ForgedEncoder)
+        if providers == "encoder-and-writer":
+            patch.setattr(
+                manifest.json,
+                "dumps",
+                lambda *_args, **_kwargs: empty_text,
+            )
+        if providers == "encoder-and-reader":
+            patch.setattr(
+                manifest.json,
+                "loads",
+                lambda *_args, **_kwargs: rotated_mapping,
+            )
+        with pytest.raises(
+            SignatureTrustManifestError,
+            match="serializer disagrees with source",
+        ):
+            _ = encode_manifest(rotated)
+        with pytest.raises(
+            SignatureTrustManifestError,
+            match="serializer disagrees with source",
+        ):
+            _ = decode_manifest(rotated_bytes)
+
+
+def test_signature_manifest_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent public encoder class retains canonical source bytes."""
+    native_encoder = manifest.json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(manifest.json, "JSONEncoder", EquivalentEncoder)
+        rotated = _rotation_manifest()
+        assert decode_manifest(encode_manifest(rotated)) == rotated
+
+
 def test_signature_manifest_rejects_forged_json_writer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

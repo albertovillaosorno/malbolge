@@ -42,7 +42,6 @@ from dataclasses import dataclass
 from dataclasses import field
 from hashlib import sha256
 import json
-from json import dumps as _SOURCE_JSON_DUMPS
 import os
 from pathlib import Path
 from re import compile as compile_pattern
@@ -87,6 +86,7 @@ TICKET_ADMISSION_TELEMETRY_LINEAGE_SIGNATURE_TRUST_MANIFEST_SCHEMA_VERSION = 1
     # jig-ignore-next-line: indivisible reviewed identifier
     TICKET_ADMISSION_TELEMETRY_LINEAGE_SIGNATURE_TRUST_MANIFEST_FINGERPRINT_PREFIX
 ) = "ticket-admission-telemetry-lineage-signature-trust-manifest-v1:sha256:"
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 _MANIFEST_FINGERPRINT_PREFIX: Final = (
     "ticket-admission-telemetry-lineage-signature-trust-manifest-v1:sha256:"
 )
@@ -233,13 +233,15 @@ def _canonical_json(mapping: dict[str, object]) -> str:
         # First seal the source-owned fingerprint and reference identities.
         # A substituted public writer can mutate its mapping or return a
         # plausible but unrelated set of trusted signature keys.
-        source_text = _SOURCE_JSON_DUMPS(
-            mapping,
+        # Binding json.dumps alone still consults the mutable public
+        # JSONEncoder class. Capture source-owned bytes with the original
+        # encoder class before consulting the public writer.
+        source_text = _SOURCE_JSON_ENCODER(
             allow_nan=False,
             ensure_ascii=True,
             separators=(",", ":"),
             sort_keys=True,
-        )
+        ).encode(mapping)
         rendered = json.dumps(
             mapping,
             allow_nan=False,

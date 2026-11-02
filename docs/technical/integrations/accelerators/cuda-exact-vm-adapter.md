@@ -668,7 +668,13 @@ canonical
 key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite
 identity,
 requires globally unique references, publishes a stable SHA-256 fingerprint, and
-supports only explicit bounded reads or atomic replacement. Resolution requires
+supports only explicit bounded reads or atomic replacement. Canonical encoding
+corroborates the public JSON writer against the import-bound standard-library
+`JSONEncoder` class, not only an import-bound `json.dumps` function that still
+consults the mutable public encoder class. Encoder-only and joint provider
+substitution cannot forge trusted entries from exact source bytes; this does
+not defend modification of the underlying Python implementation. Resolution
+requires
 exact caller-supplied algorithm/key/reference coverage and exact public-key
 bytes
 matching the persisted fingerprint before building manifest-bound in-memory
