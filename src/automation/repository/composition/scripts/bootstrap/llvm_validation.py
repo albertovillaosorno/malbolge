@@ -301,7 +301,13 @@ def _runtime_ready(root: Path, platform_id: str) -> bool:
     if not all(_physical_file(path) for path in _runtime_files(root, platform_id)):
         return False
     if platform_id == LINUX_PLATFORM:
-        return _physical_directory(root / "lib/clang/22") and all(
+        # The marker alone cannot authorize symlinks, junctions or special
+        # files inserted into the header tree after initial import.
+        try:
+            _require_physical_resources(root / "lib/clang/22")
+        except LlvmImportError:
+            return False
+        return all(
             _valid_linux_wrapper(root / "jig-bin" / f"{tool}.bin", tool)
             for tool in _TOOL_NAMES
         )

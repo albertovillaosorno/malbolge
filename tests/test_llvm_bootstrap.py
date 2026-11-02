@@ -1647,6 +1647,48 @@ def test_inspection_requires_completed_neutral_aliases(tmp_path: Path) -> None:
     assert ready.path == root / "jig-bin/clang.bin"
 
 
+@pytest.mark.skipif(os.name != HOST_POSIX, reason="requires POSIX resource leaves")
+@pytest.mark.parametrize("kind", ("file-link", "directory-link", "fifo"))
+def test_llvm_inspection_rejects_nonphysical_resource_members(
+    tmp_path: Path, kind: str
+) -> None:
+    """A valid marker must not authorize redirected or special headers later."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    resources = root / "lib/clang/22"
+    assert llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+    member = resources / "foreign-resource"
+    if kind == "fifo":
+        os.mkfifo(member)
+    else:
+        outside = tmp_path / "foreign-resource-source"
+        if kind == "directory-link":
+            outside.mkdir()
+        else:
+            _ = outside.write_bytes(b"foreign header")
+        try:
+            _ = member.symlink_to(outside, target_is_directory=kind == "directory-link")
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"resource symlinks unavailable: {error}")
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
+def test_llvm_inspection_rejects_resource_traversal_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Readiness treats failed native directory scans as missing evidence."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    resources = root / "lib/clang/22"
+    native_rglob = Path.rglob
+
+    def failed_scan(path: Path, pattern: str):
+        if path == resources:
+            raise OSError("resource traversal interrupted")
+        return native_rglob(path, pattern)
+
+    monkeypatch.setattr(Path, "rglob", failed_scan)
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
 @pytest.mark.parametrize("mutation", ("bytes", "mode", "hardlink"))
 def test_llvm_inspection_rejects_modified_linux_wrapper(
     tmp_path: Path, mutation: str
