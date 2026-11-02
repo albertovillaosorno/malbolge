@@ -695,3 +695,33 @@ def test_shared_json_iterator_factory_cannot_publish_wrong_report(
         report_output.publish({"status": "ready"}, output)
     assert not output.records
     assert not output.flushed
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        {"identity": "\ud800"},
+        {"\udfff": 1},
+        {"nested": ["ok", {"value": "\udc00"}]},
+        {"nested": ("\ud83d\ude00",)},
+    ],
+    ids=["high-surrogate", "surrogate-key", "nested-low", "escaped-pair"],
+)
+def test_report_rejects_unpaired_unicode_scalar_values_before_stdout(
+    report: dict[str, object],
+) -> None:
+    """JSON escapes of invalid Unicode scalars are not evidence identities."""
+    output = _FakeStream("healthy")
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish(report, output)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_report_accepts_valid_non_bmp_unicode_scalar() -> None:
+    """An actual Unicode scalar remains a normal JSON string value."""
+    output = _FakeStream("healthy")
+    record = {"identity": "\U0001f600"}
+    report_output.publish(record, output)
+    assert output.records == [json.dumps(record, sort_keys=True, indent=2) + "\n"]
+    assert output.flushed

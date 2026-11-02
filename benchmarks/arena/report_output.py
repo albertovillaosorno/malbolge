@@ -82,6 +82,18 @@ def _flush_complete(stream: TextReportStream) -> None:
         _fail("arena report stdout flush returned noncanonical completion")
 
 
+def _native_scalar_text(value: object) -> bool:
+    """Accept native Unicode strings without unpaired UTF-16 surrogates.
+
+    Returns:
+        Whether this is a complete Unicode scalar-value sequence.
+
+    """
+    return type(value) is str and not any(
+        0xD800 <= ord(character) <= 0xDFFF for character in value
+    )
+
+
 def _admit_native_json(report: object) -> None:
     """Require a native report object and reject caller-owned JSON subclasses.
 
@@ -109,13 +121,17 @@ def _admit_native_json(report: object) -> None:
             seen.add(identity)
         if type(value) is dict:
             for key, child in value.items():
-                if type(key) is not str:
-                    message = "arena report requires native string JSON keys"
+                if not _native_scalar_text(key):
+                    message = "arena report requires native Unicode JSON keys"
                     raise TypeError(message)
                 pending.append(child)
         elif type(value) is list or type(value) is tuple:
             pending.extend(value)
-        elif value is None or kind is str or kind is int or kind is float or kind is bool:
+        elif kind is str:
+            if not _native_scalar_text(value):
+                message = "arena report requires Unicode scalar string values"
+                raise TypeError(message)
+        elif value is None or kind is int or kind is float or kind is bool:
             continue
         else:
             message = "arena report requires native JSON values and containers"
