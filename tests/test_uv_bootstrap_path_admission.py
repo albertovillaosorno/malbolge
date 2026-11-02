@@ -29,6 +29,7 @@
 from __future__ import annotations
 
 import io
+import json
 import os
 from pathlib import Path
 import stat
@@ -1135,3 +1136,38 @@ def test_binary_authority_rejects_native_stream_on_duplicated_descriptor(
         for stream in duplicate_streams:
             stream.close()
     assert path.read_bytes() == payload
+
+
+@pytest.mark.parametrize("field", ["version", "asset"])
+@pytest.mark.parametrize(
+    "unsafe_segment",
+    [
+        "NUL", "COM1.exe", "release.", "release ",
+        "uv|foreign", "uv:stream", ".. ",
+    ],
+)
+def test_uv_manifest_rejects_windows_reserved_path_segments(
+    tmp_path: Path, field: str, unsafe_segment: str
+) -> None:
+    """Pinned artifact identities must be portable physical path segments."""
+    parsed = cast(
+        "object", json.loads(python_validation.UV_MANIFEST.read_text())
+    )
+    assert isinstance(parsed, dict)
+    document = cast("dict[str, object]", parsed)
+    if field == "version":
+        document["version"] = unsafe_segment
+        document["base_url"] = (
+            f"{python_validation.UV_RELEASE_BASE}{unsafe_segment}/"
+        )
+    else:
+        artifacts_value = document["artifacts"]
+        assert isinstance(artifacts_value, dict)
+        artifacts = cast("dict[str, object]", artifacts_value)
+        selected = artifacts[PLATFORM_ID]
+        assert isinstance(selected, dict)
+        cast("dict[str, object]", selected)["asset"] = unsafe_segment
+    manifest = tmp_path / "uv.json"
+    _ = manifest.write_text(json.dumps(document))
+    with pytest.raises(python_validation.ProvisionError, match="path segment"):
+        _ = python_validation.uv_artifact(PLATFORM_ID, manifest)

@@ -39,6 +39,7 @@ from dataclasses import dataclass
 import hashlib
 import io
 import json
+import ntpath
 import os
 from pathlib import Path
 from pathlib import PureWindowsPath
@@ -177,8 +178,9 @@ def _required_path_segment(
     windows_path = PureWindowsPath(value)
     reserved = value in {".", PARENT_SEGMENT}
     has_separator = any(separator in value for separator in PATH_SEPARATORS)
-    windows_anchored = bool(windows_path.drive or windows_path.root)
-    if reserved or has_separator or windows_anchored:
+    windows_invalid = bool(windows_path.drive or windows_path.root)
+    windows_invalid = windows_invalid or ntpath.isreserved(value)
+    if reserved or has_separator or windows_invalid:
         _fail(f"{label}.{key} must be one repository-local path segment")
     return value
 
@@ -187,10 +189,10 @@ def _required_url_asset(
     document: dict[str, object],
     platform_id: str,
 ) -> str:
-    value = _required_path_segment(document, "asset", platform_id)
+    value = _required_string(document, "asset", platform_id)
     if any(marker in value for marker in URL_SUFFIX_MARKERS):
         _fail(f"{platform_id}.asset must be one URL path segment")
-    return value
+    return _required_path_segment(document, "asset", platform_id)
 
 
 def _reject_duplicate_pairs(
