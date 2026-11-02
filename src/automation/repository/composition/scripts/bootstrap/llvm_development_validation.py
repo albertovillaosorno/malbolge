@@ -364,12 +364,26 @@ def _extract_rpm_headers(
     verify_development_asset(data, asset)
     _require_physical_directories(staging, "staging")
     package_staging = staging / asset.name.removesuffix(RPM_SUFFIX)
-    try:
-        package_staging.mkdir(parents=True)
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
-        raise LlvmDevelopmentProvisionError(
-            "LLVM development package stage creation failed"
-        ) from error
+    if os.name != "posix":
+        try:
+            package_staging.mkdir(parents=True)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                "LLVM development package stage creation failed"
+            ) from error
+    else:
+        parent_descriptor = _open_physical_publication_parent(
+            package_staging, "staging", create=True
+        )
+        try:
+            try:
+                os.mkdir(package_staging.name, dir_fd=parent_descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmDevelopmentProvisionError(
+                    "LLVM development package stage creation failed"
+                ) from error
+        finally:
+            os.close(parent_descriptor)
     parent_identity = _staging_directory_identity(staging)
     package_identity = _staging_directory_identity(package_staging)
 

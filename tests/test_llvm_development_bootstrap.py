@@ -457,6 +457,52 @@ def test_rpm_cleanup_preserves_swapped_foreign_package_directory(
     assert (preserved / PACKAGE_NAME).read_bytes() == PACKAGE_BYTES
 
 
+def test_rpm_package_stage_creation_cannot_follow_late_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Package extraction cannot create a workspace in a swapped parent."""
+    if os.name != "posix":
+        pytest.skip("POSIX directory extraction boundary")
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    stage_root = root / f".temp/llvm-development-provision-{LINUX_PLATFORM}"
+    package_parent = stage_root / "packages"
+    parked = root / "parked-package-stage"
+    native_mkdir = os.mkdir
+    native_rename = os.rename
+    swapped = False
+
+    def swap_at_packages_mkdir(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if path == package_parent or (path == "packages" and dir_fd is not None):
+            native_rename(stage_root, parked)
+            _ = stage_root.symlink_to(external, target_is_directory=True)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_at_packages_mkdir)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging|package",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                root, identity, downloader=_downloader([])
+            )
+    assert swapped
+    assert list(external.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
 def test_provision_is_marker_bound_and_idempotent(tmp_path: Path) -> None:
     """An exact completed development root never redownloads package bytes."""
     identity = _identity(tmp_path)
@@ -1016,7 +1062,10 @@ def test_development_host_directory_creation_faults_are_typed(
         *,
         dir_fd: int | None = None,
     ) -> None:
-        if location == "staging" and path == stage.name and dir_fd is not None:
+        if dir_fd is not None and (
+            (location == "staging" and path == stage.name)
+            or (location == "package" and path == PACKAGE_NAME.removesuffix(".rpm"))
+        ):
             raise fault
         native_os_mkdir(path, mode, dir_fd=dir_fd)
 
