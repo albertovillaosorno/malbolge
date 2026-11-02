@@ -5196,6 +5196,104 @@ def test_portable_import_link_or_copy_rejects_forged_successful_link(
     assert source.read_bytes() == GIT_BYTES
 
 
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="requires native hardlinks")
+@pytest.mark.parametrize("pathway", ["portable", "posix"])
+def test_git_import_link_rejects_same_inode_mutation_with_restored_mtime(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pathway: str,
+) -> None:
+    """A same-inode rewrite must not pass a hardlink's physical receipt."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    target = tmp_path / "git.bin"
+    native_link = os.link
+    mutated = False
+
+    def link_then_mutate(
+        source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        destination_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal mutated
+        native_link(
+            source_path,
+            destination_path,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+        before = source.stat()
+        _ = source.write_bytes(b"X" * len(GIT_BYTES))
+        os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns))
+        mutated = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", link_then_mutate)
+        with pytest.raises(project.InitializationError, match="link|changed"):
+            if pathway == "portable":
+                _ = project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+                    str(source), str(target)
+                )
+            else:
+                parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    project._copy_import_file_at_parent(  # pyright: ignore[reportPrivateUsage]
+                        source, target, parent_fd
+                    )
+                finally:
+                    os.close(parent_fd)
+    assert mutated
+    assert source.read_bytes() == b"X" * len(GIT_BYTES)
+
+
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="requires POSIX write descriptors")
+@pytest.mark.parametrize("pathway", ["portable", "posix"])
+def test_git_import_copy_rejects_corrupted_complete_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    pathway: str,
+) -> None:
+    """A same-size destination rewrite must not certify a fallback copy."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    target = tmp_path / "git.bin"
+    native_copy = project._write_import_file_payload
+    corrupted = False
+
+    def deny_link(*_args: object, **_kwargs: object) -> None:
+        raise OSError("host does not support hardlinks")
+
+    def copy_then_corrupt(input_fd: int, output_fd: int) -> None:
+        nonlocal corrupted
+        native_copy(input_fd, output_fd)
+        _ = os.pwrite(output_fd, b"X" * len(GIT_BYTES), 0)
+        corrupted = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", deny_link)
+        isolated.setattr(project, "_write_import_file_payload", copy_then_corrupt)
+        with pytest.raises(project.InitializationError, match="changed|content|digest"):
+            if pathway == "portable":
+                _ = project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+                    str(source), str(target)
+                )
+            else:
+                parent_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    project._copy_import_file_at_parent(  # pyright: ignore[reportPrivateUsage]
+                        source, target, parent_fd
+                    )
+                finally:
+                    os.close(parent_fd)
+    assert corrupted
+    assert source.read_bytes() == GIT_BYTES
+    assert target.read_bytes() == b"X" * len(GIT_BYTES)
+
+
 @pytest.mark.parametrize("substitution", ["symlink", "file-swap"])
 def test_portable_import_copy_fallback_rejects_substituted_source(
     tmp_path: Path,

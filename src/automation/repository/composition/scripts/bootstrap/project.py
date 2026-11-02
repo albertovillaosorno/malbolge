@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import ntpath
@@ -830,6 +831,65 @@ def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
     return _inspect_cuda_manifest(root, manifest_path, platform_id)
 
 
+def _verified_import_file_digest(
+    source: Path | str,
+    admitted: os.stat_result,
+    *,
+    source_fd: int | None = None,
+) -> bytes:
+    """Hash original physical file bytes through one nonfollowing native handle."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor: int | None = None
+
+    def matches(observed: object) -> bool:
+        return (
+            type(observed) is os.stat_result
+            and stat.S_ISREG(observed.st_mode)
+            and (observed.st_dev, observed.st_ino) == (admitted.st_dev, admitted.st_ino)
+            and observed.st_size == admitted.st_size
+            and observed.st_mtime_ns == admitted.st_mtime_ns
+            and stat.S_IMODE(observed.st_mode) == stat.S_IMODE(admitted.st_mode)
+        )
+
+    try:
+        descriptor = os.open(source, flags, dir_fd=source_fd)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail("import physical file digest requires native descriptor")
+        if not matches(os.fstat(descriptor)):
+            _fail("import physical file changed before digest")
+        digest = hashlib.sha256()
+        remaining = admitted.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1_048_576))
+            if type(chunk) is not bytes or not chunk:
+                _fail("import physical file digest is incomplete")
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1) != b"":
+            _fail("import physical file digest changed size")
+        named = os.stat(source, dir_fd=source_fd, follow_symlinks=False)
+        if not matches(os.fstat(descriptor)) or not matches(named):
+            _fail("import physical file changed during digest")
+        return digest.digest()
+    except InitializationError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("import physical file digest failed") from error
+    finally:
+        if type(descriptor) is int and descriptor >= 0:
+            try:
+                os.close(descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise InitializationError(
+                    "import physical file digest close failed"
+                ) from error
+
+
 def _link_or_copy(source: str, destination: str) -> str:
     """Import a physical host file with checked hardlink receipts."""
     try:
@@ -841,6 +901,7 @@ def _link_or_copy(source: str, destination: str) -> str:
         or not stat.S_ISREG(admitted.st_mode)
     ):
         _fail("import copy source must be physical regular file")
+    pinned_digest = _verified_import_file_digest(source, admitted)
     try:
         os.link(source, destination)
     except FileExistsError as error:
@@ -922,6 +983,12 @@ def _link_or_copy(source: str, destination: str) -> str:
                     != stat.S_IMODE(finished.st_mode)
                 ):
                     _fail("import copy fallback output changed after write")
+                if (
+                    _verified_import_file_digest(destination, named_output)
+                    != pinned_digest
+                    or _verified_import_file_digest(source, admitted) != pinned_digest
+                ):
+                    _fail("import copy fallback content changed after write")
         except FileExistsError as error:
             raise InitializationError(
                 f"import target already exists: {destination}"
@@ -956,6 +1023,8 @@ def _link_or_copy(source: str, destination: str) -> str:
                 ) != expected
             ):
                 _fail("import link receipt changed source or destination")
+        if _verified_import_file_digest(source, admitted) != pinned_digest:
+            _fail("import link receipt changed source or destination content")
     return destination
 
 
@@ -1467,6 +1536,7 @@ def _link_or_copy_import_file(
         original.st_mode
     ):
         _fail("import source file must be physical")
+    pinned_digest = _verified_import_file_digest(source, original, source_fd=source_fd)
     copied_inode = original.st_dev, original.st_ino
     hardlinked = True
     try:
@@ -1492,6 +1562,22 @@ def _link_or_copy_import_file(
     _verify_import_destination_unchanged(
         destination, parent_fd, original, copied_inode=copied_inode
     )
+    if (
+        _verified_import_file_digest(source, original, source_fd=source_fd)
+        != pinned_digest
+    ):
+        _fail("import file changed during copy")
+    if not hardlinked:
+        copied = os.stat(destination.name, dir_fd=parent_fd, follow_symlinks=False)
+        if (
+            type(copied) is not os.stat_result
+            or (copied.st_dev, copied.st_ino) != copied_inode
+            or _verified_import_file_digest(
+                destination.name, copied, source_fd=parent_fd
+            )
+            != pinned_digest
+        ):
+            _fail("import file changed during copy")
     _require_local_state_parent_identity(destination.parent, parent_fd)
 
 
