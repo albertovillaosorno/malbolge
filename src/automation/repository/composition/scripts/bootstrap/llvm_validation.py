@@ -1888,10 +1888,13 @@ def _observed_tool(name: str) -> Path | None:
     """Return a native physical host tool or mark optional discovery absent."""
     try:
         resolved = shutil.which(name)
-        if type(resolved) is not str or not resolved:
+        if type(resolved) is not str or not resolved or not resolved.isprintable():
             return None
-        path = Path(resolved).resolve(strict=True)
-        return path if _physical_file(path) else None
+        reported = Path(resolved)
+        if not reported.is_absolute():
+            return None
+        path = reported.resolve(strict=True)
+        return path if str(path).isprintable() and _physical_file(path) else None
     except (OSError, ValueError, TypeError, RuntimeError):
         return None
 

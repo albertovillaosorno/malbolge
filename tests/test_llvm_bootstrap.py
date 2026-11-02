@@ -3074,6 +3074,40 @@ def test_llvm_host_which_rejects_foreign_resolution(
     assert llvm_validation._observed_tool("clang") is None  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize("kind", ("relative", "linefeed", "bidi", "ansi"))
+def test_llvm_host_which_rejects_noncanonical_tool_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Discovery may not bind a tool to cwd or a hidden-control filename."""
+    if kind == "relative":
+        tool = tmp_path / "bin/clang"
+        receipt = "bin/clang"
+        tool.parent.mkdir()
+        monkeypatch.chdir(tmp_path)
+    else:
+        suffixes = {"linefeed": "\n", "bidi": "\u202e", "ansi": "\x1b"}
+        tool = tmp_path / f"clang{suffixes[kind]}"
+        receipt = str(tool)
+    _ = tool.write_bytes(CLANG_BYTES)
+    monkeypatch.setattr(shutil, "which", lambda _name: receipt)
+    assert llvm_validation._observed_tool("clang") is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_llvm_host_which_rejects_hidden_resolved_tool_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A printable symlink name cannot conceal a control-bearing destination."""
+    target = tmp_path / "clang\n"
+    _ = target.write_bytes(CLANG_BYTES)
+    alias = tmp_path / "clang"
+    try:
+        _ = alias.symlink_to(target)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"host tool symlinks unavailable: {error}")
+    monkeypatch.setattr(shutil, "which", lambda _name: str(alias))
+    assert llvm_validation._observed_tool("clang") is None  # pyright: ignore[reportPrivateUsage]
+
+
 def test_llvm_host_which_accepts_native_tool_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
