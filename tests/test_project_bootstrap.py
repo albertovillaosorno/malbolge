@@ -346,6 +346,41 @@ def test_bootstrap_source_equivalent_toml_extended_scalars(
     assert list(observed) == [spelling.split(" ", 1)[0]]
 
 
+@pytest.mark.parametrize(
+    "providers", ("decoder-only", "joint", "self-restoring-decoder")
+)
+def test_checkout_bootstrap_json_reference_rejects_forged_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Public JSONDecoder must not change bootstrap manifest index bytes."""
+    path = tmp_path / "authority.json"
+    _ = path.write_text('{"nested":{"manifest":"source.json"}}', encoding="utf-8")
+    forged: dict[str, object] = {"nested": {"manifest": "foreign.json"}}
+    native_decoder = json.JSONDecoder
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            if providers == "self-restoring-decoder":
+                patch.setattr(json, "JSONDecoder", native_decoder)
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        if providers == "joint":
+            patch.setattr(json, "loads", forged_loads)
+        with pytest.raises(
+            project.InitializationError, match="JSON decoder differs from source"
+        ):
+            _ = project._json_document(  # pyright: ignore[reportPrivateUsage]
+                path, "test authority"
+            )
+
+
 @pytest.mark.parametrize("kind", ["JSON", "TOML"])
 def test_bootstrap_decoder_rejects_self_restoring_forgery(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str

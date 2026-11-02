@@ -36,6 +36,11 @@ run Jig without inheriting Windows executable paths or ambient PATH authority.
   and prevent source-equivalent adapters retaining mutable nested authority;
   the checkout-bootstrap suite passes 745 tests.
 
+- 2026-11-02 checkout JSONDecoder follow-up: three red-first cases show that
+  changing the public JSON decoder alone, jointly with the loader, or restoring
+  the class mid-call could fabricate CUDA bootstrap index selection. All JSON
+  bootstrap source values now agree with the import-bound decoder class; only
+  source-owned decoded mappings are returned to callers.
 - Python 3.14.6 provisions native POSIX launchers plus neutral Jig aliases under
   `.dependencies/python/3.14.6/jig-bin/` while preserving Windows `Scripts/`
   launchers. POSIX BasedPyright and pytest aliases answer only the exact

@@ -35,15 +35,15 @@ native physical status receipts and are checked before/after each read.
 The checkout initializer also binds its tracked CUDA JSON index/manifest
 and Git/Rust TOML version authorities to the original source snapshots.
 Substituting the public JSON/TOML decoders cannot change a pinned manifest
-filename, Git version, or nested native field: the import-bound parsers
-independently reproduce the original values. Source-equivalent adapters remain
-accepted; malformed original text and foreign object keys fail closed before
-untrusted equality hooks run. Each decoder is bound at invocation, preventing
-an injected adapter from restoring the module loader inside its call to evade
-source comparison. Equivalent adapters return the original source-owned nested
-tree, not an alias the adapter can mutate after validation. This is a public
-decoder-substitution boundary, not a claim to defend rewritten Python
-interpreter internals.
+filename, Git version, or nested native field. JSON receipts are checked
+against the import-bound `JSONDecoder` class on every invocation, because an
+import-bound `json.loads` still consults the replaceable public decoder class.
+Equivalent wrappers remain supported. A changed, joint or mid-call-restoring
+provider cannot replace source values; malformed text and foreign keys fail
+without invoking untrusted equality hooks. Admitted JSON trees belong to the
+independent source decoder rather than to the public loader's mutable alias.
+TOML retains its import-bound provider comparison. These are local parser
+substitution checks, not a defense against changed interpreter internals.
 Opened descriptors must be native nonnegative integers; manifest reads
 require an exact native buffered binary stream over a native `FileIO` and
 an unchanged file descriptor. Invalid wrappers, mutable buffers, or byte

@@ -70,7 +70,7 @@ from scripts.bootstrap import (
 from scripts.repository_root import repository_root
 
 ROOT: Final = repository_root(Path(__file__))
-_NATIVE_JSON_LOADS: Final = json.loads
+_NATIVE_JSON_DECODER: Final = json.JSONDecoder
 _NATIVE_TOML_LOADS: Final = tomllib.loads
 REQUIRED_ROOT_FILES: Final = (
     "Cargo.toml",
@@ -685,15 +685,19 @@ def _json_document(path: Path, label: str) -> dict[str, object]:
         parsed = cast(
             "object", decoder(text, object_pairs_hook=_reject_duplicate_pairs)
         )
-        if decoder is not _NATIVE_JSON_LOADS:
-            source = cast(
-                "object",
-                _NATIVE_JSON_LOADS(text, object_pairs_hook=_reject_duplicate_pairs),
-            )
-            if not _same_native_authority(parsed, source):
-                _fail(f"bootstrap JSON decoder differs from source: {label}")
-            # Return native source-owned values, not a mutable adapter alias.
-            parsed = source
+        # Even the import-bound json.loads consults the public JSONDecoder
+        # attribute. Independently decode every source using the bound class:
+        # a replaced or self-restoring public provider cannot forge authority.
+        source = cast(
+            "object",
+            _NATIVE_JSON_DECODER(object_pairs_hook=_reject_duplicate_pairs).decode(
+                text
+            ),
+        )
+        if not _same_native_authority(parsed, source):
+            _fail(f"bootstrap JSON decoder differs from source: {label}")
+        # Return source-owned values, never a mutable public loader alias.
+        parsed = source
     except InitializationError:
         raise
     except (
