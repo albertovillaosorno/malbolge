@@ -43,7 +43,7 @@ import argparse
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import Never, TextIO, cast
+from typing import Never, TextIO, cast, override
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -153,8 +153,20 @@ def _require_output(stream: TextIO, message: str) -> None:
         _fail("pre-Malbolge output write or flush failed")
 
 
+class _DeliveryParser(argparse.ArgumentParser):
+    """Route argparse help and error records through checked output delivery."""
+
+    @override
+    def _print_message(self, message: str, file: object = None) -> None:
+        if message:
+            # Argparse allows write-only streams; completed delivery additionally
+            # requires a real flush method and rejects any foreign receipt.
+            stream = sys.stderr if file is None else cast("TextIO", file)
+            _require_output(stream, message)
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _DeliveryParser(
         description=(
             "Reject guest C that is already known to violate deterministic "
             "pre-lowering Malbolge requirements, then run the canonical "

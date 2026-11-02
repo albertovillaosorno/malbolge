@@ -593,3 +593,49 @@ def test_preflight_valid_tool_output_flushes_complete_records(
         ("stderr", "warning output"),
         ("stderr", "flush"),
     ]
+
+
+@pytest.mark.parametrize("receipt", ["short", "boolean", "bad-flush"])
+def test_preflight_help_must_not_succeed_without_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """Argparse help is an operator record, not an unverified success exit."""
+
+    class HelpStream:
+        def write(self, message: str) -> object:
+            if receipt == "short":
+                return len(message) - 1
+            if receipt == "boolean":
+                return True
+            return len(message)
+
+        def flush(self) -> object:
+            return False if receipt == "bad-flush" else None
+
+    monkeypatch.setattr(sys, "argv", ["pre-malbolge", "--help"])
+    monkeypatch.setattr(sys, "stdout", HelpStream())
+    assert preflight.main() == preflight.CONFIGURATION_ERROR
+
+
+def test_preflight_help_delivers_complete_native_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid help retains argparse's normal zero exit after flushing stdout."""
+    outputs: list[str] = []
+
+    class HelpStream:
+        def write(self, message: str) -> int:
+            outputs.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            outputs.append("flush")
+
+    monkeypatch.setattr(sys, "argv", ["pre-malbolge", "--help"])
+    monkeypatch.setattr(sys, "stdout", HelpStream())
+    with pytest.raises(SystemExit) as caught:
+        _ = preflight.main()
+    assert caught.value.code == 0
+    assert outputs and "usage:" in outputs[0]
+    assert outputs[-1] == "flush"
