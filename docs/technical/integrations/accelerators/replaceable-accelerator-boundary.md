@@ -752,6 +752,8 @@ may contain member pairs with no direct edge, so connectivity is neither
 pairwise
 
 equivalence nor recorder lineage. Component fingerprint collisions fail closed.
+Fingerprint inputs use an import-bound `JSONEncoder` and reject public encoder
+or writer substitutions rather than collapsing distinct component identities.
 `authenticated-ticket-admission-telemetry-lineage-v1` separately binds one exact
 document fingerprint to caller-supplied recorder, completed/failed stream,
 capture

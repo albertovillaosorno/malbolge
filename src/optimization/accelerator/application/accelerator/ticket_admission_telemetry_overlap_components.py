@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
+from json import JSONEncoder as _SOURCE_JSON_ENCODER
 from json import dumps
 from typing import Final
 from typing import Never
@@ -321,12 +322,25 @@ def _component_payload(
         ),
         "members": members,
     }
-    return dumps(
-        payload,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    ).encode("utf-8")
+    try:
+        # Bound json.dumps still dereferences mutable public JSONEncoder.
+        source_text = _SOURCE_JSON_ENCODER(
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode(payload)
+        observed = dumps(
+            payload,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:
+        message = f"component JSON serializer failed: {type(error).__name__}"
+        raise TicketAdmissionTelemetryOverlapComponentsError(message) from error
+    if type(observed) is not str or observed != source_text:
+        _raise_components("component JSON serializer disagrees with source")
+    return source_text.encode("utf-8")
 
 
 def _component_fingerprint(payload: bytes) -> str:

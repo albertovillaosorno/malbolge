@@ -39,6 +39,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import json
 from typing import TYPE_CHECKING
 
 import pytest
@@ -439,6 +440,52 @@ class _ConstantDigest:
 def _constant_sha256(payload: bytes) -> _ConstantDigest:
     _ = payload
     return _ConstantDigest()
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "encoder-and-dumps"))
+def test_component_fingerprint_rejects_forged_json_encoder(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Substituted JSONEncoder cannot collapse distinct component identities."""
+    members = (
+        "ticket-admission-telemetry-document-v1:sha256:" + "0" * 64,
+        "ticket-admission-telemetry-document-v1:sha256:" + "1" * 64,
+    )
+    baseline = components_module._components(members, ())
+    assert len({c.component_fingerprint for c in baseline}) == 2
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _payload: object) -> str:
+            return "{}"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers == "encoder-and-dumps":
+            patch.setattr(components_module, "dumps", lambda *_args, **_kwargs: "{}")
+        with pytest.raises(
+            TicketAdmissionTelemetryOverlapComponentsError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = components_module._components(members, ())
+
+
+def test_components_accept_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent encoder preserves canonical component fingerprints."""
+    members = ("document.first", "document.second")
+    original = components_module._components(members, ())
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert components_module._components(members, ()) == original
 
 
 def test_component_fingerprint_collision_fails_closed(
