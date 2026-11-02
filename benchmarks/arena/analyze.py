@@ -35,22 +35,24 @@
 from __future__ import annotations
 
 import argparse
+import json
+import ntpath
+import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from fractions import Fraction
-import json
 from math import comb
 from pathlib import Path
-import sys
-from typing import Any
-from typing import Never
+from typing import Any, Never
 
-from benchmarks.arena import median_intervals
-from benchmarks.arena import multiplicity
-from benchmarks.arena import paired_exact_tests
-from benchmarks.arena import report_output
-from benchmarks.arena import study_file
-from benchmarks.arena import success_intervals
+from benchmarks.arena import (
+    median_intervals,
+    multiplicity,
+    paired_exact_tests,
+    report_output,
+    study_file,
+    success_intervals,
+)
 
 SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
@@ -179,8 +181,14 @@ def _relative(value: object, where: str) -> str:
     path = _text(value, where)
     if path.startswith(("/", BACKSLASH)) or BACKSLASH in path:
         _fail(f"{where}: expected repository-relative path")
-    if COLON in path or set(path.split("/")) & {"", CURRENT_DIR, PARENT_DIR}:
+    segments = path.split("/")
+    if COLON in path or set(segments) & {"", CURRENT_DIR, PARENT_DIR}:
         _fail(f"{where}: expected canonical repository-relative path")
+    # Evidence names are portable identifiers, not merely POSIX paths. Do
+    # not let a Linux-accepted name alias a Windows device, stream, wildcard,
+    # trailing-dot/space segment, or control-character pathname.
+    if any(ntpath.isreserved(segment) for segment in segments):
+        _fail(f"{where}: reserved Windows pathname segment")
     return path
 
 

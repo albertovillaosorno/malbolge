@@ -77,7 +77,11 @@ noncanonical paths, unsupported outcomes, malformed JSON, and an algorithm
 claiming to have verified its own successful output are rejected. All admitted
 text identities and paths require Unicode scalar values: lone UTF-16
 surrogates hidden in JSON `\u` escapes reject, while valid astral Unicode
-characters remain admissible.
+characters remain admissible. Relative evidence paths also reject Windows-
+reserved segments (device names, wildcard/control characters, and trailing
+dots/spaces) on every host, preventing a Linux study from claiming paths that
+cannot identify the same files on Windows. This is portable name admission,
+not independent proof of filesystem identity or evidence authenticity.
 
 Currently recognized costs are `elapsed_ns`, `artifact_bytes`, `runtime_steps`,
 `peak_rss_bytes`, `peak_vram_bytes`, `verifier_ns`, and optional `energy_uj`.

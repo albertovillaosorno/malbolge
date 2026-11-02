@@ -615,6 +615,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   preflight only with an exact boolean verdict. Unexpected preflight errors
   become typed import failures without formatting foreign exceptions;
   synthetic red-first regressions demonstrate these boundaries.
+- Both standalone and evidence-aware arena preflight now reject Windows-
+  reserved components in reported `experiment_manifest` and `raw_sample`
+  paths on every host. Twenty-two red-first cases cover device aliases,
+  trailing dots/spaces, wildcard names and control characters through both
+  direct and JSON admission. This establishes portable path spelling only;
+  it does not authenticate producers or physical filesystem snapshots.
 - Required evidence: reproducible run commands, retained challenge and
   algorithm identities, raw multidimensional samples, and independent verifier
   outcomes for every measured stage.

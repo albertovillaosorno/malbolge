@@ -40,10 +40,7 @@ from __future__ import annotations
 import copy
 import json
 import sys
-from typing import Any
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, Any, Never, cast
 
 import pytest
 
@@ -550,6 +547,61 @@ def test_escaped_valid_astral_unicode_is_not_rejected() -> None:
     admitted = analyze.parse_document(json.dumps(document))
     assert admitted["study"]["id"] == identity
     assert admitted["observations"][0]["raw_sample"] == raw_path
+
+
+@pytest.mark.parametrize("field", ["experiment_manifest", "raw_sample"])
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "algorithms/CON/experiment.toml",
+        "algorithms/NUL.txt",
+        "algorithms/com1/record.csv",
+        "algorithms/LPT¹/record.csv",
+        "algorithms/aux.json/record.csv",
+        "algorithms/trailing./record.csv",
+        "algorithms/trailing /record.csv",
+        "algorithms/bad?/record.csv",
+        "algorithms/bad*/record.csv",
+        "algorithms/bad\"quote/record.csv",
+        "algorithms/record\x1f.csv",
+    ],
+)
+def test_arena_evidence_paths_reject_windows_reserved_segments(
+    field: str,
+    relative: str,
+) -> None:
+    """One portable evidence ID must never alias a Windows device or ADS."""
+    document = _document()
+    document["observations"][0][field] = relative
+    with pytest.raises(analyze.ArenaError, match="reserved"):
+        _ = analyze.admit_document(document)
+    with pytest.raises(analyze.ArenaError, match="reserved"):
+        _ = analyze.parse_document(json.dumps(document))
+
+
+@pytest.mark.parametrize("cli", ["analyze", "evidence"])
+def test_cli_rejects_reserved_evidence_paths_without_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """A malformed portable name must fail before either CLI emits JSON."""
+    from benchmarks.arena import evidence
+
+    document = _document()
+    document["observations"][0]["raw_sample"] = "algorithms/CON/raw.csv"
+    source = tmp_path / "reserved-evidence.json"
+    _ = source.write_text(json.dumps(document), encoding="utf-8")
+    args = ["arena", str(source)]
+    if cli == "evidence":
+        args.extend(["--root", str(tmp_path)])
+    monkeypatch.setattr(sys, "argv", args)
+    with pytest.raises(SystemExit, match="2"):
+        (analyze.main if cli == "analyze" else evidence.main)()
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "reserved Windows pathname segment" in captured.err
 
 
 def test_direct_json_parser_admits_exact_utf8_byte_ceiling() -> None:
