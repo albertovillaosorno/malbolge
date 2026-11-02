@@ -1278,6 +1278,77 @@ class UnprintableHostRuntimeError(RuntimeError):
         raise AssertionError("host error text must not be formatted")
 
 
+@pytest.mark.parametrize(
+    "fault_type", [UnprintableHostOSError, UnprintableHostRuntimeError]
+)
+@pytest.mark.parametrize("phase", ["initial-lstat", "final-lstat", "fstat"])
+def test_cuda_authority_status_host_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+    phase: str,
+) -> None:
+    """Native authority receipts fail typed, without formatting host errors."""
+    source = _manifest(tmp_path, _payload())
+    native_lstat = Path.lstat
+    native_fstat = os.fstat
+    failure = fault_type("unprintable host status")
+    calls = 0
+
+    def lstat_fault(path: Path) -> os.stat_result:
+        nonlocal calls
+        if path == source:
+            calls += 1
+            if (phase == "initial-lstat" and calls == 1) or (
+                phase == "final-lstat" and calls == SOURCE_RECHECK
+            ):
+                raise failure
+        return native_lstat(path)
+
+    def fstat_fault(descriptor: int) -> os.stat_result:
+        if phase == "fstat":
+            raise failure
+        return native_fstat(descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", lstat_fault)
+        isolated.setattr(os, "fstat", fstat_fault)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="status"
+        ) as caught:
+            _ = cuda_validation.load_cuda_provision_manifest(
+                tmp_path, source, LINUX_PLATFORM
+            )
+    assert caught.value.__cause__ is failure
+
+
+
+def test_cuda_marker_status_host_runtime_fault_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A host status adapter fault cannot reauthorize an installed toolkit."""
+    payload = _payload()
+    source = _manifest(tmp_path, payload)
+    manifest = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, source, LINUX_PLATFORM
+    )
+    root = cuda_validation.provision_cuda_manifest(
+        tmp_path, source, LINUX_PLATFORM, downloader=_download_fixture(payload)
+    )
+    marker = root / cuda_validation.CUDA_PROVISION_MARKER
+    native_lstat = Path.lstat
+    failure = UnprintableHostRuntimeError("host marker status")
+
+    def fail_marker_status(path: Path) -> os.stat_result:
+        if path == marker:
+            raise failure
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_marker_status)
+    assert not cuda_validation._completed_toolkit_matches(manifest)
+
+
 @pytest.mark.parametrize("source_kind", ["manifest", "marker"])
 @pytest.mark.parametrize(
     "fault_type",

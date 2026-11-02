@@ -226,6 +226,26 @@ def _read_source_bytes(stream: BinaryIO, limit: int) -> bytes:
     return stream.read(limit + 1)
 
 
+def _source_path_status(path: Path, label: str) -> os.stat_result:
+    """Return native source-path metadata or a typed host-status failure."""
+    try:
+        return path.lstat()
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            f"cannot read {label}: host status failed ({type(error).__name__})"
+        ) from error
+
+
+def _source_descriptor_status(stream: BinaryIO, label: str) -> os.stat_result:
+    """Return descriptor metadata without exposing raw host adapter faults."""
+    try:
+        return os.fstat(stream.fileno())
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            f"cannot read {label}: host status failed ({type(error).__name__})"
+        ) from error
+
+
 def _read_manifest_source(
     path: Path,
     label: str,
@@ -239,7 +259,7 @@ def _read_manifest_source(
 
     """
     _check_manifest_parents(path, label)
-    admitted = path.lstat()
+    admitted = _source_path_status(path, label)
     expected = _manifest_identity(admitted, label)
     if admitted.st_size > max_bytes:
         _fail(f"{label} exceeds byte limit")
@@ -258,7 +278,10 @@ def _read_manifest_source(
     if type(descriptor) is not int or descriptor < 0:
         _fail(f"{label} must open a native descriptor")
     with _open_owned_manifest_stream(descriptor, label) as stream:
-        if _manifest_identity(os.fstat(stream.fileno()), label) != expected:
+        if (
+            _manifest_identity(_source_descriptor_status(stream, label), label)
+            != expected
+        ):
             _fail(f"{label} changed before read")
         try:
             payload = _read_source_bytes(stream, max_bytes)
@@ -271,8 +294,10 @@ def _read_manifest_source(
         if len(payload) != admitted.st_size:
             _fail(f"{label} changed during read or exceeds byte limit")
         if (
-            _manifest_identity(os.fstat(stream.fileno()), label) != expected
-            or _manifest_identity(path.lstat(), label) != expected
+            _manifest_identity(_source_descriptor_status(stream, label), label)
+            != expected
+            or _manifest_identity(_source_path_status(path, label), label)
+            != expected
         ):
             _fail(f"{label} changed during read")
         _check_manifest_parents(path, label)
