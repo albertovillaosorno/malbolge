@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import lzma
 import os
 import shutil
 import sys
@@ -4317,7 +4318,8 @@ def test_cuda_rejects_excessive_combined_archive_expansion(
 
 @pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
 @pytest.mark.parametrize(
-    "failure_type", [UnprintableHostRuntimeError, ValueError, EOFError]
+    "failure_type",
+    [UnprintableHostRuntimeError, ValueError, EOFError, lzma.LZMAError],
 )
 def test_cuda_archive_member_open_faults_remain_typed(
     tmp_path: Path,

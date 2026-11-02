@@ -43,6 +43,7 @@ import errno
 import hashlib
 import io
 import json
+import lzma
 import ntpath
 import os
 import shutil
@@ -683,6 +684,7 @@ def _safe_tar_extract(data: bytes, staging: Path) -> Path:
     except (
         OSError,
         EOFError,
+        lzma.LZMAError,
         tarfile.TarError,
         TypeError,
         ValueError,
@@ -751,6 +753,7 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
     except (
         OSError,
         EOFError,
+        lzma.LZMAError,
         zipfile.BadZipFile,
         TypeError,
         ValueError,
