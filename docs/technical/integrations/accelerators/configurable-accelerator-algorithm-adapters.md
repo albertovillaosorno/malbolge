@@ -72,7 +72,14 @@ backend IDs, so a CPU fallback cannot be mislabeled as accelerated evidence.
 versioned `schema_version = 1` TOML selection
 with independent `algorithm_id`/`backend_id`, fail-closed unknown keys, durable
 configuration-source identity, and explicit caller overrides that never mutate
-the loaded base configuration. User-selected TOML files, including explicit
+the loaded base configuration. The public TOML decoder's selected algorithm
+and backend are now corroborated against the source with a standard-library
+decoder bound at import. A substituted public decoder cannot invent selection,
+hide unknown source keys, or accept invalid TOML; the returned immutable
+selection comes from the source-bound decoder. This does not claim protection
+against compromise of the shared underlying standard-library parser.
+
+User-selected TOML files, including explicit
 symlink aliases, must resolve to stable regular source bytes within a 1 MiB
 limit; directory/FIFO input, changing files and invalid UTF-8 produce typed
 configuration errors before search starts. Direct runtime selection,

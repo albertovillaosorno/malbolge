@@ -827,3 +827,53 @@ def test_search_config_rejects_foreign_toml_key_before_hash_hooks(
     monkeypatch.setattr(tomllib, "loads", lambda text: malformed)
     with pytest.raises(SearchConfigurationError, match="native string key"):
         _ = parse_search_configuration(_config())
+
+
+def test_search_config_rejects_divergent_toml_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted decoder cannot select a different algorithm or backend."""
+    substituted = tomllib.loads(_config(algorithm=OTHER_ALGORITHM))
+    monkeypatch.setattr(tomllib, "loads", lambda text: substituted)
+
+    with pytest.raises(SearchConfigurationError, match="parser.*source"):
+        _ = parse_search_configuration(_config())
+
+
+def test_search_config_rejects_provider_that_omits_source_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted decoder cannot silently drop an unknown source key."""
+    substituted = tomllib.loads(_config())
+    monkeypatch.setattr(tomllib, "loads", lambda text: substituted)
+
+    with pytest.raises(SearchConfigurationError, match="unknown keys"):
+        _ = parse_search_configuration(_config() + "unexpected = true\n")
+
+
+def test_search_config_rejects_provider_that_invents_invalid_toml(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An invalid on-disk source cannot be admitted by a forged valid tree."""
+    substituted = tomllib.loads(_config())
+    monkeypatch.setattr(tomllib, "loads", lambda text: substituted)
+    invalid = "schema_version = ]\n"
+    with pytest.raises(SearchConfigurationError, match="invalid.*TOML"):
+        _ = parse_search_configuration(invalid)
+    path = tmp_path / "search.toml"
+    _ = path.write_text(invalid, encoding="utf-8")
+    with pytest.raises(SearchConfigurationError, match="invalid.*TOML"):
+        _ = load_search_configuration(path)
+
+
+def test_search_config_accepts_equivalent_toml_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A distinct equivalent decoder remains compatible with source authority."""
+    original_loads = tomllib.loads
+    monkeypatch.setattr(tomllib, "loads", lambda text: original_loads(text))
+
+    config = parse_search_configuration(_config())
+    assert config.selection.algorithm_id == ALGORITHM
+    assert config.selection.backend_id == BACKEND

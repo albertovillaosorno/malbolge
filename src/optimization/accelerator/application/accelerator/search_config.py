@@ -40,6 +40,7 @@ from pathlib import Path
 from stat import S_ISREG
 from struct import calcsize
 import tomllib
+from tomllib import loads as _SOURCE_TOML_LOADS
 from typing import cast
 
 from accelerator.search_selection import SearchSelection
@@ -322,13 +323,30 @@ def parse_search_configuration(
         message = "search configuration text must use the exact string type"
         raise SearchConfigurationError(message)
     try:
-        document = cast("object", tomllib.loads(text))
+        provider_document = cast("object", tomllib.loads(text))
+        # Bind the original standard-library parser at module import. A
+        # replacement provider is useful for fault injection but is not
+        # authority for the selected algorithm or backend in source text.
+        source_document = cast("object", _SOURCE_TOML_LOADS(text))
     except RecursionError as error:
         message = "invalid search configuration TOML: parser recursion limit exceeded"
         raise SearchConfigurationError(message) from error
     except tomllib.TOMLDecodeError as error:
         message = f"invalid search configuration TOML: {error}"
         raise SearchConfigurationError(message) from error
+    provider_selection = _selection_from_document(provider_document)
+    source_selection = _selection_from_document(source_document)
+    if provider_selection != source_selection:
+        message = "search configuration parser disagrees with source TOML"
+        raise SearchConfigurationError(message)
+    return SearchConfiguration(
+        selection=source_selection,
+        source=source,
+    ).validated()
+
+
+def _selection_from_document(document: object) -> SearchSelection:
+    """Admit a parser result into an immutable source-comparable selection."""
     table = _mapping(document, "search configuration")
     _reject_unknown(table, {"schema_version", "search"}, "search configuration")
     version = table.get("schema_version")
@@ -344,16 +362,12 @@ def parse_search_configuration(
     algorithm_id = _string(search, "algorithm_id")
     backend_id = _string(search, "backend_id")
     try:
-        selection = SearchSelection(
+        return SearchSelection(
             algorithm_id=algorithm_id,
             backend_id=backend_id,
         ).validated()
     except SearchSelectionError as error:
         raise SearchConfigurationError(str(error)) from error
-    return SearchConfiguration(
-        selection=selection,
-        source=source,
-    ).validated()
 
 
 def _validated_source(value: str) -> str:
