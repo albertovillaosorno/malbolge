@@ -28,6 +28,7 @@
 
 from __future__ import annotations
 
+import http.client
 import io
 import json
 import lzma
@@ -859,6 +860,35 @@ def test_uv_zip_rejects_dos_volume_label_with_executable_name() -> None:
         match="uv zip member must be a regular file",
     ):
         _ = extract(output.getvalue(), "uv.exe")
+
+
+def test_uv_download_normalizes_incomplete_http_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broken HTTP body cannot escape the typed downloader boundary."""
+    artifact = python_validation.uv_artifact(PLATFORM_ID)
+    failure = http.client.IncompleteRead(b"partial", 12)
+
+    class IncompleteResponse:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self, _limit: int) -> bytes:
+            raise failure
+
+    def incomplete_urlopen(*_args: object, **_kwargs: object) -> IncompleteResponse:
+        return IncompleteResponse()
+
+    monkeypatch.setattr(python_validation.urllib.request, "urlopen", incomplete_urlopen)
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="cannot download pinned uv artifact: IncompleteRead",
+    ) as raised:
+        _ = python_validation._download_uv_archive(artifact)
+    assert raised.value.__cause__ is failure
 
 
 def test_uv_zip_rejects_duplicate_selected_executable() -> None:

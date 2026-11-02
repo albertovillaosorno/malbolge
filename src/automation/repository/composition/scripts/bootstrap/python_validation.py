@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import io
 import json
 import lzma
@@ -464,7 +465,13 @@ def _download_uv_archive(artifact: UvArtifact) -> bytes:
         )
         with response:
             data = response.read(MAX_UV_ARCHIVE_BYTES + 1)
-    except (OSError, ValueError, TypeError, RuntimeError) as error:
+    except (
+        OSError,
+        http.client.HTTPException,
+        ValueError,
+        TypeError,
+        RuntimeError,
+    ) as error:
         message = (
             "cannot download pinned uv artifact: "
             f"{_native_error_name(error)}"
