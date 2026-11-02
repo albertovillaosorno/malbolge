@@ -176,6 +176,35 @@ def test_cuda_provision_manifest_rejects_host_dependent_paths(
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("toolkit_root", ".dependencies/cuda/CON"),
+        ("toolkit_root", ".dependencies/cuda/file."),
+        ("toolkit_root", ".dependencies/cuda/data:alternate"),
+        ("relative_path", "cuda_nvrtc/linux-x86_64/NUL.zip"),
+        ("relative_path", "cuda_nvrtc/linux-x86_64/archive:.zip"),
+        ("relative_path", "cuda_nvrtc/linux-x86_64/trailing./safe.zip"),
+    ],
+)
+def test_cuda_manifest_rejects_windows_reserved_path_components(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    """A tracked manifest may not target Windows devices or alternate streams."""
+    manifest = _manifest(tmp_path, _payload())
+    document = cast("dict[str, object]", json.loads(manifest.read_text()))
+    if field == "relative_path":
+        packages = cast("list[dict[str, object]]", document["packages"])
+        packages[0][field] = value
+    else:
+        document[field] = value
+    _ = manifest.write_text(json.dumps(document))
+    with pytest.raises(cuda_validation.CudaProvisionError, match="Windows-reserved"):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+
+
 def test_package_verification_rejects_size_and_sha_drift(
     tmp_path: Path,
 ) -> None:
@@ -1668,6 +1697,35 @@ def _zip_payload() -> bytes:
         archive.writestr(BUILTINS_MEMBER, BUILTINS_BYTES)
     return stream.getvalue()
 
+
+
+@pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
+@pytest.mark.parametrize(
+    "member_name", ["NUL.txt", "aux", "library:alternate.dll", "folder./module"]
+)
+def test_cuda_archive_rejects_windows_reserved_member_names(
+    tmp_path: Path, archive_format: str, member_name: str
+) -> None:
+    """Archive paths cannot create Windows devices, aliases or ADS members."""
+    name = f"{ARCHIVE_ROOT}/lib64/{member_name}"
+    if archive_format == _TAR_FORMAT:
+        payload = _tar_xz({name: NVRTC_BYTES})
+        package_path = PACKAGE_PATH
+    else:
+        stream = io.BytesIO()
+        with zipfile.ZipFile(stream, mode="w") as archive:
+            archive.writestr(name, NVRTC_BYTES)
+        payload = stream.getvalue()
+        package_path = _ZIP_PACKAGE_PATH
+    manifest = _manifest(tmp_path, payload, {"relative_path": package_path})
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    with pytest.raises(cuda_validation.CudaProvisionError, match="Windows-reserved"):
+        cuda_validation.extract_cuda_package(
+            payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+        )
+    assert not (tmp_path / "toolkit/lib64").exists()
 
 
 @pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])

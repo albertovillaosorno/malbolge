@@ -43,6 +43,7 @@ import errno
 import hashlib
 import io
 import json
+import ntpath
 import os
 import shutil
 import sys
@@ -339,6 +340,8 @@ def _repository_relative_path(value: str, label: str) -> Path:
         _fail(f"{label} must stay within the repository")
     if "\\" in value:
         _fail(f"{label} must use forward slashes")
+    if ntpath.isreserved(value):
+        _fail(f"{label} contains a Windows-reserved path component")
     return native
 
 
@@ -355,6 +358,8 @@ def _archive_relative_path(
         _fail("CUDA package relative_path must stay below the NVIDIA root")
     if "\\" in value:
         _fail("CUDA package relative_path must use forward slashes")
+    if ntpath.isreserved(value):
+        _fail("CUDA package relative_path contains a Windows-reserved path component")
     if any(marker in value for marker in URL_SUFFIX_MARKERS):
         _fail("CUDA package relative_path cannot contain URL suffix authority")
     package_prefix = (package_name, platform_id)
@@ -492,6 +497,8 @@ def _archive_member_path(value: str) -> PurePosixPath:
         _fail(f"CUDA archive member escapes package root: {value}")
     if "\\" in value:
         _fail("CUDA archive member must use forward slashes")
+    if ntpath.isreserved(value):
+        _fail("CUDA archive member contains a Windows-reserved path component")
     if not path.parts:
         _fail("CUDA archive member path is empty")
     return path
