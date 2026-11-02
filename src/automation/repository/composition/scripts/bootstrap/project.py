@@ -832,10 +832,25 @@ def _link_or_copy(source: str, destination: str) -> str:
                         or finished.st_size != original.st_size
                     ):
                         _fail("import copy fallback content length mismatch")
+                    current = os.fstat(input_stream.fileno())
+                    if (
+                        type(current) is not os.stat_result
+                        or not stat.S_ISREG(current.st_mode)
+                        or (current.st_dev, current.st_ino)
+                        != (original.st_dev, original.st_ino)
+                        or current.st_size != original.st_size
+                        or current.st_mtime_ns != original.st_mtime_ns
+                        or current.st_ctime_ns != original.st_ctime_ns
+                        or stat.S_IMODE(current.st_mode)
+                        != stat.S_IMODE(original.st_mode)
+                    ):
+                        _fail("import copy source changed during transfer")
         except FileExistsError as error:
             raise InitializationError(
                 f"import target already exists: {destination}"
             ) from error
+        except InitializationError:
+            raise
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             raise InitializationError("import copy fallback failed") from error
     return destination

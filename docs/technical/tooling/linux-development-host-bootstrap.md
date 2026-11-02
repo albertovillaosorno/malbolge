@@ -206,6 +206,8 @@ source-carried neutral alias (even byte-identical) rather than treating it as
 bootstrap-created; completed imports can still backfill missing aliases.
 Portable hardlink failures copy only into an exclusively created destination;
 late alias collisions never overwrite another file through a redirected leaf.
+Portable copies also recheck the open source file's physical identity, size,
+modification/change times, and permissions before admitting transferred bytes.
 Git and Rust import-completion markers are created exclusively through a
 no-follow native file descriptor, so an existing regular or linked marker
 cannot be overwritten.

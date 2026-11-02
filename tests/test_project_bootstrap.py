@@ -3368,6 +3368,56 @@ def test_portable_rust_import_copy_fallback_preserves_executable_mode(
     assert project.rust_toolchain_import_complete(destination)
 
 
+@pytest.mark.parametrize("restored_mtime", [False, True])
+def test_portable_import_copy_rejects_in_place_source_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, restored_mtime: bool
+) -> None:
+    """A copied neutral tool cannot certify a mutating host source inode."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    native = destination / "bin/cargo"
+    original_link = os.link
+    original_copy = cast(
+        "Callable[[int, int], None]", vars(project)["_write_import_file_payload"]
+    )
+    mutated = False
+
+    def refuse_alias_link(
+        input_path: str | os.PathLike[str],
+        output_path: str | os.PathLike[str],
+    ) -> None:
+        if Path(output_path) == destination / "bin/cargo.bin":
+            raise OSError("hardlinks unavailable")
+        original_link(input_path, output_path)
+
+    def copy_then_mutate(input_fd: int, output_fd: int) -> None:
+        nonlocal mutated
+        original_copy(input_fd, output_fd)
+        if not mutated:
+            before = native.stat()
+            _ = native.write_bytes(b"X" * len(RUST_CARGO_BYTES))
+            mtime = (
+                before.st_mtime_ns if restored_mtime
+                else before.st_mtime_ns + 1_000_000_000
+            )
+            os.utime(native, ns=(before.st_atime_ns, mtime))
+            mutated = True
+
+    monkeypatch.setattr(
+        project, "_supports_pinned_local_state_directories", lambda: False
+    )
+    monkeypatch.setattr(os, "link", refuse_alias_link)
+    monkeypatch.setattr(project, "_write_import_file_payload", copy_then_mutate)
+    with pytest.raises(project.InitializationError, match="source.*changed"):
+        _ = project.import_rust_toolchain(
+            source, destination, tool_ids=("cargo",), windows=False
+        )
+    assert mutated
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 @pytest.mark.parametrize("portable", [False, True])
 @pytest.mark.parametrize("alias_bytes", [b"unexpected-cargo", RUST_CARGO_BYTES])
 def test_rust_import_rejects_preexisting_physical_host_alias(
