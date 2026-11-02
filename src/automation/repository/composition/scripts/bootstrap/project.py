@@ -2317,11 +2317,16 @@ def _run_rustup_list(rustup: Path) -> tuple[str, ...]:
     output = _optional_host_command_output([str(rustup), "toolchain", "list"])
     if output is None:
         return ()
-    return tuple(
-        line.split(maxsplit=1)[0]
-        for line in output.splitlines()
-        if line.strip()
-    )
+    normalized = output.replace("\r\n", "\n")
+    if "\r" in normalized:
+        return ()
+    lines = normalized.split("\n")
+    if any(
+        not line or not line.isprintable() or line != line.strip()
+        for line in lines
+    ):
+        return ()
+    return tuple(line.split(maxsplit=1)[0] for line in lines)
 
 
 def rustup_channel_is_installed(

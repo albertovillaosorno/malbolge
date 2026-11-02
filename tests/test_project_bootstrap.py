@@ -7116,6 +7116,49 @@ def test_optional_host_probes_reject_success_with_stderr(
 
 
 @pytest.mark.parametrize(
+    "output",
+    [
+        "1.98.1\r",
+        "1.98.1\v",
+        "1.98.1 (default)\x00",
+        "1.98.1\n\n",
+        "1.98.1\n\x00invalid\n",
+        " 1.98.1 (default)\n",
+        "1.98.1 (default) \n",
+    ],
+)
+def test_rustup_inventory_rejects_hidden_or_padded_members(
+    monkeypatch: pytest.MonkeyPatch, output: str
+) -> None:
+    """Malformed list receipts cannot certify a pinned Rustup channel."""
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout=output, stderr="")
+
+    monkeypatch.setattr(sp, "run", run)
+    inventory = project._run_rustup_list(  # pyright: ignore[reportPrivateUsage]
+        Path("rustup")
+    )
+    assert not project.rustup_channel_is_installed(RUST_CHANNEL, inventory)
+
+
+def test_rustup_inventory_accepts_native_multiline_crlf(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Normal Windows line endings preserve exact installed toolchain names."""
+    output = "1.98.1-x86_64-unknown-linux-gnu (default)\r\nnightly-2026-07-14\r\n"
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout=output, stderr="")
+
+    monkeypatch.setattr(sp, "run", run)
+    inventory = project._run_rustup_list(  # pyright: ignore[reportPrivateUsage]
+        Path("rustup")
+    )
+    assert inventory == ("1.98.1-x86_64-unknown-linux-gnu", RUST_NIGHTLY_CHANNEL)
+
+
+@pytest.mark.parametrize(
     "probe", ("git-version", "git-exec", "rustup-list", "rustup-which")
 )
 @pytest.mark.parametrize(
