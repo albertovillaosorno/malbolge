@@ -80,7 +80,7 @@ owns claim-level verification evidence. That ledger may cite Git commits as
 internal decision provenance, but external facts still resolve to primary or
 authoritative bibliography records.
 
-The repository baseline currently contains 50 source/provenance records. The
+The repository baseline currently contains 55 source/provenance records. The
 coverage ledger names the required first-pass classes and 44 canonical baseline
 records spanning historical Malbolge, languages, host architectures, compiler
 tooling, accelerators, superoptimization, verification, research methodology,
@@ -98,9 +98,12 @@ to status, provenance, or sources sections,
 single-occurrence standalone uncertainty headings, source bullets with
 nonempty content, unique stable identities,
 exact validation-package pins, durable external-reference coverage, and the
-required baseline. `tests/test_bibliography.py` exercises those fail-closed
-boundaries. The validator checks repository evidence shape and coverage; it does
-not independently re-fetch or re-prove external claims. Evidence decoding
+required baseline. A source-record marker counts only outside fenced or indented
+Markdown code and HTML comments; URL-only literal examples and comments do not
+establish external-source catalog coverage. `tests/test_bibliography.py`
+exercises those fail-closed boundaries. The validator checks repository evidence
+shape and coverage; it does not independently re-fetch or re-prove external
+claims. Evidence decoding
 requires native bytes, and invalid UTF-8 retains its native decoder cause.
 Filesystem status failures and operator reports remain typed without running
 foreign exception formatter hooks. Recursive catalog and durable-reference scans

@@ -139,7 +139,9 @@ def test_llvm_banner_url_is_covered_by_existing_clang_tidy_identity() -> None:
     record = ROOT / "docs/bibliography/tooling/clang-tidy.md"
     record_text = record.read_text(encoding="utf-8")
     source_urls = validator._urls_from_text(record_text)  # pyright: ignore[reportPrivateUsage]
-    assert validator.validate_external_reference_coverage((banner_uri,), source_urls) == 1
+    assert (
+        validator.validate_external_reference_coverage((banner_uri,), source_urls) == 1
+    )
 
 
 def test_source_record_requires_explicit_uncertainty() -> None:
@@ -189,6 +191,128 @@ def test_source_record_requires_standalone_heading_lines() -> None:
     """An inline heading substring is not a real bibliography section."""
     text = _c_record().replace("## Subject", "Prose mentions ## Subject", 1)
     _expect_failure(text, "missing required heading: ## Subject")
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    (
+        ("```markdown", "```"),
+        ("~~~~", "~~~~"),
+        ("<!--", "-->"),
+    ),
+)
+def test_source_record_rejects_hidden_required_heading(
+    opening: str, closing: str
+) -> None:
+    """Code and comment text cannot masquerade as source-record sections."""
+    text = _c_record().replace("## Subject", f"{opening}\n## Subject", 1)
+    text = text.replace("## Repository Use", f"{closing}\n## Repository Use", 1)
+    _expect_failure(text, "missing required heading: ## Subject")
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    (("```", "```"), ("~~~", "~~~"), ("<!--", "-->")),
+)
+def test_source_record_rejects_hidden_uncertainty(opening: str, closing: str) -> None:
+    """An uncertainty marker inside a literal block is not a heading."""
+    text = _c_record().replace(
+        "### Unresolved", f"{opening}\n### Unresolved\n{closing}", 1
+    )
+    _expect_failure(text, "lacks explicit unresolved/uncertainty evidence")
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    (("```", "```"), ("~~~~", "~~~~"), ("<!--", "-->")),
+)
+def test_source_record_rejects_hidden_source_entry(opening: str, closing: str) -> None:
+    """A quoted source bullet inside a literal block is not evidence."""
+    text = _c_record().split("## Sources", 1)[0]
+    text = text.replace("## Provenance", "## Provenance\n\nReviewed 2026-11-02", 1)
+    text += f"## Sources\n\n{opening}\n- <https://example.com/evidence>\n{closing}\n"
+    _expect_failure(text, "Sources section contains no source entries")
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    (("```", "```"), ("~~~", "~~~"), ("<!--", "-->")),
+)
+def test_source_record_rejects_hidden_review_date(opening: str, closing: str) -> None:
+    """Literal examples cannot stand in for source retrieval dates."""
+    text = validator.DATE_PATTERN.sub("undated", _c_record())
+    text = text.replace(
+        "## Provenance", f"## Provenance\n\n{opening}\n2026-11-02\n{closing}", 1
+    )
+    _expect_failure(text, "lacks a dated retrieval/review provenance marker")
+
+
+def test_source_record_rejects_indented_code_review_date() -> None:
+    """An indented code example is not a dated review marker."""
+    text = validator.DATE_PATTERN.sub("undated", _c_record())
+    text = text.replace("## Provenance", "## Provenance\n\n    2026-11-02", 1)
+    _expect_failure(text, "lacks a dated retrieval/review provenance marker")
+
+
+def test_source_record_accepts_real_evidence_around_literal_examples() -> None:
+    """Quoted Markdown examples cannot duplicate actual record headings."""
+    text = _c_record().replace(
+        "## Evidence",
+        """## Evidence
+
+````markdown
+```
+## Subject
+## Sources
+### Unresolved
+- <https://example.com/fictional>
+```
+````
+
+<!--
+## Status
+### Unresolved
+-->
+""",
+        1,
+    )
+    validator.validate_source_text(text, "fixture")
+    validator.validate_unique_stable_identifiers((("fixture", text),))
+
+
+def test_hidden_stable_identifier_does_not_satisfy_source_identity() -> None:
+    """A code sample cannot become the record's canonical stable ID."""
+    identifier = "- Stable identifier: ISO/IEC 9899:2024"
+    text = _c_record().replace(identifier, "- Alias: ISO/IEC 9899:2024")
+    text = text.replace(
+        "## Identity And Version",
+        f"## Identity And Version\n\n```\n{identifier}\n```",
+        1,
+    )
+    with pytest.raises(
+        validator.BibliographyValidationError,
+        match="must declare exactly one stable identifier",
+    ):
+        validator.validate_unique_stable_identifiers((("fixture", text),))
+
+
+@pytest.mark.parametrize(
+    "hidden",
+    (
+        "```\nhttps://invalid.example/hidden\n```",
+        "~~~\nhttps://invalid.example/hidden\n~~~",
+        "<!-- https://invalid.example/hidden -->",
+    ),
+)
+def test_bibliography_hidden_links_cannot_claim_source_coverage(
+    hidden: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Catalog coverage counts only public source URLs, not literal examples."""
+    monkeypatch.setattr(validator, "_source_record_paths", lambda: (C_RECORD,))
+    monkeypatch.setattr(
+        validator, "_read_regular_text", lambda _path: f"## Sources\n{hidden}\n"
+    )
+    assert validator._bibliography_source_urls() == ()  # pyright: ignore[reportPrivateUsage]
 
 
 def test_source_record_rejects_repeated_required_heading() -> None:

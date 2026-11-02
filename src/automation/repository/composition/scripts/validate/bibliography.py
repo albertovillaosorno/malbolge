@@ -539,6 +539,59 @@ def _validate_topology() -> None:
     _validate_templates()
 
 
+def _visible_source_text(text: str) -> str:
+    """Exclude Markdown literal blocks from source-record evidence markers.
+
+    Returns:
+        Line-preserving text with fenced, indented, and commented content hidden.
+
+    """
+    visible: list[str] = []
+    fence_character: str | None = None
+    fence_width = 0
+    in_comment = False
+    for line in text.splitlines():
+        if fence_character is not None:
+            candidate = line.lstrip(" ")
+            if len(line) - len(candidate) <= 3:
+                marker = candidate.rstrip(" \t")
+                if len(marker) >= fence_width and all(
+                    character == fence_character for character in marker
+                ):
+                    fence_character = None
+            visible.append("")
+            continue
+        if not in_comment:
+            if line.startswith(("    ", "\t")):
+                visible.append("")
+                continue
+            marker = re.match(r" {0,3}(`{3,}|~{3,})", line)
+            if marker is not None:
+                fence_character = marker.group(1)[0]
+                fence_width = len(marker.group(1))
+                visible.append("")
+                continue
+        pieces: list[str] = []
+        cursor = 0
+        while cursor < len(line):
+            if in_comment:
+                end = line.find("-->", cursor)
+                if end < 0:
+                    break
+                in_comment = False
+                cursor = end + 3
+            else:
+                start = line.find("<!--", cursor)
+                if start < 0:
+                    pieces.append(line[cursor:])
+                    break
+                pieces.append(line[cursor:start])
+                in_comment = True
+                cursor = start + 4
+        visible.append("".join(pieces))
+    return "\n".join(visible)
+
+
 def _heading_positions(text: str, label: str) -> tuple[int, ...]:
     lines = text.splitlines()
     positions: list[int] = []
@@ -612,17 +665,18 @@ def _validate_source_entries(text: str, label: str) -> None:
 
 def validate_source_text(text: str, label: str = "source record") -> None:
     """Validate one bibliography source-record body."""
-    _ = _heading_positions(text, label)
+    visible = _visible_source_text(text)
+    _ = _heading_positions(visible, label)
     for heading in NONEMPTY_SECTION_HEADINGS:
-        if not _section(text, heading):
+        if not _section(visible, heading):
             _fail(f"{label} {heading.removeprefix('## ')} section is empty")
     _validate_placeholders(text, label)
-    _validate_dated_uncertainty(text, label)
-    _validate_source_entries(text, label)
+    _validate_dated_uncertainty(visible, label)
+    _validate_source_entries(visible, label)
 
 
 def _stable_identifier(text: str, label: str) -> str:
-    section = _section(text, "## Identity And Version")
+    section = _section(_visible_source_text(text), "## Identity And Version")
     prefix = "- Stable identifier: "
     identifiers = tuple(
         line.removeprefix(prefix).strip()
@@ -824,7 +878,7 @@ def _durable_external_references() -> tuple[str, ...]:
 def _bibliography_source_urls() -> tuple[str, ...]:
     urls: set[str] = set()
     for path in _source_record_paths():
-        urls.update(_urls_from_text(_read_regular_text(path)))
+        urls.update(_urls_from_text(_visible_source_text(_read_regular_text(path))))
     return tuple(sorted(urls))
 
 

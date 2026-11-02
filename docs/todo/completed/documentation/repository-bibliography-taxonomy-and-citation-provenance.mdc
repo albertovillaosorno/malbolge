@@ -79,6 +79,9 @@ repository policy merely because they are cited.
   evidence, nonempty source lists, and baseline coverage.
 - `tests/test_bibliography.py` covers successful repository validation and
   fail-closed uncertainty, placeholder, date, source-list, and heading-order
-  cases. Empty `legal-and-regulatory/` and `libraries/` categories remain honest
-  catalogs instead of fabricated evidence.
+  cases. Fenced code, indented code, and HTML comments cannot impersonate
+  Markdown section headings, stable IDs, review dates, source entries, or
+  externally cataloged URLs; visible evidence surrounding literal examples
+  remains valid. Empty `legal-and-regulatory/` and `libraries/` categories remain
+  honest catalogs instead of fabricated evidence.
 - Prerequisite completion evidence: `documentation-authority-taxonomy`.
