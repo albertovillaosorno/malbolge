@@ -4481,6 +4481,191 @@ def test_import_marker_writer_never_overwrites_linked_foreign_file(
     assert foreign.read_bytes() == original
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_import_marker_writer_never_creates_in_swapped_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
+) -> None:
+    """Exclusive marker creation must not follow a late foreign parent."""
+    parent = tmp_path / "import-root"
+    parent.mkdir()
+    marker = parent / project.GIT_IMPORT_MARKER
+    parked = tmp_path / "parked-import"
+    foreign = tmp_path / "foreign-import"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"external data")
+    native_open = os.open
+    swapped = False
+    foreign_created = False
+
+    def swap_at_marker_create(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped, foreign_created
+        if (
+            not swapped
+            and (path == marker or path == marker.name)
+            and flags & os.O_CREAT
+        ):
+            _ = parent.rename(parked)
+            if substitution == "symlink":
+                _ = parent.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(parent)
+            swapped = True
+        if dir_fd is None:
+            descriptor = native_open(path, flags, mode)
+        else:
+            descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if swapped:
+            foreign_root = foreign if substitution == "symlink" else parent
+            foreign_created |= (foreign_root / marker.name).exists()
+        return descriptor
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", swap_at_marker_create)
+        with pytest.raises(project.InitializationError, match="import marker"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert swapped
+    assert not foreign_created
+    foreign_root = foreign if substitution == "symlink" else parent
+    assert (foreign_root / "sentinel").read_bytes() == b"external data"
+    assert not (foreign_root / marker.name).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_import_marker_writer_rejects_parent_swap_during_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
+) -> None:
+    """A failed marker cannot survive a late parent swap or touch outsiders."""
+    parent = tmp_path / "owned-import"
+    parent.mkdir()
+    marker = parent / project.GIT_IMPORT_MARKER
+    parked = tmp_path / "parked-import"
+    foreign = tmp_path / "foreign-import"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"external data")
+    native_write = os.write
+    swapped = False
+
+    def swap_before_write(descriptor: int, content: bytes) -> int:
+        nonlocal swapped
+        if not swapped:
+            _ = parent.rename(parked)
+            if substitution == "symlink":
+                _ = parent.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(parent)
+            swapped = True
+        return native_write(descriptor, content)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "write", swap_before_write)
+        with pytest.raises(project.InitializationError, match="import marker parent"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert swapped
+    foreign_root = foreign if substitution == "symlink" else parent
+    assert (foreign_root / "sentinel").read_bytes() == b"external data"
+    assert not (foreign_root / marker.name).exists()
+    assert not (parked / marker.name).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+def test_import_marker_writer_preserves_original_fault_after_parent_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed cleanup close does not mask the original marker rejection."""
+    marker = tmp_path / project.GIT_IMPORT_MARKER
+    native_open = os.open
+    native_close = os.close
+    parent_descriptor: int | None = None
+    close_fault = RuntimeError("parent descriptor close failed")
+
+    def tracked_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal parent_descriptor
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if path == tmp_path:
+            parent_descriptor = descriptor
+        return descriptor
+
+    def failing_close(descriptor: int) -> None:
+        native_close(descriptor)
+        if descriptor == parent_descriptor:
+            raise close_fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", tracked_open)
+        isolated.setattr(os, "close", failing_close)
+        with pytest.raises(project.InitializationError, match="requires native text"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, cast("str", cast("object", 42))
+            )
+    assert parent_descriptor is not None
+    with pytest.raises(OSError):
+        _ = os.fstat(parent_descriptor)
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+def test_import_marker_writer_types_parent_close_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Parent close faults are typed even after complete marker byte receipt."""
+    marker = tmp_path / project.GIT_IMPORT_MARKER
+    native_open = os.open
+    native_close = os.close
+    parent_descriptor: int | None = None
+    fault = RuntimeError("host marker parent close failure")
+
+    def tracked_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal parent_descriptor
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if path == tmp_path:
+            parent_descriptor = descriptor
+        return descriptor
+
+    def failing_close(descriptor: int) -> None:
+        native_close(descriptor)
+        if descriptor == parent_descriptor:
+            raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", tracked_open)
+        isolated.setattr(os, "close", failing_close)
+        with pytest.raises(
+            project.InitializationError, match="import marker parent close failed"
+        ) as caught:
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert caught.value.__cause__ is fault
+    assert parent_descriptor is not None
+    with pytest.raises(OSError):
+        _ = os.fstat(parent_descriptor)
+    assert marker.read_bytes() == GIT_MARKER_BYTES
+
+
 @pytest.mark.parametrize(
     "marker_name", [project.GIT_IMPORT_MARKER, project.RUST_IMPORT_MARKER]
 )
@@ -4495,13 +4680,21 @@ def test_import_marker_writer_rejects_nonempty_created_descriptor_before_write(
     injected = False
     attempted_write = False
 
-    def forged_open(path: Path, flags: int, mode: int = 0o777) -> int:
+    def forged_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
         nonlocal injected
-        if path == marker and flags & os.O_CREAT:
+        if path in (marker, marker.name) and flags & os.O_CREAT:
             injected = True
             _ = marker.write_bytes(original)
-            return native_open(path, os.O_WRONLY)
-        return native_open(path, flags, mode)
+            if dir_fd is not None:
+                return native_open(marker.name, os.O_WRONLY, dir_fd=dir_fd)
+            return native_open(marker, os.O_WRONLY)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
 
     def tracked_write(descriptor: int, content: bytes) -> int:
         nonlocal attempted_write
@@ -4657,9 +4850,12 @@ def test_import_marker_writer_rejects_forged_open_file_status(
         def __getattr__(self, name: str) -> object:
             return cast("object", getattr(self.native, name))
 
-    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
-        descriptor = real_open(path, flags, mode)
-        if path == marker:
+    def tracked_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> int:
+        descriptor = real_open(path, flags, mode, dir_fd=dir_fd)
+        if path in (marker, marker.name):
             opened.append(descriptor)
         return descriptor
 
@@ -4687,14 +4883,28 @@ def test_import_marker_writer_close_fault_invalidates_marker(
 ) -> None:
     """A failed descriptor close cannot leave a complete import marker."""
     marker = tmp_path / project.GIT_IMPORT_MARKER
+    native_open = os.open
     native_close = os.close
     fault = OSError("host marker close failed")
+    marker_descriptor: int | None = None
+
+    def tracked_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> int:
+        nonlocal marker_descriptor
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if path in (marker, marker.name) and flags & os.O_CREAT:
+            marker_descriptor = descriptor
+        return descriptor
 
     def failing_close(descriptor: int) -> None:
         native_close(descriptor)
-        raise fault
+        if descriptor == marker_descriptor:
+            raise fault
 
     with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", tracked_open)
         isolated.setattr(os, "close", failing_close)
         with pytest.raises(
             project.InitializationError, match="import marker close failed"

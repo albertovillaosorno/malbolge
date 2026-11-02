@@ -954,8 +954,62 @@ def git_import_complete(git_root: Path) -> bool:
     )
 
 
+def _open_import_marker_parent(marker: Path) -> int:
+    """Pin an existing physical marker parent before exclusive creation."""
+    parent = marker.parent
+    try:
+        _reject_authority_parent_redirects(marker)
+        before = parent.lstat()
+        if type(before) is not os.stat_result or not stat.S_ISDIR(before.st_mode):
+            _fail("import marker parent must be a physical directory")
+        return _open_local_state_parent(
+            parent, expected_identity=(before.st_dev, before.st_ino)
+        )
+    except InitializationError as error:
+        raise InitializationError(
+            "import marker parent changed before creation"
+        ) from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot open import marker parent") from error
+
+
+def _require_import_marker_parent(marker: Path, descriptor: int) -> None:
+    """Recheck the opened parent identity, not just its pathname."""
+    try:
+        _require_local_state_parent_identity(marker.parent, descriptor)
+    except InitializationError as error:
+        raise InitializationError(
+            "import marker parent changed during creation"
+        ) from error
+
+
+def _import_marker_leaf_status(marker: Path, parent_fd: int | None) -> os.stat_result:
+    if parent_fd is None:
+        return marker.lstat()
+    return os.stat(marker.name, dir_fd=parent_fd, follow_symlinks=False)
+
+
 def _write_import_completion_marker(marker: Path, content: str) -> None:
     """Create a complete physical import marker without following a linked leaf."""
+    parent_fd = _open_import_marker_parent(marker) if os.name == "posix" else None
+    try:
+        _write_import_completion_marker_at_parent(marker, content, parent_fd)
+    except BaseException:
+        if parent_fd is not None:
+            with suppress(OSError, ValueError, TypeError, RuntimeError):
+                os.close(parent_fd)
+        raise
+    if parent_fd is not None:
+        try:
+            os.close(parent_fd)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise InitializationError("import marker parent close failed") from error
+
+
+def _write_import_completion_marker_at_parent(
+    marker: Path, content: str, parent_fd: int | None
+) -> None:
+    """Publish marker bytes through the owned parent descriptor when possible."""
     _reject_authority_parent_redirects(marker)
     if type(content) is not str:
         _fail("import marker requires native text")
@@ -979,7 +1033,11 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
         | getattr(os, "O_BINARY", 0)
     )
     try:
-        descriptor = os.open(marker, flags, 0o600)
+        if parent_fd is None:
+            descriptor = os.open(marker, flags, 0o600)
+        else:
+            _require_import_marker_parent(marker, parent_fd)
+            descriptor = os.open(marker.name, flags, 0o600, dir_fd=parent_fd)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise InitializationError("import marker creation failed") from error
     if type(descriptor) is not int or descriptor < 0:
@@ -989,7 +1047,7 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
     try:
         try:
             opened = os.fstat(descriptor)
-            physical = marker.lstat()
+            physical = _import_marker_leaf_status(marker, parent_fd)
             if (
                 type(opened) is not os.stat_result
                 or type(physical) is not os.stat_result
@@ -998,16 +1056,17 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
                 or opened.st_nlink != 1
                 or opened.st_size != 0
                 or physical.st_size != 0
-                or (opened.st_dev, opened.st_ino)
-                != (physical.st_dev, physical.st_ino)
+                or (opened.st_dev, opened.st_ino) != (physical.st_dev, physical.st_ino)
             ):
                 _fail("import marker descriptor does not own physical leaf")
             owned = opened.st_dev, opened.st_ino
+            if parent_fd is not None:
+                _require_import_marker_parent(marker, parent_fd)
             written = os.write(descriptor, payload)
             if type(written) is not int or written != len(payload):
                 _fail("import marker short or invalid byte count")
             finished = os.fstat(descriptor)
-            published = marker.lstat()
+            published = _import_marker_leaf_status(marker, parent_fd)
             if (
                 type(finished) is not os.stat_result
                 or type(published) is not os.stat_result
@@ -1018,8 +1077,12 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
                 or (published.st_dev, published.st_ino) != owned
             ):
                 _fail("import marker changed during publication")
+            if parent_fd is not None:
+                _require_import_marker_parent(marker, parent_fd)
             if _read_authority_bytes(marker) != payload:
                 _fail("import marker content mismatch")
+            if parent_fd is not None:
+                _require_import_marker_parent(marker, parent_fd)
             complete = True
         except InitializationError:
             raise
@@ -1034,12 +1097,15 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
         finally:
             if not complete and owned is not None:
                 try:
-                    physical = marker.lstat()
+                    physical = _import_marker_leaf_status(marker, parent_fd)
                     if (
                         type(physical) is os.stat_result
                         and (physical.st_dev, physical.st_ino) == owned
                     ):
-                        marker.unlink()
+                        if parent_fd is None:
+                            marker.unlink()
+                        else:
+                            os.unlink(marker.name, dir_fd=parent_fd)
                 except (OSError, ValueError, TypeError, RuntimeError):
                     pass
 
