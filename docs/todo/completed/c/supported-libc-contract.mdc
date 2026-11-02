@@ -90,6 +90,10 @@ routines without hidden host shortcuts.
   malformed/duplicate/nonfinite and nested hostile-key cases now reject; a
   source-equivalent decoder continues to pass. Original parser diagnostics and
   foreign equality isolation are retained.
+- A further 2026-11-02 Clang AST source receipt fix captures the JSON
+  provider before invocation, rejecting self-restoring forged process/direct
+  decoder results; equivalent wrappers now return only independent source
+  objects. Three red-first AST restoration/alias cases guard this boundary.
 - A third 2026-11-02 follow-up keeps unexpected decoder dependency faults
   typed for primary and independently corroborating Clang AST loads. Nine
   red-first cases previously exposed raw host exceptions, now eleven test cases

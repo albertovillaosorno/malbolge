@@ -912,6 +912,79 @@ def test_libc_clang_ast_rejects_substituted_clean_tree(
             )
 
 
+@pytest.mark.parametrize("entrypoint", ["direct", "process"])
+def test_libc_ast_decoder_rejects_self_restoring_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    """The decoder at invocation cannot self-restore to falsify Clang AST."""
+    actual = (
+        '{"kind":"TranslationUnitDecl","id":"0x1","inner":'
+        '[{"kind":"CallExpr","id":"0x2"}]}'
+    )
+    native = json.loads
+    forged = cast("dict[str, object]", native(actual))
+    forged["inner"] = [{}]
+    config = _libc_test_ast_config() if entrypoint == "process" else None
+
+    def restoring(_text: str, **_kwargs: object) -> object:
+        monkeypatch.setattr(json, "loads", native)
+        return forged
+
+    monkeypatch.setattr(json, "loads", restoring)
+    if entrypoint == "process":
+        monkeypatch.setattr(c_libc_source, "_require_clang", lambda _p: None)
+
+        def run(command: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+            return sp.CompletedProcess(command, 0, stdout=actual, stderr="")
+
+        monkeypatch.setattr(sp, "run", run)
+
+    with pytest.raises(c_libc_source.LibcSourceError, match="JSON decoder differs"):
+        if entrypoint == "direct":
+            _ = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+                actual, ACCEPTED
+            )
+        else:
+            _ = c_libc_source._run_ast(  # pyright: ignore[reportPrivateUsage]
+                ACCEPTED, config
+            )
+
+
+def test_libc_ast_decoder_equivalent_adapter_cannot_mutate_returned_root(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An accepted adapter must not own the returned mutable AST graph."""
+    actual = '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}'
+    native = json.loads
+    captured: list[object] = []
+
+    def delegated(text: str, *, object_pairs_hook: object, parse_constant: object) -> object:
+        parsed = cast(
+            "object",
+            native(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+                ),
+                parse_constant=cast("Callable[[str], object]", parse_constant),
+            ),
+        )
+        captured.append(parsed)
+        return parsed
+
+    monkeypatch.setattr(json, "loads", delegated)
+    admitted = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+        actual, ACCEPTED
+    )
+    assert admitted == captured[0]
+    assert admitted is not captured[0]
+    foreign = cast("dict[str, object]", captured[0])
+    foreign_children = cast("list[object]", foreign["inner"])
+    cast("dict[str, object]", foreign_children[0])["kind"] = "ForgedCall"
+    assert admitted["inner"] == [{}]
+
+
 @pytest.mark.parametrize("fault", ["duplicate", "nonfinite", "syntax"])
 def test_libc_clang_ast_rejects_invalid_source_despite_decoder_shim(
     monkeypatch: pytest.MonkeyPatch, fault: str

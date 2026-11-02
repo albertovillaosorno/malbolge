@@ -325,10 +325,12 @@ def _same_native_ast(received: object, original: object) -> bool:
     return kind in (str, int, bool, float, type(None)) and received == original
 
 
-def _corroborate_ast_json(text: str, receipt: object, source: Path) -> None:
-    """Corroborate the public decoder against original Clang stdout bytes."""
-    if json.loads is _NATIVE_AST_JSON_LOADS:
-        return
+def _corroborate_ast_json(
+    text: str, receipt: object, source: Path, *, decoder: object
+) -> object:
+    """Corroborate Clang stdout and return a source-owned AST tree."""
+    if decoder is _NATIVE_AST_JSON_LOADS:
+        return receipt
     try:
         expected = cast(
             "object",
@@ -354,15 +356,20 @@ def _corroborate_ast_json(text: str, receipt: object, source: Path) -> None:
     ) as error:
         message = f"invalid Clang AST JSON for {source}"
         raise LibcSourceError(message) from error
+    # The adapter may retain a mutable alias. Only the independently parsed
+    # source tree is admissible after a successful equivalence check.
+    return expected
 
 
 def _parse_ast(text: str, source: Path) -> JsonObject:
     if type(text) is not str:
         _fail("Clang AST JSON requires exact str text")
+    # A substituted provider may restore the public loader during invocation.
+    decoder = json.loads
     try:
         parsed = cast(
             "object",
-            json.loads(
+            decoder(
                 text,
                 object_pairs_hook=_unique_ast_fields,
                 parse_constant=_reject_nonfinite_ast_constant,
@@ -384,8 +391,10 @@ def _parse_ast(text: str, source: Path) -> JsonObject:
         raise LibcSourceError(message) from error
     if type(parsed) is not dict:
         _fail(f"Clang AST root must be an object for {source}")
-    _corroborate_ast_json(text, cast("object", parsed), source)
-    root = cast("JsonObject", parsed)
+    root = cast(
+        "JsonObject",
+        _corroborate_ast_json(text, cast("object", parsed), source, decoder=decoder),
+    )
     identifier = root.get("id")
     children = root.get("inner")
     if (
