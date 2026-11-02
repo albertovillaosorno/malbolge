@@ -169,6 +169,10 @@ published; existing identical headers remain untouched. Immediately before
 final publication, the complete physical header inventory, byte digests, and
 completion marker are checked against the snapshots captured before marker
 creation; late content changes or unlisted headers cannot be published.
+After the final rename, directory-handle closes, and staging cleanup, the
+provisioner reattests the published directory inode, complete physical header
+inventory and digests, and exact marker before reporting success. Late changes
+at either publication or cleanup fail closed rather than returning a ready kit.
 RPM and marker writes use exclusive no-follow creation with a native
 regular-file descriptor matched to the new leaf and an exact write count.
 An inserted

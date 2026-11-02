@@ -2448,6 +2448,115 @@ def test_development_publication_parent_close_fault_is_typed(
     assert (identity.development_root / "include/clang/AST/AST.h").read_bytes() == HEADER_BYTES
 
 
+@pytest.mark.parametrize("phase", ["after-rename", "after-cleanup"])
+@pytest.mark.parametrize(
+    "mutation", ["overwrite-header", "remove-header", "insert-header", "rewrite-marker"]
+)
+def test_development_publication_rejects_late_published_content_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    mutation: str,
+) -> None:
+    """A late write cannot turn a changed published kit into a success receipt."""
+    if phase == "after-rename" and os.name != "posix":
+        pytest.skip("Linux descriptor-relative publication boundary")
+    identity = _identity(tmp_path)
+    native_publish = llvm_development_validation._rename_linux_development_no_replace
+    native_rmtree = shutil.rmtree
+    stage_name = f"llvm-development-provision-{LINUX_PLATFORM}"
+    changed = False
+
+    def mutate_published_root() -> None:
+        nonlocal changed
+        assert not changed
+        root = identity.development_root
+        header = root / "include/clang/AST/AST.h"
+        marker = root / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+        if mutation == "overwrite-header":
+            _ = header.write_bytes(b"x" * len(HEADER_BYTES))
+        elif mutation == "remove-header":
+            header.unlink()
+        elif mutation == "insert-header":
+            _ = (root / "include/foreign.h").write_bytes(FOREIGN_CONTENT_BYTES)
+        else:
+            _ = marker.write_bytes(b"x" * marker.stat().st_size)
+        changed = True
+
+    def mutate_after_rename(
+        source: str,
+        target: str,
+        *,
+        src_dir_fd: int,
+        dst_dir_fd: int,
+    ) -> None:
+        native_publish(source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+        if phase == "after-rename":
+            mutate_published_root()
+
+    def mutate_after_cleanup(path: Path, *args: object, **kwargs: object) -> None:
+        _ = native_rmtree(path, *args, **kwargs)
+        if phase == "after-cleanup" and path.name == stage_name:
+            mutate_published_root()
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation,
+            "_rename_linux_development_no_replace",
+            mutate_after_rename,
+        )
+        isolated.setattr(shutil, "rmtree", mutate_after_cleanup)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="published|marker|headers|publication",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=_extract_headers,
+            )
+    assert changed
+
+
+def test_development_publication_rejects_late_same_byte_root_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A new inode with identical contents cannot inherit a publication receipt."""
+    identity = _identity(tmp_path)
+    native_rmtree = shutil.rmtree
+    parked = tmp_path / "parked-published-development"
+    replaced = False
+
+    def substitute_root_during_cleanup(
+        path: Path, *args: object, **kwargs: object
+    ) -> None:
+        nonlocal replaced
+        _ = native_rmtree(path, *args, **kwargs)
+        if path.name == f"llvm-development-provision-{LINUX_PLATFORM}":
+            original = identity.development_root
+            original.rename(parked)
+            _ = shutil.copytree(parked, original)
+            replaced = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(shutil, "rmtree", substitute_root_during_cleanup)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging child identity changed",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=_extract_headers,
+            )
+    assert replaced
+    assert (parked / "include/clang/AST/AST.h").read_bytes() == HEADER_BYTES
+    assert (identity.development_root / "include/clang/AST/AST.h").read_bytes() == HEADER_BYTES
+
+
 def test_development_provision_rechecks_destination_after_extraction(
     tmp_path: Path,
 ) -> None:

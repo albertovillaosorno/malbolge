@@ -1640,6 +1640,15 @@ def provision_development_identity(
                 raise LlvmDevelopmentProvisionError(
                     "LLVM development staging cleanup failed"
                 ) from error
+    # The final rename and stage cleanup are host callbacks after the staged
+    # receipt. Never report success based only on the pre-publication snapshot.
+    if child_identity is None:
+        _fail("LLVM development publication has no owned stage identity")
+    _require_development_destination(identity.development_root)
+    _assert_owned_staged_child(identity.development_root, child_identity)
+    _attest_staged_development(
+        identity.development_root, expected_headers, expected_marker
+    )
     return identity.development_root
 
 
