@@ -50,7 +50,7 @@ from scripts.repository_root import repository_root
 from scripts.research_layout import research_algorithm_directories
 
 if TYPE_CHECKING:
-    from typing import BinaryIO
+    from typing import BinaryIO, TextIO
 
 ROOT = repository_root(Path(__file__))
 SCHEMA_VERSION = 1
@@ -670,6 +670,30 @@ def validate_repository() -> tuple[AlgorithmLifecycle, ...]:
     return tuple(records)
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Require exact native text-write receipts and completed flush.
+
+    Returns:
+        Whether the complete CLI record was emitted.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate repository algorithm lifecycle records and return status.
 
@@ -679,14 +703,16 @@ def main() -> int:
     """
     try:
         records = validate_repository()
+        states: dict[str, int] = {}
+        for record in records:
+            states[record.state] = states.get(record.state, 0) + 1
+        summary = ", ".join(f"{key}={states[key]}" for key in sorted(states))
+        message = f"algorithm lifecycle valid: {len(records)} ({summary})\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("algorithm lifecycle CLI output write or flush failed")
     except (AlgorithmLifecycleError, OSError) as error:
-        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {_host_error_detail(error)}\n")
         return 1
-    states: dict[str, int] = {}
-    for record in records:
-        states[record.state] = states.get(record.state, 0) + 1
-    summary = ", ".join(f"{key}={states[key]}" for key in sorted(states))
-    _ = sys.stdout.write(f"algorithm lifecycle valid: {len(records)} ({summary})\n")
     return 0
 
 

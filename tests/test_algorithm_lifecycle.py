@@ -39,7 +39,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import ExitStack
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, cast, override
+from typing import TYPE_CHECKING, Never, Self, cast, override
 
 if TYPE_CHECKING:
     from typing import BinaryIO
@@ -747,6 +747,123 @@ def test_lifecycle_rejects_foreign_byte_receipt_before_decode(
         _ = validator._read_utf8(  # pyright: ignore[reportPrivateUsage]
             Path("untrusted/lifecycle.toml")
         )
+
+
+def test_lifecycle_cli_rejects_short_success_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """An incomplete lifecycle validation summary must not report success."""
+
+    class Record:
+        state = validator.EXPERIMENTAL
+
+    class ShortWriter:
+        def write(self, message: str) -> int:
+            return len(message) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("flush after partial lifecycle output")
+
+    monkeypatch.setattr(validator, "validate_repository", lambda: (Record(),))
+    monkeypatch.setattr(sys, "stdout", ShortWriter())
+    assert validator.main() == 1
+    assert "output" in capsys.readouterr().err
+
+
+class _ForeignLifecycleWriteCount(int):
+    """A fake integer whose comparisons must not affect CLI outcomes."""
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign lifecycle write count compared")
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    ("excess", "bool", "foreign", "none", "write-error", "flush-error", "flush-receipt"),
+)
+def test_lifecycle_cli_requires_native_output_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    receipt: str,
+) -> None:
+    """Forged write counts or unsuccessful flushes cannot claim validation."""
+    flushes: list[bool] = []
+
+    class Record:
+        state = validator.EXPERIMENTAL
+
+    class BrokenWriter:
+        def write(self, message: str) -> int:
+            if receipt == "write-error":
+                raise OSError("injected lifecycle write failure")
+            counts: dict[str, object] = {
+                "excess": len(message) + 1,
+                "bool": True,
+                "foreign": _ForeignLifecycleWriteCount(len(message)),
+                "none": None,
+            }
+            return cast("int", counts.get(receipt, len(message)))
+
+        def flush(self) -> None:
+            flushes.append(True)
+            if receipt == "flush-error":
+                raise ValueError("injected lifecycle flush failure")
+            if receipt == "flush-receipt":
+                return cast("None", True)
+            return None
+
+    monkeypatch.setattr(validator, "validate_repository", lambda: (Record(),))
+    monkeypatch.setattr(sys, "stdout", BrokenWriter())
+    assert validator.main() == 1
+    assert "output" in capsys.readouterr().err
+    assert bool(flushes) == (receipt in ("flush-error", "flush-receipt"))
+
+
+@pytest.mark.parametrize("receipt", ("short", "write-error", "flush-error", "bad-flush"))
+def test_lifecycle_cli_diagnostic_failure_retains_failed_status(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """Faulty stderr cannot conceal a rejected lifecycle policy."""
+
+    class BrokenStderr:
+        def write(self, message: str) -> int:
+            if receipt == "write-error":
+                raise OSError("injected lifecycle stderr failure")
+            return len(message) - 1 if receipt == "short" else len(message)
+
+        def flush(self) -> None:
+            if receipt == "flush-error":
+                raise RuntimeError("injected lifecycle stderr flush failure")
+            if receipt == "bad-flush":
+                return cast("None", True)
+            return None
+
+    def fail_validate() -> Never:
+        raise validator.AlgorithmLifecycleError("injected lifecycle failure")
+
+    monkeypatch.setattr(validator, "validate_repository", fail_validate)
+    monkeypatch.setattr(sys, "stderr", BrokenStderr())
+    assert validator.main() == 1
+
+
+def test_lifecycle_cli_native_success_record(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Complete native stdout retains the deterministic lifecycle summary."""
+
+    class Record:
+        state = validator.EXPERIMENTAL
+
+    monkeypatch.setattr(validator, "validate_repository", lambda: (Record(),))
+    assert validator.main() == 0
+    result = capsys.readouterr()
+    assert result.out == "algorithm lifecycle valid: 1 (experimental=1)\n"
+    assert not result.err
 
 
 @pytest.mark.parametrize("fault_type", [OSError, validator.AlgorithmLifecycleError])

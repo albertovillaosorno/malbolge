@@ -62,6 +62,12 @@ nonnegative descriptor integers, native bytes from file reads, and exact boolean
 link/junction decisions in portable path inspection. Forged host return values
 fail closed before their caller-owned hooks are inspected. The checks cover
 read-time identity, not post-validation immutability.
+
+The operator validation CLI accepts a complete native text write and successful
+flush before reporting a valid lifecycle corpus. Short, foreign, or failed
+write/flush receipts reject success; diagnostic write failures cannot change a
+failed validation status.
+
 The stable algorithm ID is bound to its
 research record and experiment manifest. Decision dates require the exact TOML
 local-date value, excluding local and offset date-time values even though Python
