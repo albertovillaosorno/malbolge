@@ -1330,11 +1330,24 @@ def rustup_toolchain_root(
     if type(raw) is not str or not raw:
         return None
     cargo = Path(raw)
-    try:
-        regular_file = cargo.is_file()
-    except (OSError, ValueError, TypeError, RuntimeError):
+    if (
+        not cargo.is_absolute()
+        or cargo.parent.name != "bin"
+        or cargo.name not in {"cargo", "cargo.exe"}
+    ):
         return None
-    if type(regular_file) is not bool or not regular_file:
+    try:
+        _reject_authority_parent_redirects(cargo)
+        regular_file = cargo.is_file()
+        physical = cargo.lstat()
+    except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
+        return None
+    if (
+        type(regular_file) is not bool
+        or not regular_file
+        or type(physical) is not os.stat_result
+        or not stat.S_ISREG(physical.st_mode)
+    ):
         return None
     return cargo.parent.parent
 

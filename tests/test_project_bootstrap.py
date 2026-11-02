@@ -3134,6 +3134,62 @@ def test_rustup_toolchain_root_requires_existing_cargo_path(
     assert missing is None
 
 
+@pytest.mark.parametrize(
+    "case", ["wrong-name", "wrong-parent", "relative", "linked-cargo", "linked-bin"]
+)
+def test_rustup_toolchain_root_rejects_noncanonical_cargo_path(
+    tmp_path: Path, case: str
+) -> None:
+    """Rustup output must identify a real Cargo inside a physical toolchain bin."""
+    toolchain = tmp_path / "toolchain"
+    native = toolchain / "bin/cargo"
+    native.parent.mkdir(parents=True)
+    _ = native.write_bytes(RUST_CARGO_BYTES)
+    candidate = native
+    if case == "wrong-name":
+        candidate = native.with_name("rustc")
+        _ = candidate.write_bytes(RUST_CARGO_BYTES)
+    elif case == "wrong-parent":
+        candidate = toolchain / "other/cargo"
+        candidate.parent.mkdir()
+        _ = candidate.write_bytes(RUST_CARGO_BYTES)
+    elif case == "relative":
+        candidate = Path(os.path.relpath(native))
+    elif case == "linked-cargo":
+        linked = native.with_name("external-cargo")
+        _ = native.replace(linked)
+        _ = candidate.symlink_to(linked)
+    elif case == "linked-bin":
+        relocated = tmp_path / "external-bin"
+        _ = native.parent.replace(relocated)
+        _ = native.parent.symlink_to(relocated, target_is_directory=True)
+
+    def runner(_rustup: Path, _channel: str) -> str:
+        return str(candidate)
+
+    assert (
+        project.rustup_toolchain_root(tmp_path / "rustup", RUST_CHANNEL, runner=runner)
+        is None
+    )
+
+
+def test_rustup_toolchain_root_accepts_native_windows_cargo_name(
+    tmp_path: Path,
+) -> None:
+    """Rustup can report a canonical .exe binary on Windows hosts."""
+    cargo = tmp_path / "windows-toolchain/bin/cargo.exe"
+    cargo.parent.mkdir(parents=True)
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+
+    def runner(_rustup: Path, _channel: str) -> str:
+        return str(cargo)
+
+    assert (
+        project.rustup_toolchain_root(tmp_path / "rustup", RUST_CHANNEL, runner=runner)
+        == cargo.parent.parent
+    )
+
+
 @pytest.mark.parametrize("probe", ["git", "rustup"])
 def test_optional_host_executable_resolver_admits_native_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, probe: str
