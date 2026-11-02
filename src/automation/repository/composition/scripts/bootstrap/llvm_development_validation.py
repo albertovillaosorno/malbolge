@@ -66,6 +66,7 @@ PARENT_SEGMENT: Final = ".."
 RPM_SUFFIX: Final = ".rpm"
 CPIO_INCLUDE_PATTERN: Final = "./usr/include/*"
 MAX_RPM_DOWNLOAD_BYTES: Final = 128 * 1024 * 1024
+RPM_TOOL_TIMEOUT_SECONDS: Final = 120
 
 
 class LlvmDevelopmentProvisionError(RuntimeError):
@@ -151,6 +152,7 @@ def _command_bytes(
             check=False,
             capture_output=True,
             shell=False,
+            timeout=RPM_TOOL_TIMEOUT_SECONDS,
         )
     except (OSError, ValueError, TypeError, RuntimeError, sp.SubprocessError) as error:
         # A foreign exception subclass may execute arbitrary formatting hooks.

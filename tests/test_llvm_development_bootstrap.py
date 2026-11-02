@@ -1564,6 +1564,29 @@ def test_rpm_command_does_not_format_foreign_host_failure(
     assert observed.value.__cause__ is fault
 
 
+def test_rpm_command_enforces_process_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stalled RPM decoder cannot hold provisioning indefinitely."""
+    command = ["cpio", "-it", "--quiet"]
+    fault = sp.TimeoutExpired(command, timeout=120)
+
+    def stalled_run(
+        argv: list[str], *, timeout: int, **_kwargs: object
+    ) -> sp.CompletedProcess[bytes]:
+        assert argv == command
+        assert timeout == 120
+        raise fault
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", stalled_run)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="TimeoutExpired",
+    ) as observed:
+        _ = llvm_development_validation._command_bytes(command)
+    assert observed.value.__cause__ is fault
+
+
 def test_rpm_command_rejects_foreign_completed_process_subclass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
