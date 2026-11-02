@@ -213,6 +213,27 @@ def _decode_raw(raw: bytes, label: str) -> str:
     return text
 
 
+def _validate_trial_semantics(row: dict[str, Any], label: str) -> None:
+    """Reuse the analyzer's context-free row rules for direct CSV callers.
+
+    The study budget/objectives remain the caller's separate admission job;
+    these native trial fields must still be meaningful before a digest is
+    returned, even when CSV bytes exactly match a fabricated row.
+    """
+    where = f"{label}: reported trial"
+    try:
+        analyze._text(row["algorithm"], f"{where}.algorithm")  # ruff: ignore[private-member-access]
+        analyze._case(row["case"], where)  # ruff: ignore[private-member-access]
+        analyze._integer(row["trial"], f"{where}.trial")  # ruff: ignore[private-member-access]
+        analyze._verdict(row, where)  # ruff: ignore[private-member-access]
+        analyze._relative(row["experiment_manifest"], f"{where}.experiment_manifest")  # ruff: ignore[private-member-access]
+        analyze._relative(row["raw_sample"], f"{where}.raw_sample")  # ruff: ignore[private-member-access]
+        analyze._metrics_shape(row["metrics"], where)  # ruff: ignore[private-member-access]
+    except Exception as error:
+        message = f"{label}: invalid reported trial semantics"
+        raise RawSampleError(message) from error
+
+
 def _admit_observation_containers(
     observations: list[dict[str, Any]], label: str
 ) -> None:
@@ -254,6 +275,7 @@ def _admit_observation_containers(
             or any(type(quantity) is not int for quantity in metrics.values())
         ):
             _fail(message)
+        _validate_trial_semantics(row, label)
         # A self-consistent repeated CSV/observation pair is still only one
         # reported attempt. Match the analyzer's case/trial uniqueness key.
         trial_key = (

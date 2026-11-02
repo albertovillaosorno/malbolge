@@ -258,6 +258,42 @@ def test_direct_raw_checker_rejects_duplicate_reported_trial_identities(
         raw_samples.check_rows(raw, rows, ROOT_LABEL)
 
 
+@pytest.mark.parametrize(
+    "variant",
+    [
+        "negative-elapsed",
+        "zero-difficulty",
+        "invalid-workload-digest",
+        "contradictory-verdict",
+        "self-verifier",
+        "noncanonical-raw-path",
+        "unknown-outcome",
+    ],
+)
+def test_direct_raw_checker_rejects_self_consistent_invalid_trial_claims(
+    tmp_path: Path,
+    variant: str,
+) -> None:
+    """Matching bytes alone cannot certify a malformed reported trial."""
+    row = sample_study(tmp_path)["observations"][0]
+    if variant == "negative-elapsed":
+        row["metrics"]["elapsed_ns"] = -1
+    elif variant == "zero-difficulty":
+        row["case"]["difficulty"] = 0
+    elif variant == "invalid-workload-digest":
+        row["case"]["workload_sha256"] = "not-a-digest"
+    elif variant == "contradictory-verdict":
+        row["verifier_verdict"] = analyze.REJECTED
+    elif variant == "self-verifier":
+        row["verifier"] = row["algorithm"]
+    elif variant == "noncanonical-raw-path":
+        row["raw_sample"] = "evidence/../sample.csv"
+    elif variant == "unknown-outcome":
+        row["outcome"] = "unsupported"
+    with pytest.raises(raw_samples.RawSampleError, match="invalid reported trial"):
+        raw_samples.check_rows(_render([row]), [row], ROOT_LABEL)
+
+
 def test_strict_raw_sample_rechecked_after_report_assembly(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
