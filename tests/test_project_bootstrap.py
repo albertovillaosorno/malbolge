@@ -2311,6 +2311,60 @@ def test_rust_adapter_scripts_require_complete_character_writes(
     assert not target.exists()
 
 
+@pytest.mark.parametrize("target_name", ["cc", "cargo.bin"])
+def test_rust_adapter_script_rejects_complete_count_with_corrupt_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_name: str,
+) -> None:
+    """A full reported character count cannot certify corrupt wrapper text."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    target = root / "bin" / target_name
+    marker = root / project.RUST_LINUX_ADAPTER_MARKER
+    original_write = Path.write_text
+
+    def corrupt_write(
+        path: Path,
+        content: str,
+        *,
+        encoding: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        actual = "x" * len(content) if path == target else content
+        _ = original_write(path, actual, encoding=encoding, newline=newline)
+        return len(content)
+
+    monkeypatch.setattr(Path, "write_text", corrupt_write)
+    with pytest.raises(project.InitializationError, match="script content"):
+        _ = project.write_rust_linker_adapters(
+            (root,), LINUX_PLATFORM, linker=linker
+        )
+    assert not target.exists()
+    assert not marker.exists()
+
+
+def test_rust_adapter_marker_rejects_complete_count_with_corrupt_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A full reported byte count cannot certify a corrupt readiness marker."""
+    root, linker = _linux_adapter_writer_tree(tmp_path)
+    marker = root / project.RUST_LINUX_ADAPTER_MARKER
+    original_write = Path.write_bytes
+
+    def corrupt_write(path: Path, content: bytes) -> int:
+        actual = b"x" * len(content) if path == marker else content
+        _ = original_write(path, actual)
+        return len(content)
+
+    monkeypatch.setattr(Path, "write_bytes", corrupt_write)
+    with pytest.raises(project.InitializationError, match="marker content"):
+        _ = project.write_rust_linker_adapters(
+            (root,), LINUX_PLATFORM, linker=linker
+        )
+    assert not marker.exists()
+
+
 def test_rust_adapter_writer_rejects_linked_marker_target(
     tmp_path: Path,
 ) -> None:

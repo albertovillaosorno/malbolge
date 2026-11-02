@@ -946,14 +946,23 @@ def _write_verified_rust_adapter_script(path: Path, script: str) -> None:
         encoding="ascii",
         newline="\n",
     )
-    if type(written) is int and written == len(script):
-        return
+    complete_count = type(written) is int and written == len(script)
+    if complete_count:
+        try:
+            if _read_authority_bytes(path) == script.encode("ascii"):
+                return
+        except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
+            pass
+    message = (
+        "Rust adapter script content mismatch"
+        if complete_count
+        else "Rust adapter short or invalid character count"
+    )
     try:
         path.unlink(missing_ok=True)
     except OSError as error:
-        message = f"Rust adapter short or invalid character count; {error}"
-        _fail(message)
-    _fail("Rust adapter short or invalid character count")
+        _fail(f"{message}; {error}")
+    _fail(message)
 
 
 def _write_rust_validation_alias(
@@ -1001,14 +1010,25 @@ def _admit_rust_adapter_write_target(
 def _write_verified_rust_adapter_marker(marker: Path) -> None:
     """Reject incomplete Linux Rust adapter readiness metadata."""
     written = marker.write_bytes(RUST_LINUX_ADAPTER_CONTENT)
-    if type(written) is int and written == len(RUST_LINUX_ADAPTER_CONTENT):
-        return
+    complete_count = (
+        type(written) is int and written == len(RUST_LINUX_ADAPTER_CONTENT)
+    )
+    if complete_count:
+        try:
+            if _read_authority_bytes(marker) == RUST_LINUX_ADAPTER_CONTENT:
+                return
+        except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
+            pass
+    message = (
+        "Rust adapter marker content mismatch"
+        if complete_count
+        else "Rust adapter marker short or invalid byte count"
+    )
     try:
         marker.unlink(missing_ok=True)
     except OSError as error:
-        message = f"Rust adapter marker short or invalid byte count; {error}"
-        _fail(message)
-    _fail("Rust adapter marker short or invalid byte count")
+        _fail(f"{message}; {error}")
+    _fail(message)
 
 
 def _write_rust_toolchain_linker_adapters(
