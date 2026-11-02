@@ -43,7 +43,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from dataclasses import dataclass
 from io import BufferedReader
 from pathlib import Path
-from stat import S_ISDIR, S_ISREG
+from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import Final, Never, cast
 
 LLVM_VERSION: Final = "22.1.8"
@@ -103,7 +103,13 @@ def _unlinked_path(path: Path) -> bool:
             junction = part.is_junction()
             if type(linked) is not bool or type(junction) is not bool:
                 return False
-            if linked or junction:
+            status = part.lstat()
+            if (
+                type(cast("object", status)) is not os.stat_result
+                or S_ISLNK(status.st_mode)
+                or linked
+                or junction
+            ):
                 return False
     except (OSError, ValueError, TypeError, RuntimeError):
         return False

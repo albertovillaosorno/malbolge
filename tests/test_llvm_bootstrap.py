@@ -661,6 +661,73 @@ def test_linux_wrapper_rejects_newly_hardlinked_descriptor(
     assert outside.read_bytes() == b""
 
 
+@pytest.mark.parametrize("target_kind", ["file", "directory"])
+def test_llvm_physical_predicates_reject_masked_linked_ancestors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    """A masked symlink ancestor is not a physical runtime path."""
+    physical = tmp_path / "real-runtime"
+    physical.mkdir()
+    (physical / "nested").mkdir()
+    _ = (physical / "nested" / "clang").write_bytes(CLANG_BYTES)
+    linked = tmp_path / "linked-runtime"
+    try:
+        linked.symlink_to(physical, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+    native_is_symlink = Path.is_symlink
+
+    def masked_link_status(path: Path) -> bool:
+        return False if path == linked else native_is_symlink(path)
+
+    monkeypatch.setattr(Path, "is_symlink", masked_link_status)
+    target = linked / "nested"
+    if target_kind == "file":
+        assert not llvm_validation._physical_file(  # pyright: ignore[reportPrivateUsage]
+            target / "clang"
+        )
+    else:
+        assert not llvm_validation._physical_directory(  # pyright: ignore[reportPrivateUsage]
+            target
+        )
+
+
+@pytest.mark.parametrize("target_kind", ["file", "directory"])
+def test_llvm_physical_predicates_reject_foreign_ancestor_stat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    """A foreign parent lstat cannot authorize descendant runtime evidence."""
+    parent = tmp_path / "host-runtime"
+    parent.mkdir()
+    (parent / "nested").mkdir()
+    _ = (parent / "nested" / "clang").write_bytes(CLANG_BYTES)
+    native_lstat = Path.lstat
+
+    @final
+    class ForeignStat:
+        def __init__(self, status: os.stat_result) -> None:
+            self.st_mode = status.st_mode
+
+    def forged_lstat(path: Path) -> object:
+        status = native_lstat(path)
+        return ForeignStat(status) if path == parent else status
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    target = parent / "nested"
+    if target_kind == "file":
+        assert not llvm_validation._physical_file(  # pyright: ignore[reportPrivateUsage]
+            target / "clang"
+        )
+    else:
+        assert not llvm_validation._physical_directory(  # pyright: ignore[reportPrivateUsage]
+            target
+        )
+
+
 def test_inspection_requires_completed_neutral_aliases(tmp_path: Path) -> None:
     """Readiness never accepts a partial imported LLVM tree."""
     observation = _host_observation(tmp_path)
