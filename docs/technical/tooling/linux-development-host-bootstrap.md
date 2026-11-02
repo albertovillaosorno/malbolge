@@ -33,8 +33,9 @@ receipts; a masked symlink predicate or foreign directory status cannot admit
 redirected manifest ancestry. Opened file identity and timestamps require
 native physical status receipts and are checked before/after each read.
 Opened descriptors must be native nonnegative integers; manifest reads
-require an exact native buffered binary stream and immutable native bytes,
-not injected wrappers, mutable buffers, or byte subclasses. Invalid UTF-8,
+require an exact native buffered binary stream over a native `FileIO` and
+an unchanged file descriptor. Invalid wrappers, mutable buffers, or byte
+subclasses cannot provide manifest authority. Invalid UTF-8,
 oversized input,
 or changed inodes produce typed bootstrap errors before any tool import. Host
 open/read failures preserve their original causes without formatting arbitrary

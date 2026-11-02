@@ -346,10 +346,23 @@ def _open_authority_stream(descriptor: int) -> BinaryIO:
             message = "cannot open bootstrap authority stream"
             raise InitializationError(message) from error
         raise
-    if type(opened) is not io.BufferedReader:
+    if (
+        type(opened) is not io.BufferedReader
+        or type(opened.raw) is not io.FileIO
+    ):
         with suppress(OSError):
             os.close(descriptor)
         _fail("bootstrap authority requires native buffered stream")
+    try:
+        wrapped_descriptor = opened.fileno()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        with suppress(OSError):
+            os.close(descriptor)
+        raise InitializationError("cannot inspect native stream descriptor") from error
+    if type(wrapped_descriptor) is not int or wrapped_descriptor != descriptor:
+        with suppress(OSError):
+            os.close(descriptor)
+        _fail("bootstrap authority requires matching native stream descriptor")
     return cast("BinaryIO", opened)
 
 

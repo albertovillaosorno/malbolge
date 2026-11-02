@@ -1694,6 +1694,48 @@ def test_bootstrap_authority_fdopen_fault_closes_descriptor(
                 os.close(descriptor)
 
 
+def test_bootstrap_authority_rejects_native_stream_on_wrong_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A native-looking stream cannot divert or leak the opened manifest fd."""
+    manifest = _write_rust_manifest(tmp_path)
+    foreign = tmp_path / "foreign-readable"
+    original_foreign = b"foreign content retained"
+    _ = foreign.write_bytes(original_foreign)
+    real_open = os.open
+    real_fdopen = os.fdopen
+    tracked: list[int] = []
+    foreign_streams: list[BinaryIO] = []
+
+    def tracked_open(path: Path, flags: int) -> int:
+        descriptor = real_open(path, flags)
+        if path == manifest:
+            tracked.append(descriptor)
+        return descriptor
+
+    def wrong_fdopen(_descriptor: int, mode: str) -> BinaryIO:
+        foreign_fd = real_open(foreign, os.O_RDONLY)
+        stream = cast("BinaryIO", real_fdopen(foreign_fd, mode))
+        foreign_streams.append(stream)
+        return stream
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", tracked_open)
+        isolated.setattr(os, "fdopen", wrong_fdopen)
+        try:
+            with pytest.raises(
+                project.InitializationError, match="native stream descriptor"
+            ):
+                _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+        finally:
+            for stream in foreign_streams:
+                stream.close()
+    assert len(tracked) == 1
+    with pytest.raises(OSError):
+        _ = os.fstat(tracked[0])
+    assert foreign.read_bytes() == original_foreign
+
+
 def test_bootstrap_authority_rejects_forged_host_stream_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
