@@ -73,7 +73,10 @@ The accepted `doom.c` passes strict six-target Clang validation and builds with
 ASan+UBSan plus the Windows adapter. The optional Windows sanitizer build
 preflights its `.debug` directory and `doom-sanitize.exe` output to reject
 redirected parents/leaves and nonregular existing executable targets before
-invoking native Zig. This admission is not atomic with Zig's later output open.
+invoking native Zig. Clang syntax and Zig sanitizer builds require exact
+native process receipts that identify the unchanged launched argv, integer
+status, and uncaptured output mode; forged success cannot certify validation.
+This admission is not atomic with Zig's later output open.
 
 The direct sanitizer-debug runner creates a unique physical log in the
 executable's `logs/` directory for each run, refusing linked log directories

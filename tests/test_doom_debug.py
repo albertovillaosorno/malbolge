@@ -489,3 +489,95 @@ def test_doom_console_success_requires_completed_flush(
     doom._write_standard_output("standalone Clang validation: PASS\n")  # pyright: ignore[reportPrivateUsage]
     assert sink.messages == ["standalone Clang validation: PASS\n"]
     assert sink.flushed
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "foreign-process",
+        "boolean-exit",
+        "float-exit",
+        "foreign-exit",
+        "missing-exit",
+        "wrong-executable",
+        "wrong-source",
+        "foreign-argv-container",
+        "foreign-argv-member",
+        "unexpected-stdout",
+        "unexpected-stderr",
+    ],
+)
+def test_doom_build_probe_requires_exact_native_process_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    """A forged Clang/Zig process cannot certify successful source validation."""
+    expected = ("clang", "-fsyntax-only", "guest.c")
+
+    class ForeignZero(int):
+        pass
+
+    class ForeignStr(str):  # ruff: ignore[subclass-builtin]
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign DOOM argv compared")
+
+    @final
+    class ForeignProcess:
+        returncode = 0
+
+    def forged_run(command: tuple[str, ...], **_kwargs: object) -> object:
+        assert command == expected
+        if fault == "foreign-process":
+            return ForeignProcess()
+        argv: object = command
+        result: object = 0
+        stdout: object = None
+        stderr: object = None
+        if fault == "boolean-exit":
+            result = False
+        elif fault == "float-exit":
+            result = 0.0
+        elif fault == "foreign-exit":
+            result = ForeignZero(0)
+        elif fault == "missing-exit":
+            result = None
+        elif fault == "wrong-executable":
+            argv = ("fake-clang", *command[1:])
+        elif fault == "wrong-source":
+            argv = (*command[:-1], "foreign.c")
+        elif fault == "foreign-argv-container":
+            argv = list(command)
+        elif fault == "foreign-argv-member":
+            argv = (ForeignStr(command[0]), *command[1:])
+        elif fault == "unexpected-stdout":
+            stdout = b"synthetic stdout"
+        elif fault == "unexpected-stderr":
+            stderr = b"synthetic stderr"
+        return sp.CompletedProcess(
+            cast("tuple[str, ...]", argv),
+            cast("int", result),
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(sp, "run", forged_run)
+    with pytest.raises(doom.DoomDebugError, match="invalid.*process receipt"):
+        doom._run_checked(expected)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_doom_build_probe_accepts_complete_native_process_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exact Clang argv and integer success still admit validation."""
+    expected = ("clang", "-fsyntax-only", "guest.c")
+
+    def native_run(
+        command: tuple[str, ...], **_kwargs: object
+    ) -> sp.CompletedProcess[str]:
+        assert command == expected
+        return sp.CompletedProcess(command, 0)
+
+    monkeypatch.setattr(sp, "run", native_run)
+    doom._run_checked(expected)  # pyright: ignore[reportPrivateUsage]

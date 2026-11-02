@@ -182,16 +182,40 @@ def _existing_file(path: Path, description: str) -> Path:
 
 
 def _run_checked(command: Sequence[str], *, cwd: Path = ROOT) -> None:
+    """Trust only a native receipt for the exact Clang or Zig invocation."""
+    if (
+        type(command) not in {tuple, list}
+        or not command
+        or any(type(argument) is not str for argument in command)
+    ):
+        _fail("invalid DOOM debug command receipt")
+    expected = tuple(command)
     # jig-ignore-next-line: indivisible reviewed identifier
     completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        command,
+        expected,
         cwd=cwd,
         check=False,
         shell=False,
     )
-    if completed.returncode != 0:
-        rendered = subprocess.list2cmdline(list(command))
-        _fail(f"command failed with status {completed.returncode}: {rendered}")
+    if type(completed) is not subprocess.CompletedProcess:
+        _fail("invalid DOOM debug process receipt")
+    native = cast("subprocess.CompletedProcess[object]", completed)
+    argv = cast("object", native.args)
+    if type(argv) is not tuple:
+        _fail("invalid DOOM debug process receipt")
+    observed = cast("tuple[object, ...]", argv)
+    if (
+        type(native.returncode) is not int
+        or len(observed) != len(expected)
+        or any(type(argument) is not str for argument in observed)
+        or observed != expected
+        or native.stdout is not None
+        or native.stderr is not None
+    ):
+        _fail("invalid DOOM debug process receipt")
+    if native.returncode != 0:
+        rendered = subprocess.list2cmdline(list(expected))
+        _fail(f"command failed with status {native.returncode}: {rendered}")
 
 
 def _clang_validation_commands(
