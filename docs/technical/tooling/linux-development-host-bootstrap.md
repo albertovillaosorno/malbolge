@@ -176,8 +176,10 @@ bootstrap does not download them.
 Optional host Git version/helper-path queries
 and Rustup list/which queries each have a 15-second bound. Only an exact native
 process result with the original executable/argument list, integer successful
-exit and native captured text is accepted. The command passed to the launcher
-is an independent copy, so a mutating wrapper cannot forge matching evidence.
+exit, native captured text, and empty stderr is accepted. A zero exit with
+stderr diagnostics cannot certify host tool authority. The command passed to the
+launcher is an independent copy, so a mutating wrapper cannot forge matching
+evidence.
 
 Nonzero, forged, malformed, unavailable and timed-out host observations remain
 missing rather than authorizing an import or crashing bootstrap. Git helper

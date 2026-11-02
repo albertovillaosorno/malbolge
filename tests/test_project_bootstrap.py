@@ -6570,6 +6570,41 @@ def test_optional_host_probe_rejects_oversized_native_output(
     "probe", ("git-version", "git-exec", "rustup-list", "rustup-which")
 )
 @pytest.mark.parametrize(
+    "diagnostic", ("warning: using fallback Git", "\x1b[31mfailed\x1b[0m")
+)
+def test_optional_host_probes_reject_success_with_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    diagnostic: str,
+) -> None:
+    """A successful exit cannot certify conflicting host diagnostic output."""
+    stdout = {
+        "git-version": "git version 2.55.0\n",
+        "git-exec": f"{tmp_path}\n",
+        "rustup-list": "1.98.1 (default)\n",
+        "rustup-which": f"{tmp_path / 'bin/cargo'}\n",
+    }[probe]
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout=stdout, stderr=diagnostic)
+
+    monkeypatch.setattr(sp, "run", run)
+    if probe == "git-version":
+        observed: object = project._run_git_version(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    elif probe == "git-exec":
+        observed = project._run_git_exec_path(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    elif probe == "rustup-list":
+        observed = project._run_rustup_list(Path("rustup"))  # pyright: ignore[reportPrivateUsage]
+    else:
+        observed = project._run_rustup_which(Path("rustup"), RUST_CHANNEL)  # pyright: ignore[reportPrivateUsage]
+    assert observed == (() if probe == "rustup-list" else None)
+
+
+@pytest.mark.parametrize(
+    "probe", ("git-version", "git-exec", "rustup-list", "rustup-which")
+)
+@pytest.mark.parametrize(
     "mutation",
     ("wrong-argv", "mutated-argv", "false-status", "binary-output", "foreign-receipt"),
 )
