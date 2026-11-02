@@ -907,31 +907,29 @@ def test_development_publication_uses_pinned_parent_during_final_move(
     destination_parent = identity.development_root.parent
     parked = destination_parent.with_name("parked-development-parent")
     native_rename = os.rename
+    native_publish = llvm_development_validation._rename_linux_development_no_replace
     attacked = False
 
     def swap_at_rename(
-        source: str | os.PathLike[str],
-        target: str | os.PathLike[str],
+        source: str,
+        target: str,
         *,
-        src_dir_fd: int | None = None,
-        dst_dir_fd: int | None = None,
+        src_dir_fd: int,
+        dst_dir_fd: int,
     ) -> None:
         nonlocal attacked
-        if (
-            source == "development"
-            and target == identity.development_root.name
-            and src_dir_fd is not None
-            and dst_dir_fd is not None
-        ):
+        if source == "development" and target == identity.development_root.name:
             native_rename(destination_parent, parked)
             _ = destination_parent.symlink_to(outside, target_is_directory=True)
             attacked = True
-        native_rename(
-            source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
-        )
+        native_publish(source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(os, "rename", swap_at_rename)
+        isolated.setattr(
+            llvm_development_validation,
+            "_rename_linux_development_no_replace",
+            swap_at_rename,
+        )
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,
             match="destination|parent",
@@ -999,7 +997,6 @@ def test_development_publication_types_unprintable_rename_failure(
     if os.name != "posix":
         pytest.skip("POSIX directory publication boundary")
     identity = _identity(tmp_path)
-    native_rename = os.rename
 
     class ForeignOSError(OSError):
         @override
@@ -1009,20 +1006,21 @@ def test_development_publication_types_unprintable_rename_failure(
     fault = ForeignOSError("synthetic publication failure")
 
     def broken_rename(
-        source: str | os.PathLike[str],
-        target: str | os.PathLike[str],
+        source: str,
+        target: str,
         *,
-        src_dir_fd: int | None = None,
-        dst_dir_fd: int | None = None,
+        src_dir_fd: int,
+        dst_dir_fd: int,
     ) -> None:
-        if source == "development" and src_dir_fd is not None:
-            raise fault
-        native_rename(
-            source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
-        )
+        del source, target, src_dir_fd, dst_dir_fd
+        raise fault
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(os, "rename", broken_rename)
+        isolated.setattr(
+            llvm_development_validation,
+            "_rename_linux_development_no_replace",
+            broken_rename,
+        )
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,
             match="destination publication failed",
@@ -1047,25 +1045,22 @@ def test_development_publication_parent_close_fault_is_typed(
     if os.name != "posix":
         pytest.skip("POSIX publication descriptor closure")
     identity = _identity(tmp_path)
-    native_rename = os.rename
+    native_publish = llvm_development_validation._rename_linux_development_no_replace
     native_close = os.close
     closing: set[int] = set()
     fault = OSError("synthetic publication parent close fault")
 
     def capture_final_rename(
-        source: str | os.PathLike[str],
-        target: str | os.PathLike[str],
+        source: str,
+        target: str,
         *,
-        src_dir_fd: int | None = None,
-        dst_dir_fd: int | None = None,
+        src_dir_fd: int,
+        dst_dir_fd: int,
     ) -> None:
         if source == "development" and target == identity.development_root.name:
             selected = src_dir_fd if parent == "staging" else dst_dir_fd
-            assert selected is not None
             closing.add(selected)
-        native_rename(
-            source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
-        )
+        native_publish(source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
 
     def fault_final_parent_close(descriptor: int) -> None:
         native_close(descriptor)
@@ -1074,14 +1069,21 @@ def test_development_publication_parent_close_fault_is_typed(
             raise fault
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(os, "rename", capture_final_rename)
+        isolated.setattr(
+            llvm_development_validation,
+            "_rename_linux_development_no_replace",
+            capture_final_rename,
+        )
         isolated.setattr(os, "close", fault_final_parent_close)
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,
             match="parent descriptor close failed",
         ) as observed:
             _ = llvm_development_validation.provision_development_identity(
-                tmp_path, identity, downloader=_downloader([]), extractor=_extract_headers
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=_extract_headers,
             )
     assert observed.value.__cause__ is fault
     assert not closing
@@ -3521,3 +3523,54 @@ def test_development_provision_rejects_foreign_downloader_payload(
         )
     assert not extracted
     assert not identity.development_root.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires Linux directory descriptors")
+def test_development_final_rename_preserves_late_empty_destination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty foreign directory inserted after the absence check survives."""
+    staged = tmp_path / "staging" / "development"
+    staged.mkdir(parents=True)
+    destination = tmp_path / "installed" / "development"
+    destination.parent.mkdir()
+    original = staged.stat()
+    destination_parent = destination.parent.stat()
+    native_stat = os.stat
+    inserted: tuple[int, int] | None = None
+
+    def insert_after_check(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes] | int,
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal inserted
+        try:
+            return native_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+        except FileNotFoundError:
+            if (
+                path == destination.name
+                and dir_fd is not None
+                and (os.fstat(dir_fd).st_dev, os.fstat(dir_fd).st_ino)
+                == (destination_parent.st_dev, destination_parent.st_ino)
+                and inserted is None
+            ):
+                destination.mkdir()
+                status = destination.lstat()
+                inserted = (status.st_dev, status.st_ino)
+            raise
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "stat", insert_after_check)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="destination.*occupied",
+        ):
+            llvm_development_validation._publish_development_root(  # pyright: ignore[reportPrivateUsage]
+                staged, destination, (original.st_dev, original.st_ino)
+            )
+    assert inserted is not None
+    current = destination.lstat()
+    assert (current.st_dev, current.st_ino) == inserted
+    assert staged.is_dir()

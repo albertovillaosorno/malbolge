@@ -35,6 +35,8 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import hashlib
 import io
 import json
@@ -889,6 +891,44 @@ def _close_physical_parent(descriptor: int, label: str) -> None:
         ) from error
 
 
+def _rename_linux_development_no_replace(
+    source: str, destination: str, *, src_dir_fd: int, dst_dir_fd: int
+) -> None:
+    """Publish through pinned Linux parents without replacing a late occupant."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = libc.renameat2
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            "LLVM development publication requires native Linux no-replace rename"
+        ) from error
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    result = cast(
+        "object",
+        renameat2(
+            src_dir_fd,
+            os.fsencode(source),
+            dst_dir_fd,
+            os.fsencode(destination),
+            1,
+        ),
+    )
+    if type(result) is not int:
+        _fail("LLVM development publication rename receipt must be native")
+    if result != 0:
+        error_number = ctypes.get_errno()
+        if error_number == errno.EEXIST:
+            _fail("LLVM development destination became occupied during publication")
+        raise OSError(error_number, "LLVM development no-replace rename failed")
+
+
 def _publish_development_root(
     staged_root: Path,
     destination: Path,
@@ -925,7 +965,7 @@ def _publish_development_root(
                 pass
             else:
                 _fail("LLVM development destination became occupied before publication")
-            os.rename(
+            _rename_linux_development_no_replace(
                 staged_root.name,
                 destination.name,
                 src_dir_fd=source_parent,
