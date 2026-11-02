@@ -47,6 +47,7 @@ from dataclasses import fields
 from datetime import UTC
 from datetime import datetime
 from enum import Enum
+import hashlib
 from hashlib import sha256
 from importlib import import_module
 from io import FileIO
@@ -878,7 +879,7 @@ def _portable_checkpoint_document(
             validated_identity,
         ),
         "payload_base64": encoded,
-        "payload_sha256": "sha256:" + sha256(payload).hexdigest(),
+        "payload_sha256": _sha256_digest(payload),
         "schema": CHECKPOINT_SCHEMA_ID,
         "stage": validated_position.stage,
         "state_codec": state_codec,
@@ -1006,7 +1007,7 @@ def _decode_checkpoint_payload(envelope: PortableCheckpoint) -> bytes:
         _fail(f"checkpoint payload_base64 is invalid: {_host_error_detail(error)}")
     if b64encode(payload).decode("ascii") != envelope.payload_base64:
         _fail("checkpoint payload_base64 is not canonical")
-    if "sha256:" + sha256(payload).hexdigest() != envelope.payload_sha256:
+    if _sha256_digest(payload) != envelope.payload_sha256:
         _fail("checkpoint payload digest does not match encoded state")
     return payload
 
@@ -1027,7 +1028,7 @@ def _validate_sidecar_checkpoint_digest(
 ) -> None:
     if type(checkpoint) is not bytes:
         _fail("portable checkpoint must use exact immutable bytes")
-    checkpoint_digest = "sha256:" + sha256(checkpoint).hexdigest()
+    checkpoint_digest = _sha256_digest(checkpoint)
     if sidecar.checkpoint_sha256 != checkpoint_digest:
         _fail("portable checkpoint digest does not match sidecar")
 
@@ -1096,7 +1097,7 @@ def resume_compatibility_fingerprint(identity: ResumeIdentity) -> str:
         separators=(",", ":"),
         sort_keys=True,
     ).encode("ascii")
-    return COMPATIBILITY_PREFIX + sha256(encoded).hexdigest()
+    return COMPATIBILITY_PREFIX + _checked_sha256(encoded).hex()
 
 
 def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> JsonObject:
@@ -2199,7 +2200,7 @@ def _writer_lock_path(destination: Path) -> Path:
     direct = f"{destination.name}.lock"
     if len(os.fsencode(direct)) <= _MAX_PORTABLE_FILENAME_COMPONENT_BYTES:
         return destination.with_name(direct)
-    digest = sha256(os.fsencode(destination.name)).hexdigest()
+    digest = _checked_sha256(os.fsencode(destination.name)).hex()
     return destination.with_name(f".progress-lock-{digest}.lock")
 
 
@@ -2606,7 +2607,8 @@ def _staged_digest(descriptor: int, expected_size: int) -> bytes:
         SHA-256 digest of exactly the declared number of bytes.
 
     """
-    digest = sha256()
+    direct = sha256()
+    independent = hashlib.new("sha256")
     remaining = expected_size
     while remaining:
         chunk = _read_staged_chunk(
@@ -2614,11 +2616,15 @@ def _staged_digest(descriptor: int, expected_size: int) -> bytes:
         )
         if not chunk:
             _fail("progress temporary has incomplete staged bytes")
-        digest.update(chunk)
+        direct.update(chunk)
+        independent.update(chunk)
         remaining -= len(chunk)
     if _read_staged_chunk(descriptor, 1):
         _fail("progress temporary size changed during staging")
-    return digest.digest()
+    independent_digest = independent.digest()
+    if direct.digest() != independent_digest:
+        _fail("progress SHA-256 providers disagree")
+    return independent_digest
 
 
 def _verify_staged_content(
@@ -2649,7 +2655,7 @@ def _verify_staged_content(
         or final.st_ctime_ns != initial.st_ctime_ns
     ):
         _fail("progress temporary contents changed during verification")
-    if staged_digest != sha256(payload).digest():
+    if staged_digest != _checked_sha256(payload):
         _fail("progress temporary content does not match staged bytes")
     return final
 
@@ -2780,7 +2786,7 @@ def _temporary_stage_prefix(destination: Path) -> str:
         return direct
     # This digest is only a collision-prone name hint. The exclusive mkstemp
     # creator and verified stage inode remain the publication authority.
-    digest = sha256(os.fsencode(destination.name)).hexdigest()
+    digest = _checked_sha256(os.fsencode(destination.name)).hex()
     return f".progress-{digest[:_STAGING_DIGEST_HEX_CHARS]}."
 
 
@@ -3420,8 +3426,17 @@ def _write_immutable(
     return destination
 
 
+def _checked_sha256(payload: bytes) -> bytes:
+    """Corroborate a digest across separate native constructor routes."""
+    direct = sha256(payload).digest()
+    independent = hashlib.new("sha256", payload).digest()
+    if direct != independent:
+        _fail("progress SHA-256 providers disagree")
+    return independent
+
+
 def _sha256_digest(payload: bytes) -> str:
-    return "sha256:" + sha256(payload).hexdigest()
+    return "sha256:" + _checked_sha256(payload).hex()
 
 
 @dataclass(frozen=True, slots=True)

@@ -36,6 +36,7 @@
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from dataclasses import dataclass
 from dataclasses import replace
 from hashlib import sha256
@@ -1818,6 +1819,46 @@ def test_portable_checkpoint_rejects_malformed_or_noncanonical_state(
             codec,
             payload=cast("bytes", cast("object", bytearray(b"state"))),
         )
+
+
+def test_decode_portable_checkpoint_rejects_correlated_forged_digest_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Altered canonical state cannot reuse both genuine retained digests."""
+    checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+    codec = "compiler.typed-ir-state-v1"
+    good_state = b"state"
+    changed_state = b"other"
+    original = progress.encode_portable_checkpoint(
+        _resume_identity(),
+        _checkpoint_position(checkpointed),
+        codec,
+        payload=good_state,
+    )
+    document = cast("dict[str, object]", json.loads(original))
+    document["payload_base64"] = "b3RoZXI="
+    corrupted = (
+        json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n"
+    ).encode()
+    pinned = _with_checkpoint_bytes(checkpointed, original)
+
+    # One forged provider returns both original digests even though the
+    # canonical envelope and its decoded opaque state have changed.
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress,
+            "sha256",
+            lambda payload=b"": sha256(
+                original
+                if payload == corrupted
+                else good_state
+                if payload == changed_state
+                else payload
+            ),
+        )
+        with pytest.raises(ERROR, match="SHA-256 providers disagree"):
+            _ = progress.decode_portable_checkpoint(pinned, codec, corrupted)
 
 
 @pytest.mark.parametrize(
@@ -6173,6 +6214,26 @@ def test_immutable_publication_wraps_disappearing_collision(
         _ = writer(destination, b"payload", platform="posix")
 
 
+def test_sidecar_rejects_reused_fingerprint_under_forged_sha256_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed source must not inherit another source's resume identity."""
+    original = _sidecar(tmp_path)
+    changed = replace(original, source_sha256="sha256:" + ("4" * 64))
+    canonical = json.dumps(
+        asdict(_resume_identity()),
+        ensure_ascii=True,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("ascii")
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "sha256", lambda payload=b"": sha256(canonical))
+        with pytest.raises(ERROR, match="SHA-256 providers disagree"):
+            _ = progress.validate(changed)
+
+
 def test_write_atomic_rejects_unavailable_or_corrupt_generation(
     tmp_path: Path,
 ) -> None:
@@ -6206,6 +6267,35 @@ def test_write_atomic_rejects_unavailable_or_corrupt_generation(
     _ = partial_path.write_bytes(partial)
     assert progress.write_atomic(sidecar) == destination
     assert progress.read(destination) == sidecar
+
+
+def test_write_atomic_rejects_corrupt_checkpoint_under_forged_sha256_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One substituted digest provider cannot certify altered durable state."""
+    checkpoint = b"checkpoint-state-v1"
+    corrupted = b"X" + checkpoint[1:]
+    sidecar = _checkpointed(
+        _sidecar(tmp_path), checkpoint=checkpoint, partial=None
+    )
+    _ = Path(sidecar.checkpoint_path or "").write_bytes(corrupted)
+    destination = Path(sidecar.progress_path)
+
+    # Native SHA-256 claims the retained good digest for corrupted state;
+    # other validation and staging calls still see the real constructor.
+    with monkeypatch.context() as context:
+        context.setattr(
+            progress,
+            "sha256",
+            lambda payload=b"": sha256(
+                checkpoint if payload == corrupted else payload
+            ),
+        )
+        with pytest.raises(ERROR, match="SHA-256 providers disagree"):
+            _ = progress.write_atomic(sidecar)
+
+    assert not destination.exists()
 
 
 @pytest.mark.parametrize("failure_type", [OSError, ValueError, RuntimeError])
@@ -8714,6 +8804,33 @@ def test_immutable_postpublication_same_inode_content_mutation_is_committed(
     assert captured.value.published_path == destination
     assert destination.read_bytes() == altered
     assert not tuple(tmp_path.glob(f".{destination.name}.*.tmp"))
+
+
+def test_staged_digest_rejects_forged_streaming_sha256_provider(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false streaming digest cannot certify the staged file bytes."""
+    class ForgedDigestStream:
+        def update(self, _chunk: bytes) -> None:
+            return None
+
+        def digest(self) -> bytes:
+            return sha256(b"unrelated-state").digest()
+
+    path = tmp_path / "staged-bytes"
+    _ = path.write_bytes(b"valid-state")
+    descriptor = os.open(path, os.O_RDONLY)
+    staged_digest = cast(
+        "Callable[[int, int], bytes]", vars(progress)["_staged_digest"]
+    )
+    try:
+        with monkeypatch.context() as context:
+            context.setattr(progress, "sha256", lambda: ForgedDigestStream())
+            with pytest.raises(ERROR, match="SHA-256 providers disagree"):
+                _ = staged_digest(descriptor, len(b"valid-state"))
+    finally:
+        os.close(descriptor)
 
 
 def test_corrupt_durable_checkpoint_cannot_publish_pointer(

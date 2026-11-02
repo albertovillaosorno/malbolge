@@ -51,6 +51,17 @@ lifecycle invariants, monotonic transition validation, duplicate-key rejection,
 canonical JSON, immutable checkpoint/partial persistence, and atomic sidecar
 replacement after generation payloads are durable.
 
+SHA-256 integrity admission now corroborates the direct imported constructor
+with the named `hashlib.new("sha256")` constructor. The comparison covers
+resume compatibility identity, portable envelope and decoded-state digests,
+referenced checkpoint/partial bytes, and streaming staged-byte verification
+before publication. Long-path lock/staging digest names also use the checked
+constructor. Four adversarial tests exercise altered checkpoint bytes,
+correlated outer/inner state-digest substitution, a reused source fingerprint,
+and a false streaming digest. The tests show local constructor-consistency
+rejection, not independent cryptographic implementations, trusted OS state,
+or protection from jointly compromised hash constructors.
+
 Both immutable payload and
 mutable pointer writes require an exact integer byte count before sync or
 publication. Boolean reports, including `True` for a single byte and `False`

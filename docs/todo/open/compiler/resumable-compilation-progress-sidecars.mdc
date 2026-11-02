@@ -799,6 +799,14 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   no guarantee against
   mutations after their final physical-path observation.
 
+  Four SHA-256 substitution regressions now reject forged referenced
+  checkpoint bytes before pointer publication, correlated portable envelope
+  and decoded-state digests, reused resume identity after source drift, and
+  false streaming staged-byte digests. Hash admission compares separate
+  `sha256` and `hashlib.new("sha256")` constructor paths, including long-path
+  naming, but does not attest independent cryptography or protect against
+  both constructors being compromised together.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact
