@@ -41,7 +41,7 @@ import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, cast, override
+from typing import TYPE_CHECKING, Self, TextIO, cast, override
 
 import pytest
 
@@ -1496,6 +1496,7 @@ def test_libc_source_native_stream_bytes_reject_foreign_receipts(
     raw = b"int guest(void) { return 0; }\n"
     _ = source.write_bytes(raw)
     original_fdopen = os.fdopen
+    borrowed: list[BinaryIO] = []
 
     class ForeignBytes(bytes):
         @override
@@ -1510,13 +1511,18 @@ def test_libc_source_native_stream_bytes_reject_foreign_receipts(
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
         stream = cast("BinaryIO", original_fdopen(os.dup(fd), mode))
+        borrowed.append(stream)
         return cast(
             "BinaryIO", cast("object", _LibcSourceForgedStream(stream, payloads[kind]))
         )
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
-    with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
-        _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+    try:
+        with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
+            _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+    finally:
+        for stream in borrowed:
+            stream.close()
 
 
 @pytest.mark.parametrize("receipt", [True, -1, 3.0])
@@ -1528,16 +1534,22 @@ def test_libc_source_native_stream_descriptor_rejects_foreign_receipts(
     raw = b"int guest(void) { return 0; }\n"
     _ = source.write_bytes(raw)
     original_fdopen = os.fdopen
+    borrowed: list[BinaryIO] = []
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
         stream = cast("BinaryIO", original_fdopen(os.dup(fd), mode))
+        borrowed.append(stream)
         return cast(
             "BinaryIO", cast("object", _LibcSourceForgedStream(stream, raw, receipt))
         )
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
-    with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
-        _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+    try:
+        with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
+            _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+    finally:
+        for stream in borrowed:
+            stream.close()
 
 
 @pytest.mark.parametrize(
@@ -1604,6 +1616,7 @@ def test_libc_stream_descriptor_after_read_requires_native_int(
     raw = b"int guest(void) { return 0; }\n"
     _ = source.write_bytes(raw)
     original_fdopen = os.fdopen
+    borrowed: list[BinaryIO] = []
 
     class ForgedSecondDescriptor(_LibcSourceForgedStream):
         def __init__(self, stream: BinaryIO) -> None:
@@ -1617,11 +1630,16 @@ def test_libc_stream_descriptor_after_read_requires_native_int(
 
     def forged_fdopen(fd: int, mode: str) -> BinaryIO:
         stream = cast("BinaryIO", original_fdopen(os.dup(fd), mode))
+        borrowed.append(stream)
         return cast("BinaryIO", cast("object", ForgedSecondDescriptor(stream)))
 
     monkeypatch.setattr(os, "fdopen", forged_fdopen)
-    with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
-        _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+    try:
+        with pytest.raises(c_libc_source.LibcSourceError, match="native stream"):
+            _ = c_libc_source._source_snapshot(source)  # pyright: ignore[reportPrivateUsage]
+    finally:
+        for stream in borrowed:
+            stream.close()
 
 
 @pytest.mark.parametrize("phase", ["admitted", "opened", "after", "visible"])
@@ -1764,6 +1782,86 @@ def test_libc_authority_cli_does_not_format_foreign_error_subclasses(
     monkeypatch.setattr(c_libc, "canonical_projection", fail_projection)
     assert c_libc.main() == 1
     assert "ForeignError" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "case", ("partial", "foreign-count", "write-fault", "flush-fault", "foreign-flush")
+)
+def test_libc_authority_cli_requires_delivered_summary(
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    """A valid contract cannot certify success with an invalid output receipt."""
+
+    class FakeOutput:
+        def write(self, message: str) -> object:
+            if case == "partial":
+                return len(message) - 1
+            if case == "foreign-count":
+                return True
+            if case == "write-fault":
+                raise OSError("output unavailable")
+            return len(message)
+
+        def flush(self) -> object:
+            if case == "flush-fault":
+                raise OSError("flush unavailable")
+            if case == "foreign-flush":
+                return False
+            return None
+
+    projection = c_libc.canonical_projection()
+    monkeypatch.setattr(c_libc, "canonical_projection", lambda: projection)
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", FakeOutput())))
+    assert c_libc.main() == 1
+
+
+def test_libc_authority_cli_flushes_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid contract emits and flushes exactly one summary record."""
+
+    class CapturingOutput:
+        messages: list[str]
+        flushes: int
+
+        def __init__(self) -> None:
+            self.messages = []
+            self.flushes = 0
+
+        def write(self, message: str) -> int:
+            self.messages.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    projection = c_libc.canonical_projection()
+    output = CapturingOutput()
+    monkeypatch.setattr(c_libc, "canonical_projection", lambda: projection)
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", output)))
+    assert c_libc.main() == 0
+    assert output.messages == [
+        f"C libc contract ready: {projection.libc_id} ({projection.abi_id})\n"
+    ]
+    assert output.flushes == 1
+
+
+def test_libc_authority_cli_failed_stderr_retains_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Failure exit remains nonzero when the diagnostic sink fails."""
+
+    class FailingStderr:
+        def write(self, _message: str) -> None:
+            raise OSError("diagnostic unavailable")
+
+    def rejected_contract() -> None:
+        raise c_libc.CLibcValidationError("invalid libc")
+
+    monkeypatch.setattr(c_libc, "canonical_projection", rejected_contract)
+    monkeypatch.setattr(sys, "stderr", cast("TextIO", cast("object", FailingStderr())))
+    assert c_libc.main() == 1
 
 
 @pytest.mark.parametrize("receipt", [True, False])

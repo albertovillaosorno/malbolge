@@ -41,7 +41,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-from typing import Never, cast
+from typing import Never, TextIO, cast
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -538,26 +538,46 @@ def canonical_projection(path: Path = DEFAULT_LIBC) -> CLibcProjection:
     return validate_document(load_document(path))
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Return whether exact native CLI text write and flush both completed."""
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate the canonical guest libc authority.
 
     Returns:
-        Zero for a valid contract, otherwise one with a deterministic error.
+        Zero for a valid contract with delivered CLI output, otherwise one.
 
     """
     try:
         projection = canonical_projection()
+        message = "C libc contract ready: " + projection.libc_id
+        message += f" ({projection.abi_id})\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("C libc CLI output write or flush failed")
     except (c_abi.CAbiValidationError, CLibcValidationError) as error:
         detail = (
             str(error)
             if type(error) in (c_abi.CAbiValidationError, CLibcValidationError)
             else type(error).__name__
         )
-        _ = sys.stderr.write(f"error: {detail}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {detail}\n")
         return 1
-    message = "C libc contract ready: " + projection.libc_id
-    message += f" ({projection.abi_id})"
-    _ = sys.stdout.write(message + chr(10))
     return 0
 
 

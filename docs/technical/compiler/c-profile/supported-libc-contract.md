@@ -69,6 +69,10 @@ receipts, exact boolean link/junction decisions, native nonnegative file
 descriptors that remain bound to the opened stream, and exact native read bytes.
 It rejects foreign receipt objects before their hooks can influence admission;
 foreign decoder and CLI errors cannot provide diagnostic formatters.
+The standalone libc authority CLI reports success only after an exact native
+text-write count and a completed flush. Short writes, foreign output receipts
+and failed stdout delivery return nonzero; failed stderr delivery does not
+promote an invalid contract into a successful process exit.
 
 The contract deliberately does not equate its surface with whatever one host
 calls "C23 freestanding". WG14 C23 issue 1040 remains open and identifies
