@@ -313,16 +313,83 @@ def test_toolchain_manifest_decoder_accepts_equivalent_adapter(
     original_loads = json.loads
 
     def delegated(text: str, *, object_pairs_hook: object) -> object:
-        return original_loads(
-            text,
-            object_pairs_hook=cast(
-                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+        return cast(
+            "object",
+            original_loads(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+                ),
             ),
         )
 
     monkeypatch.setattr(json, "loads", delegated)
     identity = tidy_toolchain.load_identity(manifest, root=tmp_path)
     assert identity.plugin_library.name == "malbolge-tidy.dll"
+
+
+@pytest.mark.parametrize("entrypoint", ["document", "identity"])
+def test_toolchain_decoder_rejects_self_restoring_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    entrypoint: str,
+) -> None:
+    """A decoder restoring json.loads mid-call cannot bypass source proof."""
+    manifest = _write_manifest(tmp_path, _canonical_document())
+    forged = _canonical_document()
+    platforms = cast("dict[str, object]", forged["platforms"])
+    windows = cast("dict[str, object]", platforms[WINDOWS_PLATFORM])
+    windows["plugin_library"] = "bin/foreign-toolchain.dll"
+    original_loads = json.loads
+
+    def restore_and_forge(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        monkeypatch.setattr(json, "loads", original_loads)
+        return forged
+
+    monkeypatch.setattr(json, "loads", restore_and_forge)
+    with pytest.raises(
+        tidy_toolchain.ToolchainError, match="JSON decoder provider differs from source"
+    ):
+        if entrypoint == "document":
+            _ = tidy_toolchain._document(manifest)  # pyright: ignore[reportPrivateUsage]
+        else:
+            _ = tidy_toolchain.load_identity(manifest, root=tmp_path)
+
+
+def test_toolchain_equivalent_adapter_does_not_return_mutable_foreign_tree(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """An adapter's alias cannot rewrite admitted evidence after validation."""
+    manifest = _write_manifest(tmp_path, _canonical_document())
+    original_loads = json.loads
+    captured: list[object] = []
+
+    def equivalent(text: str, *, object_pairs_hook: object) -> object:
+        parsed = cast(
+            "object",
+            original_loads(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+                ),
+            ),
+        )
+        captured.append(parsed)
+        return parsed
+
+    monkeypatch.setattr(json, "loads", equivalent)
+    admitted = tidy_toolchain._document(manifest)  # pyright: ignore[reportPrivateUsage]
+    assert admitted == captured[0]
+    assert admitted is not captured[0]
+    forged = cast("dict[str, object]", captured[0])
+    platforms = cast("dict[str, object]", forged["platforms"])
+    windows = cast("dict[str, object]", platforms[WINDOWS_PLATFORM])
+    windows["plugin_library"] = "bin/foreign-toolchain.dll"
+    retained_platforms = cast("dict[str, object]", admitted["platforms"])
+    retained_windows = cast("dict[str, object]", retained_platforms[WINDOWS_PLATFORM])
+    assert retained_windows["plugin_library"] == "bin/malbolge-tidy.dll"
 
 
 def test_toolchain_manifest_decoder_rejects_lied_about_invalid_source(

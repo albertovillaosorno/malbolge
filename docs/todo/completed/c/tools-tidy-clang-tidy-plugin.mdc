@@ -74,6 +74,10 @@ existing clang-tidy baseline.
   reject, alongside syntax-forgery and foreign-key controls; source-equivalent
   adapters remain usable. The full standalone tidy-toolchain suite passed
   185 tests with one Windows-only skip.
+- Follow-up JSON provider-entry hardening rejects decoders that restore the
+  module loader during their own call, and returns a source-owned tree for
+  equivalent adapters so an external alias cannot mutate retained identity.
+  Three red-first direct/identity/alias regressions exercise both behaviors.
 - Remaining full language/runtime/determinism/resource lowerability proof stays
   owned by the later `tools-tidy-lowerability-contract` TODO rather than this
   lane-7 plugin bootstrap.

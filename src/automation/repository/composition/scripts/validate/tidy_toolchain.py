@@ -444,13 +444,17 @@ def _document(path: Path) -> dict[str, object]:
     try:
         raw = _read_manifest_bytes(path)
         source_text = raw.decode("utf-8")
+        # Capture the provider before invocation: an injected decoder may
+        # restore json.loads during the call to conceal a fabricated receipt.
+        decoder = json.loads
         parsed = cast(
             "object",
-            json.loads(source_text, object_pairs_hook=_reject_duplicate_pairs),
+            decoder(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
-        # A replaced JSON provider may return native-looking identities that
-        # do not exist in the checked, unmodified manifest bytes.
-        if json.loads is not _NATIVE_JSON_LOADS:
+        # Native-looking values are not source evidence. Compare the entire
+        # tree against the bound source decoder and return only source-owned
+        # objects, never a mutable alias retained by an injected adapter.
+        if decoder is not _NATIVE_JSON_LOADS:
             original = cast(
                 "object",
                 _NATIVE_JSON_LOADS(
@@ -459,6 +463,7 @@ def _document(path: Path) -> dict[str, object]:
             )
             if not _same_native_json(parsed, original):
                 _fail("clang-tidy toolchain JSON decoder provider differs from source")
+            parsed = original
     except ToolchainError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
