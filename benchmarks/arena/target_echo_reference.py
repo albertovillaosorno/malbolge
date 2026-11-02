@@ -483,9 +483,11 @@ def _commit() -> str:
         message = "target echo Git environment inspection failed"
         raise TargetEchoStudyError(message) from error
     command = [git, "rev-parse", "HEAD"]
+    # Preserve the actual prepared object to reject a copied child receipt.
+    prepared = command.copy()
     try:
         output = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command.copy(),
+            prepared,
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             env=clean_env,
@@ -500,6 +502,7 @@ def _commit() -> str:
     if (
         type(output) is not sp.CompletedProcess
         or type(output.args) is not list
+        or output.args is not prepared
         or any(type(argument) is not str for argument in output.args)
         or output.args != command
         or type(output.returncode) is not int

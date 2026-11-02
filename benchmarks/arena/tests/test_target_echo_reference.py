@@ -695,6 +695,21 @@ def test_target_echo_commit_rejects_forged_git_completion_receipts(
         target_echo_reference._commit()
 
 
+def test_target_echo_commit_rejects_copied_successful_git_completion_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equal but copied argv cannot attest the actual source revision child."""
+
+    def forged(command: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(command.copy(), 0, "a" * 40 + "\n", "")
+
+    monkeypatch.setattr(target_echo_reference.sp, "run", forged)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="Git revision receipt"
+    ):
+        target_echo_reference._commit()
+
+
 def test_target_echo_commit_accepts_exact_native_git_completion_receipt(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
