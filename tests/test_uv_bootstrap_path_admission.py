@@ -30,15 +30,20 @@ from __future__ import annotations
 
 import io
 import json
+import lzma
 import os
 import stat
+import struct
 import tarfile
 import warnings
 import zipfile
+import zlib
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Self, cast
 
 import pytest
+from compression import zstd
 from scripts.bootstrap import python_validation
 
 if TYPE_CHECKING:
@@ -874,6 +879,73 @@ def test_uv_archive_rejects_excessive_member_inventory(
             _ = extract(output.getvalue(), member_name)
     else:
         assert extract(output.getvalue(), member_name) == BINARY
+
+
+def _damaged_uv_zip(method: int, damaged_byte: int) -> bytes:
+    """Build a native ZIP with one intentionally damaged compressed member.
+
+    Returns:
+        Native ZIP bytes with a malformed selected member.
+
+    """
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=method) as archive:
+        archive.writestr("uv.exe", BINARY * 500)
+    encoded = bytearray(output.getvalue())
+    name_length, extra_length = struct.unpack_from("<HH", encoded, 26)
+    payload_offset = 30 + name_length + extra_length
+    encoded[payload_offset + damaged_byte] = 0xFF
+    return bytes(encoded)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (zipfile.ZIP_DEFLATED, 0, zlib.error),
+        (zipfile.ZIP_LZMA, 9, lzma.LZMAError),
+        (zipfile.ZIP_ZSTANDARD, 0, zstd.ZstdError),
+    ],
+)
+def test_uv_zip_decoder_failure_is_typed(
+    case: tuple[int, int, type[Exception]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed compressed uv members cannot publish executable bytes."""
+    artifact = python_validation.uv_artifact(PLATFORM_ID)
+    encoded = _damaged_uv_zip(case[0], case[1])
+    selected = replace(artifact, asset="uv-test.zip", member="uv.exe")
+    extract = cast(
+        "Callable[[bytes, python_validation.UvArtifact], bytes]",
+        vars(python_validation)["_uv_member_bytes"],
+    )
+    with pytest.raises(
+        python_validation.ProvisionError, match=case[2].__name__
+    ) as failure:
+        _ = extract(encoded, selected)
+    assert type(failure.value.__cause__) is case[2]
+
+    def fake_artifact(platform_id: str) -> python_validation.UvArtifact:
+        assert platform_id == PLATFORM_ID
+        return selected
+
+    def fake_download(chosen: python_validation.UvArtifact) -> bytes:
+        assert chosen == selected
+        return encoded
+
+    monkeypatch.setattr(python_validation, "uv_artifact", fake_artifact)
+    monkeypatch.setattr(
+        python_validation, "_download_uv_archive", fake_download
+    )
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    with pytest.raises(
+        python_validation.ProvisionError, match=case[2].__name__
+    ):
+        _ = python_validation.ensure_uv(checkout, platform_id=PLATFORM_ID)
+    executable = python_validation.uv_executable(selected, checkout)
+    assert not executable.exists()
+    assert not executable.with_name(f"{executable.name}.tmp").exists()
 
 
 def test_uv_truncated_gzip_archive_reports_typed_error() -> None:

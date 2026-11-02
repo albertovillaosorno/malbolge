@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import lzma
 import ntpath
 import os
 import platform
@@ -51,10 +52,13 @@ import urllib.error
 import urllib.request
 import venv
 import zipfile
+import zlib
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from typing import BinaryIO, Final, Never, Protocol, cast
+
+from compression import zstd
 
 from scripts.repository_root import repository_root
 
@@ -527,6 +531,9 @@ def _uv_member_bytes(data: bytes, artifact: UvArtifact) -> bytes:
         RuntimeError,
         tarfile.TarError,
         zipfile.BadZipFile,
+        lzma.LZMAError,
+        zlib.error,
+        zstd.ZstdError,
     ) as error:
         message = f"cannot extract pinned uv artifact: {type(error).__name__}"
         raise ProvisionError(message) from error
