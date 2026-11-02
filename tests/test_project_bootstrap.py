@@ -1655,6 +1655,70 @@ def test_cuda_inspection_selects_linux_manifest_and_bundle(
     assert ready.path == toolkit
 
 
+@pytest.mark.parametrize("redirect", ["toolkit", "parent"])
+def test_cuda_inspection_rejects_redirected_toolkit_root(
+    tmp_path: Path, redirect: str
+) -> None:
+    """An external directory cannot impersonate a hermetic CUDA bundle."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    toolkit = tmp_path / CUDA_VERSION_ROOT
+    outside = tmp_path / "outside-toolkit"
+    outside.mkdir()
+    if redirect == "toolkit":
+        toolkit.parent.mkdir(parents=True)
+        _ = toolkit.symlink_to(outside, target_is_directory=True)
+    else:
+        _ = (outside / "toolkit").mkdir()
+        parent = toolkit.parent
+        parent.parent.mkdir(parents=True)
+        _ = parent.symlink_to(outside, target_is_directory=True)
+    with pytest.raises(project.InitializationError, match="CUDA toolkit"):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
+@pytest.mark.parametrize("redirect", ["library", "lib-directory"])
+def test_cuda_inspection_rejects_nvrtc_external_redirect(
+    tmp_path: Path, redirect: str
+) -> None:
+    """A CUDA NVRTC alias outside the package cannot certify readiness."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    _ = _write_platform_cuda_manifest(
+        tmp_path, LINUX_PLATFORM, CUDA_LINUX_MANIFEST
+    )
+    _ = _write_cuda_manifest_index(tmp_path)
+    toolkit = tmp_path / CUDA_VERSION_ROOT
+    toolkit.mkdir(parents=True)
+    nvrtc = toolkit / "lib/libnvrtc.so.13"
+    external = tmp_path / "external-lib"
+    external.mkdir()
+    _ = (external / "libnvrtc.so.13").write_bytes(b"foreign-library")
+    if redirect == "library":
+        nvrtc.parent.mkdir()
+        _ = nvrtc.symlink_to(external / nvrtc.name)
+    else:
+        _ = nvrtc.parent.symlink_to(external, target_is_directory=True)
+    status = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+    assert status.state is project.ComponentState.MISSING
+
+
+def test_cuda_inspection_admits_internal_nvrtc_symlink(tmp_path: Path) -> None:
+    """NVRTC internal versioned library aliases remain supported."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    _ = _write_platform_cuda_manifest(
+        tmp_path, LINUX_PLATFORM, CUDA_LINUX_MANIFEST
+    )
+    _ = _write_cuda_manifest_index(tmp_path)
+    toolkit = tmp_path / CUDA_VERSION_ROOT
+    nvrtc = toolkit / "lib/libnvrtc.so.13"
+    nvrtc.parent.mkdir(parents=True)
+    _ = (nvrtc.parent / "libnvrtc.so.13.3").write_bytes(b"internal-library")
+    _ = nvrtc.symlink_to("libnvrtc.so.13.3")
+    assert (
+        project.inspect_cuda(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.READY
+    )
+
+
 def test_cuda_inspection_requires_matching_platform_and_bundle(
     tmp_path: Path,
 ) -> None:

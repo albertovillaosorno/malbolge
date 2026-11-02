@@ -583,13 +583,28 @@ def _cuda_bundle_state(
             "matching hermetic CUDA bundle has not been installed",
             ComponentState.MISSING,
         )
+    try:
+        _reject_authority_parent_redirects(toolkit_path)
+        physical = toolkit_path.lstat()
+    except (InitializationError, OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot inspect CUDA toolkit root") from error
+    if type(physical) is not os.stat_result or not stat.S_ISDIR(physical.st_mode):
+        _fail("CUDA toolkit root must be a physical directory")
     nvrtc_relative = cuda_toolchain_nvrtc_relative_path(root, platform_id)
     nvrtc = None if nvrtc_relative is None else toolkit_path / nvrtc_relative
-    if nvrtc is not None and not nvrtc.is_file():
-        return (
-            "matching hermetic CUDA NVRTC library is absent",
-            ComponentState.MISSING,
-        )
+    if nvrtc is not None:
+        try:
+            resolved = nvrtc.resolve(strict=True)
+            in_toolkit = resolved.is_relative_to(toolkit_path.resolve(strict=True))
+            native_library = resolved.is_file()
+        except (OSError, ValueError, TypeError, RuntimeError):
+            in_toolkit = False
+            native_library = False
+        if not in_toolkit or not native_library:
+            return (
+                "matching hermetic CUDA NVRTC library is absent",
+                ComponentState.MISSING,
+            )
     return "matching hermetic CUDA bundle is present", ComponentState.READY
 
 
