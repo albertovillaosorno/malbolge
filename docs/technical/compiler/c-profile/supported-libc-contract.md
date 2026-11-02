@@ -76,7 +76,13 @@ admission. The canonical authority loader admits only exact native stat
 receipts, exact boolean link/junction decisions, native nonnegative file
 descriptors that remain bound to the opened stream, and exact native read bytes.
 It rejects foreign receipt objects before their hooks can influence admission;
-foreign decoder and CLI errors cannot provide diagnostic formatters.
+foreign decoder and CLI errors cannot provide diagnostic formatters. When the
+public JSON loader is replaced, the validator compares its complete native
+value tree against an independent parse by the original import-bound loader.
+It rejects altered routine signatures, descriptions, and other source values,
+and rejects foreign mapping keys before key lookup can invoke custom equality.
+Equivalent delegating decoders remain admissible. This protects public loader
+substitution, not arbitrary rewriting of Python internals.
 The standalone libc authority CLI reports success only after an exact native
 text-write count and a completed flush. Short writes, foreign output receipts
 and failed stdout delivery return nonzero; failed stderr delivery does not

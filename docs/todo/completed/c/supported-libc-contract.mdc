@@ -76,6 +76,11 @@ routines without hidden host shortcuts.
 - Completion evidence on 2026-08-08: repository-wide Ruff and basedpyright were
   clean, and exhaustive `jig validate --root .` completed with `status: clean`
   and `diagnostics_total: 0` before retirement.
+- 2026-11-02 follow-up validation: the canonical libc JSON loader now
+  corroborates substituted public decoder results against independently parsed
+  source, including routine signature and semantics data. Five red-first direct,
+  file, malformed-source, duplicate-key and foreign-key cases reject; an
+  equivalent delegating decoder remains accepted without foreign equality hooks.
 - **Completion:** Completed on 2026-08-08 after the versioned guest library
   authority, executable memory/string subset, future declaration contracts,
   source-located availability diagnostics, native no-CRT dependency evidence,

@@ -39,6 +39,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from math import isnan
 from pathlib import Path
 from stat import S_ISREG
 from typing import Never, TextIO, cast
@@ -56,6 +57,7 @@ INCLUDE_ROOT = ROOT / "src/runtime/guest-c-library/contract/include"
 LIBC_ID = "malbolge-libc-v1"
 SCHEMA_VERSION = 1
 MAX_DOCUMENT_BYTES = 1024 * 1024
+_NATIVE_JSON_LOADS = json.loads
 
 COMPILER_HEADERS = (
     "float.h",
@@ -259,6 +261,37 @@ def _routine_names(
     return names
 
 
+def _same_native_json(actual: object, source: object) -> bool:
+    """Compare parser receipts to source without calling foreign equality."""
+    kind = type(source)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        received = cast("dict[object, object]", actual)
+        original = cast("dict[object, object]", source)
+        # Check all key types before looking any key up: a str subclass with
+        # colliding hash/equality can otherwise run foreign comparison code.
+        if any(type(key) is not str for key in received):
+            _fail("C libc JSON decoder provider returned a non-native string "
+                  "key")
+        return len(received) == len(original) and all(
+            key in received and _same_native_json(received[key], value)
+            for key, value in original.items()
+        )
+    if kind is list:
+        received_items = cast("list[object]", actual)
+        original_items = cast("list[object]", source)
+        return len(received_items) == len(original_items) and all(
+            _same_native_json(received_value, source_value)
+            for received_value, source_value in zip(
+                received_items, original_items, strict=True
+            )
+        )
+    if kind is float and isnan(cast("float", source)):
+        return isnan(cast("float", actual))
+    return kind in (str, int, bool, float, type(None)) and actual == source
+
+
 def loads_document(text: str) -> JsonObject:
     """Parse bounded guest libc JSON while rejecting duplicate object keys.
 
@@ -284,7 +317,25 @@ def loads_document(text: str) -> JsonObject:
         raise
     except (ValueError, RecursionError) as error:
         raise CLibcValidationError("invalid C libc JSON") from error
-    return _mapping(parsed, "C libc document")
+    document = _mapping(parsed, "C libc document")
+    # A substituted public decoder can yield native, schema-valid values that
+    # do not occur in the source. Corroborate against the import-bound native
+    # parser, retaining duplicate-key rejection and original syntax failures.
+    if json.loads is not _NATIVE_JSON_LOADS:
+        try:
+            source = cast(
+                "object",
+                _NATIVE_JSON_LOADS(
+                    text, object_pairs_hook=_reject_duplicate_pairs
+                ),
+            )
+            if not _same_native_json(document, source):
+                _fail("C libc JSON decoder provider differs from source")
+        except CLibcValidationError:
+            raise
+        except (ValueError, RecursionError, TypeError, RuntimeError) as error:
+            raise CLibcValidationError("invalid C libc JSON") from error
+    return document
 
 
 def _regular_identity(status: object) -> tuple[int, int, int, int, int]:

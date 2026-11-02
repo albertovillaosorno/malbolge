@@ -37,6 +37,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
@@ -248,6 +249,109 @@ def test_duplicate_libc_keys_fail_closed() -> None:
     text = '{"schema_version":1,"schema_version":1}'
     with pytest.raises(c_libc.CLibcValidationError, match="duplicate JSON key"):
         _ = c_libc.loads_document(text)
+
+
+@pytest.mark.parametrize("entrypoint", ["text", "file"])
+def test_libc_json_parser_rejects_substituted_native_routine_semantics(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, entrypoint: str
+) -> None:
+    """A host decoder cannot forge a changed libc contract from source bytes."""
+    source = LIBC_PATH.read_text(encoding="utf-8")
+    forged = cast("c_libc.JsonObject", json.loads(source))
+    routines = cast("list[c_libc.JsonValue]", forged["available_routines"])
+    first = cast("dict[str, c_libc.JsonValue]", routines[0])
+    first["signature"] = "void foreign_libc_implementation(void)"
+    # The changed native document is otherwise admissible to schema checks.
+    _ = c_libc.validate_document(forged)
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+    with pytest.raises(
+        c_libc.CLibcValidationError, match="JSON decoder provider differs"
+    ):
+        if entrypoint == "text":
+            _ = c_libc.loads_document(source)
+        else:
+            path = tmp_path / "libc.json"
+            _ = path.write_text(source, encoding="utf-8")
+            _ = c_libc.load_document(path)
+
+
+def test_libc_json_parser_corroborates_syntax_despite_forged_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The source parser must reject invalid source even when a shim lies."""
+    forged = _document()
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+    with pytest.raises(c_libc.CLibcValidationError, match="invalid C libc JSON"):
+        _ = c_libc.loads_document('{"schema_version": 1,,}')
+
+
+def test_libc_json_parser_preserves_duplicate_key_failure_with_shim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source duplicate is never hidden by a fabricated native document."""
+    forged = _document()
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+    with pytest.raises(c_libc.CLibcValidationError, match="duplicate JSON key"):
+        _ = c_libc.loads_document('{"schema_version":1,"schema_version":1}')
+
+
+def test_libc_json_parser_allows_equivalent_delegating_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Wrappers that return every original JSON value remain compatible."""
+    native = json.loads
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        return cast(
+            "object",
+            native(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]",
+                    object_pairs_hook,
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(json, "loads", delegated)
+    assert c_libc.loads_document(LIBC_PATH.read_text(encoding="utf-8")) == _document()
+
+
+def test_libc_json_parser_rejects_foreign_key_without_equality_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign keys cannot participate in source-correspondence lookups."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign libc key equality hook called")
+
+    forged = _document()
+    failure = cast("dict[str, c_libc.JsonValue]", forged["failure"])
+    value = failure.pop("host_library_fallback")
+    failure[ForeignKey("host_library_fallback")] = value
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+    with pytest.raises(c_libc.CLibcValidationError, match="non-native string key"):
+        _ = c_libc.loads_document(LIBC_PATH.read_text(encoding="utf-8"))
 
 
 def test_guest_libc_json_parser_rejects_unbounded_direct_text() -> None:
