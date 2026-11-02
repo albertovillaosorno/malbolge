@@ -251,6 +251,54 @@ def test_cuda_overlay_reader_rechecks_after_stream_close(
         assert caught.value.__cause__ is failure
 
 
+@pytest.mark.parametrize("providers", ("encoder-only", "dumps-only", "joint"))
+def test_cuda_completion_marker_rejects_forged_json_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Forged JSON providers cannot mark a different CUDA toolkit complete."""
+    manifest = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, _payload()), LINUX_PLATFORM
+    )
+    original = cuda_validation._marker_bytes(manifest)
+    assert original != b"{}\n"
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return "{}"
+
+    with monkeypatch.context() as patch:
+        if providers != "dumps-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: "{}")
+        with pytest.raises(
+            cuda_validation.CudaProvisionError,
+            match="completion marker JSON writer disagrees with source",
+        ):
+            _ = cuda_validation._marker_bytes(manifest)
+
+
+def test_cuda_completion_marker_accepts_equivalent_json_encoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Equivalent JSON encoder preserves the exact completion marker."""
+    manifest = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, _payload()), LINUX_PLATFORM
+    )
+    original = cuda_validation._marker_bytes(manifest)
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert cuda_validation._marker_bytes(manifest) == original
+
+
 def test_cuda_relative_root_manifest_identity_is_cwd_invariant(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

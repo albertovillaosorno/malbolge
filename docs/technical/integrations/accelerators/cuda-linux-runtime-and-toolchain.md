@@ -50,6 +50,9 @@ rather than a mutable buffer or foreign payload, rejects archive traversal,
 stages inside the repository, and atomically publishes a completion-marker-bound
 toolkit. The completion marker must be a bounded stable regular file, with no
 symlinked leaf or parent; invalid markers cannot assert an installed toolkit.
+The marker's exact JSON bytes are verified against the encoder class bound at
+bootstrap import. A substituted public writer or encoder cannot turn a different
+CUDA package manifest into apparently completed toolkit provenance.
 The completion marker is bootstrap-owned: a package archive cannot provide a
 regular, linked, or dangling marker leaf for the provisioner to overwrite.
 On Linux, final toolkit publication pins both staging-source and destination

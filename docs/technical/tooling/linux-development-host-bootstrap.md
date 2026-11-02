@@ -406,6 +406,13 @@ swapped foreign leaves.
 Windows keeps its native
 executable layout behind the same neutral Jig-facing paths where applicable.
 
+The CUDA and LLVM development provisioners also source-bind their JSON
+completion-marker writers to the import-time standard-library encoder class.
+Before a marker is reused or published, the expected canonical bytes must
+agree with the public writer; encoder-only, writer-only, and joint substitutions
+cannot silently rewrite package identities. Python runtime internals remain a
+trusted dependency.
+
 ## Invariants
 
 - Jig-facing Python, Git, and Rust executable authority resolves below

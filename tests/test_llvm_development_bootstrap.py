@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import http.client
 import io
+import json
 import os
 import shutil
 import subprocess as sp
@@ -93,6 +94,50 @@ def _identity(tmp_path: Path) -> tidy_toolchain.ToolchainIdentity:
         development_assets=(asset,),
         required_development_files=(Path("include/clang/AST/AST.h"),),
     )
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "dumps-only", "joint"))
+def test_llvm_completion_marker_rejects_forged_json_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Forged writers cannot validate unrelated LLVM development assets."""
+    identity = _identity(tmp_path)
+    original = llvm_development_validation._marker_bytes(identity)
+    assert original != b"{}\n"
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return "{}"
+
+    with monkeypatch.context() as patch:
+        if providers != "dumps-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: "{}")
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="completion marker JSON writer disagrees with source",
+        ):
+            _ = llvm_development_validation._marker_bytes(identity)
+
+
+def test_llvm_completion_marker_accepts_equivalent_json_encoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Equivalent writer keeps the committed LLVM marker identity."""
+    identity = _identity(tmp_path)
+    original = llvm_development_validation._marker_bytes(identity)
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert llvm_development_validation._marker_bytes(identity) == original
 
 
 @pytest.mark.parametrize("name", [r"nested\clang-devel.rpm", r"nested\..\clang-devel.rpm"])

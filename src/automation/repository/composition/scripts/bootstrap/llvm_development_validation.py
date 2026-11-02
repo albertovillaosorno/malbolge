@@ -65,6 +65,7 @@ FEDORA_UPDATES_PACKAGE_BASE: Final = (
 LINUX_DEVELOPMENT_PROVIDER: Final = "fedora-rpm-set-v1"
 LLVM_DEVELOPMENT_MARKER: Final = ".malbolge-llvm-development-provision-v1.json"
 LLVM_DEVELOPMENT_MARKER_SCHEMA: Final = 1
+_NATIVE_JSON_ENCODER: Final = json.JSONEncoder
 PARENT_SEGMENT: Final = ".."
 RPM_SUFFIX: Final = ".rpm"
 POSIX_OS_NAME: Final = "posix"
@@ -955,15 +956,19 @@ def _marker_bytes(identity: tidy_toolchain.ToolchainIdentity) -> bytes:
             for asset in identity.development_assets
         ],
     }
-    rendered = (
-        json.dumps(
-            document,
+    try:
+        # Public json.dumps resolves a replaceable JSONEncoder at call time.
+        source_text = _NATIVE_JSON_ENCODER(
             sort_keys=True,
             separators=(",", ":"),
-        )
-        + "\n"
-    )
-    return rendered.encode("utf-8")
+        ).encode(document)
+        observed = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    except Exception as error:
+        message = f"completion marker JSON writer failed: {type(error).__name__}"
+        raise LlvmDevelopmentProvisionError(message) from error
+    if type(source_text) is not str or type(observed) is not str or observed != source_text:
+        _fail("completion marker JSON writer disagrees with source")
+    return (source_text + "\n").encode("utf-8")
 
 
 def _native_regular_status(value: object) -> bool:

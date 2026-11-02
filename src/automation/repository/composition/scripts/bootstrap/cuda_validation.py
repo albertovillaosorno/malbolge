@@ -75,6 +75,7 @@ CUDA_PROVISION_SCHEMA_VERSION: Final = 1
 CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
 _MAX_MANIFEST_BYTES: Final = 1024 * 1024
 _NATIVE_JSON_DECODER: Final = json.JSONDecoder
+_NATIVE_JSON_ENCODER: Final = json.JSONEncoder
 _MAX_MARKER_BYTES: Final = 16 * 1024
 _MAX_CUDA_DOWNLOAD_BYTES: Final = 512 * 1024 * 1024
 _MAX_CUDA_ARCHIVE_MEMBER_BYTES: Final = 512 * 1024 * 1024
@@ -1949,12 +1950,19 @@ def _marker_bytes(manifest: CudaProvisionManifest) -> bytes:
             for package in manifest.packages
         ],
     }
-    rendered = json.dumps(
-        document,
-        sort_keys=True,
-        separators=(",", ":"),
-    ) + "\n"
-    return rendered.encode("utf-8")
+    try:
+        # Public json.dumps resolves a replaceable JSONEncoder at call time.
+        source_text = _NATIVE_JSON_ENCODER(
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(document)
+        observed = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    except Exception as error:
+        message = f"completion marker JSON writer failed: {type(error).__name__}"
+        raise CudaProvisionError(message) from error
+    if type(source_text) is not str or type(observed) is not str or observed != source_text:
+        _fail("completion marker JSON writer disagrees with source")
+    return (source_text + "\n").encode("utf-8")
 
 
 def _completed_toolkit_matches(manifest: CudaProvisionManifest) -> bool:
