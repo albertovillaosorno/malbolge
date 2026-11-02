@@ -38,12 +38,10 @@ from __future__ import annotations
 import ctypes
 import errno
 import os
-from pathlib import Path
 import stat
 import sys
-from typing import Final
-from typing import Protocol
-from typing import cast
+from pathlib import Path
+from typing import Final, Protocol, cast
 
 _WINDOWS_OS_NAME: Final = "nt"
 _LINUX_PLATFORM: Final = "linux"
@@ -127,7 +125,7 @@ def _require_fs_encodable_path(path: Path) -> None:
         ) from error
 
 
-def _require_staging_directory(staging: Path) -> None:
+def _require_staging_directory(staging: Path) -> tuple[int, int]:
     """Reject non-directory payloads before a no-replace filesystem rename.
 
     Raises:
@@ -135,19 +133,20 @@ def _require_staging_directory(staging: Path) -> None:
 
     """
     try:
-        mode = staging.lstat().st_mode
+        receipt = staging.lstat()
     except (ValueError, RuntimeError) as error:
         raise OSError(
             errno.EINVAL,
             "staging directory status failed",
             staging,
         ) from error
-    if not stat.S_ISDIR(mode):
+    if not stat.S_ISDIR(receipt.st_mode):
         raise OSError(
             errno.ENOTDIR,
             "staging must be an existing directory, not a file or symlink",
             staging,
         )
+    return receipt.st_dev, receipt.st_ino
 
 
 def _require_host_match(os_name: str, platform: str, destination: Path) -> None:
@@ -165,7 +164,7 @@ def _validate_publication_inputs(
     *,
     os_name: object,
     platform: object,
-) -> tuple[Path, Path, str, str]:
+) -> tuple[Path, Path, str, str, tuple[int, int]]:
     # A Path subclass can override __fspath__, lstat or rename and redirect
     # the publication operation. Admit only the host's exact native Path type
     # before calling any path or filesystem method.
@@ -198,8 +197,28 @@ def _validate_publication_inputs(
             "directory publication staging and destination must differ",
             destination,
         )
-    _require_staging_directory(staging)
-    return staging, destination, os_name, platform
+    identity = _require_staging_directory(staging)
+    return staging, destination, os_name, platform, identity
+
+
+def _require_completed_publication(
+    staging: Path, destination: Path, identity: tuple[int, int]
+) -> None:
+    """Reject a success-looking rename without the original staged inode."""
+    message = "directory publication was not completed with the staged directory"
+    try:
+        result = destination.lstat()
+    except (OSError, ValueError, RuntimeError, TypeError) as error:
+        raise OSError(errno.EIO, message, destination) from error
+    if not stat.S_ISDIR(result.st_mode) or (result.st_dev, result.st_ino) != identity:
+        raise OSError(errno.EIO, message, destination)
+    try:
+        _ = staging.lstat()
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError, RuntimeError, TypeError) as error:
+        raise OSError(errno.EIO, message, destination) from error
+    raise OSError(errno.EIO, message, destination)
 
 
 def publish_directory_no_replace(
@@ -216,7 +235,7 @@ def publish_directory_no_replace(
             unavailable.
 
     """
-    staging, destination, os_name, platform = _validate_publication_inputs(
+    staging, destination, os_name, platform, identity = _validate_publication_inputs(
         staging,
         destination,
         os_name=os_name,
@@ -224,9 +243,11 @@ def publish_directory_no_replace(
     )
     if os_name == _WINDOWS_OS_NAME:
         _ = staging.rename(destination)
+        _require_completed_publication(staging, destination, identity)
         return
     if platform == _LINUX_PLATFORM:
         _linux_rename_noreplace(staging, destination)
+        _require_completed_publication(staging, destination, identity)
         return
     raise OSError(
         errno.ENOTSUP,

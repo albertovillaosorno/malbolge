@@ -38,14 +38,14 @@ from __future__ import annotations
 import ctypes
 import errno
 import os
-from pathlib import Path
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock
 
-from algorithms.diff import publication
 import pytest
+from algorithms.diff import publication
 
 _WINDOWS_OS_NAME = "nt"
 _LINUX_PLATFORM = "linux"
@@ -190,10 +190,11 @@ def test_windows_route_uses_path_rename(
     staging.mkdir()
     destination = tmp_path / "destination"
     calls: list[tuple[Path, Path]] = []
+    native_rename = Path.rename
 
     def record_rename(path: Path, target: Path) -> Path:
         calls.append((path, target))
-        return target
+        return native_rename(path, target)
 
     monkeypatch.setattr(Path, "rename", record_rename)
     monkeypatch.setattr(
@@ -219,6 +220,7 @@ def test_linux_route_uses_renameat2(
 
     def record_rename(source: Path, target: Path) -> None:
         calls.append((source, target))
+        os.rename(source, target)
 
     monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
     monkeypatch.setattr(
@@ -226,9 +228,7 @@ def test_linux_route_uses_renameat2(
         "os",
         SimpleNamespace(name="posix", fsencode=os.fsencode),
     )
-    monkeypatch.setattr(
-        publication, "sys", SimpleNamespace(platform=_LINUX_PLATFORM)
-    )
+    monkeypatch.setattr(publication, "sys", SimpleNamespace(platform=_LINUX_PLATFORM))
     publication.publish_directory_no_replace(
         staging, destination, os_name="posix", platform=_LINUX_PLATFORM
     )
@@ -244,9 +244,7 @@ def test_unsupported_host_fails_closed(
     monkeypatch.setattr(
         publication, "os", SimpleNamespace(name="posix", fsencode=os.fsencode)
     )
-    monkeypatch.setattr(
-        publication, "sys", SimpleNamespace(platform="unsupported")
-    )
+    monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="unsupported"))
     with pytest.raises(OSError, match="unsupported") as caught:
         publication.publish_directory_no_replace(
             staging,
@@ -295,9 +293,7 @@ def test_host_collision_preserves_both_directories(tmp_path: Path) -> None:
     _ = (staging / "ours.txt").write_bytes(_OURS)
     _ = (destination / "foreign.txt").write_bytes(_FOREIGN)
 
-    with pytest.raises(
-        OSError, match=r"already exists|Cannot create|File exists"
-    ):
+    with pytest.raises(OSError, match=r"already exists|Cannot create|File exists"):
         publication.publish_directory_no_replace(staging, destination)
 
     assert (staging / "ours.txt").read_bytes() == _OURS
@@ -357,9 +353,7 @@ def test_staging_status_errors_fail_closed_as_os_error(
 
     monkeypatch.setattr(Path, "lstat", fail_staging_stat)
     monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
-    with pytest.raises(
-        OSError, match="staging directory status failed"
-    ) as rejected:
+    with pytest.raises(OSError, match="staging directory status failed") as rejected:
         publication.publish_directory_no_replace(staging, destination)
     assert rejected.value.errno == errno.EINVAL
     assert not rename_calls
@@ -452,3 +446,94 @@ def test_linux_publication_contains_native_call_errors(
     assert native.call_count == 1
     assert staging.is_dir()
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("platform", ["linux", "windows"])
+def test_publication_rejects_foreign_success_without_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    """A successful-looking host receipt cannot publish an absent output."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    if platform == "linux":
+        native = Mock(return_value=0)
+        monkeypatch.setattr(
+            ctypes,
+            "CDLL",
+            lambda *_args, **_kwargs: SimpleNamespace(renameat2=native),
+        )
+        _fake_linux_host(monkeypatch)
+        os_name, host_platform = "posix", "linux"
+    else:
+        monkeypatch.setattr(Path, "rename", lambda *_args: destination)
+        monkeypatch.setattr(
+            publication,
+            "os",
+            SimpleNamespace(name="nt", fsencode=os.fsencode),
+        )
+        monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+        os_name, host_platform = "nt", "win32"
+
+    with pytest.raises(OSError, match="publication.*not completed"):
+        publication.publish_directory_no_replace(
+            staging, destination, os_name=os_name, platform=host_platform
+        )
+    assert (staging / "payload").read_bytes() == _OURS
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("attack", ["wrong-source", "replaced-source"])
+def test_linux_publication_rejects_success_for_different_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, attack: str
+) -> None:
+    """Publication must bind output inode to the staged directory identity."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    foreign = tmp_path / "foreign"
+    parked = tmp_path / "parked"
+    staging.mkdir()
+    foreign.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    _ = (foreign / "payload").write_bytes(_FOREIGN)
+
+    def foreign_rename(*_args: object) -> int:
+        if attack == "replaced-source":
+            os.rename(staging, parked)
+            os.rename(foreign, staging)
+            os.rename(staging, destination)
+        else:
+            os.rename(foreign, destination)
+        return 0
+
+    monkeypatch.setattr(
+        ctypes,
+        "CDLL",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            renameat2=Mock(side_effect=foreign_rename)
+        ),
+    )
+    _fake_linux_host(monkeypatch)
+    with pytest.raises(OSError, match="publication.*not completed"):
+        publication.publish_directory_no_replace(
+            staging, destination, os_name="posix", platform="linux"
+        )
+    assert (destination / "payload").read_bytes() == _FOREIGN
+    if attack == "replaced-source":
+        assert (parked / "payload").read_bytes() == _OURS
+    else:
+        assert (staging / "payload").read_bytes() == _OURS
+
+
+def test_real_host_publication_attests_moved_directory(tmp_path: Path) -> None:
+    """The native no-replace path still publishes a real stage exactly once."""
+    if os.name != "nt" and sys.platform != "linux":
+        pytest.skip("no supported atomic directory publisher")
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    publication.publish_directory_no_replace(staging, destination)
+    assert not staging.exists()
+    assert (destination / "payload").read_bytes() == _OURS
