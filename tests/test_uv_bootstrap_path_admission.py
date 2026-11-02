@@ -891,6 +891,109 @@ def test_uv_download_normalizes_incomplete_http_response(
     assert raised.value.__cause__ is failure
 
 
+def test_uv_download_does_not_accept_suppressed_response_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A response context cannot erase a failed bounded download read."""
+    artifact = python_validation.uv_artifact(PLATFORM_ID)
+    failure = OSError("broken response")
+
+    class SuppressingResponse:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            return True
+
+        def read(self, _limit: int) -> bytes:
+            raise failure
+
+    def fake_urlopen(*_args: object, **_kwargs: object) -> SuppressingResponse:
+        return SuppressingResponse()
+
+    monkeypatch.setattr(python_validation.urllib.request, "urlopen", fake_urlopen)
+    with pytest.raises(
+        python_validation.ProvisionError, match="cannot download pinned uv artifact"
+    ) as rejected:
+        _ = python_validation._download_uv_archive(artifact)
+    assert rejected.value.__cause__ is failure
+
+
+def test_uv_zip_does_not_accept_suppressed_archive_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A ZIP archive context cannot suppress rejected executable metadata."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        info = zipfile.ZipInfo("uv.exe")
+        info.create_system = 3
+        info.external_attr = (stat.S_IFLNK | 0o755) << 16
+        archive.writestr(info, BINARY)
+
+    monkeypatch.setattr(zipfile.ZipFile, "__exit__", lambda *_args: True)
+    with pytest.raises(python_validation.ProvisionError, match="suppressed"):
+        _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
+
+
+def test_uv_tar_does_not_accept_suppressed_missing_member(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A TAR archive context cannot suppress missing pinned executable data."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        info = tarfile.TarInfo("unrelated")
+        info.size = len(BINARY)
+        archive.addfile(info, io.BytesIO(BINARY))
+
+    monkeypatch.setattr(tarfile.TarFile, "__exit__", lambda *_args: True)
+    with pytest.raises(python_validation.ProvisionError, match="suppressed"):
+        _ = python_validation._uv_member_bytes(
+            output.getvalue(), python_validation.uv_artifact(PLATFORM_ID)
+        )
+
+
+@pytest.mark.parametrize("archive_kind", ["zip", "tar"])
+def test_uv_member_does_not_accept_suppressed_read_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    archive_kind: str,
+) -> None:
+    """A forged member context cannot erase a failed bounded content read."""
+    failure = OSError("cannot read compressed member")
+
+    class SuppressingMember:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            return True
+
+        def read(self, _limit: int) -> bytes:
+            raise failure
+
+    output = io.BytesIO()
+    if archive_kind == "zip":
+        name = "uv.exe"
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr(name, BINARY)
+        monkeypatch.setattr(
+            zipfile.ZipFile, "open", lambda *_args: SuppressingMember()
+        )
+        extract = python_validation._zip_member_bytes
+    else:
+        name = "uv-release/uv"
+        with tarfile.open(fileobj=output, mode="w:gz") as archive:
+            info = tarfile.TarInfo(name)
+            info.size = len(BINARY)
+            archive.addfile(info, io.BytesIO(BINARY))
+        monkeypatch.setattr(
+            tarfile.TarFile, "extractfile", lambda *_args: SuppressingMember()
+        )
+        extract = python_validation._tar_member_bytes
+
+    with pytest.raises(python_validation.ProvisionError, match="suppressed"):
+        _ = extract(output.getvalue(), name)
+
+
 def test_uv_zip_rejects_duplicate_selected_executable() -> None:
     """Ambiguous duplicate ZIP names cannot select executable contents."""
     output = io.BytesIO()

@@ -463,8 +463,29 @@ def _download_uv_archive(artifact: UvArtifact) -> bytes:
                 timeout=120,
             ),
         )
+        read_failure: Exception | None = None
+        read_completed = False
         with response:
-            data = response.read(MAX_UV_ARCHIVE_BYTES + 1)
+            try:
+                data = response.read(MAX_UV_ARCHIVE_BYTES + 1)
+            except (
+                OSError,
+                http.client.HTTPException,
+                ValueError,
+                TypeError,
+                RuntimeError,
+            ) as error:
+                read_failure = error
+                raise
+            read_completed = True
+        # A foreign response context may suppress its body's read failure.
+        # Re-raise the original fault so the outer boundary keeps its cause.
+        if read_failure is not None:
+            raise read_failure
+        if not read_completed:
+            _fail("uv download response read was suppressed")
+    except ProvisionError:
+        raise
     except (
         OSError,
         http.client.HTTPException,
@@ -491,6 +512,7 @@ def _bounded_uv_member_bytes(content: bytes) -> bytes:
 
 
 def _zip_member_bytes(data: bytes, member: str) -> bytes:
+    archive_completed = False
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         inventory = archive.infolist()
         if len(inventory) > MAX_UV_ARCHIVE_MEMBERS:
@@ -514,16 +536,24 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
             _fail("uv zip member must be a regular file")
         if info.file_size < 0 or info.file_size > MAX_UV_BINARY_BYTES:
             _fail("uv extracted member exceeds byte limit")
+        member_read = False
         with archive.open(info) as stream:
             content = _bounded_uv_member_bytes(
                 stream.read(MAX_UV_BINARY_BYTES + 1)
             )
+            member_read = True
+        if not member_read:
+            _fail("uv zip member read was suppressed")
         if len(content) != info.file_size:
             _fail("uv zip member length differs from declared size")
-        return content
+        archive_completed = True
+    if not archive_completed:
+        _fail("uv zip archive validation was suppressed")
+    return content
 
 
 def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
+    archive_completed = False
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
         selected: tarfile.TarInfo | None = None
         for index in range(MAX_UV_ARCHIVE_MEMBERS + 1):
@@ -556,13 +586,20 @@ def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
         member = archive.extractfile(info)
         if member is None:
             _fail(f"uv archive member is not a file: {member_name}")
+        member_read = False
         with member:
             content = _bounded_uv_member_bytes(
                 member.read(MAX_UV_BINARY_BYTES + 1)
             )
+            member_read = True
+        if not member_read:
+            _fail("uv tar member read was suppressed")
         if len(content) != info.size:
             _fail("uv tar member length differs from declared size")
-        return content
+        archive_completed = True
+    if not archive_completed:
+        _fail("uv tar archive validation was suppressed")
+    return content
 
 
 def _uv_member_bytes(data: bytes, artifact: UvArtifact) -> bytes:
