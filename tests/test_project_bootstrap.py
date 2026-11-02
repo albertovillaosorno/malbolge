@@ -2793,8 +2793,154 @@ def test_import_completion_rejects_linked_parent(
     assert not check(alias)
 
 
+@pytest.mark.parametrize("alias_kind", ["symlink", "hardlink"])
+@pytest.mark.parametrize("marker_name", [project.GIT_IMPORT_MARKER, project.RUST_IMPORT_MARKER])
+def test_import_marker_writer_never_overwrites_linked_foreign_file(
+    tmp_path: Path, marker_name: str, alias_kind: str
+) -> None:
+    """A preexisting linked completion marker must not overwrite outsiders."""
+    foreign = tmp_path / "protected"
+    original = b"foreign marker contents must be retained"
+    _ = foreign.write_bytes(original)
+    marker = tmp_path / marker_name
+    try:
+        if alias_kind == "symlink":
+            _ = marker.symlink_to(foreign)
+        else:
+            os.link(foreign, marker)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"file aliases unavailable: {error}")
+
+    with pytest.raises(project.InitializationError, match="marker"):
+        project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+            marker, "malbolge-git-import/v1\n"
+        )
+    assert foreign.read_bytes() == original
+
+
+def test_import_marker_writer_rejects_leaf_swap_during_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Renaming a new marker away cannot turn a foreign leaf into readiness."""
+    marker = tmp_path / project.GIT_IMPORT_MARKER
+    relocated = tmp_path / "moved-marker"
+    foreign = tmp_path / "external-marker"
+    original = b"external bytes cannot be overwritten"
+    _ = foreign.write_bytes(original)
+    real_write = os.write
+    swapped = False
+
+    def swap_before_write(descriptor: int, data: bytes) -> int:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            _ = marker.replace(relocated)
+            _ = marker.symlink_to(foreign)
+        return real_write(descriptor, data)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "write", swap_before_write)
+        with pytest.raises(project.InitializationError, match="marker"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert swapped
+    assert marker.is_symlink()
+    assert foreign.read_bytes() == original
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_import_marker_writer_removes_partial_file_on_write_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A host write fault leaves no published import completion marker."""
+    marker = tmp_path / project.GIT_IMPORT_MARKER
+    fault = fault_type("host marker write failed")
+
+    def failing_write(_descriptor: int, _data: bytes) -> Never:
+        raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "write", failing_write)
+        with pytest.raises(
+            project.InitializationError, match="import marker write failed"
+        ) as caught:
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert caught.value.__cause__ is fault
+    assert not marker.exists()
+
+
+def test_import_marker_writer_rejects_forged_open_file_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A nonnative fstat result cannot attest a newly created marker."""
+    marker = tmp_path / project.GIT_IMPORT_MARKER
+    native_fstat = os.fstat
+    opened: list[int] = []
+    real_open = os.open
+
+    class ForeignStat:
+        def __init__(self, native: os.stat_result) -> None:
+            self.native: os.stat_result = native
+
+        def __getattr__(self, name: str) -> object:
+            return cast("object", getattr(self.native, name))
+
+    def tracked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        descriptor = real_open(path, flags, mode)
+        if path == marker:
+            opened.append(descriptor)
+        return descriptor
+
+    def forged_fstat(descriptor: int) -> os.stat_result:
+        result = native_fstat(descriptor)
+        if descriptor in opened:
+            return cast("os.stat_result", cast("object", ForeignStat(result)))
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", tracked_open)
+        isolated.setattr(os, "fstat", forged_fstat)
+        with pytest.raises(project.InitializationError, match="descriptor"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert opened
+    with pytest.raises(OSError):
+        _ = native_fstat(opened[0])
+    assert marker.read_bytes() == b""
+
+
+def test_import_marker_writer_close_fault_invalidates_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed descriptor close cannot leave a complete import marker."""
+    marker = tmp_path / project.GIT_IMPORT_MARKER
+    native_close = os.close
+    fault = OSError("host marker close failed")
+
+    def failing_close(descriptor: int) -> None:
+        native_close(descriptor)
+        raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "close", failing_close)
+        with pytest.raises(
+            project.InitializationError, match="import marker close failed"
+        ) as caught:
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert caught.value.__cause__ is fault
+    assert not marker.exists()
+
+
 @pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
-def test_git_import_completion_marker_requires_complete_text_write(
+def test_git_import_completion_marker_requires_complete_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     bad_write_count: object,
@@ -2806,20 +2952,13 @@ def test_git_import_completion_marker_requires_complete_text_write(
     exec_path.mkdir()
     destination = tmp_path / "imported-git"
     marker = destination / project.GIT_IMPORT_MARKER
-    original_write = type(tmp_path).write_text
+    original_write = os.write
 
-    def incomplete_write(
-        path: Path,
-        data: str,
-        *,
-        encoding: str | None = None,
-        newline: str | None = None,
-    ) -> int:
-        actual = data[:1] if path == marker else data
-        _ = original_write(path, actual, encoding=encoding, newline=newline)
-        return cast("int", bad_write_count) if path == marker else len(data)
+    def incomplete_write(descriptor: int, data: bytes) -> int:
+        _ = original_write(descriptor, data[:1])
+        return cast("int", bad_write_count)
 
-    monkeypatch.setattr(type(tmp_path), "write_text", incomplete_write)
+    monkeypatch.setattr(os, "write", incomplete_write)
     with pytest.raises(project.InitializationError, match="short or invalid"):
         _ = project.import_git_installation(
             source, exec_path, destination, windows=False
@@ -2829,7 +2968,7 @@ def test_git_import_completion_marker_requires_complete_text_write(
 
 
 @pytest.mark.parametrize("bad_write_count", [1, None, True, -1, 1_000_000])
-def test_rust_import_completion_marker_requires_complete_text_write(
+def test_rust_import_completion_marker_requires_complete_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     bad_write_count: object,
@@ -2841,20 +2980,13 @@ def test_rust_import_completion_marker_requires_complete_text_write(
     _ = (source_bin / "cargo").write_bytes(RUST_CARGO_BYTES)
     destination = tmp_path / "imported-rust"
     marker = destination / project.RUST_IMPORT_MARKER
-    original_write = type(tmp_path).write_text
+    original_write = os.write
 
-    def incomplete_write(
-        path: Path,
-        data: str,
-        *,
-        encoding: str | None = None,
-        newline: str | None = None,
-    ) -> int:
-        actual = data[:1] if path == marker else data
-        _ = original_write(path, actual, encoding=encoding, newline=newline)
-        return cast("int", bad_write_count) if path == marker else len(data)
+    def incomplete_write(descriptor: int, data: bytes) -> int:
+        _ = original_write(descriptor, data[:1])
+        return cast("int", bad_write_count)
 
-    monkeypatch.setattr(type(tmp_path), "write_text", incomplete_write)
+    monkeypatch.setattr(os, "write", incomplete_write)
     with pytest.raises(project.InitializationError, match="short or invalid"):
         _ = project.import_rust_toolchain(
             source, destination, tool_ids=("cargo",), windows=False

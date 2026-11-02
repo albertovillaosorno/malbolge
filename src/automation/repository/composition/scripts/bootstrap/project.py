@@ -708,19 +708,82 @@ def git_import_complete(git_root: Path) -> bool:
 
 
 def _write_import_completion_marker(marker: Path, content: str) -> None:
-    """Reject truncated import readiness metadata and clear partial markers."""
-    written = marker.write_text(
-        content,
-        encoding="ascii",
-        newline="\n",
-    )
-    if type(written) is int and written == len(content):
-        return
+    """Create a complete physical import marker without following a linked leaf."""
+    _reject_authority_parent_redirects(marker)
+    if type(content) is not str:
+        _fail("import marker requires native text")
     try:
-        marker.unlink(missing_ok=True)
-    except OSError as error:
-        _fail(f"import marker short or invalid character count; {error}")
-    _fail("import marker short or invalid character count")
+        payload = content.encode("ascii")
+    except UnicodeEncodeError as error:
+        raise InitializationError("import marker requires ASCII text") from error
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(marker, flags, 0o600)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("import marker creation failed") from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("import marker returned invalid descriptor")
+    owned: tuple[int, int] | None = None
+    complete = False
+    try:
+        try:
+            opened = os.fstat(descriptor)
+            physical = marker.lstat()
+            if (
+                type(opened) is not os.stat_result
+                or type(physical) is not os.stat_result
+                or not stat.S_ISREG(opened.st_mode)
+                or not stat.S_ISREG(physical.st_mode)
+                or opened.st_nlink != 1
+                or (opened.st_dev, opened.st_ino)
+                != (physical.st_dev, physical.st_ino)
+            ):
+                _fail("import marker descriptor does not own physical leaf")
+            owned = opened.st_dev, opened.st_ino
+            written = os.write(descriptor, payload)
+            if type(written) is not int or written != len(payload):
+                _fail("import marker short or invalid byte count")
+            finished = os.fstat(descriptor)
+            published = marker.lstat()
+            if (
+                type(finished) is not os.stat_result
+                or type(published) is not os.stat_result
+                or not stat.S_ISREG(published.st_mode)
+                or finished.st_nlink != 1
+                or finished.st_size != len(payload)
+                or (finished.st_dev, finished.st_ino) != owned
+                or (published.st_dev, published.st_ino) != owned
+            ):
+                _fail("import marker changed during publication")
+            _reject_authority_parent_redirects(marker)
+            complete = True
+        except InitializationError:
+            raise
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise InitializationError("import marker write failed") from error
+    finally:
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            complete = False
+            raise InitializationError("import marker close failed") from error
+        finally:
+            if not complete and owned is not None:
+                try:
+                    physical = marker.lstat()
+                    if (
+                        type(physical) is os.stat_result
+                        and (physical.st_dev, physical.st_ino) == owned
+                    ):
+                        marker.unlink()
+                except (OSError, ValueError, TypeError, RuntimeError):
+                    pass
 
 
 def import_git_installation(
