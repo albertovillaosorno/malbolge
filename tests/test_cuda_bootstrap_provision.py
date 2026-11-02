@@ -4805,6 +4805,55 @@ def test_cuda_nonposix_overlay_rejects_suppressed_directory_scan_failure(
     assert copied == (scan_phase == "recheck")
 
 
+def test_cuda_nonposix_overlay_rejects_matching_omitted_walk_and_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two matching incomplete adapters cannot certify the full source tree."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    (source / "bin").mkdir()
+    _ = (source / "lib64/verified.dll").write_bytes(b"verified library")
+    _ = (source / "bin/omitted.dll").write_bytes(b"hidden but valid package member")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    status = source.stat()
+    native_copytree = shutil.copytree
+    suppressed = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def omit_subtree(
+        path: Path, *, follow_symlinks: bool = False,
+        on_error: Callable[[OSError], object] | None = None,
+    ) -> Iterator[tuple[Path, list[str], list[str]]]:
+        nonlocal suppressed
+        _ = follow_symlinks, on_error
+        assert path == source
+        suppressed = True
+        yield source, ["lib64"], []
+        yield source / "lib64", [], ["verified.dll"]
+
+    def copy_only_reported(_src: Path, _dst: Path, **_kwargs: object) -> Path:
+        _ = native_copytree(source / "lib64", destination / "lib64")
+        return destination
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(Path, "walk", omit_subtree)
+        isolated.setattr(shutil, "copytree", copy_only_reported)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="source"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert suppressed
+    assert (destination / "lib64/verified.dll").read_bytes() == b"verified library"
+    assert not (destination / "bin/omitted.dll").exists()
+
+
 @pytest.mark.parametrize("copy_fault", ("omitted", "wrong_bytes"))
 def test_cuda_nonposix_overlay_rejects_false_copytree_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, copy_fault: str

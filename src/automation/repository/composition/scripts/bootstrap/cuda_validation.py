@@ -1342,6 +1342,11 @@ def _copy_cuda_overlay(
             ) from error
         if observed_inventory != source_inventory:
             _fail("CUDA staged overlay source members changed during copy")
+        # A forged source walk can omit the same subtree in both inventory
+        # passes while copytree also omits it. A separate physical inventory
+        # must still contain exactly the original source-member names.
+        if _cuda_overlay_destination_members(source).keys() != source_inventory.keys():
+            _fail("CUDA staged overlay source physical members were omitted")
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
         destination_after = _cuda_overlay_destination_members(destination)
