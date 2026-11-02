@@ -534,9 +534,12 @@ def _require_git_commit(commit: str) -> None:
         message = "host-C source commit Git environment unavailable"
         raise ReferenceAuditError(message) from error
     command = [executable, "cat-file", "-t", commit]
+    # Retain the original prepared argv object: an equal copied completion
+    # cannot establish that it came from this particular subprocess request.
+    prepared = command.copy()
     try:
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            command.copy(),
+            prepared,
             cwd=_ROOT,
             stdin=sp.DEVNULL,
             env=clean_env,
@@ -555,6 +558,7 @@ def _require_git_commit(commit: str) -> None:
     stdout = completed.stdout
     if (
         type(completed.args) is not list
+        or completed.args is not prepared
         or any(type(argument) is not str for argument in completed.args)
         or completed.args != command
         or type(returncode) is not int

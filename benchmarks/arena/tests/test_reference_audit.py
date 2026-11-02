@@ -2260,6 +2260,23 @@ def test_audit_git_rejects_forged_command_receipt(
         reference_audit._require_git_commit("0" * 40)
 
 
+def test_audit_git_rejects_copied_successful_command_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A swapped completion cannot impersonate the exact invoked Git argv."""
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        return reference_audit.sp.CompletedProcess(
+            command.copy(), 0, stdout=b"commit\n", stderr=b""
+        )
+
+    monkeypatch.setattr(reference_audit.sp, "run", forged)
+    with pytest.raises(
+        reference_audit.ReferenceAuditError, match="local Git commit object"
+    ):
+        reference_audit._require_git_commit("0" * 40)
+
+
 @pytest.mark.parametrize(
     "stdout",
     [b"commit", b" commit\n", b"commit\n\n", b"commit \n"],
