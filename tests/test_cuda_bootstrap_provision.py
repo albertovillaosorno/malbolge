@@ -892,3 +892,111 @@ def test_provision_rejects_incomplete_toolkit_marker_write(
         )
     assert not (tmp_path / TOOLKIT_ROOT).exists()
     assert not (tmp_path / ".temp/cuda-provision-linux-x86_64").exists()
+
+
+@pytest.mark.parametrize("marker_kind", ["regular", "symlink", "dangling-symlink"])
+def test_provision_rejects_package_owned_completion_marker(
+    tmp_path: Path,
+    marker_kind: str,
+) -> None:
+    """Archive-supplied marker leaves must not authorize or redirect publication."""
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:xz") as archive:
+        for name, content in (
+            (NVRTC_MEMBER, NVRTC_BYTES),
+            (BUILTINS_MEMBER, BUILTINS_BYTES),
+        ):
+            member = tarfile.TarInfo(name)
+            member.size = len(content)
+            archive.addfile(member, io.BytesIO(content))
+        marker = tarfile.TarInfo(
+            f"{ARCHIVE_ROOT}/{cuda_validation.CUDA_PROVISION_MARKER}"
+        )
+        if marker_kind == "regular":
+            content = b"package-supplied marker"
+            marker.size = len(content)
+            archive.addfile(marker, io.BytesIO(content))
+        else:
+            marker.type = tarfile.SYMTYPE
+            marker.linkname = (
+                "lib64/libnvrtc.so.13"
+                if marker_kind == "symlink"
+                else "lib64/missing.so"
+            )
+            archive.addfile(marker)
+    payload = output.getvalue()
+    manifest = _manifest(tmp_path, payload)
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="marker"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+    assert not (tmp_path / ".temp/cuda-provision-linux-x86_64").exists()
+
+
+def test_provision_rejects_zip_package_owned_completion_marker(
+    tmp_path: Path,
+) -> None:
+    """ZIP payloads cannot prepopulate the bootstrap-owned marker either."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, mode="w") as archive:
+        archive.writestr(NVRTC_MEMBER, NVRTC_BYTES)
+        archive.writestr(BUILTINS_MEMBER, BUILTINS_BYTES)
+        archive.writestr(
+            f"{ARCHIVE_ROOT}/{cuda_validation.CUDA_PROVISION_MARKER}",
+            b"package-supplied marker",
+        )
+    payload = output.getvalue()
+    manifest = _manifest(
+        tmp_path, payload, {"relative_path": _ZIP_PACKAGE_PATH}
+    )
+
+    def download(url: str) -> bytes:
+        assert url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + _ZIP_PACKAGE_PATH
+        return payload
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="marker"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest,
+            LINUX_PLATFORM,
+            downloader=download,
+        )
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
+def test_provision_types_marker_status_host_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Marker leaf inspection faults fail closed before toolkit publication."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    marker = (
+        tmp_path
+        / f".temp/cuda-provision-{LINUX_PLATFORM}/toolkit"
+        / cuda_validation.CUDA_PROVISION_MARKER
+    )
+    native = Path.lstat
+
+    def inspect(path: Path) -> os.stat_result:
+        if path == marker:
+            raise PermissionError("marker status denied")
+        return native(path)
+
+    monkeypatch.setattr(Path, "lstat", inspect)
+    with pytest.raises(
+        cuda_validation.CudaProvisionError,
+        match="cannot inspect CUDA completion marker",
+    ):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )
+    assert not (tmp_path / TOOLKIT_ROOT).exists()

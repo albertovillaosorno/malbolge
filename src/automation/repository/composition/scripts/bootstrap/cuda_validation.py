@@ -591,6 +591,18 @@ def _completed_toolkit_matches(manifest: CudaProvisionManifest) -> bool:
     return observed == _marker_bytes(manifest)
 
 
+def _require_new_completion_marker(path: Path) -> None:
+    """Keep the provision marker independent from archive-owned file entries."""
+    _require_physical_directories(path.parent, "completion marker")
+    try:
+        _ = path.lstat()
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        _fail(f"cannot inspect CUDA completion marker: {error}")
+    _fail(f"CUDA completion marker already supplied by a package: {path}")
+
+
 def provision_cuda_manifest(
     root: Path,
     manifest_path: Path,
@@ -626,9 +638,9 @@ def provision_cuda_manifest(
                 staging=package_staging,
             )
         _require_physical_directories(staging, "staging")
-        _write_verified_bytes(
-            staged_toolkit / CUDA_PROVISION_MARKER, _marker_bytes(manifest)
-        )
+        marker = staged_toolkit / CUDA_PROVISION_MARKER
+        _require_new_completion_marker(marker)
+        _write_verified_bytes(marker, _marker_bytes(manifest))
         _require_toolkit_destination(manifest.toolkit_root)
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
         _require_toolkit_destination(manifest.toolkit_root)
