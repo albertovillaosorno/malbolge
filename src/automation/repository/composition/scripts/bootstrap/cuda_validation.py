@@ -619,6 +619,24 @@ def _prepare_staging(path: Path) -> None:
     _require_physical_directories(path, "staging")
 
 
+def _owned_staging_identity(path: Path) -> tuple[int, int]:
+    """Admit the native inode of the provision-owned staging root."""
+    _require_physical_directories(path, "staging")
+    try:
+        status = path.lstat()
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA staging directory status failed") from error
+    if type(status) is not os.stat_result or not S_ISDIR(status.st_mode):
+        _fail("CUDA staging directory requires native directory status")
+    return status.st_dev, status.st_ino
+
+
+def _require_owned_staging(path: Path, identity: tuple[int, int]) -> None:
+    """Reject a staging root replaced after this provisioning run created it."""
+    if _owned_staging_identity(path) != identity:
+        _fail("CUDA staging directory changed during provisioning")
+
+
 def extract_cuda_package(
     data: bytes,
     package: CudaPackageArtifact,
@@ -807,10 +825,11 @@ def provision_cuda_manifest(
     staging = root / ".temp" / f"cuda-provision-{platform_id}"
     staged_toolkit = staging / "toolkit"
     _prepare_staging(staging)
+    staging_identity = _owned_staging_identity(staging)
     package_staging = staging / "packages"
     try:
         for package in manifest.packages:
-            _require_physical_directories(staging, "staging")
+            _require_owned_staging(staging, staging_identity)
             url = manifest.base_url + package.relative_path
             data = (
                 _download_cuda_package(url, max_bytes=package.size)
@@ -823,18 +842,20 @@ def provision_cuda_manifest(
                 staged_toolkit,
                 staging=package_staging,
             )
-        _require_physical_directories(staging, "staging")
+        _require_owned_staging(staging, staging_identity)
+        toolkit_identity = _owned_staging_identity(staged_toolkit)
         marker = staged_toolkit / CUDA_PROVISION_MARKER
         _require_new_completion_marker(marker)
         _write_staged_file_exclusively(
             marker, _marker_bytes(manifest), "CUDA completion marker"
         )
+        _require_owned_staging(staging, staging_identity)
+        _require_owned_staging(staged_toolkit, toolkit_identity)
         _require_toolkit_destination(manifest.toolkit_root)
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
         _require_toolkit_destination(manifest.toolkit_root)
         _ = staged_toolkit.replace(manifest.toolkit_root)
     finally:
-        _require_physical_directories(staging, "staging")
-        if staging.exists():
-            shutil.rmtree(staging)
+        _require_owned_staging(staging, staging_identity)
+        shutil.rmtree(staging)
     return manifest.toolkit_root

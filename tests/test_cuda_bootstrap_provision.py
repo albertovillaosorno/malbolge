@@ -640,6 +640,120 @@ def test_cuda_provision_rejects_redirected_destination_before_download(
         assert (root / TOOLKIT_ROOT).is_symlink()
 
 
+def test_cuda_cleanup_preserves_foreign_staging_replacement(
+    tmp_path: Path,
+) -> None:
+    """Cleanup cannot delete another directory swapped in for owned staging."""
+    payload = _payload()
+    manifest_path = _manifest(tmp_path, payload)
+    staging = tmp_path / ".temp" / f"cuda-provision-{LINUX_PLATFORM}"
+    parked = tmp_path / "parked-owned-staging"
+    sentinel = staging / "foreign-sentinel"
+    foreign_bytes = b"foreign staging must survive cleanup"
+
+    def replace_before_download(_url: str) -> bytes:
+        staging.rename(parked)
+        staging.mkdir()
+        _ = sentinel.write_bytes(foreign_bytes)
+        raise RuntimeError("download was canceled")
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging.*changed"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest_path,
+            LINUX_PLATFORM,
+            downloader=replace_before_download,
+        )
+    assert parked.is_dir()
+    assert sentinel.read_bytes() == foreign_bytes
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
+def test_cuda_never_publishes_swapped_staging_toolkit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign root inserted after marker staging cannot become the toolkit."""
+    payload = _payload()
+    manifest_path = _manifest(tmp_path, payload)
+    staging = tmp_path / ".temp" / f"cuda-provision-{LINUX_PLATFORM}"
+    parked = tmp_path / "parked-valid-staging"
+    foreign_bytes = b"not a verified CUDA package"
+    native_writer = cuda_validation._write_staged_file_exclusively
+    inserted = False
+
+    def replace_after_marker(path: Path, content: bytes, label: str) -> None:
+        nonlocal inserted
+        native_writer(path, content, label)
+        if label != "CUDA completion marker":
+            return
+        staging.rename(parked)
+        foreign_toolkit = staging / "toolkit"
+        foreign_toolkit.mkdir(parents=True)
+        _ = (foreign_toolkit / "forged.so").write_bytes(foreign_bytes)
+        _ = (foreign_toolkit / cuda_validation.CUDA_PROVISION_MARKER).write_bytes(
+            content
+        )
+        inserted = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            cuda_validation, "_write_staged_file_exclusively", replace_after_marker
+        )
+        with pytest.raises(cuda_validation.CudaProvisionError, match="staging.*changed"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path,
+                manifest_path,
+                LINUX_PLATFORM,
+                downloader=_download_fixture(payload),
+            )
+    assert inserted
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+    assert (staging / "toolkit/forged.so").read_bytes() == foreign_bytes
+    assert (parked / "toolkit/lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
+
+
+def test_cuda_never_publishes_swapped_toolkit_leaf(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced staged toolkit directory cannot carry foreign bytes out."""
+    payload = _payload()
+    manifest_path = _manifest(tmp_path, payload)
+    staging = tmp_path / ".temp" / f"cuda-provision-{LINUX_PLATFORM}"
+    staged_toolkit = staging / "toolkit"
+    parked = staging / "parked-toolkit"
+    native_writer = cuda_validation._write_staged_file_exclusively
+    injected = False
+
+    def replace_after_marker(path: Path, content: bytes, label: str) -> None:
+        nonlocal injected
+        native_writer(path, content, label)
+        if label != "CUDA completion marker":
+            return
+        staged_toolkit.rename(parked)
+        staged_toolkit.mkdir()
+        _ = (staged_toolkit / "forged.so").write_bytes(b"not a verified library")
+        _ = (staged_toolkit / cuda_validation.CUDA_PROVISION_MARKER).write_bytes(
+            content
+        )
+        injected = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            cuda_validation, "_write_staged_file_exclusively", replace_after_marker
+        )
+        with pytest.raises(cuda_validation.CudaProvisionError, match="staging.*changed"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path,
+                manifest_path,
+                LINUX_PLATFORM,
+                downloader=_download_fixture(payload),
+            )
+    assert injected
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
 def test_provision_is_idempotent_after_exact_marker(tmp_path: Path) -> None:
     """A completed exact toolkit never redownloads admitted package bytes."""
     payload = _payload()
