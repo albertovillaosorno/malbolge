@@ -280,8 +280,9 @@ def _admit_source_text(text: str, *, byte_limit: int) -> None:
 
 def _parse_document(text: str) -> dict[str, object]:
     _admit_source_text(text, byte_limit=MAX_MANIFEST_BYTES)
+    decoder = tomllib.loads
     try:
-        parsed = cast("object", tomllib.loads(text))
+        parsed = cast("object", decoder(text))
     except tomllib.TOMLDecodeError as error:
         # Only the native parser error has a trusted diagnostic formatter.
         detail = (
@@ -306,7 +307,7 @@ def _parse_document(text: str) -> dict[str, object]:
     # read these bytes. Reject swapped decoders even if they return an otherwise
     # valid-looking schema or run identity. Preserve malformed-receipt errors
     # above this point so their original diagnostic remains useful.
-    if tomllib.loads is not _NATIVE_TOML_LOADS:
+    if decoder is not _NATIVE_TOML_LOADS:
         _fail("experiment manifest TOML decoder provider changed")
     return document
 

@@ -1215,6 +1215,30 @@ def test_core_manifest_refuses_substituted_toml_provider_receipts(
     assert validator.parse_manifest(_run_manifest()).run is not None
 
 
+@pytest.mark.parametrize("tamper", ("syntax", "schema", "run-commit"))
+def test_core_manifest_refuses_decoder_restoring_itself_mid_call(
+    monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    """Manifest trust cannot depend on the decoder attribute after invocation."""
+    source = _run_manifest()
+    native_loads = validator.tomllib.loads
+    fabricated = native_loads(source)
+    if tamper == "syntax":
+        source = "! invalid manifest TOML"
+    elif tamper == "schema":
+        source = source.replace("schema_version = 1", "schema_version = 2")
+    else:
+        fabricated["run"]["commit"] = "c" * 40
+
+    def self_restoring(_text: str) -> object:
+        monkeypatch.setattr(validator.tomllib, "loads", native_loads)
+        return fabricated
+
+    monkeypatch.setattr(validator.tomllib, "loads", self_restoring)
+    with pytest.raises(validator.ExperimentManifestError, match="TOML decoder provider"):
+        _ = validator._parse_document(source)
+
+
 @pytest.mark.parametrize(
     "fault_type",
     [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],

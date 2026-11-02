@@ -71,3 +71,8 @@ source constants.
   substituted TOML decoder returning native-looking run evidence for malformed
   source, wrong schema version, or a forged commit. The full 163-case manifest
   suite passes. This confirms decoder-provider stability, not source provenance.
+- 2026-11-02 parser identity follow-up: `tomllib.loads` is captured before
+  calling the provider; a substituted decoder cannot self-restore its module
+  attribute and make fabricated source, schema or Git-commit receipts look
+  native. Three regression cases establish entry-time rejection. This check
+  does not independently authenticate files or the interpreter's libraries.

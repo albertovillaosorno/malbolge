@@ -84,7 +84,9 @@ admitting source identity. Three red-first regressions show that otherwise a
 native-shaped forged receipt can hide invalid syntax, change the declared
 schema version, or replace a recorded Git commit without changing source text.
 This pins the chosen decoder provider, not the authenticity of a source file or
-all of the interpreter runtime's internals. TOML remains the checked-in
+all of the interpreter runtime's internals. Decoder identity is captured
+before invocation, so a substituted provider that restores `tomllib.loads`
+mid-call cannot forge an accepted manifest. TOML remains the checked-in
 serialization, but the schema owns semantics independently of that format.
 The standalone manifest validator CLI only reports success after an
 exact native text-write count and a completed flush. Short writes, foreign
