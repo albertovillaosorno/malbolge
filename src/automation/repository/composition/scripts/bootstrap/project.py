@@ -207,9 +207,12 @@ def initialize_local_directories(root: Path = ROOT) -> tuple[Path, ...]:
 
     """
     directories = tuple(root / name for name in LOCAL_DIRECTORIES)
-    for directory in directories:
+    state_paths = (*directories, root / CARGO_HOME_RELATIVE)
+    for directory in state_paths:
+        _admit_local_directory(directory)
+    for directory in state_paths:
         directory.mkdir(parents=True, exist_ok=True)
-    (root / CARGO_HOME_RELATIVE).mkdir(parents=True, exist_ok=True)
+        _admit_local_directory(directory)
     return directories
 
 
@@ -288,6 +291,17 @@ def _reject_authority_parent_redirects(path: Path) -> None:
             _fail("bootstrap authority parent requires native file status")
         if not stat.S_ISDIR(physical.st_mode):
             _fail("bootstrap authority parent path must not redirect")
+
+
+def _admit_local_directory(directory: Path) -> None:
+    """Admit absent or physical checkout-local directories, never aliases."""
+    _reject_authority_parent_redirects(directory)
+    try:
+        physical = directory.lstat()
+    except FileNotFoundError:
+        return
+    if type(physical) is not os.stat_result or not stat.S_ISDIR(physical.st_mode):
+        _fail(f"local state directory must be physical: {directory}")
 
 
 def _authority_present(path: Path) -> bool:

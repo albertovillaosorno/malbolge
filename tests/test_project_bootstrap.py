@@ -3640,6 +3640,40 @@ def test_rust_import_completion_marker_requires_complete_write(
     assert not project.rust_toolchain_import_complete(destination)
 
 
+@pytest.mark.parametrize("name", project.LOCAL_DIRECTORIES)
+def test_local_directory_initialization_rejects_linked_state_root(
+    tmp_path: Path, name: str
+) -> None:
+    """Bootstrap must not accept redirected checkout-local state paths."""
+    external = tmp_path / "outside"
+    external.mkdir()
+    linked = tmp_path / name
+    try:
+        linked.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+    with pytest.raises(project.InitializationError, match="local state directory"):
+        _ = project.initialize_local_directories(tmp_path)
+    assert list(external.iterdir()) == []
+
+
+def test_local_directory_initialization_rejects_linked_cargo_home(
+    tmp_path: Path,
+) -> None:
+    """Nested Cargo home must remain physically in the checkout state root."""
+    external = tmp_path / "outside"
+    external.mkdir()
+    cargo_home = tmp_path / project.CARGO_HOME_RELATIVE
+    cargo_home.parent.mkdir()
+    try:
+        cargo_home.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+    with pytest.raises(project.InitializationError, match="local state directory"):
+        _ = project.initialize_local_directories(tmp_path)
+    assert list(external.iterdir()) == []
+
+
 def test_local_directory_initialization_is_idempotent(tmp_path: Path) -> None:
     """Ignored checkout state directories can be initialized repeatedly."""
     first = project.initialize_local_directories(tmp_path)
