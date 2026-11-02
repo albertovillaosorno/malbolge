@@ -62,6 +62,19 @@ WRAPPER_LIBRARY_PATH = "LD_LIBRARY_PATH"
 WRAPPER_CLANG_EXEC = 'exec "$ROOT/bin/clang" "$@"'
 
 
+def _copy_target_is_file(target: BufferedRandom, path: Path) -> bool:
+    """Resolve either a path-backed or dirfd-backed exclusive copy stream."""
+    name = target.name
+    if type(name) is int:
+        try:
+            opened = os.fstat(name)
+            named = path.lstat()
+        except (OSError, ValueError):
+            return False
+        return (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino)
+    return type(name) is str and Path(name) == path
+
+
 def _host_observation(tmp_path: Path) -> llvm_validation.LlvmHostObservation:
     host = tmp_path / "host"
     bin_dir = host / "bin"
@@ -924,7 +937,9 @@ def test_windows_inspection_rejects_corrupted_fallback_alias(
 
     native_link = os.link
 
-    def no_hardlinks(_source: str, _destination: str) -> None:
+    def no_hardlinks(
+        _source: str, _destination: str, *, dst_dir_fd: int | None = None
+    ) -> None:
         raise OSError("cross-device import")
 
     monkeypatch.setattr(os, "link", no_hardlinks)
@@ -1945,14 +1960,18 @@ def test_windows_alias_copy_rejects_symlink_inserted_before_fallback(
     _ = sentinel.write_bytes(b"external-data")
     real_link = os.link
 
-    def racing_link(source: str, destination: str) -> None:
-        if Path(destination) == alias:
+    def racing_link(
+        source: str, destination: str, *, dst_dir_fd: int | None = None
+    ) -> None:
+        if Path(destination) == alias or (
+            dst_dir_fd is not None and destination == alias.name
+        ):
             try:
                 alias.symlink_to(sentinel)
             except (OSError, NotImplementedError) as error:
                 pytest.skip(f"symlinks unavailable: {error}")
             raise OSError("simulated cross-device link failure")
-        real_link(source, destination)
+        real_link(source, destination, dst_dir_fd=dst_dir_fd)
 
     monkeypatch.setattr(os, "link", racing_link)
     with pytest.raises(llvm_validation.LlvmImportError, match="copy"):
@@ -1972,15 +1991,19 @@ def test_windows_aliases_reject_forged_hardlink_publication(
     alias = root / "jig-bin/clang.bin"
     native_link = os.link
 
-    def forged_link(source: str, destination: str) -> object:
-        if Path(destination) == alias:
+    def forged_link(
+        source: str, destination: str, *, dst_dir_fd: int | None = None
+    ) -> object:
+        if Path(destination) == alias or (
+            dst_dir_fd is not None and destination == alias.name
+        ):
             if forgery == "wrong-inode":
                 _ = alias.write_bytes(b"not a hardlink")
             elif forgery == "foreign-receipt":
-                native_link(source, destination)
+                native_link(source, destination, dst_dir_fd=dst_dir_fd)
                 return False
             return
-        native_link(source, destination)
+        native_link(source, destination, dst_dir_fd=dst_dir_fd)
 
     monkeypatch.setattr(os, "link", forged_link)
     with pytest.raises(llvm_validation.LlvmImportError, match="link"):
@@ -1997,13 +2020,15 @@ def test_windows_alias_fallback_rejects_corrupted_copy(
     alias = root / "jig-bin/clang.bin"
     native_copy = shutil.copyfileobj
 
-    def no_hardlinks(_source: str, _destination: str) -> None:
+    def no_hardlinks(
+        _source: str, _destination: str, *, dst_dir_fd: int | None = None
+    ) -> None:
         raise OSError("cross-device import")
 
     def forged_copy(
         source: BufferedReader, target: BufferedRandom, length: int = 0
     ) -> None:
-        if Path(cast("str", target.name)) == alias:
+        if _copy_target_is_file(target, alias):
             _ = target.write(b"x" * len(CLANG_BYTES))
         else:
             native_copy(source, target, length)
@@ -2029,14 +2054,16 @@ def test_windows_alias_fallback_rejects_leaf_swapped_during_copy(
     original_mode = outside.stat().st_mode
     native_copy = shutil.copyfileobj
 
-    def no_hardlinks(_source: str, _destination: str) -> None:
+    def no_hardlinks(
+        _source: str, _destination: str, *, dst_dir_fd: int | None = None
+    ) -> None:
         raise OSError("cross-device import")
 
     def swapped_copy(
         source: BufferedReader, target: BufferedRandom, length: int = 0
     ) -> None:
         native_copy(source, target, length)
-        if Path(cast("str", target.name)) == alias:
+        if _copy_target_is_file(target, alias):
             alias.rename(parked)
             _ = alias.symlink_to(outside)
 
@@ -2058,7 +2085,9 @@ def test_windows_alias_cross_device_fallback_preserves_tool_bytes(
     """Exclusive fallback remains usable when ordinary host hardlinks fail."""
     root = _windows_tool_bundle(tmp_path)
 
-    def no_hardlinks(_source: str, _destination: str) -> None:
+    def no_hardlinks(
+        _source: str, _destination: str, *, dst_dir_fd: int | None = None
+    ) -> None:
         raise OSError("cross-device import")
 
     monkeypatch.setattr(os, "link", no_hardlinks)
@@ -2080,13 +2109,15 @@ def test_windows_alias_fallback_rejects_new_hardlink_after_open(
     native_link = os.link
     native_copy = shutil.copyfileobj
 
-    def no_hardlinks(_source: str, _destination: str) -> None:
+    def no_hardlinks(
+        _source: str, _destination: str, *, dst_dir_fd: int | None = None
+    ) -> None:
         raise OSError("cross-device import")
 
     def linked_copy(
         source: BufferedReader, target: BufferedRandom, length: int = 0
     ) -> None:
-        if Path(cast("str", target.name)) == alias:
+        if _copy_target_is_file(target, alias):
             native_link(alias, outside)
         native_copy(source, target, length)
 
@@ -2098,6 +2129,152 @@ def test_windows_alias_fallback_rejects_new_hardlink_after_open(
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
 
 
+@pytest.mark.parametrize("replacement", ("symlink", "physical"))
+def test_llvm_import_hardlink_does_not_follow_late_destination_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """Hardlink import cannot publish into a swapped foreign destination tree."""
+    if os.name != "posix":
+        pytest.skip("POSIX hardlink directory descriptor boundary")
+    source = tmp_path / "host-tool"
+    _ = source.write_bytes(b"pinned host binary bytes")
+    parent = tmp_path / "owned-target"
+    parent.mkdir()
+    destination = parent / "clang"
+    parked = tmp_path / "parked-target"
+    foreign = tmp_path / "foreign-target"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"unrelated foreign data")
+    native_link = os.link
+    swapped = False
+
+    def swap_during_link(
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal swapped
+        if not swapped:
+            _ = parent.rename(parked)
+            if replacement == "symlink":
+                _ = parent.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(parent)
+            swapped = True
+        native_link(
+            src, dst,
+            src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    monkeypatch.setattr(os, "link", swap_during_link)
+    with pytest.raises(llvm_validation.LlvmImportError, match="import"):
+        llvm_validation._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+            str(source), str(destination)
+        )
+    assert swapped
+    foreign_tree = foreign if replacement == "symlink" else parent
+    assert (foreign_tree / sentinel.name).read_bytes() == b"unrelated foreign data"
+    assert not (foreign_tree / destination.name).exists()
+
+
+@pytest.mark.parametrize("replacement", ("symlink", "physical"))
+def test_llvm_import_fallback_copy_does_not_write_to_swapped_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """Cross-device import cannot write foreign bytes before ownership checks."""
+    if os.name != "posix":
+        pytest.skip("POSIX import fallback descriptor boundary")
+    source = tmp_path / "host-source"
+    _ = source.write_bytes(b"host file for fallback copy")
+    parent = tmp_path / "owned-fallback"
+    parent.mkdir()
+    destination = parent / "clang"
+    parked = tmp_path / "parked-fallback"
+    foreign = tmp_path / "foreign-fallback"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"foreign sentinel")
+    native_open = os.open
+    native_path_open = Path.open
+    native_copy = shutil.copyfileobj
+    swapped = False
+    foreign_written = False
+
+    def no_hardlinks(
+        _source: str, _destination: str, *, dst_dir_fd: int | None = None
+    ) -> None:
+        raise OSError("cross-device")
+
+    def swap_parent() -> None:
+        nonlocal swapped
+        if swapped:
+            return
+        _ = parent.rename(parked)
+        if replacement == "symlink":
+            _ = parent.symlink_to(foreign, target_is_directory=True)
+        else:
+            _ = foreign.rename(parent)
+        swapped = True
+
+    def racing_path_open(
+        path: Path,
+        mode: str = "r",
+        buffering: int = -1,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ):
+        if path == destination and mode == "x+b":
+            swap_parent()
+        return native_path_open(
+            path,
+            mode,
+            buffering=buffering,
+            encoding=encoding,
+            errors=errors,
+            newline=newline,
+        )
+
+    def racing_os_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> int:
+        if path == destination.name and dir_fd is not None:
+            swap_parent()
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    def record_copy(source_stream: BufferedReader, target: BufferedRandom, length: int = 0) -> None:
+        nonlocal foreign_written
+        native_copy(source_stream, target, length)
+        foreign_tree = foreign if replacement == "symlink" else parent
+        if (foreign_tree / destination.name).exists():
+            foreign_written = True
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+    monkeypatch.setattr(os, "open", racing_os_open)
+    monkeypatch.setattr(Path, "open", racing_path_open)
+    monkeypatch.setattr(shutil, "copyfileobj", record_copy)
+    with pytest.raises(llvm_validation.LlvmImportError, match="import"):
+        llvm_validation._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+            str(source), str(destination)
+        )
+    assert swapped
+    assert not foreign_written
+    foreign_tree = foreign if replacement == "symlink" else parent
+    assert (foreign_tree / sentinel.name).read_bytes() == b"foreign sentinel"
+    assert not (foreign_tree / destination.name).exists()
+
+
 def test_linux_import_cross_device_fallback_keeps_runtime_executable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2107,7 +2284,9 @@ def test_linux_import_cross_device_fallback_keeps_runtime_executable(
     for tool in (observation.clang, observation.clang_tidy, observation.clang_format):
         tool.chmod(0o755)
 
-    def no_hardlinks(_source: str, _destination: str) -> None:
+    def no_hardlinks(
+        _source: str, _destination: str, *, dst_dir_fd: int | None = None
+    ) -> None:
         raise OSError("cross-device import")
 
     monkeypatch.setattr(os, "link", no_hardlinks)

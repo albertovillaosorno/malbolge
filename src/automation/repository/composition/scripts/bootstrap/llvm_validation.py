@@ -40,7 +40,7 @@ import re
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from dataclasses import dataclass
-from io import BufferedReader
+from io import BufferedRandom, BufferedReader
 from pathlib import Path
 from stat import S_IMODE, S_ISDIR, S_ISLNK, S_ISREG
 from typing import Final, Never, cast
@@ -319,18 +319,70 @@ def _attest_import_hardlink(source: Path, destination: Path) -> None:
         ) from error
 
 
+def _exclusive_import_target(
+    destination: Path, parent_descriptor: int | None
+) -> BufferedRandom:
+    """Open a new destination below a pinned parent without path redirection."""
+    if parent_descriptor is None:
+        return cast("BufferedRandom", destination.open("x+b"))
+    flags = os.O_RDWR | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(destination.name, flags, 0o600, dir_fd=parent_descriptor)
+    if type(cast("object", descriptor)) is not int or descriptor < 0:
+        _fail("LLVM import fallback destination descriptor must be native")
+    try:
+        stream = os.fdopen(descriptor, "w+b")
+    except (OSError, ValueError, TypeError, RuntimeError):
+        os.close(descriptor)
+        raise
+    if type(cast("object", stream)) is not BufferedRandom:
+        with stream:
+            _fail("LLVM import fallback destination stream must be native")
+    if stream.fileno() != descriptor:
+        with stream:
+            _fail("LLVM import fallback destination stream descriptor differs")
+    return stream
+
+
 def _link_or_copy(source: str, destination: str) -> str:
     """Import a new file without overwriting a raced destination link."""
     source_path = Path(source)
     destination_path = Path(destination)
     if not _physical_directory(destination_path.parent):
         _fail("LLVM import destination parent must be physical")
+    parent_descriptor = (
+        _open_physical_import_parent(destination_path.parent, "LLVM import destination")
+        if os.name == "posix"
+        else None
+    )
     try:
-        linked = os.link(source, destination)
+        return _link_or_copy_in_parent(source_path, destination_path, parent_descriptor)
+    finally:
+        if parent_descriptor is not None:
+            try:
+                os.close(parent_descriptor)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmImportError(
+                    f"LLVM import destination parent close failed: {type(error).__name__}"
+                ) from error
+
+
+def _link_or_copy_in_parent(
+    source_path: Path, destination_path: Path, parent_descriptor: int | None
+) -> str:
+    """Write under an admitted parent and recheck its physical identity."""
+    source, destination = str(source_path), str(destination_path)
+    try:
+        linked = (
+            os.link(source, destination_path.name, dst_dir_fd=parent_descriptor)
+            if parent_descriptor is not None
+            else os.link(source, destination)
+        )
     except OSError:
         owned_inode: tuple[int, int] | None = None
         try:
-            with destination_path.open("x+b") as target:
+            with _exclusive_import_target(
+                destination_path, parent_descriptor
+            ) as target:
                 target_fd = target.fileno()
                 if type(target_fd) is not int or not _owned_exclusive_descriptor(
                     destination_path, target_fd
@@ -407,6 +459,20 @@ def _link_or_copy(source: str, destination: str) -> str:
         if linked is not None:
             _fail("LLVM import hardlink returned a nonnative completion receipt")
         _attest_import_hardlink(source_path, destination_path)
+    if parent_descriptor is not None:
+        try:
+            opened_parent = os.fstat(parent_descriptor)
+            if (
+                type(opened_parent) is not os.stat_result
+                or not S_ISDIR(opened_parent.st_mode)
+                or _native_directory_inode(destination_path.parent)
+                != (opened_parent.st_dev, opened_parent.st_ino)
+            ):
+                _fail("LLVM import destination parent identity changed")
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM import destination parent status failed: {type(error).__name__}"
+            ) from error
     return destination
 
 
@@ -651,14 +717,14 @@ def _discard_owned_file(marker: Path, inode: tuple[int, int]) -> None:
         marker.unlink()
 
 
-def _open_physical_marker_parent(root: Path) -> int:
-    """Pin an admitted POSIX directory before writing a marker below it."""
+def _open_physical_import_parent(root: Path, label: str) -> int:
+    """Pin a native physical parent before publishing an import file."""
     if not _physical_directory(root):
-        _fail("LLVM import marker parent must be physical")
+        _fail(f"{label} parent must be physical")
     try:
         initial = root.lstat()
         if type(initial) is not os.stat_result or not S_ISDIR(initial.st_mode):
-            _fail("LLVM import marker parent status must be native")
+            _fail(f"{label} parent status must be native")
         flags = (
             os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
         )
@@ -667,10 +733,10 @@ def _open_physical_marker_parent(root: Path) -> int:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise LlvmImportError(
-            f"LLVM import marker parent open failed: {type(error).__name__}"
+            f"{label} parent open failed: {type(error).__name__}"
         ) from error
     if type(cast("object", descriptor)) is not int or descriptor < 0:
-        _fail("LLVM import marker parent descriptor must be native")
+        _fail(f"{label} parent descriptor must be native")
     try:
         opened = os.fstat(descriptor)
         named = root.lstat()
@@ -682,7 +748,7 @@ def _open_physical_marker_parent(root: Path) -> int:
             or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
             or (opened.st_dev, opened.st_ino) != (initial.st_dev, initial.st_ino)
         ):
-            _fail("LLVM import marker parent descriptor does not match the path")
+            _fail(f"{label} parent descriptor does not match the path")
     except (LlvmImportError, OSError, ValueError, TypeError, RuntimeError) as error:
         try:
             os.close(descriptor)
@@ -691,7 +757,7 @@ def _open_physical_marker_parent(root: Path) -> int:
         if isinstance(error, LlvmImportError):
             raise
         raise LlvmImportError(
-            f"LLVM import marker parent status failed: {type(error).__name__}"
+            f"{label} parent status failed: {type(error).__name__}"
         ) from error
     return descriptor
 
@@ -703,7 +769,9 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
     marker = root / LLVM_IMPORT_MARKER
     content = _marker_bytes(platform_id)
     parent_descriptor = (
-        _open_physical_marker_parent(root) if os.name == "posix" else None
+        _open_physical_import_parent(root, "LLVM import marker")
+        if os.name == "posix"
+        else None
     )
     try:
         flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
