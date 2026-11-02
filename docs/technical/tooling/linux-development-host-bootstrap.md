@@ -64,7 +64,8 @@ links and oversized extracted executables are rejected without a full read.
 UV archives admit at most 4,096 members; TAR scanning stops at the limit
 without first materializing its full inventory, and ZIP inventory size is
 checked before selecting or opening the executable. Both reject over-limit
-archives even when the selected member appears first.
+archives even when the selected member appears first. Truncated gzip
+streams fail with typed provisioning errors retaining the original EOF cause.
 ZIP entries must also have regular-file Unix type metadata when encoded, and
 may not advertise directory status through their DOS attributes even if their
 archive names resemble executable files. Duplicate names for the selected

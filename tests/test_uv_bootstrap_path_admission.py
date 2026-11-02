@@ -876,6 +876,27 @@ def test_uv_archive_rejects_excessive_member_inventory(
         assert extract(output.getvalue(), member_name) == BINARY
 
 
+def test_uv_truncated_gzip_archive_reports_typed_error() -> None:
+    """A truncated compressed TAR must not leak an unhandled EOFError."""
+    artifact = python_validation.uv_artifact(PLATFORM_ID)
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        for name in ("padding-a", "padding-b", artifact.member):
+            payload = b"member" * 500
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+    extract = cast(
+        "Callable[[bytes, python_validation.UvArtifact], bytes]",
+        vars(python_validation)["_uv_member_bytes"],
+    )
+    with pytest.raises(
+        python_validation.ProvisionError, match="EOFError"
+    ) as error:
+        _ = extract(output.getvalue()[:-100], artifact)
+    assert type(error.value.__cause__) is EOFError
+
+
 def test_uv_does_not_replace_competing_destination_during_publication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

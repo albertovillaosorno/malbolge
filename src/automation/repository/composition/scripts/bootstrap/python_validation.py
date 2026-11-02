@@ -519,6 +519,7 @@ def _uv_member_bytes(data: bytes, artifact: UvArtifact) -> bytes:
     except ProvisionError:
         raise
     except (
+        EOFError,
         KeyError,
         OSError,
         ValueError,
