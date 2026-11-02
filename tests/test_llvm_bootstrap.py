@@ -1325,6 +1325,33 @@ def test_windows_alias_copy_rejects_symlink_inserted_before_fallback(
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
 
 
+@pytest.mark.parametrize("forgery", ("missing", "wrong-inode", "foreign-receipt"))
+def test_windows_aliases_reject_forged_hardlink_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A claimed successful hardlink must physically name the same inode."""
+    root = _windows_tool_bundle(tmp_path)
+    alias = root / "jig-bin/clang.bin"
+    native_link = os.link
+
+    def forged_link(source: str, destination: str) -> object:
+        if Path(destination) == alias:
+            if forgery == "wrong-inode":
+                _ = alias.write_bytes(b"not a hardlink")
+            elif forgery == "foreign-receipt":
+                native_link(source, destination)
+                return False
+            return
+        native_link(source, destination)
+
+    monkeypatch.setattr(os, "link", forged_link)
+    with pytest.raises(llvm_validation.LlvmImportError, match="link"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
 def test_windows_alias_fallback_rejects_corrupted_copy(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -275,6 +275,28 @@ def _matches_open_import_file(
         return False
 
 
+def _attest_import_hardlink(source: Path, destination: Path) -> None:
+    """Admit a native hardlink only when both physical names share one inode."""
+    try:
+        source_status = source.lstat()
+        destination_status = destination.lstat()
+        if (
+            not _physical_file(source)
+            or not _physical_file(destination)
+            or type(source_status) is not os.stat_result
+            or type(destination_status) is not os.stat_result
+            or not S_ISREG(source_status.st_mode)
+            or not S_ISREG(destination_status.st_mode)
+            or source_status.st_nlink < 2
+            or _marker_identity(source_status) != _marker_identity(destination_status)
+        ):
+            _fail("LLVM import hardlink identity did not match the source")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import hardlink status failed: {type(error).__name__}"
+        ) from error
+
+
 def _link_or_copy(source: str, destination: str) -> str:
     """Import a new file without overwriting a raced destination link."""
     source_path = Path(source)
@@ -282,7 +304,7 @@ def _link_or_copy(source: str, destination: str) -> str:
     if not _physical_directory(destination_path.parent):
         _fail("LLVM import destination parent must be physical")
     try:
-        os.link(source, destination)
+        linked = os.link(source, destination)
     except OSError:
         owned_inode: tuple[int, int] | None = None
         try:
@@ -359,6 +381,10 @@ def _link_or_copy(source: str, destination: str) -> str:
             raise LlvmImportError(
                 f"LLVM import fallback copy failed: {type(error).__name__}"
             ) from error
+    else:
+        if linked is not None:
+            _fail("LLVM import hardlink returned a nonnative completion receipt")
+        _attest_import_hardlink(source_path, destination_path)
     return destination
 
 
