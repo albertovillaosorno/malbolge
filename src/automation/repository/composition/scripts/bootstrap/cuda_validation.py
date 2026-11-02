@@ -67,7 +67,8 @@ CUDA_PROVISION_SCHEMA_VERSION: Final = 1
 CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
 _MAX_MANIFEST_BYTES: Final = 1024 * 1024
 _MAX_MARKER_BYTES: Final = 16 * 1024
-_MAX_CUDA_DOWNLOAD_BYTES: Final = 128 * 1024 * 1024
+_MAX_CUDA_DOWNLOAD_BYTES: Final = 512 * 1024 * 1024
+_MAX_CUDA_ARCHIVE_MEMBER_BYTES: Final = 512 * 1024 * 1024
 _MAX_CUDA_EXTRACTED_BYTES: Final = 1024 * 1024 * 1024
 _MAX_CUDA_ARCHIVE_MEMBERS: Final = 100_000
 SHA256_HEX_LENGTH: Final = 64
@@ -397,12 +398,15 @@ def _package_artifact(
         name,
         platform_id,
     )
+    size = _positive_int(document.get("size"), f"{label}.size")
+    if size > _MAX_CUDA_DOWNLOAD_BYTES:
+        _fail(f"{label}.size exceeds CUDA package byte limit")
     return CudaPackageArtifact(
         name=name,
         version=version,
         relative_path=relative_path,
         sha256=_sha256(document.get("sha256"), f"{label}.sha256"),
-        size=_positive_int(document.get("size"), f"{label}.size"),
+        size=size,
     )
 
 
@@ -509,7 +513,7 @@ def _validate_cuda_archive_expansion(sizes: tuple[int, ...]) -> None:
         _fail("CUDA archive member count exceeds limit")
     total = 0
     for size in sizes:
-        if type(size) is not int or size < 0 or size > _MAX_CUDA_DOWNLOAD_BYTES:
+        if type(size) is not int or size < 0 or size > _MAX_CUDA_ARCHIVE_MEMBER_BYTES:
             _fail("CUDA archive member byte limit exceeded")
         total += size
         if total > _MAX_CUDA_EXTRACTED_BYTES:

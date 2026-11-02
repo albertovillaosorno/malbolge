@@ -285,6 +285,67 @@ def test_cuda_download_rejects_foreign_network_body(
     assert response.closed
 
 
+def test_cuda_tracked_windows_nvrtc_download_admits_pinned_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The checked-in 312 MB Windows archive must fit the bounded HTTPS read."""
+    repository = Path(__file__).resolve().parents[1]
+    source = (
+        repository
+        / "src/optimization/accelerator/adapter-outbound/accelerator/cuda/toolchain.json"
+    )
+    manifest = cuda_validation.load_cuda_provision_manifest(
+        repository, source, "windows-x86_64"
+    )
+    package = next(item for item in manifest.packages if item.name == PACKAGE_NAME)
+    assert package.size == 312_126_196
+    observed_limits: list[int] = []
+
+    class _EmptyBoundedResponse:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def read(self, limit: int) -> bytes:
+            observed_limits.append(limit)
+            return b""
+
+    def open_url(request: object, *, timeout: int) -> _EmptyBoundedResponse:
+        assert isinstance(request, cuda_validation.urllib.request.Request)
+        assert request.full_url == manifest.base_url + package.relative_path
+        assert timeout == 120
+        return _EmptyBoundedResponse()
+
+    monkeypatch.setattr(cuda_validation.urllib.request, "urlopen", open_url)
+    assert (
+        cuda_validation._download_cuda_package(
+            manifest.base_url + package.relative_path, max_bytes=package.size
+        )
+        == b""
+    )
+    assert observed_limits == [package.size + 1]
+
+
+def test_cuda_rejects_manifest_package_over_download_limit(tmp_path: Path) -> None:
+    """An arbitrary giant manifest size must fail before network allocation."""
+    too_big = cuda_validation._MAX_CUDA_DOWNLOAD_BYTES + 1
+    manifest = _manifest(tmp_path, _payload(), {"size": too_big})
+    with pytest.raises(cuda_validation.CudaProvisionError, match="byte limit"):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+
+
+def test_cuda_large_archive_members_have_separate_expansion_cap() -> None:
+    """Large Windows DLLs fit expansion, but oversized members fail closed."""
+    mib = 1024 * 1024
+    cuda_validation._validate_cuda_archive_expansion((256 * mib,))
+    with pytest.raises(cuda_validation.CudaProvisionError, match="member byte limit"):
+        cuda_validation._validate_cuda_archive_expansion((1024 * mib,))
+
+
 def test_cuda_download_accepts_native_network_body(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
