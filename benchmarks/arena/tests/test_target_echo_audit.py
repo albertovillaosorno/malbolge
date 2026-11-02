@@ -1594,6 +1594,178 @@ def test_direct_forward_replay_rejects_forged_completed_process(
         )
 
 
+@pytest.mark.parametrize(
+    ("family", "steps"),
+    [
+        ("bounded-classic-eof-echo", False),
+        ("bounded-classic-eof-echo", True),
+        (audit.PATTERNED_FAMILY, False),
+        (audit.PATTERNED_FAMILY, True),
+    ],
+)
+@pytest.mark.parametrize("forgery", ["swapped-runner", "mutated-command"])
+def test_retained_vm_replay_binds_native_child_to_invocation(
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+    steps: bool,
+    forgery: str,
+) -> None:
+    """A native success receipt from another command cannot certify replay."""
+    runner = Path("/tmp/test-runner")
+    source = Path("/tmp/test-candidate.malbolge")
+    row: dict[str, Any] = {
+        "case": {"difficulty": 1, "family": family},
+        "metrics": {audit.RUNTIME_STEPS: 2} if steps else {},
+    }
+
+    def forged(
+        command: list[str], *_args: object, **_kwargs: object
+    ) -> sp.CompletedProcess[bytes]:
+        if forgery == "mutated-command":
+            command[0] = "/foreign/runner"
+            receipt = command
+        else:
+            receipt = ["/foreign/runner", *command[1:]]
+        return sp.CompletedProcess(receipt, 0, b"", b"")
+
+    monkeypatch.setattr(
+        audit, "_invoke_runner", lambda vm, path: forged([str(vm), str(path)])
+    )
+    monkeypatch.setattr(audit, "_invoke_runner_command", forged)
+    monkeypatch.setattr(audit.target_process, "invoke_with_input", forged)
+    monkeypatch.setattr(audit.target_process, "invoke_with_input_limited", forged)
+    with pytest.raises(audit.TargetEchoAuditError, match="replay.*command"):
+        audit._replay_execution(row, runner, source)
+
+
+@pytest.mark.parametrize(
+    ("family", "steps"),
+    [
+        ("bounded-classic-eof-echo", False),
+        ("bounded-classic-eof-echo", True),
+        (audit.PATTERNED_FAMILY, False),
+        (audit.PATTERNED_FAMILY, True),
+    ],
+)
+def test_retained_vm_replay_accepts_matching_native_child_command(
+    monkeypatch: pytest.MonkeyPatch, family: str, steps: bool
+) -> None:
+    """The expected command preserves both classic replay input protocols."""
+    runner = Path("/tmp/test-runner")
+    source = Path("/tmp/test-candidate.malbolge")
+    row: dict[str, Any] = {
+        "case": {"difficulty": 1, "family": family},
+        "metrics": {audit.RUNTIME_STEPS: 2} if steps else {},
+    }
+
+    def native(
+        command: list[str], *_args: object, **_kwargs: object
+    ) -> sp.CompletedProcess[bytes]:
+        return sp.CompletedProcess(command, 0, b"", b"")
+
+    monkeypatch.setattr(
+        audit, "_invoke_runner", lambda vm, path: native([str(vm), str(path)])
+    )
+    monkeypatch.setattr(audit, "_invoke_runner_command", native)
+    monkeypatch.setattr(audit.target_process, "invoke_with_input", native)
+    monkeypatch.setattr(audit.target_process, "invoke_with_input_limited", native)
+    result, _ = audit._replay_execution(row, runner, source)
+    assert result.args[0] == str(runner)
+    assert result.args[1] == str(source)
+    assert ("--report-steps" in result.args) is steps
+    assert ("--input-stdin" in result.args) is (family == audit.PATTERNED_FAMILY)
+
+
+@pytest.mark.parametrize(
+    "forgery", ["swapped-runner", "mutated-command", "measured-suffix"]
+)
+def test_direct_forward_vm_replay_binds_native_child_to_invocation(
+    monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Even a valid byte/step oracle cannot authorize another VM invocation."""
+    payload = b"\x00\xff"
+    steps = 9
+    measured = forgery == "measured-suffix"
+
+    def forged(
+        command: list[str],
+        _input: bytes,
+        *,
+        mode: tuple[bool, bool],
+        raw_rss: list[bytes] | None = None,
+    ) -> tuple[sp.CompletedProcess[bytes], int | None]:
+        del mode, raw_rss
+        if forgery == "mutated-command":
+            command[0] = "/foreign/runner"
+            receipt = command
+        elif measured:
+            receipt = [
+                "/usr/bin/time",
+                "--",
+                "/usr/bin/prlimit",
+                "--",
+                "/foreign/runner",
+                *command[1:],
+            ]
+        else:
+            receipt = ["/foreign/runner", *command[1:]]
+        return (
+            sp.CompletedProcess(
+                receipt,
+                0,
+                payload + bytes([producer.CLASSIC_EOF_BYTE]),
+                audit.STEPS_REPORT_PREFIX + b"9\n",
+            ),
+            4096 if measured else None,
+        )
+
+    monkeypatch.setattr(audit, "_run_forward_guest", forged)
+    with pytest.raises(audit.TargetEchoAuditError, match="replay.*command"):
+        audit._replay_forward_result(
+            (Path("/tmp/test-runner"), Path("/tmp/test-candidate.malbolge")),
+            payload,
+            steps=steps,
+            options=(measured, measured, None),
+        )
+
+
+def test_direct_forward_vm_replay_accepts_measured_wrapper_command_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GNU-time/prlimit measured replies still bind the target VM argv."""
+    payload = b"\x00\xff"
+
+    def native(
+        command: list[str],
+        _input: bytes,
+        *,
+        mode: tuple[bool, bool],
+        raw_rss: list[bytes] | None = None,
+    ) -> tuple[sp.CompletedProcess[bytes], int]:
+        del mode, raw_rss
+        receipt = ["/usr/bin/time", "--", "/usr/bin/prlimit", "--", *command]
+        return (
+            sp.CompletedProcess(
+                receipt,
+                0,
+                payload + bytes([producer.CLASSIC_EOF_BYTE]),
+                audit.STEPS_REPORT_PREFIX + b"9\n",
+            ),
+            4096,
+        )
+
+    monkeypatch.setattr(audit, "_run_forward_guest", native)
+    assert (
+        audit._replay_forward_result(
+            (Path("/tmp/test-runner"), Path("/tmp/test-candidate.malbolge")),
+            payload,
+            steps=9,
+            options=(True, True, None),
+        )
+        == 4096
+    )
+
+
 def test_direct_forward_replay_preserves_native_completed_process() -> None:
     """An ordinary exact subprocess result still verifies the fixed oracle."""
     payload = b"\x00\xff"
@@ -2498,8 +2670,9 @@ def test_injected_mismatched_vm_replay_fails_closed(
         runner: Path,
         source: Path,
     ) -> sp.CompletedProcess[bytes]:
-        _ = (runner, source)
-        return sp.CompletedProcess(["fake-vm"], 0, stdout=b"wrong", stderr=b"")
+        return sp.CompletedProcess(
+            [str(runner), str(source)], 0, stdout=b"wrong", stderr=b""
+        )
 
     monkeypatch.setattr(audit, "_invoke_runner", wrong_output)
     with pytest.raises(audit.TargetEchoAuditError, match="VM replay rejected"):

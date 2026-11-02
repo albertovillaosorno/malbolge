@@ -1086,34 +1086,43 @@ def _replay_execution(
     pairs = row["case"]["difficulty"]
     patterned = row["case"]["family"] in {PATTERNED_FAMILY, FORWARD_FAMILY}
     receipt = row["metrics"].get(RUNTIME_STEPS) is not None
+    command = [str(runner), str(source)]
     if not patterned and not receipt:
+        execution = _invoke_runner(runner, source)
         return (
-            _invoke_runner(runner, source),
+            _admit_vm_replay_receipt(execution, command=tuple(command)),
             bytes([producer.CLASSIC_EOF_BYTE]) * pairs,
         )
-    command = [str(runner), str(source)]
     if patterned:
         command.append("--input-stdin")
     if receipt:
         command.append("--report-steps")
+    expected_command = tuple(command)
     if not patterned:
+        execution = _invoke_runner_command(command)
         return (
-            _invoke_runner_command(command),
+            _admit_vm_replay_receipt(execution, command=expected_command),
             bytes([producer.CLASSIC_EOF_BYTE]) * pairs,
         )
     payload = _pattern_bytes(pairs)
+    execution = (
+        target_process.invoke_with_input_limited
+        if limited
+        else target_process.invoke_with_input
+    )(command, payload, timeout_seconds=producer.TIMEOUT_SECONDS)
     return (
-        (
-            target_process.invoke_with_input_limited
-            if limited
-            else target_process.invoke_with_input
-        )(command, payload, timeout_seconds=producer.TIMEOUT_SECONDS),
+        _admit_vm_replay_receipt(execution, command=expected_command),
         payload + bytes([producer.CLASSIC_EOF_BYTE]),
     )
 
 
-def _admit_vm_replay_receipt(result: object) -> sp.CompletedProcess[bytes]:
-    """Require native child results before trusting status or byte equality."""
+def _admit_vm_replay_receipt(
+    result: object,
+    *,
+    command: tuple[str, ...] | None = None,
+    measured: bool = False,
+) -> sp.CompletedProcess[bytes]:
+    """Admit native child streams and, when supplied, the launched VM argv."""
     if (
         type(result) is not sp.CompletedProcess
         or type(result.args) is not list
@@ -1123,6 +1132,20 @@ def _admit_vm_replay_receipt(result: object) -> sp.CompletedProcess[bytes]:
         or type(result.stderr) is not bytes
     ):
         _fail("target VM replay returned nonnative completed process receipt")
+    if command is not None:
+        actual = tuple(result.args)
+        # GNU time wraps prlimit, which wraps the VM. The transport checks
+        # the full measured command; here bind its final guest invocation.
+        if measured:
+            matching = (
+                len(actual) > len(command)
+                and actual[-len(command) - 1] == "--"
+                and actual[-len(command) :] == command
+            )
+        else:
+            matching = actual == command
+        if not matching:
+            _fail("target VM replay child receipt differs from launched command")
     return result
 
 
@@ -1176,12 +1199,15 @@ def _replay_forward_result(
     options: tuple[bool, bool, list[bytes] | None],
 ) -> int | None:
     runner, source = paths
+    command = [str(runner), str(source), "--input-stdin", "--report-steps"]
+    expected_command = tuple(command)
     result, peak = _run_forward_guest(
-        [str(runner), str(source), "--input-stdin", "--report-steps"],
+        command,
         payload,
         mode=options[:2],
         raw_rss=options[2],
     )
+    _admit_vm_replay_receipt(result, command=expected_command, measured=options[1])
     _check_forward_replay_result(result, payload, steps)
     return peak
 
