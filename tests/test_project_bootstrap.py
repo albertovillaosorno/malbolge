@@ -2331,6 +2331,46 @@ def test_cuda_bootstrap_rejects_host_dependent_backslash_paths(
         _ = project.cuda_toolchain_nvrtc_relative_path(tmp_path, LINUX_PLATFORM)
 
 
+@pytest.mark.parametrize(
+    "toolkit_root",
+    [
+        ".",
+        "./",
+        "./.dependencies/cuda/13.3.1/toolkit",
+        ".dependencies/cuda/./toolkit",
+        ".dependencies//cuda/toolkit",
+        ".dependencies/cuda/toolkit/",
+    ],
+)
+def test_cuda_manifest_rejects_noncanonical_toolkit_root(
+    tmp_path: Path, toolkit_root: str
+) -> None:
+    """Manifest toolkit root must not alias checkout or another path spelling."""
+    manifest = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["toolkit_root"] = toolkit_root
+    _ = manifest.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(project.InitializationError, match="stay within"):
+        _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+
+@pytest.mark.parametrize(
+    "library",
+    [".", "./lib/libnvrtc.so.13", "lib/./libnvrtc.so.13", "lib//libnvrtc.so.13", "lib/"],
+)
+def test_cuda_index_rejects_noncanonical_nvrtc_path(
+    tmp_path: Path, library: str
+) -> None:
+    """Indexed native library paths must be unambiguous across hosts."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    index = _write_cuda_manifest_index(tmp_path)
+    data = json.loads(index.read_text(encoding="utf-8"))
+    data["platforms"][LINUX_PLATFORM]["nvrtc_library"] = library
+    _ = index.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(project.InitializationError, match="stay within"):
+        _ = project.cuda_toolchain_nvrtc_relative_path(tmp_path, LINUX_PLATFORM)
+
+
 def test_cuda_inspection_rejects_windows_manifest_on_linux(
     tmp_path: Path,
 ) -> None:

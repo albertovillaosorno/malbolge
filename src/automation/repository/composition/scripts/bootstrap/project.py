@@ -295,6 +295,8 @@ def _repository_relative_path(value: str, label: str) -> Path:
         _fail(f"{label} must stay within the repository")
     if WINDOWS_SEPARATOR in value:
         _fail(f"{label} must use forward slashes")
+    if any(segment in {"", "."} for segment in value.split("/")):
+        _fail(f"{label} must stay within the repository")
     return path
 
 
