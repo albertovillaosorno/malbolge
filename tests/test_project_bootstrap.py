@@ -37,13 +37,16 @@ from __future__ import annotations
 from contextlib import suppress
 from dataclasses import replace
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
+import tarfile
 import urllib.request
+import zipfile
 from typing import TYPE_CHECKING
 from typing import Never, Self, cast, final, override
 
@@ -829,6 +832,94 @@ def test_uv_download_normalizes_host_faults_without_foreign_formatting(
         _ = python_validation._download_uv_archive(artifact)
     assert raised.value.__cause__ is failure
     assert type(failure).__name__ in str(raised.value)
+
+
+@pytest.mark.parametrize("archive_kind", ["zip", "tar"])
+@pytest.mark.parametrize("oversized", [False, True])
+def test_uv_selected_executable_has_bounded_uncompressed_size(
+    monkeypatch: pytest.MonkeyPatch,
+    archive_kind: str,
+    oversized: bool,
+) -> None:
+    """An authenticated compressed archive cannot expand without a bound."""
+    limit = 8
+    monkeypatch.setattr(
+        python_validation, "MAX_UV_BINARY_BYTES", limit
+    )
+    member_name = "uv"
+    payload = b"0123456789" if oversized else b"native"
+    content = io.BytesIO()
+    if archive_kind == "zip":
+        with zipfile.ZipFile(content, "w", compression=zipfile.ZIP_DEFLATED) as z:
+            z.writestr(member_name, payload)
+        artifact = replace(
+            python_validation.uv_artifact(WINDOWS_PLATFORM),
+            member=member_name,
+        )
+    else:
+        with tarfile.open(fileobj=content, mode="w:gz") as t:
+            info = tarfile.TarInfo(member_name)
+            info.size = len(payload)
+            t.addfile(info, io.BytesIO(payload))
+        artifact = replace(
+            python_validation.uv_artifact(LINUX_PLATFORM),
+            member=member_name,
+        )
+    if oversized:
+        with pytest.raises(python_validation.ProvisionError, match="byte limit"):
+            _ = python_validation._uv_member_bytes(content.getvalue(), artifact)
+    else:
+        assert python_validation._uv_member_bytes(content.getvalue(), artifact) == payload
+
+
+def test_uv_tar_member_rejects_link_to_another_archive_file() -> None:
+    """A selected uv executable cannot be a tar member link."""
+    archive_bytes = io.BytesIO()
+    payload = b"linked-uv-payload"
+    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as archive:
+        target = tarfile.TarInfo("payload")
+        target.size = len(payload)
+        archive.addfile(target, io.BytesIO(payload))
+        link = tarfile.TarInfo("uv")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "payload"
+        archive.addfile(link)
+    artifact = replace(
+        python_validation.uv_artifact(LINUX_PLATFORM), member="uv"
+    )
+    with pytest.raises(python_validation.ProvisionError, match="not a file"):
+        _ = python_validation._uv_member_bytes(archive_bytes.getvalue(), artifact)
+
+
+def test_uv_zip_member_rejects_directory_entry() -> None:
+    """A zero-byte zip directory is not an executable payload."""
+    archive_bytes = io.BytesIO()
+    with zipfile.ZipFile(archive_bytes, "w") as archive:
+        archive.writestr("uv/", b"")
+    artifact = replace(
+        python_validation.uv_artifact(WINDOWS_PLATFORM), member="uv/"
+    )
+    with pytest.raises(python_validation.ProvisionError, match="regular file"):
+        _ = python_validation._uv_member_bytes(archive_bytes.getvalue(), artifact)
+
+
+def test_uv_member_extraction_does_not_format_host_errors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host archive failures keep a typed original cause, not foreign text."""
+    failure = _UvHostError("hostile archive format")
+
+    def bad_archive(*_args: object) -> bytes:
+        raise failure
+
+    monkeypatch.setattr(python_validation, "_zip_member_bytes", bad_archive)
+    artifact = python_validation.uv_artifact(WINDOWS_PLATFORM)
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="cannot extract pinned uv artifact: _UvHostError",
+    ) as caught:
+        _ = python_validation._uv_member_bytes(b"fake-zip", artifact)
+    assert caught.value.__cause__ is failure
 
 
 def test_validation_requirements_do_not_install_pip() -> None:

@@ -89,6 +89,7 @@ UV_RELEASE_BASE: Final = "https://github.com/astral-sh/uv/releases/download/"
 UV_SCHEMA_VERSION: Final = 1
 MAX_UV_MANIFEST_BYTES: Final = 1_048_576
 MAX_UV_ARCHIVE_BYTES: Final = 128 * 1024 * 1024
+MAX_UV_BINARY_BYTES: Final = 128 * 1024 * 1024
 MAX_JIG_TOOL_BINARY_BYTES: Final = 256 * 1024 * 1024
 UV_BINARY_MODE: Final = 0o755
 JIG_BINARY_MODE: Final = 0o755
@@ -438,26 +439,66 @@ def _download_uv_archive(artifact: UvArtifact) -> bytes:
     return data
 
 
+def _bounded_uv_member_bytes(content: bytes) -> bytes:
+    """Require a physical-size bound on one extracted uv executable."""
+    if type(content) is not bytes:
+        _fail("uv extracted member requires native bytes")
+    if len(content) > MAX_UV_BINARY_BYTES:
+        _fail("uv extracted member exceeds byte limit")
+    return content
+
+
 def _zip_member_bytes(data: bytes, member: str) -> bytes:
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
-        return archive.read(member)
+        info = archive.getinfo(member)
+        if type(info) is not zipfile.ZipInfo or type(info.file_size) is not int:
+            _fail("uv zip member requires native size metadata")
+        if info.is_dir():
+            _fail("uv zip member must be a regular file")
+        if info.file_size < 0 or info.file_size > MAX_UV_BINARY_BYTES:
+            _fail("uv extracted member exceeds byte limit")
+        with archive.open(info) as stream:
+            return _bounded_uv_member_bytes(stream.read(MAX_UV_BINARY_BYTES + 1))
 
 
 def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
-        member = archive.extractfile(member_name)
+        info = archive.getmember(member_name)
+        if type(info) is not tarfile.TarInfo or type(info.size) is not int:
+            _fail("uv tar member requires native size metadata")
+        if not info.isfile():
+            _fail(f"uv archive member is not a file: {member_name}")
+        if info.size < 0 or info.size > MAX_UV_BINARY_BYTES:
+            _fail("uv extracted member exceeds byte limit")
+        member = archive.extractfile(info)
         if member is None:
             _fail(f"uv archive member is not a file: {member_name}")
-        return member.read()
+        with member:
+            return _bounded_uv_member_bytes(member.read(MAX_UV_BINARY_BYTES + 1))
 
 
 def _uv_member_bytes(data: bytes, artifact: UvArtifact) -> bytes:
+    if type(data) is not bytes:
+        _fail("uv compressed archive requires native bytes")
+    if len(data) > MAX_UV_ARCHIVE_BYTES:
+        _fail("uv archive exceeds byte limit")
     try:
         if artifact.asset.endswith(".zip"):
             return _zip_member_bytes(data, artifact.member)
         return _tar_member_bytes(data, artifact.member)
-    except (KeyError, OSError, tarfile.TarError, zipfile.BadZipFile) as error:
-        _fail(f"cannot extract pinned uv artifact: {error}")
+    except ProvisionError:
+        raise
+    except (
+        KeyError,
+        OSError,
+        ValueError,
+        TypeError,
+        RuntimeError,
+        tarfile.TarError,
+        zipfile.BadZipFile,
+    ) as error:
+        message = f"cannot extract pinned uv artifact: {type(error).__name__}"
+        raise ProvisionError(message) from error
 
 
 def _uv_version_matches(output: str, version: str) -> bool:
