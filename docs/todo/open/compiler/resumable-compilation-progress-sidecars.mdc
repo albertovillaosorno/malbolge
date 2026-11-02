@@ -688,6 +688,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   An additional red-first alias-discovery test proves a changing directory
   entry name cannot redirect recovery to another pathname after matching;
   the single admitted filename now binds both matching and cleanup.
+  Two red-first alias-inventory tests also reject a substituted directory
+  scan context manager suppressing iterator failure or the 4,096-entry bound;
+  only a fully exhausted scan may select a sole retained staging alias.
+  Ordinary scan dependency faults remain typed, not recovery authorization.
   Three red-first post-generation pointer-preflight cases retain the last
   durable member and original native `OSError`, `TypeError`, or
   `AttributeError` cause when final pointer admission cannot finish.
