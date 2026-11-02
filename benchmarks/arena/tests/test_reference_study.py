@@ -40,6 +40,7 @@ import json
 import shutil
 import sys
 from hashlib import sha256
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
 import pytest
@@ -2302,6 +2303,33 @@ def test_retained_artifact_never_trusts_unverified_hash_receipt(
         _ = reference_study.check_retained_artifacts(document, artifacts)
     if receipt == "raised":
         assert caught.value.__cause__ is fault
+
+
+def test_host_c_reference_rejects_jointly_substituted_sha256_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Aliases of one forged hash provider cannot certify producer bytes."""
+    raw = b"real native retained bytes"
+    forged = "0" * analyze.SHA256_HEX_LENGTH
+    assert forged != sha256(raw).hexdigest()
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return forged
+
+    def fake_hash(_raw: bytes) -> ForgedHash:
+        return ForgedHash()
+
+    monkeypatch.setattr(reference_study, "sha256", fake_hash)
+    monkeypatch.setattr(
+        reference_study,
+        "hashlib",
+        SimpleNamespace(sha256=fake_hash, new=reference_study.hashlib.new),
+    )
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="SHA-256 receipt differs"
+    ):
+        reference_study._checked_sha256(raw)
 
 
 @pytest.mark.parametrize("stage", ["bundle", "binary", "raw"])

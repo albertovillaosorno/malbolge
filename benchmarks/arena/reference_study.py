@@ -572,7 +572,8 @@ def _checked_sha256(raw: bytes) -> str:
         _fail("host-C reference SHA-256 requires exact native binary bytes")
     try:
         reported = sha256(raw).hexdigest()
-        reference = hashlib.sha256(raw).hexdigest()
+        # A replaced hashlib.sha256 may alias the first provider exactly.
+        reference = hashlib.new("sha256", raw).hexdigest()
     except Exception as error:
         message = "host-C reference SHA-256 dependency failed"
         raise ReferenceStudyError(message) from error
