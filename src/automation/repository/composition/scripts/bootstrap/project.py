@@ -2286,6 +2286,7 @@ def _create_rust_import_alias_at_parent(
     created: tuple[int, int] | None = None
     complete = False
     source_status = native_status
+    copied_digest: bytes | None = None
     try:
         try:
             os.link(
@@ -2303,6 +2304,9 @@ def _create_rust_import_alias_at_parent(
                 "imported Rust alias appeared during creation"
             ) from error
         except OSError:
+            copied_digest = _verified_import_file_digest(
+                native.name, native_status, source_fd=parent_fd
+            )
             source_fd = os.open(
                 native.name,
                 os.O_RDONLY
@@ -2371,9 +2375,18 @@ def _create_rust_import_alias_at_parent(
             or (current.st_dev, current.st_ino) != expected
         ):
             _fail("imported Rust alias changed during creation")
-        _ = _verify_import_source_unchanged(
+        source_status = _verify_import_source_unchanged(
             native.name, parent_fd, source_status, hardlinked=False
         )
+        if copied_digest is not None and (
+            _verified_import_file_digest(
+                native.name, source_status, source_fd=parent_fd
+            ) != copied_digest
+            or _verified_import_file_digest(
+                alias.name, observed, source_fd=parent_fd
+            ) != copied_digest
+        ):
+            _fail("imported Rust alias content changed during copy")
         complete = True
     except InitializationError:
         raise

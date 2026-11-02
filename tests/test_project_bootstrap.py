@@ -3768,6 +3768,74 @@ def test_rust_import_alias_copy_fallback_keeps_original_tool_mode(
     assert project.rust_toolchain_import_complete(destination)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Rust alias copy fallback")
+@pytest.mark.parametrize("injection", ("chmod", "close-restored-mtime"))
+def test_rust_import_alias_copy_fallback_rejects_corrupted_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, injection: str
+) -> None:
+    """A same-length rewrite in the copy callback cannot certify a neutral alias."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    alias = destination / "bin/cargo.bin"
+    native_link = os.link
+    native_chmod = os.fchmod
+    native_close = os.close
+    corrupted = False
+
+    def deny_alias_link(  # ruff: ignore[too-many-arguments]
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        if dst == "cargo.bin" and src_dir_fd is not None:
+            raise OSError("hardlinks unavailable for alias")
+        native_link(
+            src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+
+    def corrupt_alias(*, restore_mtime: bool) -> None:
+        nonlocal corrupted
+        before = alias.stat()
+        _ = alias.write_bytes(b"X" * len(RUST_CARGO_BYTES))
+        if restore_mtime:
+            os.utime(alias, ns=(before.st_atime_ns, before.st_mtime_ns))
+        corrupted = True
+
+    def chmod_then_corrupt(descriptor: int, mode: int) -> None:
+        native_chmod(descriptor, mode)
+        if injection == "chmod" and alias.exists() and not corrupted:
+            corrupt_alias(restore_mtime=False)
+
+    def close_then_corrupt(descriptor: int) -> None:
+        is_alias = False
+        if alias.exists() and not corrupted:
+            opened = os.fstat(descriptor)
+            named = alias.stat()
+            is_alias = (opened.st_dev, opened.st_ino) == (
+                named.st_dev, named.st_ino
+            )
+        native_close(descriptor)
+        if injection == "close-restored-mtime" and is_alias:
+            corrupt_alias(restore_mtime=True)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", deny_alias_link)
+        isolated.setattr(os, "fchmod", chmod_then_corrupt)
+        isolated.setattr(os, "close", close_then_corrupt)
+        with pytest.raises(project.InitializationError, match="alias.*content"):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert corrupted
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX import alias identity")
 @pytest.mark.parametrize(
     "transport", ["hardlink", "hardlink-restored-mtime", "copy", "copy-restored-mtime"]
