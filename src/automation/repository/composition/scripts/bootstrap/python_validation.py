@@ -1128,6 +1128,7 @@ def _publish_uv_stage(
     # A rename overwrites a late competing destination. Linking is atomic
     # no-replace publication, pinned to one physical POSIX directory.
     parent_descriptor = _open_uv_physical_parent(executable)
+    published_receipt: tuple[int, ...] | None = None
     try:
         try:
             if parent_descriptor is None:
@@ -1181,9 +1182,23 @@ def _publish_uv_stage(
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             message = "uv published executable byte verification failed"
             raise ProvisionError(message) from error
+        final_status = _admit_uv_provision_path(executable, required=True)
+        if final_status is None or (
+            final_status.st_dev, final_status.st_ino
+        ) != identity:
+            _fail("uv published executable changed during verification")
+        published_receipt = _uv_executable_identity(final_status)
     finally:
         if parent_descriptor is not None:
             _close_uv_parent_descriptor(parent_descriptor, context="publication")
+    # Closing the pinned parent may execute host callbacks. Do not trust a
+    # receipt taken before that final callback when choosing a binary to run.
+    post_close_status = _admit_uv_provision_path(executable, required=True)
+    if (
+        post_close_status is None
+        or _uv_executable_identity(post_close_status) != published_receipt
+    ):
+        _fail("uv published executable changed after parent close")
 
 
 def _provision_uv_binary(

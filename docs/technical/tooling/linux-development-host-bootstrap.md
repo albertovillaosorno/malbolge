@@ -102,7 +102,11 @@ identity-verified private empty stage rather than leaking a half-install.
 A failed close while walking pinned POSIX parent components also closes the
 next component's already-opened descriptor. Failure to close the private uv
 writable stage descriptor is a typed error and discards its owned stage rather
-than publishing a supposedly complete executable.
+than publishing a supposedly complete executable. After the
+publication parent descriptor closes, bootstrap rechecks the named executable's
+physical identity and mutation timestamps against its byte-verified receipt;
+a close callback cannot substitute the published binary before its version
+probe, even when it restores the original modification time.
 Stage ownership rechecks likewise reject foreign stat proxies.
 Existing staging paths are not truncated, and executables that appear during
 provisioning are not overwritten. Both existing and newly installed executables
@@ -152,8 +156,9 @@ came from one stable source descriptor snapshot. External source hardlinks,
 non-native read payloads, and changed descriptor links are rejected. A failed
 source-descriptor stream wrapper
 closes that owned descriptor and reports a typed bootstrap error retaining
-the original host cause instead of leaking a handle or raw host exception. Existing alias destinations are replaced
-through private temporary files rather than followed or truncated; preflight rejects
+the original host cause instead of leaking a handle or raw host exception.
+Existing alias destinations are replaced through private temporary files rather
+than followed or truncated; preflight rejects
 redirected targets before publishing any of the three aliases. Private Jig tool
 alias publication also binds the exact native `mkstemp` receipt to its requested
 alias directory and the open descriptor's regular-file inode before any write,
@@ -166,8 +171,9 @@ negative `mkstemp` handles are rejected without closing unrelated host handles.
 Host temporary-creation faults remain typed and preserve their original cause.
 A failed temporary-output stream wrapper likewise closes its descriptor,
 retains the original host error as the cause of a typed bootstrap failure,
-and preserves any previously committed alias or launcher. Before replacement, stage identity, regular-file type,
-exclusive link count and exact byte size are rechecked against the admitted
+and preserves any previously committed alias or launcher. Before replacement,
+stage identity, regular-file type, exclusive link count and exact byte size are
+rechecked against the admitted
 original descriptor. The writable stage stream must be a native buffered writer
 backed by the owned file descriptor, and promotion requires a bounded native
 readback equal to the selected alias bytes from that same single-link inode.

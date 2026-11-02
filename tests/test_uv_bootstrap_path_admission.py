@@ -1666,6 +1666,51 @@ def test_uv_types_publication_parent_close_fault(
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
+@pytest.mark.parametrize("mutation", ["name-swap", "rewrite"])
+def test_uv_rejects_final_executable_mutation_during_publication_parent_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A post-verification close callback cannot approve a different uv binary."""
+    artifact = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(artifact, root)
+    parked = tmp_path / "original-published-uv"
+    native_close = python_validation._close_uv_parent_descriptor  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def mutate_on_close(descriptor: int, *, context: str) -> None:
+        nonlocal mutated
+        native_close(descriptor, context=context)
+        if context != "publication":
+            return
+        mutated = True
+        if mutation == "name-swap":
+            _ = executable.rename(parked)
+            _ = executable.write_bytes(PRESERVED)
+        else:
+            before = executable.stat()
+            _ = executable.write_bytes(b"!" + BINARY[1:])
+            os.utime(executable, ns=(before.st_atime_ns, before.st_mtime_ns))
+
+    def do_not_execute_unattested_binary(_command: list[str]) -> str:
+        raise AssertionError("version probe reached an unattested executable")
+
+    monkeypatch.setattr(
+        python_validation, "_close_uv_parent_descriptor", mutate_on_close
+    )
+    monkeypatch.setattr(python_validation, "_run", do_not_execute_unattested_binary)
+    with pytest.raises(
+        python_validation.ProvisionError, match="published executable changed"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert mutated
+    assert executable.read_bytes() != BINARY
+    if mutation == "name-swap":
+        assert parked.read_bytes() == BINARY
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX dirfd support")
 def test_uv_parent_walk_close_failure_does_not_leak_new_child(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
