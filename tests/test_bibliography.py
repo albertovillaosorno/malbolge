@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import io
 import os
+import sys
 from os import stat_result
 from pathlib import Path
 from stat import S_IFDIR, S_IFLNK
@@ -418,9 +419,11 @@ def test_bibliography_hidden_links_cannot_claim_source_coverage(
 ) -> None:
     """Catalog coverage counts only public source URLs, not literal examples."""
     monkeypatch.setattr(validator, "_source_record_paths", lambda: (C_RECORD,))
-    monkeypatch.setattr(
-        validator, "_read_regular_text", lambda _path: f"## Sources\n{hidden}\n"
-    )
+
+    def hidden_record(_path: Path) -> str:
+        return f"## Sources\n{hidden}\n"
+
+    monkeypatch.setattr(validator, "_read_regular_text", hidden_record)
     assert validator._bibliography_source_urls() == ()  # pyright: ignore[reportPrivateUsage]
 
 
@@ -1026,7 +1029,7 @@ def test_bibliography_host_faults_never_format_foreign_exceptions(
         validator.BibliographyValidationError,
         match=f"evidence {'resolution' if phase == 'resolve' else 'read'} failed",
     ) as caught:
-        validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
+        _ = validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is fault
 
 
@@ -1050,7 +1053,7 @@ def test_bibliography_native_host_diagnostic_remains_actionable(
         validator.BibliographyValidationError,
         match="native bibliography read unavailable",
     ) as caught:
-        validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
+        _ = validator._read_regular_text(source)  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is fault
 
 
@@ -1146,9 +1149,9 @@ def test_bibliography_cli_rejects_unproven_stdout_delivery(
 
     report = validator.BibliographyReport(validator.CATEGORIES, 55, 44, 9, 21)
     monkeypatch.setattr(validator, "validate_repository", lambda: report)
-    monkeypatch.setattr(validator.sys, "stdout", ForgedOutput())
+    monkeypatch.setattr(sys, "stdout", ForgedOutput())
     errors = io.StringIO()
-    monkeypatch.setattr(validator.sys, "stderr", errors)
+    monkeypatch.setattr(sys, "stderr", errors)
     assert validator.main() == 1
     assert "output write or flush failed" in errors.getvalue()
 
@@ -1167,7 +1170,7 @@ def test_bibliography_cli_rejects_unproven_stdout_flush(
 
     report = validator.BibliographyReport(validator.CATEGORIES, 55, 44, 9, 21)
     monkeypatch.setattr(validator, "validate_repository", lambda: report)
-    monkeypatch.setattr(validator.sys, "stdout", ForgedOutput())
+    monkeypatch.setattr(sys, "stdout", ForgedOutput())
     assert validator.main() == 1
 
 
@@ -1197,7 +1200,7 @@ def test_bibliography_cli_preserves_failure_when_stderr_breaks(
         raise validator.BibliographyValidationError("invalid records")
 
     monkeypatch.setattr(validator, "validate_repository", invalid_repository)
-    monkeypatch.setattr(validator.sys, "stderr", FailedErrorOutput())
+    monkeypatch.setattr(sys, "stderr", FailedErrorOutput())
     assert validator.main() == 1
 
 
@@ -1207,13 +1210,15 @@ def test_bibliography_rejects_foreign_byte_receipt_before_decode(
     """The evidence decoder cannot invoke untrusted bytes subclass hooks."""
 
     class ForeignBytes(bytes):
+        @override
         def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
             del encoding, errors
             raise AssertionError("foreign bibliography byte decoder executed")
 
-    monkeypatch.setattr(
-        validator, "_read_regular_bytes", lambda _path: ForeignBytes(b"valid")
-    )
+    def foreign_bytes(_path: Path) -> bytes:
+        return ForeignBytes(b"valid")
+
+    monkeypatch.setattr(validator, "_read_regular_bytes", foreign_bytes)
     with pytest.raises(
         validator.BibliographyValidationError, match="native byte receipt"
     ):

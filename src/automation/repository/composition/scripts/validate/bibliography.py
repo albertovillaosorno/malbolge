@@ -462,7 +462,7 @@ def _checked_walk(root: Path) -> Iterator[tuple[Path, list[str], list[str]]]:
                     or not name
                     or name in (".", "..")
                     or os.sep in name
-                    or (os.altsep is not None and os.altsep in name)
+                    or bool(os.altsep and os.altsep in name)
                     or "\x00" in name
                 ):
                     _fail("bibliography walk requires native child names")
@@ -511,7 +511,7 @@ def _validate_first_level_taxonomy() -> None:
         seen.add(name)
         if _is_directory(path):
             actual.add(name)
-    if actual != expected:
+    if frozenset(actual) != expected:
         _fail(f"bibliography first-level taxonomy mismatch: {sorted(actual)}")
 
 
