@@ -74,6 +74,7 @@ _PARENT = ".."
 _TOOL_BINDING_LENGTH = 2
 _NUL = "\x00"
 _READ_CHUNK_BYTES = 16_384
+_MAX_NATIVE_FILE_DESCRIPTOR = (1 << 31) - 1
 _POLL_SECONDS = 0.005
 _CHILD_REAP_SECONDS = 2.0
 _POSIX_OS_NAME = "posix"
@@ -582,7 +583,18 @@ def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
     """
     remaining = capture.limit - capture.size
     amount = max(_ONE, min(_READ_CHUNK_BYTES, remaining + _ONE))
-    fragment = os.read(stream.fileno(), amount)
+    descriptor = stream.fileno()
+    if (
+        type(descriptor) is not int
+        or descriptor < _ZERO
+        or descriptor > _MAX_NATIVE_FILE_DESCRIPTOR
+    ):
+        message = "probe raw read descriptor must be a native C int"
+        raise ValueError(message)
+    fragment = os.read(descriptor, amount)
+    if type(fragment) is not bytes or len(fragment) > amount:
+        message = "probe raw read reported non-native or overlong bytes"
+        raise ValueError(message)
     if not fragment:
         return False
     if len(fragment) > remaining:

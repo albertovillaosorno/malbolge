@@ -779,6 +779,60 @@ def test_output_limit_fails_closed(tmp_path: Path) -> None:
         _ = run_probe_program(program, _context(source, tmp_path))
 
 
+@pytest.mark.parametrize("receipt", ["subclass", "oversized", "foreign"])
+def test_probe_raw_capture_rejects_non_native_read_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A forged raw chunk cannot evade the verified byte quota."""
+    class DeceptiveBytes(bytes):
+        def __len__(self) -> int:
+            return 1
+
+    raw: object
+    if receipt == "subclass":
+        raw = DeceptiveBytes(b"x" * 4096)
+    elif receipt == "oversized":
+        raw = b"x" * (probe_exec_module._READ_CHUNK_BYTES + 1)
+    else:
+        raw = memoryview(b"x")
+
+    monkeypatch.setattr(probe_exec_module.os, "read", lambda *_: raw)
+    with tempfile.TemporaryFile() as stream:
+        capture = probe_exec_module._PipeCapture(limit=1024 * 1024)
+        with pytest.raises(ValueError, match="raw read"):
+            _ = probe_exec_module._capture_fragment(stream, capture)
+    assert capture.fragments == []
+    assert capture.size == 0
+
+
+@pytest.mark.parametrize("receipt", [True, -1, 2**31, "1", 1.0])
+def test_probe_raw_capture_rejects_foreign_file_descriptors(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged pipe descriptor cannot redirect process transcript reads."""
+    read_calls: list[object] = []
+
+    class ForgedDescriptor:
+        def fileno(self) -> object:
+            return receipt
+
+    def raw_read(fd: object, count: int) -> bytes:
+        read_calls.append((fd, count))
+        return b"synthetic"
+
+    monkeypatch.setattr(probe_exec_module.os, "read", raw_read)
+    capture = probe_exec_module._PipeCapture(limit=32)
+    with pytest.raises(ValueError, match="raw read descriptor"):
+        _ = probe_exec_module._capture_fragment(
+            cast("IO[bytes]", cast("object", ForgedDescriptor())),
+            capture,
+        )
+    assert read_calls == []
+    assert capture.fragments == []
+
+
 def test_unexpected_pipe_reader_failure_rejects_probe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

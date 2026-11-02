@@ -301,9 +301,11 @@ spawn and reader/writer thread startup failures are wrapped as probe execution
 errors while terminating the launched child. Child stdout and stderr now use
 concurrent pipe readers that enforce output byte quotas. They abort
 overflowing commands before completion. Pipe read/write/close failures are
-recorded by worker threads and reject the transcript, including ordinary
-unexpected invalid-stream errors that previously killed a reader thread without
-marking its capture incomplete. Each reader and the nonempty stdin writer also
+recorded by worker threads and reject the transcript. Raw reads now require
+exact native byte results within the requested chunk length and a native,
+in-range C-int file-descriptor receipt before calling the OS reader. Unexpected
+ordinary invalid-stream errors are recorded as failures instead of silently
+terminating a worker. Each reader and the nonempty stdin writer also
 mark explicit clean completion; unexpected worker exits lacking that marker
 cannot be confused with successful pipe capture. A concurrent
 stdin writer preserves full-duplex behavior. Stream teardown also requires
