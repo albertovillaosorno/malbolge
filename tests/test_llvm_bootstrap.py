@@ -3648,6 +3648,70 @@ def test_llvm_copy_file_rejects_output_stream_close_mutation(
         assert destination.read_bytes() == b"foreign copied payload"
 
 
+@pytest.mark.skipif(os.name != HOST_POSIX, reason="requires native file close")
+@pytest.mark.parametrize("mutation", ("overwrite", "replace"))
+def test_llvm_resource_byte_verification_rejects_postclose_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A close callback cannot modify matching resource bytes undetected."""
+    source = tmp_path / "host-header"
+    target = tmp_path / "staged-header"
+    original = b"matching header bytes"
+    _ = source.write_bytes(original)
+    _ = target.write_bytes(original)
+    parked = tmp_path / "parked-header"
+    native_open = os.open
+    native_close = os.close
+    target_fds: set[int] = set()
+    changed = False
+
+    def track_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        fd = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == target:
+            target_fds.add(fd)
+        return fd
+
+    def mutate_close(fd: int) -> None:
+        nonlocal changed
+        native_close(fd)
+        if fd in target_fds:
+            target_fds.remove(fd)
+            changed = True
+            if mutation == "overwrite":
+                before = target.stat()
+                _ = target.write_bytes(b"!" + original[1:])
+                os.utime(target, ns=(before.st_atime_ns, before.st_mtime_ns))
+            else:
+                target.rename(parked)
+                _ = target.write_bytes(b"foreign header bytes")
+
+    receipt_source = llvm_validation._resource_member_receipt(  # pyright: ignore[reportPrivateUsage]
+        source
+    )
+    receipt_target = llvm_validation._resource_member_receipt(  # pyright: ignore[reportPrivateUsage]
+        target
+    )
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_open)
+        isolated.setattr(os, "close", mutate_close)
+        with pytest.raises(llvm_validation.LlvmImportError, match="resource|close"):
+            llvm_validation._require_matching_resource_bytes(  # pyright: ignore[reportPrivateUsage]
+                source, target, receipt_source, receipt_target
+            )
+    assert changed
+    assert not target_fds
+    assert source.read_bytes() == original
+    if mutation == "replace":
+        assert parked.read_bytes() == original
+        assert target.read_bytes() == b"foreign header bytes"
+
+
 def test_llvm_import_fallback_reads_native_source_not_foreign_path_stream(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

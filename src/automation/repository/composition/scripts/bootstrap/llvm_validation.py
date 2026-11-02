@@ -933,6 +933,10 @@ def _require_matching_resource_bytes(
             and _resource_member_receipt(destination) == destination_receipt
         ):
             _fail("LLVM resource copy changed during byte verification")
+        # Descriptor close callbacks remain untrusted even after byte-for-byte
+        # comparison. Capture ctime-bearing physical identities while open.
+        admitted_source = _marker_identity(os.fstat(original))
+        admitted_destination = _marker_identity(os.fstat(imported))
     except LlvmImportError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -947,6 +951,20 @@ def _require_matching_resource_bytes(
                 raise LlvmImportError(
                     f"LLVM resource copy descriptor close failed: {type(error).__name__}"
                 ) from error
+    try:
+        if (
+            not _physical_file(source)
+            or not _physical_file(destination)
+            or _marker_identity(source.lstat()) != admitted_source
+            or _marker_identity(destination.lstat()) != admitted_destination
+        ):
+            _fail("LLVM resource copy changed after descriptor close")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM resource copy postclose check failed: {type(error).__name__}"
+        ) from error
 
 
 def _copy_resource_tree(source: Path, destination: Path) -> None:
