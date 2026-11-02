@@ -3442,3 +3442,175 @@ def test_cuda_archive_member_mkdir_does_not_follow_late_parent_swap(
     assert (foreign_parent / "sentinel").read_bytes() == b"foreign data"
     assert not (foreign_parent / "lib64").exists()
     assert not (root / "toolkit").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("swap_kind", ["symlink", "physical"])
+def test_cuda_overlay_copy_does_not_write_through_swapped_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swap_kind: str
+) -> None:
+    """Archive overlays must not copy verified members into foreign parents."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    parent = root / "owned-overlay-parent"
+    parent.mkdir()
+    destination = parent / "toolkit"
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        root, _manifest(root, payload), LINUX_PLATFORM
+    ).packages[0]
+    package_staging = root / "package-stage"
+    extraction_root = package_staging / PACKAGE_NAME / ARCHIVE_ROOT
+    outside = tmp_path / "foreign-overlay-parent"
+    outside.mkdir()
+    _ = (outside / "sentinel").write_bytes(b"foreign content")
+    parked = root / "parked-overlay-parent"
+    native_scandir = os.scandir
+    swapped = False
+
+    def swap_during_copy_iteration(path: str | os.PathLike[str] | int) -> object:
+        nonlocal swapped
+        if not swapped and isinstance(path, (str, os.PathLike)) and Path(path) == extraction_root:
+            _ = parent.rename(parked)
+            if swap_kind == "symlink":
+                _ = parent.symlink_to(outside, target_is_directory=True)
+            else:
+                _ = outside.rename(parent)
+            swapped = True
+        return native_scandir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "scandir", swap_during_copy_iteration)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            cuda_validation.extract_cuda_package(
+                payload, package, destination, staging=package_staging
+            )
+    assert swapped
+    foreign_parent = outside if swap_kind == "symlink" else parent
+    assert (foreign_parent / "sentinel").read_bytes() == b"foreign content"
+    assert not (foreign_parent / "toolkit").exists()
+    assert not (root / "toolkit").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("swap_kind", ["symlink", "physical"])
+def test_cuda_overlay_copy_does_not_write_into_swapped_nested_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swap_kind: str
+) -> None:
+    """Nested copy writes remain pinned even when the toolkit root is replaced."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    destination = root / "toolkit"
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        root, _manifest(root, payload), LINUX_PLATFORM
+    ).packages[0]
+    foreign = tmp_path / "foreign-toolkit"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"external data")
+    parked = root / "parked-toolkit"
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def swap_before_nested_mkdir(
+        path: str | os.PathLike[str], mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and destination.is_dir() and (
+            path == "lib64" or (Path(path) == destination / "lib64" and dir_fd is None)
+        ):
+            _ = destination.rename(parked)
+            if swap_kind == "symlink":
+                _ = destination.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(destination)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_before_nested_mkdir)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            cuda_validation.extract_cuda_package(
+                payload, package, destination, staging=root / "stage"
+            )
+    assert swapped
+    foreign_root = foreign if swap_kind == "symlink" else destination
+    assert (foreign_root / "sentinel").read_bytes() == b"external data"
+    assert not (foreign_root / "lib64").exists()
+
+
+def test_cuda_overlay_copy_allows_identical_existing_verified_members(
+    tmp_path: Path,
+) -> None:
+    """Repeating an identical verified package preserves its content."""
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+    destination = tmp_path / "toolkit"
+    for _ in range(2):
+        cuda_validation.extract_cuda_package(
+            payload, package, destination, staging=tmp_path / "stage"
+        )
+    assert (destination / "lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
+    assert (destination / "lib64/libnvrtc-builtins.so.13.3").read_bytes() == BUILTINS_BYTES
+
+
+def test_cuda_overlay_copy_rejects_mismatched_existing_member(
+    tmp_path: Path,
+) -> None:
+    """A conflicting preexisting overlay leaf is not silently overwritten."""
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+    destination = tmp_path / "toolkit"
+    cuda_validation.extract_cuda_package(
+        payload, package, destination, staging=tmp_path / "stage"
+    )
+    library = destination / "lib64/libnvrtc.so.13"
+    _ = library.write_bytes(b"different toolkit contents")
+    with pytest.raises(cuda_validation.CudaProvisionError, match="collision"):
+        cuda_validation.extract_cuda_package(
+            payload, package, destination, staging=tmp_path / "stage"
+        )
+    assert library.read_bytes() == b"different toolkit contents"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("fault", [UnprintableHostOSError, UnprintableHostRuntimeError])
+def test_cuda_overlay_copy_types_child_directory_open_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: type[Exception]
+) -> None:
+    """Overlay child-open failures remain typed without rendering foreign errors."""
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+    destination = tmp_path / "toolkit"
+    native_open = os.open
+    failure = fault("cannot open staging child")
+    injected = False
+
+    def fail_child_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> int:
+        nonlocal injected
+        if path == "lib64" and dir_fd is not None:
+            injected = True
+            raise failure
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", fail_child_open)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="overlay directory open"
+        ) as caught:
+            cuda_validation.extract_cuda_package(
+                payload, package, destination, staging=tmp_path / "stage"
+            )
+    assert injected
+    assert caught.value.__cause__ is failure
+    assert not (destination / "lib64/libnvrtc.so.13").exists()

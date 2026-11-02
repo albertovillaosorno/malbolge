@@ -64,6 +64,11 @@ package extraction cannot create them through a late-swapped parent.
 Tar and ZIP archive-member parent directories are also created through pinned
 physical directory handles; a late-swapped archive root cannot create foreign
 member subdirectories.
+On POSIX, the verified package overlay itself copies files, subdirectories, and
+contained symlinks through pinned directory descriptors. Parent replacements
+cannot redirect copied bytes; duplicate members are accepted only when their
+native regular file bytes already match exactly, while conflicting overlay
+contents fail closed.
 The HTTP downloader also requires native response bytes and raises typed CUDA
 provision errors for network-open and body-read host faults, preserving the
 original cause without invoking foreign exception formatting.
