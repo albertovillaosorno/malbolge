@@ -59,3 +59,9 @@ or undefined C behavior without editing Ben's source.
     `address-sanitizer:heap-buffer-overflow` findings;
   - manifest, reviewed evidence, Ruff, and integration tests fail closed on
     source, schema, toolchain, or result drift.
+- Subsequent sanitizer JSON trust-boundary hardening: altered public decoder
+  providers cannot forge input fixture bytes or reviewed source-hash evidence;
+  original source text is independently parsed and native-valued trees compared.
+  Red-first substitutions, invalid-source and hostile-key tests now pass, as
+  does source-equivalent delegation. The focused sanitizer suite passed
+  201 tests with one Windows-only skip.

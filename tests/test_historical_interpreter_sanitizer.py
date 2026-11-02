@@ -71,6 +71,115 @@ def test_sanitizer_manifest_and_source_identity_are_exact() -> None:
     assert evidence["source_sha256"] == harness.SOURCE_SHA256
 
 
+@pytest.mark.parametrize("kind", ["cases", "evidence"])
+def test_sanitizer_json_provider_cannot_substitute_original_manifest(
+    kind: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native-looking forged JSON is not authority for cases or evidence."""
+    path = harness.CASES if kind == "cases" else harness.EVIDENCE
+    actual = cast("dict[str, object]", json.loads(path.read_text(encoding="utf-8")))
+    parsed = cast("dict[str, object]", json.loads(path.read_text(encoding="utf-8")))
+    if kind == "cases":
+        cases = cast("list[dict[str, object]]", parsed["cases"])
+        cases[0]["input_hex"] = "61"
+        original = cast("list[dict[str, object]]", actual["cases"])
+        assert original[0]["input_hex"] == ""
+    else:
+        parsed["source_sha256"] = "0" * 64
+        assert actual["source_sha256"] == harness.SOURCE_SHA256
+
+    def injected(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return parsed
+
+    monkeypatch.setattr(json, "loads", injected)
+    with pytest.raises(
+        harness.SanitizerHarnessError,
+        match="sanitizer JSON decoder provider differs from source",
+    ):
+        if kind == "cases":
+            _ = harness.load_cases()
+        else:
+            _ = harness.load_evidence()
+
+
+def test_sanitizer_json_provider_allows_source_equivalent_delegate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source-preserving JSON adapter may still be used for read evidence."""
+    original_loads = json.loads
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        return original_loads(
+            text,
+            object_pairs_hook=cast(
+                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+            ),
+        )
+
+    monkeypatch.setattr(json, "loads", delegated)
+    assert harness.load_evidence()["source_sha256"] == harness.SOURCE_SHA256
+    assert tuple(case.identifier for case in harness.load_cases()) == EXPECTED_CASES
+
+
+def test_sanitizer_json_provider_rejects_forged_invalid_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Syntax-invalid reviewed bytes must not be replaced by a clean dict."""
+    malformed = tmp_path / "invalid.json"
+    _ = malformed.write_text('{"schema_version":1,,}', encoding="utf-8")
+    native = cast(
+        "dict[str, object]",
+        json.loads(harness.EVIDENCE.read_text(encoding="utf-8")),
+    )
+    monkeypatch.setattr(harness, "EVIDENCE", malformed)
+
+    def injected(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return native
+
+    monkeypatch.setattr(json, "loads", injected)
+    with pytest.raises(harness.SanitizerHarnessError, match="cannot load"):
+        _ = harness.load_evidence()
+
+
+def test_sanitizer_json_provider_rejects_foreign_key_without_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A colliding foreign string key cannot run equality during corroboration."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("sanitizer foreign JSON equality executed")
+
+    native = cast(
+        "dict[str, object]",
+        json.loads(harness.EVIDENCE.read_text(encoding="utf-8")),
+    )
+    cases = cast("list[dict[str, object]]", native["cases"])
+    status = cases[0].pop("status")
+    cases[0][ForeignKey("status")] = status
+
+    def injected(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return native
+
+    monkeypatch.setattr(json, "loads", injected)
+    with pytest.raises(
+        harness.SanitizerHarnessError,
+        match="sanitizer JSON decoder provider differs from source",
+    ):
+        _ = harness.load_evidence()
+
+
 @pytest.mark.parametrize(
     "identifier",
     [

@@ -73,6 +73,7 @@ SOURCE_SHA256 = (
 SCHEMA_VERSION = 1
 RUN_TIMEOUT_SECONDS = 15
 MAX_DOCUMENT_BYTES = 1_048_576
+_NATIVE_JSON_LOADS = json.loads
 MAX_FIXTURE_BYTES = 1_048_576
 MAX_NATIVE_DESCRIPTOR = (1 << 31) - 1
 PARENT_COMPONENT = ".."
@@ -291,15 +292,47 @@ def _read_regular(path: Path, *, limit: int) -> bytes:
     return contents
 
 
+def _same_native_json(actual: object, expected: object) -> bool:
+    """Compare entire decoded JSON trees without foreign equality hooks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        observed = cast("dict[object, object]", actual)
+        source = cast("dict[object, object]", expected)
+        # Reject a colliding foreign key before dictionary lookup.
+        if any(type(key) is not str for key in observed):
+            return False
+        return len(observed) == len(source) and all(
+            key in observed and _same_native_json(observed[key], value)
+            for key, value in source.items()
+        )
+    if kind is list:
+        observed = cast("list[object]", actual)
+        source = cast("list[object]", expected)
+        return len(observed) == len(source) and all(
+            _same_native_json(left, right)
+            for left, right in zip(observed, source, strict=True)
+        )
+    return kind in (bool, int, float, str, type(None)) and actual == expected
+
+
 def _load_object(path: Path) -> JsonObject:
     try:
+        source = _read_regular(path, limit=MAX_DOCUMENT_BYTES).decode("utf-8")
         parsed = cast(
             "object",
-            json.loads(
-                _read_regular(path, limit=MAX_DOCUMENT_BYTES).decode("utf-8"),
-                object_pairs_hook=_reject_duplicate_pairs,
-            ),
+            json.loads(source, object_pairs_hook=_reject_duplicate_pairs),
         )
+        # Original source, not a replaced public decoder, owns case/evidence
+        # admission. Only compare exact native values, never foreign hooks.
+        if json.loads is not _NATIVE_JSON_LOADS:
+            original = cast(
+                "object",
+                _NATIVE_JSON_LOADS(source, object_pairs_hook=_reject_duplicate_pairs),
+            )
+            if not _same_native_json(parsed, original):
+                _fail("sanitizer JSON decoder provider differs from source")
     except (
         OSError,
         ValueError,

@@ -42,8 +42,15 @@ The executable runner is
 `benchmarks/interpreter/sanitizer-cases.json`; reviewed results live in
 `benchmarks/interpreter/evidence/windows-x86_64-sanitizer-findings.json`.
 Both JSON authorities reject duplicate keys and invalid UTF-8 through the stable
-sanitizer-harness error boundary before evidence comparison. Manifest and
-reviewed-result JSON are admitted only as direct, non-redirected regular files,
+sanitizer-harness error boundary before evidence comparison. When the public
+JSON decoder has been replaced, both case and evidence loaders independently
+parse the admitted source through the original import-bound decoder and compare
+all exact native keys, values, and containers before accepting the document.
+This rejects source-forged case input bytes, altered evidence hashes, and masked
+syntax errors without running foreign key equality hooks; source-equivalent
+adapters remain supported. This protects loader substitution, not arbitrary
+mutation of Python internals. Manifest and reviewed-result JSON are admitted
+only as direct, non-redirected regular files,
 with a one-MiB input bound and opened-inode identity checked before and after
 reads. In-root source fixtures and the pinned historical source obey the same
 regular-file and stable-snapshot rules, each with a one-MiB limit; fixture
