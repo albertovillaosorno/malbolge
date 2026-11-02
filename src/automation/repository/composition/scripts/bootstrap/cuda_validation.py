@@ -2025,30 +2025,38 @@ def _write_staged_file_at_parent(
 def _rename_cuda_toolkit_no_replace(
     source: str, destination: str, *, src_dir_fd: int, dst_dir_fd: int
 ) -> None:
-    """Atomically publish a Linux toolkit without overwriting a late occupant."""
+    """Publish atomically on Linux and Darwin without replacement."""
+    if sys.platform == "linux":
+        symbol, flag = "renameat2", 1  # Linux RENAME_NOREPLACE
+    elif sys.platform == "darwin":
+        symbol, flag = "renameatx_np", 4  # Darwin RENAME_EXCL
+    else:
+        _fail(
+            "CUDA toolkit publication requires native POSIX no-replace rename"
+        )
     try:
         libc = ctypes.CDLL(None, use_errno=True)
-        renameat2 = libc.renameat2
+        rename = getattr(libc, symbol)
     except (OSError, ValueError, TypeError, RuntimeError, AttributeError) as error:
         raise CudaProvisionError(
-            "CUDA toolkit publication requires native Linux no-replace rename"
+            "CUDA toolkit publication requires native POSIX no-replace rename"
         ) from error
-    renameat2.argtypes = (
+    rename.argtypes = (
         ctypes.c_int,
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_char_p,
         ctypes.c_uint,
     )
-    renameat2.restype = ctypes.c_int
+    rename.restype = ctypes.c_int
     result = cast(
         "object",
-        renameat2(
+        rename(
             src_dir_fd,
             os.fsencode(source),
             dst_dir_fd,
             os.fsencode(destination),
-            1,  # Linux RENAME_NOREPLACE
+            flag,
         ),
     )
     if type(result) is not int:
@@ -2140,18 +2148,12 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
                 or (source_status.st_dev, source_status.st_ino) != staged_identity
             ):
                 _fail("CUDA toolkit staging source changed before publication")
-            if sys.platform != "linux":
-                _ = os.replace(
-                    staged.name, destination.name,
-                    src_dir_fd=source_parent, dst_dir_fd=descriptor,
-                )
-            else:
-                _rename_cuda_toolkit_no_replace(
-                    staged.name,
-                    destination.name,
-                    src_dir_fd=source_parent,
-                    dst_dir_fd=descriptor,
-                )
+            _rename_cuda_toolkit_no_replace(
+                staged.name,
+                destination.name,
+                src_dir_fd=source_parent,
+                dst_dir_fd=descriptor,
+            )
             _ = _require_staging_parent_unchanged(staged.parent, source_parent)
         finally:
             try:

@@ -34,6 +34,8 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import hashlib
 import http.client
 import io
@@ -3794,7 +3796,9 @@ def test_cuda_publication_does_not_replace_occupant_after_final_absence_check(
     ) -> os.stat_result:
         nonlocal occupied
         try:
-            return native_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+            return native_stat(
+                path, dir_fd=dir_fd, follow_symlinks=follow_symlinks
+            )
         except FileNotFoundError:
             if path == destination.name and dir_fd is not None and not occupied:
                 destination.mkdir()
@@ -3811,6 +3815,127 @@ def test_cuda_publication_does_not_replace_occupant_after_final_absence_check(
     assert destination.is_dir()
     assert not tuple(destination.iterdir())
     assert (staged / "verified.bin").read_bytes() == b"trusted toolkit"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX descriptors")
+@pytest.mark.parametrize("late_occupant", [False, True])
+def test_cuda_darwin_publication_uses_exclusive_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, late_occupant: bool
+) -> None:
+    """Darwin's exclusive rename preserves a late destination occupant."""
+    staged = tmp_path / "staged-toolkit"
+    staged.mkdir()
+    _ = (staged / "trusted.bin").write_bytes(b"trusted")
+    target = tmp_path / "destination"
+    native_stat = os.stat
+    occupied = False
+    called = False
+
+    class ExclusiveRename:
+        argtypes: object = None
+        restype: object = None
+
+        def __call__(
+            self,
+            source_fd: int,
+            source: bytes,
+            target_fd: int,
+            destination: bytes,
+            flags: int,
+        ) -> int:
+            nonlocal called
+            called = True
+            assert flags == 4  # Darwin RENAME_EXCL
+            assert os.fsdecode(source) == staged.name
+            assert os.fsdecode(destination) == target.name
+            try:
+                _ = native_stat(
+                    destination, dir_fd=target_fd, follow_symlinks=False
+                )
+            except FileNotFoundError:
+                os.rename(
+                    source, destination,
+                    src_dir_fd=source_fd, dst_dir_fd=target_fd,
+                )
+                return 0
+            ctypes.set_errno(errno.EEXIST)
+            return -1
+
+    class DarwinLibc:
+        renameatx_np = ExclusiveRename()
+
+    def occupy_after_absence(
+        path: str | os.PathLike[str],
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal occupied
+        try:
+            return native_stat(
+                path, dir_fd=dir_fd, follow_symlinks=follow_symlinks
+            )
+        except FileNotFoundError:
+            if (
+                late_occupant and path == target.name
+                and dir_fd is not None and not occupied
+            ):
+                target.mkdir()
+                occupied = True
+            raise
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(sys, "platform", "darwin")
+        isolated.setattr(ctypes, "CDLL", lambda *args, **kwargs: DarwinLibc())
+        isolated.setattr(os, "stat", occupy_after_absence)
+        if late_occupant:
+            with pytest.raises(
+                cuda_validation.CudaProvisionError, match="occupied"
+            ):
+                cuda_validation._publish_cuda_toolkit(
+                    staged, target
+                )
+        else:
+            cuda_validation._publish_cuda_toolkit(
+                staged, target
+            )
+    assert called and occupied == late_occupant
+    if late_occupant:
+        assert target.is_dir() and not tuple(target.iterdir())
+        assert (staged / "trusted.bin").read_bytes() == b"trusted"
+    else:
+        assert (target / "trusted.bin").read_bytes() == b"trusted"
+        assert not staged.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX descriptors")
+@pytest.mark.parametrize("platform_id", ["darwin", "freebsd"])
+def test_cuda_posix_publication_without_native_exclusion_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform_id: str
+) -> None:
+    """An unsupported POSIX rename cannot silently fall back to replacement."""
+    staged = tmp_path / "staged"
+    staged.mkdir()
+    _ = (staged / "trusted.bin").write_bytes(b"trusted")
+    destination = tmp_path / "destination"
+
+    class MissingExclusiveRename:
+        pass
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(sys, "platform", platform_id)
+        isolated.setattr(
+            ctypes, "CDLL", lambda *args, **kwargs: MissingExclusiveRename()
+        )
+        with pytest.raises(
+            cuda_validation.CudaProvisionError,
+            match="native POSIX no-replace rename",
+        ):
+            cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+                staged, destination
+            )
+    assert (staged / "trusted.bin").read_bytes() == b"trusted"
+    assert not destination.exists()
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="requires Linux renameat2")
@@ -5698,8 +5823,11 @@ def test_cuda_nonlinux_publication_never_moves_substituted_source_tree(
     swapped = False
 
     def exchange_source_before_rename(
-        src: str | os.PathLike[str], dst: str | os.PathLike[str],
-        *, src_dir_fd: int | None = None, dst_dir_fd: int | None = None,
+        src: str,
+        dst: str,
+        *,
+        src_dir_fd: int,
+        dst_dir_fd: int,
     ) -> None:
         nonlocal swapped
         if not swapped:
@@ -5713,7 +5841,11 @@ def test_cuda_nonlinux_publication_never_moves_substituted_source_tree(
 
     with monkeypatch.context() as isolated:
         isolated.setattr(sys, "platform", "darwin")
-        isolated.setattr(os, "replace", exchange_source_before_rename)
+        isolated.setattr(
+            cuda_validation,
+            "_rename_cuda_toolkit_no_replace",
+            exchange_source_before_rename,
+        )
         with pytest.raises(cuda_validation.CudaProvisionError):
             cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
                 staged, target
@@ -5736,8 +5868,21 @@ def test_cuda_nonlinux_posix_publication_preserves_exact_staged_tree(
     parent = tmp_path / "destination"
     parent.mkdir()
     target = parent / "toolkit"
+
+    def rename_without_occupant(
+        source: str, destination: str, *, src_dir_fd: int, dst_dir_fd: int
+    ) -> None:
+        os.rename(
+            source, destination,
+            src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd,
+        )
+
     with monkeypatch.context() as isolated:
         isolated.setattr(sys, "platform", "darwin")
+        isolated.setattr(
+            cuda_validation, "_rename_cuda_toolkit_no_replace",
+            rename_without_occupant,
+        )
         cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
             staged, target
         )
