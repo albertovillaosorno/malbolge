@@ -805,6 +805,140 @@ def test_libc_clang_ast_requires_real_translation_unit_shape(text: str) -> None:
         _ = c_libc_source._parse_ast(text, ACCEPTED)
 
 
+@pytest.mark.parametrize("entrypoint", ["direct", "process"])
+def test_libc_clang_ast_rejects_substituted_clean_tree(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A replaced JSON decoder cannot erase calls from Clang AST evidence."""
+    original = (
+        '{"kind":"TranslationUnitDecl","id":"0x1","inner":'
+        '[{"kind":"CallExpr","id":"0x2"}]}'
+    )
+    clean = cast("dict[str, object]", json.loads(original))
+    clean["inner"] = [{}]
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return clean
+
+    config = _libc_test_ast_config()
+    monkeypatch.setattr(json, "loads", forged_loads)
+    if entrypoint == "process":
+
+        def accepted_clang(_clang: Path) -> None:
+            pass
+
+        def native_run(
+            command: list[str], **_kwargs: object
+        ) -> sp.CompletedProcess[str]:
+            return sp.CompletedProcess(command, 0, stdout=original, stderr="")
+
+        monkeypatch.setattr(c_libc_source, "_require_clang", accepted_clang)
+        monkeypatch.setattr(sp, "run", native_run)
+    with pytest.raises(
+        c_libc_source.LibcSourceError, match="JSON decoder differs"
+    ):
+        if entrypoint == "direct":
+            _ = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+                original, ACCEPTED
+            )
+        else:
+            _ = c_libc_source._run_ast(  # pyright: ignore[reportPrivateUsage]
+                ACCEPTED, config
+            )
+
+
+@pytest.mark.parametrize("fault", ["duplicate", "nonfinite", "syntax"])
+def test_libc_clang_ast_rejects_invalid_source_despite_decoder_shim(
+    monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    """Native Clang JSON diagnostics survive a substituted public decoder."""
+    examples = {
+        "duplicate": '{"kind":"TranslationUnitDecl","kind":"CallExpr"}',
+        "nonfinite": '{"kind":"TranslationUnitDecl","value":NaN}',
+        "syntax": '{"kind":"TranslationUnitDecl",,}',
+    }
+    clean: dict[str, object] = {
+        "kind": "TranslationUnitDecl",
+        "id": "0x1",
+        "inner": [{}],
+    }
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return clean
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+    pattern = {
+        "duplicate": "duplicate.*AST",
+        "nonfinite": "nonfinite.*AST",
+        "syntax": "invalid Clang AST JSON",
+    }[fault]
+    with pytest.raises(c_libc_source.LibcSourceError, match=pattern):
+        _ = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+            examples[fault], ACCEPTED
+        )
+
+
+def test_libc_clang_ast_decoder_can_delegate_to_native_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent wrappers preserve ordinary AST results."""
+    original = '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}'
+    native = json.loads
+
+    def delegated(
+        text: str, *, object_pairs_hook: object, parse_constant: object
+    ) -> object:
+        return cast(
+            "object",
+            native(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]",
+                    object_pairs_hook,
+                ),
+                parse_constant=cast("Callable[[str], object]", parse_constant),
+            ),
+        )
+
+    monkeypatch.setattr(json, "loads", delegated)
+    parsed = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+        original, ACCEPTED
+    )
+    assert parsed == native(original)
+
+
+def test_libc_clang_ast_foreign_nested_key_never_runs_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted decoder's hostile key cannot execute at source check."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign Clang JSON key equality called")
+
+    original = '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}'
+    forged = cast("dict[str, object]", json.loads(original))
+    child = cast("dict[str, object]", cast("list[object]", forged["inner"])[0])
+    child[ForeignKey("kind")] = "FunctionDecl"
+
+    def forged_loads(_text: str, **_kwargs: object) -> object:
+        return forged
+
+    monkeypatch.setattr(json, "loads", forged_loads)
+    with pytest.raises(
+        c_libc_source.LibcSourceError, match="non-native AST key"
+    ):
+        _ = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+            original, ACCEPTED
+        )
+
+
 def test_libc_clang_ast_empty_receipt_cannot_admit_forbidden_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

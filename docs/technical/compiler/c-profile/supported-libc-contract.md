@@ -48,6 +48,13 @@ receipt for another binary, target, source, or mode cannot admit a guest C
 unit, even when a process wrapper mutates its borrowed argument list. CLI
 diagnostics exclude foreign exception formatters.
 
+Clang AST evidence from process stdout uses the same source-binding rule when
+its public JSON decoder is replaced: the original import-bound loader must
+independently reproduce the entire native AST tree from the stdout text.
+Nested key admission runs before lookup, so custom equality cannot erase
+references. Equivalent wrappers are supported; duplicate keys, nonfinite
+numbers, and malformed syntax still fail with the source parser's diagnostics.
+
 Source-level rejection and argparse help/error text require exact native write
 counts and a completed flush. Incomplete diagnostic delivery returns a nonzero
 CLI status.

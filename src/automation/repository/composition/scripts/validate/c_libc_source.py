@@ -64,6 +64,7 @@ DIAGNOSTIC_FORBIDDEN = "MALBOLGE-LIBC-002"
 AST_DECL_REF = "DeclRefExpr"
 AST_FUNCTION_DECL = "FunctionDecl"
 AST_COMPOUND_STMT = "CompoundStmt"
+_NATIVE_AST_JSON_LOADS = json.loads
 
 
 type JsonScalar = bool | int | float | str | None
@@ -291,6 +292,61 @@ def _reject_nonfinite_ast_constant(value: str) -> Never:
     _fail(f"nonfinite Clang AST JSON number: {value}")
 
 
+def _same_native_ast(received: object, original: object) -> bool:
+    """Compare AST evidence values without foreign key/equality hooks.
+
+    Returns:
+        Whether the complete recursively native JSON trees are identical.
+
+    """
+    kind = type(original)
+    if type(received) is not kind:
+        return False
+    if kind is dict:
+        actual = cast("dict[object, object]", received)
+        expected = cast("dict[object, object]", original)
+        # A str subclass can have a colliding hash and hostile __eq__.
+        # Reject it before any lookup involving original parser keys.
+        if any(type(key) is not str for key in actual):
+            _fail("Clang JSON decoder returned a non-native AST key")
+        return len(actual) == len(expected) and all(
+            key in actual and _same_native_ast(actual[key], value)
+            for key, value in expected.items()
+        )
+    if kind is list:
+        actual_items = cast("list[object]", received)
+        expected_items = cast("list[object]", original)
+        return len(actual_items) == len(expected_items) and all(
+            _same_native_ast(actual_item, expected_item)
+            for actual_item, expected_item in zip(
+                actual_items, expected_items, strict=True
+            )
+        )
+    return kind in (str, int, bool, float, type(None)) and received == original
+
+
+def _corroborate_ast_json(text: str, receipt: object, source: Path) -> None:
+    """Corroborate the public decoder against original Clang stdout bytes."""
+    if json.loads is _NATIVE_AST_JSON_LOADS:
+        return
+    try:
+        expected = cast(
+            "object",
+            _NATIVE_AST_JSON_LOADS(
+                text,
+                object_pairs_hook=_unique_ast_fields,
+                parse_constant=_reject_nonfinite_ast_constant,
+            ),
+        )
+        if not _same_native_ast(receipt, expected):
+            _fail(f"Clang AST JSON decoder differs from source: {source}")
+    except LibcSourceError:
+        raise
+    except (ValueError, RecursionError, TypeError, RuntimeError) as error:
+        message = f"invalid Clang AST JSON for {source}"
+        raise LibcSourceError(message) from error
+
+
 def _parse_ast(text: str, source: Path) -> JsonObject:
     if type(text) is not str:
         _fail("Clang AST JSON requires exact str text")
@@ -310,6 +366,7 @@ def _parse_ast(text: str, source: Path) -> JsonObject:
         raise LibcSourceError(message) from error
     if type(parsed) is not dict:
         _fail(f"Clang AST root must be an object for {source}")
+    _corroborate_ast_json(text, cast("object", parsed), source)
     root = cast("JsonObject", parsed)
     identifier = root.get("id")
     children = root.get("inner")
