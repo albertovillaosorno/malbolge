@@ -196,6 +196,10 @@ only native tuple/string receipts, and failed list probes authorize no channels.
 Rustup's home-Cargo lookup accepts only an exact native boolean file-status
 result.
 
+POSIX Git and Rust imports pin physical destination directories, and reject
+in-place host binary changes in size, modification time, or executable mode
+after hardlink/copy. Copy fallbacks also reject source ctime changes; successful
+hardlinks account for their expected source ctime update.
 Git and Rust import-completion markers are created exclusively through a
 no-follow native file descriptor, so an existing regular or linked marker
 cannot be overwritten.

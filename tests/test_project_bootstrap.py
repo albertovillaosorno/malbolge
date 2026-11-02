@@ -7218,6 +7218,73 @@ def test_rust_import_file_copy_fallback_and_source_links(
     assert project.rust_toolchain_import_complete(destination)
 
 
+@pytest.mark.skipif(os.name != POSIX_NAME, reason="POSIX import file identity")
+@pytest.mark.parametrize("transport", ["hardlink", "copy", "copy-restored-mtime"])
+def test_rust_import_rejects_same_inode_source_byte_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    transport: str,
+) -> None:
+    """Stable inode numbers cannot certify a changed host tool payload."""
+    source = _make_rust_import_source(tmp_path)
+    cargo = source / "bin/cargo"
+    destination = tmp_path / ".dependencies/rust" / GIT_VERSION
+    original_link = os.link
+    original_copy = cast(
+        "Callable[[int, int], None]", vars(project)["_write_import_file_payload"]
+    )
+    mutated = False
+
+    def mutate_cargo() -> None:
+        nonlocal mutated
+        before = cargo.stat()
+        _ = cargo.write_bytes(b"X" * len(RUST_CARGO_BYTES))
+        changed_mtime = (
+            before.st_mtime_ns
+            if transport == "copy-restored-mtime"
+            else before.st_mtime_ns + 1_000_000_000
+        )
+        os.utime(cargo, ns=(before.st_atime_ns, changed_mtime))
+        mutated = True
+
+    def link_or_rewrite(  # ruff: ignore[too-many-arguments]
+        source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        target_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        if Path(os.fsdecode(target_path)).name == CARGO_FILENAME:
+            if transport.startswith("copy"):
+                raise OSError("hardlink not supported")
+            original_link(
+                source_path, target_path, src_dir_fd=src_dir_fd,
+                dst_dir_fd=dst_dir_fd, follow_symlinks=follow_symlinks,
+            )
+            mutate_cargo()
+            return
+        original_link(
+            source_path, target_path, src_dir_fd=src_dir_fd,
+            dst_dir_fd=dst_dir_fd, follow_symlinks=follow_symlinks,
+        )
+
+    def copy_then_rewrite(input_fd: int, output_fd: int) -> None:
+        original_copy(input_fd, output_fd)
+        if transport.startswith("copy") and not mutated:
+            mutate_cargo()
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", link_or_rewrite)
+        isolated.setattr(project, "_write_import_file_payload", copy_then_rewrite)
+        with pytest.raises(project.InitializationError, match="changed during copy"):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert mutated
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 @pytest.mark.skipif(
     os.name != POSIX_NAME, reason="POSIX import hardlink identity"
 )

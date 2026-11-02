@@ -1247,13 +1247,23 @@ def _copy_import_file_contents(
 
 
 def _verify_import_source_unchanged(
-    source: Path | str, source_fd: int | None, original: os.stat_result
+    source: Path | str,
+    source_fd: int | None,
+    original: os.stat_result,
+    *,
+    hardlinked: bool,
 ) -> None:
-    """Reject a substituted host source after copying."""
+    """Reject host source changes, allowing only a hardlink's ctime update."""
     current = os.stat(source, dir_fd=source_fd, follow_symlinks=False)
-    if type(current) is not os.stat_result or (
-        current.st_dev, current.st_ino
-    ) != (original.st_dev, original.st_ino):
+    if (
+        type(current) is not os.stat_result
+        or not stat.S_ISREG(current.st_mode)
+        or (current.st_dev, current.st_ino) != (original.st_dev, original.st_ino)
+        or current.st_size != original.st_size
+        or current.st_mtime_ns != original.st_mtime_ns
+        or stat.S_IMODE(current.st_mode) != stat.S_IMODE(original.st_mode)
+        or (not hardlinked and current.st_ctime_ns != original.st_ctime_ns)
+    ):
         _fail("import file changed during copy")
 
 
@@ -1293,6 +1303,7 @@ def _link_or_copy_import_file(
     ):
         _fail("import source file must be physical")
     copied_inode = original.st_dev, original.st_ino
+    hardlinked = True
     try:
         os.link(
             source,
@@ -1302,6 +1313,7 @@ def _link_or_copy_import_file(
             follow_symlinks=False,
         )
     except OSError:
+        hardlinked = False
         input_fd = _open_verified_import_input(source, source_fd, original)
         try:
             copied_inode = _copy_import_file_contents(
@@ -1309,7 +1321,9 @@ def _link_or_copy_import_file(
             )
         finally:
             os.close(input_fd)
-    _verify_import_source_unchanged(source, source_fd, original)
+    _verify_import_source_unchanged(
+        source, source_fd, original, hardlinked=hardlinked
+    )
     _verify_import_destination_unchanged(
         destination, parent_fd, original, copied_inode=copied_inode
     )
