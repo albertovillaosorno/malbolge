@@ -39,6 +39,8 @@ import ntpath
 import os
 import sys
 from dataclasses import dataclass
+from datetime import date, datetime, time
+from math import isnan
 from pathlib import Path, PureWindowsPath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import Never, TextIO, cast
@@ -288,6 +290,38 @@ def _admit_source_text(text: str, *, byte_limit: int) -> None:
         _fail("TOML source exceeds byte limit")
 
 
+def _same_native_toml(actual: object, expected: object) -> bool:
+    """Compare complete TOML records without evaluating foreign equality hooks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        native_actual = cast("dict[object, object]", actual)
+        native_expected = cast("dict[object, object]", expected)
+        if len(native_actual) != len(native_expected):
+            return False
+        # Check every key before membership: a colliding foreign key could
+        # otherwise execute arbitrary equality code inside dict lookup.
+        if any(type(key) is not str for key in native_actual):
+            return False
+        return all(
+            type(key) is str
+            and key in native_actual
+            and _same_native_toml(native_actual[key], item)
+            for key, item in native_expected.items()
+        )
+    if kind is list:
+        native_actual = cast("list[object]", actual)
+        native_expected = cast("list[object]", expected)
+        return len(native_actual) == len(native_expected) and all(
+            _same_native_toml(left, right)
+            for left, right in zip(native_actual, native_expected, strict=True)
+        )
+    if kind is float and isnan(cast("float", expected)):
+        return isnan(cast("float", actual))
+    return kind in (bool, int, float, str, date, time, datetime) and actual == expected
+
+
 def _parse_document(text: str) -> dict[str, object]:
     _admit_source_text(text, byte_limit=MAX_PROTOCOL_BYTES)
     try:
@@ -311,10 +345,18 @@ def _parse_document(text: str) -> dict[str, object]:
         _fail(f"unsupported benchmark protocol schema: {version}")
     for table_name in REQUIRED_TABLES:
         _ = _table(document, table_name)
-    # Native-looking tables do not prove the decoder read the source text.
-    # Keep earlier malformed receipt diagnostics before rejecting a swap.
+    # If the public decoder has been substituted, independently reparse the
+    # original source and compare all admitted values using only native types.
+    # Equivalent providers remain usable; altered receipts cannot mint evidence.
     if tomllib.loads is not _NATIVE_TOML_LOADS:
-        _fail("benchmark protocol TOML decoder provider changed")
+        try:
+            source = cast("object", _NATIVE_TOML_LOADS(text))
+            equivalent = _same_native_toml(document, source)
+        except (ValueError, TypeError, RecursionError) as error:
+            message = "benchmark protocol TOML decoder provider differs from source"
+            raise BenchmarkProtocolError(message) from error
+        if not equivalent:
+            _fail("benchmark protocol TOML decoder provider differs from source")
     return document
 
 

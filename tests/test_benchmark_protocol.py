@@ -1272,6 +1272,19 @@ def _expect_validation_failure(path: Path, message: str) -> None:
     raise AssertionError(failure)
 
 
+def test_benchmark_parser_accepts_source_equivalent_decoder_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A wrapper forwarding native source values is not forged evidence."""
+    source = _text(DETERMINISTIC)
+    native_loads = validator.tomllib.loads
+    with monkeypatch.context() as context:
+        context.setattr(validator.tomllib, "loads", lambda text: native_loads(text))
+        assert validator.parse_protocol(source).identifier == (
+            "deterministic-protocol-fixture"
+        )
+
+
 @pytest.mark.parametrize("tamper", ["syntax", "schema", "study-id"])
 def test_benchmark_parser_rejects_native_forged_toml_provider(
     monkeypatch: pytest.MonkeyPatch, tamper: str

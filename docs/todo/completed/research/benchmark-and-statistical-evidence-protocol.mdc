@@ -75,6 +75,9 @@ identify uncertainty and may never substitute for semantic verification.
 - The checked-in protocol fixtures are validation evidence only and make no
   Malbolge performance claim.
 - Three red-first native-shaped substituted TOML provider regressions now reject
-  forged benchmark syntax, version, or study identity before admission. The
-  combined benchmark/lifecycle suite passes 301 cases. This is local parser
-  consistency, not independent measurement authentication.
+  forged benchmark syntax, version, or study identity before admission. A
+  follow-up broad suite found three historical-importer test regressions from
+  unconditional provider rejection; source-equivalent wrappers are now allowed
+  after independent canonical reparse and native structural comparison. All 335
+  focused benchmark/historical cases pass, and the expanded cross-validator
+  rerun passed 3,234 cases with one skip. This is not measurement authentication.
