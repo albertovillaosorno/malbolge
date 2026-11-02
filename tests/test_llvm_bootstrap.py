@@ -40,7 +40,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import replace
-from io import BufferedRandom, BufferedReader
+from io import BufferedRandom, BufferedReader, BytesIO
 from pathlib import Path
 from stat import S_ISREG
 from typing import Self, cast, final, override
@@ -2951,6 +2951,78 @@ def test_llvm_import_fallback_copy_does_not_write_to_swapped_parent(
     foreign_tree = foreign if replacement == "symlink" else parent
     assert (foreign_tree / sentinel.name).read_bytes() == b"foreign sentinel"
     assert not (foreign_tree / destination.name).exists()
+
+
+def test_llvm_import_fallback_reads_native_source_not_foreign_path_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A substituted Python pathname stream cannot replace physical file bytes."""
+    source = tmp_path / "host-source"
+    _ = source.write_bytes(CLANG_BYTES)
+    parent = tmp_path / "staged"
+    parent.mkdir()
+    target = parent / "clang"
+    native_path_open = Path.open
+    diverted: list[Path] = []
+
+    def no_hardlinks(
+        _source: str, _target: str, *, dst_dir_fd: int | None = None
+    ) -> None:
+        raise OSError("cross-device")
+
+    def foreign_stream(path: Path, mode: str = "r", *args: object, **kwargs: object):
+        if path == source and mode == "rb":
+            diverted.append(path)
+            return BytesIO(FOREIGN_TOOL_BYTES)
+        return native_path_open(path, mode, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", no_hardlinks)
+        isolated.setattr(Path, "open", foreign_stream)
+        _ = llvm_validation._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+            str(source), str(target)
+        )
+    assert not diverted
+    assert target.read_bytes() == CLANG_BYTES
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX source descriptor boundary")
+def test_llvm_import_fallback_rejects_redirected_source_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign inode with matching bytes cannot certify the named source."""
+    source = tmp_path / "host-source"
+    _ = source.write_bytes(CLANG_BYTES)
+    foreign = tmp_path / "foreign-source"
+    _ = foreign.write_bytes(CLANG_BYTES)
+    parent = tmp_path / "staged"
+    parent.mkdir()
+    target = parent / "clang"
+    native_open = os.open
+    diverted: list[Path] = []
+
+    def no_hardlinks(
+        _source: str, _target: str, *, dst_dir_fd: int | None = None
+    ) -> None:
+        raise OSError("cross-device")
+
+    def redirected_open(
+        path: str | os.PathLike[str], flags: int, *args: object, **kwargs: object
+    ) -> int:
+        if Path(path) == source:
+            diverted.append(source)
+            return native_open(foreign, flags)
+        return native_open(path, flags, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", no_hardlinks)
+        isolated.setattr(os, "open", redirected_open)
+        with pytest.raises(llvm_validation.LlvmImportError, match="fallback copy"):
+            _ = llvm_validation._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+                str(source), str(target)
+            )
+    assert diverted
+    assert not target.exists()
 
 
 def test_linux_import_cross_device_fallback_keeps_runtime_executable(

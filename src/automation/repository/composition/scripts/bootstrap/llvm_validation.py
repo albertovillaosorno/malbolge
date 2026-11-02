@@ -425,6 +425,44 @@ def _exclusive_import_target(
     return stream
 
 
+def _open_pinned_import_source(path: Path) -> BufferedReader:
+    """Open a physical source without following or blocking on late redirects."""
+    if not _physical_file(path):
+        _fail("LLVM import fallback source is not physical")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    if type(cast("object", descriptor)) is not int or descriptor < 0:
+        _fail("LLVM import fallback source descriptor must be native")
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            type(opened) is not os.stat_result
+            or not S_ISREG(opened.st_mode)
+            or not _matches_open_import_file(path, descriptor, opened.st_size)
+        ):
+            _fail("LLVM import fallback source descriptor differs from path")
+        stream = os.fdopen(descriptor, "rb")
+        if (
+            type(cast("object", stream)) is not BufferedReader
+            or type(stream.fileno()) is not int
+            or stream.fileno() != descriptor
+        ):
+            with suppress(OSError, ValueError, TypeError, RuntimeError, AttributeError):
+                stream.close()
+            _fail("LLVM import fallback source stream is not native")
+        return stream
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError):
+        # fdopen may fail without assuming ownership; never leak the raw fd.
+        with suppress(OSError, ValueError, TypeError, RuntimeError):
+            os.close(descriptor)
+        raise
+
+
 def _link_or_copy(
     source: str,
     destination: str,
@@ -499,7 +537,7 @@ def _link_or_copy_in_parent(
                 if type(target_stat) is not os.stat_result:
                     _fail("LLVM import fallback copy destination status is not native")
                 owned_inode = (target_stat.st_dev, target_stat.st_ino)
-                with source_path.open("rb") as original:
+                with _open_pinned_import_source(source_path) as original:
                     source_fd = original.fileno()
                     source_stat = os.fstat(source_fd)
                     if (
