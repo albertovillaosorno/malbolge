@@ -54,6 +54,9 @@ independently reproduce the entire native AST tree from the stdout text.
 Nested key admission runs before lookup, so custom equality cannot erase
 references. Equivalent wrappers are supported; duplicate keys, nonfinite
 numbers, and malformed syntax still fail with the source parser's diagnostics.
+Ordinary decoder dependency faults in either primary or independent parsing
+are rethrown as typed `LibcSourceError` with the original cause retained;
+foreign exception subclasses never supply formatter text to the diagnostic.
 
 Source-level rejection and argparse help/error text require exact native write
 counts and a completed flush. Incomplete diagnostic delivery returns a nonzero

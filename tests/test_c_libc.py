@@ -939,6 +939,79 @@ def test_libc_clang_ast_foreign_nested_key_never_runs_equality(
         )
 
 
+@pytest.mark.parametrize("stage", ["public", "corroboration"])
+@pytest.mark.parametrize(
+    "fault_type", [TypeError, AttributeError, IndexError, OverflowError, RuntimeError]
+)
+def test_libc_clang_ast_unexpected_decoder_faults_stay_typed(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    fault_type: type[Exception],
+) -> None:
+    """A decoder's ordinary host failures cannot leak beyond AST admission."""
+    original = '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}'
+    failure = fault_type("injected decoder fault")
+
+    def failing(_text: str, **_kwargs: object) -> object:
+        raise failure
+
+    if stage == "public":
+        monkeypatch.setattr(json, "loads", failing)
+    else:
+        native = json.loads
+
+        def delegated(
+            text: str, *, object_pairs_hook: object, parse_constant: object
+        ) -> object:
+            return cast(
+                "object",
+                native(
+                    text,
+                    object_pairs_hook=cast(
+                        "Callable[[list[tuple[str, object]]], object]",
+                        object_pairs_hook,
+                    ),
+                    parse_constant=cast("Callable[[str], object]", parse_constant),
+                ),
+            )
+
+        monkeypatch.setattr(json, "loads", delegated)
+        monkeypatch.setattr(c_libc_source, "_NATIVE_AST_JSON_LOADS", failing)
+    with pytest.raises(
+        c_libc_source.LibcSourceError, match="invalid Clang AST JSON"
+    ) as caught:
+        _ = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+            original, ACCEPTED
+        )
+    assert caught.value.__cause__ is failure
+
+
+def test_libc_clang_ast_decoder_fault_does_not_format_foreign_subclass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Typed host failures avoid invoking a foreign error formatter."""
+
+    class ForeignError(RuntimeError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("untrusted AST decoder error formatted")
+
+    failure = ForeignError("injected decoder fault")
+
+    def failing(_text: str, **_kwargs: object) -> object:
+        raise failure
+
+    monkeypatch.setattr(json, "loads", failing)
+    with pytest.raises(
+        c_libc_source.LibcSourceError, match="invalid Clang AST JSON"
+    ) as caught:
+        _ = c_libc_source._parse_ast(  # pyright: ignore[reportPrivateUsage]
+            '{"kind":"TranslationUnitDecl","id":"0x1","inner":[{}]}',
+            ACCEPTED,
+        )
+    assert caught.value.__cause__ is failure
+
+
 def test_libc_clang_ast_empty_receipt_cannot_admit_forbidden_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

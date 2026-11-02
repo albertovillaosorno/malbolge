@@ -342,7 +342,16 @@ def _corroborate_ast_json(text: str, receipt: object, source: Path) -> None:
             _fail(f"Clang AST JSON decoder differs from source: {source}")
     except LibcSourceError:
         raise
-    except (ValueError, RecursionError, TypeError, RuntimeError) as error:
+    except (
+        AttributeError,
+        LookupError,
+        OSError,
+        OverflowError,
+        RecursionError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
         message = f"invalid Clang AST JSON for {source}"
         raise LibcSourceError(message) from error
 
@@ -361,7 +370,16 @@ def _parse_ast(text: str, source: Path) -> JsonObject:
         )
     except LibcSourceError:
         raise
-    except (ValueError, RecursionError) as error:
+    except (
+        AttributeError,
+        LookupError,
+        OSError,
+        OverflowError,
+        RecursionError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
         message = f"invalid Clang AST JSON for {source}"
         raise LibcSourceError(message) from error
     if type(parsed) is not dict:

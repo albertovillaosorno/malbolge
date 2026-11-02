@@ -86,6 +86,10 @@ routines without hidden host shortcuts.
   malformed/duplicate/nonfinite and nested hostile-key cases now reject; a
   source-equivalent decoder continues to pass. Original parser diagnostics and
   foreign equality isolation are retained.
+- A third 2026-11-02 follow-up keeps unexpected decoder dependency faults
+  typed for primary and independently corroborating Clang AST loads. Nine
+  red-first cases previously exposed raw host exceptions, now eleven test cases
+  preserve the underlying cause without invoking foreign exception formatters.
 - **Completion:** Completed on 2026-08-08 after the versioned guest library
   authority, executable memory/string subset, future declaration contracts,
   source-located availability diagnostics, native no-CRT dependency evidence,
