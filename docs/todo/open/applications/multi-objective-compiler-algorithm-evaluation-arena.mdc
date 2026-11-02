@@ -766,6 +766,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   tests passed, arena BasedPyright reported zero errors and scoped Ruff was
   clean. These checks do not attest the runtime libraries before import,
   the underlying reported evidence, or stdout sink fidelity.
+  Subsequent bounded checks passed 3,719 distinct collected arena cases
+  across all 24 test modules: 1,426 offline, 731 host-C producer/oracle/Git,
+  995 target process/replay/resource, 314 target auditor, and 253 host-C
+  auditor cases (64+64+64+61 in independent batches). This does not establish
+  a one-process full-suite result. `jig doctor` was degraded; `jig check`
+  exceeded a 100-second cap, so no whole-repository Jig verdict exists.
+  The public contributor validator exited 1 on the first Rustfmt check,
+  which reports pre-existing formatting differences outside this scope and
+  prevented later contributor checks from running.
 - Operator report output now requires exact text write counts and an explicit
   successful stdout flush across both arena CLI routes, rejecting malformed
   return values, truncation, and injected stream errors as nonzero exits.

@@ -1291,6 +1291,17 @@ The original study records remain the result authority.
   BasedPyright and scoped Ruff checks clean. This is local provider identity
   consistency, not evidence of untampered imports, genuine source records,
   sink integrity, independent OS attestation or historical measurement truth.
+  A later clean-checkout run covered all 24 arena test modules in disjoint,
+  bounded groups: 1,426 offline analysis/evidence/statistics/CSV tests, 731
+  host-C producer/oracle/Git tests, 995 target child/replay/resource tests,
+  314 target auditor tests, and all 253 host-C auditor cases in four batches
+  of 64, 64, 64, and 61. All 3,719 collected cases passed; this was not one
+  uninterrupted full-suite invocation. `jig doctor` was degraded and an
+  independent 100-second `jig check` timed out without a complete verdict.
+  The public `scripts/validate.py` exited 1 on its initial repository-wide
+  Rust formatting check (existing files outside the arena included); it
+  therefore did not run its later contributor gates. None of these synthetic
+  test results establishes authentic guest measurements or a green Jig gate.
 - `benchmarks/arena/study_file.py` guards bounded study JSON input with
   before/after descriptor and pathname identity, and nonblocking/no-follow
   open flags when available. Deterministic race regressions check ordinary
