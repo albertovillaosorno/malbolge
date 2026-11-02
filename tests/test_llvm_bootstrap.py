@@ -524,6 +524,33 @@ def test_linux_import_rejects_untrusted_staging_before_copy(
     assert not tuple(outside.iterdir())
 
 
+def test_linux_import_does_not_overwrite_late_occupied_destination(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A newly occupied final LLVM directory may not be replaced."""
+    observation = _host_observation(tmp_path)
+    destination = tmp_path / llvm_validation.LLVM_ROOT
+    native_mkdir = Path.mkdir
+    inserted = False
+
+    def racing_mkdir(
+        path: Path, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
+    ) -> None:
+        nonlocal inserted
+        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        if path == destination.parent and not inserted:
+            inserted = True
+            destination.mkdir()
+
+    monkeypatch.setattr(Path, "mkdir", racing_mkdir)
+    with pytest.raises(llvm_validation.LlvmImportError, match="destination"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert inserted
+    assert destination.is_dir()
+    assert not tuple(destination.iterdir())
+
+
 @pytest.mark.parametrize("target", ("staging", "child"))
 def test_linux_import_rejects_replaced_staging_without_deleting_foreign_tree(
     tmp_path: Path,

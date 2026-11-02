@@ -718,6 +718,19 @@ def _owned_staging_safe_to_clean(
     return owned_child is not None and _native_directory_inode(staged) == owned_child
 
 
+def _require_absent_import_destination(destination: Path) -> None:
+    """Reject late occupancy using native leaf status before publication."""
+    try:
+        _ = destination.lstat()
+    except FileNotFoundError:
+        return
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"LLVM import destination status failed: {type(error).__name__}"
+        ) from error
+    _fail("LLVM import destination became occupied before publication")
+
+
 def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     """Import one exact Linux LLVM runtime into repository-local state.
 
@@ -756,6 +769,7 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
         ):
             _fail("LLVM import staging identity changed before publication")
         destination.parent.mkdir(parents=True, exist_ok=True)
+        _require_absent_import_destination(destination)
         if (
             _native_directory_inode(staging) != owned_staging
             or _native_directory_inode(staged) != owned_child
