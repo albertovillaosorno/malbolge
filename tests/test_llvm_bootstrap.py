@@ -2071,6 +2071,58 @@ def test_linux_import_rejects_incomplete_resource_enumeration(
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
 
+@pytest.mark.parametrize("phase", ("preflight", "readiness"))
+@pytest.mark.parametrize("member_kind", ("header", "subdirectory"))
+def test_llvm_resource_scan_rejects_correlated_walk_and_iterdir_omission(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    member_kind: str,
+) -> None:
+    """Independent physical member inventory cannot trust agreeing walks."""
+    observation = _host_observation(tmp_path)
+    if member_kind == "subdirectory":
+        (observation.resource_dir / "include").mkdir()
+        _ = (observation.resource_dir / "include/hidden.h").write_bytes(b"hidden")
+    if phase == "readiness":
+        root = llvm_validation.import_linux_llvm(tmp_path, observation)
+        resources = root / "lib/clang/22"
+        assert llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+    else:
+        resources = observation.resource_dir
+
+    omitted = "stddef.h" if member_kind == "header" else "include"
+    native_walk = Path.walk
+    native_iterdir = Path.iterdir
+
+    def incomplete_walk(path: Path, **kwargs: object):  # type: ignore[no-untyped-def]
+        for directory, folders, files in native_walk(path, **kwargs):  # type: ignore[arg-type]
+            if directory == resources:
+                if omitted in folders:
+                    folders.remove(omitted)
+                if omitted in files:
+                    files.remove(omitted)
+            yield directory, folders, files
+
+    def incomplete_iterdir(path: Path):
+        return (
+            member
+            for member in native_iterdir(path)
+            if path != resources or member.name != omitted
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "walk", incomplete_walk)
+        isolated.setattr(Path, "iterdir", incomplete_iterdir)
+        if phase == "readiness":
+            assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+        else:
+            with pytest.raises(llvm_validation.LlvmImportError, match="resource"):
+                _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    if phase == "preflight":
+        assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
 @pytest.mark.parametrize("tamper", ("overwrite", "replace"))
 def test_linux_resource_copy_rejects_late_same_size_corruption(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str

@@ -770,13 +770,23 @@ def _require_physical_resources(root: Path) -> dict[Path, tuple[int, ...]]:
                 for member in direct_members
             ):
                 _fail("host LLVM resource member enumeration is not physical")
+            # Path.walk and Path.iterdir share an underlying scandir path.
+            # An incomplete view from both cannot establish true membership;
+            # native listdir independently attests every direct child name.
+            native_names = os.listdir(directory)
+            if type(native_names) is not list or any(
+                type(name) is not str for name in native_names
+            ):
+                _fail("host LLVM resource native enumeration is not physical")
             walked_names = (*folders, *files)
             folder_names, file_names = set(folders), set(files)
             direct_names = tuple(member.name for member in direct_members)
             if (
                 len(folder_names) + len(file_names) != len(walked_names)
                 or len(set(direct_names)) != len(direct_names)
-                or folder_names | file_names != set(direct_names)
+                or len(set(native_names)) != len(native_names)
+                or set(native_names) != set(direct_names)
+                or folder_names | file_names != set(native_names)
             ):
                 _fail("host LLVM resource member enumeration is incomplete")
             for name in walked_names:
