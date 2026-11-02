@@ -4317,6 +4317,45 @@ def test_cuda_rejects_excessive_combined_archive_expansion(
     assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
 
 
+def test_cuda_corrupted_zip_deflate_is_typed_without_publication(
+    tmp_path: Path,
+) -> None:
+    """A pinned ZIP with invalid Deflate block data cannot publish a toolkit."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(
+        output, "w", compression=zipfile.ZIP_DEFLATED
+    ) as archive:
+        archive.writestr(NVRTC_MEMBER, NVRTC_BYTES * 256)
+    payload = bytearray(output.getvalue())
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        info = archive.getinfo(NVRTC_MEMBER)
+    offset = (
+        info.header_offset
+        + zipfile.sizeFileHeader
+        + len(info.filename.encode("utf-8"))
+        + len(info.extra)
+    )
+    payload[offset] = 0x07  # Reserved Deflate block kind.
+    damaged = bytes(payload)
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path,
+        _manifest(tmp_path, damaged, {"relative_path": _ZIP_PACKAGE_PATH}),
+        LINUX_PLATFORM,
+    ).packages[0]
+    with pytest.raises(
+        cuda_validation.CudaProvisionError,
+        match="cannot extract CUDA zip archive",
+    ) as caught:
+        cuda_validation.extract_cuda_package(
+            damaged,
+            package,
+            tmp_path / "toolkit",
+            staging=tmp_path / "stage",
+        )
+    assert isinstance(caught.value.__cause__, zlib.error)
+    assert not (tmp_path / "toolkit").exists()
+
+
 @pytest.mark.parametrize("failure_type", [zlib.error, NotImplementedError])
 def test_cuda_zip_decoder_faults_remain_typed(
     tmp_path: Path,
