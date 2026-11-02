@@ -1078,7 +1078,12 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
             f"{type(error).__name__}"
         ) from error
     finally:
-        os.close(descriptor)
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA toolkit destination parent close failed"
+            ) from error
 
 
 def provision_cuda_manifest(

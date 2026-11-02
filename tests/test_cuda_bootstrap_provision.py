@@ -2956,3 +2956,54 @@ def test_cuda_marker_inspection_does_not_render_host_fault(
     ) as caught:
         cuda_validation._require_new_completion_marker(marker)  # pyright: ignore[reportPrivateUsage]
     assert caught.value.__cause__ is failure
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("fault", [UnprintableHostOSError, UnprintableHostRuntimeError])
+def test_cuda_publication_types_destination_parent_close_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Final publish close errors must not leak untrusted host exceptions."""
+    staged = tmp_path / "owned-staging-toolkit"
+    staged.mkdir()
+    parent = tmp_path / "toolkit-parent"
+    parent.mkdir()
+    destination = parent / "toolkit"
+    native_open = os.open
+    native_close = os.close
+    opened_parent: int | None = None
+    closed = False
+    failure = fault("foreign directory close failure")
+
+    def capture_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
+        *, dir_fd: int | None = None,
+    ) -> int:
+        nonlocal opened_parent
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == parent:
+            opened_parent = descriptor
+        return descriptor
+
+    def fail_close(descriptor: int) -> None:
+        nonlocal closed
+        native_close(descriptor)
+        if descriptor == opened_parent:
+            closed = True
+            raise failure
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", capture_open)
+        isolated.setattr(os, "close", fail_close)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="destination parent close"
+        ) as caught:
+            cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+                staged, destination
+            )
+    assert closed
+    assert caught.value.__cause__ is failure
+    assert destination.is_dir()
+    assert not staged.exists()
