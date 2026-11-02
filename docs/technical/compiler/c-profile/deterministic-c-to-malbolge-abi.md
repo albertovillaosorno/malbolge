@@ -336,6 +336,14 @@ shapes. A failed stream wrapper releases its descriptor. Forged or nonnative
 read evidence fails closed instead of invoking foreign formatting or decoding
 hooks. These checks supplement the bounded no-follow read and pre/post file
 identity comparison; they do not replace canonical ABI schema validation.
+When a public JSON loader is substituted, the ABI parser independently
+corroborates the result against a parse by the original import-bound loader.
+Every nested value and exact native key must agree with the source; colliding
+foreign keys cannot invoke equality hooks. Equivalent delegating decoders remain
+admissible. This is a source/loader substitution boundary, not a guarantee
+against arbitrary modification of Python interpreter internals. Unexpected JSON
+host decoder faults remain typed and preserve their causes without invoking
+foreign exception formatters.
 The standalone ABI CLI reports success only after a complete native text-write
 count and successful flush. Short writes, nonnative receipts and failed output
 delivery fail closed; failed diagnostic delivery cannot convert a rejected ABI

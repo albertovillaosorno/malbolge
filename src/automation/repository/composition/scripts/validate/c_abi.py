@@ -39,6 +39,7 @@ import json
 import os
 import sys
 from dataclasses import dataclass
+from math import isnan
 from pathlib import Path
 from stat import S_ISREG
 from typing import Never, TextIO, cast
@@ -66,6 +67,7 @@ POINTER_ALIGNMENT = 4
 STACK_ALIGNMENT = 16
 FRAME_HEADER_BYTES = 32
 MAX_DOCUMENT_BYTES = 1024 * 1024
+_NATIVE_JSON_LOADS = json.loads
 
 TOP_LEVEL_KEYS = frozenset(
     {
@@ -275,6 +277,34 @@ def _expect_literal(actual: object, expected: object, context: str) -> None:
         _fail(f"{context} must be {expected!r}")
 
 
+def _same_native_json(actual: object, expected: object) -> bool:
+    """Compare independent source values without running foreign equality hooks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        observed = cast("dict[object, object]", actual)
+        source = cast("dict[object, object]", expected)
+        # Check *all* key types first: a colliding string subclass must not
+        # reach a native dict lookup or its foreign equality implementation.
+        if any(type(key) is not str for key in observed):
+            _fail("C ABI document contains a non-native string key")
+        return len(observed) == len(source) and all(
+            key in observed and _same_native_json(observed[key], value)
+            for key, value in source.items()
+        )
+    if kind is list:
+        observed_list = cast("list[object]", actual)
+        source_list = cast("list[object]", expected)
+        return len(observed_list) == len(source_list) and all(
+            _same_native_json(left, right)
+            for left, right in zip(observed_list, source_list, strict=True)
+        )
+    if kind is float and isnan(cast("float", expected)):
+        return isnan(cast("float", actual))
+    return kind in (bool, int, float, str, type(None)) and actual == expected
+
+
 def loads_document(text: str) -> JsonObject:
     """Parse an ABI document while rejecting duplicate object keys.
 
@@ -291,6 +321,34 @@ def loads_document(text: str) -> JsonObject:
         raise CAbiValidationError(
             f"invalid JSON: {_safe_error_detail(error)}"
         ) from error
+    except CAbiValidationError:
+        raise
+    except (TypeError, ValueError, RuntimeError, RecursionError) as error:
+        raise CAbiValidationError(
+            f"invalid JSON host parser failure: {_safe_error_detail(error)}"
+        ) from error
+    # The public loader may have been substituted by a wrapper or a forged
+    # provider. Admit equivalent native receipts, but independently prove that
+    # every nested value came from the source text before schema validation.
+    if json.loads is not _NATIVE_JSON_LOADS:
+        try:
+            original = cast(
+                "object",
+                _NATIVE_JSON_LOADS(text, object_pairs_hook=_reject_duplicate_pairs),
+            )
+            equivalent = _same_native_json(parsed, original)
+        except CAbiValidationError:
+            raise
+        except json.JSONDecodeError as error:
+            raise CAbiValidationError(
+                f"invalid JSON: {_safe_error_detail(error)}"
+            ) from error
+        except (TypeError, ValueError, RuntimeError, RecursionError) as error:
+            raise CAbiValidationError(
+                "C ABI JSON decoder provider differs from source"
+            ) from error
+        if not equivalent:
+            _fail("C ABI JSON decoder provider differs from source")
     return _mapping(parsed, "C ABI document")
 
 

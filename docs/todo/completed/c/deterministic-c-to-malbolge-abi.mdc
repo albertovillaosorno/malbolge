@@ -63,6 +63,11 @@ policy for undefined or target-dependent C behavior.
 - `src/automation/repository/composition/scripts/validate/c_abi.py` rejects
   duplicate/unknown/drifted ABI fields and binds the authority to canonical
   target profile `malbolge-2026`.
+- The ABI parser corroborates substituted public JSON loader receipts against
+  the import-bound native source parse, rejecting drift in IDs or nested layouts,
+  hidden malformed or duplicate JSON, and foreign colliding keys. The direct,
+  text, and disk paths fail closed; source-equivalent wrappers remain admissible.
+  Unexpected host decoder errors are typed with causes and safe diagnostics.
 - `src/automation/repository/composition/scripts/validate/c_abi_source.py` emits
   source-located `MALBOLGE-ABI-001` through `MALBOLGE-ABI-008` diagnostics for
   v1 layout exclusions and requires pinned Clang 22.1.8.

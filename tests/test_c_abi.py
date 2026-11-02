@@ -39,6 +39,7 @@ import json
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from typing import BinaryIO, TextIO, cast, override
 
@@ -121,6 +122,161 @@ def test_unknown_abi_key_fails_closed() -> None:
     changed = json.dumps(document)
     with pytest.raises(c_abi.CAbiValidationError, match=r"unknown=.*host_pointer_bits"):
         _ = c_abi.validate_text(changed)
+
+
+@pytest.mark.parametrize("entrypoint", ["parser", "text", "file"])
+def test_c_abi_parser_rejects_substituted_native_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    """A forged native JSON result cannot conceal drift in source ABI bytes."""
+    canonical = _canonical_text()
+    changed = canonical.replace(
+        '"abi_id": "malbolge-c32-v1"', '"abi_id": "forged-abi"', 1
+    )
+    assert changed != canonical
+    original_loads = json.loads
+    forged = original_loads(canonical)
+    assert (
+        c_abi.validate_document(cast("c_abi.JsonObject", forged)).abi_id == c_abi.ABI_ID
+    )
+
+    def substituted(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", substituted)
+    with pytest.raises(
+        c_abi.CAbiValidationError, match="JSON decoder provider differs from source"
+    ):
+        if entrypoint == "parser":
+            _ = c_abi.loads_document(changed)
+        elif entrypoint == "text":
+            _ = c_abi.validate_text(changed)
+        else:
+            source = tmp_path / "forged-abi.json"
+            _ = source.write_text(changed, encoding="utf-8")
+            _ = c_abi.load_document(source)
+
+
+@pytest.mark.parametrize(
+    ("changed", "diagnostic"),
+    [
+        ("{]", "invalid JSON"),
+        ('{"schema_version":1,"schema_version":1}', "duplicate JSON key"),
+    ],
+)
+def test_c_abi_parser_does_not_hide_invalid_source(
+    monkeypatch: pytest.MonkeyPatch,
+    changed: str,
+    diagnostic: str,
+) -> None:
+    """A substituted decoder cannot replace malformed or ambiguous ABI JSON."""
+    canonical = _canonical_text()
+    native_loads = json.loads
+    forged = native_loads(canonical)
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: forged)
+
+    with pytest.raises(c_abi.CAbiValidationError, match=diagnostic):
+        _ = c_abi.validate_text(changed)
+
+
+def test_c_abi_parser_corroborates_nested_array_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Source checks include frontend layout array entries, not just ABI IDs."""
+    canonical = _canonical_text()
+    changed = canonical.replace("S128-ni:1:10:20", "S64-ni:1:10:20", 1)
+    assert changed != canonical
+    native_loads = json.loads
+    forged = native_loads(canonical)
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: forged)
+    with pytest.raises(
+        c_abi.CAbiValidationError, match="JSON decoder provider differs from source"
+    ):
+        _ = c_abi.validate_text(changed)
+
+
+def test_c_abi_parser_allows_equivalent_delegating_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Wrappers that retain native JSON values do not invalidate ABI policy."""
+    original_loads = json.loads
+
+    def delegating(text: str, *, object_pairs_hook: object) -> object:
+        return original_loads(
+            text,
+            object_pairs_hook=cast(
+                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+            ),
+        )
+
+    monkeypatch.setattr(json, "loads", delegating)
+    assert c_abi.validate_text(_canonical_text()).abi_id == c_abi.ABI_ID
+
+
+@pytest.mark.parametrize("entrypoint", ["parser", "text", "file"])
+@pytest.mark.parametrize("fault_type", [TypeError, ValueError, RuntimeError])
+def test_c_abi_parser_types_unexpected_host_decoder_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    entrypoint: str,
+    fault_type: type[Exception],
+) -> None:
+    """Host decoder errors retain causes without formatting foreign objects."""
+
+    def unsafe_str(self: Exception) -> str:
+        del self
+        raise AssertionError("foreign decoder error formatter executed")
+
+    foreign = type("ForeignParserFault", (fault_type,), {"__str__": unsafe_str})
+    fault = foreign("private parser failure")
+
+    def broken_decoder(*_args: object, **_kwargs: object) -> object:
+        raise fault
+
+    monkeypatch.setattr(json, "loads", broken_decoder)
+    with pytest.raises(
+        c_abi.CAbiValidationError, match="invalid JSON host parser failure"
+    ) as caught:
+        if entrypoint == "parser":
+            _ = c_abi.loads_document(_canonical_text())
+        elif entrypoint == "text":
+            _ = c_abi.validate_text(_canonical_text())
+        else:
+            source = tmp_path / "abi.json"
+            _ = source.write_text(_canonical_text(), encoding="utf-8")
+            _ = c_abi.load_document(source)
+    assert caught.value.__cause__ is fault
+    assert "ForeignParserFault" in str(caught.value)
+
+
+def test_c_abi_parser_rejects_foreign_nested_key_without_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign string-subclass keys cannot execute equality during admission."""
+
+    class ForeignKey(str):
+        @override
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign ABI key equality executed")
+
+    source = _canonical_text()
+    forged = cast("dict[str, object]", json.loads(source))
+    pointer = cast("dict[str, object]", forged["pointer"]).copy()
+    bits = pointer.pop("bits")
+    pointer[ForeignKey("bits")] = bits
+    forged["pointer"] = pointer
+    monkeypatch.setattr(json, "loads", lambda _text, **_kwargs: forged)
+
+    with pytest.raises(c_abi.CAbiValidationError, match="non-native string key"):
+        _ = c_abi.loads_document(source)
 
 
 def test_abi_layout_drift_fails_closed() -> None:
