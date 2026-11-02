@@ -32,6 +32,7 @@ import io
 import os
 from pathlib import Path
 import stat
+import tarfile
 import warnings
 import zipfile
 from typing import BinaryIO
@@ -630,6 +631,147 @@ def test_uv_zip_rejects_duplicate_selected_executable() -> None:
         python_validation.ProvisionError, match="duplicate uv zip member"
     ):
         _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
+
+
+def test_uv_tar_rejects_duplicate_selected_executable() -> None:
+    """A tar archive with conflicting selected names is not unambiguous."""
+    member_name = "uv-release/uv"
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        for payload in (b"first-uv", b"second-uv"):
+            member = tarfile.TarInfo(member_name)
+            member.size = len(payload)
+            archive.addfile(member, io.BytesIO(payload))
+    with pytest.raises(
+        python_validation.ProvisionError, match="duplicate uv tar member"
+    ):
+        _ = python_validation._tar_member_bytes(output.getvalue(), member_name)
+
+
+def test_uv_does_not_replace_competing_destination_during_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late competing executable must retain its bytes, never be overwritten."""
+    artifact = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(artifact, root)
+    stage = executable.with_name(f"{executable.name}.tmp")
+    original_verify = python_validation._verify_uv_stage_descriptor_bytes
+    calls = 0
+
+    def occupy_during_publish(
+        temporary: Path,
+        descriptor: int,
+        identity: tuple[int, int],
+        binary: bytes,
+    ) -> None:
+        nonlocal calls
+        original_verify(temporary, descriptor, identity, binary)
+        calls += 1
+        if calls == 2:
+            assert not executable.exists()
+            _ = executable.write_bytes(PRESERVED)
+
+    monkeypatch.setattr(
+        python_validation,
+        "_verify_uv_stage_descriptor_bytes",
+        occupy_during_publish,
+    )
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv executable appeared"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert calls == 2
+    assert executable.read_bytes() == PRESERVED
+    assert not stage.exists()
+
+
+def test_uv_rejects_staging_swap_during_atomic_publication(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late substituted staging link cannot become the verified executable."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    stage = executable.with_name(f"{executable.name}.tmp")
+    retained = tmp_path / "retained-uv-stage"
+    foreign = tmp_path / "foreign-uv"
+    _ = foreign.write_bytes(PRESERVED)
+    native_link = os.link
+
+    def swap_source_before_link(
+        source: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *,
+        follow_symlinks: bool = True,
+    ) -> None:
+        assert os.fspath(source) == os.fspath(stage)
+        assert os.fspath(destination) == os.fspath(executable)
+        _ = stage.replace(retained)
+        _symlink(stage, foreign, directory=False)
+        native_link(source, destination, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(os, "link", swap_source_before_link)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv linked stage changed"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert retained.read_bytes() == BINARY
+    assert foreign.read_bytes() == PRESERVED
+    assert stage.is_symlink()
+    assert executable.is_symlink()
+
+
+def test_uv_rejects_mutation_after_atomic_publication_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The final executable is checked after its atomic no-replace link."""
+    if not hasattr(os, "pwrite"):
+        pytest.skip("descriptor positional writes unavailable")
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    native_link = os.link
+
+    def mutate_after_link(
+        source: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *,
+        follow_symlinks: bool = True,
+    ) -> None:
+        native_link(source, destination, follow_symlinks=follow_symlinks)
+        with executable.open("r+b") as stream:
+            assert stream.write(b"!") == 1
+
+    monkeypatch.setattr(os, "link", mutate_after_link)
+    with pytest.raises(
+        python_validation.ProvisionError, match="uv staging.*bytes"
+    ):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert executable.read_bytes() != BINARY
+
+
+def test_uv_successful_atomic_publication_is_single_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A completed UV install leaves no temporary hardlink behind."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    executable = python_validation.uv_executable(
+        python_validation.uv_artifact(PLATFORM_ID), root
+    )
+    assert python_validation.ensure_uv(root, platform_id=PLATFORM_ID) == executable
+    assert executable.read_bytes() == BINARY
+    assert executable.lstat().st_nlink == 1
+    assert not executable.with_name(f"{executable.name}.tmp").exists()
 
 
 def test_uv_manifest_rejects_hardlinked_external_authority(

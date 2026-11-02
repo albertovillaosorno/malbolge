@@ -479,6 +479,8 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
 def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
     with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
         info = archive.getmember(member_name)
+        if sum(item.name == member_name for item in archive.getmembers()) != 1:
+            _fail("duplicate uv tar member name")
         if type(info) is not tarfile.TarInfo or type(info.size) is not int:
             _fail("uv tar member requires native size metadata")
         if not info.isfile():
@@ -854,6 +856,35 @@ def _require_uv_destination_absent(executable: Path) -> None:
         _fail(f"uv executable appeared during provisioning: {executable}")
 
 
+def _uv_linked_stage_is_owned(
+    temporary: Path, executable: Path, identity: tuple[int, int], size: int
+) -> bool:
+    """Require both names of a pending hardlink publication to be private."""
+    try:
+        stage = temporary.lstat()
+        destination = executable.lstat()
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return False
+    return all(
+        type(status) is os.stat_result
+        and all(
+            type(field) is int
+            for field in (
+                status.st_mode,
+                status.st_nlink,
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+            )
+        )
+        and stat.S_ISREG(status.st_mode)
+        and status.st_nlink == 2
+        and (status.st_dev, status.st_ino) == identity
+        and status.st_size == size
+        for status in (stage, destination)
+    )
+
+
 def _publish_uv_stage(
     temporary: Path,
     executable: Path,
@@ -889,7 +920,41 @@ def _publish_uv_stage(
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         message = "uv staging publication verification failed"
         raise ProvisionError(message) from error
-    _ = temporary.replace(executable)
+    # A rename overwrites a late competing destination. Linking is atomic
+    # no-replace publication on supported hosts; never adopt another inode.
+    try:
+        os.link(temporary, executable, follow_symlinks=False)
+    except FileExistsError as error:
+        message = f"uv executable appeared during provisioning: {executable}"
+        raise ProvisionError(message) from error
+    except (OSError, ValueError, TypeError, RuntimeError, NotImplementedError) as error:
+        message = "uv staging publication link failed"
+        raise ProvisionError(message) from error
+    if not _uv_linked_stage_is_owned(temporary, executable, identity, len(binary)):
+        _fail("uv linked stage changed during publication")
+    try:
+        temporary.unlink()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "uv staging source removal failed"
+        raise ProvisionError(message) from error
+    checked = _admit_uv_provision_path(executable, required=True)
+    if checked is None or (checked.st_dev, checked.st_ino) != identity:
+        _fail("uv executable changed during publication")
+    try:
+        descriptor = os.open(executable, flags)
+        if type(descriptor) is not int or descriptor < 0:
+            _fail("uv published read descriptor must be native")
+        try:
+            _verify_uv_stage_descriptor_bytes(
+                executable, descriptor, identity, binary
+            )
+        finally:
+            os.close(descriptor)
+    except ProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "uv published executable byte verification failed"
+        raise ProvisionError(message) from error
 
 
 def _provision_uv_binary(
