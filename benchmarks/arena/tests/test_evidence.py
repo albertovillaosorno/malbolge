@@ -43,6 +43,7 @@ import json
 from pathlib import Path
 import sys
 from typing import Any
+from typing import Self
 from typing import SupportsIndex
 from typing import TYPE_CHECKING
 from typing import cast
@@ -3343,3 +3344,57 @@ def test_snapshot_recheck_rejects_forged_hash_of_changed_evidence(
     monkeypatch.setattr(evidence, "sha256", ForgedHash)
     with pytest.raises(evidence.EvidenceError, match="SHA-256|changed"):
         evidence.recheck_evidence_snapshot(snapshot)
+
+
+@pytest.mark.parametrize("failure_site", ["close-receipt", "read-failure"])
+def test_evidence_stream_context_cannot_suppress_read_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_site: str,
+) -> None:
+    """A foreign __exit__ cannot turn a failed bounded read into evidence."""
+    payload = b"admitted source bytes"
+    _ = (tmp_path / "raw.csv").write_bytes(payload)
+    original_open = evidence._open_evidence
+    read_fault = RuntimeError("injected source read failure")
+
+    class SuppressingStream:
+        def __init__(self, inner: IO[bytes]) -> None:
+            self.inner = inner
+            self.exits = 0
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_arguments: object) -> bool:
+            self.exits += 1
+            self.inner.close()
+            return True
+
+        def fileno(self) -> int:
+            return self.inner.fileno()
+
+        def read(self, count: int) -> bytes:
+            if failure_site == "read-failure":
+                raise read_fault
+            return self.inner.read(count)
+
+        def close(self) -> None:
+            if failure_site == "close-receipt":
+                return cast("None", False)
+            self.inner.close()
+
+    streams: list[SuppressingStream] = []
+
+    def forged_open(path: Path) -> IO[bytes]:
+        wrapper = SuppressingStream(original_open(path))
+        streams.append(wrapper)
+        return cast("IO[bytes]", wrapper)
+
+    monkeypatch.setattr(evidence, "_open_evidence", forged_open)
+    expected = "close completion" if failure_site == "close-receipt" else "read failed"
+    with pytest.raises(evidence.EvidenceError, match=expected) as caught:
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+    assert streams and streams[0].exits == 1
+    if failure_site == "read-failure":
+        assert caught.value.__cause__ is read_fault

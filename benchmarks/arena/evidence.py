@@ -374,6 +374,14 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
             raise error  # ruff: ignore[TRY201]
         message = f"evidence stream access failed: {relative}"
         raise EvidenceError(message) from error
+    # A substituted context manager can suppress the body's raised error by
+    # returning True from __exit__. Never publish previously read bytes (or
+    # access uninitialized read state) after such a suppressed rejection.
+    if primary is not None:
+        if isinstance(primary, EvidenceError):
+            raise primary
+        message = f"evidence stream access failed: {relative}"
+        raise EvidenceError(message) from primary
     final_path = regular_path(root, relative, limit=limit)
     # A rebound root alias can resolve to a distinct hard link of the same
     # inode. File metadata alone cannot certify the original source path.
