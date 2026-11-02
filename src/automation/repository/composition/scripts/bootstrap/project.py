@@ -46,6 +46,7 @@ import os
 from pathlib import Path
 from pathlib import PureWindowsPath
 import platform
+import re
 import shlex
 import shutil
 from shutil import which
@@ -751,8 +752,14 @@ def git_version_line_matches(required: str, version_line: str) -> bool:
     prefix = "git version "
     if not version_line.startswith(prefix):
         return False
-    observed = version_line.removeprefix(prefix).strip()
-    return observed == required or observed.startswith(f"{required}.")
+    observed = version_line.removeprefix(prefix)
+    if observed == required:
+        return True
+    distribution_prefix = f"{required}."
+    if not observed.startswith(distribution_prefix):
+        return False
+    suffix = observed.removeprefix(distribution_prefix)
+    return re.fullmatch(r"[A-Za-z0-9]+(?:[._+-][A-Za-z0-9]+)*", suffix) is not None
 
 
 def _import_completion_marker_matches(marker: Path, expected: bytes) -> bool:

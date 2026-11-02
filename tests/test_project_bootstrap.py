@@ -3664,6 +3664,27 @@ def test_git_version_match_accepts_portable_and_windows_distribution() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "banner",
+    [
+        "git version 2.55.0.windows.1\nunexpected diagnostic",
+        "git version 2.55.0.windows.1 extra text",
+        "git version 2.55.0.windows..1",
+        "git version 2.55.0.windows/1",
+        "git version 2.55.0.windows:1",
+        "git version 2.55.0.windows.1\x00",
+        "git version 2.55.0.windows.1\rforged",
+        "git version 2.55.0.λ",
+        "git version 2.55.0.",
+    ],
+)
+def test_host_git_version_match_rejects_noncanonical_banners(
+    banner: str,
+) -> None:
+    """A pinned Git version cannot be certified by an injected suffix."""
+    assert not project.git_version_line_matches(GIT_VERSION, banner)
+
+
 def test_host_git_import_requires_matching_version_and_exec_path(
     tmp_path: Path,
 ) -> None:
