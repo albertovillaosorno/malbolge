@@ -35,6 +35,8 @@
 
 from __future__ import annotations
 
+import ctypes
+import errno
 import os
 import re
 import shutil
@@ -54,6 +56,8 @@ _TOOL_NAMES: Final = ("clang", "clang-tidy", "clang-format")
 _LLVM_LIBRARY_NAMES: Final = ("libLLVM.so.22.1", "libclang-cpp.so.22.1")
 _HOST_CAPTURE_TIMEOUT_SECONDS: Final = 15
 _HOST_MAX_CAPTURE_CHARS: Final = 16_384
+_LINUX_AT_FDCWD: Final = -100
+_LINUX_RENAME_NOREPLACE: Final = 1
 
 
 class LlvmImportError(RuntimeError):
@@ -1009,6 +1013,48 @@ def _ensure_physical_import_parent(root: Path) -> Path:
     return parent
 
 
+def _rename_linux_import_no_replace(
+    source: Path, destination: str, *, dst_dir_fd: int
+) -> None:
+    """Atomically move a Linux import without replacing an occupied leaf.
+
+    Linux renameat2 with RENAME_NOREPLACE is required: os.replace can erase a
+    concurrently inserted empty directory after our last absence check.
+    """
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = libc.renameat2
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError) as error:
+        raise LlvmImportError(
+            "LLVM import requires native Linux no-replace directory rename"
+        ) from error
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    result = cast(
+        "object",
+        renameat2(
+            _LINUX_AT_FDCWD,
+            os.fsencode(source),
+            dst_dir_fd,
+            os.fsencode(destination),
+            _LINUX_RENAME_NOREPLACE,
+        ),
+    )
+    if type(result) is not int:
+        _fail("LLVM import rename receipt must be a native integer")
+    if result != 0:
+        error_number = ctypes.get_errno()
+        if error_number == errno.EEXIST:
+            _fail("LLVM import destination became occupied during publication")
+        raise OSError(error_number, "LLVM import no-replace directory rename failed")
+
+
 def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
     """Pin the physical destination directory across the final rename."""
     parent = _ensure_physical_import_parent(root)
@@ -1046,7 +1092,9 @@ def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
         staged_inode = _native_directory_inode(staged)
         if staged_inode is None:
             _fail("LLVM import staging source must be physical")
-        published = os.replace(staged, destination.name, dst_dir_fd=descriptor)
+        published = _rename_linux_import_no_replace(
+            staged, destination.name, dst_dir_fd=descriptor
+        )
         if _native_directory_inode(parent) != (opened.st_dev, opened.st_ino):
             _fail("LLVM import destination parent changed during publication")
         if (

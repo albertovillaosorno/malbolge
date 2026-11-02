@@ -784,26 +784,25 @@ def test_linux_import_does_not_publish_through_late_parent_swap(
     parent = tmp_path / ".dependencies/llvm"
     parked = tmp_path / "parked-owned-parent"
     staged = tmp_path / ".temp/llvm-import-linux-x86_64/llvm"
-    native_replace = os.replace
+    native_rename = llvm_validation._rename_linux_import_no_replace  # pyright: ignore[reportPrivateUsage]
     swapped = False
 
     def swapping_replace(
-        source: str | os.PathLike[str],
-        destination: str | os.PathLike[str],
+        source: Path,
+        destination: str,
         *,
-        src_dir_fd: int | None = None,
-        dst_dir_fd: int | None = None,
+        dst_dir_fd: int,
     ) -> None:
         nonlocal swapped
         if Path(source) == staged:
             _ = parent.rename(parked)
             _ = parent.symlink_to(outside, target_is_directory=True)
             swapped = True
-        native_replace(
-            source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
-        )
+        native_rename(source, destination, dst_dir_fd=dst_dir_fd)
 
-    monkeypatch.setattr(os, "replace", swapping_replace)
+    monkeypatch.setattr(
+        llvm_validation, "_rename_linux_import_no_replace", swapping_replace
+    )
     with pytest.raises(llvm_validation.LlvmImportError, match="parent"):
         _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert swapped
@@ -3174,24 +3173,25 @@ def test_llvm_publish_rejects_physical_parent_replaced_during_rename(
     foreign.mkdir()
     sentinel = foreign / "sentinel"
     _ = sentinel.write_bytes(b"foreign parent data")
-    native_replace = os.replace
+    native_rename = llvm_validation._rename_linux_import_no_replace  # pyright: ignore[reportPrivateUsage]
     swapped = False
 
     def swap_during_rename(
-        source: str | os.PathLike[str],
-        target: str | os.PathLike[str],
+        source: Path,
+        target: str,
         *,
-        src_dir_fd: int | None = None,
-        dst_dir_fd: int | None = None,
+        dst_dir_fd: int,
     ) -> None:
         nonlocal swapped
         if not swapped:
             _ = parent.rename(parked)
             _ = foreign.rename(parent)
             swapped = True
-        native_replace(source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+        native_rename(source, target, dst_dir_fd=dst_dir_fd)
 
-    monkeypatch.setattr(os, "replace", swap_during_rename)
+    monkeypatch.setattr(
+        llvm_validation, "_rename_linux_import_no_replace", swap_during_rename
+    )
     with pytest.raises(
         llvm_validation.LlvmImportError, match="destination parent changed"
     ):
@@ -3214,21 +3214,97 @@ def test_llvm_publish_rejects_false_success_without_source_move(
     calls = 0
 
     def false_replace(
-        _source: str | os.PathLike[str],
-        _target: str | os.PathLike[str],
+        _source: Path,
+        _target: str,
         *,
-        src_dir_fd: int | None = None,
-        dst_dir_fd: int | None = None,
+        dst_dir_fd: int,
     ) -> object:
         nonlocal calls
         calls += 1
         return receipt
 
-    monkeypatch.setattr(os, "replace", false_replace)
+    monkeypatch.setattr(
+        llvm_validation, "_rename_linux_import_no_replace", false_replace
+    )
     with pytest.raises(llvm_validation.LlvmImportError, match="publication"):
         llvm_validation._publish_linux_import(  # pyright: ignore[reportPrivateUsage]
             tmp_path, staged, destination
         )
     assert calls == 1
+    assert staged.is_dir()
+    assert not destination.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires Linux directory descriptors")
+@pytest.mark.parametrize("occupant", ["directory", "file", "symlink"])
+def test_llvm_publish_never_overwrites_destination_inserted_after_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, occupant: str
+) -> None:
+    """An occupied leaf must survive a race after the final absence check."""
+    staged = tmp_path / "staged-llvm"
+    staged.mkdir()
+    destination = tmp_path / ".dependencies" / "llvm" / LLVM_VERSION
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"unrelated occupant target")
+    native_stat = os.stat
+    inserted_inode: tuple[int, int] | None = None
+
+    def insert_after_absence_check(
+        path: str | os.PathLike[str],
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal inserted_inode
+        try:
+            result = native_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+        except FileNotFoundError:
+            if path == destination.name and dir_fd is not None:
+                if occupant == "directory":
+                    destination.mkdir()
+                elif occupant == "file":
+                    _ = destination.write_bytes(b"reserved")
+                else:
+                    _ = destination.symlink_to(foreign, target_is_directory=True)
+                status = destination.lstat()
+                inserted_inode = (status.st_dev, status.st_ino)
+            raise
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "stat", insert_after_absence_check)
+        with pytest.raises(llvm_validation.LlvmImportError, match="destination"):
+            llvm_validation._publish_linux_import(  # pyright: ignore[reportPrivateUsage]
+                tmp_path, staged, destination
+            )
+    assert inserted_inode is not None
+    current = destination.lstat()
+    assert (current.st_dev, current.st_ino) == inserted_inode
+    assert staged.is_dir()
+    assert sentinel.read_bytes() == b"unrelated occupant target"
+
+
+def test_llvm_publish_refuses_host_without_atomic_noreplace_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Missing Linux no-replace support must fail before moving a toolkit."""
+    staged = tmp_path / "staged-llvm"
+    staged.mkdir()
+    destination = tmp_path / ".dependencies" / "llvm" / LLVM_VERSION
+
+    def no_renameat2(_name: object, *, use_errno: bool) -> object:
+        assert use_errno
+        return object()
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_validation.ctypes, "CDLL", no_renameat2)
+        with pytest.raises(
+            llvm_validation.LlvmImportError, match="native Linux no-replace"
+        ):
+            llvm_validation._publish_linux_import(  # pyright: ignore[reportPrivateUsage]
+                tmp_path, staged, destination
+            )
     assert staged.is_dir()
     assert not destination.exists()
