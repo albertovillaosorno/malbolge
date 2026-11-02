@@ -140,14 +140,36 @@ def _command_bytes(
     cwd: Path | None = None,
     stdin: bytes | None = None,
 ) -> bytes:
-    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        arguments,
-        cwd=cwd,
-        input=stdin,
-        check=False,
-        capture_output=True,
-        shell=False,
-    )
+    try:
+        completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            arguments.copy(),
+            cwd=cwd,
+            input=stdin,
+            check=False,
+            capture_output=True,
+            shell=False,
+        )
+    except (OSError, ValueError, TypeError, RuntimeError, sp.SubprocessError) as error:
+        # A foreign exception subclass may execute arbitrary formatting hooks.
+        detail = (
+            str(error)
+            if type(error) in (OSError, ValueError, TypeError, RuntimeError)
+            else type(error).__name__
+        )
+        raise LlvmDevelopmentProvisionError(
+            f"failed to execute LLVM RPM tool {arguments[0]}: {detail}"
+        ) from error
+    if (
+        type(completed) is not sp.CompletedProcess
+        or type(completed.args) is not list
+        or len(completed.args) != len(arguments)
+        or any(type(argument) is not str for argument in completed.args)
+        or completed.args != arguments
+        or type(completed.returncode) is not int
+        or type(completed.stdout) is not bytes
+        or type(completed.stderr) is not bytes
+    ):
+        _fail(f"invalid LLVM RPM tool process receipt: {arguments[0]}")
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
         _fail(f"LLVM RPM tool failed: {arguments[0]}: {detail}")

@@ -746,7 +746,7 @@ def _tool_output(path: Path) -> str:
     try:
         # jig-ignore-next-line: indivisible reviewed Ruff rule identifier
         completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-            argv,
+            argv.copy(),
             cwd=ROOT,
             check=False,
             capture_output=True,

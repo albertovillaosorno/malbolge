@@ -105,6 +105,13 @@ size, and timestamp checks before and after. A symlinked root, redirected
 include ancestor, altered marker, or incomplete extraction is not admitted as
 ready; an existing incomplete root must be repaired explicitly rather than
 silently using ambient headers or repeating a network download.
+RPM extraction invokes `rpm2cpio` and CPIO only with separate expected and
+launched command arguments. A successful tool receipt must be a native
+`CompletedProcess` with the exact argument vector, integer exit status, and
+binary stdout/stderr. In-place command mutation, foreign status or stream
+objects, and malformed receipts fail closed; launch failures preserve their
+original cause as a typed provisioning error without formatting foreign host
+exception subclasses.
 
 The Linux plugin CMake builder likewise converts native process launch faults
 into typed build failures with their original causes. Host diagnostics are

@@ -1761,3 +1761,25 @@ def test_toolchain_cli_help_native_output(
         _ = tidy_toolchain.main(["--help"])
     assert caught.value.code == 0
     assert CLI_ARCHIVE_FLAG in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("mutation", ("executable", "append", "remove"))
+def test_llvm_version_probe_rejects_mutating_launch_wrapper(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """The expected version argv cannot be altered by its process launcher."""
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if mutation == "executable":
+            args[0] = "foreign-clang"
+        elif mutation == "append":
+            args.append("--unexpected")
+        else:
+            _ = args.pop()
+        return sp.CompletedProcess(
+            args, 0, stdout="clang version 22.1.8", stderr=""
+        )
+
+    monkeypatch.setattr(sp, "run", run)
+    with pytest.raises(tidy_toolchain.ToolchainError, match="process receipt"):
+        _ = tidy_toolchain._tool_output(Path("clang"))  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]

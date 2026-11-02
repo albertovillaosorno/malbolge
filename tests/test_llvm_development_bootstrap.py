@@ -39,6 +39,7 @@ from dataclasses import replace
 import hashlib
 import os
 from pathlib import Path
+import subprocess as sp
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -739,3 +740,184 @@ def test_rpm_extraction_rejects_incomplete_staging_write(
             tmp_path, identity, downloader=_downloader([])
         )
     assert not identity.development_root.exists()
+
+
+@pytest.mark.parametrize("mutation", ["executable", "argument", "append"])
+def test_rpm_command_rejects_mutated_subprocess_argv(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """A launcher cannot alter both the borrowed command and its own receipt."""
+    expected = ["cpio", "-it", "--quiet"]
+
+    def mutate_run(argv: list[str], **_kwargs: object) -> sp.CompletedProcess[bytes]:
+        if mutation == "executable":
+            argv[0] = "foreign-cpio"
+        elif mutation == "argument":
+            argv[1] = "-idm"
+        else:
+            argv.append("--forged")
+        return sp.CompletedProcess(argv, 0, b"./usr/include/ok.h\n", b"")
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", mutate_run)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="process receipt",
+    ):
+        llvm_development_validation._command_bytes(expected)
+    assert expected == ["cpio", "-it", "--quiet"]
+
+
+@pytest.mark.parametrize(
+    "malformed",
+    [
+        "foreign",
+        "bool_status",
+        "float_status",
+        "foreign_argv",
+        "wrong_argv",
+        "foreign_arg",
+        "text_stdout",
+        "text_stderr",
+        "bytearray_stdout",
+    ],
+)
+def test_rpm_command_rejects_non_native_process_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    malformed: str,
+) -> None:
+    """Only matching native binary CPIO tool receipts can prove a command."""
+    expected = ["cpio", "-it", "--quiet"]
+
+    def forged_run(argv: list[str], **_kwargs: object) -> object:
+        if malformed == "foreign":
+            return object()
+        returned_argv: object = argv.copy()
+        status: object = 0
+        stdout: object = b"verified"
+        stderr: object = b""
+        if malformed == "bool_status":
+            status = False
+        elif malformed == "float_status":
+            status = 0.0
+        elif malformed == "foreign_argv":
+            returned_argv = tuple(argv)
+        elif malformed == "wrong_argv":
+            returned_argv = ["cpio", "-idm", "--quiet"]
+        elif malformed == "foreign_arg":
+
+            class ForeignString(str):
+                pass
+
+            returned_argv = ["cpio", "-it", ForeignString("--quiet")]
+        elif malformed == "text_stdout":
+            stdout = "verified"
+        elif malformed == "text_stderr":
+            stderr = ""
+        elif malformed == "bytearray_stdout":
+            stdout = bytearray(b"verified")
+        return sp.CompletedProcess(returned_argv, cast("int", status), stdout, stderr)
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", forged_run)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="process receipt",
+    ):
+        llvm_development_validation._command_bytes(expected)
+
+
+def test_rpm_command_accepts_native_binary_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An actual RPM2CPIO/CPIO invocation still returns its binary payload."""
+    expected = ["cpio", "-it", "--quiet"]
+
+    def native_run(argv: list[str], **_kwargs: object) -> sp.CompletedProcess[bytes]:
+        return sp.CompletedProcess(argv, 0, b"verified", b"")
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", native_run)
+    assert llvm_development_validation._command_bytes(expected) == b"verified"
+
+
+def test_rpm_command_rejects_native_tool_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real CPIO diagnostic remains available on nonzero process exit."""
+
+    def failing_run(argv: list[str], **_kwargs: object) -> sp.CompletedProcess[bytes]:
+        return sp.CompletedProcess(argv, 2, b"", b"corrupt archive\n")
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", failing_run)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="LLVM RPM tool failed: cpio: corrupt archive",
+    ):
+        llvm_development_validation._command_bytes(["cpio", "-it"])
+
+
+@pytest.mark.parametrize("failure", [OSError, ValueError, TypeError, RuntimeError])
+def test_rpm_command_wraps_host_launch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[Exception],
+) -> None:
+    """Host subprocess launch failures stay within the typed provision boundary."""
+    fault = failure("host refused launch")
+
+    def failing_run(_argv: list[str], **_kwargs: object) -> object:
+        raise fault
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", failing_run)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="failed to execute LLVM RPM tool",
+    ) as observed:
+        llvm_development_validation._command_bytes(["rpm2cpio", "file.rpm"])
+    assert observed.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("failure", ["timeout", "foreign_oserror"])
+def test_rpm_command_does_not_format_foreign_host_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Do not execute custom exception __str__ while rejecting RPM tool faults."""
+
+    class ForeignOSError(OSError):
+        def __str__(self) -> str:
+            raise AssertionError("untrusted RPM launch failure formatted")
+
+    fault = (
+        sp.TimeoutExpired(cmd=["rpm2cpio"], timeout=1)
+        if failure == "timeout"
+        else ForeignOSError("host refused launch")
+    )
+
+    def failing_run(_argv: list[str], **_kwargs: object) -> object:
+        raise fault
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", failing_run)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match=type(fault).__name__,
+    ) as observed:
+        llvm_development_validation._command_bytes(["rpm2cpio", "file.rpm"])
+    assert observed.value.__cause__ is fault
+
+
+def test_rpm_command_rejects_foreign_completed_process_subclass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equality-compatible custom completion class is not native evidence."""
+
+    class ForeignCompletion(sp.CompletedProcess[bytes]):
+        pass
+
+    def forged_run(argv: list[str], **_kwargs: object) -> object:
+        return ForeignCompletion(argv, 0, b"verified", b"")
+
+    monkeypatch.setattr(llvm_development_validation.sp, "run", forged_run)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="process receipt",
+    ):
+        llvm_development_validation._command_bytes(["cpio", "-it"])
