@@ -162,6 +162,15 @@ def test_rpm_member_validation_rejects_parent_and_absolute_paths() -> None:
             llvm_development_validation.validate_rpm_members((member,))
 
 
+def _is_staged_file_open(
+    candidate: object, target: Path, dir_fd: int | None
+) -> bool:
+    """Match direct and descriptor-relative writes to one staging leaf."""
+    return candidate == target or (
+        os.name == "posix" and candidate == target.name and dir_fd is not None
+    )
+
+
 def _extract_headers(
     data: bytes,
     asset: tidy_toolchain.DevelopmentAsset,
@@ -2527,6 +2536,50 @@ def test_development_staging_rejects_leaf_swap_after_preflight(
     assert sentinel.read_bytes() == original
 
 
+def test_staging_writer_does_not_follow_late_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A parent redirected at open cannot receive the new RPM or marker."""
+    if os.name != "posix":
+        pytest.skip("POSIX directory writer boundary")
+    parent = tmp_path / "owned-stage"
+    parent.mkdir()
+    parked = tmp_path / "parked-stage"
+    external, sentinel = _external_sentinel(tmp_path)
+    target = parent / "stage.rpm"
+    native_open = os.open
+    native_rename = os.rename
+    swapped = False
+
+    def swap_at_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if path == target or (path == target.name and dir_fd is not None):
+            native_rename(parent, parked)
+            _ = parent.symlink_to(external, target_is_directory=True)
+            swapped = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", swap_at_open)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging",
+        ):
+            llvm_development_validation._write_verified_staging_bytes(
+                target, PACKAGE_BYTES
+            )
+    assert swapped
+    assert list(external.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
+
+
 @pytest.mark.parametrize("invalid_descriptor", [None, False, 0.5, -1])
 def test_staging_writer_rejects_non_native_open_descriptor(
     tmp_path: Path,
@@ -2537,10 +2590,16 @@ def test_staging_writer_rejects_non_native_open_descriptor(
     path = tmp_path / "staged.rpm"
     native_open = os.open
 
-    def false_open(candidate: Path, flags: int, mode: int = 0o777) -> int:
-        if candidate == path:
+    def false_open(
+        candidate: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if _is_staged_file_open(candidate, path, dir_fd):
             return cast("int", invalid_descriptor)
-        return native_open(candidate, flags, mode)
+        return native_open(candidate, flags, mode, dir_fd=dir_fd)
 
     with monkeypatch.context() as isolated:
         isolated.setattr(os, "open", false_open)
@@ -2564,10 +2623,16 @@ def test_staging_writer_rejects_shared_inode_before_writing(
     native_open = os.open
     linked = False
 
-    def linked_open(path: Path, flags: int, mode: int = 0o777) -> int:
+    def linked_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
         nonlocal linked
-        descriptor = native_open(path, flags, mode)
-        if path == target:
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if _is_staged_file_open(path, target, dir_fd):
             try:
                 os.link(target, outside)
             except (OSError, NotImplementedError) as error:
@@ -2596,9 +2661,15 @@ def test_staging_writer_rejects_nonempty_new_inode(
     target = tmp_path / "private.rpm"
     native_open = os.open
 
-    def prefilled_open(path: Path, flags: int, mode: int = 0o777) -> int:
-        descriptor = native_open(path, flags, mode)
-        if path == target:
+    def prefilled_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if _is_staged_file_open(path, target, dir_fd):
             _ = os.write(descriptor, FOREIGN_CONTENT_BYTES)
             _ = os.lseek(descriptor, 0, os.SEEK_SET)
         return descriptor
@@ -2624,9 +2695,15 @@ def test_staging_writer_rejects_forged_regular_fd_status(
     native_open = os.open
     native_fstat = os.fstat
 
-    def capture_open(candidate: Path, flags: int, mode: int = 0o777) -> int:
-        descriptor = native_open(candidate, flags, mode)
-        if candidate == path:
+    def capture_open(
+        candidate: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = native_open(candidate, flags, mode, dir_fd=dir_fd)
+        if _is_staged_file_open(candidate, path, dir_fd):
             opened.append(descriptor)
         return descriptor
 
@@ -2658,8 +2735,18 @@ def test_staging_writer_retains_host_open_fault_cause(
     path = tmp_path / "staged.rpm"
     fault = OSError("cannot create local RPM")
 
-    def fault_open(*_args: object, **_kwargs: object) -> int:
-        raise fault
+    native_open = os.open
+
+    def fault_open(
+        candidate: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        if _is_staged_file_open(candidate, path, dir_fd):
+            raise fault
+        return native_open(candidate, flags, mode, dir_fd=dir_fd)
 
     with monkeypatch.context() as isolated:
         isolated.setattr(os, "open", fault_open)
@@ -2680,13 +2767,29 @@ def test_staging_writer_retains_host_close_fault_cause(
     """A descriptor close failure cannot report successful publication."""
     path = tmp_path / "staged.rpm"
     native_close = os.close
+    native_open = os.open
     fault = OSError("cannot close local RPM")
+    stage_descriptors: set[int] = set()
+
+    def track_open(
+        candidate: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = native_open(candidate, flags, mode, dir_fd=dir_fd)
+        if _is_staged_file_open(candidate, path, dir_fd):
+            stage_descriptors.add(descriptor)
+        return descriptor
 
     def fault_close(descriptor: int) -> None:
         native_close(descriptor)
-        raise fault
+        if descriptor in stage_descriptors:
+            raise fault
 
     with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_open)
         isolated.setattr(os, "close", fault_close)
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,

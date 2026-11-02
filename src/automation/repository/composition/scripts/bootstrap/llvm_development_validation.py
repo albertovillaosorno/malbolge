@@ -226,6 +226,32 @@ def _reject_include_symlinks(
             _fail(f"LLVM staged header has an external hardlink: {candidate}")
 
 
+def _open_staging_file(path: Path, flags: int) -> int:
+    """Create a stage relative to its original physical parent on POSIX.
+
+    Returns:
+        The opened file descriptor, owned by the caller.
+
+    """
+    if os.name != "posix":
+        return os.open(path, flags, 0o600)
+    parent_descriptor = _open_physical_publication_parent(path, "staging")
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path.name, flags, 0o600, dir_fd=parent_descriptor)
+        return descriptor
+    finally:
+        try:
+            os.close(parent_descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            if type(descriptor) is int and descriptor >= 0:
+                with suppress(OSError):
+                    os.close(descriptor)
+            raise LlvmDevelopmentProvisionError(
+                f"LLVM development staging parent descriptor close failed: {path.name}"
+            ) from error
+
+
 def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
     """Create a new physical staging file exclusively and write exact bytes."""
     if type(content) is not bytes:
@@ -245,7 +271,7 @@ def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
         | getattr(os, "O_BINARY", 0)
     )
     try:
-        descriptor = os.open(path, flags, 0o600)
+        descriptor = _open_staging_file(path, flags)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise LlvmDevelopmentProvisionError(
             f"LLVM development staging file creation failed: {path.name}"
