@@ -38,7 +38,7 @@ import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
-from typing import Self, cast, final, override
+from typing import Callable, Self, cast, final, override
 
 import pytest
 from scripts.bootstrap import llvm_validation
@@ -117,7 +117,7 @@ def test_llvm_marker_fdopen_failure_closes_owned_descriptor(
     fault: type[Exception],
 ) -> None:
     """Host stream wrapper failures cannot leak a marker file descriptor."""
-    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    _ = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
     owned: list[int] = []
 
     def faulty_stream(descriptor: int, _mode: str) -> None:
@@ -125,8 +125,8 @@ def test_llvm_marker_fdopen_failure_closes_owned_descriptor(
         raise fault("simulated LLVM marker stream failure")
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(llvm_validation.os, "fdopen", faulty_stream)
-        assert not llvm_validation._valid_marker(root, LINUX_PLATFORM)
+        isolated.setattr(os, "fdopen", faulty_stream)
+        assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
     assert len(owned) == 1
     for descriptor in owned:
         with pytest.raises(OSError):
@@ -331,6 +331,123 @@ def test_linux_wrapper_writer_rejects_leaf_inserted_at_exclusive_open(
     assert external.read_bytes() == b"protected wrapper destination"
 
 
+def test_linux_wrapper_rejects_foreign_open_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A substituted open descriptor must not receive executable bytes."""
+    wrapper = tmp_path / "clang.bin"
+    outside = tmp_path / "outside-wrapper"
+    original = b"external file must not be rewritten"
+    _ = outside.write_bytes(original)
+    native_open = os.open
+
+    def wrong_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        if Path(path) == wrapper:
+            return native_open(outside, os.O_WRONLY)
+        return native_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", wrong_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, "#!/bin/sh\n"
+        )
+    assert outside.read_bytes() == original
+    assert not wrapper.exists()
+
+
+@pytest.mark.parametrize("descriptor", [False, None, True, -1])
+def test_linux_wrapper_rejects_nonnative_open_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, descriptor: object
+) -> None:
+    """Invalid open receipts cannot write or close unrelated descriptors."""
+    wrapper = tmp_path / "clang.bin"
+
+    def wrong_open(
+        _path: str | os.PathLike[str], _flags: int, _mode: int = 0o777
+    ) -> int:
+        return cast("int", descriptor)
+
+    def forbid_write(_fd: int, _content: bytes) -> int:
+        raise AssertionError("foreign wrapper descriptor was written")
+
+    def forbid_close(_fd: int) -> None:
+        raise AssertionError("foreign wrapper descriptor was closed")
+
+    monkeypatch.setattr(os, "open", wrong_open)
+    monkeypatch.setattr(os, "write", forbid_write)
+    monkeypatch.setattr(os, "close", forbid_close)
+    with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, "#!/bin/sh\n"
+        )
+    assert not wrapper.exists()
+
+
+@pytest.mark.parametrize("status_source", ["descriptor", "path"])
+def test_linux_wrapper_rejects_foreign_stat_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status_source: str,
+) -> None:
+    """Matching stat attributes are not a native owned-file receipt."""
+    wrapper = tmp_path / "clang.bin"
+    native_fstat = os.fstat
+    native_lstat = Path.lstat
+
+    @final
+    class ForeignStatus:
+        def __init__(self, status: os.stat_result) -> None:
+            self.st_mode = status.st_mode
+            self.st_dev = status.st_dev
+            self.st_ino = status.st_ino
+            self.st_nlink = status.st_nlink
+            self.st_size = status.st_size
+
+    def foreign_fstat(fd: int) -> object:
+        return ForeignStatus(native_fstat(fd))
+
+    def foreign_lstat(path: Path) -> object:
+        status = native_lstat(path)
+        return ForeignStatus(status) if path == wrapper else status
+
+    with monkeypatch.context() as isolated:
+        if status_source == "descriptor":
+            isolated.setattr(os, "fstat", foreign_fstat)
+        else:
+            isolated.setattr(Path, "lstat", foreign_lstat)
+        with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+            llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+                wrapper, "#!/bin/sh\n"
+            )
+    assert wrapper.read_bytes() == b""
+
+
+def test_linux_wrapper_rejects_newly_hardlinked_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A second link created after exclusive open voids sole-file ownership."""
+    wrapper = tmp_path / "clang.bin"
+    outside = tmp_path / "outside-hardlink"
+    native_open = os.open
+
+    def linked_open(
+        path: str | os.PathLike[str], flags: int, mode: int = 0o777
+    ) -> int:
+        fd = native_open(path, flags, mode)
+        if Path(path) == wrapper:
+            os.link(wrapper, outside)
+        return fd
+
+    monkeypatch.setattr(os, "open", linked_open)
+    with pytest.raises(llvm_validation.LlvmImportError, match="descriptor"):
+        llvm_validation._write_linux_alias(  # pyright: ignore[reportPrivateUsage]
+            wrapper, "#!/bin/sh\n"
+        )
+    assert outside.read_bytes() == b""
+
+
 def test_inspection_requires_completed_neutral_aliases(tmp_path: Path) -> None:
     """Readiness never accepts a partial imported LLVM tree."""
     observation = _host_observation(tmp_path)
@@ -436,10 +553,12 @@ def test_linux_import_rejects_foreign_resource_member_status(
 
 def test_linux_import_rejects_fifo_resource_member(tmp_path: Path) -> None:
     """A host resource pipe must not be hardlinked into a published LLVM tree."""
-    if not hasattr(os, "mkfifo"):
+    mkfifo = getattr(os, "mkfifo", None)
+    if not callable(mkfifo):
         pytest.skip("FIFO unsupported")
     observation = _host_observation(tmp_path)
-    os.mkfifo(observation.resource_dir / "foreign-fifo")
+    create_fifo = cast("Callable[[Path], None]", mkfifo)
+    create_fifo(observation.resource_dir / "foreign-fifo")
     with pytest.raises(llvm_validation.LlvmImportError, match="resource"):
         _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()

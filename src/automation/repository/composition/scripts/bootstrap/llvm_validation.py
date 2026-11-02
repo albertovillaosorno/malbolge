@@ -293,6 +293,25 @@ def _linux_wrapper(tool: str) -> str:
     )
 
 
+def _owned_wrapper_descriptor(path: Path, descriptor: int) -> bool:
+    """Require a new regular inode at the leaf opened for wrapper creation."""
+    try:
+        opened = os.fstat(descriptor)
+        named = path.lstat()
+        return (
+            type(opened) is os.stat_result
+            and type(named) is os.stat_result
+            and S_ISREG(opened.st_mode)
+            and S_ISREG(named.st_mode)
+            and opened.st_dev == named.st_dev
+            and opened.st_ino == named.st_ino
+            and opened.st_nlink == named.st_nlink == 1
+            and opened.st_size == named.st_size == 0
+        )
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return False
+
+
 def _write_linux_alias(path: Path, text: str) -> None:
     """Publish a complete executable wrapper through an exclusive descriptor."""
     if not _physical_directory(path.parent):
@@ -305,8 +324,12 @@ def _write_linux_alias(path: Path, text: str) -> None:
         raise LlvmImportError(
             f"LLVM wrapper exclusive creation failed: {type(error).__name__}"
         ) from error
+    if type(cast("object", descriptor)) is not int or descriptor < 0:
+        _fail("LLVM wrapper descriptor must be a native nonnegative integer")
     try:
         try:
+            if not _owned_wrapper_descriptor(path, descriptor):
+                _fail("LLVM wrapper descriptor does not own the physical leaf")
             written = os.write(descriptor, content)
             if type(written) is not int or written != len(content):
                 _fail(f"LLVM wrapper write count mismatch: {path.name}")
