@@ -855,6 +855,98 @@ def test_cuda_never_replaces_late_occupied_toolkit_destination(
     assert not list(destination.iterdir())
 
 
+@pytest.mark.skipif(
+    os.name != "posix", reason="requires POSIX directory descriptors"
+)
+def test_cuda_publication_does_not_follow_late_parent_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late alias cannot redirect the final toolkit rename outside root."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    parent = (tmp_path / TOOLKIT_ROOT).parent
+    staged = tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}/toolkit"
+    parked = tmp_path / "parked-toolkit-parent"
+    outside = tmp_path / "outside-toolkit"
+    outside.mkdir()
+    sentinel = outside / "sentinel"
+    _ = sentinel.write_bytes(b"external data")
+    native_replace = os.replace
+    swapped = False
+
+    def race_final_rename(
+        source: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if Path(source) == staged:
+            _ = parent.rename(parked)
+            _ = parent.symlink_to(outside, target_is_directory=True)
+            swapped = True
+        native_replace(
+            source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+        )
+
+    monkeypatch.setattr(os, "replace", race_final_rename)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="destination"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )
+    assert swapped
+    assert sentinel.read_bytes() == b"external data"
+    assert not (outside / "toolkit").exists()
+    assert (parked / "toolkit/lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
+
+
+@pytest.mark.skipif(
+    os.name != "posix", reason="requires POSIX directory descriptors"
+)
+def test_cuda_publication_rejects_foreign_parent_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A descriptor for another directory cannot authorize CUDA publication."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    parent = (tmp_path / TOOLKIT_ROOT).parent
+    outside = tmp_path / "outside-directory"
+    outside.mkdir()
+    native_open = os.open
+    substituted = False
+
+    def open_foreign_parent(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal substituted
+        if Path(path) == parent:
+            substituted = True
+            return native_open(outside, flags, mode)
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "open", open_foreign_parent)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="descriptor"):
+        _ = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )
+    assert substituted
+    assert not tuple(outside.iterdir())
+    assert not (parent / "toolkit").exists()
+
+
 def test_cuda_never_publishes_same_content_marker_inode_swap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

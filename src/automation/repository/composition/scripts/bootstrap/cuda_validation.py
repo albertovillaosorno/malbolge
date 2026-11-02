@@ -832,6 +832,71 @@ def _write_staged_file_exclusively(
     return identity
 
 
+def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
+    """Pin a POSIX destination directory across the final toolkit rename.
+
+    Raises:
+        CudaProvisionError: If the destination identity changes or publication fails.
+
+    """
+    parent = destination.parent
+    _require_physical_directories(parent, "toolkit destination")
+    _require_unoccupied_toolkit_destination(destination)
+    if os.name != "posix":
+        _ = staged.replace(destination)
+        return
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(parent, flags)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError(
+            "CUDA toolkit destination parent open failed: "
+            f"{type(error).__name__}"
+        ) from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("CUDA toolkit destination parent requires native descriptor")
+    try:
+        opened = os.fstat(descriptor)
+        named = parent.lstat()
+        if (
+            type(opened) is not os.stat_result
+            or type(named) is not os.stat_result
+            or not S_ISDIR(opened.st_mode)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            _fail("CUDA toolkit destination parent descriptor mismatch")
+        _require_physical_directories(parent, "toolkit destination")
+        try:
+            _ = os.stat(destination.name, dir_fd=descriptor, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            _fail(
+                "CUDA toolkit destination became occupied before publication"
+            )
+        _ = os.replace(staged, destination.name, dst_dir_fd=descriptor)
+        _require_physical_directories(parent, "toolkit destination")
+        named = parent.lstat()
+        if (
+            type(named) is not os.stat_result
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            _fail("CUDA toolkit destination parent changed during publication")
+    except CudaProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError(
+            "CUDA toolkit destination publication failed: "
+            f"{type(error).__name__}"
+        ) from error
+    finally:
+        os.close(descriptor)
+
+
 def provision_cuda_manifest(
     root: Path,
     manifest_path: Path,
@@ -903,8 +968,7 @@ def provision_cuda_manifest(
         _require_toolkit_destination(manifest.toolkit_root)
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
         _require_toolkit_destination(manifest.toolkit_root)
-        _require_unoccupied_toolkit_destination(manifest.toolkit_root)
-        _ = staged_toolkit.replace(manifest.toolkit_root)
+        _publish_cuda_toolkit(staged_toolkit, manifest.toolkit_root)
     finally:
         _require_owned_staging(staging, staging_identity)
         shutil.rmtree(staging)
