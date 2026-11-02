@@ -1351,3 +1351,106 @@ def test_development_provision_rejects_forged_missing_header_status(
                 extractor=missing_header_extractor,
             )
     assert not identity.development_root.exists()
+
+
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("foreign", [None, 0, "", 0.0])
+def test_rpm_include_tree_rejects_foreign_link_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    foreign: object,
+) -> None:
+    """CPIO include members require native link-status evidence."""
+    include_root = tmp_path / "usr/include"
+    include_root.mkdir(parents=True)
+    header = include_root / "header.h"
+    _ = header.write_bytes(HEADER_BYTES)
+    native = getattr(Path, operation)
+
+    def foreign_status(path: Path) -> object:
+        return foreign if path == header else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, foreign_status)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="status",
+        ):
+            llvm_development_validation._reject_include_symlinks(include_root)
+
+
+def test_rpm_include_tree_rejects_linked_root(tmp_path: Path) -> None:
+    """CPIO cannot redirect its /usr/include root to a foreign tree."""
+    external = tmp_path / "outside"
+    external.mkdir()
+    _ = (external / "header.h").write_bytes(HEADER_BYTES)
+    include_parent = tmp_path / "package/usr"
+    include_parent.mkdir(parents=True)
+    linked_root = include_parent / "include"
+    try:
+        _ = linked_root.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory aliases unavailable: {error}")
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging",
+    ):
+        llvm_development_validation._reject_include_symlinks(linked_root)
+    assert (external / "header.h").read_bytes() == HEADER_BYTES
+
+
+def test_rpm_include_tree_rejects_junction_member(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A junction report is as disqualifying as a symlink report."""
+    include_root = tmp_path / "usr/include"
+    include_root.mkdir(parents=True)
+    header = include_root / "header.h"
+    _ = header.write_bytes(HEADER_BYTES)
+    native = Path.is_junction
+
+    def forged_junction(path: Path) -> bool:
+        return True if path == header else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_junction", forged_junction)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="symlink|redirect",
+        ):
+            llvm_development_validation._reject_include_symlinks(include_root)
+
+
+@pytest.mark.parametrize("foreign", [None, 0, "", 0.0])
+def test_rpm_include_tree_rejects_foreign_root_directory_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """A foreign false-like directory witness is not CPIO root evidence."""
+    include_root = tmp_path / "usr/include"
+    include_root.mkdir(parents=True)
+    native = Path.is_dir
+
+    def foreign_status(path: Path) -> object:
+        return foreign if path == include_root else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_dir", foreign_status)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="status",
+        ):
+            llvm_development_validation._reject_include_symlinks(include_root)
+
+
+def test_rpm_include_tree_accepts_physical_regular_members(tmp_path: Path) -> None:
+    """Native CPIO include roots and regular members still pass inspection."""
+    include_root = tmp_path / "usr/include"
+    header = include_root / "clang/AST/AST.h"
+    header.parent.mkdir(parents=True)
+    _ = header.write_bytes(HEADER_BYTES)
+    llvm_development_validation._reject_include_symlinks(include_root)

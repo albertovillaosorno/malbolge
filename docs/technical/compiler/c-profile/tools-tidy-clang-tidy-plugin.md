@@ -127,6 +127,10 @@ not make concurrent pathname replacement atomic. Publication also admits
 each required extracted header only through the physical regular-file check
 used for readiness: linked header leaves, redirected ancestors, missing files,
 and forged `is_file` results cannot complete an extracted development kit.
+CPIO extraction also admits only a physical `/usr/include` root and native
+symlink/junction decisions for each enumerated include member. Linked include
+roots, junctions, and false-like foreign path status cannot authorize copying
+package headers outside the staging trust boundary.
 
 The Linux plugin CMake builder likewise converts native process launch faults
 into typed build failures with their original causes. Host diagnostics are

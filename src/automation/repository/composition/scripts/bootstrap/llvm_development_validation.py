@@ -191,9 +191,15 @@ def _cpio_members(payload: bytes) -> tuple[str, ...]:
 
 
 def _reject_include_symlinks(include_root: Path) -> None:
+    """Reject redirected CPIO include roots and nonnative member link status."""
+    _require_physical_directories(include_root, "staging")
+    if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
+        _fail(f"LLVM RPM include root is not a directory: {include_root}")
     for candidate in include_root.rglob("*"):
-        if candidate.is_symlink():
-            _fail(f"LLVM RPM include tree contains a symlink: {candidate}")
+        linked = _preflight_path_status(candidate, candidate.is_symlink, "staging")
+        junction = _preflight_path_status(candidate, candidate.is_junction, "staging")
+        if linked or junction:
+            _fail(f"LLVM RPM include tree contains a symlink or junction: {candidate}")
 
 
 def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
@@ -237,7 +243,7 @@ def _extract_rpm_headers(
         stdin=payload,
     )
     include_root = package_staging / "usr/include"
-    if not include_root.is_dir():
+    if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
         _fail(f"LLVM development package has no /usr/include: {asset.name}")
     _reject_include_symlinks(include_root)
     _ = shutil.copytree(
