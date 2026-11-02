@@ -3085,6 +3085,62 @@ def test_llvm_ldd_does_not_admit_unphysical_library(
     )
 
 
+@pytest.mark.parametrize(
+    "suffix",
+    (
+        "\v",
+        "\f",
+        "\r",
+        "\u2028",
+        "\x85",
+        "\n\x1b[31mforged diagnostic\x1b[0m",
+    ),
+)
+def test_llvm_ldd_rejects_hidden_loader_controls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, suffix: str
+) -> None:
+    """Unknown control separators cannot disappear from loader evidence."""
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+    clang = tmp_path / "clang"
+    stdout = f"libLLVM.so.22.1 => {library} (0x1234){suffix}"
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        assert args == ["ldd", str(clang)]
+        return sp.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(sp, "run", run)
+    assert (
+        llvm_validation._ldd_library(  # pyright: ignore[reportPrivateUsage]
+            clang, "libLLVM.so.22.1"
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("terminator", ("", "\n", "\r\n"))
+def test_llvm_ldd_accepts_canonical_loader_line_endings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminator: str
+) -> None:
+    """One normal process line ending does not invalidate a real mapping."""
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+    clang = tmp_path / "clang"
+    stdout = f"\tlibLLVM.so.22.1 => {library} (0x1234){terminator}"
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        assert args == ["ldd", str(clang)]
+        return sp.CompletedProcess(args, 0, stdout=stdout, stderr="")
+
+    monkeypatch.setattr(sp, "run", run)
+    assert (
+        llvm_validation._ldd_library(  # pyright: ignore[reportPrivateUsage]
+            clang, "libLLVM.so.22.1"
+        )
+        == library
+    )
+
+
 def test_llvm_ldd_accepts_physical_library(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

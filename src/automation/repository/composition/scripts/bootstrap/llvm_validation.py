@@ -1869,11 +1869,10 @@ def _capture(arguments: list[str]) -> str | None:
         return None
     if max(len(completed.stdout), len(completed.stderr)) > _HOST_MAX_CAPTURE_CHARS:
         return None
-    # Version banners and the resource root are authority receipts: trimming
-    # could turn padded or multi-line output into valid pinned inputs.
-    exact_receipt = len(arguments) == 2 and arguments[1] in (
-        "--version",
-        "-print-resource-dir",
+    # Host version, resource-root, and loader receipts are authority evidence;
+    # trimming could silently erase malformed padding or control separators.
+    exact_receipt = len(arguments) == 2 and (
+        arguments[1] in ("--version", "-print-resource-dir") or arguments[0] == "ldd"
     )
     output = completed.stdout if exact_receipt else completed.stdout.strip()
     return output or None
@@ -1894,6 +1893,13 @@ def _observed_tool(name: str) -> Path | None:
 def _ldd_library(executable: Path, soname: str) -> Path | None:
     output = _capture(["ldd", str(executable)])
     if output is None:
+        return None
+    # GNU ldd emits printable text, indentation tabs, and line feeds. Reject
+    # other separators rather than letting splitlines hide a forged record.
+    output = output.replace("\r\n", "\n")
+    if any(
+        not character.isprintable() and character not in "\n\t" for character in output
+    ):
         return None
     prefix = f"{soname} => "
     stripped_lines = (line.strip() for line in output.splitlines())
