@@ -236,11 +236,21 @@ Portable hardlink failures copy only into an exclusively created destination;
 late alias collisions never overwrite another file through a redirected leaf.
 Portable copies also recheck the open source file's physical identity, size,
 modification/change times, and permissions before admitting transferred bytes.
+Both POSIX and portable imports hash the pinned physical source bytes before
+linking or copying, then compare them again after transfer. Hardlink success
+cannot certify an in-place source rewrite with a restored modification time;
+copy fallbacks also verify the destination content rather than trusting a
+complete byte count or matching file size. The source digest read uses a
+nonfollowing regular-file descriptor and rechecks mutation-sensitive source
+identity after its close, rejecting changes made by close callbacks.
 Git and Rust import-completion markers are created exclusively through a
 no-follow native file descriptor, so an existing regular or linked marker
 cannot be overwritten.
 The writer verifies a singly linked physical marker inode and exact byte count
 before reporting success; a changed leaf or short write fails closed.
+Git and Rust imports reattest the marker again after their root directory
+closes, and direct marker publication rechecks after closing the parent handle.
+A host close callback cannot rewrite the marker yet return import success.
 
 A failed write removes only a marker still matching the writer's owned inode.
 Parent-path preflight cannot eliminate concurrent ancestor replacement races.
