@@ -743,82 +743,209 @@ def _require_owned_staging(path: Path, identity: tuple[int, int]) -> None:
         _fail("CUDA staging directory changed during provisioning")
 
 
-def _copy_cuda_overlay(source: Path, destination: Path) -> None:
-    """Copy verified archive members through pinned POSIX destination directories."""
+def _read_cuda_overlay_file(
+    parent_descriptor: int,
+    name: str,
+    *,
+    max_bytes: int = _MAX_CUDA_DOWNLOAD_BYTES,
+    expected_inode: tuple[int, int] | None = None,
+) -> bytes:
+    """Read an overlay member through its admitted source/destination directory."""
+    label = "CUDA staged overlay member"
+    try:
+        named = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+        expected = _manifest_identity(named, label)
+        if expected_inode is not None and (named.st_dev, named.st_ino) != expected_inode:
+            _fail("CUDA staged overlay member source changed before read")
+        if named.st_size > max_bytes:
+            _fail(f"{label} exceeds byte limit")
+        flags = (
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+        )
+        descriptor = os.open(name, flags, dir_fd=parent_descriptor)
+    except CudaProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA staged overlay member open failed") from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("CUDA staged overlay member requires native descriptor")
+    with _open_owned_manifest_stream(descriptor, label) as stream:
+        if (
+            _manifest_identity(_source_descriptor_status(stream, label), label)
+            != expected
+        ):
+            _fail("CUDA staged overlay member changed before read")
+        try:
+            content = _read_source_bytes(stream, max_bytes)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA staged overlay member read failed"
+            ) from error
+        if type(content) is not bytes or len(content) != named.st_size:
+            _fail("CUDA staged overlay member changed during read")
+        try:
+            after = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA staged overlay member status failed"
+            ) from error
+        if (
+            _manifest_identity(after, label) != expected
+            or _manifest_identity(_source_descriptor_status(stream, label), label)
+            != expected
+        ):
+            _fail("CUDA staged overlay member changed during read")
+        return content
+
+
+def _copy_cuda_overlay(
+    source: Path, destination: Path, source_identity: tuple[int, int]
+) -> None:
+    """Copy verified archive members through pinned POSIX source and target directories."""
     if os.name != "posix":
         _ = shutil.copytree(source, destination, dirs_exist_ok=True, symlinks=True)
         return
 
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 
-    def copy_directory(src: Path, dst: Path, descriptor: int) -> None:
-        _require_physical_directories(src, "staging")
+    def copy_directory(
+        src: Path, dst: Path, src_descriptor: int, dst_descriptor: int
+    ) -> None:
+        _ = _require_staging_parent_unchanged(src, src_descriptor)
         try:
             members = tuple(src.iterdir())
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             raise CudaProvisionError("CUDA staged overlay traversal failed") from error
+        # Path iteration may run through an exchanged physical directory.
+        # Its names are safe only if the pinned source is still named here.
+        _ = _require_staging_parent_unchanged(src, src_descriptor)
         for member in members:
             target = dst / member.name
             try:
-                status = member.lstat()
+                status = os.stat(
+                    member.name, dir_fd=src_descriptor, follow_symlinks=False
+                )
+                named = member.lstat()
             except (OSError, TypeError, ValueError, RuntimeError) as error:
-                raise CudaProvisionError("CUDA staged overlay member status failed") from error
-            if type(status) is not os.stat_result:
-                _fail("CUDA staged overlay member requires native status")
+                raise CudaProvisionError(
+                    "CUDA staged overlay member status failed"
+                ) from error
+            if (
+                type(status) is not os.stat_result
+                or type(named) is not os.stat_result
+                or (status.st_dev, status.st_ino) != (named.st_dev, named.st_ino)
+            ):
+                _fail("CUDA staged overlay member source identity mismatch")
+            _ = _require_staging_parent_unchanged(src, src_descriptor)
             if S_ISDIR(status.st_mode):
                 try:
-                    os.mkdir(member.name, dir_fd=descriptor)
-                except FileExistsError:
-                    pass
+                    src_child = os.open(member.name, flags, dir_fd=src_descriptor)
                 except (OSError, TypeError, ValueError, RuntimeError) as error:
                     raise CudaProvisionError(
-                        "CUDA staged overlay directory creation failed"
+                        "CUDA staged overlay source directory open failed"
                     ) from error
+                if type(src_child) is not int or src_child < 0:
+                    _fail(
+                        "CUDA staged overlay source directory requires native descriptor"
+                    )
                 try:
-                    child = os.open(member.name, flags, dir_fd=descriptor)
-                except (OSError, TypeError, ValueError, RuntimeError) as error:
-                    raise CudaProvisionError("CUDA staged overlay directory open failed") from error
-                if type(child) is not int or child < 0:
-                    _fail("CUDA staged overlay directory requires native descriptor")
-                try:
-                    opened = os.fstat(child)
-                    named = os.stat(member.name, dir_fd=descriptor, follow_symlinks=False)
+                    opened_source = os.fstat(src_child)
                     if (
-                        type(opened) is not os.stat_result
-                        or type(named) is not os.stat_result
-                        or not S_ISDIR(opened.st_mode)
-                        or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+                        type(opened_source) is not os.stat_result
+                        or not S_ISDIR(opened_source.st_mode)
+                        or (opened_source.st_dev, opened_source.st_ino)
+                        != (status.st_dev, status.st_ino)
                     ):
-                        _fail("CUDA staged overlay directory receipt mismatch")
-                    copy_directory(member, target, child)
-                    observed = os.stat(member.name, dir_fd=descriptor, follow_symlinks=False)
-                    if (
-                        type(observed) is not os.stat_result
-                        or (observed.st_dev, observed.st_ino) != (opened.st_dev, opened.st_ino)
-                    ):
-                        _fail("CUDA staged overlay directory changed during copy")
-                except CudaProvisionError:
-                    raise
-                except (OSError, TypeError, ValueError, RuntimeError) as error:
-                    raise CudaProvisionError("CUDA staged overlay directory receipt failed") from error
+                        _fail("CUDA staged overlay source directory receipt mismatch")
+                    _ = _require_staging_parent_unchanged(member, src_child)
+                    try:
+                        os.mkdir(member.name, dir_fd=dst_descriptor)
+                    except FileExistsError:
+                        pass
+                    except (OSError, TypeError, ValueError, RuntimeError) as error:
+                        raise CudaProvisionError(
+                            "CUDA staged overlay directory creation failed"
+                        ) from error
+                    try:
+                        child = os.open(member.name, flags, dir_fd=dst_descriptor)
+                    except (OSError, TypeError, ValueError, RuntimeError) as error:
+                        raise CudaProvisionError(
+                            "CUDA staged overlay directory open failed"
+                        ) from error
+                    if type(child) is not int or child < 0:
+                        _fail(
+                            "CUDA staged overlay directory requires native descriptor"
+                        )
+                    try:
+                        opened = os.fstat(child)
+                        named = os.stat(
+                            member.name, dir_fd=dst_descriptor, follow_symlinks=False
+                        )
+                        if (
+                            type(opened) is not os.stat_result
+                            or type(named) is not os.stat_result
+                            or not S_ISDIR(opened.st_mode)
+                            or (opened.st_dev, opened.st_ino)
+                            != (named.st_dev, named.st_ino)
+                        ):
+                            _fail("CUDA staged overlay directory receipt mismatch")
+                        copy_directory(member, target, src_child, child)
+                        observed = os.stat(
+                            member.name, dir_fd=dst_descriptor, follow_symlinks=False
+                        )
+                        if type(observed) is not os.stat_result or (
+                            observed.st_dev,
+                            observed.st_ino,
+                        ) != (opened.st_dev, opened.st_ino):
+                            _fail("CUDA staged overlay directory changed during copy")
+                    except CudaProvisionError:
+                        raise
+                    except (OSError, TypeError, ValueError, RuntimeError) as error:
+                        raise CudaProvisionError(
+                            "CUDA staged overlay directory receipt failed"
+                        ) from error
+                    finally:
+                        try:
+                            os.close(child)
+                        except (OSError, TypeError, ValueError, RuntimeError) as error:
+                            raise CudaProvisionError(
+                                "CUDA staged overlay descriptor close failed"
+                            ) from error
                 finally:
                     try:
-                        os.close(child)
+                        os.close(src_child)
                     except (OSError, TypeError, ValueError, RuntimeError) as error:
-                        raise CudaProvisionError("CUDA staged overlay descriptor close failed") from error
+                        raise CudaProvisionError(
+                            "CUDA staged overlay source descriptor close failed"
+                        ) from error
             elif S_ISLNK(status.st_mode):
                 try:
-                    link_target = os.readlink(member)
+                    link_target = os.readlink(member.name, dir_fd=src_descriptor)
                     if type(link_target) is not str:
                         _fail("CUDA staged overlay symlink must have native target")
                     _ = _archive_member_path(link_target)
-                    os.symlink(link_target, member.name, dir_fd=descriptor)
-                    observed = os.stat(member.name, dir_fd=descriptor, follow_symlinks=False)
-                    recorded = os.readlink(member.name, dir_fd=descriptor)
+                    source_link = os.stat(
+                        member.name, dir_fd=src_descriptor, follow_symlinks=False
+                    )
+                    if (
+                        type(source_link) is not os.stat_result
+                        or not S_ISLNK(source_link.st_mode)
+                        or (source_link.st_dev, source_link.st_ino)
+                        != (status.st_dev, status.st_ino)
+                    ):
+                        _fail("CUDA staged overlay source symlink changed")
+                    _ = _require_staging_parent_unchanged(src, src_descriptor)
+                    os.symlink(link_target, member.name, dir_fd=dst_descriptor)
+                    observed = os.stat(
+                        member.name, dir_fd=dst_descriptor, follow_symlinks=False
+                    )
+                    recorded = os.readlink(member.name, dir_fd=dst_descriptor)
                 except CudaProvisionError:
                     raise
                 except (OSError, TypeError, ValueError, RuntimeError) as error:
-                    raise CudaProvisionError("CUDA staged overlay symlink creation failed") from error
+                    raise CudaProvisionError(
+                        "CUDA staged overlay symlink creation failed"
+                    ) from error
                 if (
                     type(observed) is not os.stat_result
                     or not S_ISLNK(observed.st_mode)
@@ -827,42 +954,67 @@ def _copy_cuda_overlay(source: Path, destination: Path) -> None:
                 ):
                     _fail("CUDA staged overlay symlink receipt mismatch")
             elif S_ISREG(status.st_mode):
-                content = _read_manifest_source(
-                    member, "CUDA staged overlay member", max_bytes=_MAX_CUDA_DOWNLOAD_BYTES
+                content = _read_cuda_overlay_file(
+                    src_descriptor, member.name,
+                    expected_inode=(status.st_dev, status.st_ino),
                 )
+                _ = _require_staging_parent_unchanged(src, src_descriptor)
                 try:
-                    existing = os.stat(member.name, dir_fd=descriptor, follow_symlinks=False)
+                    existing = os.stat(
+                        member.name, dir_fd=dst_descriptor, follow_symlinks=False
+                    )
                 except FileNotFoundError:
                     _ = _write_staged_file_at_parent(
-                        target, content, "CUDA staged overlay member", descriptor
+                        target, content, "CUDA staged overlay member", dst_descriptor
                     )
                 except (OSError, TypeError, ValueError, RuntimeError) as error:
-                    raise CudaProvisionError("CUDA staged overlay file status failed") from error
+                    raise CudaProvisionError(
+                        "CUDA staged overlay file status failed"
+                    ) from error
                 else:
                     if (
                         type(existing) is not os.stat_result
                         or not S_ISREG(existing.st_mode)
                         or existing.st_nlink != 1
-                        or _read_manifest_source(
-                            target, "CUDA staged overlay member", max_bytes=_MAX_CUDA_DOWNLOAD_BYTES
-                        ) != content
+                        or _read_cuda_overlay_file(dst_descriptor, member.name)
+                        != content
                     ):
                         _fail("CUDA staged overlay member collision")
             else:
                 _fail("CUDA staged overlay has unsupported member type")
-            _require_staging_parent_unchanged(dst, descriptor)
-        _require_staging_parent_unchanged(dst, descriptor)
+            _ = _require_staging_parent_unchanged(src, src_descriptor)
+            _ = _require_staging_parent_unchanged(dst, dst_descriptor)
+        _ = _require_staging_parent_unchanged(src, src_descriptor)
+        _ = _require_staging_parent_unchanged(dst, dst_descriptor)
 
-    descriptor = _open_staging_parent(destination)
-    if descriptor is None:
-        _fail("CUDA staged overlay requires native destination descriptor")
+    source_descriptor = _open_staging_parent(source)
+    if source_descriptor is None:
+        _fail("CUDA staged overlay requires native source descriptor")
     try:
-        copy_directory(source, destination, descriptor)
+        if (
+            _require_staging_parent_unchanged(source, source_descriptor)
+            != source_identity
+        ):
+            _fail("CUDA staged overlay source changed before copy")
+        descriptor = _open_staging_parent(destination)
+        if descriptor is None:
+            _fail("CUDA staged overlay requires native destination descriptor")
+        try:
+            copy_directory(source, destination, source_descriptor, descriptor)
+        finally:
+            try:
+                os.close(descriptor)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay descriptor close failed"
+                ) from error
     finally:
         try:
-            os.close(descriptor)
+            os.close(source_descriptor)
         except (OSError, TypeError, ValueError, RuntimeError) as error:
-            raise CudaProvisionError("CUDA staged overlay descriptor close failed") from error
+            raise CudaProvisionError(
+                "CUDA staged overlay source descriptor close failed"
+            ) from error
 
 
 def extract_cuda_package(
@@ -881,10 +1033,11 @@ def extract_cuda_package(
         extracted = _safe_zip_extract(data, package_staging)
     else:
         extracted = _safe_tar_extract(data, package_staging)
+    extracted_identity = _owned_staging_identity(extracted)
     _require_toolkit_destination(destination)
     _ensure_toolkit_destination_parent(destination)
     _require_toolkit_destination(destination)
-    _copy_cuda_overlay(extracted, destination)
+    _copy_cuda_overlay(extracted, destination, extracted_identity)
     shutil.rmtree(package_staging)
 
 

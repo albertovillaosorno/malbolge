@@ -3592,15 +3592,21 @@ def test_cuda_overlay_copy_types_child_directory_open_fault(
     native_open = os.open
     failure = fault("cannot open staging child")
     injected = False
+    child_opens = 0
 
     def fail_child_open(
-        path: str | os.PathLike[str], flags: int, mode: int = 0o777,
-        *, dir_fd: int | None = None,
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
     ) -> int:
-        nonlocal injected
+        nonlocal injected, child_opens
         if path == "lib64" and dir_fd is not None:
-            injected = True
-            raise failure
+            child_opens += 1
+            if child_opens == 2:
+                injected = True
+                raise failure
         return native_open(path, flags, mode, dir_fd=dir_fd)
 
     with monkeypatch.context() as isolated:
@@ -3614,3 +3620,87 @@ def test_cuda_overlay_copy_types_child_directory_open_fault(
     assert injected
     assert caught.value.__cause__ is failure
     assert not (destination / "lib64/libnvrtc.so.13").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("source_level", ["root", "nested"])
+def test_cuda_overlay_copy_rejects_replaced_archive_source_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_level: str
+) -> None:
+    """A swapped archive source cannot inject files outside the verified package."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        root, _manifest(root, payload), LINUX_PLATFORM
+    ).packages[0]
+    destination = root / "toolkit"
+    package_staging = root / "stage"
+    archive_root = package_staging / PACKAGE_NAME / ARCHIVE_ROOT
+    source = archive_root if source_level == "root" else archive_root / "lib64"
+    parked = root / "parked-archive-source"
+    foreign = tmp_path / "foreign-archive-source"
+    foreign.mkdir()
+    injection = foreign if source_level == "nested" else foreign / "lib64"
+    injection.mkdir(exist_ok=True)
+    _ = (injection / "untrusted.so").write_bytes(b"foreign bytes")
+    native_scandir = os.scandir
+    swapped = False
+
+    def swap_during_source_listing(path: str | os.PathLike[str] | int) -> object:
+        nonlocal swapped
+        if not swapped and not isinstance(path, int) and Path(path) == source:
+            _ = source.rename(parked)
+            _ = foreign.rename(source)
+            swapped = True
+        return native_scandir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "scandir", swap_during_source_listing)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            cuda_validation.extract_cuda_package(
+                payload, package, destination, staging=package_staging
+            )
+    assert swapped
+    assert not (destination / "lib64/untrusted.so").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_cuda_overlay_copy_rejects_source_directory_swapped_at_member_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An archive source replaced after listing cannot supply foreign library bytes."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        root, _manifest(root, payload), LINUX_PLATFORM
+    ).packages[0]
+    destination = root / "toolkit"
+    archive_root = root / "stage" / PACKAGE_NAME / ARCHIVE_ROOT
+    source = archive_root / "lib64"
+    target = source / "libnvrtc.so.13"
+    parked = root / "parked-archive-source"
+    foreign = tmp_path / "foreign-archive-source"
+    foreign.mkdir()
+    _ = (foreign / "libnvrtc.so.13").write_bytes(b"untrusted library")
+    native_lstat = Path.lstat
+    swapped = False
+
+    def swap_before_member_status(path: Path) -> os.stat_result:
+        nonlocal swapped
+        if not swapped and path == target:
+            _ = source.rename(parked)
+            _ = foreign.rename(source)
+            swapped = True
+        return native_lstat(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", swap_before_member_status)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            cuda_validation.extract_cuda_package(
+                payload, package, destination, staging=root / "stage"
+            )
+    assert swapped
+    observed = destination / "lib64/libnvrtc.so.13"
+    assert not observed.exists() or observed.read_bytes() != b"untrusted library"
