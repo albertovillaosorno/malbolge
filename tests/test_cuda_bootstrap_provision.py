@@ -208,6 +208,33 @@ def test_cuda_manifest_rejects_windows_reserved_path_components(
         )
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    (
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/%2e%2e/escape.zip",
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/some%2Farchive.zip",
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/some%5carchive.zip",
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/archive;parameter.zip",
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/user@host.zip",
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/a//archive.zip",
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/./archive.zip",
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/archive file.zip",
+        f"{PACKAGE_NAME}/{LINUX_PLATFORM}/archive\u202e.zip",
+    ),
+)
+def test_cuda_manifest_requires_canonical_url_path_segments(
+    tmp_path: Path, relative_path: str
+) -> None:
+    """NVIDIA URL path segments must not admit escapes or reinterpretation."""
+    manifest = _manifest(tmp_path, _payload(), {"relative_path": relative_path})
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="canonical URL path"
+    ):
+        _ = cuda_validation.load_cuda_provision_manifest(
+            tmp_path, manifest, LINUX_PLATFORM
+        )
+
+
 def test_package_verification_rejects_size_and_sha_drift(
     tmp_path: Path,
 ) -> None:

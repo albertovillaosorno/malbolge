@@ -47,6 +47,7 @@ import lzma
 import ntpath
 import os
 import shutil
+import string
 import sys
 import tarfile
 import unicodedata
@@ -81,6 +82,9 @@ SHA256_HEX_LENGTH: Final = 64
 LOWER_HEX_DIGITS: Final = frozenset("0123456789abcdef")
 PARENT_SEGMENT: Final = ".."
 URL_SUFFIX_MARKERS: Final = frozenset(("?", "#"))
+URL_UNRESERVED_CHARACTERS: Final = frozenset(
+    string.ascii_letters + string.digits + "-._~"
+)
 MIN_PACKAGE_PATH_PARTS: Final = 3
 _ALLOWED_ARCHIVE_SUFFIXES: Final = (".tar.xz", ".zip")
 
@@ -375,6 +379,14 @@ def _archive_relative_path(
         _fail("CUDA package relative_path must bind package and platform")
     if not value.endswith(_ALLOWED_ARCHIVE_SUFFIXES):
         _fail("CUDA package relative_path uses an unsupported archive format")
+    # The complete download URL is constructed by concatenation. Reject encoded
+    # separators, URI parameters, and noncanonical paths before they can acquire
+    # a different identity under a URL parser, proxy, or host filesystem.
+    if value != posix.as_posix() or any(
+        not part or any(character not in URL_UNRESERVED_CHARACTERS for character in part)
+        for part in value.split("/")
+    ):
+        _fail("CUDA package relative_path must be a canonical URL path")
     return value
 
 
