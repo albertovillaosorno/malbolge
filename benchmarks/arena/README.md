@@ -901,8 +901,13 @@ proof that a compiler crashed in the claimed way.
 
 The run manifest records the current Git commit, host, toolchain, target-profile
 fingerprint, source digest, raw-data SHA-256, explicit budget declarations, and
-exact trial number. The producer rechecks every emitted trial with the arena's
-strict raw-row, run-identity, budget and challenge-bundle preflights.
+exact trial number. The producer checks the profile fingerprint claimed by the
+generated bundle's JSON decoder against an independently decoded copy of the
+original manifest bytes before retaining bundle files. A substituted parser
+cannot mislabel the reported profile digest; this is not independent proof of
+the generator, compiler, or physical measurement. The producer rechecks every
+emitted trial with the arena's strict raw-row, run-identity, budget and
+challenge-bundle preflights.
 
 To audit a previously saved local reference study **without rerunning its
 measurements**, use the independent read-only inspector:

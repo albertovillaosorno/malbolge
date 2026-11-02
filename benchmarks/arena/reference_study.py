@@ -60,7 +60,10 @@ from benchmarks.arena import (
     report_output,
 )
 from benchmarks.challenges import generate
-from scripts.validate import experiment_manifest
+from scripts.validate import experiment_manifest, target_profile
+
+# Bind the original JSON source reader before its public function can change.
+_SOURCE_JSON_LOADS = json.loads
 
 _ROOT = Path(__file__).resolve().parents[2]
 _LOCAL = _ROOT / ".temp"
@@ -290,6 +293,40 @@ def _manifest(row: dict[str, Any], meta: _ManifestMeta) -> str:
     return text
 
 
+def _profile_fingerprint_from_bundle_manifest(manifest: object) -> str:
+    """Admit one native digest that matches the generated manifest's bytes."""
+    if type(manifest) is not bytes:
+        _fail("host-C bundle manifest must contain native JSON bytes")
+    try:
+        reported = json.loads(manifest)
+        source = _SOURCE_JSON_LOADS(manifest)
+    except Exception as error:
+        message = "host-C bundle manifest source JSON is invalid"
+        raise ReferenceStudyError(message) from error
+
+    def fingerprint(document: object) -> str:
+        if type(document) is not dict or any(type(key) is not str for key in document):
+            _fail("host-C bundle manifest has nonnative identity fields")
+        identity = document.get("identity")
+        if type(identity) is not dict or any(type(key) is not str for key in identity):
+            _fail("host-C bundle manifest has nonnative identity fields")
+        value = identity.get("target_profile_fingerprint")
+        prefix = target_profile.PROFILE_FINGERPRINT_PREFIX
+        if (
+            type(value) is not str
+            or not value.startswith(prefix)
+            or len(value) != len(prefix) + analyze.SHA256_HEX_LENGTH
+            or not set(value[len(prefix):]) <= analyze.SHA256_ALPHABET
+        ):
+            _fail("host-C bundle manifest has invalid profile fingerprint")
+        return value
+
+    reported_value = fingerprint(reported)
+    if reported_value != fingerprint(source):
+        _fail("host-C bundle fingerprint differs from source JSON")
+    return reported_value
+
+
 def _generate_bundle(
     root: Path,
     family: str,
@@ -305,6 +342,7 @@ def _generate_bundle(
         nodes=nodes,
     )
     generated = generate.generate(identity)
+    fingerprint = _profile_fingerprint_from_bundle_manifest(generated.manifest)
     directory = f"bundles/{family}/v1/seed-{seed}/nodes-{nodes}"
     output = root / directory
     output.mkdir(parents=True)
@@ -318,9 +356,6 @@ def _generate_bundle(
         "seed": seed,
         "workload_sha256": _checked_sha256(generated.source),
     }
-    fingerprint = json.loads(generated.manifest)["identity"][
-        "target_profile_fingerprint"
-    ]
     return case, fingerprint
 
 

@@ -2523,3 +2523,58 @@ def test_reference_study_git_rejects_mutated_launch_command(
         reference_study._commit()  # ruff: ignore[private-member-access]
     assert len(launched) == 1
     assert launched[0][1] in ("rev-parse", "cat-file")
+
+
+@pytest.mark.parametrize("tamper", ["forged_digest", "invalid_source", "nonnative_digest"])
+def test_host_c_bundle_fingerprint_rejects_substituted_json_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    """A forged decoder cannot relabel the retained bundle profile fingerprint."""
+    expected = (
+        reference_study.target_profile.PROFILE_FINGERPRINT_PREFIX
+        + "a" * analyze.SHA256_HEX_LENGTH
+    )
+    actual = {"identity": {"target_profile_fingerprint": expected}}
+    manifest = json.dumps(actual).encode() if tamper != "invalid_source" else b"not JSON"
+    bundle = reference_study.generate.GeneratedChallenge(b"source", b"oracle", manifest)
+    monkeypatch.setattr(reference_study.generate, "generate", lambda _identity: bundle)
+    monkeypatch.setattr(reference_study, "_write_retained_bytes", lambda *_a: None)
+    receipt = {
+        "identity": {
+            "target_profile_fingerprint": (
+                reference_study.target_profile.PROFILE_FINGERPRINT_PREFIX
+                + "b" * analyze.SHA256_HEX_LENGTH
+            )
+        }
+    }
+    if tamper == "nonnative_digest":
+        class ForeignFingerprint(str):
+            def __eq__(self, _other: object) -> bool:
+                raise AssertionError("foreign fingerprint comparison hook executed")
+        receipt["identity"]["target_profile_fingerprint"] = ForeignFingerprint(expected)
+    monkeypatch.setattr(reference_study.json, "loads", lambda *_a, **_kw: receipt)
+    with pytest.raises(reference_study.ReferenceStudyError, match="manifest|fingerprint"):
+        reference_study._generate_bundle(tmp_path, FAMILY, 4, seed=7)
+    assert not (tmp_path / "bundles").exists()
+
+
+def test_host_c_bundle_fingerprint_accepts_equivalent_json_decoder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The canonical source fingerprint survives a source-equivalent wrapper."""
+    expected = (
+        reference_study.target_profile.PROFILE_FINGERPRINT_PREFIX
+        + "a" * analyze.SHA256_HEX_LENGTH
+    )
+    manifest = json.dumps({"identity": {"target_profile_fingerprint": expected}}).encode()
+    bundle = reference_study.generate.GeneratedChallenge(b"source", b"oracle", manifest)
+    monkeypatch.setattr(reference_study.generate, "generate", lambda _identity: bundle)
+    monkeypatch.setattr(reference_study, "_write_retained_bytes", lambda *_a: None)
+    original = reference_study.json.loads
+    monkeypatch.setattr(reference_study.json, "loads", lambda data: original(data))
+    case, fingerprint = reference_study._generate_bundle(tmp_path, FAMILY, 4, seed=7)
+    assert case["family"] == FAMILY
+    assert fingerprint == expected
