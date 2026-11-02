@@ -547,6 +547,64 @@ def _copy_header_no_replace(source: str, destination: str) -> str:
     return destination
 
 
+def _physical_header_digest(path: Path, admitted: os.stat_result) -> bytes:
+    """Hash one pinned physical header without opening a late FIFO or symlink."""
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    descriptor = os.open(path, flags)
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("LLVM RPM header receipt requires native file descriptor")
+
+    def identity(status: os.stat_result) -> tuple[int, ...]:
+        return (
+            status.st_dev,
+            status.st_ino,
+            status.st_nlink,
+            status.st_size,
+            status.st_mode,
+            status.st_mtime_ns,
+            status.st_ctime_ns,
+        )
+
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not _native_regular_status(opened)
+            or opened.st_nlink != 1
+            or identity(opened) != identity(admitted)
+        ):
+            _fail("LLVM RPM header receipt descriptor identity changed")
+        digest = hashlib.sha256()
+        read_bytes = 0
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if type(chunk) is not bytes:
+                _fail("LLVM RPM header receipt requires native bytes")
+            if not chunk:
+                break
+            read_bytes += len(chunk)
+            if read_bytes > admitted.st_size:
+                _fail("LLVM RPM header receipt content grew during read")
+            digest.update(chunk)
+        after = os.fstat(descriptor)
+        named = path.lstat()
+        if (
+            not _native_regular_status(after)
+            or not _native_regular_status(named)
+            or read_bytes != admitted.st_size
+            or identity(after) != identity(admitted)
+            or identity(named) != identity(admitted)
+        ):
+            _fail("LLVM RPM header receipt identity changed during read")
+        return digest.digest()
+    finally:
+        os.close(descriptor)
+
+
 def _header_tree_receipt(
     root: Path,
 ) -> dict[Path, tuple[str, bytes | None, int, int]]:
@@ -584,15 +642,7 @@ def _header_tree_receipt(
                     if physical.st_nlink != 1 or not _direct_regular(member):
                         _fail("LLVM RPM header overlay copy receipt has linked member")
                     kind = "file"
-                    with member.open("rb") as stream:
-                        digest = hashlib.file_digest(stream, "sha256").digest()
-                    after = member.lstat()
-                    if not _native_regular_status(after) or (
-                        physical.st_dev, physical.st_ino, physical.st_size
-                    ) != (after.st_dev, after.st_ino, after.st_size):
-                        _fail(
-                            "LLVM RPM header overlay copy receipt changed during read"
-                        )
+                    digest = _physical_header_digest(member, physical)
                 receipt[relative] = (kind, digest, physical.st_dev, physical.st_ino)
             except LlvmDevelopmentProvisionError:
                 raise

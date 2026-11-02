@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import shutil
 import subprocess as sp
@@ -917,6 +918,61 @@ def test_rpm_overlay_rejects_late_source_header_drift(
             llvm_development_validation._copy_rpm_include_tree(
                 source.parent.parent, destination
             )
+
+
+def test_header_tree_receipt_rejects_foreign_descriptor_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign opened inode cannot certify the physically listed header."""
+    include_root = tmp_path / "usr/include"
+    include_root.mkdir(parents=True)
+    header = include_root / "header.h"
+    _ = header.write_bytes(HEADER_BYTES)
+    foreign = tmp_path / "foreign-header"
+    _ = foreign.write_bytes(HEADER_BYTES)
+    native_open = os.open
+    swapped: list[bool] = []
+
+    def redirected_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        *args: object,
+        **kwargs: object,
+    ) -> int:
+        if path == header:
+            swapped.append(True)
+            return native_open(foreign, flags)
+        return native_open(path, flags, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", redirected_open)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="descriptor identity",
+        ):
+            _ = llvm_development_validation._header_tree_receipt(include_root)
+    assert swapped
+
+
+def test_header_tree_receipt_uses_physical_descriptor_not_foreign_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A substituted pathname stream cannot forge the header digest receipt."""
+    include_root = tmp_path / "usr/include"
+    include_root.mkdir(parents=True)
+    header = include_root / "header.h"
+    _ = header.write_bytes(HEADER_BYTES)
+    native_open = Path.open
+
+    def foreign_open(path: Path, *args: object, **kwargs: object):
+        if path == header:
+            return io.BytesIO(FOREIGN_CONTENT_BYTES)
+        return native_open(path, *args, **kwargs)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "open", foreign_open)
+        receipt = llvm_development_validation._header_tree_receipt(include_root)
+    assert receipt[Path("header.h")][1] == hashlib.sha256(HEADER_BYTES).digest()
 
 
 @pytest.mark.parametrize("missing", ["optional-file", "listed-empty-dir"])
