@@ -52,6 +52,7 @@ import tarfile
 import unicodedata
 import urllib.request
 import zipfile
+import zlib
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -755,6 +756,7 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
         EOFError,
         lzma.LZMAError,
         zipfile.BadZipFile,
+        zlib.error,
         TypeError,
         ValueError,
         RuntimeError,

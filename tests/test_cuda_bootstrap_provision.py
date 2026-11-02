@@ -43,6 +43,7 @@ import shutil
 import sys
 import tarfile
 import zipfile
+import zlib
 from pathlib import Path
 from typing import TYPE_CHECKING, Self, cast, override
 
@@ -4314,6 +4315,41 @@ def test_cuda_rejects_excessive_combined_archive_expansion(
             payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
         )
     assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
+
+
+@pytest.mark.parametrize("failure_type", [zlib.error, NotImplementedError])
+def test_cuda_zip_decoder_faults_remain_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """Corrupt Deflate and unsupported ZIP methods yield typed failures."""
+    payload = _zip_payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path,
+        _manifest(tmp_path, payload, {"relative_path": _ZIP_PACKAGE_PATH}),
+        LINUX_PLATFORM,
+    ).packages[0]
+    failure = failure_type("corrupt ZIP compressed member")
+
+    def reject_open(*args: object, **kwargs: object) -> object:
+        _ = args, kwargs
+        raise failure
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(zipfile.ZipFile, "open", reject_open)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError,
+            match="cannot extract CUDA zip archive",
+        ) as caught:
+            cuda_validation.extract_cuda_package(
+                payload,
+                package,
+                tmp_path / "toolkit",
+                staging=tmp_path / "stage",
+            )
+    assert caught.value.__cause__ is failure
+    assert not (tmp_path / "toolkit").exists()
 
 
 @pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
