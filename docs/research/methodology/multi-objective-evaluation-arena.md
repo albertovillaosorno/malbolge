@@ -476,6 +476,11 @@ cannot authorize a different recursive-removal target. Red-first forgery
 regressions demonstrate that unchecked returns could reach a subprocess launch
 or recursive cleanup against foreign storage. These checks cannot prevent
 atomic filesystem races or certify the host's temporary-directory allocator.
+The measured-child wrapper also preserves the original tool or deadline
+rejection if a substituted RSS directory context suppresses its body error.
+Two red-first cases prove neither a tool failure nor `TimeoutExpired` can
+escape as an apparent `None` completion. This guards local error precedence,
+not host metering, physical child execution, or filesystem ownership.
 
 The observed cost is the maximum of those **three per-child** peaks, not
 the aggregate resident memory of a compiler session or the sum across
