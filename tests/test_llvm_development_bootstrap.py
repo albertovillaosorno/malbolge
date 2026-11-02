@@ -41,7 +41,7 @@ import subprocess as sp
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import SimpleNamespace, TracebackType
 from typing import TYPE_CHECKING, Self, cast
 
 import pytest
@@ -51,6 +51,7 @@ from scripts.validate import tidy_toolchain
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import BinaryIO
 
 LINUX_PLATFORM = "linux-x86_64"
 PACKAGE_NAME = "clang-devel-22.1.8-4.fc44.x86_64.rpm"
@@ -519,6 +520,160 @@ def test_development_marker_rejects_same_byte_inode_replacement(
 
     monkeypatch.setattr(os, "open", swap_before_open)
     assert not llvm_development_validation.development_root_matches(identity)
+
+
+@pytest.mark.parametrize("foreign", ["bytearray", "view", "subclass"])
+def test_development_marker_rejects_foreign_stream_read_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, foreign: str
+) -> None:
+    """A mutable or subclass read cannot prove the pinned readiness marker."""
+    identity = _provisioned_identity(tmp_path)
+    native_fdopen = os.fdopen
+
+    class ForeignBytes(bytes):
+        pass
+
+    class ModifiedRead:
+        def __init__(self, native: object) -> None:
+            self.native: BinaryIO = cast("BinaryIO", native)
+
+        def __enter__(self) -> Self:
+            _ = self.native.__enter__()
+            return self
+
+        def __exit__(
+            self,
+            kind: type[BaseException] | None,
+            error: BaseException | None,
+            trace: TracebackType | None,
+        ) -> object:
+            return self.native.__exit__(kind, error, trace)
+
+        def fileno(self) -> int:
+            return self.native.fileno()
+
+        def read(self, amount: int) -> object:
+            received = self.native.read(amount)
+            return {
+                "bytearray": lambda: bytearray(received),
+                "view": lambda: memoryview(received),
+                "subclass": lambda: ForeignBytes(received),
+            }[foreign]()
+
+    def foreign_fdopen(descriptor: int, mode: str) -> object:
+        return ModifiedRead(native_fdopen(descriptor, mode))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", foreign_fdopen)
+        assert not llvm_development_validation.development_root_matches(identity)
+
+
+def test_development_marker_rejects_foreign_descriptor_stat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A duck-typed matching fstat cannot supply readiness evidence."""
+    identity = _provisioned_identity(tmp_path)
+    native_fstat = os.fstat
+    marker = identity.development_root / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    admitted = marker.lstat()
+    native_open = os.open
+    opened: list[int] = []
+
+    def capture_open(path: Path, flags: int) -> int:
+        result = native_open(path, flags)
+        if path == marker:
+            opened.append(result)
+        return result
+
+    def foreign_fstat(descriptor: int) -> object:
+        if descriptor in opened:
+            return SimpleNamespace(
+                st_dev=admitted.st_dev,
+                st_ino=admitted.st_ino,
+                st_size=admitted.st_size,
+                st_mtime_ns=admitted.st_mtime_ns,
+                st_ctime_ns=admitted.st_ctime_ns,
+                st_mode=admitted.st_mode,
+            )
+        return native_fstat(descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", capture_open)
+        isolated.setattr(os, "fstat", foreign_fstat)
+        assert not llvm_development_validation.development_root_matches(identity)
+
+
+@pytest.mark.parametrize("invalid", [None, False, True, 1.5, -1])
+def test_development_marker_rejects_non_native_open_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid: object
+) -> None:
+    """A forged open receipt must not reach fdopen or close a borrowed fd."""
+    identity = _provisioned_identity(tmp_path)
+    marker = identity.development_root / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    native_open = os.open
+    native_close = os.close
+    fdopen_calls: list[int] = []
+
+    def forged_open(path: Path, flags: int) -> int:
+        if path == marker:
+            return cast("int", invalid)
+        return native_open(path, flags)
+
+    def unexpected_fdopen(descriptor: int, _mode: str) -> object:
+        fdopen_calls.append(descriptor)
+        raise OSError("foreign descriptor must not be wrapped")
+
+    def protected_close(descriptor: int) -> None:
+        if descriptor is invalid:
+            return
+        native_close(descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", forged_open)
+        isolated.setattr(os, "fdopen", unexpected_fdopen)
+        isolated.setattr(os, "close", protected_close)
+        assert not llvm_development_validation.development_root_matches(identity)
+    assert not fdopen_calls
+
+
+def test_development_marker_rejects_foreign_stream_fileno(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An integer subclass file number is not marker descriptor authority."""
+    identity = _provisioned_identity(tmp_path)
+    native_fdopen = os.fdopen
+
+    class ForeignInteger(int):
+        pass
+
+    class ForeignFileno:
+        def __init__(self, native: object) -> None:
+            self.native: BinaryIO = cast("BinaryIO", native)
+
+        def __enter__(self) -> Self:
+            _ = self.native.__enter__()
+            return self
+
+        def __exit__(
+            self,
+            kind: type[BaseException] | None,
+            error: BaseException | None,
+            trace: TracebackType | None,
+        ) -> object:
+            return self.native.__exit__(kind, error, trace)
+
+        def fileno(self) -> int:
+            return ForeignInteger(self.native.fileno())
+
+        def read(self, amount: int) -> bytes:
+            return self.native.read(amount)
+
+    def foreign_fdopen(descriptor: int, mode: str) -> object:
+        return ForeignFileno(native_fdopen(descriptor, mode))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", foreign_fdopen)
+        assert not llvm_development_validation.development_root_matches(identity)
 
 
 def _inject_marker_stream_fault(

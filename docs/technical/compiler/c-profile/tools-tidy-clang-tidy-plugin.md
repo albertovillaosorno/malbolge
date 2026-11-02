@@ -101,9 +101,11 @@ Linux LLVM development RPM publication also requires a physical, unlinked
 completion marker and physical regular required headers under the tracked
 repository-local development root. Marker content is compared to the exact
 expected identity using a bounded, nonblocking descriptor read with inode,
-size, and timestamp checks before and after. A symlinked root, redirected
-include ancestor, altered marker, or incomplete extraction is not admitted as
-ready; an existing incomplete root must be repaired explicitly rather than
+size, and timestamp checks before and after. The opened marker descriptor,
+stream file number, `fstat` results, and immutable read bytes must all be
+native and exact; foreign receipts cannot prove readiness. A symlinked root,
+redirected include ancestor, altered marker, or incomplete extraction is not
+admitted as ready; an existing incomplete root must be repaired rather than
 silently using ambient headers or repeating a network download.
 Readiness checks admit only exact native symlink/junction decisions and
 regular-file stat results with bounded integer modes for the completion marker,

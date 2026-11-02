@@ -447,6 +447,8 @@ def _marker_descriptor_matches(
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
+    if type(descriptor) is not int or descriptor < 0:
+        return False
     try:
         stream = os.fdopen(descriptor, "rb")
     except BaseException:
@@ -454,9 +456,23 @@ def _marker_descriptor_matches(
             os.close(descriptor)
         raise
     with stream:
-        before = _marker_identity(os.fstat(stream.fileno()))
+        observed_fd = stream.fileno()
+        if type(observed_fd) is not int or observed_fd != descriptor:
+            return False
+        before_stat = os.fstat(observed_fd)
+        if not _native_regular_status(before_stat):
+            return False
+        before = _marker_identity(before_stat)
         contents = stream.read(len(expected) + 1)
-        after = _marker_identity(os.fstat(stream.fileno()))
+        if type(contents) is not bytes:
+            return False
+        observed_fd = stream.fileno()
+        if type(observed_fd) is not int or observed_fd != descriptor:
+            return False
+        after_stat = os.fstat(observed_fd)
+        if not _native_regular_status(after_stat):
+            return False
+        after = _marker_identity(after_stat)
     return before == identity and after == identity and contents == expected
 
 
