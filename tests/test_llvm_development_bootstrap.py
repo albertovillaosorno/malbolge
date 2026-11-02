@@ -517,6 +517,51 @@ def test_development_child_stage_creation_fault_cleans_owned_root(
     assert not identity.development_root.exists()
 
 
+def test_development_rejects_swapped_physical_child_stage(
+    tmp_path: Path,
+) -> None:
+    """A foreign physical child cannot receive the marker or be removed."""
+    identity = _identity(tmp_path)
+    stage = tmp_path / ".temp/llvm-development-provision-linux-x86_64"
+    child = stage / "development"
+    parked = stage / "development-owned"
+    outside = tmp_path / "foreign-development"
+    header = outside / identity.required_development_files[0]
+    header.parent.mkdir(parents=True)
+    _ = header.write_bytes(HEADER_BYTES)
+    _ = (outside / "external-sentinel.txt").write_bytes(FOREIGN_CONTENT_BYTES)
+    inserted = False
+
+    def swapped_extractor(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        nonlocal inserted
+        _extract_headers(data, asset, destination, staging=staging)
+        _ = destination.rename(parked)
+        _ = outside.rename(destination)
+        inserted = True
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging.*identity changed",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path,
+            identity,
+            downloader=_downloader([]),
+            extractor=swapped_extractor,
+        )
+    assert inserted
+    assert not identity.development_root.exists()
+    assert (child / "external-sentinel.txt").read_bytes() == FOREIGN_CONTENT_BYTES
+    assert parked.is_dir()
+    assert not (child / llvm_development_validation.LLVM_DEVELOPMENT_MARKER).exists()
+
+
 @pytest.mark.parametrize("hide_exists", [False, True])
 def test_development_rejects_late_occupied_final_destination(
     tmp_path: Path,

@@ -675,6 +675,30 @@ def _staging_directory_identity(staging: Path) -> tuple[int, int]:
     return physical.st_dev, physical.st_ino
 
 
+def _assert_owned_staged_child(
+    path: Path,
+    original: tuple[int, int],
+    *,
+    missing_ok: bool = False,
+) -> None:
+    """Keep a substituted child directory out of publication and cleanup."""
+    try:
+        physical = path.lstat()
+    except FileNotFoundError:
+        if missing_ok:
+            return
+        _fail(f"LLVM development staging child identity changed: {path}")
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            f"LLVM development staging child identity check failed: {path}"
+        ) from error
+    if (
+        not _native_directory_status(physical)
+        or (physical.st_dev, physical.st_ino) != original
+    ):
+        _fail(f"LLVM development staging child identity changed: {path}")
+
+
 def _stage_development_assets(
     identity: tidy_toolchain.ToolchainIdentity,
     staged_root: Path,
@@ -744,6 +768,7 @@ def provision_development_identity(
         download=downloader,
         extract=extractor or _extract_rpm_headers,
     )
+    child_identity: tuple[int, int] | None = None
     try:
         try:
             staged_root.mkdir()
@@ -751,12 +776,14 @@ def provision_development_identity(
             raise LlvmDevelopmentProvisionError(
                 "LLVM development stage creation failed"
             ) from error
+        child_identity = _staging_directory_identity(staged_root)
         _stage_development_assets(
             identity,
             staged_root,
             functions,
             package_staging=staging / "packages",
         )
+        _assert_owned_staged_child(staged_root, child_identity)
         _require_physical_directories(staged_root, "staging")
         _write_verified_staging_bytes(
             staged_root / LLVM_DEVELOPMENT_MARKER, _marker_bytes(identity)
@@ -774,6 +801,7 @@ def provision_development_identity(
             ) from error
         else:
             _fail("LLVM development destination became occupied before publication")
+        _assert_owned_staged_child(staged_root, child_identity)
         _require_physical_directories(staged_root, "staging")
         _ = staged_root.replace(identity.development_root)
     finally:
@@ -781,6 +809,10 @@ def provision_development_identity(
         if _preflight_path_status(staging, staging.exists, "staging"):
             if _staging_directory_identity(staging) != staging_identity:
                 _fail(f"LLVM development staging ownership changed: {staging}")
+            if child_identity is not None:
+                _assert_owned_staged_child(
+                    staged_root, child_identity, missing_ok=True
+                )
             shutil.rmtree(staging)
     return identity.development_root
 
