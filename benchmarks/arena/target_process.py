@@ -833,9 +833,17 @@ def _admit_rss_directory_receipt(receipt: object, workspace: Path) -> Path:
         details = folder.lstat()
         if type(details) is not os.stat_result or not S_ISDIR(details.st_mode):
             _fail("bounded target RSS directory must be physical")
-        with os.scandir(folder) as entries:
-            if next(entries, None) is not None:
-                _fail("bounded target RSS directory must be initially empty")
+        # A substituted scan object's __enter__ can redirect inspection and
+        # its __exit__ can suppress a nonempty-directory or iterator failure.
+        # Inspect the returned iterator directly and close it ourselves.
+        entries = os.scandir(folder)
+        try:
+            occupied = next(entries, None) is not None
+        finally:
+            if entries.close() is not None:
+                _fail("bounded target RSS directory scan close receipt invalid")
+        if occupied:
+            _fail("bounded target RSS directory must be initially empty")
     except TargetProcessError:
         raise
     except Exception as error:

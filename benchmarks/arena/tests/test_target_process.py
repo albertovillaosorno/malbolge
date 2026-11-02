@@ -2066,6 +2066,47 @@ def test_measured_rss_workspace_unexpected_host_fault_is_typed(
 
 
 @pytest.mark.parametrize(
+    "forgery", ["hidden-entry", "suppressed-error", "foreign-enter", "close-forgery"]
+)
+def test_measured_rss_scandir_context_cannot_suppress_directory_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A substituted scan context cannot certify unsafe RSS directory state."""
+    folder = _rss_fixture_directory(tmp_path, monkeypatch)
+    closed: list[str] = []
+
+    class ForgedScan:
+        def __enter__(self) -> object:
+            if forgery == "foreign-enter":
+                return iter(())
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            return True
+
+        def __iter__(self) -> ForgedScan:
+            return self
+
+        def __next__(self) -> object:
+            if forgery == "suppressed-error":
+                raise OSError("untrusted RSS scan failed")
+            if forgery == "close-forgery":
+                raise StopIteration
+            return object()
+
+        def close(self) -> object:
+            closed.append("closed")
+            return True if forgery == "close-forgery" else None
+
+    monkeypatch.setattr(target_process.os, "scandir", lambda _path: ForgedScan())
+    with pytest.raises(target_process.TargetProcessError, match="RSS directory"):
+        target_process._admit_rss_directory_receipt(folder, tmp_path / ".temp")
+    assert closed == ["closed"]
+
+
+@pytest.mark.parametrize(
     "kind",
     [
         "outside-root",
