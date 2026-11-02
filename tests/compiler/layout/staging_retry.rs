@@ -869,6 +869,94 @@ fn stage_cleanup_failure_preserves_earlier_publication_error() -> Result<(), Str
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "durability needs a directory inode"
+)]
+fn publication_sync_does_not_admit_a_regular_file_as_directory() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let wrong_kind = fixture.0.join("not-a-directory");
+    fs::write(&wrong_kind, b"unrelated-data").map_err(|error| error.to_string())?;
+    let observed = super::sync_published_directory(&wrong_kind);
+    assert!(
+        observed
+            .as_ref()
+            .is_err_and(|error| error.contains("not a directory")),
+        "fsync of a regular file falsely certified directory durability: {observed:?}",
+    );
+    assert_eq!(
+        fs::read(&wrong_kind).map_err(|error| error.to_string())?,
+        b"unrelated-data",
+    );
+    super::sync_published_directory(&fixture.0)?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "wrong durability inode cannot certify output"
+)]
+fn unrelated_regular_file_sync_cannot_certify_published_target() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let wrong_kind = fixture.0.join("unrelated-regular");
+    fs::write(&wrong_kind, b"not a directory").map_err(|error| error.to_string())?;
+    let output = fixture.output();
+    let observed = super::publish_new_with_directory_sync_hook(
+        &output,
+        b"ctO",
+        |_staged| Ok(()),
+        |_published| Ok(()),
+        |_real_parent| super::sync_published_directory(&wrong_kind),
+    );
+    assert!(
+        observed
+            .as_ref()
+            .is_err_and(|error| error.contains("not a directory")),
+        "unrelated file fsync falsely certified artifact durability: {observed:?}",
+    );
+    assert_eq!(
+        fs::read(&output).map_err(|error| error.to_string())?,
+        b"ctO"
+    );
+    assert!(!stage(&output, None).exists());
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "foreign FIFO cannot stall directory sync"
+)]
+fn publication_sync_rejects_writerless_fifo_without_waiting() -> Result<(), String> {
+    use std::time::{Duration, Instant};
+
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let fifo = fixture.0.join("foreign-fifo");
+    let result = std::process::Command::new("/usr/bin/mkfifo")
+        .arg(&fifo)
+        .status()
+        .map_err(|error| format!("make FIFO: {error}"))?;
+    assert!(result.success(), "mkfifo failed: {result}");
+    let started = Instant::now();
+    let observed = super::sync_published_directory(&fifo);
+    assert!(
+        observed
+            .as_ref()
+            .is_err_and(|error| error.contains("not a directory")),
+        "foreign FIFO was accepted as a directory: {observed:?}",
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "wrong-kind directory sync waited for a FIFO writer",
+    );
+    Ok(())
+}
+
+#[cfg(unix)]
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "publication-directory sync failure must not report success"
 )]
 fn publication_directory_sync_failure_preserves_linked_output() -> Result<(), String> {

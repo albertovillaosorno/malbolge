@@ -175,7 +175,13 @@ The no-overwrite hard link atomically reveals the final `.malbolge` only after
 staged content admission. On Unix, the publisher now also opens and syncs the
 original resolved parent directory *after* independently verifying the linked
 final bytes and inode, so successful publication includes a directory-entry
-durability barrier. A failed parent sync returns an error and retains the
+durability barrier. The opened sync descriptor must itself be a directory:
+`fsync` on an unrelated regular file can succeed without persisting that
+entry, so a wrong-kind sync rejects. On Linux the descriptor is opened
+nonblocking so a substituted writerless FIFO cannot stall the barrier.
+Red-first wrong-kind and wrong-object sync tests prove that false success,
+while a writerless-FIFO test proves prompt rejection; legitimate directory
+sync remains admitted. A failed parent sync returns an error and retains the
 already-visible linked target; the stage is removed only if still owned.
 If removing that still-owned stage fails after a verified publication, the
 publisher reports a cleanup error while retaining the already-linked final
@@ -206,9 +212,10 @@ and no-overwrite guarantees but does not claim parent-directory crash
 durability through portable `std::fs`.
 Existing targets and symlinks are never replaced; invalid profiles, operands,
 paths or layout shapes fail closed. Process-level integration tests execute
-the built binary, reopen emitted files under historical/current canonical profiles with real
-byte input, test forward jumps and relocated arithmetic, compare exact output
-bytes across independent runs, reject unsupported input and symlinks, and
+the built binary, reopen emitted files under historical/current canonical
+profiles with real byte input, test forward jumps and relocated arithmetic,
+compare exact output bytes across independent runs, reject unsupported input
+and symlinks, and
 exercise concurrent writers to one target. A separate three-jump external
 process fixture publishes both raw and capsule sources under both profiles,
 reopens and executes the exact outputs, and rejects a forged later destination
@@ -429,8 +436,8 @@ retaining 18 distinct shortest nonzero values, with shortest witnesses
 for repeated bytes 160/164; typed/real runner proves 136 and 158.
 Separate VM scans for sixteen through thirty-three outputs and real CLI
 fixtures prove 41/194, 6/133, 66/59, 20/6, 192/48, 140/252, 64/18,
-251/27, 65/155, 18/44, 196/137, 138/41, 63/19, 12/25, 55/150, 22/160, 200/15 and 136/158 at
-distinct source positions, respectively.
+251/27, 65/155, 18/44, 196/137, 138/41, 63/19, 12/25, 55/150,
+22/160, 200/15 and 136/158 at distinct source positions, respectively.
 The admission table retains only the shortest phase per witnessed byte,
 not inferred values for untested source lengths.
 Each additional `<` changes source position decoding and loader-expanded
@@ -605,6 +612,7 @@ profile requirements fail closed before emitting accepted target code.
   deterministic hashes where promised, and end-to-end lowering regression cases.
 - Prerequisite completion evidence: `ternary-machine-lowering`,
   `canonical-malbolge-target-profile`.
+
 ## References
 
 - [Compiler Pipeline And Guest

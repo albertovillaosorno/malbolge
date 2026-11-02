@@ -477,8 +477,16 @@ fn publish_new_with_hooks(
 fn sync_published_directory(directory: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
-        let opened = fs::File::open(directory)
+        // Use the nonblocking Linux descriptor opener so a pathname raced
+        // from a directory to a FIFO cannot stall the durability barrier.
+        let opened = open_canonical_file(directory)
             .map_err(|error| format!("cannot open publication directory: {error}"))?;
+        let metadata = opened
+            .metadata()
+            .map_err(|error| format!("cannot inspect publication directory: {error}"))?;
+        if !metadata.is_dir() {
+            return Err(String::from("publication sync target is not a directory"));
+        }
         opened
             .sync_all()
             .map_err(|error| format!("cannot sync publication directory: {error}"))
