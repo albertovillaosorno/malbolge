@@ -68,6 +68,129 @@ FAMILY = "arithmetic-dag"
 OUTPUT_FAULT = "injected short stdout write"
 
 
+@pytest.mark.parametrize(
+    "providers",
+    ("cached-encoder-only", "writer-only", "cached-encoder-and-writer"),
+)
+def test_host_reference_quoted_provenance_rejects_forged_json_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    providers: str,
+) -> None:
+    """JSON provider substitution cannot relabel retained TOML provenance."""
+    source = "actual-git-revision"
+    forged = json.dumps("forged-git-revision")
+    assert forged != json.dumps(source)
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        if providers != "writer-only":
+            # json.dumps on simple strings consults its cached default
+            # encoder, not the mutable public JSONEncoder class.
+            patch.setattr(json, "_default_encoder", ForgedEncoder())
+        if providers != "cached-encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged)
+        assert json.dumps(source, ensure_ascii=True) == forged
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="JSON quote serializer disagrees with source",
+        ):
+            _ = reference_study._quote(source)  # ruff: ignore[private-member-access]
+
+
+class _ForeignQuote(str):
+    """A hostile writer receipt cannot supply equality hooks."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign TOML quote comparison invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize("receipt", (None, b'"forged"', _ForeignQuote('"forged"')))
+def test_host_reference_quoted_provenance_rejects_foreign_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only native exact JSON strings may become TOML provenance."""
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda *_args, **_kwargs: receipt)
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="JSON quote serializer disagrees with source",
+        ):
+            _ = reference_study._quote("actual-commit")  # ruff: ignore[private-member-access]
+
+
+def test_host_reference_quoted_provenance_contains_writer_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Publisher JSON faults remain typed without foreign error text."""
+    failure = RuntimeError("forged external writer failure")
+
+    def broken_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", broken_writer)
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="JSON quote serializer failed: RuntimeError",
+        ) as caught:
+            _ = reference_study._quote("actual-commit")  # ruff: ignore[private-member-access]
+        assert caught.value.__cause__ is failure
+
+
+def test_host_reference_quoted_provenance_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent public encoders preserve canonical retained quote bytes."""
+    encoder = json.JSONEncoder
+    native_dumps = json.dumps
+    text = "a-path\nwith-escapes"
+    expected = native_dumps(text, ensure_ascii=True)
+
+    class EquivalentEncoder(encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        patch.setattr(json, "dumps", lambda *a, **kw: native_dumps(*a, **kw))
+        assert reference_study._quote(text) == expected  # ruff: ignore[private-member-access]
+
+
+@pytest.mark.parametrize(
+    "text",
+    (
+        "actual-git-revision",
+        'path\\with "quotes"',
+        "unicode-\u00e9\nnewline",
+        "\tbackslash\\tab",
+    ),
+)
+def test_host_reference_quoted_provenance_preserves_exact_text(text: str) -> None:
+    """Canonical TOML quote bytes retain all escaped source characters."""
+    quoted = reference_study._quote(text)  # ruff: ignore[private-member-access]
+    assert json.loads(quoted) == text
+
+
+def test_host_reference_quoted_provenance_accepts_equivalent_cached_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent cached default encoder retains native TOML quoting."""
+    text = 'commit\nwith "quotes"'
+    expected = reference_study._quote(text)  # ruff: ignore[private-member-access]
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "_default_encoder", json.JSONEncoder(ensure_ascii=True))
+        assert reference_study._quote(text) == expected  # ruff: ignore[private-member-access]
+
+
 class _UnexpectedHostFault(IndexError):
     """Unexpected dependency errors cannot control study diagnostics."""
 

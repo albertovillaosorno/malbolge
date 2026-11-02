@@ -983,6 +983,13 @@ host-C reference producer. This prevents a self-consistent but foreign TOML
 provenance declaration from being described as the reference runner's output;
 it does not authenticate the underlying machine, source or execution.
 
+Producer TOML run provenance quoting independently encodes each field with the
+import-bound standard-library JSON encoder and requires exact native text from
+the mutable public JSON writer to agree. Cached-default-encoder, writer-only
+and joint substitutions cannot silently relabel captured commit, workload,
+host, or raw output fields; underlying Python encoder internals remain a trust
+dependency.
+
 The strict producer audit also has real native source/rebuild regressions
 for `composed-pipeline`, `ternary-fold`, `pointer-walk`, and `alias-walk`, each
 with canonical oracle replay and retained-file immutability assertions. These

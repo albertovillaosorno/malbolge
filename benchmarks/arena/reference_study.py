@@ -62,8 +62,9 @@ from benchmarks.arena import (
 from benchmarks.challenges import generate
 from scripts.validate import experiment_manifest, target_profile
 
-# Bind the original JSON source reader before its public function can change.
+# Bind JSON source reader and encoder before public provider mutation.
 _SOURCE_JSON_LOADS = json.loads
+_SOURCE_JSON_ENCODER = json.JSONEncoder
 
 _ROOT = Path(__file__).resolve().parents[2]
 _LOCAL = _ROOT / ".temp"
@@ -91,7 +92,17 @@ def _fail(message: str) -> Never:
 
 
 def _quote(text: str) -> str:
-    return json.dumps(text, ensure_ascii=True)
+    try:
+        # The public dumps function consults mutable JSONEncoder globals.
+        # Compare against source-owned canonical text before TOML publication.
+        source = _SOURCE_JSON_ENCODER(ensure_ascii=True).encode(text)
+        observed = json.dumps(text, ensure_ascii=True)
+    except Exception as error:
+        message = f"host-C JSON quote serializer failed: {type(error).__name__}"
+        raise ReferenceStudyError(message) from error
+    if type(observed) is not str or observed != source:
+        _fail("host-C JSON quote serializer disagrees with source")
+    return source
 
 
 def _commit() -> str:
