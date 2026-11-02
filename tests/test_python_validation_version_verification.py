@@ -215,3 +215,33 @@ def test_python_provision_command_allows_informational_stderr(
     monkeypatch.setattr(subprocess, "run", fake_run)
     output = python_validation._run(command)  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
     assert output == expected
+
+
+@pytest.mark.parametrize(
+    "suffix",
+    ["\x00suffix", "\x1b[31m", "\x7f", "\tmetadata", "\u202emetadata"],
+)
+def test_python_fast_jig_alias_rejects_unsafe_version_characters(
+    suffix: str,
+) -> None:
+    """Nonprintable or bidirectional text must not enter a shell alias."""
+    version_line = f"pytest 9.1.1{suffix}"
+    pv = python_validation
+    with pytest.raises(pv.ProvisionError, match="shell-literal safe"):
+        _ = pv._posix_jig_tool_alias_text(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            "pytest", version_line
+        )
+
+
+@pytest.mark.parametrize(
+    "version_line", ["", "   ", " pytest 9.1.1", "pytest 9.1.1 "]
+)
+def test_python_fast_jig_alias_rejects_blank_or_padded_version(
+    version_line: str,
+) -> None:
+    """Fast version aliases cannot certify blank or padded authorities."""
+    pv = python_validation
+    with pytest.raises(pv.ProvisionError, match="shell-literal safe"):
+        _ = pv._posix_jig_tool_alias_text(  # ruff: ignore[private-member-access]  # pyright: ignore[reportPrivateUsage]
+            "pytest", version_line
+        )

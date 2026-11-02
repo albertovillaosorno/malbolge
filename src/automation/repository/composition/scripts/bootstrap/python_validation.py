@@ -1395,7 +1395,14 @@ def _posix_jig_tool_alias_text(
     tool_id: str,
     version_line: str,
 ) -> str:
-    if any(
+    native_nonblank = type(version_line) is str and bool(version_line.strip())
+    printable_ascii = (
+        native_nonblank
+        and version_line == version_line.strip()
+        and version_line.isascii()
+        and version_line.isprintable()
+    )
+    if not printable_ascii or any(
         character in version_line
         for character in SHELL_UNSAFE_VERSION_CHARACTERS
     ):
