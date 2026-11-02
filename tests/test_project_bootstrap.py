@@ -3074,6 +3074,28 @@ def test_rust_inspection_rejects_linked_linux_adapter_marker(
     )
 
 
+@pytest.mark.parametrize("artifact", ["marker", "launcher"])
+def test_rust_inspection_rejects_hardlinked_linux_adapter_artifact(
+    tmp_path: Path, artifact: str
+) -> None:
+    """A shared adapter inode cannot prove exclusive bootstrap readiness."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    selected = (
+        toolchain / project.RUST_LINUX_ADAPTER_MARKER
+        if artifact == "marker"
+        else toolchain / "bin/cc"
+    )
+    outside = tmp_path / "outside-adapter"
+    try:
+        os.link(selected, outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
 def test_rust_inspection_rejects_linked_linux_adapter_executable(
     tmp_path: Path,
 ) -> None:
@@ -3378,6 +3400,22 @@ def test_import_completion_rejects_linked_marker(
         marker.symlink_to(foreign)
     except (OSError, NotImplementedError) as error:
         pytest.skip(f"symlinks unavailable: {error}")
+    assert not check(tmp_path)
+
+
+@pytest.mark.parametrize("scenario", IMPORT_MARKER_CASES)
+def test_import_completion_rejects_hardlinked_marker(
+    tmp_path: Path,
+    scenario: tuple[str, bytes, Callable[[Path], bool]],
+) -> None:
+    """Another path to identical bytes cannot attest an owned import marker."""
+    name, expected, check = scenario
+    outside = tmp_path / "unowned-marker"
+    _ = outside.write_bytes(expected)
+    try:
+        os.link(outside, tmp_path / name)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
     assert not check(tmp_path)
 
 

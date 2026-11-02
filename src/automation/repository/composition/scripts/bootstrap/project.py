@@ -728,8 +728,11 @@ def _import_completion_marker_matches(marker: Path, expected: bytes) -> bool:
     """
     try:
         observed = marker.lstat()
-        if not stat.S_ISREG(observed.st_mode) or observed.st_size != len(
-            expected
+        if (
+            type(observed) is not os.stat_result
+            or not stat.S_ISREG(observed.st_mode)
+            or observed.st_nlink != 1
+            or observed.st_size != len(expected)
         ):
             return False
         return _read_authority_bytes(marker) == expected
@@ -1410,8 +1413,15 @@ def _linux_adapter_script_ready(linker: Path) -> bool:
 
     """
     try:
+        physical = linker.lstat()
+        if (
+            type(physical) is not os.stat_result
+            or not stat.S_ISREG(physical.st_mode)
+            or physical.st_nlink != 1
+        ):
+            return False
         content = _read_authority_bytes(linker)
-    except InitializationError, OSError:
+    except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
         return False
     return (
         content.startswith(b"#!/bin/sh\nexec ")
@@ -1429,13 +1439,9 @@ def _rust_validation_adapter_ready(
         return True
     linker = toolchain_root / "bin" / "cc"
     marker = toolchain_root / RUST_LINUX_ADAPTER_MARKER
-    try:
-        marker_matches = (
-            _read_authority_bytes(marker) == RUST_LINUX_ADAPTER_CONTENT
-        )
-    except InitializationError, OSError:
-        return False
-    return marker_matches and _linux_adapter_script_ready(linker)
+    return _import_completion_marker_matches(
+        marker, RUST_LINUX_ADAPTER_CONTENT
+    ) and _linux_adapter_script_ready(linker)
 
 
 def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
