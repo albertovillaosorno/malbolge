@@ -625,7 +625,11 @@ def _run_git_exec_path(git: Path) -> Path | None:
     if output is None:
         return None
     path = Path(output)
-    return path if path.is_dir() else None
+    try:
+        directory = path.is_dir()
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
+    return path if type(directory) is bool and directory else None
 
 
 def _configured_git_version(root: Path) -> str:
@@ -1056,7 +1060,11 @@ def rustup_toolchain_root(
     if raw is None:
         return None
     cargo = Path(raw)
-    if not cargo.is_file():
+    try:
+        regular_file = cargo.is_file()
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
+    if type(regular_file) is not bool or not regular_file:
         return None
     return cargo.parent.parent
 

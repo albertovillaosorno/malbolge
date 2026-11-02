@@ -44,7 +44,7 @@ import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import tempfile
 from typing import TYPE_CHECKING
-from typing import cast, override
+from typing import Never, cast, override
 
 import pytest
 from scripts.bootstrap import llvm_development_validation
@@ -3275,3 +3275,72 @@ def test_optional_host_probes_fail_closed_on_host_exceptions(
     else:
         observed = project._run_rustup_which(Path("rustup"), RUST_CHANNEL)  # pyright: ignore[reportPrivateUsage]
     assert observed == (() if probe == "rustup-list" else None)
+
+
+@pytest.mark.parametrize("probe", ("git-helper", "rustup-cargo"))
+@pytest.mark.parametrize("receipt", (None, 0, 1, "yes", "foreign-bool"))
+def test_optional_host_tool_paths_require_native_status_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    receipt: object,
+) -> None:
+    """A fake file/dir truthiness result cannot certify imported host tooling."""
+
+    class ForeignBool:
+        def __bool__(self) -> Never:
+            raise AssertionError("foreign host path truthiness executed")
+
+    candidate = tmp_path / ("git-core" if probe == "git-helper" else "bin/cargo")
+    fake: object = ForeignBool() if receipt == "foreign-bool" else receipt
+    method = "is_dir" if probe == "git-helper" else "is_file"
+    original = getattr(Path, method)
+
+    def fake_status(self: Path) -> object:
+        return fake if self == candidate else original(self)
+
+    monkeypatch.setattr(Path, method, fake_status)
+    if probe == "git-helper":
+        def helper_output(_argv: list[str]) -> str:
+            return str(candidate)
+
+        monkeypatch.setattr(project, "_optional_host_command_output", helper_output)
+        result: object = project._run_git_exec_path(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    else:
+        result = project.rustup_toolchain_root(
+            Path("rustup"), RUST_CHANNEL, runner=lambda _tool, _channel: str(candidate)
+        )
+    assert result is None
+
+
+@pytest.mark.parametrize("probe", ("git-helper", "rustup-cargo"))
+@pytest.mark.parametrize("fault_type", (OSError, ValueError, TypeError, RuntimeError))
+def test_optional_host_tool_paths_treat_native_stat_failures_as_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    fault_type: type[Exception],
+) -> None:
+    """Optional host path inspection errors do not crash the checkout."""
+    candidate = tmp_path / ("git-core" if probe == "git-helper" else "bin/cargo")
+    method = "is_dir" if probe == "git-helper" else "is_file"
+    original = getattr(Path, method)
+    fault = fault_type("bad host path receipt")
+
+    def fail_status(self: Path) -> object:
+        if self == candidate:
+            raise fault
+        return original(self)
+
+    monkeypatch.setattr(Path, method, fail_status)
+    if probe == "git-helper":
+        def helper_output(_argv: list[str]) -> str:
+            return str(candidate)
+
+        monkeypatch.setattr(project, "_optional_host_command_output", helper_output)
+        result: object = project._run_git_exec_path(Path("git"))  # pyright: ignore[reportPrivateUsage]
+    else:
+        result = project.rustup_toolchain_root(
+            Path("rustup"), RUST_CHANNEL, runner=lambda _tool, _channel: str(candidate)
+        )
+    assert result is None

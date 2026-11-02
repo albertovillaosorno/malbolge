@@ -89,7 +89,10 @@ process result with the original executable/argument list, integer successful
 exit and native captured text is accepted. The command passed to the launcher
 is an independent copy, so a mutating wrapper cannot forge matching evidence.
 Nonzero, forged, malformed, unavailable and timed-out host observations remain
-missing rather than authorizing an import or crashing bootstrap.
+missing rather than authorizing an import or crashing bootstrap. Git helper
+folders and Rustup Cargo executable paths must also report exact native boolean
+file/directory status; malformed statuses and host filesystem query failures
+remain missing instead of authorizing a native tool import.
 
 Jig `doctor` checks the configured repository-local ChkTeX launcher, but
 Jig `check` independently attests the first eligible **external** `chktex`
