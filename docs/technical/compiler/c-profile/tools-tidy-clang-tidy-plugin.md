@@ -56,9 +56,17 @@ missing binaries, forged markers, and stale imports cannot count as ready or
 be silently reused; an incomplete preexisting root fails closed.
 The Linux importer also rejects linked host tool binaries and symlink/junction
 members within the Clang resource tree, checking resource membership both
-before and after staging. Windows neutral alias publication requires a physical
-bundle and alias directory; existing aliases are checked against the exact
-native PE bytes before any missing aliases or completion marker are written.
+before and after staging. Cross-device copies read a native nonblocking,
+no-follow, inode-pinned source descriptor rather than a replaceable pathname
+stream, rejecting late redirects without waiting on FIFO replacement. Source
+identity includes a pinned SHA-256 digest, not just inode, length, and mtime;
+in-place edits with restored timestamps cannot authorize copied or hardlinked
+files. After writing the import marker, staging rechecks the original tool,
+library, and resource bytes against their staged members, including the complete
+resource membership inventory. A late mutation before publication fails closed.
+Windows neutral alias publication requires a physical bundle and alias
+directory; existing aliases are checked against the exact native PE bytes
+before any missing aliases or completion marker are written.
 Linked and drifted aliases fail closed, while unchanged aliases remain reusable.
 
 `tidy_toolchain.py` closes the manifest schema, rejects escaping paths and
