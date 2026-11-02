@@ -1050,6 +1050,41 @@ def test_uv_zip_member_uses_opened_stream_not_substituted_enter(
     assert python_validation._zip_member_bytes(output.getvalue(), "uv.exe") == BINARY
 
 
+def test_uv_zip_rejects_hidden_duplicate_in_substituted_inventory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The opened archive inventory cannot hide an ambiguous executable."""
+    output = io.BytesIO()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(output, "w") as archive:
+            archive.writestr("uv.exe", b"first-uv")
+            archive.writestr("uv.exe", b"second-uv")
+
+    def concealed_inventory(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+        return archive.filelist[:1]
+
+    monkeypatch.setattr(zipfile.ZipFile, "infolist", concealed_inventory)
+    with pytest.raises(python_validation.ProvisionError, match="duplicate uv zip"):
+        _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
+
+
+def test_uv_zip_ignores_substituted_getinfo_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A redirecting lookup cannot replace the selected executable bytes."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("uv.exe", BINARY)
+        archive.writestr("other.txt", b"foreign-bytes")
+
+    def substituted_info(archive: zipfile.ZipFile, _name: str) -> zipfile.ZipInfo:
+        return archive.filelist[1]
+
+    monkeypatch.setattr(zipfile.ZipFile, "getinfo", substituted_info)
+    assert python_validation._zip_member_bytes(output.getvalue(), "uv.exe") == BINARY
+
+
 def test_uv_zip_rejects_duplicate_selected_executable() -> None:
     """Ambiguous duplicate ZIP names cannot select executable contents."""
     output = io.BytesIO()

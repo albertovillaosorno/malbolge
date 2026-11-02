@@ -521,12 +521,19 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
     archive = zipfile.ZipFile(io.BytesIO(data))
     # Keep using the opened object, not a substituted __enter__ return.
     with archive:
-        inventory = archive.infolist()
+        # Inspect the parsed inventory owned by the opened archive. A
+        # substitute infolist/getinfo method must not hide or redirect names.
+        inventory = archive.filelist
+        if type(inventory) is not list:
+            _fail("uv zip archive requires native member inventory")
         if len(inventory) > MAX_UV_ARCHIVE_MEMBERS:
             _fail("uv archive exceeds member limit")
-        info = archive.getinfo(member)
-        if sum(item.filename == member for item in inventory) != 1:
+        selected = [item for item in inventory if item.filename == member]
+        if not selected:
+            raise KeyError(member)
+        if len(selected) != 1:
             _fail("duplicate uv zip member name")
+        info = selected[0]
         if (
             type(info) is not zipfile.ZipInfo
             or type(info.file_size) is not int
