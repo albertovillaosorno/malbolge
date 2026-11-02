@@ -34,29 +34,29 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import replace
 import hashlib
 import io
 import json
 import os
-from pathlib import Path
 import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
-import tempfile
 import tarfile
+import tempfile
 import urllib.request
 import zipfile
-from typing import TYPE_CHECKING
-from typing import BinaryIO, TextIO
-from typing import Never, Self, cast, final, override
+from contextlib import suppress
+from dataclasses import replace
+from pathlib import Path
+from typing import TYPE_CHECKING, BinaryIO, Never, Self, TextIO, cast, final, override
 
 import pytest
-from scripts.bootstrap import cuda_validation
-from scripts.bootstrap import llvm_development_validation
-from scripts.bootstrap import llvm_validation
-from scripts.bootstrap import project
-from scripts.bootstrap import python_validation
+from scripts.bootstrap import (
+    cuda_validation,
+    llvm_development_validation,
+    llvm_validation,
+    project,
+    python_validation,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable

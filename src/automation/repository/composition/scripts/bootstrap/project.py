@@ -35,37 +35,35 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable
-from contextlib import suppress
-from dataclasses import dataclass
-from enum import StrEnum
 import io
 import json
 import ntpath
 import os
-from pathlib import Path
-from pathlib import PureWindowsPath
 import platform
 import re
 import shlex
 import shutil
-from shutil import which
 import stat
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed Rustup argv.
 import sys
-import tomllib
-from typing import BinaryIO
-from typing import Final
-from typing import Never
-from typing import Protocol
-from typing import cast
+from collections.abc import Callable
+from contextlib import suppress
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path, PureWindowsPath
+from shutil import which
+from typing import BinaryIO, Final, Never, Protocol, cast
 
-from scripts.bootstrap import cuda_validation
-from scripts.bootstrap import llvm_development_validation
-from scripts.bootstrap import llvm_validation
-from scripts.bootstrap import python_validation
+import tomllib
+
+from scripts.bootstrap import (
+    cuda_validation,
+    llvm_development_validation,
+    llvm_validation,
+    python_validation,
+)
 from scripts.repository_root import repository_root
 
 ROOT: Final = repository_root(Path(__file__))

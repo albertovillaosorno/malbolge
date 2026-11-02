@@ -34,15 +34,11 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass
 import hashlib
 import io
 import json
 import ntpath
 import os
-from pathlib import Path
-from pathlib import PureWindowsPath
 import platform
 import stat
 
@@ -51,15 +47,14 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed reposito
 import sys
 import tarfile
 import tempfile
-from typing import BinaryIO
-from typing import Final
-from typing import Never
-from typing import Protocol
-from typing import cast
 import urllib.error
 import urllib.request
 import venv
 import zipfile
+from contextlib import suppress
+from dataclasses import dataclass
+from pathlib import Path, PureWindowsPath
+from typing import BinaryIO, Final, Never, Protocol, cast
 
 from scripts.repository_root import repository_root
 
