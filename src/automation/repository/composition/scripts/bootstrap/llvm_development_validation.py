@@ -474,7 +474,9 @@ def _extract_cpio_headers(payload: bytes, package_staging: Path) -> None:
         CPIO_INCLUDE_PATTERN,
     ]
     if os.name != POSIX_OS_NAME:
-        _ = _command_bytes(command, cwd=package_staging, stdin=payload)
+        result = _command_bytes(command, cwd=package_staging, stdin=payload)
+        if result:
+            _fail("LLVM RPM CPIO extraction returned unexpected stdout")
         return
     # The POSIX provider is Linux-only. /proc/self/fd remains bound to the
     # opened directory even if an ancestor is exchanged before child chdir.
@@ -482,12 +484,14 @@ def _extract_cpio_headers(payload: bytes, package_staging: Path) -> None:
         package_staging / ".cpio-stage", "staging"
     )
     try:
-        _ = _command_bytes(
+        result = _command_bytes(
             command,
             cwd=Path(f"/proc/self/fd/{parent}"),
             stdin=payload,
             pass_fds=(parent,),
         )
+        if result:
+            _fail("LLVM RPM CPIO extraction returned unexpected stdout")
     finally:
         _close_physical_parent(parent, "CPIO")
 

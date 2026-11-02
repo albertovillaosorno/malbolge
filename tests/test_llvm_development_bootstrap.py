@@ -740,6 +740,35 @@ def test_rpm_overlay_does_not_overwrite_external_destination_hardlink(
     assert not identity.development_root.exists()
 
 
+@pytest.mark.parametrize("stdout", [b"", b"unexpected extraction output"])
+def test_rpm_extraction_requires_empty_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stdout: bytes,
+) -> None:
+    """Quiet CPIO extraction must not report an unexpected stdout receipt."""
+    staging = tmp_path / "package"
+    staging.mkdir()
+
+    def synthetic_command(
+        argv: list[str], **_options: object
+    ) -> bytes:
+        assert argv[:2] == ["cpio", "-idm"]
+        return stdout
+
+    monkeypatch.setattr(
+        llvm_development_validation, "_command_bytes", synthetic_command
+    )
+    if stdout:
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="unexpected stdout",
+        ):
+            llvm_development_validation._extract_cpio_headers(b"data", staging)
+    else:
+        llvm_development_validation._extract_cpio_headers(b"data", staging)
+
+
 @pytest.mark.parametrize(
     "existing, incoming, accepted",
     [
