@@ -574,14 +574,23 @@ def _run_lldb(configuration: LaunchConfiguration) -> int:
         str(configuration.executable),
         *configuration.arguments,
     )
-    # jig-ignore-next-line: indivisible reviewed identifier
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        command,
-        cwd=configuration.source.parent,
-        env=configuration.environment,
-        check=False,
-        shell=False,
-    )
+    try:
+        # jig-ignore-next-line: indivisible reviewed identifier
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            command,
+            cwd=configuration.source.parent,
+            env=configuration.environment,
+            check=False,
+            shell=False,
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
+        raise DoomDebugError("DOOM LLDB process launch failed") from error
     if type(completed) is not subprocess.CompletedProcess:
         _fail("invalid LLDB process receipt")
     native = cast("subprocess.CompletedProcess[object]", completed)

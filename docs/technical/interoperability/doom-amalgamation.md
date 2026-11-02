@@ -98,7 +98,9 @@ replacement atomic. Console summaries and bounded log echoes must receive an exa
 write count and successful flush before the debug runner proceeds; incomplete
 or foreign output delivery raises a typed DOOM debug error. Optional LLDB
 execution likewise requires native exact-argv and integer-status process
-receipts before forwarding the debugger's exit code.
+receipts before forwarding the debugger's exit code. LLDB launch faults
+are typed debug failures with the original host cause retained, without
+formatting foreign exception text.
 
 A no-CRT deterministic harness produced identical multi-TU and single-TU
 framebuffer/audio transcripts:

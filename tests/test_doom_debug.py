@@ -794,3 +794,48 @@ def test_doom_direct_sanitizer_types_host_launch_faults(
     with pytest.raises(doom.DoomDebugError, match="sanitizer process launch") as raised:
         _ = RUN_DIRECT(config)
     assert raised.value.__cause__ is error
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        "oserror",
+        "typeerror",
+        "valueerror",
+        "runtimeerror",
+        "subprocesserror",
+        "timeout",
+        "foreign-oserror",
+    ),
+)
+def test_doom_lldb_launch_host_failures_remain_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """LLDB launch faults must retain their cause without formatting hooks."""
+    config = _configuration(tmp_path)
+
+    class ForeignOSError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign LLDB exception formatter invoked")
+
+    faults: dict[str, Exception] = {
+        "oserror": OSError("LLDB unavailable"),
+        "typeerror": TypeError("bad LLDB argv"),
+        "valueerror": ValueError("bad LLDB argv"),
+        "runtimeerror": RuntimeError("bad LLDB process"),
+        "subprocesserror": sp.SubprocessError("LLDB process error"),
+        "timeout": sp.TimeoutExpired(("lldb", "-o", "run"), 2),
+        "foreign-oserror": ForeignOSError("untrusted LLDB host message"),
+    }
+    failure = faults[kind]
+
+    def broken_run(_command: tuple[str, ...], **_kwargs: object) -> Never:
+        raise failure
+
+    monkeypatch.setattr(sp, "run", broken_run)
+    with pytest.raises(doom.DoomDebugError, match="LLDB process launch") as caught:
+        _ = doom._run_lldb(config)  # pyright: ignore[reportPrivateUsage]
+    assert caught.value.__cause__ is failure
