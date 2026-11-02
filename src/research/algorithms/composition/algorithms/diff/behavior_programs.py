@@ -34,31 +34,32 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import replace
-from pathlib import Path
 import shutil
 import tempfile
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass, replace
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.behavior import BehaviorObservations
-from algorithms.diff.behavior import BehaviorProfile
-from algorithms.diff.behavior import BugObservation
-from algorithms.diff.behavior import BugProbe
-from algorithms.diff.behavior import BugState
-from algorithms.diff.behavior import CompatibilityObservation
-from algorithms.diff.behavior import CompatibilityProbe
-from algorithms.diff.behavior import IdentityObservation
-from algorithms.diff.behavior import IdentityProbe
-from algorithms.diff.behavior import evaluate_behavior
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import snapshot_tree
-from algorithms.diff.probe_exec import ProbeExecutionError
-from algorithms.diff.probe_exec import ProbeProgram
-from algorithms.diff.probe_exec import ProbeRunContext
-from algorithms.diff.probe_exec import run_probe_program
-from algorithms.diff.probe_exec import run_probe_programs
+from algorithms.diff.behavior import (
+    BehaviorObservations,
+    BehaviorProfile,
+    BugObservation,
+    BugProbe,
+    BugState,
+    CompatibilityObservation,
+    CompatibilityProbe,
+    IdentityObservation,
+    IdentityProbe,
+    evaluate_behavior,
+)
+from algorithms.diff.exact import ExactTreeError, snapshot_tree
+from algorithms.diff.probe_exec import (
+    ProbeExecutionError,
+    ProbeProgram,
+    ProbeRunContext,
+    run_probe_program,
+    run_probe_programs,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -108,9 +109,7 @@ class BugProgram:
             message = "bug behavior program requires an exact ProbeProgram"
             raise BehaviorProgramError(message)
         _require_selected_program(self.program, "bug")
-        _ = _require_correction_identifier(
-            self.correction_id, "bug behavior program"
-        )
+        _ = _require_correction_identifier(self.correction_id, "bug behavior program")
 
 
 def _require_program_tuple(value: object, context: str) -> None:
@@ -132,9 +131,7 @@ def _require_identity_program_tuple(value: object, context: str) -> None:
 
 def _require_bug_program_tuple(value: object) -> None:
     if type(value) is not tuple:
-        message = (
-            "bug behavior programs must use the exact immutable tuple type"
-        )
+        message = "bug behavior programs must use the exact immutable tuple type"
         raise BehaviorProgramError(message)
     items = cast("tuple[object, ...]", value)
     if any(type(item) is not BugProgram for item in items):
@@ -157,9 +154,7 @@ class BehaviorPrograms:
             BehaviorProgramError: Program identifiers violate profile policy.
 
         """
-        _require_identity_program_tuple(
-            self.identity, "identity behavior programs"
-        )
+        _require_identity_program_tuple(self.identity, "identity behavior programs")
         _require_program_tuple(
             self.compatibility,
             "compatibility behavior programs",
@@ -263,9 +258,7 @@ class AuthoredBehaviorPrograms:
         if type(self.profile) is not BehaviorProfile:
             message = "authored behavior requires an exact BehaviorProfile"
             raise BehaviorProgramError(message)
-        _require_identity_program_tuple(
-            self.identity, "authored identity programs"
-        )
+        _require_identity_program_tuple(self.identity, "authored identity programs")
         _require_program_tuple(
             self.compatibility,
             "authored compatibility programs",
@@ -288,16 +281,12 @@ def _require_authored_profile_alignment(
     authored: AuthoredBehaviorPrograms,
 ) -> None:
     identity_ids = tuple(item.probe_id for item in authored.identity)
-    profile_identity_ids = tuple(
-        item.probe_id for item in authored.profile.identity
-    )
+    profile_identity_ids = tuple(item.probe_id for item in authored.profile.identity)
     compatibility_ids = tuple(item.probe_id for item in authored.compatibility)
     profile_compatibility_ids = tuple(
         item.probe_id for item in authored.profile.compatibility
     )
-    bugs = tuple(
-        (item.program.probe_id, item.correction_id) for item in authored.bugs
-    )
+    bugs = tuple((item.program.probe_id, item.correction_id) for item in authored.bugs)
     profile_bugs = tuple(
         (item.probe_id, item.correction_id) for item in authored.profile.bugs
     )
@@ -305,9 +294,7 @@ def _require_authored_profile_alignment(
         message = "authored identity programs do not match behavior profile"
         raise BehaviorProgramError(message)
     if compatibility_ids != profile_compatibility_ids:
-        message = (
-            "authored compatibility programs do not match behavior profile"
-        )
+        message = "authored compatibility programs do not match behavior profile"
         raise BehaviorProgramError(message)
     if bugs != profile_bugs:
         message = "authored bug programs do not match behavior profile"
@@ -323,9 +310,7 @@ def _require_run_context(value: object, context: str) -> ProbeRunContext:
 
 def _sorted_unique(identifiers: tuple[str, ...], kind: str) -> tuple[str, ...]:
     if identifiers != tuple(sorted(set(identifiers))):
-        message = (
-            f"{kind} behavior programs must have unique sorted identifiers"
-        )
+        message = f"{kind} behavior programs must have unique sorted identifiers"
         raise BehaviorProgramError(message)
     return identifiers
 
@@ -358,8 +343,7 @@ def _transcript_map(
 def _require_digest(transcript: ProbeTranscript) -> bytes:
     if transcript.digested_commands < 1:
         message = (
-            f"behavior probe {transcript.probe_id!r} selects no stdout "
-            "for identity"
+            f"behavior probe {transcript.probe_id!r} selects no stdout for identity"
         )
         raise BehaviorProgramError(message)
     return transcript.digest
@@ -389,9 +373,7 @@ def _require_matching_contexts(
     oracle_context: ProbeRunContext,
 ) -> None:
     if _context_signature(source_context) != _context_signature(oracle_context):
-        message = (
-            "source and oracle behavior runs must use the same tool bindings"
-        )
+        message = "source and oracle behavior runs must use the same tool bindings"
         raise BehaviorProgramError(message)
 
 
@@ -406,9 +388,7 @@ def _author_bug_programs(
         present_digest = _require_digest(source_transcripts[probe_id])
         fixed_digest = _require_digest(oracle_transcripts[probe_id])
         if present_digest == fixed_digest:
-            message = (
-                f"bug probe {probe_id!r} cannot distinguish present from fixed"
-            )
+            message = f"bug probe {probe_id!r} cannot distinguish present from fixed"
             raise BehaviorProgramError(message)
         authored.append(
             AuthoredBugProgram(
@@ -463,9 +443,7 @@ def _run_authored_baselines(
         _require_authoring_trees_unchanged(admitted)
         bug_programs = tuple(item.program for item in programs.bugs)
         oracle_transcripts = _transcript_map(
-            run_probe_programs(bug_programs, oracle_context)
-            if bug_programs
-            else ()
+            run_probe_programs(bug_programs, oracle_context) if bug_programs else ()
         )
     finally:
         _require_authoring_trees_unchanged(admitted)
@@ -494,12 +472,8 @@ def author_behavior_programs(
     if type(programs) is not BehaviorPrograms:
         message = "behavior authoring requires exact BehaviorPrograms"
         raise BehaviorProgramError(message)
-    source_context = _require_run_context(
-        source_context, "source behavior context"
-    )
-    oracle_context = _require_run_context(
-        oracle_context, "oracle behavior context"
-    )
+    source_context = _require_run_context(source_context, "source behavior context")
+    oracle_context = _require_run_context(oracle_context, "oracle behavior context")
     _require_matching_contexts(source_context, oracle_context)
     source_transcripts, oracle_transcripts = _run_authored_baselines(
         programs, source_context, oracle_context
@@ -507,9 +481,7 @@ def author_behavior_programs(
     identity = tuple(
         IdentityProbe(
             probe_id=program.probe_id,
-            expected_digest=_require_digest(
-                source_transcripts[program.probe_id]
-            ),
+            expected_digest=_require_digest(source_transcripts[program.probe_id]),
         )
         for program in programs.identity
     )
@@ -523,9 +495,7 @@ def author_behavior_programs(
         oracle_transcripts,
     )
     bug_profile = tuple(
-        BugProbe(
-            probe_id=item.program.probe_id, correction_id=item.correction_id
-        )
+        BugProbe(probe_id=item.program.probe_id, correction_id=item.correction_id)
         for item in authored_bugs
     )
     return AuthoredBehaviorPrograms(
@@ -618,9 +588,7 @@ def _snapshot_observed_source(root: Path) -> TreeSnapshot:
         raise ProbeExecutionError(message) from error
 
 
-def _require_observed_source_unchanged(
-    root: Path, admitted: TreeSnapshot
-) -> None:
+def _require_observed_source_unchanged(root: Path, admitted: TreeSnapshot) -> None:
     """Require the entire candidate tree to retain its admitted bytes.
 
     Raises:
@@ -645,10 +613,13 @@ def _admit_observation_mirror(
 
     """
     try:
-        _ = shutil.copytree(context.source_root, mirror, symlinks=True)
-    except (OSError, ValueError, RuntimeError) as error:
+        completion = shutil.copytree(context.source_root, mirror, symlinks=True)
+    except Exception as error:
         message = f"behavior candidate mirror failed: {error}"
         raise ProbeExecutionError(message) from error
+    if type(completion) is not type(Path()) or completion != mirror:
+        message = "behavior candidate mirror copy reported non-native completion"
+        raise ProbeExecutionError(message)
     if _snapshot_observed_source(mirror) != admitted:
         message = "behavior candidate tree changed while creating mirror"
         raise ProbeExecutionError(message)
@@ -694,17 +665,11 @@ def observe_behavior_programs(
         mirror = Path(temporary) / "source"
         mirrored = _admit_observation_mirror(context, mirror, admitted)
         identity = _observe_identity(authored.identity, mirrored)
-        _require_observation_sources_unchanged(
-            context.source_root, mirror, admitted
-        )
+        _require_observation_sources_unchanged(context.source_root, mirror, admitted)
         compatibility = _observe_compatibility(authored.compatibility, mirrored)
-        _require_observation_sources_unchanged(
-            context.source_root, mirror, admitted
-        )
+        _require_observation_sources_unchanged(context.source_root, mirror, admitted)
         bugs = _observe_bugs(authored.bugs, mirrored)
-        _require_observation_sources_unchanged(
-            context.source_root, mirror, admitted
-        )
+        _require_observation_sources_unchanged(context.source_root, mirror, admitted)
         return BehaviorObservations(
             identity=identity,
             compatibility=compatibility,

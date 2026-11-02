@@ -35,32 +35,35 @@
 from __future__ import annotations
 
 import math
-from pathlib import Path
 import shutil
 import sys
 import tempfile
-from typing import TYPE_CHECKING
-from typing import cast
+from pathlib import Path
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.behavior import BugState
-from algorithms.diff.behavior_programs import AuthoredBehaviorPrograms
-from algorithms.diff.behavior_programs import AuthoredBugProgram
-from algorithms.diff.behavior_programs import BehaviorProgramError
-from algorithms.diff.behavior_programs import BehaviorPrograms
-from algorithms.diff.behavior_programs import BugProgram
-from algorithms.diff.behavior_programs import author_behavior_programs
-from algorithms.diff.behavior_programs import evaluate_behavior_programs
-from algorithms.diff.behavior_programs import observe_behavior_programs
-from algorithms.diff.probe_exec import PathArgument
-from algorithms.diff.probe_exec import ProbeCommand
-from algorithms.diff.probe_exec import ProbeExecutionError
-from algorithms.diff.probe_exec import ProbeProgram
-from algorithms.diff.probe_exec import ProbeRoot
-from algorithms.diff.probe_exec import ProbeRunContext
-from algorithms.diff.probe_exec import ToolExecutable
-from algorithms.diff.probe_exec import run_probe_program
-from algorithms.diff.probe_exec import run_probe_programs
 import pytest
+from algorithms.diff.behavior import BugState
+from algorithms.diff.behavior_programs import (
+    AuthoredBehaviorPrograms,
+    AuthoredBugProgram,
+    BehaviorProgramError,
+    BehaviorPrograms,
+    BugProgram,
+    author_behavior_programs,
+    evaluate_behavior_programs,
+    observe_behavior_programs,
+)
+from algorithms.diff.probe_exec import (
+    PathArgument,
+    ProbeCommand,
+    ProbeExecutionError,
+    ProbeProgram,
+    ProbeRoot,
+    ProbeRunContext,
+    ToolExecutable,
+    run_probe_program,
+    run_probe_programs,
+)
 
 if TYPE_CHECKING:
     from algorithms.diff.behavior import BehaviorProfile
@@ -72,8 +75,7 @@ _IDENTITY_B = "identity-b"
 _CHANGED_SECOND_BYTES = b"different"
 _STABLE_IDENTITY_BYTES = b"stable"
 _READ_BYTES = (
-    "import pathlib,sys;"
-    "sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes())"
+    "import pathlib,sys;sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes())"
 )
 _REQUIRE_FILE = (
     "import pathlib,sys;"
@@ -168,9 +170,7 @@ def _authored(
     return authored, source, oracle
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_context_repository_resolution_error_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -187,9 +187,7 @@ def test_context_repository_resolution_error_fails_closed(
         return original_resolve(path, strict=strict)
 
     monkeypatch.setattr(Path, "resolve", fail_resolve)
-    with pytest.raises(
-        BehaviorProgramError, match="repository resolution failed"
-    ):
+    with pytest.raises(BehaviorProgramError, match="repository resolution failed"):
         _ = author_behavior_programs(
             _programs(),
             _context(source, tmp_path),
@@ -197,9 +195,7 @@ def test_context_repository_resolution_error_fails_closed(
         )
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_context_tool_resolution_error_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -391,9 +387,7 @@ def test_behavior_program_apis_reject_foreign_records_before_execution(
             oracle_context,
         )
 
-    authored = author_behavior_programs(
-        _programs(), source_context, oracle_context
-    )
+    authored = author_behavior_programs(_programs(), source_context, oracle_context)
     with pytest.raises(
         BehaviorProgramError,
         match="exact AuthoredBehaviorPrograms",
@@ -479,9 +473,7 @@ def test_identity_only_authoring_does_not_require_oracle_tree(
         _context(source, tmp_path),
         _context(missing_oracle, tmp_path),
     )
-    _expect(
-        authored.profile.identity[0].probe_id == identity.probe_id, "ID drift"
-    )
+    _expect(authored.profile.identity[0].probe_id == identity.probe_id, "ID drift")
     _expect(not authored.bugs, "identity-only authoring gained a bug baseline")
 
 
@@ -492,12 +484,8 @@ def test_authoring_derives_identity_and_distinct_bug_baselines(
     authored, _, _ = _authored(tmp_path)
     bug = authored.bugs[0]
 
-    _expect(
-        bool(authored.profile.identity[0].expected_digest), "identity is empty"
-    )
-    _expect(
-        bug.present_digest != bug.fixed_digest, "bug baselines are ambiguous"
-    )
+    _expect(bool(authored.profile.identity[0].expected_digest), "identity is empty")
+    _expect(bug.present_digest != bug.fixed_digest, "bug baselines are ambiguous")
 
 
 def test_original_bug_state_routes_correction_to_apply(tmp_path: Path) -> None:
@@ -650,9 +638,7 @@ def test_observation_rejects_copy_time_mirror_drift(
         return copied
 
     monkeypatch.setattr(shutil, "copytree", changed_copy)
-    with pytest.raises(
-        ProbeExecutionError, match="changed while creating mirror"
-    ):
+    with pytest.raises(ProbeExecutionError, match="changed while creating mirror"):
         _ = observe_behavior_programs(authored, _context(source, tmp_path))
     _expect(
         (source / "identity.txt").read_bytes() == _STABLE_IDENTITY_BYTES,
@@ -661,7 +647,15 @@ def test_observation_rejects_copy_time_mirror_drift(
 
 
 @pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
+    "failure_type",
+    [
+        PermissionError,
+        ValueError,
+        RuntimeError,
+        TypeError,
+        AttributeError,
+        OverflowError,
+    ],
 )
 def test_observation_mirror_creation_errors_are_typed(
     tmp_path: Path,
@@ -687,9 +681,7 @@ def test_observation_mirror_creation_errors_are_typed(
     )
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_observation_temporary_root_creation_errors_are_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -698,9 +690,7 @@ def test_observation_temporary_root_creation_errors_are_typed(
     """Probe observation cannot leak temp-root initialization errors."""
     authored, source, _ = _authored(tmp_path)
 
-    def denied_temporary_root(
-        *, prefix: str
-    ) -> tempfile.TemporaryDirectory[str]:
+    def denied_temporary_root(*, prefix: str) -> tempfile.TemporaryDirectory[str]:
         del prefix
         message = "temporary root host failure"
         raise failure_type(message)
@@ -722,9 +712,7 @@ def test_failed_compatibility_program_rejects_candidate(tmp_path: Path) -> None:
         _context(candidate, tmp_path),
         minimum_similarity=0.80,
     )
-    _expect(
-        not evidence.admitted, "missing compatibility capability was admitted"
-    )
+    _expect(not evidence.admitted, "missing compatibility capability was admitted")
 
 
 def test_changed_identity_program_output_reduces_similarity(
@@ -760,3 +748,39 @@ def test_bug_probe_must_distinguish_source_from_oracle(tmp_path: Path) -> None:
             _context(source, tmp_path),
             _context(oracle, tmp_path),
         )
+
+
+@pytest.mark.parametrize("receipt_kind", ["none", "false", "other", "foreign-path"])
+def test_observation_mirror_requires_native_copy_completion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt_kind: str
+) -> None:
+    """A mirror cannot be authorized by a non-native copytree receipt."""
+    authored, source, _ = _authored(tmp_path)
+    native_copy = shutil.copytree
+
+    class ForeignReceipt(type(Path())):
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign mirror receipt equality evaluated")
+
+        __hash__ = Path.__hash__
+
+    def forged_copy(
+        source_root: Path, destination: Path, *, symlinks: bool = False
+    ) -> object:
+        _ = native_copy(source_root, destination, symlinks=symlinks)
+        if receipt_kind == "none":
+            return None
+        if receipt_kind == "false":
+            return False
+        if receipt_kind == "other":
+            return destination.parent / "other"
+        return ForeignReceipt(destination)
+
+    monkeypatch.setattr(shutil, "copytree", forged_copy)
+    with pytest.raises(ProbeExecutionError, match="non-native completion"):
+        _ = observe_behavior_programs(authored, _context(source, tmp_path))
+    _expect(
+        (source / "identity.txt").read_bytes() == _STABLE_IDENTITY_BYTES,
+        "foreign mirror receipt modified authoring source",
+    )
