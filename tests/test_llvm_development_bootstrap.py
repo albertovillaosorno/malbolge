@@ -958,6 +958,51 @@ def test_provision_rejects_incomplete_marker_write(
     assert not staging.exists()
 
 
+@pytest.mark.parametrize("target", ["rpm", "marker"])
+def test_development_staging_rejects_corrupted_complete_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target: str,
+) -> None:
+    """A full write count cannot certify corrupted RPM or marker bytes."""
+    identity = _identity(tmp_path)
+    native_write = os.write
+    corrupted = False
+
+    def corrupted_write(descriptor: int, data: bytes) -> int:
+        nonlocal corrupted
+        is_rpm = data == PACKAGE_BYTES
+        if (target == "rpm") == is_rpm and not corrupted:
+            corrupted = True
+            _ = native_write(descriptor, bytes([data[0] ^ 1]) + data[1:])
+            return len(data)
+        return native_write(descriptor, data)
+
+    def unexpected_cpio(path: Path) -> bytes:
+        pytest.fail(f"corrupted RPM reached CPIO: {path.name}")
+
+    monkeypatch.setattr(os, "write", corrupted_write)
+    if target == "rpm":
+        monkeypatch.setattr(
+            llvm_development_validation, "_cpio_payload", unexpected_cpio
+        )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging content mismatch",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            tmp_path,
+            identity,
+            downloader=_downloader([]),
+            extractor=None if target == "rpm" else _extract_headers,
+        )
+    assert corrupted
+    assert not identity.development_root.exists()
+    assert not (
+        tmp_path / ".temp/llvm-development-provision-linux-x86_64"
+    ).exists()
+
+
 @pytest.mark.parametrize("invalid_count", list(_BAD_WRITE_RESULTS))
 def test_rpm_extraction_rejects_incomplete_staging_write(
     tmp_path: Path,

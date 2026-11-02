@@ -213,7 +213,7 @@ def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
     if _preflight_path_status(path, path.exists, "staging"):
         _fail(f"LLVM development staging file already exists: {path.name}")
     flags = (
-        os.O_WRONLY
+        os.O_RDWR
         | os.O_CREAT
         | os.O_EXCL
         | getattr(os, "O_NOFOLLOW", 0)
@@ -247,6 +247,7 @@ def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
             ) from error
         if type(written) is not int or written != len(content):
             _fail(f"LLVM development staging write count mismatch: {path.name}")
+        _verify_staging_readback(path, descriptor, content, opened)
     finally:
         try:
             os.close(descriptor)
@@ -254,6 +255,48 @@ def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
             raise LlvmDevelopmentProvisionError(
                 f"LLVM development staging file close failed: {path.name}"
             ) from error
+
+
+def _verify_staging_readback(
+    path: Path,
+    descriptor: int,
+    content: bytes,
+    opened: os.stat_result,
+) -> None:
+    """Check staged bytes and ownership through the original write descriptor."""
+    try:
+        offset = os.lseek(descriptor, 0, os.SEEK_SET)
+        if type(offset) is not int or offset != 0:
+            _fail(f"LLVM development staging content mismatch: {path.name}")
+        for start in range(0, len(content), 1024 * 1024):
+            expected = content[start : start + 1024 * 1024]
+            observed = os.read(descriptor, len(expected))
+            if type(observed) is not bytes or observed != expected:
+                _fail(f"LLVM development staging content mismatch: {path.name}")
+        tail = os.read(descriptor, 1)
+        if type(tail) is not bytes or tail:
+            _fail(f"LLVM development staging content mismatch: {path.name}")
+        after_opened = os.fstat(descriptor)
+        after_physical = path.lstat()
+    except LlvmDevelopmentProvisionError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            f"LLVM development staging file readback failed: {path.name}"
+        ) from error
+    if (
+        not _native_regular_status(after_opened)
+        or not _native_regular_status(after_physical)
+        or after_opened.st_nlink != 1
+        or after_physical.st_nlink != 1
+        or after_opened.st_size != len(content)
+        or after_physical.st_size != len(content)
+        or (opened.st_dev, opened.st_ino)
+        != (after_opened.st_dev, after_opened.st_ino)
+        or (opened.st_dev, opened.st_ino)
+        != (after_physical.st_dev, after_physical.st_ino)
+    ):
+        _fail(f"LLVM development staging content mismatch: {path.name}")
 
 
 def _extract_rpm_headers(
