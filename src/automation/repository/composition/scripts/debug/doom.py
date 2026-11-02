@@ -469,20 +469,46 @@ def _run_with_open_sanitizer_log(
 
     """
     _write_standard_output(f"sanitizer log: {log_file.name}\n")
-    # jig-ignore-next-line: indivisible reviewed identifier
-    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
-        (str(configuration.executable), *configuration.arguments),
-        cwd=configuration.source.parent,
-        env=configuration.environment,
-        stdout=log_file,
-        stderr=subprocess.STDOUT,
-        check=False,
-        shell=False,
-    )
+    command = (str(configuration.executable), *configuration.arguments)
+    try:
+        # jig-ignore-next-line: indivisible reviewed identifier
+        completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+            command,
+            cwd=configuration.source.parent,
+            env=configuration.environment,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            check=False,
+            shell=False,
+        )
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as error:
+        raise DoomDebugError("DOOM sanitizer process launch failed") from error
     log_file.flush()
     _verify_sanitizer_log(log_file)
+    if type(completed) is not subprocess.CompletedProcess:
+        _fail("invalid DOOM sanitizer process receipt")
+    native = cast("subprocess.CompletedProcess[object]", completed)
+    argv = cast("object", native.args)
+    if type(argv) is not tuple:
+        _fail("invalid DOOM sanitizer process receipt")
+    observed = cast("tuple[object, ...]", argv)
+    if (
+        type(native.returncode) is not int
+        or len(observed) != len(command)
+        or any(type(argument) is not str for argument in observed)
+        or observed != command
+        or native.stdout is not None
+        or native.stderr is not None
+    ):
+        _fail("invalid DOOM sanitizer process receipt")
     _echo_sanitizer_log(log_file)
-    return completed.returncode
+    return native.returncode
 
 
 def _admit_new_sanitizer_log(

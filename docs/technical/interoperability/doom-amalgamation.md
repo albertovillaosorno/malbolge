@@ -88,10 +88,13 @@ and verifies the empty regular descriptor has the same unique inode as the
 named log. It rejects foreign, preexisting, and multiply linked log receipts.
 After execution, it checks that the named output still matches its open
 descriptor before echoing at most one MiB to the console. The complete
-sanitizer diagnostic stream remains in the retained log file. Neither the log
-path nor its output bytes may be substituted after process execution; these
-local admission checks do not make arbitrary concurrent parent replacement
-atomic. Console summaries and bounded log echoes must receive an exact native
+sanitizer diagnostic stream remains in the retained log file. The direct
+sanitizer guest process must also return a native completion for the exact
+immutable executable/argument tuple, integer status and uncaptured output;
+malformed receipts and host launch faults raise typed DOOM debug errors.
+Neither the log path nor its output bytes may be substituted after process
+execution; these local admission checks do not make arbitrary concurrent parent
+replacement atomic. Console summaries and bounded log echoes must receive an exact native
 write count and successful flush before the debug runner proceeds; incomplete
 or foreign output delivery raises a typed DOOM debug error. Optional LLDB
 execution likewise requires native exact-argv and integer-status process

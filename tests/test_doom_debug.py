@@ -78,6 +78,7 @@ def _configuration(tmp_path: Path) -> doom.LaunchConfiguration:
 
 
 def _write_process_output(
+    command: tuple[str, ...],
     kwargs: dict[str, object],
     *,
     payload: bytes = EXPECTED_OUTPUT,
@@ -86,7 +87,7 @@ def _write_process_output(
     output = cast("BinaryIO", kwargs["stdout"])
     _ = output.write(payload)
     output.flush()
-    return sp.CompletedProcess(args=("fake",), returncode=status, stdout="")
+    return sp.CompletedProcess(args=command, returncode=status)
 
 
 def test_doom_debug_log_never_overwrites_predictable_symlink(
@@ -111,7 +112,7 @@ def test_doom_debug_log_never_overwrites_predictable_symlink(
         *_args: object, **kwargs: object
     ) -> sp.CompletedProcess[str]:
         _ = _args
-        return _write_process_output(kwargs)
+        return _write_process_output(cast("tuple[str, ...]", _args[0]), kwargs)
 
     monkeypatch.setattr(sp, "run", run_process)
     assert RUN_DIRECT(config) == EXPECTED_EXIT
@@ -263,7 +264,9 @@ def test_doom_debug_logs_use_unique_paths_per_same_second(
         *_args: object, **kwargs: object
     ) -> sp.CompletedProcess[str]:
         _ = _args
-        return _write_process_output(kwargs, status=0)
+        return _write_process_output(
+            cast("tuple[str, ...]", _args[0]), kwargs, status=0
+        )
 
     monkeypatch.setattr(sp, "run", run_process)
     assert RUN_DIRECT(config) == 0
@@ -287,7 +290,9 @@ def test_doom_debug_console_echo_is_bounded_but_log_is_complete(
         *_args: object, **kwargs: object
     ) -> sp.CompletedProcess[str]:
         _ = _args
-        return _write_process_output(kwargs, payload=payload, status=0)
+        return _write_process_output(
+            cast("tuple[str, ...]", _args[0]), kwargs, payload=payload, status=0
+        )
 
     monkeypatch.setattr(sp, "run", run_process)
     assert RUN_DIRECT(config) == 0
@@ -702,3 +707,90 @@ def test_doom_lldb_preserves_native_nonzero_exit(
 
     monkeypatch.setattr(sp, "run", valid_run)
     assert doom._run_lldb(config) == 13  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "kind",
+    (
+        "foreign-process",
+        "foreign-argv",
+        "different-executable",
+        "different-flag",
+        "boolean-status",
+        "float-status",
+        "missing-status",
+        "foreign-status",
+        "unexpected-stdout",
+        "unexpected-stderr",
+    ),
+)
+def test_doom_direct_sanitizer_rejects_forged_process_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Only native, exact-argv direct guest completions can report a status."""
+    config = _configuration(tmp_path)
+
+    class ForeignStatus(int):
+        pass
+
+    class ForeignCompletion:
+        returncode: int = 0
+
+    def forged(command: tuple[str, ...], **kwargs: object) -> object:
+        stream = cast("BinaryIO", kwargs["stdout"])
+        _ = stream.write(EXPECTED_OUTPUT)
+        if kind == "foreign-process":
+            return ForeignCompletion()
+        argv: object = command
+        status: object = 0
+        stdout: object = None
+        stderr: object = None
+        if kind == "foreign-argv":
+            argv = list(command)
+        elif kind == "different-executable":
+            argv = ("foreign.exe", *command[1:])
+        elif kind == "different-flag":
+            argv = (*command[:-1], "--foreign")
+        elif kind == "boolean-status":
+            status = False
+        elif kind == "float-status":
+            status = 0.0
+        elif kind == "missing-status":
+            status = None
+        elif kind == "foreign-status":
+            status = ForeignStatus(0)
+        elif kind == "unexpected-stdout":
+            stdout = b"forged"
+        else:
+            stderr = b"forged"
+        return sp.CompletedProcess(
+            cast("tuple[str, ...]", argv),
+            cast("int", status),
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+    monkeypatch.setattr(sp, "run", forged)
+    with pytest.raises(doom.DoomDebugError, match="sanitizer process receipt"):
+        _ = RUN_DIRECT(config)
+
+
+@pytest.mark.parametrize("failure", (OSError, ValueError, TypeError, RuntimeError))
+def test_doom_direct_sanitizer_types_host_launch_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: type[Exception],
+) -> None:
+    """Host launch errors stay typed rather than leaking to the debug caller."""
+    config = _configuration(tmp_path)
+    error = failure("synthetic DOOM guest launch failure")
+
+    def failed(_command: tuple[str, ...], **_kwargs: object) -> None:
+        raise error
+
+    monkeypatch.setattr(sp, "run", failed)
+    with pytest.raises(doom.DoomDebugError, match="sanitizer process launch") as raised:
+        _ = RUN_DIRECT(config)
+    assert raised.value.__cause__ is error
