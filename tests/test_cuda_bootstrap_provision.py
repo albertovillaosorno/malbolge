@@ -4409,6 +4409,86 @@ def test_cuda_nonposix_overlay_preserves_contained_source_symlink(
         assert (copied / "nvrtc.dll").read_bytes() == b"trusted"
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX link fixtures")
+@pytest.mark.parametrize("link_kind", ("symlink", "hardlink"))
+def test_cuda_nonposix_overlay_does_not_write_through_late_file_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link_kind: str
+) -> None:
+    """Late target links cannot make portable copytree overwrite outside bytes."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "nvrtc.dll").write_bytes(b"trusted archive")
+    destination = tmp_path / "destination"
+    (destination / "lib64").mkdir(parents=True)
+    outside = tmp_path / "outside"
+    _ = outside.write_bytes(b"foreign sentinel")
+    target = destination / "lib64" / "nvrtc.dll"
+    status = source.stat()
+    native_copytree = shutil.copytree
+    inserted = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def late_link(
+        src: Path, dst: Path, *args: object, **options: object
+    ) -> Path:
+        nonlocal inserted
+        if not inserted:
+            if link_kind == "symlink":
+                _ = target.symlink_to(outside)
+            else:
+                os.link(outside, target)
+            inserted = True
+        return native_copytree(src, dst, *args, **options)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(shutil, "copytree", late_link)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="collision"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert inserted
+    assert outside.read_bytes() == b"foreign sentinel"
+
+
+def test_cuda_nonposix_overlay_does_not_rewrite_identical_existing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Identical archive overlaps must preserve preexisting physical metadata."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "nvrtc.dll").write_bytes(b"matching")
+    destination = tmp_path / "destination"
+    (destination / "lib64").mkdir(parents=True)
+    target = destination / "lib64" / "nvrtc.dll"
+    _ = target.write_bytes(b"matching")
+    os.utime(target, ns=(1234567890000, 1234567890000))
+    original = target.stat()
+    status = source.stat()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+            source, destination, (status.st_dev, status.st_ino)
+        )
+    assert target.read_bytes() == b"matching"
+    after = target.stat()
+    assert (after.st_dev, after.st_ino, after.st_mtime_ns) == (
+        original.st_dev, original.st_ino, original.st_mtime_ns
+    )
+
+
 @pytest.mark.parametrize("existing", [b"matching", b"different"])
 def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,

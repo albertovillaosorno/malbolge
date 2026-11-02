@@ -1050,7 +1050,7 @@ def _copy_cuda_overlay(
                 if type(target) is not str:
                     _fail("CUDA staged overlay source member link requires text")
                 try:
-                    _archive_member_path(target)
+                    _ = _archive_member_path(target)
                 except CudaProvisionError as error:
                     raise CudaProvisionError(
                         "CUDA staged overlay source member link is unsafe"
@@ -1097,10 +1097,55 @@ def _copy_cuda_overlay(
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             detail = f"CUDA staged overlay preflight failed: {_native_error_name(error)}"
             raise CudaProvisionError(detail) from error
+
+        def copy_physical_member(
+            source_name: str | os.PathLike[str],
+            target_name: str | os.PathLike[str],
+        ) -> str:
+            source_file = Path(source_name)
+            target_file = Path(target_name)
+            _require_physical_directories(source_file.parent, "staged overlay source")
+            _require_physical_directories(
+                target_file.parent, "staged overlay destination"
+            )
+            payload = _read_manifest_source(
+                source_file,
+                "CUDA staged overlay source",
+                max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
+            )
+            try:
+                existing_status = target_file.lstat()
+            except FileNotFoundError:
+                _ = _write_staged_file_exclusively(
+                    target_file, payload, "CUDA staged overlay member"
+                )
+            else:
+                if (
+                    type(existing_status) is not os.stat_result
+                    or not S_ISREG(existing_status.st_mode)
+                    or existing_status.st_nlink != 1
+                    or _read_manifest_source(
+                        target_file,
+                        "CUDA staged overlay destination",
+                        max_bytes=_MAX_CUDA_ARCHIVE_MEMBER_BYTES,
+                    ) != payload
+                ):
+                    _fail("CUDA staged overlay member collision")
+            _require_physical_directories(
+                target_file.parent, "staged overlay destination"
+            )
+            return os.fspath(target_name)
+
         try:
             _ = shutil.copytree(
-                source, destination, dirs_exist_ok=True, symlinks=True,
+                source,
+                destination,
+                dirs_exist_ok=True,
+                symlinks=True,
+                copy_function=copy_physical_member,
             )
+        except CudaProvisionError:
+            raise
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             detail = f"CUDA staged overlay copy failed: {_native_error_name(error)}"
             raise CudaProvisionError(detail) from error
