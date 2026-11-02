@@ -56,10 +56,11 @@ a typed bootstrap error with the original host failure as its cause.
 Pinned uv release downloads use a bounded 128-MiB response read and reject
 oversized archives before hashing. They accept only exact native byte responses;
 an otherwise matching digest on a bytearray, view, or bytes subclass cannot
-satisfy archive verification. Network and response-read host failures become
-typed provisioning errors that preserve their original cause without evaluating
-foreign exception formatters. Selected tar.gz and ZIP executable members also
-require native size receipts and bounded 128-MiB reads before installation; tar
+satisfy archive verification. Network and response-read host failures,
+including incomplete HTTP bodies, become typed provisioning errors that
+preserve their original cause without evaluating foreign exception formatters.
+Selected tar.gz and ZIP executable members also require native size
+receipts and bounded 128-MiB reads before installation; tar
 links and oversized extracted executables are rejected without a full read.
 UV archives admit at most 4,096 members; TAR scanning stops at the limit
 without first materializing its full inventory, and all scanned TAR member
@@ -125,8 +126,9 @@ parents/interpreters, non-directory environments, and externally hardlinked
 interpreters fail closed. Interpreter identity is rechecked after uv bootstrap,
 after virtual-environment creation, between pip sync and pip uninstall,
 and after native launcher and Jig alias publication: changed inodes,
-injected links, or late substitutions
-fail before subsequent commands. These checks narrow callback mutation windows
+injected links, or late substitutions fail before subsequent commands. A
+builder that returns without creating a physical Python interpreter cannot
+invoke pip sync. These checks narrow callback mutation windows
 but do not make concurrent ancestor swaps atomic.
 
 Python keeps native platform launchers and publishes neutral Jig aliases below
