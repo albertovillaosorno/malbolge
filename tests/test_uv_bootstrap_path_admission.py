@@ -936,6 +936,27 @@ def test_uv_tar_rejects_duplicate_selected_executable() -> None:
         _ = python_validation._tar_member_bytes(output.getvalue(), member_name)
 
 
+def test_uv_tar_rejects_selected_member_short_read(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even a bounded short TAR read cannot become a complete uv executable."""
+    member_name = "uv-release/uv"
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        info = tarfile.TarInfo(member_name)
+        info.size = len(BINARY)
+        archive.addfile(info, io.BytesIO(BINARY))
+
+    def incomplete_member(
+        _archive: tarfile.TarFile, _member: tarfile.TarInfo | str
+    ) -> io.BytesIO:
+        return io.BytesIO(BINARY[:-1])
+
+    monkeypatch.setattr(tarfile.TarFile, "extractfile", incomplete_member)
+    with pytest.raises(python_validation.ProvisionError, match="length"):
+        _ = python_validation._tar_member_bytes(output.getvalue(), member_name)  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize("selected_position", [FIRST_SELECTED, "last"])
 def test_uv_tar_rejects_oversized_nonselected_member(
     monkeypatch: pytest.MonkeyPatch,

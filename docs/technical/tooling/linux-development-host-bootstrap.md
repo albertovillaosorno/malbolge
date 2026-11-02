@@ -76,9 +76,10 @@ may not advertise DOS directory or volume-label status even if their names
 resemble executable files. Duplicate names for the selected
 ZIP executable are rejected as ambiguous. Selected ZIP member bytes must
 also match the declared uncompressed length even when the CRC is valid; a
-short read cannot become a complete executable. The executable writer
-independently requires native bounded bytes before it creates its exclusive
-staging file, even if called with an injected extractor.
+short read cannot become a complete executable. Selected TAR executable
+bytes must likewise match their declared member size, rejecting short reads.
+The executable writer independently requires native bounded bytes before it
+creates its exclusive staging file, even with an injected extractor.
 Pinned uv executable provisioning rejects symlinked, junction, non-directory,
 and multiply linked executable paths before executing an already-installed
 binary or creating new files. New uv payloads use an exclusively created

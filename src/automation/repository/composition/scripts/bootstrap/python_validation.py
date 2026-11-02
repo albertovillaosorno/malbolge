@@ -557,7 +557,12 @@ def _tar_member_bytes(data: bytes, member_name: str) -> bytes:
         if member is None:
             _fail(f"uv archive member is not a file: {member_name}")
         with member:
-            return _bounded_uv_member_bytes(member.read(MAX_UV_BINARY_BYTES + 1))
+            content = _bounded_uv_member_bytes(
+                member.read(MAX_UV_BINARY_BYTES + 1)
+            )
+        if len(content) != info.size:
+            _fail("uv tar member length differs from declared size")
+        return content
 
 
 def _uv_member_bytes(data: bytes, artifact: UvArtifact) -> bytes:
