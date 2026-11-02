@@ -372,13 +372,16 @@ def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:
     payload = _read_manifest_source(path, label)
     try:
         source_text = payload.decode("utf-8")
+        # Capture the provider before call: an injected decoder can restore
+        # json.loads while returning an unrelated native-looking package tree.
+        decoder = json.loads
         parsed = cast(
             "object",
-            json.loads(source_text, object_pairs_hook=_reject_duplicate_pairs),
+            decoder(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
-        # Source bytes own the package identity even if public JSON decoding
-        # is replaced with a native-looking but unrelated package document.
-        if json.loads is not _NATIVE_JSON_LOADS:
+        # Corroborate complete source bytes against the bound original decoder.
+        # Use only its independent objects, not an adapter-retained alias.
+        if decoder is not _NATIVE_JSON_LOADS:
             original = cast(
                 "object",
                 _NATIVE_JSON_LOADS(
@@ -387,6 +390,7 @@ def _read_document(path: Path, label: str) -> tuple[dict[str, object], bytes]:
             )
             if not _cuda_same_native_json(parsed, original):
                 _fail("CUDA JSON decoder provider differs from source")
+            parsed = original
     except CudaProvisionError:
         raise
     except (UnicodeDecodeError, json.JSONDecodeError, OSError, TypeError, ValueError, RuntimeError) as error:

@@ -356,6 +356,74 @@ def test_cuda_manifest_decoder_cannot_forge_package_digest(
             )
 
 
+@pytest.mark.parametrize("entrypoint", ["document", "manifest"])
+def test_cuda_manifest_decoder_rejects_self_restoring_forgery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    """A replaced decoder may not restore itself mid-call to conceal a digest."""
+    manifest = _manifest(tmp_path, _payload())
+    native = json.loads
+    forged = cast("dict[str, object]", native(manifest.read_text()))
+    package = cast("dict[str, object]", cast("list[object]", forged["packages"])[0])
+    package["sha256"] = "0" * 64
+
+    def restore_and_forge(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        monkeypatch.setattr(json, "loads", native)
+        return forged
+
+    monkeypatch.setattr(json, "loads", restore_and_forge)
+    with pytest.raises(
+        cuda_validation.CudaProvisionError,
+        match="CUDA JSON decoder provider differs from source",
+    ):
+        if entrypoint == "document":
+            _ = cuda_validation._read_document(manifest, "CUDA provision manifest")
+        else:
+            _ = cuda_validation.load_cuda_provision_manifest(
+                tmp_path, manifest, LINUX_PLATFORM
+            )
+
+
+def test_cuda_manifest_decoder_returns_independent_source_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent adapter cannot mutate the accepted manifest afterward."""
+    manifest = _manifest(tmp_path, _payload())
+    native = json.loads
+    receipts: list[object] = []
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        parsed = cast(
+            "object",
+            native(
+                text,
+                object_pairs_hook=cast(
+                    "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+                ),
+            ),
+        )
+        receipts.append(parsed)
+        return parsed
+
+    monkeypatch.setattr(json, "loads", delegated)
+    admitted, _ = cuda_validation._read_document(manifest, "CUDA provision manifest")
+    assert admitted == receipts[0]
+    assert admitted is not receipts[0]
+    forged = cast("dict[str, object]", receipts[0])
+    forged_package = cast(
+        "dict[str, object]", cast("list[object]", forged["packages"])[0]
+    )
+    forged_package["sha256"] = "0" * 64
+    admitted_package = cast(
+        "dict[str, object]", cast("list[object]", admitted["packages"])[0]
+    )
+    assert admitted_package["sha256"] != forged_package["sha256"]
+
+
 def test_cuda_manifest_decoder_accepts_equivalent_adapter(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

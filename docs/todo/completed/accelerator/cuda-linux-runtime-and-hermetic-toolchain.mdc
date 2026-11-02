@@ -114,6 +114,10 @@ fallback, verifier authority, and existing Windows support.
   Two red-first forged package-digest entrypoints, masked syntax errors, and
   foreign nested-key controls now fail closed; source-equivalent adapters pass.
   The focused CUDA bootstrap provisioning suite passes 410 tests.
+- A 2026-11-02 follow-up binds the substituted CUDA manifest JSON decoder
+  at invocation, rejecting callbacks that restore the module provider before
+  source verification. Equivalent adapters yield an independent source tree,
+  with three red-first direct/manifest/alias regression cases.
 - Foundation completion evidence: `linux-development-host-bootstrap` and
   `documentation-readiness-and-implementation-gate`. The active
   `cuda-exact-vm-adapter` supplies the implementation surface being ported but
