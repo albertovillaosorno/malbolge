@@ -1201,6 +1201,7 @@ def test_development_child_stage_creation_fault_cleans_owned_root(
     staging = tmp_path / ".temp/llvm-development-provision-linux-x86_64"
     child = staging / "development"
     native_mkdir = Path.mkdir
+    native_os_mkdir = os.mkdir
     fault = OSError("cannot create development child")
 
     def fault_mkdir(
@@ -1213,8 +1214,21 @@ def test_development_child_stage_creation_fault_cleans_owned_root(
             raise fault
         return native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
 
+    def fault_native_mkdir(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        if path == child.name and dir_fd is not None:
+            raise fault
+        native_os_mkdir(path, mode, dir_fd=dir_fd)
+
     with monkeypatch.context() as isolated:
-        isolated.setattr(Path, "mkdir", fault_mkdir)
+        if os.name == "posix":
+            isolated.setattr(os, "mkdir", fault_native_mkdir)  # pyright: ignore[reportUnreachable]
+        else:
+            isolated.setattr(Path, "mkdir", fault_mkdir)
         with pytest.raises(
             llvm_development_validation.LlvmDevelopmentProvisionError,
             match="development stage creation failed",
@@ -3670,3 +3684,60 @@ def test_development_parent_walk_close_fault_closes_new_child(
     finally:
         with suppress(OSError):
             native_close(new_children[0])
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires pinned POSIX mkdir")
+@pytest.mark.parametrize("replacement", ["symlink", "physical"])
+def test_development_child_stage_mkdir_stays_on_owned_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A late staging swap must not create the child in a foreign parent."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    identity = _identity(root)
+    foreign, sentinel = _external_sentinel(tmp_path)
+    staging = root / f".temp/llvm-development-provision-{LINUX_PLATFORM}"
+    owned = tmp_path / "parked-original-staging"
+    native_mkdir = os.mkdir
+    swapped = False
+    downloads: list[str] = []
+
+    def swap_before_child_mkdir(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (
+            path == staging / "development"
+            or (path == "development" and dir_fd is not None)
+        ):
+            _ = staging.rename(owned)
+            if replacement == "symlink":
+                _ = staging.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(staging)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_before_child_mkdir)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                root,
+                identity,
+                downloader=_downloader(downloads),
+                extractor=_extract_headers,
+            )
+    assert swapped
+    foreign_root = foreign if replacement == "symlink" else staging
+    assert set(foreign_root.iterdir()) == {
+        sentinel if replacement == "symlink" else staging / sentinel.name
+    }
+    assert not downloads
+    assert (owned / "development").is_dir()
+    assert not identity.development_root.exists()

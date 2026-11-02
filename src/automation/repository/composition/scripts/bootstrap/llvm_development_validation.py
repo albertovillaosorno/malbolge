@@ -1080,12 +1080,27 @@ def provision_development_identity(
     child_identity: tuple[int, int] | None = None
     cleanup_permitted = True
     try:
-        try:
-            staged_root.mkdir()
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise LlvmDevelopmentProvisionError(
-                "LLVM development stage creation failed"
-            ) from error
+        if os.name != "posix":
+            try:
+                staged_root.mkdir()
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmDevelopmentProvisionError(
+                    "LLVM development stage creation failed"
+                ) from error
+        else:
+            parent_descriptor = _open_physical_publication_parent(  # pyright: ignore[reportUnreachable]
+                staged_root, "staging"
+            )
+            try:
+                try:
+                    os.mkdir(staged_root.name, dir_fd=parent_descriptor)
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
+                    raise LlvmDevelopmentProvisionError(
+                        "LLVM development stage creation failed"
+                    ) from error
+            finally:
+                _close_physical_parent(parent_descriptor, "staging")
+        _assert_owned_staged_child(staging, staging_identity)
         child_identity = _staging_directory_identity(staged_root)
         _stage_development_assets(
             identity,
