@@ -89,6 +89,13 @@ source decode, not the public parser's mutable alias. Delegating loaders that
 preserve every source value remain supported. This does not authenticate the
 source or arbitrary changes to the original Python implementation.
 
+Canonical profile fingerprints and the generated fingerprint manifest now
+compute JSON text through an import-bound `JSONEncoder` class before invoking
+the replaceable public writer. Substituted `json.dumps` and `JSONEncoder`
+providers cannot change profile digests or published manifest bytes, including
+joint and self-restoring substitutions. Source-equivalent delegates remain
+valid. This protects public writer identity, not shared JSON internals.
+
 The validator also enforces exact schema keys, ternary word
 consistency, single-word memory consistency, EOF at the maximum profile
 word, the frozen 1998 machine envelope, exactly one selected

@@ -71,6 +71,7 @@ CURRENT_VERSION = "2026"
 SCHEMA_VERSION = 2
 MAX_DOCUMENT_BYTES = 1024 * 1024
 _NATIVE_JSON_DECODER = json.JSONDecoder
+_NATIVE_JSON_ENCODER = json.JSONEncoder
 CURRENT_KIND = "current"
 HISTORICAL_KIND = "historical-conformance"
 VERSIONED_KIND = "versioned"
@@ -254,6 +255,37 @@ class ProfileFingerprintMismatchError(ProfileValidationError):
 
 def _fail(message: str) -> Never:
     raise ProfileValidationError(message)
+
+
+def _source_bound_json_text(document: JsonObject, *, pretty: bool) -> str:
+    """Require canonical JSON from an import-bound encoder, not public hooks."""
+    try:
+        if pretty:
+            source = _NATIVE_JSON_ENCODER(indent=2, sort_keys=True).encode(document)
+            observed = json.dumps(document, indent=2, sort_keys=True)
+        else:
+            source = _NATIVE_JSON_ENCODER(
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            ).encode(document)
+            observed = json.dumps(
+                document,
+                allow_nan=False,
+                ensure_ascii=True,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+    except ProfileValidationError:
+        raise
+    except Exception as error:
+        raise ProfileValidationError(
+            f"profile JSON writer failed: {type(error).__name__}"
+        ) from error
+    if type(source) is not str or type(observed) is not str or source != observed:
+        _fail("profile JSON writer differs from source")
+    return source
 
 
 def _expect_exact_keys(
@@ -977,13 +1009,7 @@ def _canonical_identity_bytes(
         profile,
         target_schema_version,
     )
-    encoded = json.dumps(
-        material,
-        allow_nan=False,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    encoded = _source_bound_json_text(material, pretty=False)
     return encoded.encode("ascii")
 
 
@@ -1202,7 +1228,7 @@ def render_profile_fingerprint_manifest(document: JsonObject) -> str:
         "schema_version": 1,
         "target_schema_version": SCHEMA_VERSION,
     }
-    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+    return _source_bound_json_text(payload, pretty=True) + "\n"
 
 
 def _rust_string(value: str, context: str) -> str:

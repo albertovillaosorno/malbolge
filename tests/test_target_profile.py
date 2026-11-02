@@ -778,6 +778,76 @@ def test_rust_projection_matches_canonical_profile() -> None:
     assert observed == expected
 
 
+@pytest.mark.parametrize("entrypoint", ("identity", "manifest"))
+@pytest.mark.parametrize(
+    "provider", ("dumps-only", "encoder-only", "joint", "self-restoring")
+)
+def test_target_profile_json_writer_cannot_forge_identity_or_manifest(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str, provider: str
+) -> None:
+    """Neither profile hashes nor generated records trust public JSON writers."""
+    document = validator.load_document(PROFILE_PATH)
+    original_encoder = json.JSONEncoder
+    original_dumps = json.dumps
+    target = "profile" if entrypoint == "identity" else "profiles"
+
+    def is_target(value: object) -> bool:
+        return type(value) is dict and target in value
+
+    class ForgedEncoder:
+        def __init__(self, **kwargs: object) -> None:
+            self.delegate = original_encoder(
+                sort_keys=True,
+                indent=2 if entrypoint == "manifest" else None,
+                separators=None if entrypoint == "manifest" else (",", ":"),
+            )
+            if provider == "self-restoring":
+                patch.setattr(json, "JSONEncoder", original_encoder)
+
+        def encode(self, value: object) -> str:
+            return "{}" if is_target(value) else self.delegate.encode(value)
+
+    def forged_dumps(value: object, **kwargs: object) -> str:
+        if is_target(value):
+            return "{}"
+        return cast("Callable[..., str]", original_dumps)(value, **kwargs)
+
+    with monkeypatch.context() as patch:
+        if provider in ("encoder-only", "joint", "self-restoring"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if provider in ("dumps-only", "joint"):
+            patch.setattr(json, "dumps", forged_dumps)
+        with pytest.raises(
+            validator.ProfileValidationError,
+            match="profile JSON writer differs from source",
+        ):
+            if entrypoint == "identity":
+                profile = cast("dict[str, object]", document["profiles"])[
+                    CURRENT_PROFILE
+                ]
+                _ = validator._canonical_identity_bytes(  # pyright: ignore[reportPrivateUsage]
+                    CURRENT_PROFILE, cast("dict[str, object]", profile), 2
+                )
+            else:
+                _ = validator.render_profile_fingerprint_manifest(document)
+
+
+def test_target_profile_source_equivalent_public_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Delegating JSONEncoder classes preserve tracked fingerprint bytes."""
+    document = validator.load_document(PROFILE_PATH)
+    expected = validator.FINGERPRINT_MANIFEST.read_text(encoding="utf-8")
+    original = json.JSONEncoder
+
+    class DelegatingEncoder(original):
+        """Source-preserving writer."""
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", DelegatingEncoder)
+        assert validator.render_profile_fingerprint_manifest(document) == expected
+
+
 def test_fingerprint_manifest_matches_canonical_profile() -> None:
     """Checked-in fingerprints are a byte-exact canonical projection."""
     document = validator.load_document(PROFILE_PATH)
