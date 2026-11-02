@@ -47,7 +47,9 @@ CMake failures and native build-tool discovery failures retain typed error
 causes without invoking custom host exception formatting hooks. Native CMake
 build receipts must have exact integer exit statuses, matching native command
 argument lists, and native stdout/stderr text; foreign receipt objects or forged
-command identities cannot impersonate successful builds. Symlink, junction,
+command identities cannot impersonate successful builds. The expected argument
+list is retained separately from the launched copy so subprocess wrappers cannot
+alter both the command and its evidence in place. Symlink, junction,
 and non-directory substitutions fail closed. On Linux, those build-output
 path checks also require exact native booleans from every directory ancestor;
 foreign path-status hooks cannot authorize an output location. The build

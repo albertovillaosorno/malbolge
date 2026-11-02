@@ -379,3 +379,28 @@ def test_frontend_build_cli_failed_diagnostics_retain_failure(
     monkeypatch.setattr(c_frontend_build, "build", fail_build)
     monkeypatch.setattr(sys, "stderr", cast("TextIO", cast("object", BrokenStderr())))
     assert c_frontend_build.main() == 1
+
+
+@pytest.mark.parametrize("mutation", ("executable", "append", "remove"))
+def test_linux_frontend_rejects_mutated_cmake_launch_command(
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+) -> None:
+    """A launcher cannot mutate the expected argv along with its CMake receipt."""
+    command = ["cmake", "--version"]
+
+    def mutating_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        if mutation == "executable":
+            args[0] = "/foreign/cmake"
+        elif mutation == "append":
+            args.append("--unexpected")
+        else:
+            _ = args.pop()
+        return sp.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(c_frontend_build_linux.sp, "run", mutating_run)
+    with pytest.raises(
+        c_frontend_build_linux.LinuxFrontendBuildError, match="process receipt"
+    ):
+        c_frontend_build_linux._checked_run(command, "CMake")
+    assert command == ["cmake", "--version"]
