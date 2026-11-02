@@ -1368,13 +1368,28 @@ def _rename_linux_development_no_replace(
         raise OSError(error_number, "LLVM development no-replace rename failed")
 
 
+def _attest_staged_development(
+    staged_root: Path,
+    headers: dict[Path, tuple[str, bytes | None, int, int]],
+    marker: bytes,
+) -> None:
+    """Reject changed staged member bytes or marker before the final rename."""
+    if _header_tree_receipt(staged_root / "include") != headers:
+        _fail("LLVM development staged headers changed before publication")
+    if not _exact_marker_matches(staged_root / LLVM_DEVELOPMENT_MARKER, marker):
+        _fail("LLVM development staged marker changed before publication")
+
+
 def _publish_development_root(
     staged_root: Path,
     destination: Path,
     child_identity: tuple[int, int],
+    *,
+    attest: Callable[[], None],
 ) -> None:
     """Move only the owned stage through pinned physical POSIX directories."""
     if os.name != "posix":
+        attest()
         try:
             _ = staged_root.replace(destination)
         except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -1406,6 +1421,7 @@ def _publish_development_root(
                 pass
             else:
                 _fail("LLVM development destination became occupied before publication")
+            attest()
             _rename_linux_development_no_replace(
                 staged_root.name,
                 destination.name,
@@ -1547,9 +1563,16 @@ def provision_development_identity(
         )
         _assert_owned_staged_child(staged_root, child_identity)
         _require_physical_directories(staged_root, "staging")
+        expected_headers = _header_tree_receipt(staged_root / "include")
+        expected_marker = _marker_bytes(identity)
         _write_verified_staging_bytes(
-            staged_root / LLVM_DEVELOPMENT_MARKER, _marker_bytes(identity)
+            staged_root / LLVM_DEVELOPMENT_MARKER, expected_marker
         )
+
+        def attest_stage() -> None:
+            _attest_staged_development(
+                staged_root, expected_headers, expected_marker
+            )
         _require_development_destination(identity.development_root)
         if os.name != "posix":
             try:
@@ -1578,7 +1601,8 @@ def provision_development_identity(
         _require_physical_directories(staged_root, "staging")
         _reject_include_symlinks(staged_root / "include", require_single_link=True)
         _publish_development_root(
-            staged_root, identity.development_root, child_identity
+            staged_root, identity.development_root, child_identity,
+            attest=attest_stage,
         )
     except _StagingOwnershipChanged:
         # The package stage can contain an attacker-replaced child. Leave the

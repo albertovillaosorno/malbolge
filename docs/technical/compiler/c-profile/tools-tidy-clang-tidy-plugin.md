@@ -148,9 +148,13 @@ inode, extent, and mutation
 metadata against the physical path, rejecting foreign pathname streams and
 late descriptor substitution. A copy that reports success
 but omits, mutates, or adds a member fails before the completion marker is
-published; existing identical headers remain untouched. RPM and marker
-bytes use an exclusive no-follow create, a native regular-file descriptor
-matched to the new leaf, and an exact native write count. An inserted
+published; existing identical headers remain untouched. Immediately before
+final publication, the complete physical header inventory, byte digests, and
+completion marker are checked against the snapshots captured before marker
+creation; late content changes or unlisted headers cannot be published.
+RPM and marker writes use exclusive no-follow creation with a native
+regular-file descriptor matched to the new leaf and an exact write count.
+An inserted
 symlink or hardlink leaf cannot redirect a write after preflight. Publication
 also admits each required extracted header through the physical regular-file
 check used for readiness: linked header leaves, redirected ancestors,

@@ -2034,6 +2034,59 @@ def test_development_staging_parent_creation_stays_inside_pinned_checkout(
     assert (parked / ".temp").is_dir()
 
 
+@pytest.mark.parametrize("phase", ["destination_setup", "final_publish"])
+@pytest.mark.parametrize("mutation", ["overwrite", "remove", "add", "marker"])
+def test_development_publication_rejects_late_staged_header_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutation: str,
+    phase: str,
+) -> None:
+    """Neither destination setup nor final rename may publish changed bytes."""
+    identity = _identity(tmp_path)
+    staged_root = (
+        tmp_path / f".temp/llvm-development-provision-{LINUX_PLATFORM}/development"
+    )
+    marker = staged_root / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    header = staged_root / "include/clang/AST/AST.h"
+    native_check = llvm_development_validation._require_development_destination
+    changed = False
+    marker_checks = 0
+
+    def mutate_after_marker(path: Path) -> None:
+        nonlocal changed, marker_checks
+        native_check(path)
+        if marker.is_file():
+            marker_checks += 1
+        trigger = 1 if phase == "destination_setup" else 3
+        if marker_checks == trigger and not changed:
+            if mutation == "overwrite":
+                _ = header.write_bytes(FOREIGN_CONTENT_BYTES)
+            elif mutation == "remove":
+                header.unlink()
+            elif mutation == "add":
+                _ = (header.parent / "Unexpected.h").write_bytes(FOREIGN_CONTENT_BYTES)
+            else:
+                _ = marker.write_bytes(marker.read_bytes()[:-1] + b"!")
+            changed = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation,
+            "_require_development_destination",
+            mutate_after_marker,
+        )
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staged headers changed|staged marker changed",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([]), extractor=_extract_headers
+            )
+    assert changed
+    assert not identity.development_root.exists()
+
+
 def test_development_provision_rechecks_staging_after_download(
     tmp_path: Path,
 ) -> None:
@@ -2083,17 +2136,20 @@ def test_development_publication_rejects_late_destination_parent_swap(
     outside, sentinel = _external_sentinel(tmp_path)
     destination_parent = identity.development_root.parent
     parked = destination_parent.with_name("parked-development-parent")
+    marker = (
+        root / f".temp/llvm-development-provision-{LINUX_PLATFORM}/development"
+        / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+    )
     native_validate = llvm_development_validation._reject_include_symlinks
-    checks = 0
+    swapped = False
 
     def swap_after_final_check(
         include_root: Path, *, require_single_link: bool = False
     ) -> None:
-        nonlocal checks
+        nonlocal swapped
         native_validate(include_root, require_single_link=require_single_link)
-        if require_single_link:
-            checks += 1
-        if checks == 2:
+        if require_single_link and marker.is_file() and not swapped:
+            swapped = True
             destination_parent.rename(parked)
             try:
                 _ = destination_parent.symlink_to(outside, target_is_directory=True)
@@ -2113,7 +2169,7 @@ def test_development_publication_rejects_late_destination_parent_swap(
             _ = llvm_development_validation.provision_development_identity(
                 root, identity, downloader=_downloader([]), extractor=_extract_headers
             )
-    assert checks == 2
+    assert swapped
     assert list(outside.iterdir()) == [sentinel]
     assert sentinel.read_bytes() == FOREIGN_CONTENT_BYTES
     assert not (outside / identity.development_root.name).exists()
@@ -5049,7 +5105,8 @@ def test_development_final_rename_preserves_late_empty_destination(
             match="destination.*occupied",
         ):
             llvm_development_validation._publish_development_root(  # pyright: ignore[reportPrivateUsage]
-                staged, destination, (original.st_dev, original.st_ino)
+                staged, destination, (original.st_dev, original.st_ino),
+                attest=lambda: None,
             )
     assert inserted is not None
     current = destination.lstat()
