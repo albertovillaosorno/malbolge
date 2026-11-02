@@ -831,7 +831,16 @@ def inspect_cuda(root: Path, platform_id: str) -> ComponentStatus:
 
 
 def _link_or_copy(source: str, destination: str) -> str:
-    """Import a host file without overwriting an unexpected destination."""
+    """Import a physical host file with checked hardlink receipts."""
+    try:
+        admitted = Path(source).lstat()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("import copy source status failed") from error
+    if (
+        type(admitted) is not os.stat_result
+        or not stat.S_ISREG(admitted.st_mode)
+    ):
+        _fail("import copy source must be physical regular file")
     try:
         os.link(source, destination)
     except FileExistsError as error:
@@ -842,10 +851,16 @@ def _link_or_copy(source: str, destination: str) -> str:
         try:
             with Path(source).open("rb") as input_stream:
                 original = os.fstat(input_stream.fileno())
-                if type(original) is not os.stat_result or not stat.S_ISREG(
-                    original.st_mode
+                if (
+                    type(original) is not os.stat_result
+                    or not stat.S_ISREG(original.st_mode)
+                    or (original.st_dev, original.st_ino)
+                    != (admitted.st_dev, admitted.st_ino)
+                    or original.st_size != admitted.st_size
+                    or original.st_mtime_ns != admitted.st_mtime_ns
+                    or original.st_ctime_ns != admitted.st_ctime_ns
                 ):
-                    _fail("import copy source must be a regular file")
+                    _fail("import copy source changed before transfer")
                 with Path(destination).open("xb") as output_stream:
                     _write_import_file_payload(
                         input_stream.fileno(), output_stream.fileno()
@@ -878,6 +893,32 @@ def _link_or_copy(source: str, destination: str) -> str:
             raise
         except (OSError, ValueError, TypeError, RuntimeError) as error:
             raise InitializationError("import copy fallback failed") from error
+    else:
+        try:
+            copied_source = Path(source).lstat()
+            linked = Path(destination).lstat()
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise InitializationError("import link receipt failed") from error
+        expected = (
+            admitted.st_dev,
+            admitted.st_ino,
+            admitted.st_size,
+            admitted.st_mtime_ns,
+            stat.S_IMODE(admitted.st_mode),
+        )
+        for observed in (copied_source, linked):
+            if (
+                type(observed) is not os.stat_result
+                or not stat.S_ISREG(observed.st_mode)
+                or (
+                    observed.st_dev,
+                    observed.st_ino,
+                    observed.st_size,
+                    observed.st_mtime_ns,
+                    stat.S_IMODE(observed.st_mode),
+                ) != expected
+            ):
+                _fail("import link receipt changed source or destination")
     return destination
 
 

@@ -5149,6 +5149,117 @@ def test_completed_git_import_rejects_nonexecutable_posix_alias(
             _ = project.import_host_git(tmp_path, platform_id, observation)
 
 
+def test_portable_import_link_or_copy_rejects_symlink_source(
+    tmp_path: Path,
+) -> None:
+    """A host symlink cannot be installed as a trusted imported binary."""
+    outside = tmp_path / "outside"
+    _ = outside.write_bytes(b"foreign content")
+    source = tmp_path / "host-git"
+    try:
+        _ = source.symlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+    target = tmp_path / "git.bin"
+    with pytest.raises(project.InitializationError, match="source.*physical"):
+        _ = project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+            str(source), str(target)
+        )
+    assert not target.exists()
+    assert outside.read_bytes() == b"foreign content"
+
+
+def test_portable_import_link_or_copy_rejects_forged_successful_link(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A positive host link result cannot substitute a foreign output inode."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    target = tmp_path / "git.bin"
+    injected = False
+
+    def substitute_link(
+        _source: str, destination: str, **_kwargs: object
+    ) -> None:
+        nonlocal injected
+        injected = True
+        _ = Path(destination).write_bytes(b"untrusted")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", substitute_link)
+        with pytest.raises(project.InitializationError, match="link receipt"):
+            _ = project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+            str(source), str(target)
+        )
+    assert injected
+    assert target.read_bytes() == b"untrusted"
+    assert source.read_bytes() == GIT_BYTES
+
+
+@pytest.mark.parametrize("substitution", ["symlink", "file-swap"])
+def test_portable_import_copy_fallback_rejects_substituted_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    substitution: str,
+) -> None:
+    """A fallback copy cannot follow a source replaced after hardlink denial."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    parked = tmp_path / "parked-git"
+    outside = tmp_path / "outside-git"
+    _ = outside.write_bytes(b"untrusted-host-binary")
+    destination = tmp_path / "git.bin"
+    swapped = False
+
+    def deny_and_swap(
+        _source: str, _destination: str, **_kwargs: object
+    ) -> None:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            _ = source.rename(parked)
+            if substitution == "symlink":
+                _ = source.symlink_to(outside)
+            else:
+                _ = outside.rename(source)
+        raise OSError("hardlinks not permitted")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", deny_and_swap)
+        with pytest.raises(project.InitializationError, match="source changed"):
+            _ = project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+                str(source), str(destination)
+            )
+    assert swapped
+    assert parked.read_bytes() == GIT_BYTES
+    assert not destination.exists()
+    if substitution == "symlink":
+        assert outside.read_bytes() == b"untrusted-host-binary"
+    else:
+        assert source.read_bytes() == b"untrusted-host-binary"
+
+
+def test_portable_import_copy_fallback_keeps_physical_source_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No-hardlink hosts still copy trusted bytes and executable mode."""
+    source = tmp_path / "host-git"
+    _ = source.write_bytes(GIT_BYTES)
+    source.chmod(0o700)
+    destination = tmp_path / "git.bin"
+
+    def deny_link(_source: str, _destination: str, **_kwargs: object) -> None:
+        raise OSError("host lacks hardlink support")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", deny_link)
+        assert project._link_or_copy(  # pyright: ignore[reportPrivateUsage]
+            str(source), str(destination)
+        ) == str(destination)
+    assert destination.read_bytes() == GIT_BYTES
+    assert stat.S_IMODE(destination.stat().st_mode) == 0o700
+
+
 def test_git_import_preserves_runtime_tree_and_neutral_alias(
     tmp_path: Path,
 ) -> None:
