@@ -91,6 +91,7 @@ PATH_SEPARATORS: Final = frozenset(("/", "\\"))
 UV_RELEASE_BASE: Final = "https://github.com/astral-sh/uv/releases/download/"
 UV_SCHEMA_VERSION: Final = 1
 MAX_UV_MANIFEST_BYTES: Final = 1_048_576
+_NATIVE_JSON_LOADS: Final = json.loads
 MAX_UV_ARCHIVE_BYTES: Final = 128 * 1024 * 1024
 MAX_UV_BINARY_BYTES: Final = 128 * 1024 * 1024
 MAX_UV_ARCHIVE_MEMBERS: Final = 4096
@@ -328,15 +329,49 @@ def _read_uv_manifest_bytes(path: Path) -> bytes:
     return content
 
 
+def _uv_same_native_json(actual: object, expected: object) -> bool:
+    """Corroborate complete source JSON without foreign key equality hooks."""
+    kind = type(expected)
+    if type(actual) is not kind:
+        return False
+    if kind is dict:
+        observed = cast("dict[object, object]", actual)
+        source = cast("dict[object, object]", expected)
+        # Native string keys must be confirmed before a colliding lookup.
+        if any(type(key) is not str for key in observed):
+            return False
+        return len(observed) == len(source) and all(
+            key in observed and _uv_same_native_json(observed[key], value)
+            for key, value in source.items()
+        )
+    if kind is list:
+        observed = cast("list[object]", actual)
+        source = cast("list[object]", expected)
+        return len(observed) == len(source) and all(
+            _uv_same_native_json(left, right)
+            for left, right in zip(observed, source, strict=True)
+        )
+    return kind in (bool, int, float, str, type(None)) and actual == expected
+
+
 def _uv_manifest_document(manifest_path: Path) -> dict[str, object]:
     try:
+        source_text = _read_uv_manifest_bytes(manifest_path).decode("utf-8")
         parsed = cast(
             "object",
-            json.loads(
-                _read_uv_manifest_bytes(manifest_path).decode("utf-8"),
-                object_pairs_hook=_reject_duplicate_pairs,
-            ),
+            json.loads(source_text, object_pairs_hook=_reject_duplicate_pairs),
         )
+        # A substituted public JSON loader must not change the version,
+        # download URL, or SHA-256 identity proved by the original bytes.
+        if json.loads is not _NATIVE_JSON_LOADS:
+            original = cast(
+                "object",
+                _NATIVE_JSON_LOADS(
+                    source_text, object_pairs_hook=_reject_duplicate_pairs
+                ),
+            )
+            if not _uv_same_native_json(parsed, original):
+                _fail("uv JSON decoder provider differs from source")
     except ProvisionError:
         raise
     except (

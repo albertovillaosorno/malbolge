@@ -1586,6 +1586,103 @@ def test_uv_successful_atomic_publication_is_single_link(
     assert not executable.with_name(f"{executable.name}.tmp").exists()
 
 
+@pytest.mark.parametrize("entrypoint", ["document", "artifact"])
+def test_uv_manifest_json_provider_cannot_substitute_pinned_release(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    """A forged decoder cannot replace uv version and download URL authority."""
+    source = python_validation.UV_MANIFEST.read_text(encoding="utf-8")
+    document = cast("dict[str, object]", json.loads(source))
+    assert document["version"] == "0.12.20"
+    document["version"] = "0.99.99"
+    document["base_url"] = (
+        "https://github.com/astral-sh/uv/releases/download/0.99.99/"
+    )
+
+    def substituted(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return document
+
+    monkeypatch.setattr(json, "loads", substituted)
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="uv JSON decoder provider differs from source",
+    ):
+        if entrypoint == "document":
+            _ = python_validation._uv_manifest_document(python_validation.UV_MANIFEST)
+        else:
+            _ = python_validation.uv_artifact(PLATFORM_ID)
+
+
+def test_uv_manifest_json_provider_accepts_equivalent_adapter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Source-preserving JSON adapters retain pinned release behavior."""
+    native = json.loads
+
+    def delegated(text: str, *, object_pairs_hook: object) -> object:
+        return native(
+            text,
+            object_pairs_hook=cast(
+                "Callable[[list[tuple[str, object]]], object]", object_pairs_hook
+            ),
+        )
+
+    monkeypatch.setattr(json, "loads", delegated)
+    assert python_validation.uv_artifact(PLATFORM_ID).version == "0.12.20"
+
+
+def test_uv_manifest_json_provider_cannot_hide_invalid_syntax(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The trusted parser must read original malformed manifest syntax."""
+    path = tmp_path / "invalid.json"
+    _ = path.write_text('{"schema_version":1,,}', encoding="utf-8")
+    forged = cast("dict[str, object]", json.loads(python_validation.UV_MANIFEST.read_text()))
+
+    def substituted(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", substituted)
+    with pytest.raises(python_validation.ProvisionError, match="cannot read") as caught:
+        _ = python_validation.uv_artifact(PLATFORM_ID, path)
+    assert type(caught.value.__cause__) is json.JSONDecodeError
+
+
+def test_uv_manifest_json_provider_rejects_foreign_nested_key_before_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign colliding key cannot run equality during corroboration."""
+
+    class ForeignKey(str):
+        def __hash__(self) -> int:
+            return str.__hash__(self)
+
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign uv manifest equality executed")
+
+    forged = cast("dict[str, object]", json.loads(python_validation.UV_MANIFEST.read_text()))
+    artifacts = cast("dict[str, object]", forged["artifacts"])
+    target = cast("dict[str, object]", artifacts[PLATFORM_ID])
+    sha = target.pop("sha256")
+    target[ForeignKey("sha256")] = sha
+
+    def substituted(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        return forged
+
+    monkeypatch.setattr(json, "loads", substituted)
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="uv JSON decoder provider differs from source",
+    ):
+        _ = python_validation.uv_artifact(PLATFORM_ID)
+
+
 def test_uv_manifest_rejects_hardlinked_external_authority(
     tmp_path: Path,
 ) -> None:

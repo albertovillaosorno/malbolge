@@ -75,3 +75,8 @@ run Jig without inheriting Windows executable paths or ambient PATH authority.
   are not an end-to-end repository-validation benchmark.
 - The separate CUDA Linux runtime/toolchain TODO retains GPU driver, NVRTC,
   package-manifest, LLVM, and fully hermetic native-linker work.
+- Subsequent uv bootstrap manifest hardening independently corroborates
+  changed public JSON loader receipts with source-native values before using
+  pinned release metadata. Red-first forged release, source-syntax, and foreign
+  nested-key cases now reject while equivalent adapters succeed; all 150 uv
+  path-admission tests pass.
