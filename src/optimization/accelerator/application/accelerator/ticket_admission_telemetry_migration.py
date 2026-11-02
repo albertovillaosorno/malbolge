@@ -43,6 +43,7 @@ from dataclasses import asdict
 from dataclasses import dataclass
 from hashlib import sha256
 import json
+from json import dumps as _SOURCE_JSON_DUMPS
 from re import compile as compile_pattern
 from typing import Final
 from typing import Never
@@ -593,14 +594,30 @@ def _reject_json_constant(value: str) -> Never:
 
 
 def _canonical_json(value: object) -> bytes:
-    text = json.dumps(
-        value,
-        allow_nan=False,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
-    return f"{text}\n".encode()
+    """Seal canonical source text before consulting the public JSON writer."""
+    try:
+        source_text = _SOURCE_JSON_DUMPS(
+            value,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        # A replaced public writer may mutate the input or return unrelated
+        # text. Neither can modify the independently captured source text.
+        rendered = json.dumps(
+            value,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:  # noqa: BLE001 - external writer must fail typed
+        message = f"versioned telemetry JSON serializer failed: {type(error).__name__}"
+        raise TicketAdmissionTelemetryMigrationError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        _raise_migration("versioned telemetry JSON serializer disagrees with source")
+    return f"{source_text}\n".encode()
 
 
 def _validated_payload(data: bytes, max_bytes: int) -> bytes:

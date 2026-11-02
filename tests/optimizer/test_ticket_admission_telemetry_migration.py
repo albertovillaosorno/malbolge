@@ -701,3 +701,137 @@ def test_outer_schema_v2_payload_tampering_fails_source_binding() -> None:
         _ = decode_ticket_admission_telemetry_document_versioned(
             _json_mutation(encoded, mutate)
         )
+
+
+def test_versioned_v2_rejects_joint_json_provider_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No forged decoder and encoder may invent embedded source observations."""
+    original_dumps = json.dumps
+    original_loads = json.loads
+    empty = encode_ticket_admission_telemetry_document_versioned(_v2())
+    populated = encode_ticket_admission_telemetry_document_versioned(
+        _v2(_document(populated=True))
+    )
+    fabricated = cast("dict[str, object]", original_loads(populated))
+    empty_json = empty.decode("utf-8").removesuffix("\n")
+
+    def injected_decoder(text: str, **kwargs: object) -> object:
+        parsed = cast("dict[str, object]", original_loads(text, **kwargs))
+        if parsed.get("document_id") == DOCUMENT_V2_ID:
+            return fabricated
+        return parsed
+
+    def injected_encoder(value: object, **kwargs: object) -> str:
+        if isinstance(value, dict) and value.get("document_id") == DOCUMENT_V2_ID:
+            return empty_json
+        return original_dumps(value, **kwargs)
+
+    monkeypatch.setattr(json, "loads", injected_decoder)
+    monkeypatch.setattr(json, "dumps", injected_encoder)
+    with pytest.raises(TicketAdmissionTelemetryMigrationError, match="serializer|canonical"):
+        _ = decode_ticket_admission_telemetry_document_versioned(empty)
+
+
+def test_versioned_v2_rejects_altered_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No public encoder can publish versioned bytes unrelated to typed state."""
+    original_dumps = json.dumps
+
+    def bogus_writer(value: object, **kwargs: object) -> str:
+        if isinstance(value, dict) and value.get("document_id") == DOCUMENT_V2_ID:
+            return "{}"
+        return original_dumps(value, **kwargs)
+
+    monkeypatch.setattr(json, "dumps", bogus_writer)
+    with pytest.raises(TicketAdmissionTelemetryMigrationError, match="serializer"):
+        _ = encode_ticket_admission_telemetry_document_versioned(_v2())
+
+
+def test_versioned_v2_rejects_mutating_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public serializer cannot mutate an already captured v2 source wrapper."""
+    original_dumps = json.dumps
+
+    def forged_writer(value: object, **kwargs: object) -> str:
+        if isinstance(value, dict) and value.get("document_id") == DOCUMENT_V2_ID:
+            value["source_document_fingerprint"] = "forged"
+        return original_dumps(value, **kwargs)
+
+    monkeypatch.setattr(json, "dumps", forged_writer)
+    with pytest.raises(TicketAdmissionTelemetryMigrationError, match="serializer"):
+        _ = encode_ticket_admission_telemetry_document_versioned(_v2())
+
+
+class _ForeignJsonText(str):
+    """JSON text subclass must not execute user-defined equality."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign JSON equality invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param(b"{}", id="binary"),
+        pytest.param(_ForeignJsonText("{}"), id="foreign-str"),
+    ],
+)
+def test_versioned_v2_rejects_non_native_writer_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only native exact JSON writer receipts may affect versioned output."""
+    original_dumps = json.dumps
+
+    def injected_writer(value: object, **kwargs: object) -> object:
+        if isinstance(value, dict) and value.get("document_id") == DOCUMENT_V2_ID:
+            return receipt
+        return original_dumps(value, **kwargs)
+
+    monkeypatch.setattr(json, "dumps", injected_writer)
+    with pytest.raises(TicketAdmissionTelemetryMigrationError, match="serializer"):
+        _ = encode_ticket_admission_telemetry_document_versioned(_v2())
+
+
+@pytest.mark.parametrize(
+    "error_type", [RuntimeError, AttributeError, IndexError, OverflowError]
+)
+def test_versioned_v2_contains_json_writer_faults(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    """Writer exceptions remain typed and carry exact causal exceptions."""
+    failure = error_type("untrusted writer failure")
+    original_dumps = json.dumps
+
+    def injected_writer(value: object, **kwargs: object) -> str:
+        if isinstance(value, dict) and value.get("document_id") == DOCUMENT_V2_ID:
+            raise failure
+        return original_dumps(value, **kwargs)
+
+    monkeypatch.setattr(json, "dumps", injected_writer)
+    with pytest.raises(
+        TicketAdmissionTelemetryMigrationError, match="serializer failed"
+    ) as caught:
+        _ = encode_ticket_admission_telemetry_document_versioned(_v2())
+    assert caught.value.__cause__ is failure
+
+
+def test_versioned_v2_accepts_equivalent_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent writer preserves exact schema-v2 document bytes."""
+    original_dumps = json.dumps
+    monkeypatch.setattr(
+        json, "dumps", lambda *args, **kwargs: original_dumps(*args, **kwargs)
+    )
+    document = _v2(_document(populated=True))
+    encoded = encode_ticket_admission_telemetry_document_versioned(document)
+    assert decode_ticket_admission_telemetry_document_versioned(encoded) == document

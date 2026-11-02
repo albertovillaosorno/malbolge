@@ -706,9 +706,13 @@ sorted JSON containing the exact canonical schema-v1 bytes as standard Base64,
 plus the required schema-v1 document identity and SHA-256 fingerprint. Versioned
 decoding defaults to 2 MiB outer bytes, 1 MiB embedded source bytes, and 4,096
 
-observations per FIFO. Upgrade and downgrade are explicit; schema-v1 bytes
-remain
-unchanged. There is no automatic migration, file loading, snapshot
+observations per FIFO. Schema-v2 canonical serialization now also captures
+source-owned JSON text before a mutable public writer can change the wrapper;
+public decoder/writer substitution cannot invent embedded observations or
+publish unrelated v2 bytes. This preserves the shared standard-library parser
+as a dependency, not an independently verified implementation. Upgrade and
+downgrade are explicit; schema-v1 bytes remain unchanged. There is no automatic
+migration, file loading, snapshot
 reinterpretation, merge, recommendation, lineage inference, or policy change.
 `offline-ticket-admission-telemetry-summary-v1` validates one explicit document
 and groups retained observations by exact backend, device, workload, and ticket
