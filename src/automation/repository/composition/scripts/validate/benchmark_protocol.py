@@ -324,8 +324,9 @@ def _same_native_toml(actual: object, expected: object) -> bool:
 
 def _parse_document(text: str) -> dict[str, object]:
     _admit_source_text(text, byte_limit=MAX_PROTOCOL_BYTES)
+    decoder = tomllib.loads
     try:
-        parsed = cast("object", tomllib.loads(text))
+        parsed = cast("object", decoder(text))
     except tomllib.TOMLDecodeError as error:
         detail = (
             str(error)
@@ -348,7 +349,7 @@ def _parse_document(text: str) -> dict[str, object]:
     # If the public decoder has been substituted, independently reparse the
     # original source and compare all admitted values using only native types.
     # Equivalent providers remain usable; altered receipts cannot mint evidence.
-    if tomllib.loads is not _NATIVE_TOML_LOADS:
+    if decoder is not _NATIVE_TOML_LOADS:
         try:
             source = cast("object", _NATIVE_TOML_LOADS(text))
             equivalent = _same_native_toml(document, source)
@@ -357,6 +358,9 @@ def _parse_document(text: str) -> dict[str, object]:
             raise BenchmarkProtocolError(message) from error
         if not equivalent:
             _fail("benchmark protocol TOML decoder provider differs from source")
+        # Substituted providers may retain mutable references to their results.
+        # Keep only the independently parsed source-owned mapping.
+        document = _mapping(source, "benchmark")
     return document
 
 

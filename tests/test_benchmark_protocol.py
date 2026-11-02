@@ -1307,6 +1307,48 @@ def test_benchmark_parser_rejects_native_forged_toml_provider(
     )
 
 
+@pytest.mark.parametrize("tamper", ("syntax", "schema", "study-id"))
+def test_benchmark_parser_refuses_decoder_restoring_itself_mid_call(
+    monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    """An in-call module restoration cannot obscure the selected provider."""
+    source = _text(DETERMINISTIC)
+    native_loads = validator.tomllib.loads
+    fabricated = native_loads(source)
+    if tamper == "syntax":
+        source = "! invalid benchmark TOML"
+    elif tamper == "schema":
+        source = source.replace("schema_version = 1", "schema_version = 2")
+    else:
+        fabricated["study"]["id"] = "not-the-source-study"
+
+    def self_restoring(_text: str) -> object:
+        monkeypatch.setattr(validator.tomllib, "loads", native_loads)
+        return fabricated
+
+    monkeypatch.setattr(validator.tomllib, "loads", self_restoring)
+    with pytest.raises(validator.BenchmarkProtocolError, match="TOML decoder provider"):
+        _ = validator._parse_document(source)
+
+
+def test_benchmark_parser_owns_equivalent_source_tree(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A delegated TOML parser cannot mutate admitted study data afterwards."""
+    source = _text(DETERMINISTIC)
+    owned_by_helper = validator.tomllib.loads(source)
+    native_id = owned_by_helper["study"]["id"]
+
+    def equivalent(_text: str) -> object:
+        return owned_by_helper
+
+    monkeypatch.setattr(validator.tomllib, "loads", equivalent)
+    admitted = validator._parse_document(source)
+    owned_by_helper["study"]["id"] = "modified-after-validation"
+    assert admitted is not owned_by_helper
+    assert admitted["study"]["id"] == native_id
+
+
 @pytest.mark.parametrize(
     "fault_type",
     [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],

@@ -55,7 +55,11 @@ replaced, admission independently reparses the original source using the
 import-bound standard-library decoder and compares all nested native values
 without running foreign key or equality hooks. Equivalent decoder wrappers
 remain valid; three red-first regressions reject forged source syntax, schema
-and study IDs. This checks local parsing, not measurement provenance.
+and study IDs. The public parser identity is captured before invocation so a
+substitute that restores the module attribute during its own call cannot bypass
+comparison. Accepted source-equivalent wrappers return an independently parsed
+native tree, not an alias owned by the helper. This checks local parsing, not
+measurement provenance or a runtime library compromised before import.
 
 The validator admits only physical regular evidence files whose parent
 components are unlinked directories, before reading and again after. It pins

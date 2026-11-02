@@ -81,3 +81,8 @@ identify uncertainty and may never substitute for semantic verification.
   after independent canonical reparse and native structural comparison. All 335
   focused benchmark/historical cases pass, and the expanded cross-validator
   rerun passed 3,234 cases with one skip. This is not measurement authentication.
+- 2026-11-02 follow-up: the benchmark decoder is captured before invocation;
+  three self-restoring forged provider cases now reject syntax, schema and study
+  ID substitutions. Source-equivalent helpers return independently parsed data
+  to prevent later changes to a helper-owned mapping. Neither check attests
+  original performance measurements or Python runtime integrity.
