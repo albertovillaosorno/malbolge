@@ -865,7 +865,16 @@ def _admit_zip_member_type(info: zipfile.ZipInfo) -> None:
 
 
 def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
-    infos = tuple(archive.infolist())
+    # Do not materialize an arbitrary host iterator before count admission.
+    reported = archive.infolist()
+    if type(reported) is not list or type(archive.filelist) is not list:
+        _fail("CUDA ZIP member inventory must be a native list")
+    if (
+        len(reported) > _MAX_CUDA_ARCHIVE_MEMBERS
+        or len(archive.filelist) > _MAX_CUDA_ARCHIVE_MEMBERS
+    ):
+        _fail("CUDA archive member count exceeds limit")
+    infos = tuple(reported)
     _validate_cuda_archive_expansion(
         tuple(info.file_size if not info.is_dir() else 0 for info in infos)
     )

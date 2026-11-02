@@ -6953,3 +6953,40 @@ def test_cuda_archive_inventory_cannot_replace_verified_members(
             )
     assert visited == [archive_format]
     assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
+
+
+@pytest.mark.parametrize("forgery", ("generator", "list-subclass"))
+def test_cuda_zip_inventory_requires_bounded_native_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """A ZIP inventory cannot grow through an unbounded foreign iterator."""
+    payload = _zip_payload()
+    manifest = _manifest(tmp_path, payload, {"relative_path": _ZIP_PACKAGE_PATH})
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    native_inventory = zipfile.ZipFile.infolist
+    iterated: list[str] = []
+
+    class ForeignList(list[zipfile.ZipInfo]):
+        """A list subclass must not certify a native bounded ZIP inventory."""
+
+    def forged_inventory(archive: zipfile.ZipFile) -> object:
+        originals = native_inventory(archive)
+        if forgery == "list-subclass":
+            return ForeignList(originals)
+
+        def foreign_entries() -> Iterator[zipfile.ZipInfo]:
+            iterated.append("iterated")
+            yield from originals
+
+        return foreign_entries()
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(zipfile.ZipFile, "infolist", forged_inventory)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="native list"):
+            cuda_validation.extract_cuda_package(
+                payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+            )
+    assert iterated == []
+    assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
