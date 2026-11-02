@@ -114,28 +114,37 @@ alone does not guarantee atomicity against arbitrary concurrent ancestor swaps.
 
 Matching Git and already-installed Rustup channels are imported below
 repository-local versioned roots. Missing Rustup channels are observations only;
-bootstrap does not download them. Optional host Git version/helper-path queries
+bootstrap does not download them.
+
+Optional host Git version/helper-path queries
 and Rustup list/which queries each have a 15-second bound. Only an exact native
 process result with the original executable/argument list, integer successful
 exit and native captured text is accepted. The command passed to the launcher
 is an independent copy, so a mutating wrapper cannot forge matching evidence.
+
 Nonzero, forged, malformed, unavailable and timed-out host observations remain
 missing rather than authorizing an import or crashing bootstrap. Git helper
 folders and Rustup Cargo executable paths must also report exact native boolean
 file/directory status; malformed statuses and host filesystem query failures
-remain missing instead of authorizing a native tool import. Optional PATH
-lookups for Git and Rustup likewise require exact native nonempty path strings;
+remain missing instead of authorizing a native tool import.
+
+Optional PATH lookups for Git and Rustup likewise require exact native
+nonempty path strings;
 invalid resolver receipts and host lookup faults report missing rather than
 executing a fabricated path. Installed Rustup channel inventories must contain
 only native tuple/string receipts, and failed list probes authorize no channels.
-Rustup's home-Cargo lookup accepts only an exact
-native boolean file-status result. Git and Rust import-completion markers are
-created exclusively through a no-follow native
-file descriptor, so an existing regular or linked marker cannot be overwritten.
+
+Rustup's home-Cargo lookup accepts only an exact native boolean file-status
+result.
+
+Git and Rust import-completion markers are created exclusively through a
+no-follow native file descriptor, so an existing regular or linked marker
+cannot be overwritten.
 The writer verifies a singly linked physical marker inode and exact byte count
-before reporting success; a changed leaf or short write fails closed. A failed
-write removes only a marker still matching the writer's owned inode. Parent-path
-preflight cannot eliminate concurrent ancestor replacement races.
+before reporting success; a changed leaf or short write fails closed.
+
+A failed write removes only a marker still matching the writer's owned inode.
+Parent-path preflight cannot eliminate concurrent ancestor replacement races.
 
 Jig `doctor` checks the configured repository-local ChkTeX launcher, but
 Jig `check` independently attests the first eligible **external** `chktex`
