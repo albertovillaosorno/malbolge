@@ -4850,6 +4850,58 @@ def test_cuda_nonposix_overlay_rejects_forged_walk_members_before_copy(
     assert not copied
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires symlink fixtures")
+@pytest.mark.parametrize("member_kind", ("file", "directory", "symlink"))
+def test_cuda_nonposix_overlay_rejects_unlisted_destination_addition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, member_kind: str
+) -> None:
+    """A copy callback cannot add untracked files to a staged toolkit."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    _ = (source / "lib64" / "nvrtc.dll").write_bytes(b"verified")
+    destination = tmp_path / "destination"
+    (destination / "bin").mkdir(parents=True)
+    retained = destination / "bin" / "prior.exe"
+    _ = retained.write_bytes(b"prior verified package")
+    status = source.stat()
+    native_copytree = shutil.copytree
+    appended = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def add_unauthorized_member(
+        src: Path, dst: Path, *args: object, **kwargs: object
+    ) -> Path:
+        nonlocal appended
+        result = native_copytree(src, dst, *args, **kwargs)
+        if not appended and Path(src) == source:
+            injected = destination / "bin" / "injected.exe"
+            if member_kind == "file":
+                _ = injected.write_bytes(b"unverified")
+            elif member_kind == "directory":
+                injected.mkdir()
+            else:
+                _ = injected.symlink_to("prior.exe")
+            appended = True
+        return result
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(shutil, "copytree", add_unauthorized_member)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="unexpected destination member"
+        ):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert appended
+    assert retained.read_bytes() == b"prior verified package"
+
+
 @pytest.mark.parametrize("existing", [b"matching", b"different"])
 def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,

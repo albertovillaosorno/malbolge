@@ -1160,6 +1160,46 @@ def _copy_cuda_overlay(
             detail = f"CUDA staged overlay preflight failed: {_native_error_name(error)}"
             raise CudaProvisionError(detail) from error
 
+        def destination_members() -> set[Path]:
+            """Inventory physical target entries without following copied links."""
+            known: set[Path] = set()
+            pending = [destination]
+            while pending:
+                folder = pending.pop()
+                _require_physical_directories(folder, "staged overlay destination")
+                try:
+                    entries = tuple(folder.iterdir())
+                except (OSError, TypeError, ValueError, RuntimeError) as error:
+                    raise CudaProvisionError(
+                        "CUDA staged overlay destination scan failed"
+                    ) from error
+                for child in entries:
+                    if (
+                        type(child) is not type(destination)
+                        or child.parent != folder
+                        or child.name in {".", ".."}
+                    ):
+                        _fail("CUDA staged overlay destination enumeration escaped root")
+                    try:
+                        relative = child.relative_to(destination)
+                        status = child.lstat()
+                    except (OSError, ValueError, TypeError, RuntimeError) as error:
+                        raise CudaProvisionError(
+                            "CUDA staged overlay destination member status failed"
+                        ) from error
+                    if (
+                        type(status) is not os.stat_result
+                        or relative.is_absolute()
+                        or PARENT_SEGMENT in relative.parts
+                    ):
+                        _fail("CUDA staged overlay destination member has unsafe status")
+                    known.add(relative)
+                    if S_ISDIR(status.st_mode):
+                        pending.append(child)
+            return known
+
+        destination_before = destination_members()
+
         def copy_physical_member(
             source_name: str | os.PathLike[str],
             target_name: str | os.PathLike[str],
@@ -1243,6 +1283,11 @@ def _copy_cuda_overlay(
             _fail("CUDA staged overlay source members changed during copy")
         _require_owned_staging(source, source_identity)
         _require_physical_directories(destination, "staged overlay destination")
+        unexpected = (
+            destination_members() - destination_before - source_inventory.keys()
+        )
+        if unexpected:
+            _fail("CUDA staged overlay has unexpected destination member")
         # shutil.copytree can return without copying every source member. Check
         # the final target contents rather than trusting that success receipt.
         for relative, expected in source_inventory.items():
