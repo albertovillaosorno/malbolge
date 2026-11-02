@@ -105,6 +105,10 @@ size, and timestamp checks before and after. A symlinked root, redirected
 include ancestor, altered marker, or incomplete extraction is not admitted as
 ready; an existing incomplete root must be repaired explicitly rather than
 silently using ambient headers or repeating a network download.
+Readiness checks admit only exact native symlink/junction decisions and
+regular-file stat results with bounded integer modes for the completion marker,
+required headers, and their physical ancestors. False-like foreign statuses or
+duck-typed stat objects cannot certify a reusable development root.
 RPM extraction invokes `rpm2cpio` and CPIO only with separate expected and
 launched command arguments. A successful tool receipt must be a native
 `CompletedProcess` with the exact argument vector, integer exit status, and

@@ -307,6 +307,26 @@ def _marker_bytes(identity: tidy_toolchain.ToolchainIdentity) -> bytes:
     return rendered.encode("utf-8")
 
 
+def _native_regular_status(value: object) -> bool:
+    """Accept only an exact native regular-file stat with a bounded mode."""
+    if type(value) is not os.stat_result:
+        return False
+    mode = value.st_mode
+    return type(mode) is int and 0 <= mode <= 0xFFFF_FFFF and S_ISREG(mode)
+
+
+def _unlinked_component(path: Path) -> bool:
+    """Require native symlink and junction decisions for one path component."""
+    linked = path.is_symlink()
+    junction = path.is_junction()
+    return (
+        type(linked) is bool
+        and type(junction) is bool
+        and not linked
+        and not junction
+    )
+
+
 def _direct_regular(path: Path) -> bool:
     """Check physical regular-file readiness without following links.
 
@@ -316,15 +336,10 @@ def _direct_regular(path: Path) -> bool:
     """
     try:
         return (
-            not path.is_symlink()
-            and not path.is_junction()
-            and not any(
-                parent.is_symlink() or parent.is_junction()
-                for parent in path.parents
-            )
-            and S_ISREG(path.lstat().st_mode)
+            all(_unlinked_component(component) for component in (path, *path.parents))
+            and _native_regular_status(path.lstat())
         )
-    except OSError, ValueError, TypeError, RuntimeError:
+    except (OSError, ValueError, TypeError, RuntimeError):
         return False
 
 
@@ -386,15 +401,18 @@ def _exact_marker_matches(marker: Path, expected: bytes) -> bool:
         return False
     try:
         initial = marker.lstat()
+        if not _native_regular_status(initial):
+            return False
         admitted = _marker_identity(initial)
-        return (
-            S_ISREG(initial.st_mode)
-            and initial.st_size == len(expected)
-            and _marker_descriptor_matches(marker, admitted, expected)
-            and _direct_regular(marker)
-            and _marker_identity(marker.lstat()) == admitted
-        )
-    except OSError, ValueError, TypeError, RuntimeError:
+        if (
+            initial.st_size != len(expected)
+            or not _marker_descriptor_matches(marker, admitted, expected)
+            or not _direct_regular(marker)
+        ):
+            return False
+        final = marker.lstat()
+        return _native_regular_status(final) and _marker_identity(final) == admitted
+    except (OSError, ValueError, TypeError, RuntimeError):
         return False
 
 

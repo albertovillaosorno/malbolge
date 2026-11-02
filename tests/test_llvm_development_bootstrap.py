@@ -40,6 +40,7 @@ import hashlib
 import os
 from pathlib import Path
 import subprocess as sp
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -921,3 +922,89 @@ def test_rpm_command_rejects_foreign_completed_process_subclass(
         match="process receipt",
     ):
         llvm_development_validation._command_bytes(["cpio", "-it"])
+
+
+@pytest.mark.parametrize("target_kind", ["marker", "header", "parent"])
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction"])
+@pytest.mark.parametrize("foreign_result", [None, 0, "", 0.0])
+def test_development_readiness_rejects_foreign_path_decisions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+    operation: str,
+    foreign_result: object,
+) -> None:
+    """Nonboolean path-status hooks cannot authorize a reusable dev root."""
+    identity = _provisioned_identity(tmp_path)
+    header = identity.development_root / identity.required_development_files[0]
+    target = {
+        "marker": identity.development_root
+        / llvm_development_validation.LLVM_DEVELOPMENT_MARKER,
+        "header": header,
+        "parent": header.parent,
+    }[target_kind]
+    original = getattr(Path, operation)
+
+    def foreign_decision(path: Path) -> object:
+        return foreign_result if path == target else original(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, foreign_decision)
+        assert not llvm_development_validation.development_root_matches(identity)
+
+
+@pytest.mark.parametrize("target_kind", ["marker", "header"])
+def test_development_readiness_rejects_foreign_lstat_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    """A duck-typed stat result cannot certify a marker or required header."""
+    identity = _provisioned_identity(tmp_path)
+    target = (
+        identity.development_root / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+        if target_kind == "marker"
+        else identity.development_root / identity.required_development_files[0]
+    )
+    native_lstat = Path.lstat
+
+    def foreign_lstat(path: Path) -> object:
+        stat = native_lstat(path)
+        if path != target:
+            return stat
+        return SimpleNamespace(
+            st_mode=stat.st_mode,
+            st_dev=stat.st_dev,
+            st_ino=stat.st_ino,
+            st_size=stat.st_size,
+            st_mtime_ns=stat.st_mtime_ns,
+            st_ctime_ns=stat.st_ctime_ns,
+        )
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", foreign_lstat)
+        assert not llvm_development_validation.development_root_matches(identity)
+
+
+@pytest.mark.parametrize("extra_mode_bits", [1 << 32, 1 << 40])
+def test_development_readiness_rejects_out_of_range_native_stat_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    extra_mode_bits: int,
+) -> None:
+    """A native stat object with a forged nonportable mode is not evidence."""
+    identity = _provisioned_identity(tmp_path)
+    header = identity.development_root / identity.required_development_files[0]
+    native_lstat = Path.lstat
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        observed = native_lstat(path)
+        if path != header:
+            return observed
+        raw = list(observed)
+        raw[0] = observed.st_mode | extra_mode_bits
+        return os.stat_result(raw)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", forged_lstat)
+        assert not llvm_development_validation.development_root_matches(identity)
