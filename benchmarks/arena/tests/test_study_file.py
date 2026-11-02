@@ -36,12 +36,12 @@
 
 from __future__ import annotations
 
+import io
 import json
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
-from typing import override
+from typing import TYPE_CHECKING, Any, Self, cast, override
 
 import pytest
 
@@ -50,7 +50,6 @@ from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
     import os
-
     from collections.abc import Iterator
     from typing import BinaryIO
 
@@ -1598,3 +1597,151 @@ def test_study_reader_rejects_foreign_opened_path_receipt(
         with pytest.raises(study_file.StudyFileError, match="invalid opened path"):
             study_file.read_study_bytes(path, limit=1024 * 1024)
     assert injected
+
+
+def test_study_fdopen_rejects_forged_bytes_with_real_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign stream cannot claim a native fd while inventing source bytes."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    raw: list[int] = []
+    native_open = study_file.os.open
+
+    def tracked_open(target: Path, flags: int) -> int:
+        descriptor = native_open(target, flags)
+        raw.append(descriptor)
+        return descriptor
+
+    class ForgedStream:
+        def __init__(self, descriptor: int) -> None:
+            self.descriptor = descriptor
+            self.closed = False
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.close()
+
+        def fileno(self) -> int:
+            return self.descriptor
+
+        def read(self, _size: int) -> bytes:
+            return b"forged"
+
+        def close(self) -> None:
+            if not self.closed:
+                study_file.os.close(self.descriptor)
+                self.closed = True
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(study_file.os, "open", tracked_open)
+        scoped.setattr(
+            study_file.os,
+            "fdopen",
+            lambda fd, _mode: cast("BinaryIO", ForgedStream(fd)),
+        )
+        try:
+            with pytest.raises(study_file.StudyFileError, match="stream"):
+                _ = study_file.read_study_bytes(path, limit=1024)
+        finally:
+            # The red-first implementation may not have closed the raw fd.
+            for fd in raw:
+                try:
+                    study_file.os.close(fd)
+                except OSError:
+                    pass
+    assert path.read_bytes() == STUDY_SAMPLE
+
+
+def test_study_fdopen_rejects_different_native_descriptor_for_same_inode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A native same-inode alias is not the descriptor owned by os.open."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    native_open = study_file.os.open
+    native_fdopen = study_file.os.fdopen
+    raw: list[int] = []
+    returned: list[io.BufferedReader] = []
+
+    def tracked_open(target: Path, flags: int) -> int:
+        descriptor = native_open(target, flags)
+        raw.append(descriptor)
+        return descriptor
+
+    def swapped_fdopen(_fd: int, mode: str) -> io.BufferedReader:
+        alternate_fd = native_open(path, study_file.os.O_RDONLY)
+        alternate = native_fdopen(alternate_fd, mode)
+        assert type(alternate) is io.BufferedReader
+        returned.append(alternate)
+        return alternate
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(study_file.os, "open", tracked_open)
+        scoped.setattr(study_file.os, "fdopen", swapped_fdopen)
+        try:
+            with pytest.raises(study_file.StudyFileError, match="descriptor"):
+                _ = study_file.read_study_bytes(path, limit=1024)
+        finally:
+            for stream in returned:
+                stream.close()
+            for fd in raw:
+                try:
+                    study_file.os.close(fd)
+                except OSError:
+                    pass
+    assert path.read_bytes() == STUDY_SAMPLE
+
+
+def test_study_fdopen_rejects_native_buffer_over_foreign_raw_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An outer native buffer cannot certify a substituted raw byte producer."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    native_open = study_file.os.open
+    descriptors: list[int] = []
+    read_called = False
+
+    class ForgedRaw(io.RawIOBase):
+        def __init__(self, fd: int) -> None:
+            super().__init__()
+            self.fd = fd
+
+        def readable(self) -> bool:
+            return True
+
+        def fileno(self) -> int:
+            return self.fd
+
+        def readinto(self, destination: Any) -> int:
+            nonlocal read_called
+            read_called = True
+            destination[: len(STUDY_SAMPLE)] = b"forged"
+            return len(STUDY_SAMPLE)
+
+    def tracked_open(target: Path, flags: int) -> int:
+        fd = native_open(target, flags)
+        descriptors.append(fd)
+        return fd
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(study_file.os, "open", tracked_open)
+        scoped.setattr(
+            study_file.os,
+            "fdopen",
+            lambda fd, _mode: io.BufferedReader(ForgedRaw(fd)),
+        )
+        try:
+            with pytest.raises(study_file.StudyFileError, match="native buffered"):
+                _ = study_file.read_study_bytes(path, limit=1024)
+        finally:
+            for fd in descriptors:
+                try:
+                    study_file.os.close(fd)
+                except OSError:
+                    pass
+    assert not read_called
+    assert path.read_bytes() == STUDY_SAMPLE

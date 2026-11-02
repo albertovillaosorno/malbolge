@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 import stat
 import sys
@@ -141,7 +142,15 @@ def _open_study(path: Path) -> BinaryIO:
                 _fail("arena input returned invalid opened path")
             if opened_path != expected_path:
                 _fail("arena input opened path changed")
-        return os.fdopen(descriptor, "rb")
+        stream = os.fdopen(descriptor, "rb")
+        # fdopen must transfer ownership of this exact raw descriptor to a
+        # native buffered FileIO. A substituted stream can report the correct
+        # fileno and inode while returning unrelated bytes from read().
+        if type(stream) is not io.BufferedReader or type(stream.raw) is not io.FileIO:
+            _fail("arena input stream is not a native buffered file")
+        if _admit_descriptor(stream.fileno(), source="stream") != descriptor:
+            _fail("arena input stream descriptor differs from opened descriptor")
+        return stream
     except Exception as error:
         # fdopen has not taken ownership when path or stream admission fails.
         # Cleanup cannot replace the original reason for rejecting this file.
