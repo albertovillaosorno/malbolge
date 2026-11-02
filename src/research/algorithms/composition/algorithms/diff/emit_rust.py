@@ -392,6 +392,20 @@ def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
         raise RustEmissionError(message)
 
 
+def _require_output_not_runtime_template(output_path: Path) -> None:
+    """Protect the source template needed for future deterministic emission."""
+    _validate_output_path(output_path)
+    try:
+        output = output_path.resolve()
+        template = _RUNTIME_TEMPLATE.resolve()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = "Rust output path resolution failed"
+        raise RustEmissionError(message) from error
+    if output == template:
+        message = "Rust output must not overwrite its runtime template"
+        raise RustEmissionError(message)
+
+
 def write_rust_transform(
     plan: ProtectedExactPlan,
     profile: str,
@@ -404,6 +418,7 @@ def write_rust_transform(
             mutation after rename may leave an untrusted output file present.
 
     """
+    _require_output_not_runtime_template(output_path)
     source = emit_rust_transform(plan, profile, output_path)
     prepared_output = _prepare_output_path(output_path)
     temporary = _temporary_output_path(prepared_output)

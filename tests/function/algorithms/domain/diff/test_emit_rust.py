@@ -635,6 +635,28 @@ def test_emitter_output_location_does_not_change_source(tmp_path: Path) -> None:
     _expect(relocated == default, "output location changed generated Rust")
 
 
+@pytest.mark.parametrize("alias", ["exact", "dot-parent"])
+def test_writer_never_overwrites_its_runtime_template(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A generated file cannot destroy the template used to generate it."""
+    _, _, _, protected = _fixture(tmp_path)
+    actual_template = emit_rust_module._RUNTIME_TEMPLATE
+    template = tmp_path / "rust_runtime.rs"
+    original = actual_template.read_bytes()
+    _ = template.write_bytes(original)
+    if alias == "exact":
+        output = template
+    else:
+        output = template.parent / "sibling" / ".." / template.name
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_RUNTIME_TEMPLATE", template)
+        with pytest.raises(RustEmissionError, match="runtime template"):
+            write_rust_transform(protected, _PROFILE, output)
+    assert template.read_bytes() == original
+    assert not list(tmp_path.glob(".rust_runtime.rs.*.tmp"))
+
+
 def test_writer_rejects_linked_output_file_when_supported(
     tmp_path: Path,
 ) -> None:
