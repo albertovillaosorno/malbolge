@@ -3836,6 +3836,48 @@ def test_rust_import_alias_copy_fallback_rejects_corrupted_bytes(
     assert not project.rust_toolchain_import_complete(destination)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX Rust alias hardlink")
+def test_rust_import_alias_hardlink_rejects_preserved_mtime_rewrite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hardlink callback cannot change both native tool and alias bytes."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    native = destination / "bin/cargo"
+    original_link = os.link
+    mutated = False
+
+    def link_then_rewrite(  # ruff: ignore[too-many-arguments]
+        src: str | os.PathLike[str],
+        dst: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> None:
+        nonlocal mutated
+        original_link(
+            src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd,
+            follow_symlinks=follow_symlinks,
+        )
+        if dst == "cargo.bin" and dst_dir_fd is not None and not mutated:
+            before = native.stat()
+            _ = native.write_bytes(b"X" * len(RUST_CARGO_BYTES))
+            os.utime(native, ns=(before.st_atime_ns, before.st_mtime_ns))
+            mutated = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", link_then_rewrite)
+        with pytest.raises(project.InitializationError, match="alias.*content"):
+            _ = project.import_rust_toolchain(
+                source, destination, tool_ids=("cargo",), windows=False
+            )
+    assert mutated
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 @pytest.mark.skipif(os.name != "posix", reason="POSIX import alias identity")
 @pytest.mark.parametrize(
     "transport", ["hardlink", "hardlink-restored-mtime", "copy", "copy-restored-mtime"]
