@@ -266,6 +266,50 @@ def test_mirror_physical_path_host_faults_are_typed(
         )
 
 
+@pytest.mark.parametrize(
+    "kind", ("nonpath", "foreign-path", "outside-root", "nested-child")
+)
+def test_mirror_directory_scan_requires_native_immediate_children(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A forged directory iterator cannot certify a different directory ID."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    documents = tmp_path / "documents"
+    documents.mkdir()
+    outside = tmp_path / "outside" / "fixture"
+    nested = documents / "nested" / "fixture"
+    outside.mkdir(parents=True)
+    nested.mkdir(parents=True)
+
+    class ForeignPath(type(documents)):
+        @override
+        def __getattribute__(self, name: str) -> object:
+            if name in {"name", "parent"}:
+                raise AssertionError("foreign directory entry hook executed")
+            return cast("object", super().__getattribute__(name))
+
+    children: dict[str, object] = {
+        "nonpath": object(),
+        "foreign-path": ForeignPath(documents / "fixture"),
+        "outside-root": outside,
+        "nested-child": nested,
+    }
+    bad_child = children[kind]
+    native_iterdir = Path.iterdir
+
+    def forged_iterdir(path: Path) -> Iterator[Path]:
+        if path == documents:
+            yield cast("Path", bad_child)
+        else:
+            yield from native_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", forged_iterdir)
+    with pytest.raises(validator.ResearchMirrorError, match="directory entry"):
+        _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
 @pytest.mark.parametrize("operation", ("id_lstat", "id_junction", "iterdir"))
 def test_mirror_directory_discovery_host_faults_are_typed(

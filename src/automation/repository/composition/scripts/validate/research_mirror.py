@@ -147,6 +147,8 @@ def _directory_ids(root: Path) -> frozenset[str]:
         detail = _host_error_detail(error)
         raise ResearchMirrorError(f"research mirror scan failed: {detail}") from error
     for path in children:
+        if type(path) is not type(root) or path.parent != root:
+            _fail("research mirror scan requires native immediate directory entry")
         if path.name.startswith("."):
             continue
         try:

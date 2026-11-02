@@ -39,7 +39,9 @@ fail closed.
 The direct research-mirror validator separately requires native stat containers,
 exact integer file-mode fields, and boolean junction receipts for each path
 component and discovered algorithm ID; foreign modes and truthiness hooks
-cannot certify mirror identity.
+cannot certify mirror identity. Directory scans admit only native immediate
+children of the inspected root, not foreign or unrelated paths from an
+untrusted directory iterator.
 
 Every direct research ID under either mirror root must exist on both sides.
 The special composition state-graph experiment and domain algorithm
