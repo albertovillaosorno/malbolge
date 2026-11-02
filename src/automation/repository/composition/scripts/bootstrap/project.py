@@ -774,11 +774,11 @@ def git_version_line_matches(required: str, version_line: str) -> bool:
     observed = version_line.removeprefix(prefix)
     if observed == required:
         return True
-    distribution_prefix = f"{required}."
+    distribution_prefix = f"{required}.windows."
     if not observed.startswith(distribution_prefix):
         return False
     suffix = observed.removeprefix(distribution_prefix)
-    return re.fullmatch(r"[A-Za-z0-9]+(?:[._+-][A-Za-z0-9]+)*", suffix) is not None
+    return re.fullmatch(r"[1-9][0-9]*", suffix) is not None
 
 
 def _import_completion_marker_matches(marker: Path, expected: bytes) -> bool:

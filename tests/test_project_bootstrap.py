@@ -3996,6 +3996,33 @@ def test_git_version_match_accepts_portable_and_windows_distribution() -> None:
 
 
 @pytest.mark.parametrize(
+    "suffix",
+    [
+        "forged",
+        "windowsX.1",
+        "windows.01",
+        "windows.0",
+        "windows.1x",
+        "windows.+1",
+        "windows.1.rc1",
+        "windows.1-unsafe",
+    ],
+)
+def test_host_git_version_rejects_unpinned_distribution_suffix(
+    suffix: str,
+) -> None:
+    """Only Git for Windows release revisions may extend a pinned Git version."""
+    assert not project.git_version_line_matches(
+        GIT_VERSION, f"git version {GIT_VERSION}.{suffix}"
+    )
+
+
+def test_host_git_version_accepts_later_windows_distribution_revision() -> None:
+    """A Windows-specific packaging revision keeps the same upstream Git pin."""
+    assert project.git_version_line_matches(GIT_VERSION, "git version 2.55.0.windows.17")
+
+
+@pytest.mark.parametrize(
     "banner",
     [
         "git version 2.55.0.windows.1\nunexpected diagnostic",
