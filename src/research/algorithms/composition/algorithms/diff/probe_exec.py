@@ -78,6 +78,16 @@ _POLL_SECONDS = 0.005
 _CHILD_REAP_SECONDS = 2.0
 _POSIX_OS_NAME = "posix"
 _MIN_HARDLINK_COUNT = 2
+# Native stream adapters can raise non-I/O ordinary exceptions as well.
+_PIPE_DEPENDENCY_ERRORS = (
+    OSError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+    IndexError,
+    OverflowError,
+)
 
 
 class _HashUpdater(Protocol):
@@ -583,19 +593,34 @@ def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
     return True
 
 
+def _close_probe_pipe(stream: IO[bytes], context: str) -> None:
+    """Require native completion from a probe pipe teardown."""
+    if stream.close() is not None:
+        message = f"probe {context} close reported non-native completion"
+        raise ValueError(message)
+
+
 def _drain_pipe(stream: IO[bytes], capture: _PipeCapture) -> None:
     """Drain within the quota, recording read and close failures."""
     try:
         again = True
         while again:
             again = _capture_fragment(stream, capture)
-    except (OSError, ValueError, RuntimeError) as error:
+    except _PIPE_DEPENDENCY_ERRORS as error:
         capture.error = error
     finally:
         try:
-            stream.close()
-        except (OSError, ValueError, RuntimeError) as error:
-            capture.error = error
+            _close_probe_pipe(stream, "capture pipe")
+        except _PIPE_DEPENDENCY_ERRORS as error:
+            if capture.error is None:
+                capture.error = error
+            else:
+                BaseException.add_note(
+                    capture.error,
+                    "probe capture pipe close also failed: "
+                    + _safe_probe_error_detail(error),
+                )
+    # A BaseException escaping the worker must remain visibly incomplete.
     capture.finished = True
 
 
@@ -620,12 +645,12 @@ def _feed_stdin(
         wrote = True
     except BrokenPipeError:
         wrote = True
-    except (OSError, ValueError, RuntimeError) as error:
+    except _PIPE_DEPENDENCY_ERRORS as error:
         errors.append(error)
     finally:
         try:
-            stream.close()
-        except (OSError, ValueError, RuntimeError) as error:
+            _close_probe_pipe(stream, "stdin")
+        except _PIPE_DEPENDENCY_ERRORS as error:
             errors.append(error)
     if wrote and not errors:
         completed.set()
@@ -781,7 +806,7 @@ def _start_writer(
         message = "probe subprocess stdin pipe is unavailable"
         raise ProbeExecutionError(message)
     if not data:
-        stream.close()
+        _close_probe_pipe(stream, "stdin")
         return None
     writer = threading.Thread(
         target=_feed_stdin,
@@ -817,8 +842,8 @@ def _close_unowned_pipe(
     if stream is None or (worker is not None and worker.is_alive()):
         return
     try:
-        stream.close()
-    except (OSError, RuntimeError, ValueError) as error:
+        _close_probe_pipe(stream, "unused pipe")
+    except _PIPE_DEPENDENCY_ERRORS as error:
         BaseException.add_note(
             failure, "probe unused pipe close failed: " + _safe_probe_error_detail(error)
         )
@@ -857,7 +882,7 @@ def _start_capture(
         writer = _start_writer(
             process, command.stdin, stdin_errors, completed=stdin_complete
         )
-    except (OSError, RuntimeError, ValueError) as error:
+    except _PIPE_DEPENDENCY_ERRORS as error:
         # Never close a stream underneath a reader still draining it.
         for pipe, reader in zip(
             (stdout_pipe, stderr_pipe), readers, strict=True
@@ -956,7 +981,7 @@ def _start_capture_checked(
     """
     try:
         return _start_capture(process, command)
-    except (OSError, RuntimeError, ValueError) as error:
+    except _PIPE_DEPENDENCY_ERRORS as error:
         message = "probe worker startup failed: " + _safe_probe_error_detail(error)
         raise ProbeExecutionError(message) from error
 

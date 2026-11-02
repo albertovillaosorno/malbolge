@@ -133,6 +133,16 @@ class _ShortStdinStream:
         return self.stream.closed
 
 
+class _ForgedCloseStream(io.BytesIO):
+    def __init__(self, receipt: object) -> None:
+        super().__init__()
+        self.receipt = receipt
+
+    def close(self) -> None:
+        super().close()
+        return cast("None", self.receipt)
+
+
 def _context(source_root: Path, repository_root: Path) -> ProbeRunContext:
     return ProbeRunContext(
         source_root=source_root,
@@ -803,8 +813,9 @@ def test_uncaught_reader_thread_failure_rejects_probe(
 
     def crashing_read(fd: int, count: int) -> bytes:
         if threading.current_thread() is not threading.main_thread():
-            message = "unanticipated capture failure"
-            raise TypeError(message)
+            # BaseException is not an ordinary adapter fault: an uncaught
+            # cancellation must still leave the worker incomplete.
+            raise KeyboardInterrupt
         return read(fd, count)
 
     monkeypatch.setattr(threading, "excepthook", record_uncaught)
@@ -859,6 +870,42 @@ def test_unowned_probe_pipe_close_keeps_foreign_primary(
     _expect(len(notes) == 1 and "pipe close failed" in notes[0], "cleanup note missing")
     if cleanup_kind == "native":
         _expect("native pipe close denied" in notes[0], "native note detail lost")
+
+
+@pytest.mark.parametrize(
+    "failure_type", [TypeError, AttributeError, IndexError, OverflowError]
+)
+def test_unowned_pipe_unexpected_close_fault_preserves_primary(
+    failure_type: type[Exception],
+) -> None:
+    """Unexpected native cleanup faults must not replace the body failure."""
+    primary = RuntimeError("primary probe worker failure")
+    secondary = failure_type("unowned descriptor close failed")
+
+    class CloseFault(io.BytesIO):
+        def close(self) -> None:
+            super().close()
+            raise secondary
+
+    stream = CloseFault(b"unused")
+    probe_exec_module._close_unowned_pipe(stream, None, primary)
+    assert stream.closed
+    notes = cast("list[str]", getattr(primary, "__notes__", []))
+    assert len(notes) == 1
+    assert "pipe close failed" in notes[0]
+
+
+@pytest.mark.parametrize("receipt", [False, 1, "done"])
+def test_unowned_pipe_forged_close_completion_records_secondary(
+    receipt: object,
+) -> None:
+    """Unowned cleanup cannot silently attest a foreign close receipt."""
+    primary = RuntimeError("original probe failure")
+    stream = _ForgedCloseStream(receipt)
+    probe_exec_module._close_unowned_pipe(stream, None, primary)
+    assert stream.closed
+    notes = cast("list[str]", getattr(primary, "__notes__", []))
+    assert len(notes) == 1 and "pipe close failed" in notes[0]
 
 
 @pytest.mark.parametrize("cleanup_kind", ["native", "foreign", "hostile-args"])
@@ -1014,6 +1061,89 @@ def test_probe_host_launch_and_worker_failures_reject_foreign_hooks(
         _expect("native host fault" in str(caught.value), "native reason was lost")
 
 
+@pytest.mark.parametrize(
+    "failure_type", [TypeError, AttributeError, IndexError, OverflowError]
+)
+def test_unexpected_worker_setup_fault_is_typed(
+    failure_type: type[Exception],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A host worker setup failure must retain the probe exception boundary."""
+    primary = failure_type("worker setup unavailable")
+
+    def fail_setup(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise primary
+
+    monkeypatch.setattr(probe_exec_module, "_start_capture", fail_setup)
+    with pytest.raises(ProbeExecutionError, match="worker startup failed") as caught:
+        _ = probe_exec_module._start_capture_checked(
+            cast("Popen[bytes]", object()),
+            ProbeCommand(ToolExecutable(_PYTHON_TOOL)),
+        )
+    assert caught.value.__cause__ is primary
+
+
+@pytest.mark.parametrize("receipt", [False, 1, "done"])
+def test_capture_reader_forged_close_completion_rejects(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A reader cannot declare a complete transcript after forged close."""
+    stream = _ForgedCloseStream(receipt)
+    capture = probe_exec_module._PipeCapture(limit=32)
+    monkeypatch.setattr(probe_exec_module, "_capture_fragment", lambda *_: False)
+    probe_exec_module._drain_pipe(stream, capture)
+    assert stream.closed and capture.finished
+    assert isinstance(capture.error, ValueError)
+
+
+@pytest.mark.parametrize("failure_type", [TypeError, OverflowError])
+def test_capture_preserves_read_fault_over_failed_close(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """The original read failure wins over unexpected stream teardown."""
+    primary = ValueError("capture read failed")
+    secondary = failure_type("capture close failed")
+
+    class CloseFault(io.BytesIO):
+        def close(self) -> None:
+            super().close()
+            raise secondary
+
+    def fail_read(*_args: object) -> bool:
+        raise primary
+
+    stream = CloseFault()
+    capture = probe_exec_module._PipeCapture(limit=32)
+    monkeypatch.setattr(probe_exec_module, "_capture_fragment", fail_read)
+    probe_exec_module._drain_pipe(stream, capture)
+    assert stream.closed and capture.finished and capture.error is primary
+    notes = cast("list[str]", getattr(primary, "__notes__", []))
+    assert len(notes) == 1 and "capture pipe close" in notes[0]
+
+
+@pytest.mark.parametrize("receipt", [False, 1, "done"])
+def test_empty_stdin_forged_close_receipt_rejects(
+    receipt: object,
+) -> None:
+    """Closing unused stdin must require native completion as well."""
+    stream = _ForgedCloseStream(receipt)
+
+    class FakeProcess:
+        stdin = stream
+
+    with pytest.raises(ValueError, match="stdin close"):
+        _ = probe_exec_module._start_writer(
+            cast("Popen[bytes]", FakeProcess()),
+            b"",
+            [],
+            completed=threading.Event(),
+        )
+    assert stream.closed
+
+
 @pytest.mark.parametrize("fail_writer", [False, True])
 def test_probe_worker_startup_failures_are_wrapped(
     tmp_path: Path,
@@ -1076,6 +1206,45 @@ def test_stdin_worker_rejects_short_or_foreign_write_counts(
     assert isinstance(errors[0], ValueError)
     assert _SHORT_STDIN_MESSAGE in str(errors[0])
     assert stream.closed
+
+
+@pytest.mark.parametrize(
+    "failure_type", [TypeError, AttributeError, IndexError, OverflowError]
+)
+def test_stdin_worker_close_fault_does_not_complete(
+    failure_type: type[Exception],
+) -> None:
+    """A foreign stream-close fault cannot attest full stdin delivery."""
+    secondary = failure_type("stdin close failed")
+
+    class CloseFault(io.BytesIO):
+        def close(self) -> None:
+            super().close()
+            raise secondary
+
+    stream = CloseFault()
+    failures: list[Exception] = []
+    completed = threading.Event()
+    feed = cast("_ProbeStdinWriter", vars(probe_exec_module)["_feed_stdin"])
+    feed(stream, b"full-input", failures, completed=completed)
+    assert stream.closed
+    assert failures == [secondary]
+    assert not completed.is_set()
+
+
+@pytest.mark.parametrize("receipt", [False, 1, "done"])
+def test_stdin_worker_forged_close_receipt_does_not_complete(
+    receipt: object,
+) -> None:
+    """A nonempty stdin writer cannot attest an untrusted pipe close."""
+    stream = _ForgedCloseStream(receipt)
+    errors: list[Exception] = []
+    completed = threading.Event()
+    feed = cast("_ProbeStdinWriter", vars(probe_exec_module)["_feed_stdin"])
+    feed(stream, b"all-bytes", errors, completed=completed)
+    assert stream.closed
+    assert len(errors) == 1 and isinstance(errors[0], ValueError)
+    assert not completed.is_set()
 
 
 def test_uncaught_stdin_writer_failure_rejects_probe(

@@ -306,7 +306,10 @@ unexpected invalid-stream errors that previously killed a reader thread without
 marking its capture incomplete. Each reader and the nonempty stdin writer also
 mark explicit clean completion; unexpected worker exits lacking that marker
 cannot be confused with successful pipe capture. A concurrent
-stdin writer preserves full-duplex behavior; the wall deadline starts before
+stdin writer preserves full-duplex behavior. Stream teardown also requires
+native `None` completion on reader, writer, unused, and empty-stdin pipes;
+foreign completion receipts reject the transcript or remain secondary to the
+original failure. The wall deadline starts before
 process launch and covers reader/writer setup, child and pipe completion.
 Unrepresentably large timeout integers reject through the probe execution
 boundary before spawning, rather than leaking host float-conversion overflow.
