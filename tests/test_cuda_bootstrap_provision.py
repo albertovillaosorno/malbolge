@@ -1129,9 +1129,13 @@ def test_provision_rejects_incomplete_toolkit_marker_write(
     """A toolkit must not publish when its marker write is incomplete."""
     payload = _payload()
     manifest_path = _manifest(tmp_path, payload)
-    _inject_short_write(
-        monkeypatch, cuda_validation.CUDA_PROVISION_MARKER, invalid_count
-    )
+    native_write = os.write
+
+    def invalid_marker_write(descriptor: int, content: bytes) -> int:
+        _ = native_write(descriptor, content[:-1])
+        return _bad_write_count(invalid_count, len(content))
+
+    monkeypatch.setattr(os, "write", invalid_marker_write)
     with pytest.raises(cuda_validation.CudaProvisionError, match="write count"):
         _ = cuda_validation.provision_cuda_manifest(
             tmp_path,
@@ -1141,6 +1145,47 @@ def test_provision_rejects_incomplete_toolkit_marker_write(
         )
     assert not (tmp_path / TOOLKIT_ROOT).exists()
     assert not (tmp_path / ".temp/cuda-provision-linux-x86_64").exists()
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_cuda_marker_race_never_overwrites_external_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    link_kind: str,
+) -> None:
+    """Marker creation must not follow a link inserted after absence check."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    outside = tmp_path / "external-marker.json"
+    sentinel = b"outside data must remain intact"
+    _ = outside.write_bytes(sentinel)
+    original_check = cuda_validation._require_new_completion_marker
+    inserted = False
+
+    def insert_link(path: Path) -> None:
+        nonlocal inserted
+        original_check(path)
+        try:
+            if link_kind == "symlink":
+                path.symlink_to(outside)
+            else:
+                _ = os.link(outside, path)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"{link_kind} unavailable: {error}")
+        inserted = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_require_new_completion_marker", insert_link)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path,
+                manifest,
+                LINUX_PLATFORM,
+                downloader=_download_fixture(payload),
+            )
+    assert inserted
+    assert outside.read_bytes() == sentinel
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
 
 
 @pytest.mark.parametrize("target", ["tar-library", "zip-library", "marker"])
@@ -1173,7 +1218,17 @@ def test_cuda_publication_rejects_false_full_write_with_corrupt_bytes(
             return native_write(path, b"!" + content[1:])
         return native_write(path, content)
 
-    monkeypatch.setattr(Path, "write_bytes", false_full_write)
+    if target == "marker":
+        native_fd_write = os.write
+
+        def corrupt_marker_write(descriptor: int, content: bytes) -> int:
+            nonlocal altered
+            altered = True
+            return native_fd_write(descriptor, b"!" + content[1:])
+
+        monkeypatch.setattr(os, "write", corrupt_marker_write)
+    else:
+        monkeypatch.setattr(Path, "write_bytes", false_full_write)
     with pytest.raises(cuda_validation.CudaProvisionError, match="content mismatch"):
         _ = cuda_validation.provision_cuda_manifest(
             tmp_path,

@@ -712,6 +712,70 @@ def _require_new_completion_marker(path: Path) -> None:
     _fail(f"CUDA completion marker already supplied by a package: {path}")
 
 
+def _write_new_completion_marker(path: Path, payload: bytes) -> None:
+    """Create and verify a marker without following a newly inserted link."""
+    _require_physical_directories(path.parent, "completion marker")
+    flags = (
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError("cannot create exclusive CUDA completion marker") from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("CUDA completion marker requires native descriptor")
+    identity: tuple[int, int] | None = None
+    completed = False
+    try:
+        admitted = path.lstat()
+        receipt = os.fstat(descriptor)
+        label = "CUDA completion marker"
+        if (
+            _manifest_identity(admitted, label)
+            != _manifest_identity(receipt, label)
+            or admitted.st_nlink != 1
+            or admitted.st_size != 0
+        ):
+            _fail("CUDA completion marker requires owned empty regular file")
+        identity = (admitted.st_dev, admitted.st_ino)
+        try:
+            written = os.write(descriptor, payload)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise CudaProvisionError("cannot write CUDA completion marker") from error
+        if type(written) is not int or written != len(payload):
+            _fail("CUDA staging write count mismatch: completion marker")
+        after_fd = os.fstat(descriptor)
+        after_path = path.lstat()
+        if (
+            _manifest_identity(after_fd, label)
+            != _manifest_identity(after_path, label)
+            or (after_fd.st_dev, after_fd.st_ino) != identity
+            or after_fd.st_nlink != 1
+            or after_fd.st_size != len(payload)
+        ):
+            _fail("CUDA completion marker changed during write")
+        if _read_manifest_source(path, label, max_bytes=len(payload)) != payload:
+            _fail("CUDA staging content mismatch: completion marker")
+        completed = True
+    finally:
+        with suppress(OSError):
+            os.close(descriptor)
+        if not completed and identity is not None:
+            with suppress(OSError):
+                observed = path.lstat()
+                if (
+                    type(observed) is os.stat_result
+                    and S_ISREG(observed.st_mode)
+                    and (observed.st_dev, observed.st_ino) == identity
+                    and observed.st_nlink == 1
+                ):
+                    path.unlink()
+
+
 def provision_cuda_manifest(
     root: Path,
     manifest_path: Path,
@@ -753,7 +817,7 @@ def provision_cuda_manifest(
         _require_physical_directories(staging, "staging")
         marker = staged_toolkit / CUDA_PROVISION_MARKER
         _require_new_completion_marker(marker)
-        _write_verified_bytes(marker, _marker_bytes(manifest))
+        _write_new_completion_marker(marker, _marker_bytes(manifest))
         _require_toolkit_destination(manifest.toolkit_root)
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
         _require_toolkit_destination(manifest.toolkit_root)
