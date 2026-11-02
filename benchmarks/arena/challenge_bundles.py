@@ -35,8 +35,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
-from typing import Any
-from typing import Never
+from typing import Any, Never
 
 from benchmarks.challenges import generate
 
@@ -168,7 +167,15 @@ def verify_bundle(
         _fail(
             "retained challenge bundle differs from deterministic regeneration"
         )
-    source_hash = sha256(produced.source).hexdigest()
-    if source_hash != case["workload_sha256"]:
+    try:
+        source_hash = sha256(produced.source).hexdigest()
+    except Exception as error:
+        # The hashing dependency must not publish a foreign failure or rely
+        # on caller-owned exception formatters for source authentication.
+        message = "challenge source SHA-256 computation failed"
+        raise ChallengeBundleError(message) from error
+    # Never dispatch a foreign digest's equality methods against a trusted
+    # workload claim; only an exact native hash string is admissible.
+    if type(source_hash) is not str or source_hash != case["workload_sha256"]:
         _fail("arena workload SHA-256 differs from regenerated C source")
     return source_hash

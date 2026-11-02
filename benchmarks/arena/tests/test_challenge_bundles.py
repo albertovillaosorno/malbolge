@@ -38,19 +38,15 @@ from __future__ import annotations
 
 import copy
 import csv
-from hashlib import sha256
-from io import StringIO
 import json
 import sys
-from typing import TYPE_CHECKING
-from typing import cast
+from hashlib import sha256
+from io import StringIO
+from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from benchmarks.arena import analyze
-from benchmarks.arena import challenge_bundles
-from benchmarks.arena import evidence
-from benchmarks.arena import raw_samples
+from benchmarks.arena import analyze, challenge_bundles, evidence, raw_samples
 from benchmarks.arena.tests.test_evidence import sample_study
 from benchmarks.challenges import generate
 
@@ -394,6 +390,74 @@ def test_direct_bundle_replay_accepts_exact_payload() -> None:
         challenge_bundles.verify_bundle(case, PROFILE, files)
         == case["workload_sha256"]
     )
+
+
+class _ForgedDigestText(str):
+    """A foreign digest must not choose equality with its claimed workload."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        None,
+        False,
+        0,
+        b"digest",
+        "a" * 64,
+        _ForgedDigestText("not-the-source"),
+    ],
+    ids=["missing", "bool", "integer", "bytes", "wrong-digest", "spoofed"],
+)
+def test_direct_bundle_rejects_untrusted_source_hash_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only an exact matching native string can attest the regenerated source."""
+    case, files = _direct_bundle()
+
+    class Digest:
+        def hexdigest(self) -> object:
+            return receipt
+
+    monkeypatch.setattr(challenge_bundles, "sha256", lambda _source: Digest())
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="SHA-256"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+@pytest.mark.parametrize("stage", ["digest", "hexdigest"])
+def test_direct_bundle_types_unexpected_source_hash_fault(
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Hashing dependency failures retain the exception without formatting."""
+    case, files = _direct_bundle()
+    fault = _UnexpectedHostileGeneratorError("opaque digest fault")
+
+    class Digest:
+        def hexdigest(self) -> str:
+            raise fault
+
+    def forged_hash(_source: bytes) -> Digest:
+        if stage == "digest":
+            raise fault
+        return Digest()
+
+    monkeypatch.setattr(challenge_bundles, "sha256", forged_hash)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="source.*SHA-256"
+    ) as caught:
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+    assert caught.value.__cause__ is fault
 
 
 @pytest.mark.parametrize(
