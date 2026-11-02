@@ -1280,6 +1280,17 @@ The original study records remain the result authority.
   Deterministic broken writer fixtures reject short/overstated/malformed counts
   and flush errors, distinguishing nonzero operator failure from impossible
   stdout rollback once actual writing has begun.
+  Two further red-first provider-corruption checks showed that replacing
+  the single shared JSON ASCII string escaper, or jointly replacing the
+  native C and Python iterator factories, could make all three local encoder
+  paths agree on a changed report. Signed fixes `42d0e59aa` and `41f427293`
+  now pin those import-time providers and fail closed before writing stdout
+  when their runtime identity changes. Both string substitutions and the
+  joint-factory forgery reject; 1,093 combined report, analysis, evidence,
+  study-file and historical tests passed after the second fix, with arena
+  BasedPyright and scoped Ruff checks clean. This is local provider identity
+  consistency, not evidence of untampered imports, genuine source records,
+  sink integrity, independent OS attestation or historical measurement truth.
 - `benchmarks/arena/study_file.py` guards bounded study JSON input with
   before/after descriptor and pathname identity, and nonblocking/no-follow
   open flags when available. Deterministic race regressions check ordinary

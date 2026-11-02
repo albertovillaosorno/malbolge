@@ -757,6 +757,15 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   dictionary keys and nested string values before JSON escaping can hide
   malformed Unicode. Four red-first negative cases and a valid non-BMP
   positive case guard this scalar boundary without authenticating source data.
+  A further two ASCII/Unicode red-first substitutions showed a shared
+  `json.encoder.encode_basestring_ascii` hook can forge matching report text;
+  `42d0e59aa` now pins its identity before any output. A separate red-first
+  joint substitution of native C and Python JSON iterator factories likewise
+  forged matching text; `41f427293` pins both factory identities. After that
+  fix, 1,093 report, analysis, evidence, study-input and historical adapter
+  tests passed, arena BasedPyright reported zero errors and scoped Ruff was
+  clean. These checks do not attest the runtime libraries before import,
+  the underlying reported evidence, or stdout sink fidelity.
 - Operator report output now requires exact text write counts and an explicit
   successful stdout flush across both arena CLI routes, rejecting malformed
   return values, truncation, and injected stream errors as nonzero exits.
