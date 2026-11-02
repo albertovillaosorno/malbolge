@@ -207,6 +207,50 @@ def test_cuda_authority_stream_close_fault_remains_typed(
     assert caught.value.__cause__ is failure
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+@pytest.mark.parametrize("kind", ("overwrite", "replace", "close-fault"))
+def test_cuda_overlay_reader_rechecks_after_stream_close(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Overlay bytes cannot be returned after a false host close receipt."""
+    path = tmp_path / "libnvrtc.so"
+    trusted = b"trusted native library"
+    _ = path.write_bytes(trusted)
+    native_open = cuda_validation._open_owned_manifest_stream  # pyright: ignore[reportPrivateUsage]
+    failure = OSError("untrusted close fault")
+    called = False
+
+    @contextmanager
+    def alter_on_close(descriptor: int, label: str) -> Iterator[BinaryIO]:
+        nonlocal called
+        with native_open(descriptor, label) as stream:
+            yield stream
+        called = True
+        if kind == "overwrite":
+            before = path.stat()
+            _ = path.write_bytes(b"!" + trusted[1:])
+            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        elif kind == "replace":
+            _ = path.rename(tmp_path / "parked-libnvrtc.so")
+            _ = path.write_bytes(trusted)
+        else:
+            raise failure
+
+    directory = os.open(tmp_path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    try:
+        with monkeypatch.context() as isolated:
+            isolated.setattr(cuda_validation, "_open_owned_manifest_stream", alter_on_close)
+            with pytest.raises(cuda_validation.CudaProvisionError, match="close") as caught:
+                _ = cuda_validation._read_cuda_overlay_file(  # pyright: ignore[reportPrivateUsage]
+                    directory, path.name
+                )
+    finally:
+        os.close(directory)
+    assert called
+    if kind == "close-fault":
+        assert caught.value.__cause__ is failure
+
+
 def test_cuda_relative_root_manifest_identity_is_cwd_invariant(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

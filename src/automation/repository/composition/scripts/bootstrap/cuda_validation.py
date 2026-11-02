@@ -1018,33 +1018,48 @@ def _read_cuda_overlay_file(
         raise CudaProvisionError("CUDA staged overlay member open failed") from error
     if type(descriptor) is not int or descriptor < 0:
         _fail("CUDA staged overlay member requires native descriptor")
-    with _open_owned_manifest_stream(descriptor, label) as stream:
-        if (
-            _manifest_identity(_source_descriptor_status(stream, label), label)
-            != expected
-        ):
-            _fail("CUDA staged overlay member changed before read")
-        try:
-            content = _read_source_bytes(stream, max_bytes)
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise CudaProvisionError(
-                "CUDA staged overlay member read failed"
-            ) from error
-        if type(content) is not bytes or len(content) != named.st_size:
-            _fail("CUDA staged overlay member changed during read")
-        try:
-            after = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise CudaProvisionError(
-                "CUDA staged overlay member status failed"
-            ) from error
-        if (
-            _manifest_identity(after, label) != expected
-            or _manifest_identity(_source_descriptor_status(stream, label), label)
-            != expected
-        ):
-            _fail("CUDA staged overlay member changed during read")
-        return content
+    try:
+        with _open_owned_manifest_stream(descriptor, label) as stream:
+            if (
+                _manifest_identity(_source_descriptor_status(stream, label), label)
+                != expected
+            ):
+                _fail("CUDA staged overlay member changed before read")
+            try:
+                content = _read_source_bytes(stream, max_bytes)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay member read failed"
+                ) from error
+            if type(content) is not bytes or len(content) != named.st_size:
+                _fail("CUDA staged overlay member changed during read")
+            try:
+                after = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay member status failed"
+                ) from error
+            if (
+                _manifest_identity(after, label) != expected
+                or _manifest_identity(_source_descriptor_status(stream, label), label)
+                != expected
+            ):
+                _fail("CUDA staged overlay member changed during read")
+    except CudaProvisionError:
+        raise
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            "CUDA staged overlay member source stream close failed"
+        ) from error
+    try:
+        closed = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            "CUDA staged overlay member close receipt failed"
+        ) from error
+    if _manifest_identity(closed, label) != expected:
+        _fail("CUDA staged overlay member changed after stream close")
+    return content
 
 
 def _cuda_overlay_destination_members(destination: Path) -> dict[
