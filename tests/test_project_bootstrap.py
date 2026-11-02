@@ -98,6 +98,7 @@ IMPORT_SOURCE_MUTATION = "source"
 FOREIGN_PARENT_BYTES = b"foreign-parent"
 FOREIGN_ROOT_BYTES = b"foreign-root"
 FOREIGN_TOOLCHAIN_BYTES = b"foreign-toolchain"
+FOREIGN_RUSTLIB_BYTES = b"foreign-rustlib"
 GIT_HELPER_BYTES = b"git-helper"
 GIT_MARKER_BYTES = b"malbolge-git-import/v1\n"
 RUST_MARKER_BYTES = b"malbolge-rust-toolchain-import/v1\n"
@@ -6834,6 +6835,108 @@ def test_jig_observation_accepts_native_path(
     assert status.path == executable
 
 
+def _import_host_component(
+    source: Path, destination: Path, component: str
+) -> None:
+    """Invoke the selected Git or Rust import in hostile-path tests."""
+    if component == GIT_COMPONENT:
+        _ = project.import_git_installation(
+            source / "bin/git", source, destination, windows=False
+        )
+    else:
+        _ = project.import_rust_toolchain(
+            source, destination, tool_ids=("cargo",), windows=False
+        )
+
+
+def _make_import_race_source(tmp_path: Path) -> Path:
+    """Prepare the same physical host tools for Git and Rust import races.
+
+    Returns:
+        Directory containing both host executables.
+
+    """
+    source = tmp_path / "host"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/git").write_bytes(GIT_BYTES)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    return source
+
+
+def _prepare_import_root_swap(
+    tmp_path: Path, component: str, *, sentinel: bytes = FOREIGN_ROOT_BYTES
+) -> tuple[Path, Path, Path, Path]:
+    """Prepare import and foreign directories before pathname substitution.
+
+    Returns:
+        Host source, import destination, parked root, and foreign root.
+
+    """
+    source = _make_import_race_source(tmp_path)
+    destination = tmp_path / ".dependencies" / component / GIT_VERSION
+    parked = tmp_path / "retained-import"
+    foreign = tmp_path / "foreign-import"
+    (foreign / "bin").mkdir(parents=True)
+    _ = (foreign / "sentinel").write_bytes(sentinel)
+    return source, destination, parked, foreign
+
+
+def _make_rust_import_source(tmp_path: Path) -> Path:
+    """Prepare physical Rust tools with sysroot, mode and source symlink.
+
+    Returns:
+        Host source root for nested copy and hardlink fallback tests.
+
+    """
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    (source / "lib/rustlib").mkdir(parents=True)
+    cargo = source / "bin/cargo"
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    cargo.chmod(0o700)
+    _ = (source / "lib/rustlib/manifest").write_bytes(RUST_STD_BYTES)
+    _ = (source / "lib/rustlib/manifest-link").symlink_to("manifest")
+    return source
+
+
+def _prepare_rust_nested_destination(
+    tmp_path: Path, destination: Path
+) -> tuple[Path, Path, Path]:
+    """Set up the nested destination swap and separate foreign directory.
+
+    Returns:
+        Nested import directory, parked directory and foreign directory.
+
+    """
+    rustlib = destination / "lib/rustlib"
+    parked = tmp_path / "retained-rustlib"
+    foreign = tmp_path / "foreign-rustlib"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(FOREIGN_RUSTLIB_BYTES)
+    return rustlib, parked, foreign
+
+
+def _prepare_foreign_rust_toolchain(tmp_path: Path) -> Path:
+    """Prepare a foreign toolchain with its own executable and sentinel.
+
+    Returns:
+        A directory that must remain untouched by the import operation.
+
+    """
+    foreign = tmp_path / "foreign-toolchain"
+    (foreign / "bin").mkdir(parents=True)
+    _ = (foreign / "bin/cargo").write_bytes(b"outside-cargo")
+    _ = (foreign / "sentinel").write_bytes(FOREIGN_TOOLCHAIN_BYTES)
+    return foreign
+
+
+def _assert_nested_rust_import_state(foreign_root: Path, parked: Path) -> None:
+    """Prove the nested replacement was not written and the old tree was."""
+    assert (foreign_root / "sentinel").read_bytes() == FOREIGN_RUSTLIB_BYTES
+    assert not (foreign_root / "manifest").exists()
+    assert (parked / "manifest").read_bytes() == RUST_STD_BYTES
+
+
 @pytest.mark.skipif(
     os.name != POSIX_NAME, reason="POSIX import descriptor race"
 )
@@ -6847,22 +6950,16 @@ def test_import_copy_never_writes_to_replaced_destination_root(
     substitution: str,
 ) -> None:
     """A late imported-root exchange must never populate a foreign bin tree."""
-    source = tmp_path / "host"
-    source_bin = source / "bin"
-    source_bin.mkdir(parents=True)
+    sentinel = b"do not change foreign tree"
+    source, destination, parked, foreign = _prepare_import_root_swap(
+        tmp_path, component, sentinel=sentinel
+    )
     native_name = "git" if component == GIT_COMPONENT else "cargo"
     payload = GIT_BYTES if component == GIT_COMPONENT else RUST_CARGO_BYTES
-    _ = (source_bin / native_name).write_bytes(payload)
-    destination = tmp_path / ".dependencies" / component / GIT_VERSION
-    parked = tmp_path / "retained-import"
-    foreign = tmp_path / "foreign-import"
-    (foreign / "bin").mkdir(parents=True)
-    sentinel = b"do not change foreign tree"
-    _ = (foreign / "sentinel").write_bytes(sentinel)
     native_link = os.link
     swapped = False
 
-    def exchange_on_copy(
+    def exchange_on_copy(  # ruff: ignore[too-many-arguments]
         source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         target_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         *,
@@ -6872,11 +6969,11 @@ def test_import_copy_never_writes_to_replaced_destination_root(
     ) -> None:
         nonlocal swapped
         if not swapped and Path(os.fsdecode(target_path)).name == native_name:
-            destination.rename(parked)
+            _ = destination.rename(parked)
             if substitution == SYMLINK_SUBSTITUTION:
                 destination.symlink_to(foreign, target_is_directory=True)
             else:
-                foreign.rename(destination)
+                _ = foreign.rename(destination)
             swapped = True
         native_link(
             source_path,
@@ -6888,21 +6985,8 @@ def test_import_copy_never_writes_to_replaced_destination_root(
 
     with monkeypatch.context() as isolated:
         isolated.setattr(os, "link", exchange_on_copy)
-        with pytest.raises(project.InitializationError):
-            if component == GIT_COMPONENT:
-                _ = project.import_git_installation(
-                    source_bin / native_name,
-                    source,
-                    destination,
-                    windows=False,
-                )
-            else:
-                _ = project.import_rust_toolchain(
-                    source,
-                    destination,
-                    tool_ids=("cargo",),
-                    windows=False,
-                )
+        with pytest.raises(project.InitializationError, match="parent changed"):
+            _import_host_component(source, destination, component)
     assert swapped
     foreign_root = (
         foreign if substitution == SYMLINK_SUBSTITUTION else destination
@@ -6926,10 +7010,8 @@ def test_import_root_parent_swap_before_creation_preserves_foreign_tree(
 ) -> None:
     """Parent replacement after admission cannot create under a foreign root."""
     source = tmp_path / "host"
-    source.mkdir()
-    native = source / "git"
-    _ = native.write_bytes(GIT_BYTES)
-    (source / "bin").mkdir()
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/git").write_bytes(GIT_BYTES)
     _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
     destination = tmp_path / ".dependencies" / component / GIT_VERSION
     parent = destination.parent
@@ -6938,8 +7020,9 @@ def test_import_root_parent_swap_before_creation_preserves_foreign_tree(
     foreign = tmp_path / "foreign-parent"
     foreign.mkdir()
     _ = (foreign / "sentinel").write_bytes(b"foreign-parent")
-    original_admit = (
-        project._admit_import_destination  # pyright: ignore[reportPrivateUsage]
+    original_admit = cast(
+        "Callable[[Path, str], None]",
+        vars(project)["_admit_import_destination"],
     )
     swapped = False
 
@@ -6947,26 +7030,19 @@ def test_import_root_parent_swap_before_creation_preserves_foreign_tree(
         nonlocal swapped
         original_admit(path, label)
         if not swapped:
-            parent.rename(parked)
+            _ = parent.rename(parked)
             if substitution == SYMLINK_SUBSTITUTION:
                 parent.symlink_to(foreign, target_is_directory=True)
             else:
-                foreign.rename(parent)
+                _ = foreign.rename(parent)
             swapped = True
 
     with monkeypatch.context() as isolated:
         isolated.setattr(
             project, "_admit_import_destination", exchange_after_admission
         )
-        with pytest.raises(project.InitializationError):
-            if component == GIT_COMPONENT:
-                _ = project.import_git_installation(
-                    native, source, destination, windows=False
-                )
-            else:
-                _ = project.import_rust_toolchain(
-                    source, destination, tool_ids=("cargo",), windows=False
-                )
+        with pytest.raises(project.InitializationError, match="parent changed"):
+            _import_host_component(source, destination, component)
     assert swapped
     foreign_root = foreign if substitution == SYMLINK_SUBSTITUTION else parent
     assert (foreign_root / "sentinel").read_bytes() == FOREIGN_PARENT_BYTES
@@ -6983,22 +7059,15 @@ def test_rust_import_nested_directory_swap_cannot_write_to_foreign_tree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
 ) -> None:
     """Descriptor-held nested Rust sysroot imports never follow a new parent."""
-    source = tmp_path / "host-rust"
-    (source / "bin").mkdir(parents=True)
-    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
-    (source / "lib/rustlib").mkdir(parents=True)
-    _ = (source / "lib/rustlib/manifest").write_bytes(RUST_STD_BYTES)
+    source = _make_rust_import_source(tmp_path)
     destination = tmp_path / ".dependencies/rust" / GIT_VERSION
-    rustlib = destination / "lib/rustlib"
-    parked = tmp_path / "retained-rustlib"
-    foreign = tmp_path / "foreign-rustlib"
-    foreign.mkdir()
-    sentinel = b"foreign-rustlib"
-    _ = (foreign / "sentinel").write_bytes(sentinel)
+    rustlib, parked, foreign = _prepare_rust_nested_destination(
+        tmp_path, destination
+    )
     native_link = os.link
     swapped = False
 
-    def swap_during_nested_copy(
+    def swap_during_nested_copy(  # ruff: ignore[too-many-arguments]
         source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         target_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         *,
@@ -7031,11 +7100,9 @@ def test_rust_import_nested_directory_swap_cannot_write_to_foreign_tree(
             _ = project.import_rust_toolchain(
                 source, destination, tool_ids=("cargo",), windows=False
             )
-    assert swapped
     foreign_root = foreign if substitution == SYMLINK_SUBSTITUTION else rustlib
-    assert (foreign_root / "sentinel").read_bytes() == sentinel
-    assert not (foreign_root / "manifest").exists()
-    assert (parked / "manifest").read_bytes() == RUST_STD_BYTES
+    _assert_nested_rust_import_state(foreign_root, parked)
+    assert swapped
     assert not project.rust_toolchain_import_complete(destination)
 
 
@@ -7046,22 +7113,14 @@ def test_rust_import_file_copy_fallback_and_source_links(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Restricted hardlinks preserve native executable and symlink semantics."""
-    source = tmp_path / "host-rust"
-    (source / "bin").mkdir(parents=True)
-    (source / "lib/rustlib").mkdir(parents=True)
-    cargo = source / "bin/cargo"
-    _ = cargo.write_bytes(RUST_CARGO_BYTES)
-    cargo.chmod(0o700)
-    manifest = source / "lib/rustlib/manifest"
-    _ = manifest.write_bytes(RUST_STD_BYTES)
-    _ = (source / "lib/rustlib/manifest-link").symlink_to("manifest")
+    source = _make_rust_import_source(tmp_path)
     alias_source = tmp_path / "source-alias"
     _ = alias_source.symlink_to(source, target_is_directory=True)
     destination = tmp_path / ".dependencies/rust" / GIT_VERSION
     original_link = os.link
     blocked: set[str] = set()
 
-    def deny_import_hardlink(
+    def deny_import_hardlink(  # ruff: ignore[too-many-arguments]
         from_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         to_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         *,
@@ -7071,7 +7130,8 @@ def test_rust_import_file_copy_fallback_and_source_links(
     ) -> None:
         if Path(os.fsdecode(to_path)).name in {"cargo", "manifest"}:
             blocked.add(Path(os.fsdecode(to_path)).name)
-            raise OSError("host hardlink restricted")
+            reason = "host hardlink restricted"
+            raise OSError(reason)
         original_link(
             from_path,
             to_path,
@@ -7110,7 +7170,7 @@ def test_rust_import_rejects_same_size_file_swap_after_hardlink(
     native_link = os.link
     swapped = False
 
-    def swap_after_link(
+    def swap_after_link(  # ruff: ignore[too-many-arguments]
         source_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         destination_path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         *,
@@ -7160,20 +7220,16 @@ def test_import_completion_rejects_late_replaced_destination_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     component: str,
+    *,
     substitution: str,
 ) -> None:
     """Late root replacement must not receive a false completion marker."""
-    source = tmp_path / "host"
-    (source / "bin").mkdir(parents=True)
-    _ = (source / "bin/git").write_bytes(GIT_BYTES)
-    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
-    destination = tmp_path / ".dependencies" / component / GIT_VERSION
-    parked = tmp_path / "retained-import"
-    foreign = tmp_path / "foreign-import"
-    foreign.mkdir()
-    _ = (foreign / "sentinel").write_bytes(b"foreign-root")
-    original_write = (
-        project._write_import_completion_marker_at_parent  # pyright: ignore[reportPrivateUsage]
+    source, destination, parked, foreign = _prepare_import_root_swap(
+        tmp_path, component
+    )
+    original_write = cast(
+        "Callable[..., None]",
+        vars(project)["_write_import_completion_marker_at_parent"],
     )
     swapped = False
 
@@ -7200,15 +7256,11 @@ def test_import_completion_rejects_late_replaced_destination_root(
             "_write_import_completion_marker_at_parent",
             swap_before_marker,
         )
-        with pytest.raises(project.InitializationError):
-            if component == GIT_COMPONENT:
-                _ = project.import_git_installation(
-                    source / "bin/git", source, destination, windows=False
-                )
-            else:
-                _ = project.import_rust_toolchain(
-                    source, destination, tool_ids=("cargo",), windows=False
-                )
+        with pytest.raises(
+            project.InitializationError,
+            match=r"parent changed|must not redirect|marker creation failed",
+        ):
+            _import_host_component(source, destination, component)
     assert swapped
     foreign_root = (
         foreign if substitution == SYMLINK_SUBSTITUTION else destination
@@ -7224,16 +7276,14 @@ def test_rust_import_alias_rejects_replaced_root_before_alias_open(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
 ) -> None:
     """Imported Rust bin identity must remain bound through alias creation."""
-    source = tmp_path / "host-rust"
-    (source / "bin").mkdir(parents=True)
-    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    source = _make_rust_import_source(tmp_path)
     destination = tmp_path / ".dependencies/rust" / GIT_VERSION
     parked = tmp_path / "retained-toolchain"
-    foreign = tmp_path / "foreign-toolchain"
-    (foreign / "bin").mkdir(parents=True)
-    _ = (foreign / "bin/cargo").write_bytes(b"outside-cargo")
-    _ = (foreign / "sentinel").write_bytes(b"foreign-toolchain")
-    native_aliases = project._ensure_rust_toolchain_aliases  # pyright: ignore[reportPrivateUsage]
+    foreign = _prepare_foreign_rust_toolchain(tmp_path)
+    native_aliases = cast(
+        "Callable[..., tuple[Path, ...]]",
+        vars(project)["_ensure_rust_toolchain_aliases"],
+    )
     swapped = False
 
     def exchange_before_aliases(
@@ -7262,7 +7312,10 @@ def test_rust_import_alias_rejects_replaced_root_before_alias_open(
         isolated.setattr(
             project, "_ensure_rust_toolchain_aliases", exchange_before_aliases
         )
-        with pytest.raises(project.InitializationError):
+        with pytest.raises(
+            project.InitializationError,
+            match=r"directory|parent|must not redirect",
+        ):
             _ = project.import_rust_toolchain(
                 source, destination, tool_ids=("cargo",), windows=False
             )
