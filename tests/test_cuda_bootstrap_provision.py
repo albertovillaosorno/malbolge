@@ -5017,6 +5017,50 @@ def test_cuda_posix_overlay_rejects_prior_member_and_unlisted_changes(
     assert touched
 
 
+def test_cuda_two_verified_packages_publish_both_member_trees(
+    tmp_path: Path,
+) -> None:
+    """Complete second-package overlays retain the first verified tree."""
+    first_bytes = _payload()
+    second_name = "cuda_cudart"
+    second_path = (
+        f"{second_name}/{LINUX_PLATFORM}/"
+        f"{second_name}-{LINUX_PLATFORM}-1.2.3-archive.tar.xz"
+    )
+    second_bytes = _tar_xz({
+        f"{second_name}-{LINUX_PLATFORM}-1.2.3-archive/bin/cudart.dll": b"new runtime"
+    })
+    manifest = _manifest(tmp_path, first_bytes)
+    document = cast("dict[str, object]", json.loads(manifest.read_text()))
+    packages = cast("list[dict[str, object]]", document["packages"])
+    packages.append({
+        "name": second_name,
+        "version": "1.2.3",
+        "relative_path": second_path,
+        "sha256": hashlib.sha256(second_bytes).hexdigest(),
+        "size": len(second_bytes),
+    })
+    _ = manifest.write_text(json.dumps(document))
+    fetched: list[str] = []
+
+    def download(url: str) -> bytes:
+        fetched.append(url)
+        if url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH:
+            return first_bytes
+        assert url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + second_path
+        return second_bytes
+
+    toolkit = cuda_validation.provision_cuda_manifest(
+        tmp_path, manifest, LINUX_PLATFORM, downloader=download,
+    )
+    assert (toolkit / "lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
+    assert (toolkit / "lib64/libnvrtc-builtins.so.13.3").read_bytes() == BUILTINS_BYTES
+    assert (toolkit / "bin/cudart.dll").read_bytes() == b"new runtime"
+    assert (toolkit / cuda_validation.CUDA_PROVISION_MARKER).is_file()
+    assert len(fetched) == 2
+    assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX descriptors")
 def test_cuda_second_package_cannot_publish_modified_first_package(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
