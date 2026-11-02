@@ -1845,6 +1845,69 @@ def test_bootstrap_authority_rejects_foreign_parent_lstat(
             _ = inspect()
 
 
+@pytest.mark.parametrize("authority", ["rust", "cuda-manifest", "cuda-index", "git"])
+def test_bootstrap_authority_rejects_external_hardlink(
+    tmp_path: Path, authority: str
+) -> None:
+    """Authority metadata cannot be shared with an unrelated host inode alias."""
+    if authority == "rust":
+        selected = _write_rust_manifest(tmp_path)
+    elif authority == "git":
+        selected = tmp_path / ".jig/settings/versions.toml"
+        selected.parent.mkdir(parents=True)
+        _ = selected.write_text(
+            '[authority.git]\ncurrent = "2.55.0"\n', encoding="ascii"
+        )
+    else:
+        selected = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+        if authority == "cuda-index":
+            selected = _write_cuda_manifest_index(tmp_path)
+
+    def inspect() -> object:
+        if authority == "rust":
+            return project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+        if authority == "git":
+            return project._configured_git_version(  # pyright: ignore[reportPrivateUsage]
+                tmp_path
+            )
+        return project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+
+    outside = tmp_path / "foreign-hardlink"
+    try:
+        os.link(selected, outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    with pytest.raises(project.InitializationError, match="single-link|hardlink"):
+        _ = inspect()
+    assert outside.read_bytes() == selected.read_bytes()
+
+
+def test_bootstrap_authority_rejects_hardlink_added_after_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A link-count increase during the read invalidates the pinned snapshot."""
+    selected = _write_rust_manifest(tmp_path)
+    outside = tmp_path / "late-hardlink"
+    native_fstat = os.fstat
+    observed = 0
+
+    def add_link_before_final_fstat(descriptor: int) -> os.stat_result:
+        nonlocal observed
+        current = native_fstat(descriptor)
+        if current.st_ino == selected.stat().st_ino:
+            observed += 1
+            if observed == 2:
+                os.link(selected, outside)
+                current = native_fstat(descriptor)
+        return current
+
+    monkeypatch.setattr(os, "fstat", add_link_before_final_fstat)
+    with pytest.raises(project.InitializationError, match="single-link|hardlink"):
+        _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+    assert observed >= 2
+    assert outside.read_bytes() == selected.read_bytes()
+
+
 def test_bootstrap_rust_authority_rejects_linked_leaf(tmp_path: Path) -> None:
     """Rust toolchain version cannot be borrowed through an alias."""
     original = _write_rust_manifest(tmp_path)

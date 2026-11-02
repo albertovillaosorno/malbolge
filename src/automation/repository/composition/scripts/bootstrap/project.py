@@ -369,6 +369,8 @@ def _authority_identity(status: os.stat_result) -> tuple[int, ...]:
         _fail("bootstrap authority requires native file status")
     if not stat.S_ISREG(status.st_mode):
         _fail("bootstrap authority must be a regular file")
+    if status.st_nlink != 1:
+        _fail("bootstrap authority must be single-linked")
     if status.st_size > MAX_AUTHORITY_BYTES:
         _fail("bootstrap authority exceeds byte limit")
     return (
