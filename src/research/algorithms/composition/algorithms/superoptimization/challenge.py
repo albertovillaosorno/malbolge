@@ -40,7 +40,10 @@ from hashlib import sha256
 import json
 from typing import Final
 
+
 from verifier import emitted_malbolge
+
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 _GRAPHICAL_START: Final = 33
 _GRAPHICAL_VALUES: Final = 94
@@ -127,8 +130,20 @@ def workload_bytes() -> bytes:
         "source_words": _SOURCE_WORDS,
         "verifier": CLASSIC_BLOCK_SEARCH_VERIFIER_ID,
     }
-    text = json.dumps(document, sort_keys=True, separators=(",", ":"))
-    return text.encode("utf-8")
+    try:
+        # json.dumps still resolves public JSONEncoder even when import-bound.
+        source_text = _SOURCE_JSON_ENCODER(
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(document)
+        observed = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    except Exception as error:
+        message = f"workload JSON serializer failed: {type(error).__name__}"
+        raise InvalidClassicBlockCandidateError(message) from error
+    if type(observed) is not str or observed != source_text:
+        message = "workload JSON serializer disagrees with source"
+        raise InvalidClassicBlockCandidateError(message)
+    return source_text.encode("utf-8")
 
 
 def workload_sha256() -> str:

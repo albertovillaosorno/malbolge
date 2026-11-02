@@ -33,13 +33,11 @@
 """Characterization evidence for the frozen learned-guidance holdout."""
 
 from hashlib import sha256
+import json
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from algorithms.superoptimization import four_word_holdout as holdout
-
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 _ROOT = Path(__file__).resolve().parents[5]
 _EVIDENCE = _ROOT / (
@@ -54,6 +52,49 @@ _SOURCE_COMMIT = "4cd77739c3bbee222487ab54a34b421bef4881ee"
 _KNOWN_POSITIVE_RAW_INDEX = 39_912_591
 _KNOWN_POSITIVE_SOURCE = b"Q&%$"
 _KNOWN_POSITIVE_QUALITY = 1
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "dumps-only", "joint"))
+def test_classic_four_word_workload_rejects_forged_json_providers(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Frozen workload SHA-256 inputs cannot be replaced by public JSON."""
+    baseline = holdout.workload_bytes()
+    assert baseline != b"{}"
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return "{}"
+
+    with monkeypatch.context() as patch:
+        if providers != "dumps-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: "{}")
+        with pytest.raises(
+            holdout.InvalidFourWordHoldoutCandidateError,
+            match="workload JSON serializer disagrees with source",
+        ):
+            _ = holdout.workload_bytes()
+
+
+def test_classic_four_word_workload_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent JSON serialization preserves exact workload identity."""
+    baseline = holdout.workload_bytes()
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert holdout.workload_bytes() == baseline
+        assert holdout.workload_sha256() == sha256(baseline).hexdigest()
 
 
 def test_retained_characterization_is_empty_and_source_pinned() -> None:

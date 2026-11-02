@@ -37,6 +37,7 @@ from __future__ import annotations
 from hashlib import sha256
 import importlib
 import importlib.util
+import json
 from pathlib import Path
 import sys
 from typing import Protocol
@@ -268,6 +269,49 @@ def test_challenge_matches_independent_transfer_for_every_candidate() -> None:
         == _TWO_STEP_COUNT
     )
     assert _accepted_digest(accepted) == _ACCEPTED_SHA256
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "dumps-only", "joint"))
+def test_classic_two_word_workload_rejects_forged_json_providers(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Frozen workload SHA-256 inputs cannot be replaced by public JSON."""
+    baseline = _CHALLENGE_MODULE.workload_bytes()
+    assert baseline != b"{}"
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return "{}"
+
+    with monkeypatch.context() as patch:
+        if providers != "dumps-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: "{}")
+        with pytest.raises(
+            _CHALLENGE_MODULE.InvalidClassicBlockCandidateError,
+            match="workload JSON serializer disagrees with source",
+        ):
+            _ = _CHALLENGE_MODULE.workload_bytes()
+
+
+def test_classic_two_word_workload_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent JSON serialization preserves exact workload identity."""
+    baseline = _CHALLENGE_MODULE.workload_bytes()
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert _CHALLENGE_MODULE.workload_bytes() == baseline
+        assert _CHALLENGE_MODULE.workload_sha256() == sha256(baseline).hexdigest()
 
 
 def test_workload_identity_is_canonical_and_search_order_independent() -> None:

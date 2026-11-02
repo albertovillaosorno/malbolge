@@ -38,11 +38,14 @@ from __future__ import annotations
 from hashlib import sha256
 import json
 from typing import Final
+
 from typing import cast
 
 from verifier import emitted_malbolge_classic as classic
 from verifier import emitted_malbolge_entry as entry_transfer
 from verifier import emitted_malbolge_prefix as prefix_transfer
+
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 _GRAPHICAL_START: Final = 33
 _GRAPHICAL_VALUES: Final = 94
@@ -271,7 +274,20 @@ def workload_bytes() -> bytes:
         "training_challenge_id": "classic-three-word-verified-block-search-v1",
         "verifier": HOLDOUT_VERIFIER_ID,
     }
-    return json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    try:
+        # json.dumps still resolves public JSONEncoder even when import-bound.
+        source_text = _SOURCE_JSON_ENCODER(
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(document)
+        observed = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    except Exception as error:
+        message = f"workload JSON serializer failed: {type(error).__name__}"
+        raise InvalidFourWordHoldoutCandidateError(message) from error
+    if type(observed) is not str or observed != source_text:
+        message = "workload JSON serializer disagrees with source"
+        raise InvalidFourWordHoldoutCandidateError(message)
+    return source_text.encode("utf-8")
 
 
 def workload_sha256() -> str:

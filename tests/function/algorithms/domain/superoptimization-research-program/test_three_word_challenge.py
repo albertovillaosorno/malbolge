@@ -33,6 +33,7 @@
 """Independent evidence for the preregistered three-word classic holdout."""
 
 from hashlib import sha256
+import json
 from typing import cast
 
 from algorithms.superoptimization import three_word_challenge as challenge
@@ -161,6 +162,49 @@ def test_three_word_candidate_encoding_rejects_foreign_indices(
         match=_CANDIDATE_ERROR,
     ):
         _ = challenge.candidate_source(cast("int", index))
+
+
+@pytest.mark.parametrize("providers", ("encoder-only", "dumps-only", "joint"))
+def test_classic_three_word_workload_rejects_forged_json_providers(
+    monkeypatch: pytest.MonkeyPatch, providers: str
+) -> None:
+    """Frozen workload SHA-256 inputs cannot be replaced by public JSON."""
+    baseline = challenge.workload_bytes()
+    assert baseline != b"{}"
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return "{}"
+
+    with monkeypatch.context() as patch:
+        if providers != "dumps-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: "{}")
+        with pytest.raises(
+            challenge.InvalidThreeWordCandidateError,
+            match="workload JSON serializer disagrees with source",
+        ):
+            _ = challenge.workload_bytes()
+
+
+def test_classic_three_word_workload_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent JSON serialization preserves exact workload identity."""
+    baseline = challenge.workload_bytes()
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert challenge.workload_bytes() == baseline
+        assert challenge.workload_sha256() == sha256(baseline).hexdigest()
 
 
 def test_three_word_workload_matches_preregistered_identity() -> None:
