@@ -303,6 +303,8 @@ def _authority_identity(status: os.stat_result) -> tuple[int, ...]:
         Device/inode, size and mutation-sensitive timestamps.
 
     """
+    if type(status) is not os.stat_result:
+        _fail("bootstrap authority requires native file status")
     if not stat.S_ISREG(status.st_mode):
         _fail("bootstrap authority must be a regular file")
     if status.st_size > MAX_AUTHORITY_BYTES:
@@ -355,11 +357,21 @@ def _read_authority_bytes(path: Path) -> bytes:
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_BINARY", 0)
     )
-    descriptor = os.open(path, flags)
+    try:
+        descriptor = os.open(path, flags)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot open bootstrap authority") from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("bootstrap authority requires native descriptor")
     with _open_authority_stream(descriptor) as stream:
         if _authority_identity(os.fstat(stream.fileno())) != expected:
             _fail("bootstrap authority changed before read")
-        content = stream.read(MAX_AUTHORITY_BYTES + 1)
+        try:
+            content = stream.read(MAX_AUTHORITY_BYTES + 1)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise InitializationError("cannot read bootstrap authority") from error
+        if type(content) is not bytes:
+            _fail("bootstrap authority stream must return native bytes")
         if (
             len(content) != admitted.st_size
             or _authority_identity(os.fstat(stream.fileno())) != expected

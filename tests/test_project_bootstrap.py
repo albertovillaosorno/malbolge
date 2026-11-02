@@ -48,6 +48,7 @@ import tarfile
 import urllib.request
 import zipfile
 from typing import TYPE_CHECKING
+from typing import BinaryIO
 from typing import Never, Self, cast, final, override
 
 import pytest
@@ -1624,6 +1625,163 @@ def test_bootstrap_authority_fdopen_fault_closes_descriptor(
         for descriptor in opened:
             with suppress(OSError):
                 os.close(descriptor)
+
+
+@pytest.mark.parametrize("form", ["bytearray", "view", "subclass", "none"])
+def test_bootstrap_authority_rejects_nonnative_stream_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, form: str
+) -> None:
+    """Mutable or foreign stream receipts cannot become version authority."""
+    _ = _write_rust_manifest(tmp_path)
+    real_fdopen = os.fdopen
+
+    class ForeignBytes(bytes):
+        pass
+
+    class ReplacedRead:
+        def __init__(self, stream: object) -> None:
+            self.stream: BinaryIO = cast("BinaryIO", stream)
+
+        def __enter__(self) -> Self:
+            _ = self.stream.__enter__()
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, limit: int) -> object:
+            data = self.stream.read(limit)
+            return {
+                "bytearray": lambda: bytearray(data),
+                "view": lambda: memoryview(data),
+                "subclass": lambda: ForeignBytes(data),
+                "none": lambda: None,
+            }[form]()
+
+    def replaced_fdopen(descriptor: int, mode: str) -> object:
+        return ReplacedRead(real_fdopen(descriptor, mode))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", replaced_fdopen)
+        with pytest.raises(project.InitializationError, match="native bytes"):
+            _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_bootstrap_authority_preserves_stream_read_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """An injected host read failure is a typed error with its original cause."""
+    _ = _write_rust_manifest(tmp_path)
+    real_fdopen = os.fdopen
+    fault = fault_type("host stream read failed")
+
+    class FailingRead:
+        def __init__(self, stream: BinaryIO) -> None:
+            self.stream: BinaryIO = stream
+
+        def __enter__(self) -> Self:
+            _ = self.stream.__enter__()
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            self.stream.close()
+
+        def fileno(self) -> int:
+            return self.stream.fileno()
+
+        def read(self, _limit: int) -> bytes:
+            raise fault
+
+    def failing_fdopen(descriptor: int, mode: str) -> object:
+        return FailingRead(cast("BinaryIO", real_fdopen(descriptor, mode)))
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "fdopen", failing_fdopen)
+        with pytest.raises(
+            project.InitializationError, match="cannot read bootstrap authority"
+        ) as caught:
+            _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+    assert caught.value.__cause__ is fault
+
+
+def test_bootstrap_authority_rejects_foreign_lstat_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Duck-typed file metadata cannot claim native manifest authority."""
+    selected = _write_rust_manifest(tmp_path)
+    real_lstat = Path.lstat
+
+    class ForeignStat:
+        def __init__(self, status: os.stat_result) -> None:
+            self.status: os.stat_result = status
+
+        def __getattr__(self, name: str) -> object:
+            return cast("object", getattr(self.status, name))
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        status = real_lstat(path)
+        if path == selected:
+            return cast("os.stat_result", cast("object", ForeignStat(status)))
+        return status
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", forged_lstat)
+        with pytest.raises(project.InitializationError, match="native file status"):
+            _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+@pytest.mark.parametrize("receipt", [None, False, True, -1, 0.5])
+def test_bootstrap_authority_rejects_invalid_open_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """Nonnative file handles never reach fdopen and unrelated OS descriptors."""
+    selected = _write_rust_manifest(tmp_path)
+    real_open = os.open
+
+    def invalid_open(path: Path, flags: int) -> int:
+        if path == selected:
+            return cast("int", receipt)
+        return real_open(path, flags)
+
+    def forbidden_fdopen(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("invalid authority descriptor reached fdopen")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", invalid_open)
+        isolated.setattr(os, "fdopen", forbidden_fdopen)
+        with pytest.raises(project.InitializationError, match="native descriptor"):
+            _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_bootstrap_authority_preserves_host_open_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Host descriptor-open errors are typed without dropping the cause."""
+    selected = _write_rust_manifest(tmp_path)
+    real_open = os.open
+    fault = fault_type("cannot open host authority")
+
+    def failing_open(path: Path, flags: int) -> int:
+        if path == selected:
+            raise fault
+        return real_open(path, flags)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", failing_open)
+        with pytest.raises(
+            project.InitializationError, match="cannot open bootstrap authority"
+        ) as caught:
+            _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+    assert caught.value.__cause__ is fault
 
 
 def test_bootstrap_cuda_authority_rejects_nonregular_fifo(
