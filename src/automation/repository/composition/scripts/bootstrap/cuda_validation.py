@@ -1078,11 +1078,18 @@ def _copy_cuda_overlay(
                 target,
             )
 
+        def fail_source_scan(error: OSError) -> Never:
+            raise CudaProvisionError(
+                "CUDA staged overlay source tree scan failed"
+            ) from error
+
         source_inventory: dict[
             Path, tuple[int, int, int, int, int, int, int, str]
         ] = {}
         try:
-            for source_dir, dirnames, filenames in source.walk(follow_symlinks=False):
+            for source_dir, dirnames, filenames in source.walk(
+                follow_symlinks=False, on_error=fail_source_scan
+            ):
                 _require_physical_directories(source_dir, "staged overlay source")
                 target_dir = destination / source_dir.relative_to(source)
                 _require_physical_directories(target_dir, "staged overlay destination")
@@ -1182,7 +1189,9 @@ def _copy_cuda_overlay(
             Path, tuple[int, int, int, int, int, int, int, str]
         ] = {}
         try:
-            for source_dir, dirnames, filenames in source.walk(follow_symlinks=False):
+            for source_dir, dirnames, filenames in source.walk(
+                follow_symlinks=False, on_error=fail_source_scan
+            ):
                 _require_physical_directories(source_dir, "staged overlay source")
                 for name in dirnames:
                     member = source_dir / name

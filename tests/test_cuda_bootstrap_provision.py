@@ -4679,6 +4679,51 @@ def test_cuda_nonposix_overlay_rejects_member_added_during_copy(
     assert added
 
 
+@pytest.mark.parametrize("scan_phase", ("preflight", "recheck"))
+def test_cuda_nonposix_overlay_rejects_suppressed_directory_scan_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, scan_phase: str
+) -> None:
+    """An unreadable nested source cannot disappear from either inventory."""
+    source = tmp_path / "source"
+    (source / "lib64").mkdir(parents=True)
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    status = source.stat()
+    native_scandir = os.scandir
+    copied = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def unreadable_nested(path: Path) -> Iterator[os.DirEntry[str]]:
+        if Path(path) == source / "lib64" and (scan_phase == "preflight" or copied):
+            raise PermissionError("nested package enumeration denied")
+        return native_scandir(path)
+
+    def copy_during_scan(
+        _src: Path, _dst: Path, **_kwargs: object
+    ) -> Path:
+        nonlocal copied
+        copied = True
+        return destination
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(os, "scandir", unreadable_nested)
+        isolated.setattr(shutil, "copytree", copy_during_scan)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="source tree scan failed"
+        ) as failure:
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino)
+            )
+    assert isinstance(failure.value.__cause__, PermissionError)
+    assert copied == (scan_phase == "recheck")
+
+
 @pytest.mark.parametrize("existing", [b"matching", b"different"])
 def test_cuda_nonposix_overlay_preserves_existing_file_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing: bytes,
