@@ -68,6 +68,8 @@ reads; only native `os.stat_result` metadata may attest a tracked source inode.
 The admitted source read itself must return exact immutable native `bytes`,
 not a matching-size mutable buffer or subclass. Read-adapter faults become typed
 CUDA provision failures with the original cause retained.
+Source file opens must likewise yield a native nonnegative integer descriptor;
+foreign or boolean handles cannot be wrapped or closed as though host-owned.
 Normal bootstrap remains offline with respect to CUDA and reports a missing
 toolkit instead of installing one implicitly. The current Linux package
 surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed

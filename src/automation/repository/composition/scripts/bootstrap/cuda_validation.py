@@ -185,7 +185,14 @@ def _read_manifest_source(
         | getattr(os, "O_NONBLOCK", 0)
         | getattr(os, "O_BINARY", 0)
     )
-    descriptor = os.open(path, flags)
+    try:
+        descriptor = os.open(path, flags)
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            f"cannot read {label}: host open failed ({type(error).__name__})"
+        ) from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail(f"{label} must open a native descriptor")
     try:
         stream = os.fdopen(descriptor, "rb")
     except (OSError, ValueError, TypeError, RuntimeError) as error:

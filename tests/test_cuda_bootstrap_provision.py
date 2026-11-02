@@ -1546,3 +1546,66 @@ def test_cuda_source_read_types_host_faults(
     assert caught.value.__cause__ is failure
     assert len(opened) == 1
     assert opened[0].closed
+
+
+class _ForeignDescriptor(int):
+    """An integer-looking handle that is not a native file descriptor."""
+
+
+@pytest.mark.parametrize("receipt", [True, _ForeignDescriptor(1), None, -1])
+def test_cuda_source_rejects_foreign_open_descriptor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """A forged file descriptor cannot authorize or close an unrelated fd."""
+    source = _manifest(tmp_path, _payload())
+    wrapped: list[object] = []
+    closed: list[object] = []
+
+    def fake_open(path: Path, flags: int) -> int:
+        assert path == source
+        assert flags & os.O_RDONLY == os.O_RDONLY
+        return cast("int", receipt)
+
+    def fake_fdopen(descriptor: object, mode: str) -> io.BufferedReader:
+        wrapped.append(descriptor)
+        raise ValueError("unsafe handle")
+
+    def fake_close(descriptor: object) -> None:
+        closed.append(descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", fake_open)
+        isolated.setattr(os, "fdopen", fake_fdopen)
+        isolated.setattr(os, "close", fake_close)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="native descriptor"):
+            _ = cuda_validation._read_manifest_source(source, "CUDA provision manifest")
+    assert not wrapped
+    assert not closed
+
+
+@pytest.mark.parametrize(
+    "fault_type", [OSError, TypeError, ValueError, UnprintableHostRuntimeError]
+)
+def test_cuda_source_open_types_host_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """File-open failures retain their cause and avoid foreign diagnostics."""
+    source = _manifest(tmp_path, _payload())
+    failure = fault_type("host open failure")
+
+    def fake_open(path: Path, flags: int) -> int:
+        assert path == source
+        assert isinstance(flags, int)
+        raise failure
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", fake_open)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="host open failed"
+        ) as caught:
+            _ = cuda_validation._read_manifest_source(source, "CUDA provision manifest")
+    assert caught.value.__cause__ is failure
