@@ -383,7 +383,7 @@ def _extract_rpm_headers(
                     "LLVM development package stage creation failed"
                 ) from error
         finally:
-            os.close(parent_descriptor)
+            _close_physical_parent(parent_descriptor, "package")
     parent_identity = _staging_directory_identity(staging)
     package_identity = _staging_directory_identity(package_staging)
 
@@ -766,7 +766,7 @@ def _prepare_staging(staging: Path) -> None:
                     "LLVM development staging creation failed"
                 ) from error
         finally:
-            os.close(parent_descriptor)
+            _close_physical_parent(parent_descriptor, "staging")
     _require_physical_directories(staging, "staging")
 
 
@@ -877,6 +877,16 @@ def _open_physical_publication_parent(
         if not admitted and type(descriptor) is int and descriptor >= 0:
             with suppress(OSError):
                 os.close(descriptor)
+
+
+def _close_physical_parent(descriptor: int, label: str) -> None:
+    """Close an owned parent handle without exposing untyped host faults."""
+    try:
+        os.close(descriptor)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            f"LLVM development {label} parent descriptor close failed"
+        ) from error
 
 
 def _publish_development_root(

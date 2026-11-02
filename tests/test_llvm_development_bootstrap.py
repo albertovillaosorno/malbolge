@@ -457,6 +457,57 @@ def test_rpm_cleanup_preserves_swapped_foreign_package_directory(
     assert (preserved / PACKAGE_NAME).read_bytes() == PACKAGE_BYTES
 
 
+@pytest.mark.parametrize("location", ["staging", "package"])
+def test_development_parent_descriptor_close_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+) -> None:
+    """A close failure on owned staging parents retains its host cause."""
+    if os.name != "posix":
+        pytest.skip("POSIX descriptor closure boundary")
+    identity = _identity(tmp_path)
+    native_mkdir = os.mkdir
+    native_close = os.close
+    target_name = (
+        f"llvm-development-provision-{LINUX_PLATFORM}"
+        if location == "staging"
+        else PACKAGE_NAME.removesuffix(".rpm")
+    )
+    parent_descriptors: set[int] = set()
+    fault = OSError("synthetic directory descriptor close fault")
+
+    def track_mkdir(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        if path == target_name and dir_fd is not None:
+            parent_descriptors.add(dir_fd)
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    def fail_parent_close(descriptor: int) -> None:
+        native_close(descriptor)
+        if descriptor in parent_descriptors:
+            parent_descriptors.remove(descriptor)
+            raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", track_mkdir)
+        isolated.setattr(os, "close", fail_parent_close)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="close failed",
+        ) as caught:
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert caught.value.__cause__ is fault
+    assert not parent_descriptors
+    assert not identity.development_root.exists()
+
+
 def test_rpm_package_stage_creation_cannot_follow_late_parent_swap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
