@@ -4992,6 +4992,89 @@ def test_cuda_cleanup_rejects_false_success_without_removing_owned_stage(
     assert stage.is_dir()
 
 
+@pytest.mark.parametrize("host_fault", ("false_success", "foreign_source"))
+def test_cuda_nonposix_publication_requires_staged_inode_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, host_fault: str
+) -> None:
+    """Windows publication cannot trust a replacement without its inode."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    staged = staging / "toolkit"
+    staged.mkdir()
+    _ = (staged / "trusted.bin").write_bytes(b"trusted")
+    destination = tmp_path / "destination" / "toolkit"
+    destination.parent.mkdir()
+    parked = tmp_path / "parked-toolkit"
+    replacement = tmp_path / "replacement-toolkit"
+    replacement.mkdir()
+    _ = (replacement / "foreign.bin").write_bytes(b"foreign")
+    native_rename = Path.rename
+    invoked = False
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def forged_rename(source: Path, target: Path) -> Path:
+        nonlocal invoked
+        if source != staged:
+            return native_rename(source, target)
+        invoked = True
+        if host_fault == "false_success":
+            return target
+        _ = native_rename(source, parked)
+        _ = native_rename(replacement, source)
+        return native_rename(source, target)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        isolated.setattr(Path, "rename", forged_rename)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="publication receipt"
+        ):
+            cuda_validation._publish_cuda_toolkit(  # noqa: SLF001, RUF100
+                staged, destination
+            )
+    assert invoked
+    if host_fault == "false_success":
+        assert not destination.exists()
+        assert (staged / "trusted.bin").read_bytes() == b"trusted"
+    else:
+        assert (parked / "trusted.bin").read_bytes() == b"trusted"
+
+
+def test_cuda_nonposix_publication_admits_exact_renamed_toolkit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Windows-compatible path still publishes the exact source inode."""
+    staged = tmp_path / "stage" / "toolkit"
+    staged.mkdir(parents=True)
+    _ = (staged / "trusted.bin").write_bytes(b"trusted")
+    destination = tmp_path / "destination" / "toolkit"
+    destination.parent.mkdir()
+
+    class _NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    original = staged.stat()
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", _NonPosixHost())
+        cuda_validation._publish_cuda_toolkit(  # noqa: SLF001, RUF100
+            staged, destination
+        )
+    published = destination.stat()
+    assert (published.st_dev, published.st_ino) == (
+        original.st_dev, original.st_ino
+    )
+    assert (destination / "trusted.bin").read_bytes() == b"trusted"
+    assert not staged.exists()
+
+
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
 @pytest.mark.parametrize("swap_kind", ["physical", "symlink"])
 def test_cuda_nonlinux_publication_never_moves_substituted_source_tree(

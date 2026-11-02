@@ -1923,7 +1923,34 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
     _require_physical_directories(parent, "toolkit destination")
     _require_unoccupied_toolkit_destination(destination)
     if os.name != "posix":
-        _ = staged.replace(destination)
+        staged_identity = _owned_staging_identity(staged)
+        _require_unoccupied_toolkit_destination(destination)
+        # Windows rename fails if the destination already exists; replace()
+        # would permit an unreviewed late occupant to be overwritten.
+        try:
+            _ = staged.rename(destination)
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA toolkit publication rename failed"
+            ) from error
+        try:
+            published_identity = _owned_staging_identity(destination)
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA toolkit publication receipt failed"
+            ) from error
+        try:
+            _ = staged.lstat()
+        except FileNotFoundError:
+            pass
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                "CUDA toolkit publication source receipt failed"
+            ) from error
+        else:
+            _fail("CUDA toolkit publication receipt retained staging source")
+        if published_identity != staged_identity:
+            _fail("CUDA toolkit publication receipt changed staged inode")
         return
     staged_identity = _owned_staging_identity(staged)
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
