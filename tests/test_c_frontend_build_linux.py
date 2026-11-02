@@ -35,11 +35,12 @@
 from __future__ import annotations
 
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import] - mocked; no processes run.
-from typing import TYPE_CHECKING, cast
+import sys
+from typing import TYPE_CHECKING, TextIO, cast
 
 import pytest
 
-from scripts.validate import c_frontend_build_linux, tidy_toolchain
+from scripts.validate import c_frontend_build, c_frontend_build_linux, tidy_toolchain
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -283,3 +284,98 @@ def test_linux_frontend_native_cmake_receipt_preserves_success_and_failure(
         match="status 9: native failure",
     ):
         c_frontend_build_linux._checked_run(["cmake", "--version"], "CMake")
+
+
+@pytest.mark.parametrize(
+    "case", ("partial", "foreign-count", "write-fault", "flush-fault", "foreign-flush")
+)
+def test_frontend_build_cli_requires_output_receipt(
+    monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """Successful build execution cannot override an incomplete output stream."""
+
+    class FakeOutput:
+        def write(self, message: str) -> object:
+            if case == "partial":
+                return len(message) - 1
+            if case == "foreign-count":
+                return True
+            if case == "write-fault":
+                raise OSError("output failed")
+            return len(message)
+
+        def flush(self) -> object:
+            if case == "flush-fault":
+                raise OSError("flush failed")
+            if case == "foreign-flush":
+                return False
+            return None
+
+    monkeypatch.setattr(c_frontend_build, "build", lambda: None)
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", FakeOutput())))
+    assert c_frontend_build.main() == 1
+
+
+def test_frontend_build_cli_delivers_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A complete record must be flushed before reporting a ready binary."""
+
+    class CapturingOutput:
+        messages: list[str]
+        flushes: int
+
+        def __init__(self) -> None:
+            self.messages = []
+            self.flushes = 0
+
+        def write(self, message: str) -> int:
+            self.messages.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    output = CapturingOutput()
+    monkeypatch.setattr(c_frontend_build, "build", lambda: None)
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", output)))
+    assert c_frontend_build.main() == 0
+    assert output.messages == [
+        f"C frontend ready: {c_frontend_build.EXECUTABLE}\n"
+    ]
+    assert output.flushes == 1
+
+
+def test_frontend_build_cli_rejects_foreign_error_formatting(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Build-error subclasses cannot execute caller-owned string hooks."""
+
+    class ForeignBuildError(c_frontend_build.FrontendBuildError):
+        def __str__(self) -> str:
+            raise AssertionError("foreign build formatter invoked")
+
+    def fail_build() -> None:
+        raise ForeignBuildError("opaque")
+
+    monkeypatch.setattr(c_frontend_build, "build", fail_build)
+    assert c_frontend_build.main() == 1
+    assert "ForeignBuildError" in capsys.readouterr().err
+
+
+def test_frontend_build_cli_failed_diagnostics_retain_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid build remains a failure even if diagnostics cannot write."""
+
+    class BrokenStderr:
+        def write(self, _message: str) -> None:
+            raise OSError("diagnostic failed")
+
+    def fail_build() -> None:
+        raise c_frontend_build.FrontendBuildError("build invalid")
+
+    monkeypatch.setattr(c_frontend_build, "build", fail_build)
+    monkeypatch.setattr(sys, "stderr", cast("TextIO", cast("object", BrokenStderr())))
+    assert c_frontend_build.main() == 1

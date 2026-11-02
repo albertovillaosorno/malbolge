@@ -35,21 +35,18 @@
 from __future__ import annotations
 
 import os
-from pathlib import Path
-from stat import S_ISREG
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
-from typing import Final
-from typing import Never
+from pathlib import Path
+from stat import S_ISREG
+from typing import Final, Never, TextIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
     sys.path.insert(0, str(composition_root))
 
 from scripts.repository_root import repository_root
-from scripts.validate import c_frontend_build_linux
-from scripts.validate import tidy_build
-from scripts.validate import tidy_toolchain
+from scripts.validate import c_frontend_build_linux, tidy_build, tidy_toolchain
 
 ROOT: Final = repository_root(Path(__file__))
 SOURCE_ROOT: Final = ROOT / "src" / "compiler" / "c-frontend" / "composition"
@@ -255,24 +252,55 @@ def build() -> None:
         _fail("C frontend executable version identity is invalid")
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Return whether exact native CLI text write and flush both completed."""
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Build the frontend and return a process status.
 
     Returns:
-        Zero when the exact frontend output is ready, otherwise one.
+        Zero when the exact frontend output is ready and CLI output delivered.
 
     """
     try:
         build()
+        if not _write_cli_record(sys.stdout, f"C frontend ready: {EXECUTABLE}\n"):
+            _fail("C frontend CLI output write or flush failed")
     except (
         FrontendBuildError,
         c_frontend_build_linux.LinuxFrontendBuildError,
         tidy_build.BuildError,
         tidy_toolchain.ToolchainError,
     ) as error:
-        _ = sys.stderr.write(f"error: {error}\n")
+        detail = (
+            str(error)
+            if type(error)
+            in {
+                FrontendBuildError,
+                c_frontend_build_linux.LinuxFrontendBuildError,
+                tidy_build.BuildError,
+                tidy_toolchain.ToolchainError,
+            }
+            else type(error).__name__
+        )
+        _ = _write_cli_record(sys.stderr, f"error: {detail}\n")
         return 1
-    _ = sys.stdout.write(f"C frontend ready: {EXECUTABLE}\n")
     return 0
 
 
