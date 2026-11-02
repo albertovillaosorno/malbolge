@@ -61,13 +61,27 @@ no-follow, inode-pinned source descriptor rather than a replaceable pathname
 stream, rejecting late redirects without waiting on FIFO replacement. Source
 identity includes a pinned SHA-256 digest, not just inode, length, and mtime;
 in-place edits with restored timestamps cannot authorize copied or hardlinked
-files. After writing the import marker, staging rechecks the original tool,
-library, and resource bytes against their staged members, including the complete
-resource membership inventory. A late mutation before publication fails closed.
+files. Resource membership scanning independently compares the native
+`os.listdir` inventory with both recursive walking and direct `Path.iterdir`
+enumeration, so two agreeing incomplete scans cannot hide a header or subtree.
+After writing the import marker, staging rechecks the original tool, library,
+and resource bytes against their staged members, including the complete resource
+membership inventory. The import then pins a complete staging-tree inventory
+and SHA-256 content receipt immediately after stage ownership validation.
+Staging-admission and destination-parent callbacks cannot change that trusted
+baseline: the original receipt is compared against physical member identities
+and bytes immediately before the atomic no-replace rename. A late mutation
+before publication fails closed, including an in-place edit with restored mtime
+or a newly added or removed resource header.
 Windows neutral alias publication requires a physical bundle and alias
 directory; existing aliases are checked against the exact native PE bytes
-before any missing aliases or completion marker are written.
-Linked and drifted aliases fail closed, while unchanged aliases remain reusable.
+before any missing aliases or completion marker are written. Original native PE
+file identities and digests are pinned before alias-directory setup or copying,
+then rechecked before and after completion-marker publication together with the
+physical alias directory, aliases, and exact marker bytes. Mutating a source and
+its hardlinked alias together, removing an alias, or corrupting the marker
+cannot return a successful publication receipt. Linked and drifted aliases
+fail closed, while unchanged aliases remain reusable.
 
 `tidy_toolchain.py` closes the manifest schema, rejects escaping paths and
 host-dependent backslash separators, verifies required runtime/development
@@ -111,7 +125,8 @@ repository-local development root. Marker content is compared to the exact
 expected identity using a bounded, nonblocking descriptor read with inode,
 size, and timestamp checks before and after. The opened marker descriptor,
 buffered binary stream, stream file number, `fstat` results, and immutable read
-bytes must all be native and exact; foreign receipts cannot prove readiness. A symlinked root,
+bytes must all be native and exact; foreign receipts cannot prove readiness.
+A symlinked root,
 redirected include ancestor, altered marker, or incomplete extraction is not
 admitted as ready; an existing incomplete root must be repaired rather than
 silently using ambient headers or repeating a network download.
