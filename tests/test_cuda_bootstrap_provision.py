@@ -43,6 +43,7 @@ import tarfile
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import override
+from typing import Self
 import zipfile
 
 import pytest
@@ -205,6 +206,104 @@ def test_package_verification_rejects_size_and_sha_drift(
         match="SHA-256 mismatch",
     ):
         cuda_validation.verify_cuda_package(payload, sha_package)
+
+
+class _NetworkResponse:
+    """Minimal closed-on-exit fake for the urllib response contract."""
+
+    def __init__(self, value: object) -> None:
+        self.value = value
+        self.closed = False
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.closed = True
+
+    def read(self) -> bytes:
+        if isinstance(self.value, Exception):
+            raise self.value
+        return cast("bytes", self.value)
+
+
+class _UnsafeNetworkError(RuntimeError):
+    """A host error whose message must never be evaluated."""
+
+    @override
+    def __str__(self) -> str:
+        raise AssertionError("foreign host error __str__ was evaluated")
+
+
+@pytest.mark.parametrize("phase", ["open", "read"])
+@pytest.mark.parametrize(
+    "fault_type", [OSError, TypeError, ValueError, RuntimeError, _UnsafeNetworkError]
+)
+def test_cuda_download_types_network_host_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    fault_type: type[Exception],
+) -> None:
+    """URL-open and body-read faults become typed without stringifying hosts."""
+    error = fault_type("injected host failure")
+    response = _NetworkResponse(error)
+    url = cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+
+    def open_url(request: object, *, timeout: int) -> _NetworkResponse:
+        assert isinstance(request, cuda_validation.urllib.request.Request)
+        assert request.full_url == url
+        assert timeout == 120
+        if phase == "open":
+            raise error
+        return response
+
+    monkeypatch.setattr(cuda_validation.urllib.request, "urlopen", open_url)
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match=type(error).__name__
+    ) as caught:
+        _ = cuda_validation._download_cuda_package(url)
+    assert caught.value.__cause__ is error
+    assert response.closed == (phase == "read")
+
+
+@pytest.mark.parametrize("foreign", [None, "not bytes", bytearray(b"data"), memoryview(b"data")])
+def test_cuda_download_rejects_foreign_network_body(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """HTTP response content must be exact immutable native bytes."""
+    response = _NetworkResponse(foreign)
+    url = cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+
+    def open_url(request: object, *, timeout: int) -> _NetworkResponse:
+        assert isinstance(request, cuda_validation.urllib.request.Request)
+        assert request.full_url == url
+        assert timeout == 120
+        return response
+
+    monkeypatch.setattr(cuda_validation.urllib.request, "urlopen", open_url)
+    with pytest.raises(cuda_validation.CudaProvisionError, match="native bytes"):
+        _ = cuda_validation._download_cuda_package(url)
+    assert response.closed
+
+
+def test_cuda_download_accepts_native_network_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Ordinary pinned HTTPS bytes remain supported and close the response."""
+    payload = b"verified network bytes"
+    response = _NetworkResponse(payload)
+    url = cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+
+    def open_url(request: object, *, timeout: int) -> _NetworkResponse:
+        assert isinstance(request, cuda_validation.urllib.request.Request)
+        assert request.full_url == url
+        assert timeout == 120
+        return response
+
+    monkeypatch.setattr(cuda_validation.urllib.request, "urlopen", open_url)
+    assert cuda_validation._download_cuda_package(url) == payload
+    assert response.closed
 
 
 class _BytesSubclass(bytes):

@@ -53,7 +53,6 @@ from typing import Final
 from typing import Never
 from typing import TYPE_CHECKING
 from typing import cast
-import urllib.error
 import urllib.request
 import zipfile
 
@@ -554,9 +553,14 @@ def _download_cuda_package(url: str) -> bytes:
             ),
         )
         with response:
-            return response.read()
-    except (OSError, urllib.error.URLError) as error:
-        _fail(f"cannot download pinned CUDA package: {error}")
+            data = response.read()
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError(
+            f"cannot download pinned CUDA package: {type(error).__name__}"
+        ) from error
+    if type(data) is not bytes:
+        _fail("CUDA network response must contain native bytes")
+    return data
 
 
 def _marker_bytes(manifest: CudaProvisionManifest) -> bytes:

@@ -52,6 +52,9 @@ toolkit. The completion marker must be a bounded stable regular file, with no
 symlinked leaf or parent; invalid markers cannot assert an installed toolkit.
 The completion marker is bootstrap-owned: a package archive cannot provide a
 regular, linked, or dangling marker leaf for the provisioner to overwrite.
+The HTTP downloader also requires native response bytes and raises typed CUDA
+provision errors for network-open and body-read host faults, preserving the
+original cause without invoking foreign exception formatting.
 Normal bootstrap remains offline with respect to CUDA and reports a missing
 toolkit instead of installing one implicitly. The current Linux package
 surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed
