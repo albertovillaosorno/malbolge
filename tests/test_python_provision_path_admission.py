@@ -523,7 +523,8 @@ def test_python_provision_accepts_missing_venv_before_creation(
 
         def create(self, environment: Path) -> None:
             created.append(environment)
-            environment.mkdir(parents=True)
+            layout.scripts.mkdir(parents=True)
+            _ = layout.python.write_bytes(PAYLOAD)
 
     monkeypatch.setattr(venv, "EnvBuilder", FakeBuilder)
     with pytest.raises(AssertionError, match="uv pip reached unadmitted"):
@@ -531,6 +532,32 @@ def test_python_provision_accepts_missing_venv_before_creation(
     assert created == [layout.environment]
     assert len(commands) == 1
     assert commands[0][1:3] == ["pip", "sync"]
+
+
+def test_python_provision_rejects_builder_missing_interpreter_before_pip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A successful builder return without Python cannot authorize uv pip."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    commands = _prepare_provision_stub(monkeypatch, root)
+    created: list[Path] = []
+
+    class IncompleteBuilder:
+        def __init__(self, *, with_pip: bool, clear: bool) -> None:
+            assert not with_pip and not clear
+
+        def create(self, environment: Path) -> None:
+            created.append(environment)
+            layout.scripts.mkdir(parents=True)
+
+    monkeypatch.setattr(venv, "EnvBuilder", IncompleteBuilder)
+    with pytest.raises(python_validation.ProvisionError, match="interpreter|missing"):
+        python_validation._provision(layout, root=root)  # pyright: ignore[reportPrivateUsage]
+    assert created == [layout.environment]
+    assert not commands
+    assert not layout.python.exists()
 
 
 @pytest.mark.parametrize(

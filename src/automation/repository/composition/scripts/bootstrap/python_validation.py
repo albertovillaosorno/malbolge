@@ -2148,11 +2148,13 @@ def _provision(
     if python_status is None:
         builder = venv.EnvBuilder(with_pip=False, clear=False)
         builder.create(layout.environment)
-    # A new venv Python must be physical and private before subprocess use.
+    # A new venv Python must exist and be physical/private before subprocess use.
     sync_target = _check_jig_alias_path(
-        layout.python, directory=False, required=False
+        layout.python, directory=False, required=True
     )
-    if sync_target is not None and sync_target.st_nlink != 1:
+    if sync_target is None:
+        _fail("Python provisioned interpreter missing before pip sync")
+    if sync_target.st_nlink != 1:
         _fail("Python provisioned interpreter must be single-link")
     _ = _run([
         str(uv),
