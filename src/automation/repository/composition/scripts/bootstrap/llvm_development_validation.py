@@ -529,13 +529,14 @@ def _extract_rpm_headers(
         include_root = package_staging / "usr/include"
         if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
             _fail(f"LLVM development package has no /usr/include: {asset.name}")
-        _reject_include_symlinks(include_root)
+        _reject_include_symlinks(include_root, require_single_link=True)
         _ = shutil.copytree(
             include_root,
             destination / "include",
             dirs_exist_ok=True,
             symlinks=True,
         )
+        _reject_include_symlinks(include_root, require_single_link=True)
     finally:
         require_owned_package()
     shutil.rmtree(package_staging)

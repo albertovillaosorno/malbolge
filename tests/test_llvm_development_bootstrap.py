@@ -389,6 +389,112 @@ def test_rpm_copy_rejects_header_swapped_to_link(
     assert not identity.development_root.exists()
 
 
+CPIO_EXECUTABLE = "cpio"
+INCLUDE_DIRECTORY = "include"
+
+
+def _link_external_header(outside: Path, header: Path) -> None:
+    header.unlink(missing_ok=True)
+    try:
+        os.link(outside, header)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+
+
+def _synthetic_hardlinked_cpio(
+    outside: Path, *, during_copy: bool
+) -> Callable[..., bytes]:
+    def run(
+        arguments: list[str],
+        *,
+        cwd: Path | None = None,
+        stdin: bytes | None = None,
+        pass_fds: tuple[int, ...] = (),
+    ) -> bytes:
+        del stdin, pass_fds
+        if arguments[0] == CPIO_EXECUTABLE and cwd is not None:
+            header = cwd / "usr/include/clang/AST/AST.h"
+            header.parent.mkdir(parents=True)
+            if during_copy:
+                _ = header.write_bytes(HEADER_BYTES)
+            else:
+                _link_external_header(outside, header)
+        return b""
+
+    return run
+
+
+def _late_hardlinked_copytree(
+    outside: Path, native_copytree: Callable[..., Path]
+) -> Callable[..., Path]:
+    def copy(
+        src: Path | os.DirEntry[str],
+        dst: Path | os.DirEntry[str],
+        *args: object,
+        **kwargs: object,
+    ) -> Path:
+        if isinstance(src, Path) and src.name == INCLUDE_DIRECTORY:
+            _link_external_header(outside, src / "clang/AST/AST.h")
+        return native_copytree(src, dst, *args, **kwargs)
+
+    return copy
+
+
+def _synthetic_hardlinked_payload(rpm: Path, expected: bytes) -> bytes:
+    del rpm, expected
+    return b"cpio"
+
+
+def _synthetic_hardlinked_members(payload: bytes) -> tuple[str, ...]:
+    del payload
+    return ("usr/include/clang/AST/AST.h",)
+
+
+@pytest.mark.skipif(
+    os.name != POSIX_OS_NAME, reason="requires POSIX package extraction"
+)
+@pytest.mark.parametrize("during_copy", [False, True])
+def test_rpm_copy_rejects_externally_hardlinked_source_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, during_copy: bool
+) -> None:
+    """External source hardlinks cannot enter the published development kit."""
+    outside = tmp_path / "outside-header.h"
+    _ = outside.write_bytes(FOREIGN_CONTENT_BYTES)
+    identity = _identity(tmp_path)
+    native_copytree = cast("Callable[..., Path]", shutil.copytree)
+    with monkeypatch.context() as isolated:
+        if during_copy:
+            isolated.setattr(
+                shutil,
+                "copytree",
+                _late_hardlinked_copytree(outside, native_copytree),
+            )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_payload",
+            _synthetic_hardlinked_payload,
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            _synthetic_hardlinked_members,
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_command_bytes",
+            _synthetic_hardlinked_cpio(outside, during_copy=during_copy),
+        )
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="hardlink",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
+    assert not identity.development_root.exists()
+
+
 @pytest.mark.skipif(
     os.name != POSIX_OS_NAME, reason="requires POSIX RPM descriptor"
 )
