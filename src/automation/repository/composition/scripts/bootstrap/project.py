@@ -967,7 +967,9 @@ def import_host_git(
     required = _configured_git_version(root)
     destination = root / ".dependencies" / "git" / required
     alias = destination / "bin" / "git.bin"
-    if git_import_complete(destination) and _imported_binary_alias_ready(alias):
+    if git_import_complete(destination) and _imported_binary_alias_ready(
+        alias, windows=platform_id.startswith(WINDOWS_SYSTEM)
+    ):
         return alias
     if destination.exists():
         _fail(f"incomplete Git import already exists: {destination}")
@@ -1435,19 +1437,28 @@ def _imported_cargo(root: Path, channel: str) -> Path:
     return root / ".dependencies" / "rust" / channel / "bin" / "cargo.bin"
 
 
-def _imported_binary_alias_ready(alias: Path) -> bool:
-    """Require a physical Git/Rust alias under nonredirected import parents.
+def _imported_binary_alias_ready(alias: Path, *, windows: bool) -> bool:
+    """Require a physical and, on POSIX, executable Git/Rust alias.
 
     Returns:
-        False for missing, linked, nonregular, or unauthenticated paths.
+        False for missing, linked, nonregular, or nonexecutable paths.
 
     """
     try:
         _reject_authority_parent_redirects(alias)
         physical = alias.lstat()
+        if type(physical) is not os.stat_result or not stat.S_ISREG(
+            physical.st_mode
+        ):
+            return False
+        if windows:
+            return True
+        if not physical.st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH):
+            return False
+        executable = os.access(alias, os.X_OK)
     except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
         return False
-    return type(physical) is os.stat_result and stat.S_ISREG(physical.st_mode)
+    return type(executable) is bool and executable
 
 
 def _linux_adapter_script_ready(linker: Path) -> bool:
@@ -1511,9 +1522,9 @@ def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
     channel = _rust_channel(root)
     cargo = _imported_cargo(root, channel)
     imported_root = cargo.parent.parent
-    imported = _imported_binary_alias_ready(cargo) and rust_toolchain_import_complete(
-        imported_root
-    )
+    imported = _imported_binary_alias_ready(
+        cargo, windows=platform_id.startswith(WINDOWS_SYSTEM)
+    ) and rust_toolchain_import_complete(imported_root)
     linker_ready = _rust_validation_adapter_ready(
         imported_root,
         platform_id,

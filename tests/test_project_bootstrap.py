@@ -3045,6 +3045,7 @@ def test_rust_inspection_requires_completed_neutral_alias(
     cargo = toolchain / "bin" / "cargo.bin"
     cargo.parent.mkdir(parents=True)
     cargo.touch()
+    cargo.chmod(0o700)
     _ = (toolchain / project.RUST_IMPORT_MARKER).write_text(
         "malbolge-rust-toolchain-import/v1\n",
         encoding="ascii",
@@ -3083,7 +3084,9 @@ def _linux_rust_inspection_tree(tmp_path: Path) -> Path:
     toolchain = tmp_path / ".dependencies/rust" / RUST_CHANNEL
     binary = toolchain / "bin"
     binary.mkdir(parents=True)
-    _ = (binary / "cargo.bin").write_bytes(RUST_CARGO_BYTES)
+    cargo = binary / "cargo.bin"
+    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    cargo.chmod(0o700)
     _ = (toolchain / project.RUST_IMPORT_MARKER).write_text(
         "malbolge-rust-toolchain-import/v1\n", encoding="ascii"
     )
@@ -3100,6 +3103,44 @@ def _linux_rust_inspection_tree(tmp_path: Path) -> Path:
         is project.ComponentState.READY
     )
     return toolchain
+
+
+def test_rust_inspection_rejects_nonexecutable_cargo_alias(
+    tmp_path: Path,
+) -> None:
+    """A physical but nonexecutable Linux Cargo shim is not ready."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    cargo = toolchain / "bin/cargo.bin"
+    cargo.chmod(0o600)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+    assert (
+        project.inspect_rust(tmp_path, WINDOWS_PLATFORM).state
+        is project.ComponentState.READY
+    )
+
+
+@pytest.mark.parametrize("receipt", [False, 1])
+def test_rust_inspection_requires_native_cargo_execute_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A false or nonboolean Cargo execute check cannot attest Linux readiness."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    cargo = toolchain / "bin/cargo.bin"
+    native_access = os.access
+
+    def access(path: str | os.PathLike[str], mode: int) -> bool:
+        if Path(path) == cargo and mode == os.X_OK:
+            return cast("bool", receipt)
+        return native_access(path, mode)
+
+    monkeypatch.setattr(os, "access", access)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
 
 
 def test_rust_inspection_rejects_linked_cargo_alias(tmp_path: Path) -> None:
@@ -3537,6 +3578,35 @@ def test_completed_git_import_rejects_unowned_alias(
     with pytest.raises(project.InitializationError, match="incomplete Git import"):
         _ = project.import_host_git(tmp_path, LINUX_PLATFORM, observation)
     assert external.read_bytes() == GIT_BYTES
+
+
+@pytest.mark.parametrize("platform_id", [LINUX_PLATFORM, WINDOWS_PLATFORM])
+def test_completed_git_import_rejects_nonexecutable_posix_alias(
+    tmp_path: Path, platform_id: str
+) -> None:
+    """POSIX requires executable Git; Windows keeps native mode semantics."""
+    versions = tmp_path / ".jig/settings/versions.toml"
+    versions.parent.mkdir(parents=True)
+    _ = versions.write_text(
+        '[authority.git]\ncurrent = "2.55.0"\n', encoding="utf-8"
+    )
+    destination = tmp_path / ".dependencies/git" / GIT_VERSION
+    binary = destination / "bin"
+    binary.mkdir(parents=True)
+    alias = binary / "git.bin"
+    _ = alias.write_bytes(GIT_BYTES)
+    alias.chmod(0o600)
+    _ = (destination / project.GIT_IMPORT_MARKER).write_bytes(GIT_MARKER_BYTES)
+    observation = project.GitHostObservation(
+        executable=tmp_path / "unused-git",
+        exec_path=tmp_path,
+        version_line=f"git version {GIT_VERSION}",
+    )
+    if platform_id == WINDOWS_PLATFORM:
+        assert project.import_host_git(tmp_path, platform_id, observation) == alias
+    else:
+        with pytest.raises(project.InitializationError, match="incomplete Git import"):
+            _ = project.import_host_git(tmp_path, platform_id, observation)
 
 
 def test_git_import_preserves_runtime_tree_and_neutral_alias(
