@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+import hashlib
 from hashlib import sha256
 import os
 from pathlib import Path
@@ -395,6 +396,29 @@ def _read_admitted(root: Path, relative: str, *, limit: int) -> bytes:
     return data
 
 
+def _checked_sha256(raw: bytes) -> str:
+    """Bind a hash receipt to exact bytes through a separate stdlib entrypoint."""
+    if type(raw) is not bytes:
+        _fail("evidence SHA-256 requires exact native bytes")
+    try:
+        reported = sha256(raw).hexdigest()
+        independent = hashlib.new("sha256", raw).hexdigest()
+    except Exception as error:
+        message = "evidence SHA-256 dependency failed"
+        raise EvidenceError(message) from error
+    if (
+        type(reported) is not str
+        or type(independent) is not str
+        or len(reported) != analyze.SHA256_HEX_LENGTH
+        or len(independent) != analyze.SHA256_HEX_LENGTH
+        or not set(reported) <= analyze.SHA256_ALPHABET
+        or not set(independent) <= analyze.SHA256_ALPHABET
+        or reported != independent
+    ):
+        _fail("evidence SHA-256 receipt differs from source bytes")
+    return reported
+
+
 def _manifest(
     root: Path,
     relative: str,
@@ -405,7 +429,7 @@ def _manifest(
     data = _read_admitted(root, relative, limit=MAX_MANIFEST_BYTES)
     text = data.decode("utf-8")
     return _ManifestLink(
-        source_sha256=sha256(data).hexdigest(),
+        source_sha256=_checked_sha256(data),
         manifest=experiment_manifest.parse_manifest(text),
         trial=(trial_runs.parse_trial_run(text) if require_trial else None),
         budgets=(
@@ -617,7 +641,7 @@ def _recheck_retained_links(
     # bytes agree with admission, including after optional host-C execution.
     for relative, link in sorted(context.manifests.items()):
         now = _read_admitted(context.root, relative, limit=MAX_MANIFEST_BYTES)
-        if sha256(now).hexdigest() != link.source_sha256:
+        if _checked_sha256(now) != link.source_sha256:
             _fail(f"run manifest changed after admission: {relative}")
 
     if contents is None:
@@ -632,7 +656,7 @@ def _recheck_retained_links(
         now = _read_admitted(
             context.root, relative, limit=raw_samples.MAX_RAW_BYTES
         )
-        if sha256(now).hexdigest() != expected:
+        if _checked_sha256(now) != expected:
             _fail(f"raw CSV changed after row admission: {relative}")
 
 
@@ -704,7 +728,7 @@ def _bundle_inspection(
             _fail("challenge replay source hash receipt differs from admitted workload")
         results[directory] = regenerated
         for name, contents in files.items():
-            retained_sha256[f"{directory}/{name}"] = sha256(contents).hexdigest()
+            retained_sha256[f"{directory}/{name}"] = _checked_sha256(contents)
     return _BundleInspection(results, retained_sha256)
 
 
@@ -715,7 +739,7 @@ def _recheck_bundle_files(root: Path, inspection: _BundleInspection) -> None:
     for relative, expected in inspection.retained_sha256.items():
         name = relative.rsplit("/", 1)[1]
         current = _bundle_source(root, relative, limit=BUNDLE_FILE_LIMITS[name])
-        if sha256(current).hexdigest() != expected:
+        if _checked_sha256(current) != expected:
             _fail(f"challenge bundle changed after replay: {relative}")
 
 

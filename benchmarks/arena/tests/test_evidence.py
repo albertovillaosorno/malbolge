@@ -38,6 +38,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from hashlib import sha256
 import json
 from pathlib import Path
 import sys
@@ -3245,3 +3246,100 @@ def test_replay_receipts_admit_exact_previously_verified_source_hash(
         assert evidence._replay_host_c_challenges(
             document, {directory: source_hash}, "bundles"
         ) == {directory: source_hash}
+
+
+class _ForgedDigestText(str):  # ruff: ignore[subclass-builtin]
+    """Untrusted hash text can override mismatch comparisons."""
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    ["wrong", "foreign", "nontext", "short", "raised"],
+)
+def test_manifest_hash_provider_cannot_forge_source_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """Manifest snapshots must use a verified native digest, not provider claims."""
+    _ = sample_study(tmp_path)
+    raw = (tmp_path / "evidence/baseline.toml").read_bytes()
+    original = sha256(raw).hexdigest()
+    claimed = sha256(b"unrelated source").hexdigest()
+    assert claimed != original
+    fault = RuntimeError("hash provider unavailable")
+
+    class ForgedHash:
+        def hexdigest(self) -> object:
+            if receipt == "raised":
+                raise fault
+            return {
+                "wrong": claimed,
+                "foreign": _ForgedDigestText(original),
+                "nontext": 12,
+                "short": "0",
+            }[receipt]
+
+    monkeypatch.setattr(evidence, "sha256", lambda _raw: ForgedHash())
+    with pytest.raises(evidence.EvidenceError, match="SHA-256") as caught:
+        evidence._manifest(
+            tmp_path,
+            "evidence/baseline.toml",
+            require_trial=False,
+            require_budgets=False,
+        )
+    if receipt == "raised":
+        assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("phase", ["manifest", "raw", "bundle"])
+def test_snapshot_recheck_rejects_forged_hash_of_changed_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """A forged matching digest cannot hide a late source-byte replacement."""
+    if phase == "manifest":
+        document = sample_study(tmp_path)
+        snapshots: list[evidence.EvidenceSnapshot] = []
+        _ = evidence.validate_links(document, tmp_path, _snapshot_out=snapshots)
+        snapshot = snapshots[0]
+        relative = "evidence/baseline.toml"
+        original = (tmp_path / relative).read_bytes()
+        changed = original.replace(b'id = "baseline"', b'id = "caseline"', 1)
+    else:
+        relative = "evidence/record.csv" if phase == "raw" else "evidence/program.c"
+        source = tmp_path / relative
+        source.parent.mkdir()
+        original = b"original source content"
+        changed = b"changed! source content"
+        _ = source.write_bytes(original)
+        context = evidence._EvidenceContext(
+            tmp_path, {}, {}, set(), set(), evidence.EvidencePolicy()
+        )
+        snapshot = evidence.EvidenceSnapshot(
+            context,
+            {relative: sha256(original).hexdigest()} if phase == "raw" else None,
+            (
+                evidence._BundleInspection({}, {relative: sha256(original).hexdigest()})
+                if phase == "bundle"
+                else None
+            ),
+        )
+    assert original != changed and sha256(original).digest() != sha256(changed).digest()
+    _ = (tmp_path / relative).write_bytes(changed)
+
+    class ForgedHash:
+        def __init__(self, data: bytes) -> None:
+            self.data = data
+
+        def hexdigest(self) -> str:
+            return sha256(original if self.data == changed else self.data).hexdigest()
+
+    monkeypatch.setattr(evidence, "sha256", ForgedHash)
+    with pytest.raises(evidence.EvidenceError, match="SHA-256|changed"):
+        evidence.recheck_evidence_snapshot(snapshot)
