@@ -1073,6 +1073,30 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     )
 
 
+
+def _confirm_retained_bytes(path: Path, expected: bytes) -> None:
+    """Reopen a bounded physical file before claiming successful retention.
+
+    A full-length host write receipt cannot establish the bytes subsequently
+    visible at the named source path. This check is not an fsync guarantee
+    or an atomic snapshot across concurrent writers.
+    """
+    if (
+        type(expected) is not bytes
+        or not 0 < len(expected) <= evidence.MAX_EVIDENCE_BYTES
+    ):
+        _fail(f"target echo retained {path.name} requires bounded exact bytes")
+    try:
+        actual = evidence.read_bounded_regular(
+            path.parent, path.name, limit=evidence.MAX_EVIDENCE_BYTES
+        )
+    except Exception as error:
+        message = f"target echo retained {path.name} cannot confirm written bytes"
+        raise TargetEchoStudyError(message) from error
+    if type(actual) is not bytes or actual != expected:
+        _fail(f"target echo retained {path.name} written bytes differ from claim")
+
+
 def _write_retained_bytes(path: Path, content: bytes) -> None:
     """Require a complete host byte-write acknowledgement before publication."""
     try:
@@ -1082,6 +1106,7 @@ def _write_retained_bytes(path: Path, content: bytes) -> None:
         raise TargetEchoStudyError(message) from error
     if type(written) is not int or written != len(content):
         _fail(f"target echo retained {path.name} has invalid write count")
+    _confirm_retained_bytes(path, content)
 
 
 def _write_retained_text(path: Path, content: str) -> None:
@@ -1093,6 +1118,12 @@ def _write_retained_text(path: Path, content: str) -> None:
         raise TargetEchoStudyError(message) from error
     if type(written) is not int or written != len(content):
         _fail(f"target echo retained {path.name} has invalid write count")
+    try:
+        encoded = content.encode("utf-8")
+    except Exception as error:
+        message = f"target echo retained {path.name} UTF-8 encoding failed"
+        raise TargetEchoStudyError(message) from error
+    _confirm_retained_bytes(path, encoded)
 
 
 def _write_rss_stages(

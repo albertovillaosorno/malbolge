@@ -321,6 +321,97 @@ def test_target_retained_writer_host_faults_are_typed_without_formatting(
     assert attempts == 1
 
 
+@pytest.mark.parametrize("site", [TARGET_RAW, TARGET_RUNS, TARGET_RSS, TARGET_STUDY])
+@pytest.mark.parametrize("failure", ["missing", "short", "altered"])
+def test_target_retained_output_rejects_false_full_write_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    site: str,
+    failure: str,
+) -> None:
+    """A claimed full write is not proof of retained source-byte identity."""
+    context = _synthetic_target_context(tmp_path, site=site)
+    original_bytes = type(tmp_path).write_bytes
+    original_text = type(tmp_path).write_text
+    attempts = 0
+
+    def selected(path: Path) -> bool:
+        return path.parent.name == site or (
+            site == TARGET_STUDY and path.name == STUDY_LEAF
+        )
+
+    def injected_bytes(path: Path, data: bytes) -> int:
+        nonlocal attempts
+        if not selected(path):
+            return original_bytes(path, data)
+        attempts += 1
+        if failure == "short":
+            _ = original_bytes(path, data[:1])
+        elif failure == "altered":
+            _ = original_bytes(path, b"X" + data[1:])
+        return len(data)
+
+    def injected_text(path: Path, data: str, encoding: str | None = None) -> int:
+        nonlocal attempts
+        if not selected(path):
+            return original_text(path, data, encoding=encoding)
+        attempts += 1
+        if failure == "short":
+            _ = original_text(path, data[:1], encoding=encoding)
+        elif failure == "altered":
+            _ = original_text(path, "X" + data[1:], encoding=encoding)
+        return len(data)
+
+    monkeypatch.setattr(type(tmp_path), "write_bytes", injected_bytes)
+    monkeypatch.setattr(type(tmp_path), "write_text", injected_text)
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError,
+        match="cannot confirm written bytes|written bytes differ",
+    ):
+        _ = _invoke_target_retained_site(monkeypatch, context, site=site)
+    assert attempts == 1
+
+
+@pytest.mark.parametrize("kind", ["bytes", "text"])
+def test_target_retained_writer_rejects_foreign_readback_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Only exact file bytes can complete the retained source acknowledgement."""
+    monkeypatch.setattr(
+        target_echo_reference.evidence, "read_bounded_regular",
+        lambda *_args, **_kwargs: bytearray(b"retained"),
+    )
+    path = tmp_path / "retained"
+    with pytest.raises(
+        target_echo_reference.TargetEchoStudyError, match="written bytes differ"
+    ):
+        if kind == "bytes":
+            target_echo_reference._write_retained_bytes(path, b"retained")
+        else:
+            target_echo_reference._write_retained_text(path, "retained")
+
+
+@pytest.mark.parametrize(
+    ("kind", "source"),
+    [("bytes", b"retained-bytes"), ("text", "retained Unicode: \u03b2\u03bb")],
+)
+def test_target_retained_writer_preserves_exact_native_payload(
+    tmp_path: Path, kind: str, source: bytes | str
+) -> None:
+    """Successful native writes retain all source bytes, including UTF-8."""
+    path = tmp_path / "retained"
+    if kind == "bytes":
+        assert type(source) is bytes
+        target_echo_reference._write_retained_bytes(path, source)
+        expected = source
+    else:
+        assert type(source) is str
+        target_echo_reference._write_retained_text(path, source)
+        expected = source.encode("utf-8")
+    assert path.read_bytes() == expected
+
+
 RAW_TAMPER = "raw"
 STUDY_LEAF = "study.json"
 ORIGINAL_TRIAL = "trial = 0"
