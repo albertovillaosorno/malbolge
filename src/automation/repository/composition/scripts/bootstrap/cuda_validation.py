@@ -1369,8 +1369,9 @@ def _copy_cuda_overlay(
                 _fail("CUDA staged overlay destination copy receipt mismatch")
         return
 
-    # The POSIX path also needs to attest earlier packages and forbid entries
-    # created by filesystem callbacks outside the descriptor-checked copy.
+    # Do not enumerate the source before opening pinned member descriptors:
+    # pre-copy path scans can be redirected during traversal. Attest the
+    # complete source and copied destination only after the descriptor copy.
     destination_before = _cuda_overlay_destination_members(destination)
     copied_members: set[Path] = set()
     flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -1583,7 +1584,16 @@ def _copy_cuda_overlay(
             _fail("CUDA staged overlay requires native destination descriptor")
         try:
             copy_directory(source, destination, source_descriptor, descriptor)
+            source_after = _cuda_overlay_destination_members(source)
             destination_after = _cuda_overlay_destination_members(destination)
+            if source_after.keys() != copied_members:
+                _fail("CUDA staged overlay source members omitted during copy")
+            if any(
+                destination_after.get(relative) is None
+                or destination_after[relative][2:] != source_receipt[2:]
+                for relative, source_receipt in source_after.items()
+            ):
+                _fail("CUDA staged overlay copied member changed before publication")
             unexpected = (
                 destination_after.keys() - destination_before.keys() - copied_members
             )

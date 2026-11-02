@@ -4903,6 +4903,81 @@ def test_cuda_nonposix_overlay_rejects_unlisted_destination_addition(
 
 
 @pytest.mark.skipif(os.name != "posix", reason="requires POSIX descriptors")
+def test_cuda_posix_overlay_rejects_omitted_source_listing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed source listing cannot silently omit a verified member."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "verified.bin").write_bytes(b"source member")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    original_iterdir = Path.iterdir
+    omitted = False
+    source_scans = 0
+    status = source.stat()
+
+    def omit_once(path: Path) -> Iterator[Path]:
+        nonlocal omitted, source_scans
+        if path == source:
+            source_scans += 1
+            if source_scans == 1:
+                omitted = True
+                return iter(())
+        return original_iterdir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "iterdir", omit_once)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="overlay"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino),
+            )
+    assert omitted
+    assert not (destination / "verified.bin").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX descriptors")
+def test_cuda_posix_overlay_rechecks_earlier_new_member_after_later_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late callback cannot corrupt the first newly copied source member."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "early.bin").write_bytes(b"verified early")
+    _ = (source / "later.bin").write_bytes(b"verified later")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    original_write = cuda_validation._write_staged_file_at_parent  # noqa: SLF001, RUF100
+    original_iterdir = Path.iterdir
+    swapped = False
+    status = source.stat()
+
+    def ordered_source(path: Path) -> Iterator[Path]:
+        members = original_iterdir(path)
+        return iter(sorted(members)) if path == source else members
+
+    def mutate_after_first(
+        path: Path, payload: bytes, label: str, parent_descriptor: int | None,
+    ) -> tuple[int, int]:
+        nonlocal swapped
+        if path == destination / "later.bin":
+            previous = destination / "early.bin"
+            if previous.exists():
+                _ = previous.write_bytes(b"unverified !!!")
+                swapped = True
+        return original_write(path, payload, label, parent_descriptor)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "iterdir", ordered_source)
+        isolated.setattr(cuda_validation, "_write_staged_file_at_parent", mutate_after_first)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="overlay"):
+            cuda_validation._copy_cuda_overlay(  # noqa: SLF001, RUF100
+                source, destination, (status.st_dev, status.st_ino),
+            )
+    assert swapped
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX descriptors")
 @pytest.mark.parametrize("tamper", ("delete", "overwrite", "inject"))
 def test_cuda_posix_overlay_rejects_prior_member_and_unlisted_changes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str,
