@@ -4114,6 +4114,55 @@ def test_local_directory_initialization_rejects_linked_cargo_home(
     assert list(external.iterdir()) == []
 
 
+@pytest.mark.parametrize("fault_site", ["parent", "leaf", "mkdir"])
+def test_local_directory_initialization_types_host_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault_site: str
+) -> None:
+    """State creation failures retain their causes without formatting hooks."""
+
+    class ForeignHostOSError(OSError):
+        @override
+        def __str__(self) -> Never:
+            raise AssertionError("foreign state filesystem formatter invoked")
+
+    fault = ForeignHostOSError("state access failed")
+    target = tmp_path / ".cache"
+    native_lstat = Path.lstat
+    native_mkdir = Path.mkdir
+    triggered = False
+
+    def fault_lstat(path: Path) -> os.stat_result:
+        nonlocal triggered
+        if (
+            (fault_site == "parent" and path == tmp_path)
+            or (fault_site == "leaf" and path == target)
+        ):
+            triggered = True
+            raise fault
+        return native_lstat(path)
+
+    def fault_mkdir(
+        path: Path, mode: int = 0o777, parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        nonlocal triggered
+        if fault_site == "mkdir" and path == target:
+            triggered = True
+            raise fault
+        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", fault_lstat)
+        isolated.setattr(Path, "mkdir", fault_mkdir)
+        with pytest.raises(
+            project.InitializationError, match="local state directory"
+        ) as caught:
+            project.initialize_local_directories(tmp_path)
+    assert triggered
+    assert caught.value.__cause__ is fault
+    assert not target.exists()
+
+
 def test_local_directory_initialization_is_idempotent(tmp_path: Path) -> None:
     """Ignored checkout state directories can be initialized repeatedly."""
     first = project.initialize_local_directories(tmp_path)

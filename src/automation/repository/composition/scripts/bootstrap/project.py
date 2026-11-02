@@ -235,7 +235,10 @@ def initialize_local_directories(root: Path = ROOT) -> tuple[Path, ...]:
     for directory in state_paths:
         _admit_local_directory(directory)
     for directory in state_paths:
-        directory.mkdir(parents=True, exist_ok=True)
+        try:
+            directory.mkdir(parents=True, exist_ok=True)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise InitializationError("cannot create local state directory") from error
         _admit_local_directory(directory)
     return directories
 
@@ -319,11 +322,18 @@ def _reject_authority_parent_redirects(path: Path) -> None:
 
 def _admit_local_directory(directory: Path) -> None:
     """Admit absent or physical checkout-local directories, never aliases."""
-    _reject_authority_parent_redirects(directory)
+    try:
+        _reject_authority_parent_redirects(directory)
+    except InitializationError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot inspect local state directory") from error
     try:
         physical = directory.lstat()
     except FileNotFoundError:
         return
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot inspect local state directory") from error
     if type(physical) is not os.stat_result or not stat.S_ISDIR(physical.st_mode):
         _fail(f"local state directory must be physical: {directory}")
 
