@@ -1334,6 +1334,21 @@ def _imported_cargo(root: Path, channel: str) -> Path:
     return root / ".dependencies" / "rust" / channel / "bin" / "cargo.bin"
 
 
+def _rust_cargo_alias_ready(cargo: Path) -> bool:
+    """Require a physical native Cargo alias inside the imported Rust tree.
+
+    Returns:
+        False for missing, linked, nonregular, or unauthenticated paths.
+
+    """
+    try:
+        _reject_authority_parent_redirects(cargo)
+        physical = cargo.lstat()
+    except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
+        return False
+    return type(physical) is os.stat_result and stat.S_ISREG(physical.st_mode)
+
+
 def _linux_adapter_script_ready(linker: Path) -> bool:
     """Validate one stable, physical and executable Linux linker shim.
 
@@ -1381,7 +1396,9 @@ def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:
     channel = _rust_channel(root)
     cargo = _imported_cargo(root, channel)
     imported_root = cargo.parent.parent
-    imported = cargo.is_file() and rust_toolchain_import_complete(imported_root)
+    imported = _rust_cargo_alias_ready(cargo) and rust_toolchain_import_complete(
+        imported_root
+    )
     linker_ready = _rust_validation_adapter_ready(
         imported_root,
         platform_id,

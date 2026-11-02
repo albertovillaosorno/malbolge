@@ -2897,6 +2897,97 @@ def _linux_rust_inspection_tree(tmp_path: Path) -> Path:
     return toolchain
 
 
+def test_rust_inspection_rejects_linked_cargo_alias(tmp_path: Path) -> None:
+    """A redirected Cargo binary cannot complete a pinned Rust import."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    cargo = toolchain / "bin/cargo.bin"
+    outside = tmp_path / "outside-cargo"
+    _ = outside.write_bytes(RUST_CARGO_BYTES)
+    cargo.unlink()
+    try:
+        cargo.symlink_to(outside)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"symlinks unavailable: {error}")
+
+    assert (
+        project.inspect_rust(tmp_path, WINDOWS_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_linked_cargo_parent(tmp_path: Path) -> None:
+    """Rust import readiness must not follow a linked Cargo directory."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    binary = toolchain / "bin"
+    relocated = tmp_path / "outside-bin"
+    _ = binary.replace(relocated)
+    try:
+        binary.symlink_to(relocated, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+
+    assert (
+        project.inspect_rust(tmp_path, WINDOWS_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_does_not_trust_forged_cargo_exists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fake Path.is_file receipt cannot replace physical Cargo evidence."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    cargo = toolchain / "bin/cargo.bin"
+    cargo.unlink()
+    original = Path.is_file
+
+    def fake_is_file(path: Path) -> bool:
+        return True if path == cargo else original(path)
+
+    monkeypatch.setattr(Path, "is_file", fake_is_file)
+    assert (
+        project.inspect_rust(tmp_path, WINDOWS_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_rejects_foreign_cargo_lstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A nonnative lstat receipt cannot attest an imported Cargo binary."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    cargo = toolchain / "bin/cargo.bin"
+    original = Path.lstat
+
+    def foreign_lstat(path: Path) -> os.stat_result:
+        if path == cargo:
+            return cast("os.stat_result", object())
+        return original(path)
+
+    monkeypatch.setattr(Path, "lstat", foreign_lstat)
+    assert (
+        project.inspect_rust(tmp_path, WINDOWS_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_accepts_hardlinked_native_cargo(tmp_path: Path) -> None:
+    """The copied Rust import may hardlink its neutral and native executables."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    cargo = toolchain / "bin/cargo.bin"
+    try:
+        os.link(cargo, toolchain / "bin/cargo")
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+
+    assert (
+        project.inspect_rust(tmp_path, WINDOWS_PLATFORM).state
+        is project.ComponentState.READY
+    )
+
+
 def test_rust_inspection_rejects_wrong_linux_adapter_marker(
     tmp_path: Path,
 ) -> None:
