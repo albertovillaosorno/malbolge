@@ -28,6 +28,13 @@ rejects caller-defined container or string subclasses, foreign dictionary
 keys, duplicate trial identities, contradictory verifier verdicts, and
 reported verified costs beyond declared study budgets before ranking.
 These checks do not independently authenticate the source of those claims.
+The JSON entrypoint also reparses the same admitted text through an
+import-time bound standard decoder after schema admission. A substituted
+public decoder cannot change otherwise native reported identities, verifier
+outcomes or costs without a source mismatch. The second parse preserves
+strict duplicate-field/nonfinite rejection; equivalent decoder wrappers remain
+valid. This is local parser-source consistency, not independent authentication
+of reported measurements, verifier execution or retained file provenance.
 Version-one input has one `study` and a nonempty `observations` array:
 
 ```json

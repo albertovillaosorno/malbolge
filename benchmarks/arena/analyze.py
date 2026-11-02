@@ -54,6 +54,9 @@ from benchmarks.arena import (
     success_intervals,
 )
 
+# Bind a source decoder before mutable public json.loads can be substituted.
+_SOURCE_JSON_LOADS = json.loads
+
 SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
 SHA256_ALPHABET = frozenset("0123456789abcdef")
@@ -415,7 +418,31 @@ def parse_document(text: str) -> dict[str, Any]:
         A structurally admitted study; references are not authenticated.
 
     """
-    return admit_document(_decode_document(text))
+    admitted = admit_document(_decode_document(text))
+    # A substituted public decoder can return an exact native study whose
+    # claimed trials and metrics were never present in the supplied JSON.
+    # After complete native-shape admission, independent source comparison
+    # uses only JSON primitives, so no foreign equality hooks are invoked.
+    try:
+        source = _SOURCE_JSON_LOADS(
+            text,
+            object_pairs_hook=_pairs,
+            parse_constant=_reject_constant,
+        )
+    except ArenaError as error:
+        if type(error) is ArenaError:
+            raise
+        message = "invalid arena source JSON"
+        raise ArenaError(message) from error
+    except Exception as error:
+        message = "invalid arena source JSON"
+        raise ArenaError(message) from error
+    # Raw JSON equality alone would treat true == 1 and 1.0 == 1; the
+    # independent source also needs exact schema and primitive-type checks.
+    source_admitted = admit_document(source)
+    if admitted != source_admitted:
+        _fail("arena document differs from source JSON")
+    return admitted
 
 
 def _case_key(row: dict[str, Any]) -> tuple[Any, ...]:

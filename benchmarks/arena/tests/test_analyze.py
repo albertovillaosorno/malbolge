@@ -445,6 +445,108 @@ def test_direct_json_parser_types_foreign_exception_without_formatting(
     assert caught.value.__cause__ is fault
 
 
+@pytest.mark.parametrize(
+    "alteration",
+    [
+        "study_identity",
+        "trial_cost",
+        "verifier_outcome",
+    ],
+)
+def test_direct_json_rejects_substituted_native_forged_study(
+    monkeypatch: pytest.MonkeyPatch,
+    alteration: str,
+) -> None:
+    """A decoder cannot replace unchanged evidence with fabricated claims."""
+    document = _document()
+    source = json.dumps(document)
+    forged = copy.deepcopy(document)
+    if alteration == "study_identity":
+        forged["study"]["id"] = "foreign-synthetic-study"
+    elif alteration == "trial_cost":
+        forged["observations"][0]["metrics"]["elapsed_ns"] = 1
+    else:
+        row = forged["observations"][0]
+        row["outcome"] = analyze.VERIFIER_REJECTED
+        row["verifier_verdict"] = analyze.REJECTED
+        row["metrics"] = {"elapsed_ns": 10}
+
+    monkeypatch.setattr(analyze.json, "loads", lambda *_a, **_kw: forged)
+    with pytest.raises(analyze.ArenaError, match="source JSON"):
+        analyze.parse_document(source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "not JSON",
+        '{"schema_version": 1, "schema_version": 2}',
+        '{"unreviewed": NaN}',
+    ],
+)
+def test_direct_json_rejects_substituted_decoder_on_bad_source(
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+) -> None:
+    """Even a plausible decoder receipt cannot override invalid source text."""
+    forged = _document()
+    monkeypatch.setattr(analyze.json, "loads", lambda *_a, **_kw: forged)
+    with pytest.raises(analyze.ArenaError, match="source JSON|duplicate|nonfinite"):
+        analyze.parse_document(source)
+
+
+@pytest.mark.parametrize("source_value", ["true", "1.0"])
+def test_direct_json_source_rejects_substituted_numeric_type(
+    monkeypatch: pytest.MonkeyPatch,
+    source_value: str,
+) -> None:
+    """JSON bool and float cannot masquerade as an exact integer via ==."""
+    document = _document()
+    document["observations"][0]["metrics"]["elapsed_ns"] = 1
+    source = json.dumps(document).replace(
+        '"elapsed_ns": 1', f'"elapsed_ns": {source_value}', 1
+    )
+    assert source != json.dumps(document)
+    monkeypatch.setattr(analyze.json, "loads", lambda *_a, **_kw: document)
+    with pytest.raises(analyze.ArenaError, match="expected nonnegative integer"):
+        analyze.parse_document(source)
+
+
+def test_direct_json_allows_equivalent_decoder_wrapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source-preserving wrapper is not rejected for its callable identity."""
+    original = analyze.json.loads
+    document = _document()
+
+    def equivalent(*args: Any, **kwargs: Any) -> Any:
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(analyze.json, "loads", equivalent)
+    assert analyze.parse_document(json.dumps(document)) == document
+
+
+def test_cli_rejects_substituted_study_without_publishing_json(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Source-drifting native decoder receipts cannot publish a report."""
+    document = _document()
+    input_path = tmp_path / "unaltered-study.json"
+    _ = input_path.write_text(json.dumps(document), encoding="utf-8")
+    forged = copy.deepcopy(document)
+    forged["observations"][0]["metrics"]["elapsed_ns"] = 1
+    monkeypatch.setattr(analyze.json, "loads", lambda *_a, **_kw: forged)
+    monkeypatch.setattr(sys, "argv", ["arena", str(input_path)])
+
+    with pytest.raises(SystemExit, match="2"):
+        analyze.main()
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "arena document differs from source JSON" in captured.err
+
+
 def test_direct_json_syntax_error_retains_native_decoder_diagnostic() -> None:
     """Exact stdlib parser errors keep useful ordinary syntax positions."""
     with pytest.raises(analyze.ArenaError, match="Extra data") as caught:
