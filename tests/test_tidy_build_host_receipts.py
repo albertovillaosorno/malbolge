@@ -39,7 +39,8 @@ import stat
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
-from typing import cast, override
+from types import SimpleNamespace
+from typing import TextIO, cast, override
 
 import pytest
 
@@ -225,6 +226,90 @@ def test_tidy_build_cli_does_not_format_foreign_build_errors(
         assert "native build rejected" in stderr
     else:
         assert type(fault).__name__ in stderr
+
+
+def _mock_successful_tidy_build(monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Skip native compilation, preserving CLI publication semantics."""
+    plugin = Path("plugin.so")
+    identity = SimpleNamespace(plugin_library=plugin)
+    monkeypatch.setattr(tidy_toolchain, "load_identity", lambda **_kw: identity)
+    monkeypatch.setattr(tidy_build, "build", lambda _identity: None)
+    monkeypatch.setattr(tidy_build, "provision_clang_resources", lambda _identity: None)
+    monkeypatch.setattr(tidy_build, "verify_outputs", lambda _identity: None)
+    return plugin
+
+
+@pytest.mark.parametrize(
+    "case", ("partial", "foreign-count", "write-fault", "flush-fault", "foreign-flush")
+)
+def test_tidy_build_cli_requires_delivered_summary(
+    monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """A complete build does not certify success without delivered output."""
+
+    class FakeOutput:
+        def write(self, message: str) -> object:
+            if case == "partial":
+                return len(message) - 1
+            if case == "foreign-count":
+                return True
+            if case == "write-fault":
+                raise OSError("output failed")
+            return len(message)
+
+        def flush(self) -> object:
+            if case == "flush-fault":
+                raise OSError("flush failed")
+            if case == "foreign-flush":
+                return False
+            return None
+
+    _mock_successful_tidy_build(monkeypatch)
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", FakeOutput())))
+    assert tidy_build.main() == 1
+
+
+def test_tidy_build_cli_flushes_valid_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Native full output and completed flush admit the ready status."""
+
+    class CapturingOutput:
+        messages: list[str]
+        flushes: int
+
+        def __init__(self) -> None:
+            self.messages = []
+            self.flushes = 0
+
+        def write(self, message: str) -> int:
+            self.messages.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    plugin = _mock_successful_tidy_build(monkeypatch)
+    output = CapturingOutput()
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", output)))
+    assert tidy_build.main() == 0
+    assert output.messages == [f"clang-tidy plugin ready: {plugin}\n"]
+    assert output.flushes == 1
+
+
+def test_tidy_build_cli_failed_stderr_keeps_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A diagnostic sink failure cannot promote failed native build status."""
+
+    class FailingStderr:
+        def write(self, _message: str) -> None:
+            raise OSError("diagnostics failed")
+
+    def fail_identity(**_kwargs: object) -> None:
+        raise tidy_build.BuildError("native build rejected")
+
+    monkeypatch.setattr(tidy_toolchain, "load_identity", fail_identity)
+    monkeypatch.setattr(sys, "stderr", cast("TextIO", cast("object", FailingStderr())))
+    assert tidy_build.main() == 1
 
 
 @pytest.mark.parametrize("capture", [False, True])

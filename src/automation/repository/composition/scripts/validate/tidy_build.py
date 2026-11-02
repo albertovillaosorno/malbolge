@@ -41,7 +41,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final, Never
+from typing import Final, Never, TextIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -458,6 +458,25 @@ def verify_outputs(identity: tidy_toolchain.ToolchainIdentity) -> None:
         _fail(f"{prefix}{expected}; observed {actual}")
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Return whether exact native CLI text write and flush both completed."""
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Build and verify canonical clang-tidy plugin outputs.
 
@@ -472,6 +491,9 @@ def main() -> int:
         build(identity)
         provision_clang_resources(identity)
         verify_outputs(identity)
+        message = f"clang-tidy plugin ready: {identity.plugin_library}\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("clang-tidy plugin CLI output write or flush failed")
     except (
         BuildError,
         tidy_build_linux.LinuxBuildError,
@@ -487,10 +509,8 @@ def main() -> int:
             }
             else type(error).__name__
         )
-        _ = sys.stderr.write(f"error: {detail}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {detail}\n")
         return 1
-    message = f"clang-tidy plugin ready: {identity.plugin_library}"
-    _ = sys.stdout.write(message + chr(10))
     return 0
 
 

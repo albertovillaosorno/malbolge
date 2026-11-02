@@ -126,8 +126,12 @@ commands must return native text streams; uncaptured build commands must not
 report fabricated output streams. Missing or foreign receipts fail closed,
 and native launch faults retain their original exception cause. Foreign host
 exceptions and CLI errors are identified by type without evaluating custom
-string-formatting hooks. This subprocess admission does not provide an atomic
-lock against concurrent changes to executable paths.
+string-formatting hooks. The plugin builder CLI only reports success after
+an exact native text-write count and completed flush. Short or foreign output
+receipts and stdout failures cannot prove a ready plugin, while stderr failure
+cannot turn invalid native build evidence into a successful command exit. This
+subprocess admission does not provide an atomic lock against concurrent changes
+to executable paths.
 
 Windows cache, plugin-output, and tool parent paths also require native
 boolean status and exact physical `lstat` directory-mode evidence on every
