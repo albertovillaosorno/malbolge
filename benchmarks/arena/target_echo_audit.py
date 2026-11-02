@@ -956,7 +956,12 @@ def _tool_file_identity(details: os.stat_result) -> tuple[int, int, int, int, in
 def _tool_identity(emitter: Path, runner: Path) -> str:
     # Hash admitted regular descriptors, not a newly followed pathname.
     # The same size framing preserves all prior toolchain digest values.
-    digest = sha256()
+    try:
+        digest = sha256()
+        independent = hashlib.new("sha256")
+    except Exception as error:
+        message = "target audit executable SHA-256 setup failed"
+        raise TargetEchoAuditError(message) from error
     for path in (emitter, runner):
         try:
             original = path.lstat()
@@ -985,7 +990,9 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                     _tool_file_identity(opened) != _tool_file_identity(original)
                 ):
                     _fail("target audit executable identity changed")
-                digest.update(opened.st_size.to_bytes(8, "big"))
+                length_prefix = opened.st_size.to_bytes(8, "big")
+                digest.update(length_prefix)
+                independent.update(length_prefix)
                 remaining = opened.st_size
                 while remaining:
                     requested = min(remaining, 1024 * 1024)
@@ -993,6 +1000,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                     if type(chunk) is not bytes or not 0 < len(chunk) <= requested:
                         _fail("target audit executable identity changed")
                     digest.update(chunk)
+                    independent.update(chunk)
                     remaining -= len(chunk)
                 trailer = os.read(descriptor, 1)
                 if (
@@ -1045,7 +1053,23 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 raise
             message = "target audit executable identity changed"
             raise TargetEchoAuditError(message) from error
-    return "local-compiler-vm-sha256:" + digest.hexdigest()
+    try:
+        reported = digest.hexdigest()
+        verified = independent.hexdigest()
+    except Exception as error:
+        message = "target audit executable SHA-256 completion failed"
+        raise TargetEchoAuditError(message) from error
+    if (
+        type(reported) is not str
+        or type(verified) is not str
+        or len(reported) != analyze.SHA256_HEX_LENGTH
+        or len(verified) != analyze.SHA256_HEX_LENGTH
+        or not set(reported) <= analyze.SHA256_ALPHABET
+        or not set(verified) <= analyze.SHA256_ALPHABET
+        or reported != verified
+    ):
+        _fail("target audit executable SHA-256 receipt differs from tool bytes")
+    return "local-compiler-vm-sha256:" + reported
 
 
 def _invoke_runner_command(command: list[str]) -> sp.CompletedProcess[bytes]:

@@ -1009,6 +1009,54 @@ def test_tool_fingerprint_preserves_stable_byte_identity(tmp_path: Path) -> None
     )
 
 
+class _ForgedToolFingerprint(str):  # ruff: ignore[subclass-builtin]
+    """A foreign hash return may impersonate a native digest."""
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+@pytest.mark.parametrize("receipt", ["wrong", "foreign", "short", "nonnative", "fault"])
+def test_tool_fingerprint_rejects_unverified_hash_provider_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """The identity must bind streamed tool bytes, not a forged hash object."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    bad_digest = "0" * 64
+    expected = sha256()
+    for raw in (b"trusted-emitter", b"trusted-runner"):
+        expected.update(len(raw).to_bytes(8, "big"))
+        expected.update(raw)
+    assert bad_digest != expected.hexdigest()
+    failure = RuntimeError("SHA provider failed")
+
+    class ForgedHash:
+        def update(self, raw: bytes) -> None:
+            del raw
+
+        def hexdigest(self) -> object:
+            if receipt == "fault":
+                raise failure
+            return {
+                "wrong": bad_digest,
+                "foreign": _ForgedToolFingerprint(bad_digest),
+                "short": "0",
+                "nonnative": 123,
+            }[receipt]
+
+    monkeypatch.setattr(audit, "sha256", lambda: ForgedHash())
+    with pytest.raises(audit.TargetEchoAuditError, match="SHA-256|executable identity") as caught:
+        audit._tool_identity(emitter, runner)
+    if receipt == "fault":
+        assert caught.value.__cause__ is failure
+
+
 def test_tool_fingerprint_rejects_symlink_substitution_after_admission(
     tmp_path: Path,
 ) -> None:
