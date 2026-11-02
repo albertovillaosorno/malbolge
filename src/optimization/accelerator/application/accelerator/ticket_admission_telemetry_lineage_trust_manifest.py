@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from hashlib import sha256
 import json
+from json import dumps as _SOURCE_JSON_DUMPS
 import os
 from pathlib import Path
 from re import compile as compile_pattern
@@ -189,14 +190,35 @@ def encode_ticket_admission_telemetry_lineage_trust_manifest(
 
     """
     validated = _validated_manifest(manifest)
-    text = json.dumps(
-        asdict(validated),
-        allow_nan=False,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    text = _canonical_json(asdict(validated))
     return f"{text}\n".encode()
+
+
+def _canonical_json(mapping: dict[str, object]) -> str:
+    """Compare the public writer with source-owned canonical JSON text."""
+    try:
+        # Capture source content before a mutable public writer can erase,
+        # fabricate, or mutate a key-reference identity or validity window.
+        source_text = _SOURCE_JSON_DUMPS(
+            mapping,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        rendered = json.dumps(
+            mapping,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:  # noqa: BLE001 - external writer stays typed
+        message = f"trust manifest JSON serializer failed: {type(error).__name__}"
+        raise TicketAdmissionTelemetryLineageTrustManifestError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        _raise_manifest("trust manifest JSON serializer disagrees with source")
+    return source_text
 
 
 def decode_ticket_admission_telemetry_lineage_trust_manifest(

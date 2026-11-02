@@ -783,7 +783,11 @@ defaults
 to 256 entries and 64 KiB, orders entries by key identity, fingerprints
 canonical
 bytes, and supports only explicit bounded reads and atomic replacement.
-Resolution
+Canonical JSON encoding now corroborates the mutable public writer against
+source-owned standard-library output before it can mutate trusted key-reference
+metadata. Joint public decoding/encoding substitutions cannot invent key
+identities, reference IDs, or validity windows absent from the original bytes;
+underlying standard-library JSON remains a trust dependency. Resolution
 requires exact caller-supplied key/reference coverage and produces
 manifest-bound
 in-memory trust. A resolved secret is not certified until an attestation

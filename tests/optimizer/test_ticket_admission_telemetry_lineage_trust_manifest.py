@@ -784,3 +784,128 @@ def test_path_type_is_exact() -> None:
             path,
             _rotation_manifest(),
         )
+
+
+def test_trust_manifest_rejects_joint_json_decoder_writer_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No joint public codec can invent trusted key references from empty bytes."""
+    from accelerator import ticket_admission_telemetry_lineage_trust_manifest as codec
+
+    empty = build_ticket_admission_telemetry_lineage_trust_manifest(())
+    source_bytes = encode_ticket_admission_telemetry_lineage_trust_manifest(empty)
+    forged = _mapping(
+        encode_ticket_admission_telemetry_lineage_trust_manifest(
+            _rotation_manifest()
+        )
+    )
+    untrusted_text = source_bytes.decode("utf-8").removesuffix("\n")
+    monkeypatch.setattr(codec.json, "loads", lambda *_args, **_kwargs: forged)
+    monkeypatch.setattr(codec.json, "dumps", lambda *_args, **_kwargs: untrusted_text)
+    with pytest.raises(TicketAdmissionTelemetryLineageTrustManifestError, match="serializer|canonical"):
+        _ = decode_ticket_admission_telemetry_lineage_trust_manifest(source_bytes)
+
+
+def test_trust_manifest_rejects_forged_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The public encoder cannot publish arbitrary bytes as trusted references."""
+    from accelerator import ticket_admission_telemetry_lineage_trust_manifest as codec
+
+    monkeypatch.setattr(codec.json, "dumps", lambda *_args, **_kwargs: "{}")
+    with pytest.raises(TicketAdmissionTelemetryLineageTrustManifestError, match="serializer"):
+        _ = encode_ticket_admission_telemetry_lineage_trust_manifest(
+            _rotation_manifest()
+        )
+
+
+def test_trust_manifest_rejects_mutating_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A writer cannot erase trusted reference entries after source capture."""
+    from accelerator import ticket_admission_telemetry_lineage_trust_manifest as codec
+
+    original_dumps = codec.json.dumps
+
+    def changed_writer(value: dict[str, object], **kwargs: object) -> str:
+        value["entries"] = []
+        return original_dumps(value, **kwargs)
+
+    monkeypatch.setattr(codec.json, "dumps", changed_writer)
+    with pytest.raises(TicketAdmissionTelemetryLineageTrustManifestError, match="serializer"):
+        _ = encode_ticket_admission_telemetry_lineage_trust_manifest(
+            _rotation_manifest()
+        )
+
+
+class _ForeignJsonText(str):
+    """A substituted JSON writer can return a string with custom equality."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign writer equality invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param(b"{}", id="binary"),
+        pytest.param(_ForeignJsonText("{}"), id="foreign-str"),
+    ],
+)
+def test_trust_manifest_rejects_non_native_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only an exact native canonical writer receipt can publish references."""
+    from accelerator import ticket_admission_telemetry_lineage_trust_manifest as codec
+
+    monkeypatch.setattr(codec.json, "dumps", lambda *_args, **_kwargs: receipt)
+    with pytest.raises(TicketAdmissionTelemetryLineageTrustManifestError, match="serializer"):
+        _ = encode_ticket_admission_telemetry_lineage_trust_manifest(
+            _rotation_manifest()
+        )
+
+
+@pytest.mark.parametrize(
+    "error_type", [RuntimeError, AttributeError, IndexError, OverflowError]
+)
+def test_trust_manifest_contains_json_writer_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    """Provider errors are typed and retain their exact original causes."""
+    from accelerator import ticket_admission_telemetry_lineage_trust_manifest as codec
+
+    failure = error_type("substituted JSON writer fault")
+
+    def fail_writer(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    monkeypatch.setattr(codec.json, "dumps", fail_writer)
+    with pytest.raises(
+        TicketAdmissionTelemetryLineageTrustManifestError, match="serializer failed"
+    ) as caught:
+        _ = encode_ticket_admission_telemetry_lineage_trust_manifest(
+            _rotation_manifest()
+        )
+    assert caught.value.__cause__ is failure
+
+
+def test_trust_manifest_accepts_equivalent_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An equivalent wrapper preserves canonical bytes and trust entries."""
+    from accelerator import ticket_admission_telemetry_lineage_trust_manifest as codec
+
+    original_dumps = codec.json.dumps
+    monkeypatch.setattr(
+        codec.json, "dumps", lambda *args, **kwargs: original_dumps(*args, **kwargs)
+    )
+    original = _rotation_manifest()
+    assert decode_ticket_admission_telemetry_lineage_trust_manifest(
+        encode_ticket_admission_telemetry_lineage_trust_manifest(original)
+    ) == original
