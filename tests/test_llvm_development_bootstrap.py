@@ -104,6 +104,32 @@ def test_development_rpm_filename_rejects_windows_path_components(
         )
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "clang?mirror.rpm",
+        "clang#fragment.rpm",
+        "clang%2Fsegment.rpm",
+        "clang;parameter.rpm",
+        "clang whitespace.rpm",
+        "clang\x00null.rpm",
+        "clang\u200bhidden.rpm",
+    ],
+)
+def test_development_rpm_filename_rejects_url_control_characters(
+    tmp_path: Path,
+    name: str,
+) -> None:
+    """Pinned asset names cannot change the HTTP URL beyond a path segment."""
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="one RPM filename",
+    ):
+        _ = llvm_development_validation._asset_url(
+            _identity(tmp_path), replace(_asset(), name=name)
+        )
+
+
 def test_package_verification_rejects_size_and_sha_drift() -> None:
     """RPM bytes must satisfy both exact tracked size and SHA-256 identity."""
     asset = _asset()

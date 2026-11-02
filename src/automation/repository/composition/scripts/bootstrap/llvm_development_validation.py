@@ -395,6 +395,17 @@ def _asset_url(
         _fail("LLVM development RPM provider supports only linux-x86_64")
     if identity.development_provider != LINUX_DEVELOPMENT_PROVIDER:
         _fail("LLVM Linux development provider is not the reviewed Fedora set")
+    # A pathname basename alone does not reject URL query, fragment, encoded
+    # separator, or control characters in a tracked RPM asset name.
+    if (
+        type(asset.name) is not str
+        or not asset.name.isascii()
+        or any(
+            not (character.isalnum() or character in "-._+~")
+            for character in asset.name
+        )
+    ):
+        _fail("LLVM development asset name must be one RPM filename")
     native = Path(asset.name)
     windows = PureWindowsPath(asset.name)
     if (
