@@ -119,7 +119,11 @@ launched command arguments. A successful tool receipt must be a native
 binary stdout/stderr. In-place command mutation, foreign status or stream
 objects, and malformed receipts fail closed; launch failures preserve their
 original cause as a typed provisioning error without formatting foreign host
-exception subclasses.
+exception subclasses. Staged RPM and completion-marker writes additionally
+require a previously unused, unlinked physical file path with nonredirected
+parent directories. Existing regular files, symlinks, hardlinks, and nonnative
+host status cannot be overwritten through the staging writer; preflights do
+not make concurrent pathname replacement atomic.
 
 The Linux plugin CMake builder likewise converts native process launch faults
 into typed build failures with their original causes. Host diagnostics are

@@ -197,7 +197,15 @@ def _reject_include_symlinks(include_root: Path) -> None:
 
 
 def _write_verified_staging_bytes(path: Path, content: bytes) -> None:
-    """Admit a staged RPM or marker only after a complete host write."""
+    """Require an unused physical leaf before writing exact staging bytes."""
+    _require_physical_directories(path.parent, "staging")
+    linked = _preflight_path_status(path, path.is_symlink, "staging")
+    junction = _preflight_path_status(path, path.is_junction, "staging")
+    if linked or junction:
+        _fail(f"LLVM development staging file must not redirect: {path.name}")
+    if _preflight_path_status(path, path.exists, "staging"):
+        _fail(f"LLVM development staging file already exists: {path.name}")
+    # Path admission alone cannot make concurrent pathname replacement atomic.
     written = path.write_bytes(content)
     if type(written) is not int or written != len(content):
         _fail(f"LLVM development staging write count mismatch: {path.name}")

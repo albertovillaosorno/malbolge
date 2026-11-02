@@ -1172,3 +1172,87 @@ def test_development_preflight_does_not_format_foreign_host_error(
                 tmp_path, "staging"
             )
     assert observed.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("alias_kind", ["symlink", "hardlink"])
+def test_development_marker_staging_rejects_foreign_file_alias(
+    tmp_path: Path,
+    alias_kind: str,
+) -> None:
+    """An extractor must not redirect the verified marker write outside staging."""
+    root = tmp_path / "repository"
+    root.mkdir()
+    identity = _identity(root)
+    external, sentinel = _external_sentinel(tmp_path)
+    original = sentinel.read_bytes()
+
+    def alias_extractor(
+        data: bytes,
+        asset: tidy_toolchain.DevelopmentAsset,
+        destination: Path,
+        *,
+        staging: Path,
+    ) -> None:
+        _extract_headers(data, asset, destination, staging=staging)
+        marker = destination / llvm_development_validation.LLVM_DEVELOPMENT_MARKER
+        try:
+            if alias_kind == "symlink":
+                _ = marker.symlink_to(sentinel)
+            else:
+                os.link(sentinel, marker)
+        except (OSError, NotImplementedError) as error:
+            pytest.skip(f"file aliases unavailable: {error}")
+
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            root,
+            identity,
+            downloader=_downloader([]),
+            extractor=alias_extractor,
+        )
+    assert sentinel.read_bytes() == original
+    assert list(external.iterdir()) == [sentinel]
+    assert not identity.development_root.exists()
+
+
+def test_development_staging_write_requires_unused_leaf(tmp_path: Path) -> None:
+    """An existing ordinary staging leaf is not safe to overwrite."""
+    target = tmp_path / "previous-marker.json"
+    original = b"keep old staging bytes"
+    _ = target.write_bytes(original)
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="staging",
+    ):
+        llvm_development_validation._write_verified_staging_bytes(target, b"new")
+    assert target.read_bytes() == original
+
+
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction", "exists"])
+@pytest.mark.parametrize("foreign", [None, 0, "", 0.0])
+def test_development_staging_file_rejects_non_native_leaf_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    foreign: object,
+) -> None:
+    """A foreign false-like leaf decision never permits a staging write."""
+    target = tmp_path / "payload.rpm"
+    native = getattr(Path, operation)
+
+    def foreign_status(path: Path) -> object:
+        return foreign if path == target else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, foreign_status)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="invalid status",
+        ):
+            llvm_development_validation._write_verified_staging_bytes(
+                target, PACKAGE_BYTES
+            )
+    assert not target.exists()
