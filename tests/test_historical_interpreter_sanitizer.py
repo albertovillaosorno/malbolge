@@ -40,7 +40,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from hashlib import sha256
 from pathlib import Path
-from typing import TYPE_CHECKING, Self, cast, final, override
+from typing import TYPE_CHECKING, Never, Self, cast, final, override
 
 import pytest
 
@@ -336,6 +336,132 @@ def test_sanitizer_rejects_native_reader_on_other_descriptor(
                 original_close(descriptor)
             except OSError:
                 pass
+
+
+@pytest.mark.parametrize("phase", ("initial", "opened", "after", "recheck"))
+def test_sanitizer_rejects_foreign_stat_receipts_before_field_access(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+) -> None:
+    """Foreign stat objects cannot fabricate sanitizer source identity."""
+    path = tmp_path / "input.json"
+    _ = path.write_bytes(b"{}")
+    native_lstat = Path.lstat
+    native_fstat = os.fstat
+    lstat_count = 0
+    fstat_count = 0
+
+    @final
+    class HostileStat:
+        @override
+        def __getattribute__(self, _name: str) -> Never:
+            raise AssertionError("foreign stat field evaluated")
+
+    def substituted_lstat(candidate: Path) -> os.stat_result:
+        nonlocal lstat_count
+        if candidate == path:
+            lstat_count += 1
+            if (phase == "initial" and lstat_count == 1) or (
+                phase == "recheck" and lstat_count == 2
+            ):
+                return cast("os.stat_result", cast("object", HostileStat()))
+        return native_lstat(candidate)
+
+    def substituted_fstat(descriptor: int) -> os.stat_result:
+        nonlocal fstat_count
+        fstat_count += 1
+        if (phase == "opened" and fstat_count == 1) or (
+            phase == "after" and fstat_count == 2
+        ):
+            return cast("os.stat_result", cast("object", HostileStat()))
+        return native_fstat(descriptor)
+
+    monkeypatch.setattr(Path, "lstat", substituted_lstat)
+    monkeypatch.setattr(os, "fstat", substituted_fstat)
+    with pytest.raises(harness.SanitizerHarnessError, match="native stat receipt"):
+        _ = harness._read_regular(  # pyright: ignore[reportPrivateUsage]
+            path, limit=harness.MAX_DOCUMENT_BYTES
+        )
+
+
+@final
+class _HostileRedirectVerdict:
+    def __bool__(self) -> Never:
+        raise AssertionError("foreign redirect truthiness evaluated")
+
+
+@pytest.mark.parametrize("location", ("parent", "leaf"))
+@pytest.mark.parametrize("predicate", ("is_symlink", "is_junction"))
+def test_sanitizer_requires_native_redirect_verdicts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+    predicate: str,
+) -> None:
+    """A truthiness adapter cannot decide sanitizer path admission."""
+    path = tmp_path / "input.json"
+    _ = path.write_bytes(b"{}")
+    target = path.parent if location == "parent" else path
+    original = Path.is_symlink if predicate == "is_symlink" else Path.is_junction
+
+    def forged_predicate(candidate: Path) -> bool:
+        if candidate == target:
+            return cast("bool", cast("object", _HostileRedirectVerdict()))
+        return original(candidate)
+
+    monkeypatch.setattr(Path, predicate, forged_predicate)
+    with pytest.raises(harness.SanitizerHarnessError, match="native redirect receipt"):
+        _ = harness._read_regular(  # pyright: ignore[reportPrivateUsage]
+            path, limit=harness.MAX_DOCUMENT_BYTES
+        )
+
+
+@final
+class _ForeignOpenDescriptor(int):
+    @override
+    def __str__(self) -> Never:
+        raise AssertionError("foreign descriptor formatted")
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(True, id="bool"),
+        pytest.param(-1, id="negative"),
+        pytest.param(1 << 40, id="too-large"),
+        pytest.param("3", id="text"),
+        pytest.param(_ForeignOpenDescriptor(3), id="subclass"),
+    ],
+)
+def test_sanitizer_rejects_foreign_open_descriptor_before_wrapping(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Unowned descriptor receipts cannot reach fdopen or close."""
+    path = tmp_path / "input.json"
+    _ = path.write_bytes(b"{}")
+    native_open = os.open
+
+    def forged_open(candidate: Path, flags: int) -> int:
+        if candidate == path:
+            return cast("int", receipt)
+        return native_open(candidate, flags)
+
+    def forbidden_fdopen(_descriptor: int, _mode: str) -> Never:
+        raise AssertionError("unowned sanitizer descriptor reached fdopen")
+
+    def forbidden_close(_descriptor: int) -> Never:
+        raise AssertionError("unowned sanitizer descriptor reached close")
+
+    monkeypatch.setattr(os, "open", forged_open)
+    monkeypatch.setattr(os, "fdopen", forbidden_fdopen)
+    monkeypatch.setattr(os, "close", forbidden_close)
+    with pytest.raises(harness.SanitizerHarnessError, match="native descriptor"):
+        _ = harness._read_regular(  # pyright: ignore[reportPrivateUsage]
+            path, limit=harness.MAX_DOCUMENT_BYTES
+        )
 
 
 def test_sanitizer_evidence_rejects_invalid_utf8(

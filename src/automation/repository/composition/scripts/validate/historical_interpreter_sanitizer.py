@@ -74,6 +74,7 @@ SCHEMA_VERSION = 1
 RUN_TIMEOUT_SECONDS = 15
 MAX_DOCUMENT_BYTES = 1_048_576
 MAX_FIXTURE_BYTES = 1_048_576
+MAX_NATIVE_DESCRIPTOR = (1 << 31) - 1
 PARENT_COMPONENT = ".."
 WINDOWS_OS_NAME = "nt"
 ASAN_ERROR = re.compile(r"ERROR: AddressSanitizer: ([a-z0-9-]+)")
@@ -181,9 +182,21 @@ def _reject_duplicate_pairs(pairs: list[tuple[str, object]]) -> JsonObject:
 
 
 def _regular_identity(
-    status: os.stat_result,
+    status: object,
     limit: int,
 ) -> tuple[int, int, int, int, int]:
+    if type(status) is not os.stat_result:
+        _fail("sanitizer input requires native stat receipt")
+    fields = (
+        status.st_mode,
+        status.st_dev,
+        status.st_ino,
+        status.st_size,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+    if any(type(field) is not int for field in fields) or status.st_size < 0:
+        _fail("sanitizer input requires native stat fields")
     if not S_ISREG(status.st_mode):
         _fail("sanitizer input must be a regular file")
     if status.st_size > limit:
@@ -197,10 +210,18 @@ def _regular_identity(
     )
 
 
+def _require_unredirected(path: Path) -> None:
+    for check in (path.is_symlink, path.is_junction):
+        redirected = check()
+        if type(redirected) is not bool:
+            _fail("sanitizer input requires native redirect receipt")
+        if redirected:
+            _fail("sanitizer input path must not redirect")
+
+
 def _reject_redirected_parents(path: Path) -> None:
     for parent in path.parents:
-        if parent.is_symlink() or parent.is_junction():
-            _fail("sanitizer input path must not redirect")
+        _require_unredirected(parent)
 
 
 def _read_regular(path: Path, *, limit: int) -> bytes:
@@ -213,8 +234,7 @@ def _read_regular(path: Path, *, limit: int) -> bytes:
     _reject_redirected_parents(path)
     admitted = path.lstat()
     expected = _regular_identity(admitted, limit)
-    if path.is_symlink() or path.is_junction():
-        _fail("sanitizer input path must not redirect")
+    _require_unredirected(path)
     flags = (
         os.O_RDONLY
         | getattr(os, "O_NOFOLLOW", 0)
@@ -222,6 +242,8 @@ def _read_regular(path: Path, *, limit: int) -> bytes:
         | getattr(os, "O_BINARY", 0)
     )
     descriptor = os.open(path, flags)
+    if type(descriptor) is not int or not 0 <= descriptor <= MAX_NATIVE_DESCRIPTOR:
+        _fail("sanitizer input requires native descriptor")
     try:
         stream = os.fdopen(descriptor, "rb")
     except (OSError, ValueError, TypeError, RuntimeError) as error:
