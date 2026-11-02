@@ -4811,20 +4811,22 @@ def test_local_directory_initialization_types_host_fault(
     target = tmp_path / ".cache"
     native_lstat = Path.lstat
     native_mkdir = Path.mkdir
+    native_os_mkdir = os.mkdir
     triggered = False
 
     def fault_lstat(path: Path) -> os.stat_result:
         nonlocal triggered
-        if (
-            (fault_site == "parent" and path == tmp_path)
-            or (fault_site == "leaf" and path == target)
+        if (fault_site == "parent" and path == tmp_path) or (
+            fault_site == "leaf" and path == target
         ):
             triggered = True
             raise fault
         return native_lstat(path)
 
     def fault_mkdir(
-        path: Path, mode: int = 0o777, parents: bool = False,
+        path: Path,
+        mode: int = 0o777,
+        parents: bool = False,
         exist_ok: bool = False,
     ) -> None:
         nonlocal triggered
@@ -4833,9 +4835,25 @@ def test_local_directory_initialization_types_host_fault(
             raise fault
         native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
 
+    def fault_os_mkdir(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal triggered
+        if fault_site == "mkdir" and path == target.name and dir_fd is not None:
+            triggered = True
+            raise fault
+        if dir_fd is None:
+            native_os_mkdir(path, mode)
+        else:
+            native_os_mkdir(path, mode, dir_fd=dir_fd)
+
     with monkeypatch.context() as isolated:
         isolated.setattr(Path, "lstat", fault_lstat)
         isolated.setattr(Path, "mkdir", fault_mkdir)
+        isolated.setattr(os, "mkdir", fault_os_mkdir)
         with pytest.raises(
             project.InitializationError, match="local state directory"
         ) as caught:
@@ -4843,6 +4861,180 @@ def test_local_directory_initialization_types_host_fault(
     assert triggered
     assert caught.value.__cause__ is fault
     assert not target.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+@pytest.mark.parametrize("replacement", ["symlink", "physical"])
+def test_local_directory_initialization_does_not_create_in_swapped_cargo_home_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A parent substituted during mkdir must not receive a Cargo home."""
+    dependencies = tmp_path / ".dependencies"
+    cargo_home = dependencies / "cargo-home"
+    parked = tmp_path / "parked-dependencies"
+    external = tmp_path / "foreign-dependencies"
+    external.mkdir()
+    _ = (external / "sentinel").write_text("foreign", encoding="ascii")
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def swap_on_cargo_home_mkdir(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (path == cargo_home or path == "cargo-home"):
+            _ = dependencies.rename(parked)
+            if replacement == "symlink":
+                _ = dependencies.symlink_to(external, target_is_directory=True)
+            else:
+                _ = external.rename(dependencies)
+            swapped = True
+        if dir_fd is None:
+            native_mkdir(path, mode)
+        else:
+            native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_on_cargo_home_mkdir)
+        with pytest.raises(project.InitializationError, match="local state directory"):
+            _ = project.initialize_local_directories(tmp_path)
+    assert swapped
+    assert not (parked / "cargo-home").is_symlink()
+    foreign = external if replacement == "symlink" else dependencies
+    assert (foreign / "sentinel").read_text(encoding="ascii") == "foreign"
+    assert not (foreign / "cargo-home").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+def test_local_directory_initialization_rejects_swap_before_cargo_home_parent_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nested creation must use the directory first admitted by bootstrap."""
+    dependencies = tmp_path / ".dependencies"
+    parked = tmp_path / "parked-dependencies"
+    external = tmp_path / "foreign-dependencies"
+    external.mkdir()
+    _ = (external / "sentinel").write_text("foreign", encoding="ascii")
+    native_open = os.open
+    swapped = False
+
+    def replace_before_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if path == dependencies and not swapped:
+            _ = dependencies.rename(parked)
+            _ = external.rename(dependencies)
+            swapped = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", replace_before_open)
+        with pytest.raises(project.InitializationError, match="local state directory"):
+            _ = project.initialize_local_directories(tmp_path)
+    assert swapped
+    assert (dependencies / "sentinel").read_text(encoding="ascii") == "foreign"
+    assert not (dependencies / "cargo-home").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+def test_local_directory_initialization_rejects_checkout_swap_before_root_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inserted checkout root cannot receive the ignored state directories."""
+    parked = tmp_path.with_name(f"{tmp_path.name}-parked")
+    external = tmp_path.with_name(f"{tmp_path.name}-foreign")
+    external.mkdir()
+    _ = (external / "sentinel").write_text("foreign", encoding="ascii")
+    native_open = os.open
+    swapped = False
+
+    def replace_root_before_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if path == tmp_path and not swapped:
+            _ = tmp_path.rename(parked)
+            _ = external.rename(tmp_path)
+            swapped = True
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", replace_root_before_open)
+        with pytest.raises(project.InitializationError, match="local state directory"):
+            _ = project.initialize_local_directories(tmp_path)
+    assert swapped
+    assert (tmp_path / "sentinel").read_text(encoding="ascii") == "foreign"
+    assert not any((tmp_path / name).exists() for name in project.LOCAL_DIRECTORIES)
+
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires directory descriptors")
+def test_local_state_parent_cleanup_preserves_admission_error_on_close_fault(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup close errors cannot replace the original parent mismatch."""
+    alternate = tmp_path / "different-directory"
+    alternate.mkdir()
+    native_open = os.open
+    native_close = os.close
+    native_lstat = Path.lstat
+    root_descriptor: int | None = None
+    closed = False
+
+    class ForeignRuntimeError(RuntimeError):
+        @override
+        def __str__(self) -> Never:
+            raise AssertionError("foreign close fault formatter invoked")
+
+    fault = ForeignRuntimeError("foreign close failure")
+
+    def record_root_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal root_descriptor
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if path == tmp_path:
+            root_descriptor = descriptor
+        return descriptor
+
+    def replaced_root_status(path: Path) -> os.stat_result:
+        if path == tmp_path and root_descriptor is not None:
+            return native_lstat(alternate)
+        return native_lstat(path)
+
+    def fail_cleanup_close(descriptor: int) -> None:
+        nonlocal closed
+        native_close(descriptor)
+        if descriptor == root_descriptor:
+            closed = True
+            raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", record_root_open)
+        isolated.setattr(Path, "lstat", replaced_root_status)
+        isolated.setattr(os, "close", fail_cleanup_close)
+        with pytest.raises(project.InitializationError, match="local state directory"):
+            _ = project.initialize_local_directories(tmp_path)
+    assert closed
+    assert root_descriptor is not None
+    with pytest.raises(OSError):
+        _ = os.fstat(root_descriptor)
 
 
 def test_local_directory_initialization_is_idempotent(tmp_path: Path) -> None:

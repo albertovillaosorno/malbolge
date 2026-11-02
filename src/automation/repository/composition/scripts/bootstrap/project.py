@@ -230,16 +230,50 @@ def initialize_local_directories(root: Path = ROOT) -> tuple[Path, ...]:
         Created or already-existing directory paths in stable order.
 
     """
+    root_identity: tuple[int, int] | None = None
+    if _supports_pinned_local_state_directories():
+        _admit_local_directory(root)
+        opened_root = root.lstat()
+        if type(opened_root) is not os.stat_result:
+            _fail("local state directory root requires native file status")
+        root_identity = opened_root.st_dev, opened_root.st_ino
     directories = tuple(root / name for name in LOCAL_DIRECTORIES)
     state_paths = (*directories, root / CARGO_HOME_RELATIVE)
     for directory in state_paths:
         _admit_local_directory(directory)
-    for directory in state_paths:
+    if _supports_pinned_local_state_directories():
+        root_descriptor = _open_local_state_parent(
+            root, expected_identity=root_identity
+        )
         try:
-            directory.mkdir(parents=True, exist_ok=True)
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise InitializationError("cannot create local state directory") from error
-        _admit_local_directory(directory)
+            dependencies_identity: tuple[int, int] | None = None
+            for name in LOCAL_DIRECTORIES:
+                identity = _create_local_state_child(root, root_descriptor, name)
+                if name == ".dependencies":
+                    dependencies_identity = identity
+            if dependencies_identity is None:
+                _fail("local state directory has no dependencies identity")
+            dependencies = root / ".dependencies"
+            child_descriptor = _open_local_state_parent(
+                dependencies, expected_identity=dependencies_identity
+            )
+            try:
+                _ = _create_local_state_child(
+                    dependencies, child_descriptor, "cargo-home"
+                )
+            finally:
+                _close_local_state_parent(child_descriptor)
+        finally:
+            _close_local_state_parent(root_descriptor)
+    else:
+        for directory in state_paths:
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise InitializationError(
+                    "cannot create local state directory"
+                ) from error
+            _admit_local_directory(directory)
     return directories
 
 
@@ -339,6 +373,105 @@ def _admit_local_directory(directory: Path) -> None:
         raise InitializationError("cannot inspect local state directory") from error
     if type(physical) is not os.stat_result or not stat.S_ISDIR(physical.st_mode):
         _fail(f"local state directory must be physical: {directory}")
+
+
+def _supports_pinned_local_state_directories() -> bool:
+    """Use descriptor-relative directory creation on POSIX hosts."""
+    return os.name == "posix"
+
+
+def _require_local_state_parent_identity(parent: Path, descriptor: int) -> None:
+    """Ensure a pinned state parent still has its physical checkout name."""
+    try:
+        _admit_local_directory(parent)
+        opened = os.fstat(descriptor)
+        named = parent.lstat()
+        if (
+            type(opened) is not os.stat_result
+            or type(named) is not os.stat_result
+            or not stat.S_ISDIR(opened.st_mode)
+            or not stat.S_ISDIR(named.st_mode)
+            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        ):
+            _fail("local state directory parent changed during creation")
+    except InitializationError as error:
+        raise InitializationError(
+            "local state directory parent changed during creation"
+        ) from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot inspect local state directory") from error
+
+
+def _open_local_state_parent(
+    parent: Path, *, expected_identity: tuple[int, int] | None = None
+) -> int:
+    """Pin a physical directory before any child creation."""
+    try:
+        _admit_local_directory(parent)
+        flags = (
+            os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        )
+        descriptor = os.open(parent, flags)
+    except InitializationError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot open local state directory parent") from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("local state directory parent requires native descriptor")
+    try:
+        _require_local_state_parent_identity(parent, descriptor)
+        if expected_identity is not None:
+            opened = os.fstat(descriptor)
+            if (
+                type(opened) is not os.stat_result
+                or (opened.st_dev, opened.st_ino) != expected_identity
+            ):
+                _fail("local state directory parent changed before opening")
+        return descriptor
+    except BaseException:
+        with suppress(OSError, ValueError, TypeError, RuntimeError):
+            os.close(descriptor)
+        raise
+
+
+def _close_local_state_parent(descriptor: int) -> None:
+    try:
+        os.close(descriptor)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError(
+            "cannot close local state directory parent"
+        ) from error
+
+
+def _create_local_state_child(
+    parent: Path, descriptor: int, name: str
+) -> tuple[int, int]:
+    """Create or inspect a state child relative to its pinned physical parent."""
+    child = parent / name
+    try:
+        _require_local_state_parent_identity(parent, descriptor)
+        try:
+            os.mkdir(name, dir_fd=descriptor)
+        except FileExistsError:
+            pass
+        observed = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+        if type(observed) is not os.stat_result or not stat.S_ISDIR(observed.st_mode):
+            _fail("local state directory must be physical")
+        _require_local_state_parent_identity(parent, descriptor)
+        _admit_local_directory(child)
+        named = child.lstat()
+        if type(named) is not os.stat_result or (named.st_dev, named.st_ino) != (
+            observed.st_dev,
+            observed.st_ino,
+        ):
+            _fail("local state directory changed during creation")
+        return observed.st_dev, observed.st_ino
+    except InitializationError as error:
+        raise InitializationError(
+            "local state directory changed during creation"
+        ) from error
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot create local state directory") from error
 
 
 def _authority_present(path: Path) -> bool:
