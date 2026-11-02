@@ -1858,35 +1858,22 @@ def _windows_alias_ready(source: Path, alias: Path) -> bool:
         ):
             return False
         if not same_inode:
-            with source.open("rb") as original, alias.open("rb") as copied:
-                if (
-                    _marker_identity(os.fstat(original.fileno())) != source_id
-                    or _marker_identity(os.fstat(copied.fileno())) != alias_id
-                ):
-                    return False
-                while True:
-                    original_chunk = original.read(65536)
-                    copied_chunk = copied.read(65536)
-                    if (
-                        type(original_chunk) is not bytes
-                        or type(copied_chunk) is not bytes
-                        or original_chunk != copied_chunk
-                    ):
-                        return False
-                    if not original_chunk:
-                        break
-                if (
-                    _marker_identity(os.fstat(original.fileno())) != source_id
-                    or _marker_identity(os.fstat(copied.fileno())) != alias_id
-                ):
-                    return False
+            # Buffered Path.open follows a late FIFO or redirection and can
+            # block indefinitely. Reuse bounded no-follow/nonblocking native
+            # descriptors and attest their named physical identities.
+            _require_matching_resource_bytes(
+                source,
+                alias,
+                _resource_member_receipt(source),
+                _resource_member_receipt(alias),
+            )
         return (
             _physical_file(source)
             and _physical_file(alias)
             and _marker_identity(source.lstat()) == source_id
             and _marker_identity(alias.lstat()) == alias_id
         )
-    except (OSError, ValueError, TypeError, RuntimeError):
+    except (LlvmImportError, OSError, ValueError, TypeError, RuntimeError):
         return False
 
 

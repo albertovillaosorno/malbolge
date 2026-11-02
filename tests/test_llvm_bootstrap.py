@@ -2393,6 +2393,53 @@ def test_relative_windows_alias_publication_pins_checkout(
     assert not (foreign / "checkout/.dependencies").exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX FIFO admission")
+def test_windows_alias_readiness_never_blocks_on_late_fifo_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A checked PE alias can become a FIFO before its byte comparison."""
+    root = _windows_tool_bundle(tmp_path)
+
+    def detached_copy(
+        _source: str | os.PathLike[str],
+        _destination: str | os.PathLike[str],
+        **_kwargs: object,
+    ) -> None:
+        raise OSError("simulated detached Windows executable alias")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "link", detached_copy)
+        aliases = llvm_validation.write_windows_llvm_aliases(root)
+    alias = aliases[0]
+    source = root / "bin/clang.exe"
+    assert llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+    native_open = os.open
+    swapped = False
+
+    def replace_before_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal swapped
+        if Path(path) == alias and not swapped:
+            alias.unlink()
+            os.mkfifo(alias)
+            swapped = True
+            if not flags & os.O_NONBLOCK:
+                raise AssertionError("LLVM readiness attempted blocking FIFO open")
+        return native_open(path, flags, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", replace_before_open)
+        assert not llvm_validation._windows_alias_ready(  # pyright: ignore[reportPrivateUsage]
+            source, alias
+        )
+    assert swapped
+
+
 def _windows_tool_bundle(tmp_path: Path) -> Path:
     """Create synthetic Windows tools without writing any aliases.
 
