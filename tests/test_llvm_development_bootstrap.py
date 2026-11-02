@@ -851,6 +851,123 @@ def test_rpm_overlay_preserves_late_foreign_destination(
     assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
 
 
+@pytest.mark.parametrize("change", ["omit", "alter", "add", "replace-existing"])
+def test_rpm_overlay_rejects_false_successful_copy_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
+) -> None:
+    """A successful copytree return cannot certify unverified header output."""
+    source = tmp_path / "package/usr/include/clang/AST.h"
+    source.parent.mkdir(parents=True)
+    _ = source.write_bytes(HEADER_BYTES)
+    destination = tmp_path / "development/include/clang/AST.h"
+    destination.parent.mkdir(parents=True)
+    retained = destination.parent / "preexisting.h"
+    _ = retained.write_bytes(FOREIGN_CONTENT_BYTES)
+    native_copytree = shutil.copytree
+
+    def false_success(src: Path, dst: Path, *args: object, **kwargs: object) -> Path:
+        copied = cast("Callable[..., Path]", native_copytree)(src, dst, *args, **kwargs)
+        if src != source.parent.parent:
+            return copied
+        if change == "omit":
+            destination.unlink()
+        elif change == "alter":
+            _ = destination.write_bytes(FOREIGN_CONTENT_BYTES)
+        elif change == "add":
+            _ = (dst / "unlisted.h").write_bytes(FOREIGN_CONTENT_BYTES)
+        else:
+            _ = retained.write_bytes(b"replaced existing header")
+        return copied
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(shutil, "copytree", false_success)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="copy receipt",
+        ):
+            llvm_development_validation._copy_rpm_include_tree(
+                source.parent.parent, destination.parent.parent
+            )
+
+
+def test_rpm_overlay_rejects_late_source_header_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Source bytes must remain stable across extraction into the overlay."""
+    source = tmp_path / "package/usr/include/clang/AST.h"
+    source.parent.mkdir(parents=True)
+    _ = source.write_bytes(HEADER_BYTES)
+    destination = tmp_path / "development/include"
+    native_copytree = shutil.copytree
+
+    def drift_source(src: Path, dst: Path, *args: object, **kwargs: object) -> Path:
+        copied = cast("Callable[..., Path]", native_copytree)(src, dst, *args, **kwargs)
+        if src == source.parent.parent:
+            _ = source.write_bytes(FOREIGN_CONTENT_BYTES)
+        return copied
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(shutil, "copytree", drift_source)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="copy receipt",
+        ):
+            llvm_development_validation._copy_rpm_include_tree(
+                source.parent.parent, destination
+            )
+
+
+def test_development_provision_rejects_missing_optional_copied_header(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exact copied archive membership is mandatory beyond required headers."""
+    identity = _identity(tmp_path)
+    native_copytree = shutil.copytree
+
+    def synthetic_cpio(
+        arguments: list[str], *, cwd: Path | None = None, **_kwargs: object
+    ) -> bytes:
+        if arguments[0] == "cpio" and cwd is not None:
+            include = cwd / "usr/include/clang/AST"
+            include.mkdir(parents=True)
+            _ = (include / "AST.h").write_bytes(HEADER_BYTES)
+            _ = (include / "Optional.h").write_bytes(HEADER_BYTES)
+        return b""
+
+    def omit_optional(src: Path, dst: Path, *args: object, **kwargs: object) -> Path:
+        copied = cast("Callable[..., Path]", native_copytree)(
+            src, dst, *args, **kwargs
+        )
+        if isinstance(src, Path) and src.name == "include":
+            (dst / "clang/AST/Optional.h").unlink()
+        return copied
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation, "_cpio_payload", _synthetic_hardlinked_payload
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            lambda _payload: (
+                "usr/include/clang/AST/AST.h",
+                "usr/include/clang/AST/Optional.h",
+            ),
+        )
+        isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
+        isolated.setattr(shutil, "copytree", omit_optional)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="copy receipt",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert not identity.development_root.exists()
+
+
 def test_rpm_overlay_identical_header_preserves_existing_metadata(
     tmp_path: Path,
 ) -> None:

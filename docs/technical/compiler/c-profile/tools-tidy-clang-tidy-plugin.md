@@ -128,7 +128,11 @@ original cause as a typed provisioning error without formatting foreign host
 exception subclasses. Staged RPM and completion-marker writes additionally
 require a previously unused, unlinked physical file path with nonredirected
 parent directories. Existing regular files, symlinks, hardlinks, and nonnative
-host status cannot be overwritten through the staging writer. RPM and marker
+host status cannot be overwritten through the staging writer. Header overlays
+also compare physical source and destination member inventories, file digests,
+and existing inode identities before and after copy. A copy that reports success
+but omits, mutates, or adds a member fails before the completion marker is
+published; existing identical headers remain untouched. RPM and marker
 bytes use an exclusive no-follow create, a native regular-file descriptor
 matched to the new leaf, and an exact native write count. An inserted
 symlink or hardlink leaf cannot redirect a write after preflight. Publication

@@ -547,19 +547,70 @@ def _copy_header_no_replace(source: str, destination: str) -> str:
     return destination
 
 
+def _header_tree_receipt(
+    root: Path,
+) -> dict[Path, tuple[str, bytes | None, int, int]]:
+    """Snapshot physical header members and their exact content identities."""
+    _require_physical_directories(root.parent, "staging")
+    if (
+        _preflight_path_status(root, root.is_symlink, "staging")
+        or _preflight_path_status(root, root.is_junction, "staging")
+    ):
+        _fail("LLVM RPM header overlay copy receipt contains a redirected root")
+    if not _preflight_path_status(root, root.exists, "staging"):
+        return {}
+    _reject_include_symlinks(root, require_single_link=True)
+    receipt: dict[Path, tuple[str, bytes | None, int, int]] = {}
+
+    def fail_scan(error: OSError) -> Never:
+        raise LlvmDevelopmentProvisionError(
+            "LLVM RPM header overlay copy receipt scan failed"
+        ) from error
+
+    for directory, folders, files in root.walk(on_error=fail_scan):
+        for name in (*folders, *files):
+            member = directory / name
+            relative = member.relative_to(root)
+            try:
+                physical = member.lstat()
+                if not (
+                    _native_regular_status(physical)
+                    or _native_directory_status(physical)
+                ):
+                    _fail("LLVM RPM header overlay copy receipt has nonphysical member")
+                digest: bytes | None = None
+                kind = "directory"
+                if _native_regular_status(physical):
+                    if physical.st_nlink != 1 or not _direct_regular(member):
+                        _fail("LLVM RPM header overlay copy receipt has linked member")
+                    kind = "file"
+                    with member.open("rb") as stream:
+                        digest = hashlib.file_digest(stream, "sha256").digest()
+                    after = member.lstat()
+                    if not _native_regular_status(after) or (
+                        physical.st_dev, physical.st_ino, physical.st_size
+                    ) != (after.st_dev, after.st_ino, after.st_size):
+                        _fail(
+                            "LLVM RPM header overlay copy receipt changed during read"
+                        )
+                receipt[relative] = (kind, digest, physical.st_dev, physical.st_ino)
+            except LlvmDevelopmentProvisionError:
+                raise
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmDevelopmentProvisionError(
+                    "LLVM RPM header overlay copy receipt failed"
+                ) from error
+    return receipt
+
+
 def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> None:
-    """Allow shared headers only when their existing bytes match exactly."""
+    """Allow shared headers only when source and destination receipts agree."""
     try:
-        for source in include_root.rglob("*"):
-            if not _preflight_path_status(source, source.is_file, "staging"):
-                continue
-            destination = destination_include / source.relative_to(include_root)
-            if _preflight_path_status(
-                destination, destination.exists, "staging"
-            ) and (
-                not _preflight_path_status(destination, destination.is_file, "staging")
-                or not _same_header_bytes(source, destination)
-            ):
+        source_before = _header_tree_receipt(include_root)
+        destination_before = _header_tree_receipt(destination_include)
+        for relative, incoming in source_before.items():
+            existing = destination_before.get(relative)
+            if existing is not None and existing[:2] != incoming[:2]:
                 _fail("LLVM RPM overlay has conflicting header bytes")
         _ = shutil.copytree(
             include_root,
@@ -568,6 +619,22 @@ def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> Non
             symlinks=True,
             copy_function=_copy_header_no_replace,
         )
+        source_after = _header_tree_receipt(include_root)
+        destination_after = _header_tree_receipt(destination_include)
+        if (
+            source_after != source_before
+            or not all(
+                destination_after.get(relative) == previous
+                for relative, previous in destination_before.items()
+            )
+            or destination_after.keys()
+            != source_before.keys() | destination_before.keys()
+            or any(
+                destination_after[relative][:2] != incoming[:2]
+                for relative, incoming in source_before.items()
+            )
+        ):
+            _fail("LLVM RPM header overlay copy receipt mismatch")
     except LlvmDevelopmentProvisionError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
