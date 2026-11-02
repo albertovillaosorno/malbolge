@@ -1196,6 +1196,12 @@ The original study records remain the result authority.
   RSS-validation failure; the cleanup error stays in the original exception's
   diagnostics. Unexpected RSS reader method errors likewise preserve their
   original causes across the typed boundary.
+  Host-C RSS stage acceptance also binds `Popen.args` to the identical native
+  argument list supplied at launch, with values checked against a prelaunch
+  copy. Five red-first forged-command cases now reject swapped, mutated,
+  foreign, nonstring or missing receipts before the RSS value is accepted;
+  one matching native receipt and 392 host-C oracle tests pass. This is local
+  command-receipt consistency, not OS execution or meter attestation.
 - `benchmarks/arena/challenge_bundles.py` optionally replays the original
   generator's exact source/oracle/manifest bytes against a bounded retained
   challenge bundle, binding workload digests to reproducible C source. Synthetic

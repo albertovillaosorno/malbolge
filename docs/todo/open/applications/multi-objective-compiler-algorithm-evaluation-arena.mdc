@@ -502,6 +502,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   is not a cgroup, aggregate peak-RSS meter, study-wide budget enforcement,
   or a Malbolge candidate-verification boundary. Older pilots cannot inherit
   these checks retroactively.
+- Host-C oracle stage RSS now requires the native `Popen.args` object to be
+  the original launch list with values matching an independent prelaunch
+  copy. Five red-first forged receipt cases reject a different, mutated,
+  foreign, nonstring, or absent argv before accepting RSS; a valid receipt
+  and 392 postcommit host-C oracle tests pass. This cannot attest kernel
+  execution or independently authenticate the original resource meter.
 - An opt-in host-C challenge oracle replay now requires canonical challenge
   bundle preflight, re-generates the checked C source, compiles it at `-O0`
   and `-O2` with pinned Clang 22.1.8, and independently compares the native
