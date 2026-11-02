@@ -122,6 +122,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   receipts; a forged empty map can no longer suppress stdout. Red-first
   regressions show swapped/copied readiness keys and masks previously yielded
   apparent success, while registration/EOF forgeries now fail typed admission.
+  A further two red-first cases reject suppressed registration and deadline
+  failures from substituted selector context exits; a secondary cleanup fault
+  preserves the original capture rejection. This guards local completion
+  evidence, not OS selector authenticity or historical process provenance.
   This guards producer-side evidence handling, not source authenticity.
 - Child transport cleanup now attempts direct-child kill and reap even if
   the caller process-group lookup fails or returns foreign metadata. It does

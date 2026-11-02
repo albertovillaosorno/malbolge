@@ -308,6 +308,10 @@ swapped readiness keys, copied keys, fabricated masks, and premature map
 emptiness. Registration and unregister receipt mutations also fail closed.
 These are producer-side consistency checks on the selector's observed results,
 not a guarantee against compromised OS facilities or child measurement fraud.
+A substituted selector context cannot suppress a rejected capture body and
+return empty output as successful: two red-first registration/deadline cases
+retain the original failure. A second context-exit fault remains a secondary
+diagnostic. These guards do not attest the OS selector or pipe provenance.
 
 The same transport now supports an optional bounded exact 256-byte binary
 input channel, with nonblocking delivery and a positive wall deadline even
