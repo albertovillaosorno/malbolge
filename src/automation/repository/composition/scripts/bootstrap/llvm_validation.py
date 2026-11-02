@@ -57,6 +57,7 @@ _LLVM_LIBRARY_NAMES: Final = ("libLLVM.so.22.1", "libclang-cpp.so.22.1")
 _HOST_CAPTURE_TIMEOUT_SECONDS: Final = 15
 _HOST_MAX_CAPTURE_CHARS: Final = 16_384
 _LINUX_RENAME_NOREPLACE: Final = 1
+_MKDIR_SUPPORTS_DIR_FD: Final = os.mkdir in os.supports_dir_fd
 
 
 class LlvmImportError(RuntimeError):
@@ -948,6 +949,42 @@ def _admit_linux_import_staging(root: Path, staging: Path) -> None:
         _fail("LLVM import staging directory must be physical")
 
 
+def _create_physical_import_directory(path: Path, *, label: str) -> None:
+    """Create one owned import directory below a pinned physical parent."""
+    if not _MKDIR_SUPPORTS_DIR_FD:
+        if os.supports_dir_fd:
+            _fail(f"{label} requires native directory-descriptor mkdir support")
+        # Windows has no dir_fd support; Linux stages require pinned parents.
+        try:
+            path.mkdir()
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"{label} directory creation failed: {type(error).__name__}"
+            ) from error
+        return
+    parent_descriptor = _open_physical_import_parent(path.parent, label)
+    try:
+        opened = os.fstat(parent_descriptor)
+        if type(opened) is not os.stat_result or not S_ISDIR(opened.st_mode):
+            _fail(f"{label} parent descriptor status must be native")
+        os.mkdir(path.name, dir_fd=parent_descriptor)
+        if _native_directory_inode(path.parent) != (opened.st_dev, opened.st_ino):
+            _fail(f"{label} parent changed during directory creation")
+    except LlvmImportError:
+        raise
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"{label} directory creation failed: {type(error).__name__}"
+        ) from error
+    finally:
+        try:
+            os.close(parent_descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"{label} parent close failed: {type(error).__name__}"
+            ) from error
+
+
 def _native_directory_inode(path: Path) -> tuple[int, int] | None:
     """Observe a real physical directory, or refuse an untrusted path."""
     try:
@@ -1175,16 +1212,13 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     owned_staging: tuple[int, int] | None = None
     owned_child: tuple[int, int] | None = None
     try:
-        try:
-            staging.mkdir()
-        except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise LlvmImportError(
-                f"LLVM import staging exclusive creation failed: {type(error).__name__}"
-            ) from error
+        _create_physical_import_directory(
+            staging, label="LLVM import staging exclusive creation"
+        )
         owned_staging = _native_directory_inode(staging)
         if owned_staging is None:
             _fail("LLVM import staging directory must be physical")
-        staged.mkdir()
+        _create_physical_import_directory(staged, label="LLVM import staging child")
         owned_child = _native_directory_inode(staged)
         if owned_child is None:
             _fail("LLVM import staging child must be physical")

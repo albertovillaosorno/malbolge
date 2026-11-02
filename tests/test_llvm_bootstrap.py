@@ -3407,3 +3407,92 @@ def test_llvm_publish_types_staging_parent_close_fault(
     assert not source_descriptors
     assert destination.is_dir()
     assert not staged.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+def test_linux_import_does_not_create_stage_in_swapped_temp_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A late .temp replacement must not receive any staging directory."""
+    observation = _host_observation(tmp_path)
+    temporary_root = tmp_path / ".temp"
+    staging = temporary_root / "llvm-import-linux-x86_64"
+    parked = tmp_path / "parked-temp-root"
+    foreign = tmp_path / "foreign-temp-root"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"unrelated foreign data")
+    native_mkdir = os.mkdir
+    replaced = False
+
+    def swap_at_stage_creation(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal replaced
+        if (Path(path) == staging or path == staging.name) and not replaced:
+            _ = temporary_root.rename(parked)
+            if replacement == "symlink":
+                _ = temporary_root.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(temporary_root)
+            replaced = True
+        native_mkdir(path, mode=mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "mkdir", swap_at_stage_creation)
+    with pytest.raises(llvm_validation.LlvmImportError, match="staging"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert replaced
+    foreign_tree = foreign if replacement == "symlink" else temporary_root
+    assert (foreign_tree / "sentinel").read_bytes() == b"unrelated foreign data"
+    assert not (foreign_tree / staging.name).exists()
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+def test_linux_import_does_not_create_child_in_swapped_staging_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """Staging child creation cannot use a replaced source directory alias."""
+    observation = _host_observation(tmp_path)
+    staging = tmp_path / ".temp/llvm-import-linux-x86_64"
+    child = staging / "llvm"
+    parked = tmp_path / "parked-stage"
+    foreign = tmp_path / "foreign-stage"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"unrelated foreign data")
+    native_mkdir = os.mkdir
+    replaced = False
+
+    def swap_at_child_creation(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal replaced
+        if (
+            Path(path) == child or (path == child.name and dir_fd is not None)
+        ) and not replaced:
+            _ = staging.rename(parked)
+            if replacement == "symlink":
+                _ = staging.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(staging)
+            replaced = True
+        native_mkdir(path, mode=mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "mkdir", swap_at_child_creation)
+    with pytest.raises(llvm_validation.LlvmImportError, match="staging"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert replaced
+    foreign_tree = foreign if replacement == "symlink" else staging
+    assert (foreign_tree / "sentinel").read_bytes() == b"unrelated foreign data"
+    assert not (foreign_tree / child.name).exists()
+    assert (parked / child.name).is_dir()
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
