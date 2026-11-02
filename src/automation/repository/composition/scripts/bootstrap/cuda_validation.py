@@ -492,15 +492,8 @@ def _tar_members(
 
 
 def _write_verified_bytes(path: Path, payload: bytes) -> None:
-    """Verify actual staged member and marker bytes before publication."""
-    written = path.write_bytes(payload)
-    if type(written) is not int or written != len(payload):
-        _fail(f"CUDA staging write count mismatch: {path.name}")
-    observed = _read_manifest_source(
-        path, "CUDA staging payload", max_bytes=len(payload)
-    )
-    if observed != payload:
-        _fail(f"CUDA staging content mismatch: {path.name}")
+    """Create one exclusive, descriptor-verified archive member."""
+    _write_staged_file_exclusively(path, payload, "CUDA staging payload")
 
 
 def _write_tar_member(
@@ -712,9 +705,11 @@ def _require_new_completion_marker(path: Path) -> None:
     _fail(f"CUDA completion marker already supplied by a package: {path}")
 
 
-def _write_new_completion_marker(path: Path, payload: bytes) -> None:
-    """Create and verify a marker without following a newly inserted link."""
-    _require_physical_directories(path.parent, "completion marker")
+def _write_staged_file_exclusively(
+    path: Path, payload: bytes, label: str
+) -> None:
+    """Create and verify one staged regular file without following links."""
+    _require_physical_directories(path.parent, "staging")
     flags = (
         os.O_WRONLY
         | os.O_CREAT
@@ -725,29 +720,28 @@ def _write_new_completion_marker(path: Path, payload: bytes) -> None:
     try:
         descriptor = os.open(path, flags, 0o600)
     except (OSError, TypeError, ValueError, RuntimeError) as error:
-        raise CudaProvisionError("cannot create exclusive CUDA completion marker") from error
+        raise CudaProvisionError(f"cannot create exclusive {label}") from error
     if type(descriptor) is not int or descriptor < 0:
-        _fail("CUDA completion marker requires native descriptor")
+        _fail(f"{label} requires native descriptor")
     identity: tuple[int, int] | None = None
     completed = False
     try:
         admitted = path.lstat()
         receipt = os.fstat(descriptor)
-        label = "CUDA completion marker"
         if (
             _manifest_identity(admitted, label)
             != _manifest_identity(receipt, label)
             or admitted.st_nlink != 1
             or admitted.st_size != 0
         ):
-            _fail("CUDA completion marker requires owned empty regular file")
+            _fail(f"{label} requires owned empty regular file")
         identity = (admitted.st_dev, admitted.st_ino)
         try:
             written = os.write(descriptor, payload)
         except (OSError, ValueError, TypeError, RuntimeError) as error:
-            raise CudaProvisionError("cannot write CUDA completion marker") from error
+            raise CudaProvisionError(f"cannot write {label}") from error
         if type(written) is not int or written != len(payload):
-            _fail("CUDA staging write count mismatch: completion marker")
+            _fail(f"CUDA staging write count mismatch: {path.name}")
         after_fd = os.fstat(descriptor)
         after_path = path.lstat()
         if (
@@ -757,9 +751,9 @@ def _write_new_completion_marker(path: Path, payload: bytes) -> None:
             or after_fd.st_nlink != 1
             or after_fd.st_size != len(payload)
         ):
-            _fail("CUDA completion marker changed during write")
+            _fail(f"{label} changed during write")
         if _read_manifest_source(path, label, max_bytes=len(payload)) != payload:
-            _fail("CUDA staging content mismatch: completion marker")
+            _fail(f"CUDA staging content mismatch: {path.name}")
         completed = True
     finally:
         with suppress(OSError):
@@ -817,7 +811,9 @@ def provision_cuda_manifest(
         _require_physical_directories(staging, "staging")
         marker = staged_toolkit / CUDA_PROVISION_MARKER
         _require_new_completion_marker(marker)
-        _write_new_completion_marker(marker, _marker_bytes(manifest))
+        _write_staged_file_exclusively(
+            marker, _marker_bytes(manifest), "CUDA completion marker"
+        )
         _require_toolkit_destination(manifest.toolkit_root)
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
         _require_toolkit_destination(manifest.toolkit_root)

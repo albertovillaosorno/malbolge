@@ -1079,18 +1079,17 @@ def _zip_payload() -> bytes:
 
 def _inject_short_write(
     monkeypatch: pytest.MonkeyPatch,
-    filename: str,
     invalid_count: str,
 ) -> None:
-    real_write = Path.write_bytes
+    native_write = os.write
 
-    def wrong_write(path: Path, data: bytes) -> int:
-        if path.name == filename:
-            _ = real_write(path, data[:-1])
+    def wrong_write(descriptor: int, data: bytes) -> int:
+        if data == NVRTC_BYTES:
+            _ = native_write(descriptor, data[:-1])
             return _bad_write_count(invalid_count, len(data))
-        return real_write(path, data)
+        return native_write(descriptor, data)
 
-    monkeypatch.setattr(Path, "write_bytes", wrong_write)
+    monkeypatch.setattr(os, "write", wrong_write)
 
 
 @pytest.mark.parametrize("invalid_count", list(_BAD_WRITE_RESULTS))
@@ -1111,7 +1110,7 @@ def test_package_extraction_rejects_incomplete_member_write(
         _manifest(tmp_path, payload, {"relative_path": path}),
         LINUX_PLATFORM,
     ).packages[0]
-    _inject_short_write(monkeypatch, "libnvrtc.so.13", invalid_count)
+    _inject_short_write(monkeypatch, invalid_count)
     destination = tmp_path / "toolkit"
     with pytest.raises(cuda_validation.CudaProvisionError, match="write count"):
         cuda_validation.extract_cuda_package(
@@ -1145,6 +1144,54 @@ def test_provision_rejects_incomplete_toolkit_marker_write(
         )
     assert not (tmp_path / TOOLKIT_ROOT).exists()
     assert not (tmp_path / ".temp/cuda-provision-linux-x86_64").exists()
+
+
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+@pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
+def test_cuda_archive_member_race_does_not_overwrite_external_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    link_kind: str,
+    archive_format: str,
+) -> None:
+    """A package member inserted as a link cannot redirect staged writes."""
+    is_zip = archive_format == _ZIP_FORMAT
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path, payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    outside = tmp_path / "external-binary"
+    sentinel = b"external file must stay intact"
+    _ = outside.write_bytes(sentinel)
+    native_write = cuda_validation._write_verified_bytes
+    inserted = False
+
+    def link_before_write(path: Path, content: bytes) -> None:
+        nonlocal inserted
+        if path.name == "libnvrtc.so.13":
+            try:
+                if link_kind == "symlink":
+                    path.symlink_to(outside)
+                else:
+                    _ = os.link(outside, path)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"{link_kind} unavailable: {error}")
+            inserted = True
+        native_write(path, content)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_write_verified_bytes", link_before_write)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            cuda_validation.extract_cuda_package(
+                payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+            )
+    assert inserted
+    assert outside.read_bytes() == sentinel
+    assert not (tmp_path / "toolkit").exists()
 
 
 @pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
@@ -1202,33 +1249,21 @@ def test_cuda_publication_rejects_false_full_write_with_corrupt_bytes(
         payload,
         {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
     )
-    filename = (
-        cuda_validation.CUDA_PROVISION_MARKER
-        if target == "marker"
-        else "libnvrtc.so.13"
-    )
-    native_write = Path.write_bytes
+    native_write = os.write
     altered = False
 
-    def false_full_write(path: Path, content: bytes) -> int:
+    def corrupt_write(descriptor: int, content: bytes) -> int:
         nonlocal altered
-        if path.name == filename:
+        is_marker = content.startswith(b'{"manifest_sha256"')
+        is_library = content == NVRTC_BYTES
+        if (target == "marker" and is_marker) or (
+            target != "marker" and is_library
+        ):
             altered = True
-            assert len(content) > 1
-            return native_write(path, b"!" + content[1:])
-        return native_write(path, content)
+            return native_write(descriptor, b"!" + content[1:])
+        return native_write(descriptor, content)
 
-    if target == "marker":
-        native_fd_write = os.write
-
-        def corrupt_marker_write(descriptor: int, content: bytes) -> int:
-            nonlocal altered
-            altered = True
-            return native_fd_write(descriptor, b"!" + content[1:])
-
-        monkeypatch.setattr(os, "write", corrupt_marker_write)
-    else:
-        monkeypatch.setattr(Path, "write_bytes", false_full_write)
+    monkeypatch.setattr(os, "write", corrupt_write)
     with pytest.raises(cuda_validation.CudaProvisionError, match="content mismatch"):
         _ = cuda_validation.provision_cuda_manifest(
             tmp_path,
