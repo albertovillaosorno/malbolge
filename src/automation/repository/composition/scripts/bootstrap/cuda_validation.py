@@ -778,10 +778,42 @@ def _extract_tar_archive(archive: tarfile.TarFile, staging: Path) -> Path:
     return extracted
 
 
+def _extract_with_archive_close(
+    archive: tarfile.TarFile | zipfile.ZipFile,
+    extraction: Callable[[], Path],
+) -> Path:
+    """Extract from one opened archive without replaceable context hooks."""
+    try:
+        extracted = extraction()
+    except BaseException as primary:
+        try:
+            receipt = cast("object", archive.close())
+        except Exception as error:  # noqa: BLE001
+            BaseException.add_note(
+                primary,
+                "CUDA archive close also failed: " + type(error).__name__,
+            )
+        else:
+            if receipt is not None:
+                BaseException.add_note(primary, "CUDA archive close receipt invalid")
+        raise
+    try:
+        receipt = cast("object", archive.close())
+    except Exception as error:
+        raise CudaProvisionError("CUDA archive close failed") from error
+    if receipt is not None:
+        _fail("CUDA archive close receipt must be native")
+    return extracted
+
+
 def _safe_tar_extract(data: bytes, staging: Path) -> Path:
     try:
-        with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as archive:
-            return _extract_tar_archive(archive, staging)
+        archive = tarfile.open(  # noqa: SIM115
+            fileobj=io.BytesIO(data), mode="r:xz"
+        )
+        return _extract_with_archive_close(
+            archive, lambda: _extract_tar_archive(archive, staging)
+        )
     except CudaProvisionError:
         raise
     except KeyError as error:
@@ -847,8 +879,10 @@ def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
 
 def _safe_zip_extract(data: bytes, staging: Path) -> Path:
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            return _extract_zip_archive(archive, staging)
+        archive = zipfile.ZipFile(io.BytesIO(data))
+        return _extract_with_archive_close(
+            archive, lambda: _extract_zip_archive(archive, staging)
+        )
     except CudaProvisionError:
         raise
     except (

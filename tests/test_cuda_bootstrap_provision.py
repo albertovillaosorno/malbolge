@@ -6720,7 +6720,7 @@ def test_cuda_download_response_context_cannot_suppress_failure(
             if forgery in ("read-fault", "body-close-fault"):
                 raise read_error
             if forgery == "bad-body":
-                return cast("bytes", bytearray(b"payload"))
+                return cast("bytes", cast("object", bytearray(b"payload")))
             return b"payload"
 
         def close(self) -> object:
@@ -6753,4 +6753,149 @@ def test_cuda_download_response_context_cannot_suppress_failure(
     elif forgery == "close-fault":
         assert caught.value.__cause__ is close_error
     if forgery == "body-close-fault":
+        assert any("close also failed" in note for note in caught.value.__notes__)
+
+
+@pytest.mark.parametrize("archive_format", ("tar", "zip"))
+def test_cuda_archive_top_level_context_cannot_redirect_verified_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, archive_format: str
+) -> None:
+    """Archive __enter__ cannot replace SHA-verified input with foreign bytes."""
+    is_zip = archive_format == "zip"
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path, payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    if is_zip:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, mode="w") as writer:
+            writer.writestr(NVRTC_MEMBER, b"foreign-library")
+            writer.writestr(BUILTINS_MEMBER, BUILTINS_BYTES)
+        foreign = zipfile.ZipFile(io.BytesIO(buffer.getvalue()))
+    else:
+        foreign = tarfile.open(  # noqa: SIM115
+            fileobj=io.BytesIO(
+                _tar_xz(
+                    {
+                        NVRTC_MEMBER: b"foreign-library",
+                        BUILTINS_MEMBER: BUILTINS_BYTES,
+                    }
+                )
+            ),
+            mode="r:xz",
+        )
+    redirected: list[str] = []
+
+    def redirect_enter(_archive: object) -> object:
+        redirected.append("enter")
+        return foreign
+
+    try:
+        with monkeypatch.context() as isolated:
+            if is_zip:
+                isolated.setattr(zipfile.ZipFile, "__enter__", redirect_enter)
+            else:
+                isolated.setattr(tarfile.TarFile, "__enter__", redirect_enter)
+            cuda_validation.extract_cuda_package(
+                payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+            )
+    finally:
+        foreign.close()
+    assert redirected == []
+    assert (tmp_path / "toolkit/lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
+
+
+@pytest.mark.parametrize("archive_format", ("tar", "zip"))
+def test_cuda_archive_top_level_context_cannot_suppress_inventory_rejection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, archive_format: str
+) -> None:
+    """A hostile archive exit cannot suppress a failed member inventory."""
+    is_zip = archive_format == "zip"
+    payload = _zip_payload() if is_zip else _payload()
+    failure = cuda_validation.CudaProvisionError("archive inventory rejected")
+    exits: list[str] = []
+
+    def suppress_exit(_archive: object, *_args: object) -> bool:
+        exits.append("exit")
+        return True
+
+    def reject_inventory(*_args: object) -> Path:
+        raise failure
+
+    with monkeypatch.context() as isolated:
+        if is_zip:
+            isolated.setattr(zipfile.ZipFile, "__exit__", suppress_exit)
+            isolated.setattr(cuda_validation, "_extract_zip_archive", reject_inventory)
+            extract = cuda_validation._safe_zip_extract
+        else:
+            isolated.setattr(tarfile.TarFile, "__exit__", suppress_exit)
+            isolated.setattr(cuda_validation, "_extract_tar_archive", reject_inventory)
+            extract = cuda_validation._safe_tar_extract
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="inventory rejected"
+        ) as caught:
+            _ = extract(payload, tmp_path)
+    assert caught.value is failure
+    assert exits == []
+
+
+@pytest.mark.parametrize("archive_format", ("tar", "zip"))
+@pytest.mark.parametrize("forgery", ("receipt", "body-close-fault"))
+def test_cuda_archive_top_level_close_receipts_are_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    archive_format: str,
+    forgery: str,
+) -> None:
+    """Archive close cannot certify a failed scan or non-native close result."""
+    is_zip = archive_format == "zip"
+    payload = _zip_payload() if is_zip else _payload()
+    archive_type = zipfile.ZipFile if is_zip else tarfile.TarFile
+    native_zip_close = zipfile.ZipFile.close
+    native_tar_close = tarfile.TarFile.close
+    scan_error = cuda_validation.CudaProvisionError("archive inventory rejected")
+    close_error = OSError("foreign archive close failed")
+    closes: list[str] = []
+
+    def forged_close(archive: zipfile.ZipFile | tarfile.TarFile) -> object:
+        closes.append("close")
+        if isinstance(archive, zipfile.ZipFile):
+            native_zip_close(archive)
+        else:
+            native_tar_close(archive)
+        if forgery == "body-close-fault":
+            raise close_error
+        return True
+
+    def reject_inventory(*_args: object) -> Path:
+        raise scan_error
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(archive_type, "close", forged_close)
+        if is_zip:
+            extract = cuda_validation._safe_zip_extract
+            if forgery == "body-close-fault":
+                isolated.setattr(
+                    cuda_validation, "_extract_zip_archive", reject_inventory
+                )
+        else:
+            extract = cuda_validation._safe_tar_extract
+            if forgery == "body-close-fault":
+                isolated.setattr(
+                    cuda_validation, "_extract_tar_archive", reject_inventory
+                )
+        expected = (
+            "inventory rejected" if forgery == "body-close-fault" else "close receipt"
+        )
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match=expected
+        ) as caught:
+            _ = extract(payload, tmp_path)
+    assert closes == ["close"]
+    if forgery == "body-close-fault":
+        assert caught.value is scan_error
         assert any("close also failed" in note for note in caught.value.__notes__)
