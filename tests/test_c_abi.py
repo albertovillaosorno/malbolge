@@ -160,6 +160,65 @@ def test_c_abi_parser_rejects_substituted_native_receipt(
             _ = c_abi.load_document(source)
 
 
+@pytest.mark.parametrize("entrypoint", ["parser", "text", "file"])
+def test_c_abi_parser_rejects_self_restoring_forged_decoder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+) -> None:
+    """The decoder bound at entry cannot restore itself to evade corroboration."""
+    canonical = _canonical_text()
+    changed = canonical.replace(
+        '"abi_id": "malbolge-c32-v1"', '"abi_id": "forged-abi"', 1
+    )
+    assert changed != canonical
+    native_loads = json.loads
+    forged = cast("c_abi.JsonObject", native_loads(canonical))
+
+    def self_restoring(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        monkeypatch.setattr(json, "loads", native_loads)
+        return forged
+
+    monkeypatch.setattr(json, "loads", self_restoring)
+    with pytest.raises(
+        c_abi.CAbiValidationError, match="JSON decoder provider differs from source"
+    ):
+        if entrypoint == "parser":
+            _ = c_abi.loads_document(changed)
+        elif entrypoint == "text":
+            _ = c_abi.validate_text(changed)
+        else:
+            source = tmp_path / "restoring-abi.json"
+            _ = source.write_text(changed, encoding="utf-8")
+            _ = c_abi.load_document(source)
+
+
+@pytest.mark.parametrize("restore_during_call", [False, True])
+def test_c_abi_parser_returns_source_owned_nested_data(
+    monkeypatch: pytest.MonkeyPatch,
+    restore_during_call: bool,
+) -> None:
+    """An equivalent decoder cannot retain a mutable alias to accepted ABI data."""
+    canonical = _canonical_text()
+    native_loads = json.loads
+    forged = cast("c_abi.JsonObject", native_loads(canonical))
+
+    def shared_receipt(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        if restore_during_call:
+            monkeypatch.setattr(json, "loads", native_loads)
+        return forged
+
+    monkeypatch.setattr(json, "loads", shared_receipt)
+    parsed = c_abi.loads_document(canonical)
+    assert parsed is not forged
+    assert parsed["frontend_projection"] is not forged["frontend_projection"]
+    projection = cast("dict[str, object]", forged["frontend_projection"])
+    projection["llvm_data_layout"] = "forged-layout"
+    assert c_abi.validate_document(parsed).llvm_data_layout == c_abi.LLVM_DATA_LAYOUT
+
+
 @pytest.mark.parametrize(
     ("changed", "diagnostic"),
     [

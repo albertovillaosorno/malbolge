@@ -312,10 +312,13 @@ def loads_document(text: str) -> JsonObject:
         The parsed top-level ABI object.
 
     """
+    # Capture the provider before invocation: a substituted decoder can restore
+    # json.loads within its own call and otherwise evade source corroboration.
+    decoder = json.loads
     try:
         parsed = cast(
             "object",
-            json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
+            decoder(text, object_pairs_hook=_reject_duplicate_pairs),
         )
     except json.JSONDecodeError as error:
         raise CAbiValidationError(
@@ -330,7 +333,7 @@ def loads_document(text: str) -> JsonObject:
     # The public loader may have been substituted by a wrapper or a forged
     # provider. Admit equivalent native receipts, but independently prove that
     # every nested value came from the source text before schema validation.
-    if json.loads is not _NATIVE_JSON_LOADS:
+    if decoder is not _NATIVE_JSON_LOADS:
         try:
             original = cast(
                 "object",
@@ -349,6 +352,9 @@ def loads_document(text: str) -> JsonObject:
             ) from error
         if not equivalent:
             _fail("C ABI JSON decoder provider differs from source")
+        # Never expose the wrapper's object graph: it may retain and mutate a
+        # nested mapping after receipt validation has completed.
+        parsed = original
     return _mapping(parsed, "C ABI document")
 
 
