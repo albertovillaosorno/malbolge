@@ -2366,6 +2366,64 @@ def test_rust_inspection_rejects_drive_relative_channel(
         _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
 
 
+@pytest.mark.parametrize(
+    "channel",
+    ["CON", "nul.txt", "AUX ", "version.", "COM1", "name:stream"],
+)
+def test_rust_inspection_rejects_windows_reserved_channel(
+    tmp_path: Path, channel: str
+) -> None:
+    """Portable Rust channel names must not alias Windows device paths."""
+    _ = _write_rust_manifest(tmp_path, channel)
+    with pytest.raises(
+        project.InitializationError,
+        match="channel must be one repository-local path segment",
+    ):
+        _ = project.inspect_rust(tmp_path, WINDOWS_PLATFORM)
+
+
+@pytest.mark.parametrize(
+    "selected_path",
+    ["CON", "bin/NUL.dll", "bin/COM1.so", "bin/version.", "bin/foo:stream"],
+)
+@pytest.mark.parametrize("field", ["toolkit_root", "nvrtc_library"])
+def test_cuda_paths_reject_windows_reserved_components(
+    tmp_path: Path, selected_path: str, field: str
+) -> None:
+    """CUDA authority paths retain the same meaning on POSIX and Windows."""
+    if field == "toolkit_root":
+        manifest = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        data["toolkit_root"] = selected_path
+        _ = manifest.write_text(json.dumps(data), encoding="utf-8")
+        with pytest.raises(project.InitializationError, match="stay within"):
+            _ = project.inspect_cuda(tmp_path, LINUX_PLATFORM)
+    else:
+        _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+        index = _write_cuda_manifest_index(tmp_path)
+        data = json.loads(index.read_text(encoding="utf-8"))
+        data["platforms"][LINUX_PLATFORM]["nvrtc_library"] = selected_path
+        _ = index.write_text(json.dumps(data), encoding="utf-8")
+        with pytest.raises(project.InitializationError, match="stay within"):
+            _ = project.cuda_toolchain_nvrtc_relative_path(
+                tmp_path, LINUX_PLATFORM
+            )
+
+
+@pytest.mark.parametrize("manifest_name", ["CON", "nul.txt", "aux ", "bad."])
+def test_cuda_index_rejects_windows_reserved_manifest_name(
+    tmp_path: Path, manifest_name: str
+) -> None:
+    """Manifest selection rejects names that alias on Windows."""
+    _ = _write_cuda_manifest(tmp_path, LINUX_PLATFORM)
+    index = _write_cuda_manifest_index(tmp_path)
+    data = json.loads(index.read_text(encoding="utf-8"))
+    data["platforms"][LINUX_PLATFORM]["manifest"] = manifest_name
+    _ = index.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(project.InitializationError, match="one repository-local"):
+        _ = project.cuda_toolchain_manifest_path(tmp_path, LINUX_PLATFORM)
+
+
 def _assert_rust_validation_alias(
     alias: Path,
     tool_id: str,

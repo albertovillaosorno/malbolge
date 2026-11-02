@@ -41,6 +41,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import io
 import json
+import ntpath
 import os
 from pathlib import Path
 from pathlib import PureWindowsPath
@@ -271,8 +272,9 @@ def _path_segment(value: str, label: str) -> str:
     windows_path = PureWindowsPath(value)
     reserved = value in {".", PARENT_SEGMENT}
     has_separator = any(separator in value for separator in PATH_SEPARATORS)
-    windows_anchored = bool(windows_path.drive or windows_path.root)
-    if reserved or has_separator or windows_anchored:
+    windows_invalid = bool(windows_path.drive or windows_path.root)
+    windows_invalid = windows_invalid or ntpath.isreserved(value)
+    if reserved or has_separator or windows_invalid:
         _fail(f"{label} must be one repository-local path segment")
     return value
 
@@ -288,7 +290,7 @@ def _repository_relative_path(value: str, label: str) -> Path:
         and not windows_path.root
         and PARENT_SEGMENT not in windows_path.parts
     )
-    if not native_relative or not windows_relative:
+    if not native_relative or not windows_relative or ntpath.isreserved(value):
         _fail(f"{label} must stay within the repository")
     if WINDOWS_SEPARATOR in value:
         _fail(f"{label} must use forward slashes")
