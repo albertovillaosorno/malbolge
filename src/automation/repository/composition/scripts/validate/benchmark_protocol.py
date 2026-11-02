@@ -753,13 +753,20 @@ def validate_repository_examples() -> tuple[BenchmarkProtocolRecord, ...]:
         Protocol examples in stable path order.
 
     """
-    example_paths = tuple(
-        sorted(
-            path
-            for path in EXAMPLES_ROOT.iterdir()
-            if path.name.endswith(".benchmark.toml")
-        )
-    )
+    candidate_paths: list[Path] = []
+    names: set[str] = set()
+    for path in EXAMPLES_ROOT.iterdir():
+        if type(path) is not type(Path()):
+            _fail("benchmark example discovery requires native paths")
+        if path.parent != EXAMPLES_ROOT:
+            _fail("benchmark example discovery escaped its root")
+        if not path.name.endswith(".benchmark.toml"):
+            continue
+        if path.name in names:
+            _fail("benchmark example discovery contains duplicate entries")
+        names.add(path.name)
+        candidate_paths.append(path)
+    example_paths = tuple(sorted(candidate_paths))
     examples = tuple(validate_example(path) for path in example_paths)
     if not examples:
         _fail("repository contains no benchmark protocol examples")

@@ -119,6 +119,10 @@ stochastic records plus linked run manifests and retained raw CSV files.
 Repository validation enumerates that checked-in corpus directly; a directory
 scan failure is a validation failure, not evidence that an example is absent.
 
+Every enumerated entry must be an exact native path directly under the examples
+root before its name is inspected. Duplicate benchmark filenames and entries
+outside that root fail discovery before any fixture is parsed.
+
 ## Evidence
 
 - `tests/test_benchmark_protocol.py` covers equivalent workload enforcement, raw

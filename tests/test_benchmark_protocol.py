@@ -212,6 +212,41 @@ def test_benchmark_utf8_failure_never_formats_foreign_decoder(
     assert caught.value.__cause__ is fault
 
 
+@pytest.mark.parametrize("case", ("outside", "duplicate", "foreign"))
+def test_benchmark_example_scan_rejects_unbound_enumeration(
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    """Discovery never trusts path objects unrelated to its examples root."""
+    native_iterdir = Path.iterdir
+
+    @final
+    class ForeignEntry:
+        def __getattribute__(self, _field: str) -> Never:
+            raise AssertionError("foreign benchmark entry metadata executed")
+
+    entries: tuple[object, ...] = (
+        (validator.EXAMPLES_ROOT.parent / "other.benchmark.toml",)
+        if case == "outside"
+        else (DETERMINISTIC, DETERMINISTIC)
+        if case == "duplicate"
+        else (ForeignEntry(),)
+    )
+
+    def spoofed_iterdir(root: Path) -> Iterator[Path]:
+        if root == validator.EXAMPLES_ROOT:
+            return iter(cast("tuple[Path, ...]", entries))
+        return native_iterdir(root)
+
+    def forbidden_validation(_example: Path) -> Never:
+        raise AssertionError("untrusted example reached benchmark parser")
+
+    monkeypatch.setattr(Path, "iterdir", spoofed_iterdir)
+    monkeypatch.setattr(validator, "validate_example", forbidden_validation)
+    with pytest.raises(validator.BenchmarkProtocolError, match="discovery"):
+        _ = validator.validate_repository_examples()
+
+
 def test_repository_example_scan_errors_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
