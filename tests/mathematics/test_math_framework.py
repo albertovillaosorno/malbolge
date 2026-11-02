@@ -36,8 +36,9 @@ from __future__ import annotations
 
 import os
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import sys
 from pathlib import Path
-from typing import IO, TYPE_CHECKING, Self, cast, final, override
+from typing import IO, TYPE_CHECKING, Self, TextIO, cast, final, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -1535,6 +1536,82 @@ def test_math_cli_never_formats_foreign_errors(
     output = capsys.readouterr()
     assert "ForeignMathCliFault" in output.err
     assert not output.out
+
+
+@pytest.mark.parametrize(
+    "case", ("partial", "foreign-count", "write-fault", "flush-fault", "foreign-flush")
+)
+def test_math_cli_requires_complete_output_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    """A built document set cannot certify CLI success without output."""
+
+    class FakeOutput:
+        def write(self, text: str) -> object:
+            if case == "partial":
+                return len(text) - 1
+            if case == "foreign-count":
+                return True
+            if case == "write-fault":
+                raise OSError("simulated output fault")
+            return len(text)
+
+        def flush(self) -> object:
+            if case == "flush-fault":
+                raise OSError("simulated flush fault")
+            if case == "foreign-flush":
+                return False
+            return None
+
+    monkeypatch.setattr(validator, "build_documents", lambda: (Path("ok.tex"),))
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", FakeOutput())))
+    assert validator.main() == 1
+
+
+def test_math_cli_flushes_complete_success_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid document set succeeds only after its full summary is flushed."""
+
+    class CapturingOutput:
+        messages: list[str]
+        flushes: int
+
+        def __init__(self) -> None:
+            self.messages = []
+            self.flushes = 0
+
+        def write(self, message: str) -> int:
+            self.messages.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    output = CapturingOutput()
+    monkeypatch.setattr(validator, "build_documents", lambda: (Path("ok.tex"),))
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", output)))
+    assert validator.main() == 0
+    assert output.messages == ["mathematical specifications valid: 1 documents\n"]
+    assert output.flushes == 1
+
+
+def test_math_cli_failed_stderr_cannot_mask_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed diagnostic sink cannot turn an invalid build into success."""
+
+    class FailingStderr:
+        def write(self, _message: str) -> None:
+            raise OSError("simulated diagnostic failure")
+
+    def fail_build() -> tuple[Path, ...]:
+        raise validator.MathSpecificationError("invalid build")
+
+    monkeypatch.setattr(validator, "build_documents", fail_build)
+    monkeypatch.setattr(sys, "stderr", cast("TextIO", cast("object", FailingStderr())))
+    assert validator.main() == 1
 
 
 SYMLINK_METHOD = "is_symlink"

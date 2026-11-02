@@ -45,7 +45,7 @@ import sys
 import tempfile
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never, TextIO, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -901,22 +901,40 @@ def build_documents() -> tuple[Path, ...]:
     return sources
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Return whether an exact native text write and flush both completed."""
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate/build mathematical documents and return process status.
 
     Returns:
-        Zero after all documents build; otherwise one with a deterministic
-        error.
+        Zero after all documents build and deliver the CLI record, else one.
 
     """
     try:
         sources = build_documents()
+        message = f"mathematical specifications valid: {len(sources)} documents\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("mathematical specifications CLI output write or flush failed")
     except (OSError, MathSpecificationError) as error:
-        _ = sys.stderr.write(f"error: {_host_error_detail(error)}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {_host_error_detail(error)}\n")
         return 1
-    _ = sys.stdout.write(
-        f"mathematical specifications valid: {len(sources)} documents\n"
-    )
     return 0
 
 

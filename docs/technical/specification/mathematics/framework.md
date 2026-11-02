@@ -91,7 +91,10 @@ rejects redirected parent/leaf paths, and requires the pre-read file identity
 and the post-read pathname. In-place edits and byte-identical file replacements
 invalidate the snapshot. TeX input decoding errors are surfaced as math validation errors, retaining
 native decoder causes without running foreign exception formatters. CLI host and
-policy error diagnostics also avoid foreign exception formatter hooks. These are
+policy error diagnostics also avoid foreign exception formatter hooks. The CLI
+only reports success after an exact native text-write count and a successful
+flush. Short writes, foreign receipts and failed stdout delivery return nonzero;
+failed stderr delivery cannot turn an invalid build into success. These are
 validation-input checks, not an atomic protection
 against filesystem races during a subsequent TeX compiler invocation.
 
