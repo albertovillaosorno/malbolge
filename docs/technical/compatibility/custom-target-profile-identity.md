@@ -14,6 +14,15 @@ The fingerprint is an integrity and identity mechanism. It is not encryption,
 obfuscation, copy protection, or evidence that a profile-dependent encoding is
 hard to reverse engineer.
 
+The Python profile JSON reader captures the public parser identity before
+invocation and corroborates substituted decoder results with an import-bound
+parser over the same source text. A decoder that restores its module attribute
+during parsing cannot bypass the check. Equal substituted results are not
+retained: the caller receives an independently owned source-derived tree so a
+later helper-side mutation cannot rewrite an accepted target profile. This
+only establishes process-local source agreement, not provenance or protection
+against compromise of Python's parser before import.
+
 ## Scope
 
 This document currently governs:

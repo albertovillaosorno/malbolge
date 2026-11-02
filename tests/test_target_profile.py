@@ -877,6 +877,44 @@ def test_profile_json_parser_allows_equivalent_delegating_decoder(
     validator.validate_text(_canonical_text())
 
 
+@pytest.mark.parametrize("source", ("{}", "[]", "{invalid"))
+def test_profile_parser_rejects_forged_decoder_that_restores_itself(
+    monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    """Changing the public parser back during decoding cannot skip source check."""
+    native = json.loads
+
+    def forged(_text: str, *, object_pairs_hook: object) -> object:
+        del object_pairs_hook
+        monkeypatch.setattr(json, "loads", native)
+        return {"fabricated": "admitted"}
+
+    monkeypatch.setattr(json, "loads", forged)
+    with pytest.raises(
+        validator.ProfileValidationError,
+        match="JSON decoder provider differs from source|invalid JSON",
+    ):
+        _ = validator.loads_document(source)
+
+
+def test_profile_parser_returns_source_owned_tree_from_equivalent_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutating a substituted decoder's result cannot rewrite admitted profile data."""
+    source = _canonical_text()
+    aliased = cast("validator.JsonObject", json.loads(source))
+    original = aliased["schema_version"]
+
+    def equivalent(_text: str, **_kwargs: object) -> object:
+        return aliased
+
+    monkeypatch.setattr(json, "loads", equivalent)
+    document = validator.loads_document(source)
+    aliased["schema_version"] = "forged"
+    assert document is not aliased
+    assert document["schema_version"] == original
+
+
 def test_profile_json_parser_rejects_foreign_nested_key_before_equality(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

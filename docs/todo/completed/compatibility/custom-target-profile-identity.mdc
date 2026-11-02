@@ -39,9 +39,14 @@ Allow user-supplied target profiles with canonical hashing and explicit artifact
 identity. Investigate profile-dependent encoding without making a false claim
 that reverse engineering can be made cryptographically impossible.
 
-
 **Current implementation.**
 
+- 2026-11-02 source-bound parser follow-up: the Python target-profile reader
+  captures `json.loads` before invocation, blocking a substituted parser that
+  restores its identity mid-call. An equivalent substituted decoder returns an
+  independent source-owned tree, so later mutation cannot rewrite admitted
+  profile semantics. Regression cases demonstrate both gaps; the
+  import-bound source agreement is not independent parser provenance.
 - `malbolge-profile-v1` canonicalizes profile ID, version, target schema,
   word/memory geometry, and semantics to compact sorted ASCII JSON, then binds
   those bytes with a self-describing SHA-256 fingerprint.

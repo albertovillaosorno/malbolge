@@ -349,10 +349,11 @@ def loads_document(text: str) -> JsonObject:
     """
     if type(text) is not str:
         _fail("target-profile JSON text must use the exact string type")
+    decoder = json.loads
     try:
         parsed = cast(
             "object",
-            json.loads(text, object_pairs_hook=_reject_duplicate_pairs),
+            decoder(text, object_pairs_hook=_reject_duplicate_pairs),
         )
     except ProfileValidationError:
         # Preserve the duplicate-key diagnostic raised by our object hook.
@@ -372,7 +373,7 @@ def loads_document(text: str) -> JsonObject:
     # A substituted public decoder can return an entirely native, schema-valid
     # document that was never present in the source. Independently parse with
     # the import-bound provider before accepting any such receipt.
-    if json.loads is not _NATIVE_JSON_LOADS:
+    if decoder is not _NATIVE_JSON_LOADS:
         try:
             source = cast(
                 "object",
@@ -386,6 +387,9 @@ def loads_document(text: str) -> JsonObject:
             raise ProfileValidationError(message) from error
         if not equivalent:
             _fail("target profile JSON decoder provider differs from source")
+        # A substituted decoder may retain and mutate its original mapping.
+        # Return the independently parsed source tree instead of its alias.
+        document = _expect_mapping(source, "target profile document")
     return document
 
 
