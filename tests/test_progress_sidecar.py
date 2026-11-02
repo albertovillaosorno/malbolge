@@ -5668,6 +5668,54 @@ def test_checkpoint_json_host_decoder_error_does_not_invoke_foreign_formatter(
     assert caught.value.__context__ is failure or caught.value.__cause__ is failure
 
 
+@pytest.mark.parametrize(
+    "failure_type", [TypeError, AttributeError, IndexError, OverflowError, LookupError]
+)
+@pytest.mark.parametrize("surface", ["progress-primary", "progress-reference", "checkpoint"])
+def test_json_decoder_unexpected_faults_remain_typed_and_keep_cause(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+    failure_type: type[Exception],
+) -> None:
+    """Ordinary decoder dependency faults cannot escape the JSON API boundary."""
+    failure = failure_type("injected ordinary decoder failure")
+    text = progress.encode(_sidecar(tmp_path)).decode("utf-8")
+    native_decoder = json.JSONDecoder
+
+    def failing_loads(_text: str, **_kwargs: object) -> object:
+        raise failure
+
+    def native_loads(source: str, **_kwargs: object) -> object:
+        return cast("object", native_decoder().decode(source))
+
+    class FailingReferenceDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def decode(self, _source: str) -> object:
+            raise failure
+
+    with monkeypatch.context() as context:
+        if surface == "progress-reference":
+            context.setattr(json, "loads", native_loads)
+            context.setattr(json, "JSONDecoder", FailingReferenceDecoder)
+        else:
+            context.setattr(json, "loads", failing_loads)
+        with pytest.raises(
+            ERROR, match="invalid checkpoint JSON" if surface == "checkpoint" else "invalid progress JSON"
+        ) as captured:
+            if surface == "checkpoint":
+                decoder = cast(
+                    "Callable[[bytes], object]",
+                    vars(progress)["_decode_portable_checkpoint_document"],
+                )
+                _ = decoder(b"{}\n")
+            else:
+                _ = progress.loads(text)
+    assert captured.value.__cause__ is failure
+
+
 def test_progress_parser_rejects_builtin_error_with_foreign_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

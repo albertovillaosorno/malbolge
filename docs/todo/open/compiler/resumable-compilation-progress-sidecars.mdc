@@ -814,6 +814,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   and admits only agreeing records; the shared host parser remains a trust
   limitation, and these checks do not attest simultaneous provider tampering.
 
+  Fifteen red-first injected decoder-fault fixtures now preserve a typed
+  progress or portable checkpoint JSON failure and its original exception
+  cause when either progress decoder or the checkpoint decoder raises an
+  unexpected ordinary `TypeError`, `AttributeError`, `IndexError`,
+  `OverflowError`, or `LookupError`; process exit signals remain outside the
+  handled ordinary-exception boundary.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact

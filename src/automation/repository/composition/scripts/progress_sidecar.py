@@ -962,6 +962,8 @@ def _decode_portable_checkpoint_document(
         raise
     except (ValueError, RecursionError) as error:
         _fail(f"invalid checkpoint JSON: {_host_error_detail(error)}")
+    except Exception as error:
+        _fail_with_source(f"invalid checkpoint JSON: {_host_error_detail(error)}", error)
     return _portable_checkpoint_from_document(
         _mapping(parsed, "portable checkpoint"),
     )
@@ -1817,6 +1819,8 @@ def loads(text: str) -> ProgressSidecar:
         raise
     except (ValueError, RecursionError) as error:
         _fail(f"invalid progress JSON: {_host_error_detail(error)}")
+    except Exception as error:
+        _fail_with_source(f"invalid progress JSON: {_host_error_detail(error)}", error)
     sidecar = validate(_from_document(_mapping(parsed, "progress sidecar")))
     # A substituted convenience decoder can return a native-looking record
     # unrelated to the source. Independently decode the original wire text
@@ -1830,6 +1834,8 @@ def loads(text: str) -> ProgressSidecar:
         raise
     except (ValueError, RecursionError) as error:
         _fail(f"invalid progress JSON: {_host_error_detail(error)}")
+    except Exception as error:
+        _fail_with_source(f"invalid progress JSON: {_host_error_detail(error)}", error)
     reference = validate(
         _from_document(_mapping(independent, "progress sidecar"))
     )

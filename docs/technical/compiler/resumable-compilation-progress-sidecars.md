@@ -72,6 +72,14 @@ rejection. These entrypoints share the host JSON implementation: this is a
 local-consistency check, not independent source authentication or defense
 against simultaneous tampering with both decoders.
 
+Both progress JSON entrypoints and portable checkpoint JSON decoding also retain
+the typed `ProgressSidecarError` boundary when a decoder dependency raises an
+unexpected ordinary exception such as `TypeError`, `AttributeError`,
+`IndexError`, `OverflowError`, or `LookupError`. Fifteen red-first injected
+primary, corroborating, and checkpoint decoder cases now preserve the original
+exception as the cause while sanitizing its diagnostic; process exits and other
+`BaseException` signals are not consumed.
+
 Both immutable payload and
 mutable pointer writes require an exact integer byte count before sync or
 publication. Boolean reports, including `True` for a single byte and `False`
