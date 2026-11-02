@@ -2075,7 +2075,14 @@ def _rename_cuda_toolkit_no_replace(
         raise OSError(error_number, "CUDA toolkit no-replace rename failed")
 
 
-def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
+def _publish_cuda_toolkit(
+    staged: Path,
+    destination: Path,
+    *,
+    expected_members: dict[
+        Path, tuple[int, int, int, bytes | str | None]
+    ] | None = None,
+) -> None:
     """Pin a POSIX destination directory across the final toolkit rename.
 
     Raises:
@@ -2088,6 +2095,11 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
     if os.name != "posix":
         staged_identity = _owned_staging_identity(staged)
         _require_unoccupied_toolkit_destination(destination)
+        if (
+            expected_members is not None
+            and _cuda_overlay_destination_members(staged) != expected_members
+        ):
+            _fail("CUDA staged toolkit changed immediately before publication")
         # Windows rename fails if the destination already exists; replace()
         # would permit an unreviewed late occupant to be overwritten.
         try:
@@ -2155,6 +2167,14 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
                 or (source_status.st_dev, source_status.st_ino) != staged_identity
             ):
                 _fail("CUDA toolkit staging source changed before publication")
+            # Opening the pinned source directory is another host callback
+            # after the caller's final full-tree receipt. It cannot become a
+            # new trusted baseline for altered package or marker bytes.
+            if (
+                expected_members is not None
+                and _cuda_overlay_destination_members(staged) != expected_members
+            ):
+                _fail("CUDA staged toolkit changed immediately before publication")
             _rename_cuda_toolkit_no_replace(
                 staged.name,
                 destination.name,
@@ -2308,7 +2328,10 @@ def provision_cuda_manifest(
         _require_toolkit_destination(manifest.toolkit_root)
         if _cuda_overlay_destination_members(staged_toolkit) != toolkit_full_after_marker:
             _fail("CUDA staged toolkit changed while preparing publication")
-        _publish_cuda_toolkit(staged_toolkit, manifest.toolkit_root)
+        _publish_cuda_toolkit(
+            staged_toolkit, manifest.toolkit_root,
+            expected_members=toolkit_full_after_marker,
+        )
     finally:
         _cleanup_owned_staging(staging, staging_identity)
     return manifest.toolkit_root

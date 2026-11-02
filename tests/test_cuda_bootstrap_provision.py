@@ -2563,6 +2563,51 @@ def test_cuda_publication_rejects_staged_mutation_during_destination_preparation
     assert not (tmp_path / TOOLKIT_ROOT).exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires pinned staging descriptor")
+@pytest.mark.parametrize("mutation", ("overwrite", "remove", "extra", "marker"))
+def test_cuda_publication_rejects_staged_mutation_during_source_parent_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """The final source-parent open cannot silently replace verified contents."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    staged_toolkit = tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}/toolkit"
+    stage_parent = staged_toolkit.parent
+    native_open_parent = cuda_validation._open_staging_parent  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def open_and_mutate(path: Path) -> int | None:
+        nonlocal mutated
+        descriptor = native_open_parent(path)
+        if path == stage_parent and not mutated and (
+            staged_toolkit / cuda_validation.CUDA_PROVISION_MARKER
+        ).is_file():
+            member = staged_toolkit / "lib64/libnvrtc.so.13"
+            if mutation == "overwrite":
+                before = member.stat()
+                _ = member.write_bytes(b"!" * len(NVRTC_BYTES))
+                os.utime(member, ns=(before.st_atime_ns, before.st_mtime_ns))
+            elif mutation == "remove":
+                member.unlink()
+            elif mutation == "extra":
+                _ = (member.parent / "unverified.so").write_bytes(b"foreign")
+            else:
+                marker = staged_toolkit / cuda_validation.CUDA_PROVISION_MARKER
+                marker_bytes = marker.read_bytes()
+                _ = marker.write_bytes(b"!" + marker_bytes[1:])
+            mutated = True
+        return descriptor
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_open_staging_parent", open_and_mutate)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="staged toolkit"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert mutated
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
 def _tar_symlink_payload() -> bytes:
     """Build a synthetic archive with a contained library symlink."""
     output = io.BytesIO()
@@ -5820,6 +5865,57 @@ def test_cuda_nonposix_publication_requires_staged_inode_receipt(
         assert (staged / "trusted.bin").read_bytes() == b"trusted"
     else:
         assert (parked / "trusted.bin").read_bytes() == b"trusted"
+
+
+
+@pytest.mark.parametrize("mutation", ("overwrite", "remove", "extra"))
+def test_cuda_nonposix_publication_rejects_late_staged_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A final Windows-compatible destination preflight cannot alter the stage."""
+    staged = tmp_path / "staging" / "toolkit"
+    staged.mkdir(parents=True)
+    member = staged / "trusted.bin"
+    _ = member.write_bytes(b"trusted")
+    target = tmp_path / "destination" / "toolkit"
+    target.parent.mkdir()
+    expected = cuda_validation._cuda_overlay_destination_members(staged)  # pyright: ignore[reportPrivateUsage]
+    original_check = cuda_validation._require_unoccupied_toolkit_destination  # pyright: ignore[reportPrivateUsage]
+    destination_checks = 0
+
+    class NonPosixHost:
+        name = "nt"
+
+        def __getattr__(self, name: str) -> object:
+            return getattr(os, name)
+
+    def check_and_mutate(path: Path) -> None:
+        nonlocal destination_checks
+        original_check(path)
+        if path != target:
+            return
+        destination_checks += 1
+        if destination_checks != 2:
+            return
+        if mutation == "overwrite":
+            _ = member.write_bytes(b"foreign")
+        elif mutation == "remove":
+            member.unlink()
+        else:
+            _ = (staged / "unverified.bin").write_bytes(b"foreign")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "os", NonPosixHost())
+        isolated.setattr(
+            cuda_validation, "_require_unoccupied_toolkit_destination",
+            check_and_mutate,
+        )
+        with pytest.raises(cuda_validation.CudaProvisionError, match="staged toolkit"):
+            cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+                staged, target, expected_members=expected,
+            )
+    assert destination_checks == 2
+    assert not target.exists()
 
 
 def test_cuda_nonposix_publication_admits_exact_renamed_toolkit(
