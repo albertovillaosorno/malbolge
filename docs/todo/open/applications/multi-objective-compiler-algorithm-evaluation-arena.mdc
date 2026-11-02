@@ -661,6 +661,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   factory regression guard against both dynamic encoders agreeing on altered
   text. This confirms local encoding consistency, not stdout sink integrity
   or authenticity against compromise of the canonical iterator itself.
+  Native report preflight also rejects unpaired UTF-16 surrogate units in
+  dictionary keys and nested string values before JSON escaping can hide
+  malformed Unicode. Four red-first negative cases and a valid non-BMP
+  positive case guard this scalar boundary without authenticating source data.
 - Operator report output now requires exact text write counts and an explicit
   successful stdout flush across both arena CLI routes, rejecting malformed
   return values, truncation, and injected stream errors as nonzero exits.
