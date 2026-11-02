@@ -96,6 +96,7 @@ def test_math_tex_source_host_faults_are_typed(
 ) -> None:
     """TeX source inspection and transport reject unexpected host failures."""
     source = _snapshot_fixture(tmp_path, monkeypatch)
+    borrowed_streams: list[IO[bytes]] = []
     if operation in {"lstat", "post_lstat"}:
         original_lstat = Path.lstat
         observations = 0
@@ -144,7 +145,10 @@ def test_math_tex_source_host_faults_are_typed(
 
         class BadReadStream:
             def __init__(self, descriptor: int) -> None:
-                self._stream = original_fdopen(os.dup(descriptor), "rb")
+                self._stream = cast(
+                    "IO[bytes]", original_fdopen(os.dup(descriptor), "rb")
+                )
+                borrowed_streams.append(self._stream)
 
             def __enter__(self) -> Self:
                 return self
@@ -161,8 +165,13 @@ def test_math_tex_source_host_faults_are_typed(
         monkeypatch.setattr(
             os, "fdopen", lambda descriptor, _mode: BadReadStream(descriptor)
         )
-    with pytest.raises(validator.MathSpecificationError, match="mathematics source"):
-        _ = validator._read_tex(source)
+    try:
+        with pytest.raises(validator.MathSpecificationError, match="mathematics source"):
+            _ = validator._read_tex(source)
+    finally:
+        if operation == "read":
+            for stream in borrowed_streams:
+                stream.close()
 
 
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
@@ -1193,7 +1202,7 @@ def test_math_host_failures_do_not_format_foreign_exceptions(
             del path
             if boundary == "source-walk-callback":
                 assert on_error is not None
-                on_error(cast("OSError", fault))
+                on_error(cast("OSError", cast("object", fault)))
                 return iter(())
             raise fault
 
@@ -1369,6 +1378,7 @@ def test_math_tex_read_rejects_foreign_byte_receipts(
     """Foreign reader byte hooks never run before native stream admission."""
     source = _snapshot_fixture(tmp_path, monkeypatch)
     original_fdopen = os.fdopen
+    borrowed_streams: list[IO[bytes]] = []
 
     class ForeignBytes(bytes):
         def __len__(self) -> int:
@@ -1376,7 +1386,10 @@ def test_math_tex_read_rejects_foreign_byte_receipts(
 
     class ForeignStream:
         def __init__(self, descriptor: int) -> None:
-            self.stream = original_fdopen(os.dup(descriptor), "rb")
+            self.stream = cast(
+                "IO[bytes]", original_fdopen(os.dup(descriptor), "rb")
+            )
+            borrowed_streams.append(self.stream)
 
         def __enter__(self) -> Self:
             return self
@@ -1398,8 +1411,12 @@ def test_math_tex_read_rejects_foreign_byte_receipts(
     monkeypatch.setattr(
         os, "fdopen", lambda descriptor, _mode: ForeignStream(descriptor)
     )
-    with pytest.raises(validator.MathSpecificationError, match="native stream"):
-        _ = validator._read_tex(source)
+    try:
+        with pytest.raises(validator.MathSpecificationError, match="native stream"):
+            _ = validator._read_tex(source)
+    finally:
+        for stream in borrowed_streams:
+            stream.close()
 
 
 @pytest.mark.parametrize(
