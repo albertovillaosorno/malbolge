@@ -1223,6 +1223,45 @@ def test_provision_manifest_rejects_inode_swap_after_read(
     assert observed == SOURCE_RECHECK
 
 
+@pytest.mark.parametrize("source_kind", ["manifest", "marker"])
+def test_cuda_authority_rejects_external_hardlink(
+    tmp_path: Path,
+    source_kind: str,
+) -> None:
+    """External aliases cannot certify a tracked CUDA manifest or marker."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    source = manifest
+    if source_kind == "marker":
+        toolkit = cuda_validation.provision_cuda_manifest(
+            tmp_path,
+            manifest,
+            LINUX_PLATFORM,
+            downloader=_download_fixture(payload),
+        )
+        source = toolkit / cuda_validation.CUDA_PROVISION_MARKER
+    linked = tmp_path / "external-authority"
+    try:
+        os.link(source, linked)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hard links unavailable: {error}")
+    assert source.stat().st_nlink == 2
+    if source_kind == "manifest":
+        with pytest.raises(cuda_validation.CudaProvisionError, match="linked"):
+            _ = cuda_validation.load_cuda_provision_manifest(
+                tmp_path, manifest, LINUX_PLATFORM
+            )
+    else:
+        with pytest.raises(cuda_validation.CudaProvisionError, match="exact"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path,
+                manifest,
+                LINUX_PLATFORM,
+                downloader=_download_fixture(payload),
+            )
+    assert linked.read_bytes() == source.read_bytes()
+
+
 class UnprintableHostOSError(OSError):
     """A host adapter whose diagnostic cannot safely be rendered."""
 

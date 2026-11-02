@@ -150,6 +150,8 @@ def _manifest_identity(status: os.stat_result, label: str) -> tuple[int, ...]:
         _fail(f"{label} must provide native file status")
     if not S_ISREG(status.st_mode):
         _fail(f"{label} must be a regular file")
+    if status.st_nlink != 1:
+        _fail(f"{label} must remain singly linked")
     return (
         status.st_dev,
         status.st_ino,
