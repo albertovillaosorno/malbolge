@@ -1451,8 +1451,11 @@ def inspect_jig(root: Path, platform_id: str) -> ComponentStatus:
     """
     del root
     executable = "jig.cmd" if platform_id.startswith(WINDOWS_SYSTEM) else "jig"
-    resolved = which(executable)
-    if resolved is not None:
+    try:
+        resolved = which(executable)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        resolved = None
+    if type(resolved) is str and resolved.strip():
         path = Path(resolved)
         return ComponentStatus(
             detail="standalone Jig launcher is present on PATH",

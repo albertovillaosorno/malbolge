@@ -4614,3 +4614,66 @@ def test_optional_host_tool_paths_treat_native_stat_failures_as_missing(
             Path("rustup"), RUST_CHANNEL, runner=lambda _tool, _channel: str(candidate)
         )
     assert result is None
+
+@pytest.mark.parametrize("receipt", [None, "", "   ", 7, True, "foreign-string"])
+def test_jig_observation_rejects_foreign_path_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """An optional Jig lookup must supply a native nonblank path."""
+
+    class ForeignString(str):
+        @override
+        def __bool__(self) -> Never:
+            raise AssertionError("foreign Jig path truthiness executed")
+
+    observed: object = (
+        ForeignString(str(tmp_path / "jig"))
+        if receipt == "foreign-string"
+        else receipt
+    )
+
+    def lookup(_name: str) -> str | None:
+        return cast("str | None", observed)
+
+    monkeypatch.setattr(project, "which", lookup)
+    assert (
+        project.inspect_jig(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_jig_observation_tolerates_optional_discovery_faults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """Jig presence is optional when PATH discovery fails."""
+
+    def fail(_name: str) -> str:
+        raise fault_type("cannot discover Jig")
+
+    monkeypatch.setattr(project, "which", fail)
+    assert (
+        project.inspect_jig(tmp_path, WINDOWS_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_jig_observation_accepts_native_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native resolved launcher remains available as diagnostic evidence."""
+    executable = tmp_path / "jig"
+    _ = executable.write_bytes(b"jig")
+
+    def lookup(_name: str) -> str:
+        return str(executable)
+
+    monkeypatch.setattr(project, "which", lookup)
+    status = project.inspect_jig(tmp_path, LINUX_PLATFORM)
+    assert status.state is project.ComponentState.READY
+    assert status.path == executable
