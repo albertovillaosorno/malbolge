@@ -1890,8 +1890,12 @@ def write_jig_tool_aliases(
     return tuple(aliases)
 
 
-def _provision(layout: ValidationEnvironmentLayout) -> None:
-    uv = ensure_uv()
+def _provision(
+    layout: ValidationEnvironmentLayout,
+    *,
+    root: Path = ROOT,
+) -> None:
+    uv = ensure_uv(root)
     if not layout.python.is_file():
         builder = venv.EnvBuilder(with_pip=False, clear=False)
         builder.create(layout.environment)
@@ -1940,17 +1944,18 @@ def _verify(layout: ValidationEnvironmentLayout) -> None:
         _verify_tool(layout, executable, expected)
 
 
-def initialize() -> ValidationEnvironmentLayout:
-    """Provision and verify the exact repository-local Python tool set.
+def initialize(root: Path = ROOT) -> ValidationEnvironmentLayout:
+    """Provision and verify the exact Python tool set for one checkout.
 
     Returns:
         Platform-native environment layout after successful verification.
 
     """
     _check_host_python()
-    _provision(LAYOUT)
-    _verify(LAYOUT)
-    return LAYOUT
+    layout = LAYOUT if root == ROOT else validation_layout(root)
+    _provision(layout, root=root)
+    _verify(layout)
+    return layout
 
 
 class _NativeExceptionArgsDescriptor(Protocol):

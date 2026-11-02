@@ -1813,7 +1813,7 @@ def initialize_project(
     validate_repository(root)
     directories = initialize_local_directories(root)
     layout = (
-        python_validation.initialize()
+        python_validation.initialize(root)
         if provision_python
         else python_validation.validation_layout(root)
     )

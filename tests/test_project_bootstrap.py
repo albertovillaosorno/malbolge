@@ -1418,6 +1418,70 @@ def test_native_exception_detail_ignores_foreign_attribute_hooks() -> None:
     )
 
 
+def test_initialize_project_provisions_python_at_requested_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Project bootstrap must not provision the default checkout for another root."""
+    observed: list[Path] = []
+
+    def admit_repository(_root: Path) -> None:
+        pass
+
+    def capture_python_root(root: Path) -> Never:
+        observed.append(root)
+        raise project.InitializationError("captured requested Python root")
+
+    monkeypatch.setattr(project, "validate_repository", admit_repository)
+    monkeypatch.setattr(python_validation, "initialize", capture_python_root)
+    with pytest.raises(project.InitializationError, match="captured requested Python root"):
+        _ = project.initialize_project(tmp_path)
+    assert observed == [tmp_path]
+
+
+def test_python_initializer_routes_layout_to_requested_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Python environment creation and readiness use the requested checkout."""
+    created: list[python_validation.ValidationEnvironmentLayout] = []
+    verified: list[python_validation.ValidationEnvironmentLayout] = []
+
+    def provision(layout: python_validation.ValidationEnvironmentLayout, *, root: Path) -> None:
+        assert root == tmp_path
+        created.append(layout)
+
+    def verify(layout: python_validation.ValidationEnvironmentLayout) -> None:
+        verified.append(layout)
+
+    monkeypatch.setattr(python_validation, "_check_host_python", lambda: None)
+    monkeypatch.setattr(python_validation, "_provision", provision)
+    monkeypatch.setattr(python_validation, "_verify", verify)
+    result = python_validation.initialize(tmp_path)
+    expected = python_validation.validation_layout(tmp_path)
+    assert result == expected
+    assert created == [expected]
+    assert verified == [expected]
+    assert result.environment.is_relative_to(tmp_path)
+
+
+def test_python_provisioner_selects_uv_for_requested_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The uv executable is selected from the same checkout as its venv."""
+    observed: list[Path] = []
+
+    def capture_uv(root: Path) -> Never:
+        observed.append(root)
+        raise python_validation.ProvisionError("captured uv root")
+
+    monkeypatch.setattr(python_validation, "ensure_uv", capture_uv)
+    layout = python_validation.validation_layout(tmp_path)
+    with pytest.raises(python_validation.ProvisionError, match="captured uv root"):
+        python_validation._provision(  # pyright: ignore[reportPrivateUsage]
+            layout, root=tmp_path
+        )
+    assert observed == [tmp_path]
+
+
 def test_bootstrap_cli_does_not_format_foreign_host_exception(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
