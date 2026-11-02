@@ -828,6 +828,17 @@ def import_git_installation(
     return alias
 
 
+def _optional_host_executable(executable_name: str) -> Path | None:
+    """Admit only a native nonempty PATH resolver result."""
+    try:
+        resolved = which(executable_name)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
+    if type(resolved) is not str or not resolved:
+        return None
+    return Path(resolved)
+
+
 def observe_host_git(platform_id: str) -> GitHostObservation | None:
     """Observe one native Git installation without making it authority.
 
@@ -837,10 +848,9 @@ def observe_host_git(platform_id: str) -> GitHostObservation | None:
     """
     windows = platform_id.startswith(WINDOWS_SYSTEM)
     executable_name = "git.exe" if windows else "git"
-    resolved = which(executable_name)
-    if resolved is None:
+    executable = _optional_host_executable(executable_name)
+    if executable is None:
         return None
-    executable = Path(resolved)
     version_line = _run_git_version(executable)
     exec_path = _run_git_exec_path(executable)
     if version_line is None or exec_path is None:
@@ -1139,8 +1149,11 @@ def rustup_toolchain_root(
         Existing toolchain root containing Cargo, otherwise None.
 
     """
-    raw = runner(rustup, channel)
-    if raw is None:
+    try:
+        raw = runner(rustup, channel)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
+    if type(raw) is not str or not raw:
         return None
     cargo = Path(raw)
     try:
@@ -1193,12 +1206,14 @@ def rustup_executable(
     windows = platform_id.startswith(WINDOWS_SYSTEM)
     executable = "rustup.exe" if windows else "rustup"
     cargo_home = (home or Path.home()) / ".cargo" / "bin" / executable
-    if cargo_home.is_file():
+    try:
+        present = cargo_home.is_file()
+    except (OSError, ValueError, TypeError, RuntimeError):
+        present = False
+    if type(present) is bool and present:
         return cargo_home
     if search_path:
-        resolved = which(executable)
-        if resolved is not None:
-            return Path(resolved)
+        return _optional_host_executable(executable)
     return None
 
 

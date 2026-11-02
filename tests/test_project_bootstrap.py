@@ -2386,6 +2386,150 @@ def test_rustup_toolchain_root_requires_existing_cargo_path(
     assert missing is None
 
 
+@pytest.mark.parametrize("probe", ["git", "rustup"])
+def test_optional_host_executable_resolver_admits_native_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, probe: str
+) -> None:
+    """An exact native PATH result still selects a real observed tool."""
+    resolved = tmp_path / "bin" / ("git" if probe == "git" else "rustup")
+    resolved.parent.mkdir()
+    resolved.touch()
+    monkeypatch.setattr(project, "which", lambda _name: str(resolved))
+    if probe == "git":
+        monkeypatch.setattr(project, "_run_git_version", lambda _tool: "git version 2.55.0")
+        monkeypatch.setattr(project, "_run_git_exec_path", lambda _tool: tmp_path)
+        observation = project.observe_host_git(LINUX_PLATFORM)
+        assert observation is not None
+        assert observation.executable == resolved
+        assert observation.exec_path == tmp_path
+    else:
+        assert project.rustup_executable(LINUX_PLATFORM, home=tmp_path) == resolved
+
+
+@pytest.mark.parametrize("probe", ["git", "rustup"])
+@pytest.mark.parametrize("receipt", [False, 1, "", "subclass", object()])
+def test_optional_host_executable_resolver_requires_native_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    receipt: object,
+) -> None:
+    """A foreign or empty PATH tool result cannot select host binaries."""
+
+    class ForeignStr(str):
+        pass
+
+    observed = ForeignStr("/usr/bin/git") if receipt == "subclass" else receipt
+    monkeypatch.setattr(project, "which", lambda _name: observed)
+    if probe == "git":
+        assert project.observe_host_git(LINUX_PLATFORM) is None
+    else:
+        assert (
+            project.rustup_executable(LINUX_PLATFORM, home=tmp_path)
+            is None
+        )
+
+
+@pytest.mark.parametrize("probe", ["git", "rustup"])
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_optional_host_executable_resolver_tolerates_host_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    probe: str,
+    fault_type: type[Exception],
+) -> None:
+    """An unavailable PATH resolver does not crash optional host inspection."""
+    fault = fault_type("injected host PATH failure")
+
+    def failing_which(_name: str) -> Never:
+        raise fault
+
+    monkeypatch.setattr(project, "which", failing_which)
+    if probe == "git":
+        assert project.observe_host_git(LINUX_PLATFORM) is None
+    else:
+        assert project.rustup_executable(LINUX_PLATFORM, home=tmp_path) is None
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_rustup_executable_tolerates_home_status_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault_type: type[Exception],
+) -> None:
+    """A failed home-Cargo status observation is optional host absence."""
+    rustup = tmp_path / ".cargo/bin/rustup"
+    original = Path.is_file
+    fault = fault_type("host status unavailable")
+
+    def failing_status(path: Path) -> bool:
+        if path == rustup:
+            raise fault
+        return original(path)
+
+    monkeypatch.setattr(Path, "is_file", failing_status)
+    assert project.rustup_executable(
+        LINUX_PLATFORM, home=tmp_path, search_path=False
+    ) is None
+
+
+@pytest.mark.parametrize("receipt", [None, 0, 1, "", "subclass"])
+def test_rustup_executable_requires_native_home_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A false-like home Cargo path status is not host executable evidence."""
+    root = tmp_path / ".cargo/bin/rustup"
+    original = Path.is_file
+
+    def status(path: Path) -> bool:
+        if path == root:
+            return cast("bool", receipt)
+        return original(path)
+
+    monkeypatch.setattr(Path, "is_file", status)
+    assert project.rustup_executable(
+        LINUX_PLATFORM, home=tmp_path, search_path=False
+    ) is None
+
+
+@pytest.mark.parametrize("fault_type", [OSError, ValueError, TypeError, RuntimeError])
+def test_rustup_toolchain_resolver_tolerates_host_fault(
+    tmp_path: Path, fault_type: type[Exception]
+) -> None:
+    """A failed optional Rustup channel probe cannot crash the checkout."""
+    fault = fault_type("host rustup which failed")
+
+    def failing_runner(_rustup: Path, _channel: str) -> Never:
+        raise fault
+
+    assert project.rustup_toolchain_root(
+        tmp_path / "rustup", RUST_CHANNEL, runner=failing_runner
+    ) is None
+
+
+@pytest.mark.parametrize("receipt", [False, 1, "", "subclass", object()])
+def test_rustup_toolchain_resolver_rejects_nonnative_path_output(
+    tmp_path: Path, receipt: object
+) -> None:
+    """Injected Rustup `which` output must be a native nonempty string."""
+
+    class ForeignStr(str):
+        pass
+
+    cargo = tmp_path / "host/bin/cargo"
+    cargo.parent.mkdir(parents=True)
+    cargo.touch()
+    observed = ForeignStr(str(cargo)) if receipt == "subclass" else receipt
+    assert (
+        project.rustup_toolchain_root(
+            tmp_path / "rustup",
+            RUST_CHANNEL,
+            runner=lambda _exe, _channel: cast("str", observed),
+        )
+        is None
+    )
+
+
 def test_rustup_executable_finds_home_cargo_bin_without_path(
     tmp_path: Path,
 ) -> None:
