@@ -3942,8 +3942,7 @@ def test_import_marker_writer_rejects_nonempty_created_descriptor_before_write(
 ) -> None:
     """A forged O_EXCL open must not write or remove an existing marker."""
     marker = tmp_path / marker_name
-    original = b"existing nonempty marker must remain untouched" * 2
-    _ = marker.write_bytes(original)
+    original = b"a late-created nonempty marker must remain untouched" * 2
     native_open = os.open
     native_write = os.write
     injected = False
@@ -3951,8 +3950,9 @@ def test_import_marker_writer_rejects_nonempty_created_descriptor_before_write(
 
     def forged_open(path: Path, flags: int, mode: int = 0o777) -> int:
         nonlocal injected
-        if path == marker:
+        if path == marker and flags & os.O_CREAT:
             injected = True
+            _ = marker.write_bytes(original)
             return native_open(path, os.O_WRONLY)
         return native_open(path, flags, mode)
 
@@ -3971,6 +3971,71 @@ def test_import_marker_writer_rejects_nonempty_created_descriptor_before_write(
     assert injected
     assert not attempted_write
     assert marker.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    "marker_name", [project.GIT_IMPORT_MARKER, project.RUST_IMPORT_MARKER]
+)
+def test_import_marker_writer_refuses_preexisting_empty_leaf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, marker_name: str
+) -> None:
+    """Even a forged exclusive-open receipt must not promote an old empty leaf."""
+    marker = tmp_path / marker_name
+    marker.touch()
+    native_open = os.open
+    native_write = os.write
+    attempted_write = False
+
+    def forged_open(path: Path, flags: int, mode: int = 0o777) -> int:
+        if path == marker and flags & os.O_CREAT:
+            return native_open(marker, os.O_WRONLY)
+        return native_open(path, flags, mode)
+
+    def tracked_write(descriptor: int, content: bytes) -> int:
+        nonlocal attempted_write
+        attempted_write = True
+        return native_write(descriptor, content)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", forged_open)
+        isolated.setattr(os, "write", tracked_write)
+        with pytest.raises(project.InitializationError, match="marker"):
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert not attempted_write
+    assert marker.read_bytes() == b""
+
+
+def test_import_marker_preflight_types_foreign_leaf_status_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Unprintable host status faults never invoke formatting or publish markers."""
+
+    class ForeignHostOSError(OSError):
+        @override
+        def __str__(self) -> Never:
+            raise AssertionError("foreign marker status formatter invoked")
+
+    marker = tmp_path / project.GIT_IMPORT_MARKER
+    fault = ForeignHostOSError("status unavailable")
+    native_lstat = Path.lstat
+
+    def failing_lstat(path: Path) -> os.stat_result:
+        if path == marker:
+            raise fault
+        return native_lstat(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", failing_lstat)
+        with pytest.raises(
+            project.InitializationError, match="cannot inspect import marker"
+        ) as caught:
+            project._write_import_completion_marker(  # pyright: ignore[reportPrivateUsage]
+                marker, "malbolge-git-import/v1\n"
+            )
+    assert caught.value.__cause__ is fault
+    assert not marker.exists()
 
 
 def test_import_marker_writer_rejects_leaf_swap_during_write(

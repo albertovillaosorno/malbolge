@@ -804,6 +804,14 @@ def _write_import_completion_marker(marker: Path, content: str) -> None:
         payload = content.encode("ascii")
     except UnicodeEncodeError as error:
         raise InitializationError("import marker requires ASCII text") from error
+    try:
+        _ = marker.lstat()
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise InitializationError("cannot inspect import marker") from error
+    else:
+        _fail("import marker already exists")
     flags = (
         os.O_WRONLY
         | os.O_CREAT
