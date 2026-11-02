@@ -43,11 +43,11 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 from stat import S_ISREG
-from typing import TYPE_CHECKING, Never, cast
+from typing import TYPE_CHECKING, Never, cast, override
 
 if TYPE_CHECKING:
     from os import stat_result
-    from typing import BinaryIO
+    from typing import BinaryIO, TextIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -133,8 +133,48 @@ def _fail(message: str) -> Never:
     raise LibcSourceError(message)
 
 
+def _write_record(stream: TextIO, message: str) -> bool:
+    """Admit only complete native CLI text delivery and a completed flush.
+
+    Returns:
+        Whether the requested record was fully written and flushed.
+
+    """
+    try:
+        count = stream.write(message)
+        if type(count) is not int or count != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        LookupError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+def _require_diagnostic(stream: TextIO, message: str) -> None:
+    if not _write_record(stream, message):
+        _fail("guest libc source diagnostic output write or flush failed")
+
+
+class _DeliveryParser(argparse.ArgumentParser):
+    """Require complete help and argument-error text before process exit."""
+
+    @override
+    def _print_message(self, message: str, file: object = None) -> None:
+        if message:
+            stream = sys.stderr if file is None else cast("TextIO", file)
+            _require_diagnostic(stream, message)
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _DeliveryParser(
         description="Check named guest C files against malbolge-libc-v1.",
     )
     _ = parser.add_argument("files", nargs="+", type=Path, metavar="FILE")
@@ -735,7 +775,7 @@ def validate_source(
     """
     diagnostics = analyze_source(source, clang=clang, abi=abi, libc=libc)
     for diagnostic in diagnostics:
-        _ = sys.stderr.write(diagnostic.render() + chr(10))
+        _require_diagnostic(sys.stderr, diagnostic.render() + chr(10))
     return not diagnostics
 
 
@@ -746,8 +786,8 @@ def main() -> int:
         Zero for admitted sources, one for libc rejection, or two for errors.
 
     """
-    arguments = _parse_arguments()
     try:
+        arguments = _parse_arguments()
         abi = c_abi.canonical_projection()
         libc = c_libc.canonical_projection()
         results = tuple(
@@ -771,7 +811,7 @@ def main() -> int:
             in (c_abi.CAbiValidationError, c_libc.CLibcValidationError, LibcSourceError)
             else type(error).__name__
         )
-        _ = sys.stderr.write(f"error: {detail}\n")
+        _ = _write_record(sys.stderr, f"error: {detail}\n")
         return 2
     return 0 if admitted else 1
 

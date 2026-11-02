@@ -2050,3 +2050,119 @@ def test_libc_clang_command_receipts_accept_exact_native_invocation(
         result = _run_libc_test_ast(stage)
         assert isinstance(result, str)
         assert "clang version 22.1.8" in result
+
+
+@pytest.mark.parametrize(
+    "receipt", ["short", "boolean", "overlong", "foreign-flush", "write-error"]
+)
+def test_libc_source_diagnostic_requires_complete_output(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """An undelivered source rejection is not an admissible libc scan."""
+    evidence = c_libc_source.LibcDiagnostic(
+        code="MALBOLGE-LIBC-001",
+        column=1,
+        line=1,
+        message="unavailable guest routine",
+        path=Path("source.c"),
+    )
+
+    def fake_analysis(
+        *_args: object, **_kwargs: object
+    ) -> tuple[c_libc_source.LibcDiagnostic, ...]:
+        return (evidence,)
+
+    class DiagnosticSink:
+        def write(self, message: str) -> object:
+            if receipt == "short":
+                return len(message) - 1
+            if receipt == "boolean":
+                return True
+            if receipt == "overlong":
+                return len(message) + 1
+            if receipt == "write-error":
+                raise OSError("diagnostic stream closed")
+            return len(message)
+
+        def flush(self) -> object:
+            return False if receipt == "foreign-flush" else None
+
+    monkeypatch.setattr(c_libc_source, "analyze_source", fake_analysis)
+    monkeypatch.setattr(
+        sys, "stderr", cast("TextIO", cast("object", DiagnosticSink()))
+    )
+    with pytest.raises(c_libc_source.LibcSourceError, match="output"):
+        _ = c_libc_source.validate_source(Path("source.c"))
+
+
+def test_libc_source_cli_unavailable_error_sink_keeps_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failing error channel cannot change the libc CLI rejection status."""
+
+    def reject_abi() -> None:
+        raise c_libc_source.LibcSourceError("invalid source")
+
+    class FailingSink:
+        def write(self, _message: str) -> None:
+            raise OSError("stderr unavailable")
+
+        def flush(self) -> None:
+            raise AssertionError("do not flush after write fault")
+
+    monkeypatch.setattr(c_abi, "canonical_projection", reject_abi)
+    monkeypatch.setattr(sys, "argv", ["c_libc_source", "source.c"])
+    monkeypatch.setattr(
+        sys, "stderr", cast("TextIO", cast("object", FailingSink()))
+    )
+    assert c_libc_source.main() == 2
+
+
+@pytest.mark.parametrize("receipt", ["short", "boolean", "foreign-flush"])
+def test_libc_source_help_rejects_incomplete_delivery(
+    monkeypatch: pytest.MonkeyPatch, receipt: str
+) -> None:
+    """Argparse help cannot exit zero with a forged output receipt."""
+
+    class HelpSink:
+        def write(self, message: str) -> object:
+            if receipt == "short":
+                return len(message) - 1
+            if receipt == "boolean":
+                return True
+            return len(message)
+
+        def flush(self) -> object:
+            return False if receipt == "foreign-flush" else None
+
+    monkeypatch.setattr(sys, "argv", ["c_libc_source", "--help"])
+    monkeypatch.setattr(
+        sys, "stdout", cast("TextIO", cast("object", HelpSink()))
+    )
+    assert c_libc_source.main() == 2
+
+
+def test_libc_source_help_flushes_complete_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native output completes before argparse's successful help exit."""
+    records: list[str] = []
+
+    class HelpSink:
+        def write(self, message: str) -> int:
+            records.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            records.append("flush")
+
+    monkeypatch.setattr(sys, "argv", ["c_libc_source", "--help"])
+    monkeypatch.setattr(
+        sys, "stdout", cast("TextIO", cast("object", HelpSink()))
+    )
+    with pytest.raises(SystemExit) as caught:
+        _ = c_libc_source.main()
+    assert caught.value.code == 0
+    assert records and "usage:" in records[0]
+    assert records[-1] == "flush"

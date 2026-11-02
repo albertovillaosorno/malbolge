@@ -47,6 +47,10 @@ types, in addition to native exit status and captured text. A fabricated
 receipt for another binary, target, source, or mode cannot admit a guest C
 unit, even when a process wrapper mutates its borrowed argument list. CLI
 diagnostics exclude foreign exception formatters.
+
+Source-level rejection and argparse help/error text require exact native write
+counts and a completed flush. Incomplete diagnostic delivery returns a nonzero
+CLI status.
 Clang macro-expanded library references are attributed to the physical source
 invocation, including nested macros, headers, and argument expansions; checking
 only the spelling token would silently admit forbidden or unavailable calls.
