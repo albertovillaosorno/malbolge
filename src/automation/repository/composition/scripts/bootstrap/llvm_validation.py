@@ -109,15 +109,25 @@ def _unlinked_path(path: Path) -> bool:
 
 def _physical_file(path: Path) -> bool:
     try:
-        return _unlinked_path(path) and S_ISREG(path.lstat().st_mode)
-    except OSError, ValueError, TypeError, RuntimeError:
+        if not _unlinked_path(path):
+            return False
+        status = path.lstat()
+        return type(cast("object", status)) is os.stat_result and S_ISREG(
+            status.st_mode
+        )
+    except (OSError, ValueError, TypeError, RuntimeError):
         return False
 
 
 def _physical_directory(path: Path) -> bool:
     try:
-        return _unlinked_path(path) and S_ISDIR(path.lstat().st_mode)
-    except OSError, ValueError, TypeError, RuntimeError:
+        if not _unlinked_path(path):
+            return False
+        status = path.lstat()
+        return type(cast("object", status)) is os.stat_result and S_ISDIR(
+            status.st_mode
+        )
+    except (OSError, ValueError, TypeError, RuntimeError):
         return False
 
 

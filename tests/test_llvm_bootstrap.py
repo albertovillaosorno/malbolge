@@ -468,6 +468,34 @@ def test_linux_import_rejects_incomplete_aliased_tool(tmp_path: Path) -> None:
     assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
 
 
+@pytest.mark.parametrize("kind", ("missing-bin", "missing-resource"))
+def test_llvm_inspection_rejects_forged_runtime_lstat(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Native-looking mode values on a proxy cannot replace runtime files."""
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
+    target = root / "bin/clang" if kind == "missing-bin" else root / "lib/clang/22"
+    mode = target.lstat().st_mode
+    if kind == "missing-bin":
+        target.unlink()
+    else:
+        shutil.rmtree(target)
+
+    @final
+    class ForgedStatus:
+        st_mode = mode
+
+    original = Path.lstat
+
+    def forged_lstat(path: Path) -> object:
+        return ForgedStatus() if path == target else original(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    assert not llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+
+
 def test_llvm_inspection_rejects_wrong_marker_content(tmp_path: Path) -> None:
     """Wrong release content cannot become ready from marker existence."""
     destination = llvm_validation.import_linux_llvm(
