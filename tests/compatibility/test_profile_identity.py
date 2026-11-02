@@ -35,12 +35,9 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 import sys
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import final
-from typing import override
+from pathlib import Path
+from typing import TYPE_CHECKING, cast, final, override
 
 import pytest
 
@@ -283,6 +280,118 @@ def test_profile_identity_cli_native_failure_retains_diagnostic(
     monkeypatch.setattr(sys, "argv", ["profile_identity", str(EXAMPLE_PATH)])
     assert profile_identity.main() == 1
     assert "external profile fingerprint mismatch" in capsys.readouterr().err
+
+
+def test_profile_identity_cli_rejects_short_success_write(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A partial fingerprint record must never receive a success status."""
+
+    @final
+    class ShortWriter:
+        def write(self, text: str) -> int:
+            return len(text) - 1
+
+        def flush(self) -> None:
+            raise AssertionError("flush after short write")
+
+    monkeypatch.setattr(sys, "argv", ["profile_identity", str(EXAMPLE_PATH)])
+    monkeypatch.setattr(sys, "stdout", ShortWriter())
+    assert profile_identity.main() == 1
+    assert "output" in capsys.readouterr().err
+
+
+@final
+class _ForeignWriteCount(int):
+    """An untrusted write-count subclass with unsafe comparison behavior."""
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign write-count equality executed")
+
+
+@pytest.mark.parametrize("invocation", ("fingerprint", "help"))
+@pytest.mark.parametrize(
+    "receipt",
+    ("short", "excess", "bool", "subclass", "none", "write-error", "flush-error", "flush-receipt"),
+)
+def test_profile_identity_cli_requires_exact_output_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    invocation: str,
+    receipt: str,
+) -> None:
+    """Incomplete help/fingerprint output cannot be reported as success."""
+    flushes: list[bool] = []
+
+    @final
+    class HostileWriter:
+        def write(self, text: str) -> int:
+            if receipt == "write-error":
+                raise OSError("injected output write failure")
+            values: dict[str, object] = {
+                "short": len(text) - 1,
+                "excess": len(text) + 1,
+                "bool": True,
+                "subclass": _ForeignWriteCount(len(text)),
+                "none": None,
+            }
+            return cast("int", values.get(receipt, len(text)))
+
+        def flush(self) -> None:
+            flushes.append(True)
+            if receipt == "flush-error":
+                raise ValueError("injected output flush failure")
+            if receipt == "flush-receipt":
+                return cast("None", True)
+            return None
+
+    argv = ["profile_identity", "--help" if invocation == "help" else str(EXAMPLE_PATH)]
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(sys, "stdout", HostileWriter())
+    assert profile_identity.main() == 1
+    assert "output" in capsys.readouterr().err
+    assert bool(flushes) == (receipt in ("flush-error", "flush-receipt"))
+
+
+@pytest.mark.parametrize("receipt", ("short", "write-error", "flush-error", "bad-flush"))
+def test_profile_identity_cli_diagnostic_delivery_cannot_flip_failed_status(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """A failed command stays failed when stderr delivery is unreliable."""
+
+    @final
+    class BrokenStderr:
+        def write(self, text: str) -> int:
+            if receipt == "write-error":
+                raise OSError("unavailable stderr")
+            return len(text) - 1 if receipt == "short" else len(text)
+
+        def flush(self) -> None:
+            if receipt == "flush-error":
+                raise RuntimeError("unavailable stderr flush")
+            if receipt == "bad-flush":
+                return cast("None", True)
+            return None
+
+    monkeypatch.setattr(sys, "argv", ["profile_identity"])
+    monkeypatch.setattr(sys, "stderr", BrokenStderr())
+    assert profile_identity.main() == 1
+
+
+def test_profile_identity_cli_native_output_has_exact_fingerprint(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Normal output reports the admitted external identity exactly."""
+    monkeypatch.setattr(sys, "argv", ["profile_identity", str(EXAMPLE_PATH)])
+    assert profile_identity.main() == 0
+    result = capsys.readouterr()
+    assert not result.err
+    assert result.out == f"profile={CUSTOM_PROFILE} fingerprint={EXAMPLE_FINGERPRINT}\n"
 
 
 @final

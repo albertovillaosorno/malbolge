@@ -34,8 +34,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import sys
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import TextIO
 
 from scripts.validate import target_profile
 
@@ -67,6 +71,38 @@ def _safe_error_detail(error: Exception) -> str:
     return type(error).__name__
 
 
+def _write_record(stream: TextIO, message: str) -> bool:
+    """Require a complete native text write and completed flush.
+
+    A partial record must not certify a successful identity or help response.
+    Diagnostic failures remain failures even if stderr is unavailable.
+
+    Returns:
+        Whether the complete record was emitted.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+def _write_stdout(message: str) -> None:
+    if not _write_record(sys.stdout, message):
+        raise ProfileIdentityCliError("profile identity output write or flush failed")
+
+
 def _arguments(arguments: list[str]) -> tuple[Path, str | None]:
     if type(arguments) is not list or any(
         type(argument) is not str for argument in arguments
@@ -75,7 +111,7 @@ def _arguments(arguments: list[str]) -> tuple[Path, str | None]:
         raise ProfileIdentityCliError(message)
     if arguments in (["-h"], ["--help"]):
         usage = f"usage: {MODULE_COMMAND} PROFILE.json [EXPECTED-FINGERPRINT]\n"
-        _ = sys.stdout.write(usage)
+        _write_stdout(usage)
         raise SystemExit(0)
     argument_count = len(arguments)
     if not ARGUMENT_COUNT_MIN <= argument_count <= ARGUMENT_COUNT_MAX:
@@ -119,14 +155,14 @@ def main() -> int:
         path, expected = _arguments(sys.argv[1:])
         document = target_profile.load_document(path)
         profile_id, fingerprint = _fingerprint(document, expected)
+        _write_stdout(f"profile={profile_id} fingerprint={fingerprint}\n")
     except (
         OSError,
         ProfileIdentityCliError,
         target_profile.ProfileValidationError,
     ) as error:
-        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
+        _ = _write_record(sys.stderr, f"error: {_safe_error_detail(error)}\n")
         return 1
-    _ = sys.stdout.write(f"profile={profile_id} fingerprint={fingerprint}\n")
     return 0
 
 
