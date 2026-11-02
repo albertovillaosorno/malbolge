@@ -132,6 +132,15 @@ boundary retains exact committed-path evidence; original teardown causes
 remain available for diagnostics. Eight red-first cases check both adapters
 and postpublication release/close failure paths.
 
+The mutable pointer's publication-lock wrapper now retains a rejected body
+exception even when a substituted underlying writer-lock context suppresses
+it. Four red-first cases cover direct typed and ordinary body rejections, a
+public pointer preflight falsely reported as successful, and a second context
+exit fault that must remain secondary to the original rejection. Confirmed
+postpublication teardown failures still carry committed-path evidence. This
+is a local failure-classification guard, not proof of physical OS locking or
+protection against arbitrary untrusted host callbacks.
+
 Process-shared progress writer locks now reject nonnative stat metadata on
 pre-existing lock pathname preflight, the opened lock descriptor, and both
 pathname/descriptor identity checks after lock acquisition. A foreign receipt
@@ -937,8 +946,9 @@ integer-subclass, and overflowing open receipts fail with configuration status
 without touching an unrelated host descriptor. Native descriptors still require
 the existing stable regular-file inode/size/timestamp checks; pathname and
 opened-descriptor metadata must also be exact native `os.stat_result` receipts
-before inspecting fields. An integer alone is not filesystem provenance. If binary stream ownership transfer fails, the
-runner closes the still-owned raw descriptor and preserves the original failure
+before inspecting fields. An integer alone is not filesystem provenance.
+If binary stream ownership transfer fails, the runner closes the still-owned
+raw descriptor and preserves the original failure
 over any secondary close error. This applies to both problem and checkpoint
 inputs and does not grant the resumed evidence acceptance authority.
 
@@ -1300,7 +1310,6 @@ mutable pointer or outer envelope directly:
 The output bytes are exact and binary-safe. Extraction emits nothing when the
 sidecar, referenced generation, outer digest, resume position, state codec,
 canonical encoding, or inner payload digest is invalid.
-
 
 Compiler composition now provides an explicit Fresh-versus-Progress selector
 for both implemented resumable stages. Typed IR chooses normalized frontend

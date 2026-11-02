@@ -239,6 +239,11 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   pointer publication; postcommit release/close failure retains the exact
   committed pointer path and raw cause, while a primary body error remains
   primary with only secondary cleanup notes; `BaseException` stays untouched,
+  four red-first writer-publication context cases now retain typed and ordinary
+  rejected bodies through a suppressing foreign lock `__exit__`, reject a
+  falsely successful mutable pointer preflight, and preserve primary body
+  failure identity when a later foreign lock exit fails; these checks do not
+  attest actual OS lock ownership or prevent external filesystem races,
   already typed lock-open and lock-acquire failures retain exact exception
   identity and secondary notes without redundant wrappers,
   owner-only requested POSIX permissions for newly created writer locks
