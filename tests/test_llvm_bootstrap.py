@@ -533,6 +533,102 @@ def _windows_tool_bundle(tmp_path: Path) -> Path:
     return root
 
 
+@pytest.mark.parametrize("target_kind", ("alias", "directory"))
+def test_windows_aliases_reject_masked_symlink_destinations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    """False-looking path statuses cannot route alias writes to an outside tree."""
+    root = _windows_tool_bundle(tmp_path)
+    outside = tmp_path / "unrelated-windows-aliases"
+    outside.mkdir()
+    target = root / "jig-bin"
+    if target_kind == "alias":
+        target.mkdir()
+        target = target / "clang.bin"
+        sentinel = outside / "clang.bin"
+        _ = sentinel.write_bytes(b"outside-alias-bytes")
+    else:
+        sentinel = outside / "sentinel.bin"
+        _ = sentinel.write_bytes(b"outside-directory-bytes")
+    try:
+        target.symlink_to(
+            sentinel if target_kind == "alias" else outside,
+            target_is_directory=target_kind == "directory",
+        )
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"links unavailable: {error}")
+    real_exists = Path.exists
+    real_symlink = Path.is_symlink
+    real_junction = Path.is_junction
+
+    def masked_exists(path: Path) -> bool:
+        return False if path == target else real_exists(path)
+
+    def masked_symlink(path: Path) -> object:
+        return 0 if path == target else real_symlink(path)
+
+    def masked_junction(path: Path) -> object:
+        return None if path == target else real_junction(path)
+
+    monkeypatch.setattr(Path, "exists", masked_exists)
+    monkeypatch.setattr(Path, "is_symlink", masked_symlink)
+    monkeypatch.setattr(Path, "is_junction", masked_junction)
+    with pytest.raises(llvm_validation.LlvmImportError, match="alias"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert sentinel.read_bytes() == (
+        b"outside-alias-bytes"
+        if target_kind == "alias"
+        else b"outside-directory-bytes"
+    )
+
+
+def test_windows_alias_copy_rejects_symlink_inserted_before_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cross-device fallback cannot overwrite a symlink installed mid-copy."""
+    root = _windows_tool_bundle(tmp_path)
+    alias = root / "jig-bin/clang.bin"
+    sentinel = tmp_path / "alias-sentinel"
+    _ = sentinel.write_bytes(b"external-data")
+    real_link = os.link
+
+    def racing_link(source: str, destination: str) -> None:
+        if Path(destination) == alias:
+            try:
+                alias.symlink_to(sentinel)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"symlinks unavailable: {error}")
+            raise OSError("simulated cross-device link failure")
+        real_link(source, destination)
+
+    monkeypatch.setattr(os, "link", racing_link)
+    with pytest.raises(llvm_validation.LlvmImportError, match="copy"):
+        _ = llvm_validation.write_windows_llvm_aliases(root)
+    assert sentinel.read_bytes() == b"external-data"
+    assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
+
+
+def test_windows_alias_cross_device_fallback_preserves_tool_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Exclusive fallback remains usable when ordinary host hardlinks fail."""
+    root = _windows_tool_bundle(tmp_path)
+
+    def no_hardlinks(_source: str, _destination: str) -> None:
+        raise OSError("cross-device import")
+
+    monkeypatch.setattr(os, "link", no_hardlinks)
+    aliases = llvm_validation.write_windows_llvm_aliases(root)
+    assert aliases[0].read_bytes() == CLANG_BYTES
+    assert aliases[1].read_bytes() == TIDY_BYTES
+    assert aliases[2].read_bytes() == FORMAT_BYTES
+    assert llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+
+
 def test_windows_aliases_reject_existing_drift(tmp_path: Path) -> None:
     """An existing neutral Clang alias cannot overwrite pinned PE identity."""
     root = _windows_tool_bundle(tmp_path)

@@ -206,10 +206,28 @@ def _runtime_ready(root: Path, platform_id: str) -> bool:
 
 
 def _link_or_copy(source: str, destination: str) -> str:
+    """Import a new file without overwriting a raced destination link."""
+    if not _physical_directory(Path(destination).parent):
+        _fail("LLVM import destination parent must be physical")
     try:
         os.link(source, destination)
     except OSError:
-        _ = shutil.copy2(source, destination)
+        created = False
+        try:
+            with Path(destination).open("xb") as target:
+                created = True
+                with Path(source).open("rb") as original:
+                    shutil.copyfileobj(original, target)
+            shutil.copystat(source, destination)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            if created:
+                try:
+                    Path(destination).unlink(missing_ok=True)
+                except (OSError, ValueError, TypeError, RuntimeError):
+                    pass
+            raise LlvmImportError(
+                f"LLVM import fallback copy failed: {type(error).__name__}"
+            ) from error
     return destination
 
 
@@ -439,11 +457,22 @@ def _require_matching_windows_alias(source: Path, alias: Path) -> None:
         _fail(f"Windows LLVM alias mismatch: {alias}")
 
 
-def _admit_windows_alias(source: Path, alias: Path) -> None:
+def _admit_windows_alias(source: Path, alias: Path) -> bool:
+    """Require a physical matching alias, or prove its leaf truly absent."""
     if not _physical_file(source):
         _fail(f"Windows LLVM source tool must be physical: {source}")
-    if alias.exists() or alias.is_symlink() or alias.is_junction():
-        _require_matching_windows_alias(source, alias)
+    try:
+        status = alias.lstat()
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"Windows LLVM alias status failed: {type(error).__name__}"
+        ) from error
+    if type(status) is not os.stat_result:
+        _fail("Windows LLVM alias status must be native")
+    _require_matching_windows_alias(source, alias)
+    return True
 
 
 def _windows_alias_directory(root: Path) -> Path:
@@ -456,12 +485,15 @@ def _windows_alias_directory(root: Path) -> Path:
     if not _physical_directory(root):
         _fail("Windows LLVM bundle root must be physical")
     alias_root = root / "jig-bin"
-    present = (
-        alias_root.exists()
-        or alias_root.is_symlink()
-        or alias_root.is_junction()
-    )
-    if present and not _physical_directory(alias_root):
+    try:
+        status = alias_root.lstat()
+    except FileNotFoundError:
+        return alias_root
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmImportError(
+            f"Windows LLVM alias directory status failed: {type(error).__name__}"
+        ) from error
+    if type(status) is not os.stat_result or not _physical_directory(alias_root):
         _fail("Windows LLVM alias directory must not redirect")
     return alias_root
 
@@ -483,11 +515,12 @@ def write_windows_llvm_aliases(root: Path) -> tuple[Path, ...]:
     )
     # Check existing markers and aliases before publishing any new aliases.
     _ = _existing_import_marker(root, WINDOWS_PLATFORM)
-    for source, alias in pairs:
-        _admit_windows_alias(source, alias)
+    existing = tuple(_admit_windows_alias(source, alias) for source, alias in pairs)
     alias_root.mkdir(parents=True, exist_ok=True)
-    for source, alias in pairs:
-        if not alias.exists():
+    if not _physical_directory(alias_root):
+        _fail("Windows LLVM alias directory must not redirect")
+    for (source, alias), present in zip(pairs, existing, strict=True):
+        if not present:
             _copy_file(source, alias)
     _write_import_marker(root, WINDOWS_PLATFORM)
     return tuple(alias for _, alias in pairs)
