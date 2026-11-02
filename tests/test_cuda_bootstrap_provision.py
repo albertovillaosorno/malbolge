@@ -682,11 +682,11 @@ def test_cuda_never_publishes_swapped_staging_toolkit(
     native_writer = cuda_validation._write_staged_file_exclusively
     inserted = False
 
-    def replace_after_marker(path: Path, content: bytes, label: str) -> None:
+    def replace_after_marker(path: Path, content: bytes, label: str) -> tuple[int, int]:
         nonlocal inserted
-        native_writer(path, content, label)
+        receipt = native_writer(path, content, label)
         if label != "CUDA completion marker":
-            return
+            return receipt
         staging.rename(parked)
         foreign_toolkit = staging / "toolkit"
         foreign_toolkit.mkdir(parents=True)
@@ -695,6 +695,7 @@ def test_cuda_never_publishes_swapped_staging_toolkit(
             content
         )
         inserted = True
+        return receipt
 
     with monkeypatch.context() as isolated:
         isolated.setattr(
@@ -726,11 +727,11 @@ def test_cuda_never_publishes_swapped_toolkit_leaf(
     native_writer = cuda_validation._write_staged_file_exclusively
     injected = False
 
-    def replace_after_marker(path: Path, content: bytes, label: str) -> None:
+    def replace_after_marker(path: Path, content: bytes, label: str) -> tuple[int, int]:
         nonlocal injected
-        native_writer(path, content, label)
+        receipt = native_writer(path, content, label)
         if label != "CUDA completion marker":
-            return
+            return receipt
         staged_toolkit.rename(parked)
         staged_toolkit.mkdir()
         _ = (staged_toolkit / "forged.so").write_bytes(b"not a verified library")
@@ -738,6 +739,7 @@ def test_cuda_never_publishes_swapped_toolkit_leaf(
             content
         )
         injected = True
+        return receipt
 
     with monkeypatch.context() as isolated:
         isolated.setattr(
@@ -764,13 +766,14 @@ def test_cuda_never_publishes_modified_completion_marker(
     original_writer = cuda_validation._write_staged_file_exclusively
     tampered = False
 
-    def mutate_after_write(path: Path, content: bytes, label: str) -> None:
+    def mutate_after_write(path: Path, content: bytes, label: str) -> tuple[int, int]:
         nonlocal tampered
-        original_writer(path, content, label)
+        receipt = original_writer(path, content, label)
         if label == "CUDA completion marker":
             with path.open("r+b") as stream:
                 _ = stream.write(b"!" + content[1:])
             tampered = True
+        return receipt
 
     with monkeypatch.context() as isolated:
         isolated.setattr(
@@ -795,9 +798,9 @@ def test_cuda_never_publishes_hardlinked_completion_marker(
     original_writer = cuda_validation._write_staged_file_exclusively
     linked = False
 
-    def link_after_write(path: Path, content: bytes, label: str) -> None:
+    def link_after_write(path: Path, content: bytes, label: str) -> tuple[int, int]:
         nonlocal linked
-        original_writer(path, content, label)
+        receipt = original_writer(path, content, label)
         if label == "CUDA completion marker":
             _ = external.write_bytes(content)
             path.unlink()
@@ -806,6 +809,7 @@ def test_cuda_never_publishes_hardlinked_completion_marker(
             except (OSError, NotImplementedError) as error:
                 pytest.skip(f"hard links unavailable: {error}")
             linked = True
+        return receipt
 
     with monkeypatch.context() as isolated:
         isolated.setattr(cuda_validation, "_write_staged_file_exclusively", link_after_write)
@@ -829,12 +833,13 @@ def test_cuda_never_replaces_late_occupied_toolkit_destination(
     native_writer = cuda_validation._write_staged_file_exclusively
     occupied = False
 
-    def occupy_destination(path: Path, data: bytes, label: str) -> None:
+    def occupy_destination(path: Path, data: bytes, label: str) -> tuple[int, int]:
         nonlocal occupied
-        native_writer(path, data, label)
+        receipt = native_writer(path, data, label)
         if label == "CUDA completion marker":
             destination.mkdir(parents=True)
             occupied = True
+        return receipt
 
     with monkeypatch.context() as isolated:
         isolated.setattr(
@@ -848,6 +853,35 @@ def test_cuda_never_replaces_late_occupied_toolkit_destination(
     assert occupied
     assert destination.is_dir()
     assert not list(destination.iterdir())
+
+
+def test_cuda_never_publishes_same_content_marker_inode_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An identical marker in a new inode is not the owned staging write."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    original_writer = cuda_validation._write_staged_file_exclusively
+    substituted = False
+
+    def replace_marker(path: Path, content: bytes, label: str) -> tuple[int, int]:
+        nonlocal substituted
+        receipt = original_writer(path, content, label)
+        if label == "CUDA completion marker":
+            path.unlink()
+            _ = path.write_bytes(content)
+            substituted = True
+        return receipt
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_write_staged_file_exclusively", replace_marker)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="marker"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert substituted
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
 
 
 def test_provision_is_idempotent_after_exact_marker(tmp_path: Path) -> None:

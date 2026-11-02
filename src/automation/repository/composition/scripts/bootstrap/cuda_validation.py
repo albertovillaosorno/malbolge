@@ -766,8 +766,8 @@ def _completion_marker_identity(path: Path) -> tuple[int, ...]:
 
 def _write_staged_file_exclusively(
     path: Path, payload: bytes, label: str
-) -> None:
-    """Create and verify one staged regular file without following links."""
+) -> tuple[int, int]:
+    """Create an owned staged file and return its native inode identity."""
     _require_physical_directories(path.parent, "staging")
     flags = (
         os.O_WRONLY
@@ -827,6 +827,9 @@ def _write_staged_file_exclusively(
                     and observed.st_nlink == 1
                 ):
                     path.unlink()
+    if identity is None:
+        _fail(f"{label} lacks owned staging identity")
+    return identity
 
 
 def provision_cuda_manifest(
@@ -875,12 +878,20 @@ def provision_cuda_manifest(
         if len(marker_content) > _MAX_MARKER_BYTES:
             _fail("CUDA completion marker exceeds byte limit")
         _require_new_completion_marker(marker)
-        _write_staged_file_exclusively(
+        marker_written_identity = _write_staged_file_exclusively(
             marker, marker_content, "CUDA completion marker"
         )
+        if (
+            type(marker_written_identity) is not tuple
+            or len(marker_written_identity) != 2
+            or any(type(value) is not int for value in marker_written_identity)
+        ):
+            _fail("CUDA completion marker requires native write receipt")
         _require_owned_staging(staging, staging_identity)
         _require_owned_staging(staged_toolkit, toolkit_identity)
         marker_identity = _completion_marker_identity(marker)
+        if marker_identity[:2] != marker_written_identity:
+            _fail("CUDA completion marker changed inode after staging write")
         if (
             _read_manifest_source(
                 marker, "CUDA completion marker", max_bytes=_MAX_MARKER_BYTES
