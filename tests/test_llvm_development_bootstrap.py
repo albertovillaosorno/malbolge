@@ -184,6 +184,106 @@ def test_rpm_member_validation_rejects_parent_and_absolute_paths() -> None:
             llvm_development_validation.validate_rpm_members((member,))
 
 
+@pytest.mark.parametrize(
+    "member",
+    [
+        "usr/include/name\t.h",
+        "usr/include/name\x00.h",
+        "usr/include/name\u202e.h",
+        "usr/include/name\u2028.h",
+    ],
+)
+def test_rpm_member_validation_rejects_hidden_path_characters(member: str) -> None:
+    """An RPM CPIO name cannot hide controls or display-order overrides."""
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="non-printable",
+    ):
+        llvm_development_validation.validate_rpm_members((member,))
+
+
+@pytest.mark.parametrize(
+    "listing",
+    [
+        b"usr/include/AST.h\r\n",
+        "usr/include/foo\u2028bar.h\n".encode(),
+    ],
+)
+def test_cpio_listing_rejects_hidden_member_separators(
+    monkeypatch: pytest.MonkeyPatch,
+    listing: bytes,
+) -> None:
+    """Only LF is an RPM listing delimiter; other line controls are filename data."""
+
+    def synthetic_list(_argv: list[str], **_kwargs: object) -> bytes:
+        return listing
+
+    monkeypatch.setattr(
+        llvm_development_validation, "_command_bytes", synthetic_list
+    )
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="non-printable",
+    ):
+        _ = llvm_development_validation._cpio_members(b"synthetic CPIO")
+
+
+@pytest.mark.parametrize(
+    "listing, expected",
+    [
+        (
+            b"usr/include/one.h\nusr/include/two.h\n",
+            ("usr/include/one.h", "usr/include/two.h"),
+        ),
+        (b"./usr/include/single.h", ("./usr/include/single.h",)),
+    ],
+)
+def test_cpio_listing_accepts_plain_lf_member_names(
+    monkeypatch: pytest.MonkeyPatch,
+    listing: bytes,
+    expected: tuple[str, ...],
+) -> None:
+    """Ordinary newline-delimited CPIO listings remain usable."""
+
+    def synthetic_list(_argv: list[str], **_kwargs: object) -> bytes:
+        return listing
+
+    monkeypatch.setattr(
+        llvm_development_validation, "_command_bytes", synthetic_list
+    )
+    assert llvm_development_validation._cpio_members(b"payload") == expected
+
+
+def test_rpm_control_character_listing_rejects_before_extraction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Untrusted member control characters never reach the CPIO extractor."""
+    identity = _identity(tmp_path)
+
+    def synthetic_list(argv: list[str], **_kwargs: object) -> bytes:
+        assert argv == ["cpio", "-it", "--quiet"]
+        return b"usr/include/clang/AST/AST.h\r\n"
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_payload",
+            _synthetic_hardlinked_payload,
+        )
+        isolated.setattr(
+            llvm_development_validation, "_command_bytes", synthetic_list
+        )
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="non-printable",
+        ):
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+    assert not identity.development_root.exists()
+
+
 def _is_staged_file_open(
     candidate: object, target: Path, dir_fd: int | None
 ) -> bool:

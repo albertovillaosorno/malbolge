@@ -138,6 +138,8 @@ def validate_rpm_members(members: tuple[str, ...]) -> None:
     for member in members:
         if not member:
             _fail("LLVM RPM payload contains an empty CPIO member")
+        if not member.isprintable():
+            _fail("LLVM RPM CPIO member contains non-printable characters")
         _ = _safe_member_path(member)
 
 
@@ -284,7 +286,8 @@ def _cpio_payload(rpm: Path, expected: bytes) -> bytes:
 def _cpio_members(payload: bytes) -> tuple[str, ...]:
     listing = _command_bytes(["cpio", "-it", "--quiet"], stdin=payload)
     try:
-        members = tuple(listing.decode("utf-8").splitlines())
+        names = listing.decode("utf-8").removesuffix("\n")
+        members = tuple(names.split("\n")) if names else ()
     except UnicodeDecodeError as error:
         _fail(f"LLVM RPM CPIO member names are not UTF-8: {error}")
     validate_rpm_members(members)
