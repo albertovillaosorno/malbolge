@@ -3795,6 +3795,47 @@ def test_cuda_overlay_copy_does_not_write_into_swapped_nested_root(
     assert not (foreign_root / "lib64").exists()
 
 
+@pytest.mark.skipif(
+    os.name != "posix",  # ruff: ignore[magic-value-comparison]
+    reason="requires POSIX directory descriptors",
+)
+def test_cuda_overlay_rejects_forged_parent_enumeration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged listing must not copy the overlay source's parent."""
+    source = tmp_path / "incoming" / "package"
+    source.mkdir(parents=True)
+    _ = (source.parent / "outside.txt").write_bytes(b"outside the package")
+    destination = tmp_path / "outgoing" / "toolkit"
+    destination.mkdir(parents=True)
+    status = source.stat()
+    source_identity = (status.st_dev, status.st_ino)
+    native_iterdir = Path.iterdir
+    forged = False
+
+    def forge_parent(path: Path) -> object:
+        nonlocal forged
+        if path == source:
+            if not forged:
+                forged = True
+                return iter((source / "..",))
+            return iter(())
+        return native_iterdir(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "iterdir", forge_parent)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="enumeration"
+        ):
+            # This internal boundary is where untrusted receipts become paths.
+            cuda_validation._copy_cuda_overlay(  # ruff: ignore[private-member-access]
+                source, destination, source_identity
+            )
+    assert forged
+    assert not (destination.parent / "outside.txt").exists()
+    assert not (destination / "outside.txt").exists()
+
+
 def test_cuda_overlay_copy_allows_identical_existing_verified_members(
     tmp_path: Path,
 ) -> None:
@@ -4275,7 +4316,9 @@ def test_cuda_rejects_excessive_combined_archive_expansion(
 
 
 @pytest.mark.parametrize("archive_format", [_TAR_FORMAT, _ZIP_FORMAT])
-@pytest.mark.parametrize("failure_type", [UnprintableHostRuntimeError, ValueError])
+@pytest.mark.parametrize(
+    "failure_type", [UnprintableHostRuntimeError, ValueError, EOFError]
+)
 def test_cuda_archive_member_open_faults_remain_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

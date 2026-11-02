@@ -680,7 +680,14 @@ def _safe_tar_extract(data: bytes, staging: Path) -> Path:
         raise
     except KeyError as error:
         raise CudaProvisionError("cannot resolve CUDA tar archive hard link") from error
-    except (OSError, tarfile.TarError, TypeError, ValueError, RuntimeError) as error:
+    except (
+        OSError,
+        EOFError,
+        tarfile.TarError,
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ) as error:
         raise CudaProvisionError(
             f"cannot extract CUDA tar archive: {type(error).__name__}"
         ) from error
@@ -741,7 +748,14 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
             return _extract_zip_archive(archive, staging)
     except CudaProvisionError:
         raise
-    except (OSError, zipfile.BadZipFile, TypeError, ValueError, RuntimeError) as error:
+    except (
+        OSError,
+        EOFError,
+        zipfile.BadZipFile,
+        TypeError,
+        ValueError,
+        RuntimeError,
+    ) as error:
         raise CudaProvisionError(
             f"cannot extract CUDA zip archive: {type(error).__name__}"
         ) from error
@@ -969,6 +983,17 @@ def _copy_cuda_overlay(
             members = tuple(src.iterdir())
         except (OSError, TypeError, ValueError, RuntimeError) as error:
             raise CudaProvisionError("CUDA staged overlay traversal failed") from error
+        # The listing must contain only direct, native children of the pinned
+        # source. A forged `src / ".."` entry otherwise copies its parent into
+        # `dst / ".."`, escaping both the admitted package and overlay root.
+        if any(
+            type(member) is not type(src)
+            or member.name in {".", ".."}
+            or member.parent != src
+            or member != src / member.name
+            for member in members
+        ):
+            _fail("CUDA staged overlay enumeration escaped source directory")
         # Path iteration may run through an exchanged physical directory.
         # Its names are safe only if the pinned source is still named here.
         _ = _require_staging_parent_unchanged(src, src_descriptor)
