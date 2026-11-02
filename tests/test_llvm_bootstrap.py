@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from pathlib import Path
 from typing import Self, cast, final, override
@@ -303,9 +304,7 @@ def test_llvm_inspection_host_status_faults_are_not_ready(
 ) -> None:
     """Bad host status adapters must not turn readiness into a traceback."""
     operation, fault_type = failure
-    root = llvm_validation.import_linux_llvm(
-        tmp_path, _host_observation(tmp_path)
-    )
+    root = llvm_validation.import_linux_llvm(tmp_path, _host_observation(tmp_path))
     target = {
         "marker": root / llvm_validation.LLVM_IMPORT_MARKER,
         "runtime": root / "jig-bin/clang.bin",
@@ -398,7 +397,9 @@ def test_linux_import_preserves_physical_nested_resource_files(
     nested.mkdir(parents=True)
     _ = (nested / "stdint.h").write_bytes(b"nested-header")
     root = llvm_validation.import_linux_llvm(tmp_path, observation)
-    assert (root / "lib/clang/22/include/bits/stdint.h").read_bytes() == b"nested-header"
+    assert (
+        root / "lib/clang/22/include/bits/stdint.h"
+    ).read_bytes() == b"nested-header"
 
 
 class _ResourceTraversalError(OSError):
@@ -424,7 +425,9 @@ def test_linux_import_types_resource_traversal_failure(
         return original(path, pattern)
 
     monkeypatch.setattr(Path, "rglob", broken_resource_traversal)
-    with pytest.raises(llvm_validation.LlvmImportError, match="resource traversal") as raised:
+    with pytest.raises(
+        llvm_validation.LlvmImportError, match="resource traversal"
+    ) as raised:
         _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert raised.value.__cause__ is error
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
@@ -659,9 +662,7 @@ def test_windows_aliases_reject_masked_symlink_destinations(
     with pytest.raises(llvm_validation.LlvmImportError, match="alias"):
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert sentinel.read_bytes() == (
-        b"outside-alias-bytes"
-        if target_kind == "alias"
-        else b"outside-directory-bytes"
+        b"outside-alias-bytes" if target_kind == "alias" else b"outside-directory-bytes"
     )
 
 
@@ -716,9 +717,7 @@ def test_windows_aliases_reject_existing_drift(tmp_path: Path) -> None:
     alias = root / "jig-bin/clang.bin"
     alias.parent.mkdir()
     _ = alias.write_bytes(FORGED_ALIAS_BYTES)
-    with pytest.raises(
-        llvm_validation.LlvmImportError, match=r"alias|mismatch"
-    ):
+    with pytest.raises(llvm_validation.LlvmImportError, match=r"alias|mismatch"):
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
     assert alias.read_bytes() == FORGED_ALIAS_BYTES
@@ -733,9 +732,7 @@ def test_windows_aliases_reject_linked_existing_alias(tmp_path: Path) -> None:
         _ = alias.symlink_to(root / "bin/clang.exe")
     except OSError as error:
         pytest.skip(f"symlinks unavailable: {error}")
-    with pytest.raises(
-        llvm_validation.LlvmImportError, match=r"alias|redirect"
-    ):
+    with pytest.raises(llvm_validation.LlvmImportError, match=r"alias|redirect"):
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
 
@@ -781,7 +778,7 @@ def test_windows_aliases_reject_preexisting_invalid_marker_before_writing(
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert sentinel.read_bytes() == b"unrelated-sentinel"
     assert not (root / "jig-bin").exists()
-    assert (marker.is_symlink() if kind == "symlink" else marker.exists())
+    assert marker.is_symlink() if kind == "symlink" else marker.exists()
 
 
 def test_windows_aliases_reject_exact_hardlinked_marker(tmp_path: Path) -> None:
@@ -873,7 +870,9 @@ def test_llvm_marker_writer_closes_descriptor_after_host_failure(
         raise error
 
     monkeypatch.setattr(os, "write", faulty_write)
-    with pytest.raises(llvm_validation.LlvmImportError, match="marker write failed") as raised:
+    with pytest.raises(
+        llvm_validation.LlvmImportError, match="marker write failed"
+    ) as raised:
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert raised.value.__cause__ is error
     assert len(observed) == 1
@@ -898,9 +897,7 @@ def test_linux_import_rejects_linked_resource_member(tmp_path: Path) -> None:
         _ = alias.symlink_to(observation.clang)
     except OSError as error:
         pytest.skip(f"symlinks unavailable: {error}")
-    with pytest.raises(
-        llvm_validation.LlvmImportError, match=r"resource|redirect"
-    ):
+    with pytest.raises(llvm_validation.LlvmImportError, match=r"resource|redirect"):
         _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
@@ -915,9 +912,7 @@ def test_linux_import_rejects_linked_resource_directory(tmp_path: Path) -> None:
         _ = resource.symlink_to(real, target_is_directory=True)
     except OSError as error:
         pytest.skip(f"symlinks unavailable: {error}")
-    with pytest.raises(
-        llvm_validation.LlvmImportError, match=r"resource|redirect"
-    ):
+    with pytest.raises(llvm_validation.LlvmImportError, match=r"resource|redirect"):
         _ = llvm_validation.import_linux_llvm(tmp_path, observation)
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
@@ -947,9 +942,7 @@ def test_windows_aliases_reject_linked_alias_directory(tmp_path: Path) -> None:
         _ = linked.symlink_to(outside, target_is_directory=True)
     except OSError as error:
         pytest.skip(f"symlinks unavailable: {error}")
-    with pytest.raises(
-        llvm_validation.LlvmImportError, match="alias directory"
-    ):
+    with pytest.raises(llvm_validation.LlvmImportError, match="alias directory"):
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert list(outside.iterdir()) == []
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
@@ -1058,6 +1051,187 @@ def test_windows_aliases_reject_incomplete_marker_acknowledgement(
         _ = llvm_validation.write_windows_llvm_aliases(root)
     assert not (root / llvm_validation.LLVM_IMPORT_MARKER).exists()
     assert not llvm_validation.inspect_llvm(tmp_path, WINDOWS_PLATFORM).ready
+
+
+@pytest.mark.parametrize(
+    "kind", ("bytes", "subclass", "foreign", "os-error", "value-error")
+)
+def test_llvm_host_which_rejects_foreign_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Optional host discovery must require a native path and typed failures."""
+
+    class ForeignPath:
+        def __fspath__(self) -> str:
+            raise AssertionError("foreign host path adapter invoked")
+
+    class ForeignString(str):
+        pass
+
+    class ForeignHostError(OSError):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign host error formatter invoked")
+
+    host_tool = tmp_path / "clang"
+    _ = host_tool.write_bytes(CLANG_BYTES)
+    outcomes: dict[str, object] = {
+        "bytes": str(host_tool).encode(),
+        "subclass": ForeignString(str(host_tool)),
+        "foreign": ForeignPath(),
+        "os-error": ForeignHostError("missing host PATH"),
+        "value-error": ValueError("host path failure"),
+    }
+
+    def fake_which(_name: str) -> object:
+        result = outcomes[kind]
+        if isinstance(result, Exception):
+            raise result
+        return result
+
+    monkeypatch.setattr(shutil, "which", fake_which)
+    assert llvm_validation._observed_tool("clang") is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_llvm_host_which_accepts_native_tool_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A real host path remains available through normal discovery."""
+    tool = tmp_path / "clang"
+    _ = tool.write_bytes(CLANG_BYTES)
+
+    def native_which(_name: str) -> str:
+        return str(tool)
+
+    monkeypatch.setattr(shutil, "which", native_which)
+    assert llvm_validation._observed_tool("clang") == tool  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("kind", ("missing", "forged-is-file", "resolve-error"))
+def test_llvm_ldd_does_not_admit_unphysical_library(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """A soname line alone cannot establish physical library existence."""
+    library = tmp_path / "libLLVM.so.22.1"
+    if kind == "resolve-error":
+        _ = library.write_bytes(LLVM_BYTES)
+
+    def fake_capture(_command: list[str]) -> str:
+        return f"libLLVM.so.22.1 => {library} (0x1234)"
+
+    monkeypatch.setattr(llvm_validation, "_capture", fake_capture)
+    original_is_file = Path.is_file
+    original_resolve = Path.resolve
+
+    def forged_is_file(path: Path) -> object:
+        return True if path == library else original_is_file(path)
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == library:
+            raise OSError("host resolve failed")
+        return original_resolve(path, strict=strict)
+
+    if kind == "forged-is-file":
+        monkeypatch.setattr(Path, "is_file", forged_is_file)
+    elif kind == "resolve-error":
+        monkeypatch.setattr(Path, "resolve", fail_resolve)
+    assert (
+        llvm_validation._ldd_library(  # pyright: ignore[reportPrivateUsage]
+            tmp_path / "clang", "libLLVM.so.22.1"
+        )
+        is None
+    )
+
+
+def test_llvm_ldd_accepts_physical_library(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Actual physical pinned library resolves through native ldd output."""
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+
+    def fake_capture(_command: list[str]) -> str:
+        return f"libLLVM.so.22.1 => {library} (0x1234)"
+
+    monkeypatch.setattr(llvm_validation, "_capture", fake_capture)
+    assert (
+        llvm_validation._ldd_library(  # pyright: ignore[reportPrivateUsage]
+            tmp_path / "clang", "libLLVM.so.22.1"
+        )
+        == library
+    )
+
+
+@pytest.mark.parametrize("kind", ("masked-missing", "resolve-error"))
+def test_llvm_host_resource_discovery_rejects_foreign_directory_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Clang's reported resource directory requires native physical evidence."""
+    resource = tmp_path / "missing-resources"
+    if kind == "resolve-error":
+        resource.mkdir()
+    clang = tmp_path / "clang"
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+
+    def fake_capture(_arguments: list[str]) -> str:
+        return str(resource)
+
+    def fake_library(_executable: Path, _soname: str) -> Path:
+        return library
+
+    monkeypatch.setattr(llvm_validation, "_capture", fake_capture)
+    monkeypatch.setattr(llvm_validation, "_ldd_library", fake_library)
+    original_is_dir = Path.is_dir
+    original_resolve = Path.resolve
+
+    def masked_directory(path: Path) -> bool:
+        return path == resource or original_is_dir(path)
+
+    def failing_resolution(path: Path, *, strict: bool = False) -> Path:
+        if path == resource:
+            raise RuntimeError("resource path resolution failed")
+        return original_resolve(path, strict=strict)
+
+    if kind == "masked-missing":
+        monkeypatch.setattr(Path, "is_dir", masked_directory)
+    else:
+        monkeypatch.setattr(Path, "resolve", failing_resolution)
+    assert llvm_validation._linux_runtime_paths(clang) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_llvm_host_resource_discovery_accepts_native_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A genuine resource tree stays discoverable for exact host LLVM."""
+    resource = tmp_path / "resources"
+    resource.mkdir()
+    clang = tmp_path / "clang"
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+
+    def fake_capture(_arguments: list[str]) -> str:
+        return str(resource)
+
+    def fake_library(_executable: Path, _soname: str) -> Path:
+        return library
+
+    monkeypatch.setattr(llvm_validation, "_capture", fake_capture)
+    monkeypatch.setattr(llvm_validation, "_ldd_library", fake_library)
+    assert llvm_validation._linux_runtime_paths(clang) == (  # pyright: ignore[reportPrivateUsage]
+        resource,
+        library,
+        library,
+    )
 
 
 @pytest.mark.parametrize(

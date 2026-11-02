@@ -207,8 +207,7 @@ def _runtime_ready(root: Path, platform_id: str) -> bool:
     aliases = tuple(root / "jig-bin" / f"{tool}.bin" for tool in _TOOL_NAMES)
     physical_files = (*aliases, *_runtime_files(root, platform_id))
     return all(_physical_file(path) for path in physical_files) and (
-        platform_id != LINUX_PLATFORM
-        or _physical_directory(root / "lib/clang/22")
+        platform_id != LINUX_PLATFORM or _physical_directory(root / "lib/clang/22")
     )
 
 
@@ -271,13 +270,15 @@ def _copy_resource_tree(source: Path, destination: Path) -> None:
 
 
 def _linux_wrapper(tool: str) -> str:
-    return "\n".join((
-        "#!/bin/sh",
-        'ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)',
-        'export LD_LIBRARY_PATH="$ROOT/lib"',
-        f'exec "$ROOT/bin/{tool}" "$@"',
-        "",
-    ))
+    return "\n".join(
+        (
+            "#!/bin/sh",
+            'ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)',
+            'export LD_LIBRARY_PATH="$ROOT/lib"',
+            f'exec "$ROOT/bin/{tool}" "$@"',
+            "",
+        )
+    )
 
 
 def _write_linux_alias(path: Path, text: str) -> None:
@@ -355,10 +356,12 @@ def _write_linux_aliases(root: Path) -> tuple[Path, ...]:
 def _validate_observation(observation: LlvmHostObservation) -> None:
     if observation.version != LLVM_VERSION:
         _fail(
-            "".join((
-                "host LLVM version mismatch: ",
-                f"{observation.version} != {LLVM_VERSION}",
-            ))
+            "".join(
+                (
+                    "host LLVM version mismatch: ",
+                    f"{observation.version} != {LLVM_VERSION}",
+                )
+            )
         )
     files = (
         observation.clang,
@@ -428,11 +431,7 @@ def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
     destination = root / LLVM_ROOT
     if _runtime_ready(destination, LINUX_PLATFORM):
         return destination
-    if (
-        destination.exists()
-        or destination.is_symlink()
-        or destination.is_junction()
-    ):
+    if destination.exists() or destination.is_symlink() or destination.is_junction():
         _fail("repository-local LLVM exists without the exact import marker")
     staging = root / ".temp" / "llvm-import-linux-x86_64"
     _admit_linux_import_staging(root, staging)
@@ -585,8 +584,15 @@ def _capture(arguments: list[str]) -> str | None:
 
 
 def _observed_tool(name: str) -> Path | None:
-    resolved = shutil.which(name)
-    return None if resolved is None else Path(resolved).resolve()
+    """Return a native physical host tool or mark optional discovery absent."""
+    try:
+        resolved = shutil.which(name)
+        if type(resolved) is not str or not resolved:
+            return None
+        path = Path(resolved).resolve(strict=True)
+        return path if _physical_file(path) else None
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
 
 
 def _ldd_library(executable: Path, soname: str) -> Path | None:
@@ -599,8 +605,14 @@ def _ldd_library(executable: Path, soname: str) -> Path | None:
         if not stripped.startswith(prefix):
             continue
         path_text = stripped.removeprefix(prefix).split(" (", 1)[0]
-        path = Path(path_text)
-        return path.resolve() if path.is_file() else None
+        try:
+            path = Path(path_text)
+            if not path.is_absolute():
+                return None
+            resolved = path.resolve(strict=True)
+            return resolved if _physical_file(resolved) else None
+        except (OSError, ValueError, TypeError, RuntimeError):
+            return None
     return None
 
 
@@ -627,8 +639,11 @@ def _linux_runtime_paths(clang: Path) -> tuple[Path, Path, Path] | None:
     llvm = _ldd_library(clang, _LLVM_LIBRARY_NAMES[0])
     if resource_text is None or clang_cpp is None or llvm is None:
         return None
-    resource_dir = Path(resource_text).resolve()
-    if not resource_dir.is_dir():
+    try:
+        resource_dir = Path(resource_text).resolve(strict=True)
+    except (OSError, ValueError, TypeError, RuntimeError):
+        return None
+    if not _physical_directory(resource_dir):
         return None
     return resource_dir, clang_cpp, llvm
 
