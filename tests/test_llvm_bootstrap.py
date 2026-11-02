@@ -38,6 +38,7 @@ import os
 import shutil
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from collections.abc import Callable
+from dataclasses import replace
 from io import BufferedRandom, BufferedReader
 from pathlib import Path
 from typing import Self, cast, final, override
@@ -110,6 +111,25 @@ def test_linux_import_materializes_local_runtime_and_neutral_aliases(
     assert (root / "jig-bin/clang.bin").stat().st_mode & 0o111
     assert (root / llvm_validation.LLVM_IMPORT_MARKER).is_file()
     assert llvm_validation.import_linux_llvm(tmp_path, observation) == root
+
+
+def test_linux_import_uses_required_sonames_for_resolved_host_libraries(
+    tmp_path: Path,
+) -> None:
+    """Resolved versioned host filenames cannot break local linker sonames."""
+    observed = _host_observation(tmp_path)
+    llvm = observed.llvm.with_name("libLLVM.so.22.1.8")
+    clang_cpp = observed.clang_cpp.with_name("libclang-cpp.so.22.1.8")
+    _ = observed.llvm.rename(llvm)
+    _ = observed.clang_cpp.rename(clang_cpp)
+    observation = replace(observed, llvm=llvm, clang_cpp=clang_cpp)
+
+    local = llvm_validation.import_linux_llvm(tmp_path, observation)
+
+    assert (local / "lib/libLLVM.so.22.1").read_bytes() == LLVM_BYTES
+    assert (local / "lib/libclang-cpp.so.22.1").read_bytes() == CLANG_CPP_BYTES
+    assert llvm_validation.inspect_llvm(tmp_path, LINUX_PLATFORM).ready
+    assert llvm_validation.import_linux_llvm(tmp_path, observation) == local
 
 
 def test_llvm_marker_writer_rejects_substituted_open_descriptor(

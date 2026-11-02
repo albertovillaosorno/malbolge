@@ -682,11 +682,10 @@ def _stage_linux_llvm(
         ("clang-format", observation.clang_format),
     ):
         _copy_file(source, staged / "bin" / tool)
-    _copy_file(observation.llvm, staged / "lib" / observation.llvm.name)
-    _copy_file(
-        observation.clang_cpp,
-        staged / "lib" / observation.clang_cpp.name,
-    )
+    for soname, source in zip(
+        _LLVM_LIBRARY_NAMES, (observation.llvm, observation.clang_cpp), strict=True
+    ):
+        _copy_file(source, staged / "lib" / soname)
     _copy_resource_tree(
         observation.resource_dir,
         staged / "lib" / "clang" / "22",
