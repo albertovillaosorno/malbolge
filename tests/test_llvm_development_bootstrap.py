@@ -3574,3 +3574,43 @@ def test_development_final_rename_preserves_late_empty_destination(
     current = destination.lstat()
     assert (current.st_dev, current.st_ino) == inserted
     assert staged.is_dir()
+
+
+@pytest.mark.parametrize("previously_provisioned", [False, True])
+@pytest.mark.parametrize("via_parent_traversal", [False, True])
+def test_development_provision_rejects_identity_from_other_checkout(
+    tmp_path: Path, previously_provisioned: bool, via_parent_traversal: bool
+) -> None:
+    """The requested checkout cannot provision or reuse another root's kit."""
+    checkout = tmp_path / "selected-checkout"
+    foreign = tmp_path / "foreign-checkout"
+    checkout.mkdir()
+    foreign.mkdir()
+    identity = _identity(foreign)
+    if previously_provisioned:
+        _ = llvm_development_validation.provision_development_identity(
+            foreign, identity, downloader=_downloader([]), extractor=_extract_headers
+        )
+    if via_parent_traversal:
+        identity = replace(
+            identity,
+            development_root=(
+                checkout / ".." / foreign.name
+                / identity.development_root.relative_to(foreign)
+            ),
+        )
+    downloads: list[str] = []
+    with pytest.raises(
+        llvm_development_validation.LlvmDevelopmentProvisionError,
+        match="checkout|root|destination",
+    ):
+        _ = llvm_development_validation.provision_development_identity(
+            checkout,
+            identity,
+            downloader=_downloader(downloads),
+            extractor=_extract_headers,
+        )
+    assert not downloads
+    assert not (checkout / ".temp").exists()
+    if not previously_provisioned:
+        assert not identity.development_root.exists()

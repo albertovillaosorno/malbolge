@@ -1048,6 +1048,10 @@ def provision_development_identity(
         Repository-local development root after atomic publication or reuse.
 
     """
+    selected_root = Path(os.path.abspath(root))
+    requested_destination = Path(os.path.abspath(identity.development_root))
+    if not requested_destination.is_relative_to(selected_root):
+        _fail("LLVM development destination is outside the selected checkout root")
     if development_root_matches(identity):
         return identity.development_root
     _require_development_destination(identity.development_root)
