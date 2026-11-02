@@ -131,6 +131,11 @@ The direct publisher requires an exact native JSON object at the report root
 and exact native JSON scalar/container types within it, including native
 tuples as arrays and native string mapping keys. Foreign containers or key
 subclasses, non-object roots, cycles, and nonfinite numbers fail before stdout.
+The checked publisher additionally compares the native `json.dumps` text
+against a separate invocation of the canonical JSON encoder contract; a
+syntactically valid but substituted or noncanonically formatted serializer
+record cannot be published as the requested report. The check protects against
+observed encoder-return drift, not a malicious replacement of both encoders.
 Any ordinary write/flush exception becomes a typed `ReportOutputError` with its
 original cause preserved, without invoking caller-defined error formatting.
 An already-emitted prefix on a failed output stream **cannot be rolled back**;

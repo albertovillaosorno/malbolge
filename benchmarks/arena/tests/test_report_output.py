@@ -430,6 +430,107 @@ def test_json_encoder_requires_native_complete_text_before_publication(
     assert not output.flushed
 
 
+@pytest.mark.parametrize(
+    "forged",
+    [
+        "not-json",
+        "{}",
+        '{"status": "tampered"}',
+        '["reported"]',
+        '{"status":"ready"}',
+    ],
+    ids=["malformed", "empty", "wrong-value", "wrong-root", "noncanonical"],
+)
+def test_native_json_encoder_cannot_publish_fabricated_record(
+    monkeypatch: pytest.MonkeyPatch,
+    forged: str,
+) -> None:
+    """An exact string receipt cannot replace the requested canonical JSON."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(report_output.json, "dumps", lambda *_a, **_kw: forged)
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [None, False, 5, _ForgedJsonText('{"status": "ready"}'), "{}"],
+    ids=["null", "bool", "integer", "foreign-text", "wrong-json"],
+)
+def test_canonical_encoder_requires_native_matching_text(
+    monkeypatch: pytest.MonkeyPatch,
+    forged: object,
+) -> None:
+    """An invalid canonical cross-check cannot authorize output publication."""
+    output = _FakeStream("healthy")
+    report = {"status": "ready"}
+    correct = json.dumps(report, sort_keys=True, indent=2, allow_nan=False)
+
+    class ForgedEncoder:
+        def encode(self, _report: object) -> object:
+            return forged
+
+    monkeypatch.setattr(report_output.json, "dumps", lambda *_a, **_kw: correct)
+    monkeypatch.setattr(
+        report_output.json, "JSONEncoder", lambda **_kw: ForgedEncoder()
+    )
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish(report, output)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_canonical_encoder_fault_preserves_cause_without_stdout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unexpected second encoder failure cannot pass a good first receipt."""
+    output = _FakeStream("healthy")
+    report = {"status": "ready"}
+    correct = json.dumps(report, sort_keys=True, indent=2, allow_nan=False)
+    fault = _HostileEncoderError("untrusted encoder fault")
+
+    class ForgedEncoder:
+        def encode(self, _report: object) -> str:
+            raise fault
+
+    monkeypatch.setattr(report_output.json, "dumps", lambda *_a, **_kw: correct)
+    monkeypatch.setattr(
+        report_output.json, "JSONEncoder", lambda **_kw: ForgedEncoder()
+    )
+    with pytest.raises(
+        report_output.ReportOutputError, match="JSON serialization"
+    ) as caught:
+        report_output.publish(report, output)
+    assert caught.value.__cause__ is fault
+    assert not output.records
+    assert not output.flushed
+
+
+@pytest.mark.parametrize("cli", ["analyze", "evidence"])
+def test_fabricated_native_json_encoder_rejects_both_cli_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    cli: str,
+) -> None:
+    """A fabricated native JSON string must not reach either operator sink."""
+    document = sample_study(tmp_path)
+    source = tmp_path / "study.json"
+    _ = source.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(report_output.json, "dumps", lambda *_a, **_kw: "{}")
+    arguments = ["arena", str(source)]
+    if cli == "evidence":
+        arguments += ["--root", str(tmp_path)]
+    monkeypatch.setattr(analyze.sys, "argv", arguments)
+    with pytest.raises(SystemExit, match="2"):
+        (analyze.main if cli == "analyze" else evidence.main)()
+    output = capsys.readouterr()
+    assert not output.out
+    assert "arena report JSON serialization failed" in output.err
+
+
 class _UnsafeStreamError(RuntimeError):
     """A stream exception whose diagnostic formatting executes foreign code."""
 

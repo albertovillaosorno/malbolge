@@ -130,6 +130,15 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
         if type(serialized) is not str:
             message = "arena report JSON encoder returned nonnative text"
             raise TypeError(message)
+        # An exact string alone is not evidence that a serializer returned
+        # this report: independently invoke the canonical encoder contract
+        # before publishing even one byte to the output stream.
+        canonical = json.JSONEncoder(
+            sort_keys=True, indent=2, allow_nan=False
+        ).encode(report)
+        if type(canonical) is not str or serialized != canonical:
+            message = "arena report JSON encoder returned a noncanonical record"
+            raise ValueError(message)
         record = serialized + "\n"
     except Exception as error:
         # A serializer dependency may fail unexpectedly; never format hooks

@@ -592,6 +592,11 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   real target-echo reference CLI now likewise catches unexpected ordinary
   producer and publisher errors without foreign formatting or false success;
   another six red-first regressions check both operator paths.
+- Arena stdout publication now compares the native serializer receipt
+  with a separate canonical encoder result before writing, rejecting fabricated
+  valid or invalid JSON text. Five red-first source substitutions plus two
+  operator-level no-JSON failures exercise this check; it cannot protect
+  against compromise of both encoder paths.
 - Operator report output now requires exact text write counts and an explicit
   successful stdout flush across both arena CLI routes, rejecting malformed
   return values, truncation, and injected stream errors as nonzero exits.
