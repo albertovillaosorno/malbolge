@@ -57,16 +57,14 @@ from algorithms.diff.probe_exec import (
     ProbeExecutionError,
     ProbeProgram,
     ProbeRunContext,
+    ProbeTranscript,
     run_probe_program,
     run_probe_programs,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable
-
     from algorithms.diff.behavior import BehaviorEvidence
     from algorithms.diff.model import TreeSnapshot
-    from algorithms.diff.probe_exec import ProbeTranscript
 
 
 _NUL = "\x00"
@@ -335,8 +333,20 @@ def _all_programs(programs: BehaviorPrograms) -> tuple[ProbeProgram, ...]:
 
 
 def _transcript_map(
-    transcripts: Iterable[ProbeTranscript],
+    transcripts: tuple[ProbeTranscript, ...],
+    programs: tuple[ProbeProgram, ...],
 ) -> dict[str, ProbeTranscript]:
+    """Require exactly one native receipt for every requested probe."""
+    if type(transcripts) is not tuple or any(
+        type(item) is not ProbeTranscript for item in transcripts
+    ):
+        message = "behavior transcript batch must use exact immutable records"
+        raise BehaviorProgramError(message)
+    observed = tuple(transcript.probe_id for transcript in transcripts)
+    expected = tuple(program.probe_id for program in programs)
+    if observed != expected:
+        message = "behavior transcript batch differs from requested programs"
+        raise BehaviorProgramError(message)
     return {transcript.probe_id: transcript for transcript in transcripts}
 
 
@@ -437,13 +447,15 @@ def _run_authored_baselines(
         roots = (*roots, oracle_context.source_root)
     admitted = tuple((root, _snapshot_observed_source(root)) for root in roots)
     try:
+        source_programs = _all_programs(programs)
         source_transcripts = _transcript_map(
-            run_probe_programs(_all_programs(programs), source_context)
+            run_probe_programs(source_programs, source_context), source_programs
         )
         _require_authoring_trees_unchanged(admitted)
         bug_programs = tuple(item.program for item in programs.bugs)
         oracle_transcripts = _transcript_map(
-            run_probe_programs(bug_programs, oracle_context) if bug_programs else ()
+            run_probe_programs(bug_programs, oracle_context) if bug_programs else (),
+            bug_programs,
         )
     finally:
         _require_authoring_trees_unchanged(admitted)

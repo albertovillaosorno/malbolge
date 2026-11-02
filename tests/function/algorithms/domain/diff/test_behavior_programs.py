@@ -39,6 +39,7 @@ import shutil
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -60,6 +61,7 @@ from algorithms.diff.probe_exec import (
     ProbeProgram,
     ProbeRoot,
     ProbeRunContext,
+    ProbeTranscript,
     ToolExecutable,
     run_probe_program,
     run_probe_programs,
@@ -67,7 +69,6 @@ from algorithms.diff.probe_exec import (
 
 if TYPE_CHECKING:
     from algorithms.diff.behavior import BehaviorProfile
-    from algorithms.diff.probe_exec import ProbeTranscript
 
 _PYTHON_TOOL = "python"
 _IDENTITY_A = "identity-a"
@@ -784,3 +785,47 @@ def test_observation_mirror_requires_native_copy_completion(
         (source / "identity.txt").read_bytes() == _STABLE_IDENTITY_BYTES,
         "foreign mirror receipt modified authoring source",
     )
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing-compatibility", "duplicate", "extra", "foreign"]
+)
+def test_authoring_rejects_incomplete_or_foreign_transcript_batch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A transcript map must reflect every requested policy probe once."""
+    source, oracle = _trees(tmp_path)
+    native_run = run_probe_programs
+    source_batch_mutated = False
+
+    def misreport_batch(
+        programs: tuple[ProbeProgram, ...], context: ProbeRunContext
+    ) -> tuple[ProbeTranscript, ...]:
+        nonlocal source_batch_mutated
+        reported = native_run(programs, context)
+        if context.source_root != source:
+            return reported
+        source_batch_mutated = True
+        if mutation == "missing-compatibility":
+            return tuple(
+                item for item in reported if item.probe_id != "runtime-capability"
+            )
+        if mutation == "duplicate":
+            return (*reported, reported[0])
+        if mutation == "extra":
+            return (*reported, ProbeTranscript("not-requested", bytes(32), 1))
+        foreign = SimpleNamespace(
+            probe_id=reported[0].probe_id,
+            digest=reported[0].digest,
+            digested_commands=reported[0].digested_commands,
+        )
+        return (cast("ProbeTranscript", cast("object", foreign)), *reported[1:])
+
+    monkeypatch.setattr(
+        "algorithms.diff.behavior_programs.run_probe_programs", misreport_batch
+    )
+    with pytest.raises(BehaviorProgramError, match="transcript"):
+        _ = author_behavior_programs(
+            _programs(), _context(source, tmp_path), _context(oracle, tmp_path)
+        )
+    _expect(source_batch_mutated, "the transcript mutation did not run")
