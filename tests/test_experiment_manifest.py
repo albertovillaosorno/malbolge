@@ -37,7 +37,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Never, Self, cast, final, override
+from typing import TYPE_CHECKING, Never, Self, TextIO, cast, final, override
 
 import pytest
 
@@ -1338,6 +1338,79 @@ def test_manifest_cli_native_error_retains_detail(
     monkeypatch.setattr(validator, "validate_repository", fail_validate)
     assert validator.main() == 1
     assert "manifest inspection permission denied" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "case", ("partial", "foreign-count", "write-fault", "flush-fault", "foreign-flush")
+)
+def test_manifest_cli_requires_delivered_success(
+    monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """Validated manifests cannot certify success with an output failure."""
+
+    class FakeOutput:
+        def write(self, message: str) -> object:
+            if case == "partial":
+                return len(message) - 1
+            if case == "foreign-count":
+                return True
+            if case == "write-fault":
+                raise OSError("output unavailable")
+            return len(message)
+
+        def flush(self) -> object:
+            if case == "flush-fault":
+                raise OSError("flush unavailable")
+            if case == "foreign-flush":
+                return False
+            return None
+
+    monkeypatch.setattr(validator, "validate_repository", lambda: ("one",))
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", FakeOutput())))
+    assert validator.main() == 1
+
+
+def test_manifest_cli_flushes_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A normal summary succeeds after a complete native write and flush."""
+
+    class CapturingOutput:
+        messages: list[str]
+        flushes: int
+
+        def __init__(self) -> None:
+            self.messages = []
+            self.flushes = 0
+
+        def write(self, message: str) -> int:
+            self.messages.append(message)
+            return len(message)
+
+        def flush(self) -> None:
+            self.flushes += 1
+
+    output = CapturingOutput()
+    monkeypatch.setattr(validator, "validate_repository", lambda: ("one",))
+    monkeypatch.setattr(sys, "stdout", cast("TextIO", cast("object", output)))
+    assert validator.main() == 0
+    assert output.messages == ["experiment manifests valid: 1\n"]
+    assert output.flushes == 1
+
+
+def test_manifest_cli_failed_stderr_does_not_mask_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid manifest remains a failure after diagnostic sink loss."""
+
+    class FailingStderr:
+        def write(self, _message: str) -> None:
+            raise OSError("diagnostics unavailable")
+
+    def reject_manifest() -> None:
+        raise validator.ExperimentManifestError("invalid manifest")
+
+    monkeypatch.setattr(validator, "validate_repository", reject_manifest)
+    monkeypatch.setattr(sys, "stderr", cast("TextIO", cast("object", FailingStderr())))
+    assert validator.main() == 1
 
 
 def test_manifest_foreign_bytes_rejected_before_decode_hook(

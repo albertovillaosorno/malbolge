@@ -42,7 +42,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
 from stat import S_ISREG
-from typing import Never, cast
+from typing import Never, TextIO, cast
 
 import tomllib
 
@@ -731,19 +731,40 @@ def validate_repository() -> tuple[ExperimentManifest, ...]:
     return manifests
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Return whether exact native CLI text write and flush both completed."""
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
 def main() -> int:
     """Validate checked-in experiment manifests and return process status.
 
     Returns:
-        Zero for valid manifests and one for deterministic policy failure.
+        Zero after valid manifests and delivered CLI success, otherwise one.
 
     """
     try:
         manifests = validate_repository()
+        message = f"experiment manifests valid: {len(manifests)}\n"
+        if not _write_cli_record(sys.stdout, message):
+            _fail("experiment CLI output write or flush failed")
     except (ExperimentManifestError, OSError) as error:
-        _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
+        _ = _write_cli_record(sys.stderr, f"error: {_safe_error_detail(error)}\n")
         return 1
-    _ = sys.stdout.write(f"experiment manifests valid: {len(manifests)}\n")
     return 0
 
 

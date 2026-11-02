@@ -80,7 +80,10 @@ a matching directory basename nor rewritten provenance can mint a new ID.
 TOML parser capacity errors, including oversized decimal integer tokens,
 return typed manifest errors instead of host exceptions. TOML remains the
 checked-in serialization, but the schema owns semantics independently of that
-format.
+format. The standalone manifest validator CLI only reports success after an
+exact native text-write count and a completed flush. Short writes, foreign
+output receipts, and failed stdout delivery return nonzero; failed diagnostic
+delivery cannot convert invalid manifests into a successful process exit.
 
 Shared research discovery also rejects IDs that collide under Unicode case
 folding, including a domain ID that aliases the composition state-graph ID.
