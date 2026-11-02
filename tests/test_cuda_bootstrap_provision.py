@@ -3873,3 +3873,74 @@ def test_cuda_cleanup_rejects_false_success_without_removing_owned_stage(
                 )
     assert suppressed
     assert stage.is_dir()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("swap_kind", ["physical", "symlink"])
+def test_cuda_nonlinux_publication_never_moves_substituted_source_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, swap_kind: str
+) -> None:
+    """Non-Linux POSIX publication may only rename the admitted staged inode."""
+    source_parent = tmp_path / "staging"
+    source_parent.mkdir()
+    staged = source_parent / "toolkit"
+    staged.mkdir()
+    _ = (staged / "owned.bin").write_bytes(b"trusted")
+    target_parent = tmp_path / "target"
+    target_parent.mkdir()
+    target = target_parent / "toolkit"
+    parked = tmp_path / "parked-staging"
+    foreign = tmp_path / "foreign-staging"
+    foreign.mkdir()
+    foreign_toolkit = foreign / "toolkit"
+    foreign_toolkit.mkdir()
+    _ = (foreign_toolkit / "foreign.bin").write_bytes(b"untrusted")
+    native_replace = os.replace
+    swapped = False
+
+    def exchange_source_before_rename(
+        src: str | os.PathLike[str], dst: str | os.PathLike[str],
+        *, src_dir_fd: int | None = None, dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            _ = source_parent.rename(parked)
+            if swap_kind == "symlink":
+                _ = source_parent.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(source_parent)
+        native_replace(src, dst, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(sys, "platform", "darwin")
+        isolated.setattr(os, "replace", exchange_source_before_rename)
+        with pytest.raises(cuda_validation.CudaProvisionError):
+            cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+                staged, target
+            )
+    assert swapped
+    replacement = source_parent if swap_kind == "physical" else foreign
+    assert (replacement / "toolkit/foreign.bin").read_bytes() == b"untrusted"
+    assert not (target / "foreign.bin").exists()
+
+
+def test_cuda_nonlinux_posix_publication_preserves_exact_staged_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The portable POSIX path still publishes the verified source directory."""
+    source = tmp_path / "staging"
+    source.mkdir()
+    staged = source / "toolkit"
+    staged.mkdir()
+    _ = (staged / "owned.bin").write_bytes(b"trusted")
+    parent = tmp_path / "destination"
+    parent.mkdir()
+    target = parent / "toolkit"
+    with monkeypatch.context() as isolated:
+        isolated.setattr(sys, "platform", "darwin")
+        cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+            staged, target
+        )
+    assert (target / "owned.bin").read_bytes() == b"trusted"
+    assert not staged.exists()

@@ -1506,36 +1506,39 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
             pass
         else:
             _fail("CUDA toolkit destination became occupied before publication")
-        if sys.platform != "linux":
-            _ = os.replace(staged, destination.name, dst_dir_fd=descriptor)
-        else:
-            source_parent = _open_staging_parent(staged.parent)
-            if source_parent is None:
-                _fail("CUDA toolkit staging source requires native parent")
-            try:
-                source_status = os.stat(
-                    staged.name, dir_fd=source_parent, follow_symlinks=False
+        source_parent = _open_staging_parent(staged.parent)
+        if source_parent is None:
+            _fail("CUDA toolkit staging source requires native parent")
+        try:
+            source_status = os.stat(
+                staged.name, dir_fd=source_parent, follow_symlinks=False
+            )
+            if (
+                type(source_status) is not os.stat_result
+                or not S_ISDIR(source_status.st_mode)
+                or (source_status.st_dev, source_status.st_ino) != staged_identity
+            ):
+                _fail("CUDA toolkit staging source changed before publication")
+            if sys.platform != "linux":
+                _ = os.replace(
+                    staged.name, destination.name,
+                    src_dir_fd=source_parent, dst_dir_fd=descriptor,
                 )
-                if (
-                    type(source_status) is not os.stat_result
-                    or not S_ISDIR(source_status.st_mode)
-                    or (source_status.st_dev, source_status.st_ino) != staged_identity
-                ):
-                    _fail("CUDA toolkit staging source changed before publication")
+            else:
                 _rename_cuda_toolkit_no_replace(
                     staged.name,
                     destination.name,
                     src_dir_fd=source_parent,
                     dst_dir_fd=descriptor,
                 )
-                _require_staging_parent_unchanged(staged.parent, source_parent)
-            finally:
-                try:
-                    os.close(source_parent)
-                except (OSError, ValueError, TypeError, RuntimeError) as error:
-                    raise CudaProvisionError(
-                        "CUDA toolkit staging source parent close failed"
-                    ) from error
+            _ = _require_staging_parent_unchanged(staged.parent, source_parent)
+        finally:
+            try:
+                os.close(source_parent)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA toolkit staging source parent close failed"
+                ) from error
         received = os.stat(destination.name, dir_fd=descriptor, follow_symlinks=False)
         if (
             type(received) is not os.stat_result
