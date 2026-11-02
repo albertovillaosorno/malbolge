@@ -196,8 +196,87 @@ def _command_bytes(
     return completed.stdout
 
 
-def _cpio_payload(rpm: Path) -> bytes:
-    return _command_bytes(["rpm2cpio", str(rpm)])
+def _open_rpm_source(rpm: Path) -> int:
+    """Open a staged RPM through its original physical parent.
+
+    Returns:
+        An owned native descriptor for the staged RPM.
+
+    Raises:
+        LlvmDevelopmentProvisionError: If the source cannot be pinned.
+
+    """
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_NOFOLLOW", 0)
+        | getattr(os, "O_NONBLOCK", 0)
+        | getattr(os, "O_BINARY", 0)
+    )
+    try:
+        descriptor = _open_staging_file(rpm, flags)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = "LLVM RPM source descriptor open failed"
+        raise LlvmDevelopmentProvisionError(detail) from error
+    if type(descriptor) is not int or descriptor < 0:
+        _fail("LLVM RPM source descriptor must be native")
+    return descriptor
+
+
+def _decode_rpm_source(rpm: Path, descriptor: int, expected: bytes) -> bytes:
+    """Decode original and byte-exact staged RPM descriptor.
+
+    Returns:
+        The decoded CPIO payload.
+
+    Raises:
+        LlvmDevelopmentProvisionError: If the original source drifted.
+
+    """
+    try:
+        opened = os.fstat(descriptor)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = "LLVM RPM source descriptor verification failed"
+        raise LlvmDevelopmentProvisionError(detail) from error
+    _verify_staging_readback(rpm, descriptor, expected, opened)
+    payload = _command_bytes(
+        ["rpm2cpio", f"/proc/self/fd/{descriptor}"],
+        pass_fds=(descriptor,),
+    )
+    _verify_staging_readback(rpm, descriptor, expected, opened)
+    return payload
+
+
+def _close_rpm_source(descriptor: int) -> None:
+    """Close the pinned RPM source without leaking raw host failures.
+
+    Raises:
+        LlvmDevelopmentProvisionError: If descriptor close fails.
+
+    """
+    try:
+        os.close(descriptor)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        detail = "LLVM RPM source descriptor close failed"
+        raise LlvmDevelopmentProvisionError(detail) from error
+
+
+def _cpio_payload(rpm: Path, expected: bytes) -> bytes:
+    """Decode verified RPM bytes through the original staged file inode.
+
+    Returns:
+        Decoded CPIO bytes from the exact pinned RPM input.
+
+    """
+    if type(expected) is not bytes:
+        _fail("LLVM RPM source requires native bytes")
+    if os.name != POSIX_OS_NAME:
+        return _command_bytes(["rpm2cpio", str(rpm)])
+    descriptor = _open_rpm_source(rpm)
+    try:
+        payload = _decode_rpm_source(rpm, descriptor, expected)
+    finally:
+        _close_rpm_source(descriptor)
+    return payload
 
 
 def _cpio_members(payload: bytes) -> tuple[str, ...]:
@@ -441,7 +520,7 @@ def _extract_rpm_headers(
     try:
         rpm_path = package_staging / asset.name
         _write_verified_staging_bytes(rpm_path, data)
-        payload = _cpio_payload(rpm_path)
+        payload = _cpio_payload(rpm_path, data)
         require_owned_package()
         _ = _cpio_members(payload)
         require_owned_package()

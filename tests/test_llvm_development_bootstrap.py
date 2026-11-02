@@ -342,7 +342,8 @@ def test_rpm_copy_rejects_header_swapped_to_link(
         dynamic_copytree = cast("Callable[..., Path]", native_copytree)
         return dynamic_copytree(src, dst, *args, **kwargs)
 
-    def synthetic_payload(_rpm: Path) -> bytes:
+    def synthetic_payload(_rpm: Path, _expected: bytes) -> bytes:
+        del _rpm, _expected
         return b"cpio"
 
     def synthetic_members(_data: bytes) -> tuple[str, ...]:
@@ -367,6 +368,48 @@ def test_rpm_copy_rejects_header_swapped_to_link(
     assert swapped
     assert outside.read_bytes() == FOREIGN_CONTENT_BYTES
     assert not identity.development_root.exists()
+
+
+@pytest.mark.skipif(
+    os.name != POSIX_OS_NAME, reason="requires POSIX RPM descriptor"
+)
+@pytest.mark.parametrize("substitution", ["symlink", "physical"])
+def test_rpm_decoder_never_reads_replaced_package_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, substitution: str
+) -> None:
+    """A late RPM filename swap cannot substitute unverified input bytes."""
+    package = tmp_path / PACKAGE_NAME
+    _ = package.write_bytes(PACKAGE_BYTES)
+    parked = tmp_path / "retained-rpm"
+    foreign = tmp_path / "foreign-rpm"
+    _ = foreign.write_bytes(FOREIGN_CONTENT_BYTES)
+    seen: list[bytes] = []
+
+    def swapped_decoder(
+        arguments: list[str], **_options: object
+    ) -> sp.CompletedProcess[bytes]:
+        del _options
+        _ = package.rename(parked)
+        if substitution == SYMLINK_SUBSTITUTION:
+            _ = package.symlink_to(foreign)
+        else:
+            _ = foreign.rename(package)
+        seen.append(Path(arguments[1]).read_bytes())
+        return sp.CompletedProcess(arguments, 0, b"mock CPIO", b"")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(llvm_development_validation.sp, "run", swapped_decoder)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="staging content mismatch",
+        ):
+            _ = llvm_development_validation._cpio_payload(  # ruff: ignore[private-member-access]
+                package, PACKAGE_BYTES
+            )
+    assert seen == [PACKAGE_BYTES]
+    assert parked.read_bytes() == PACKAGE_BYTES
+    remaining = foreign if substitution == SYMLINK_SUBSTITUTION else package
+    assert remaining.read_bytes() == FOREIGN_CONTENT_BYTES
 
 
 def _cpio_stage_swap_process(
@@ -477,7 +520,8 @@ def test_rpm_cleanup_preserves_swapped_foreign_package_directory(
         package_stage.mkdir()
         _ = sentinel.write_bytes(FOREIGN_CONTENT_BYTES)
 
-    def synthetic_payload(_rpm: Path) -> bytes:
+    def synthetic_payload(_rpm: Path, _expected: bytes) -> bytes:
+        del _rpm, _expected
         if swap_phase == "tool-fault":
             swap_package()
             raise OSError("synthetic RPM tool fault after stage swap")
@@ -2123,7 +2167,8 @@ def test_development_staging_rejects_corrupted_complete_write(
             return len(data)
         return native_write(descriptor, data)
 
-    def unexpected_cpio(path: Path) -> bytes:
+    def unexpected_cpio(path: Path, _expected: bytes) -> bytes:
+        del _expected
         pytest.fail(f"corrupted RPM reached CPIO: {path.name}")
 
     monkeypatch.setattr(os, "write", corrupted_write)
@@ -2162,7 +2207,8 @@ def test_rpm_extraction_rejects_incomplete_staging_write(
         _ = real_write(descriptor, data[:-1])
         return _bad_write_count(invalid_count, len(data))
 
-    def unexpected_cpio(path: Path) -> bytes:
+    def unexpected_cpio(path: Path, _expected: bytes) -> bytes:
+        del _expected
         pytest.fail(f"unverified RPM reached CPIO: {path.name}")
 
     monkeypatch.setattr(os, "write", wrong_write)
