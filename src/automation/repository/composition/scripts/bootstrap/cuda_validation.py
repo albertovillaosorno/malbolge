@@ -738,6 +738,18 @@ def _require_new_completion_marker(path: Path) -> None:
     _fail(f"CUDA completion marker already supplied by a package: {path}")
 
 
+def _completion_marker_identity(path: Path) -> tuple[int, ...]:
+    """Admit an unshared physical completion marker, never an outside alias."""
+    try:
+        status = path.lstat()
+    except (OSError, TypeError, ValueError, RuntimeError) as error:
+        raise CudaProvisionError("CUDA completion marker status failed") from error
+    identity = _manifest_identity(status, "CUDA completion marker")
+    if status.st_nlink != 1:
+        _fail("CUDA completion marker must remain singly linked")
+    return identity
+
+
 def _write_staged_file_exclusively(
     path: Path, payload: bytes, label: str
 ) -> None:
@@ -845,12 +857,24 @@ def provision_cuda_manifest(
         _require_owned_staging(staging, staging_identity)
         toolkit_identity = _owned_staging_identity(staged_toolkit)
         marker = staged_toolkit / CUDA_PROVISION_MARKER
+        marker_content = _marker_bytes(manifest)
+        if len(marker_content) > _MAX_MARKER_BYTES:
+            _fail("CUDA completion marker exceeds byte limit")
         _require_new_completion_marker(marker)
         _write_staged_file_exclusively(
-            marker, _marker_bytes(manifest), "CUDA completion marker"
+            marker, marker_content, "CUDA completion marker"
         )
         _require_owned_staging(staging, staging_identity)
         _require_owned_staging(staged_toolkit, toolkit_identity)
+        marker_identity = _completion_marker_identity(marker)
+        if (
+            _read_manifest_source(
+                marker, "CUDA completion marker", max_bytes=_MAX_MARKER_BYTES
+            )
+            != marker_content
+            or _completion_marker_identity(marker) != marker_identity
+        ):
+            _fail("CUDA completion marker changed before publication")
         _require_toolkit_destination(manifest.toolkit_root)
         manifest.toolkit_root.parent.mkdir(parents=True, exist_ok=True)
         _require_toolkit_destination(manifest.toolkit_root)

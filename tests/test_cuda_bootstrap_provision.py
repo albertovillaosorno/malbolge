@@ -754,6 +754,70 @@ def test_cuda_never_publishes_swapped_toolkit_leaf(
     assert not (tmp_path / TOOLKIT_ROOT).exists()
 
 
+def test_cuda_never_publishes_modified_completion_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Post-write marker mutation cannot authenticate a published toolkit."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    original_writer = cuda_validation._write_staged_file_exclusively
+    tampered = False
+
+    def mutate_after_write(path: Path, content: bytes, label: str) -> None:
+        nonlocal tampered
+        original_writer(path, content, label)
+        if label == "CUDA completion marker":
+            with path.open("r+b") as stream:
+                _ = stream.write(b"!" + content[1:])
+            tampered = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            cuda_validation, "_write_staged_file_exclusively", mutate_after_write
+        )
+        with pytest.raises(cuda_validation.CudaProvisionError, match="marker"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert tampered
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
+def test_cuda_never_publishes_hardlinked_completion_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid-looking marker must not share ownership with an outside file."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    external = tmp_path / "shared-marker"
+    original_writer = cuda_validation._write_staged_file_exclusively
+    linked = False
+
+    def link_after_write(path: Path, content: bytes, label: str) -> None:
+        nonlocal linked
+        original_writer(path, content, label)
+        if label == "CUDA completion marker":
+            _ = external.write_bytes(content)
+            path.unlink()
+            try:
+                os.link(external, path)
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"hard links unavailable: {error}")
+            linked = True
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation, "_write_staged_file_exclusively", link_after_write)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="marker"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert linked
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+    assert external.read_bytes().startswith(b'{"manifest_sha256"')
+
+
 def test_provision_is_idempotent_after_exact_marker(tmp_path: Path) -> None:
     """A completed exact toolkit never redownloads admitted package bytes."""
     payload = _payload()
