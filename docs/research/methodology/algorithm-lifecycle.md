@@ -60,7 +60,10 @@ including oversized decimal integer tokens, produce typed lifecycle failures.
 The imported TOML decoder provider must remain unchanged; three red-first
 regressions demonstrate that a substituted decoder could otherwise fabricate
 valid lifecycle records from malformed source, an unsupported schema, or an
-altered algorithm ID. This does not authenticate the source or its evidence.
+altered algorithm ID. The provider identity is captured before its parsing
+call, so a substituted decoder that restores the TOML module attribute while
+returning fabricated native values still fails admission. This does not
+authenticate the source, host parser installation or its evidence.
 File and evidence admission requires exact native stat receipts, native
 nonnegative descriptor integers, native bytes from file reads, and exact boolean
 link/junction decisions in portable path inspection. Forged host return values

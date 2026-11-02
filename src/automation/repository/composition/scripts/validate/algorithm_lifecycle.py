@@ -244,8 +244,9 @@ def _admit_source_text(text: str, *, byte_limit: int) -> None:
 
 def _parse_document(text: str) -> dict[str, object]:
     _admit_source_text(text, byte_limit=MAX_LIFECYCLE_BYTES)
+    decoder = tomllib.loads
     try:
-        parsed = cast("object", tomllib.loads(text))
+        parsed = cast("object", decoder(text))
     except tomllib.TOMLDecodeError as error:
         detail = (
             str(error)
@@ -265,7 +266,7 @@ def _parse_document(text: str) -> dict[str, object]:
         _fail(f"unsupported algorithm lifecycle schema: {version}")
     # Refuse a replaced decoder even if it forged valid native metadata.
     # Existing malformed mapping/provider diagnostics stay authoritative.
-    if tomllib.loads is not _NATIVE_TOML_LOADS:
+    if decoder is not _NATIVE_TOML_LOADS:
         _fail("algorithm lifecycle TOML decoder provider changed")
     return document
 

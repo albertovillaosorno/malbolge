@@ -76,3 +76,8 @@ reproducibility, complexity, portability, and measured benefit gate promotion.
   lifecycle record when source syntax, version, or algorithm ID disagrees. The
   benchmark/lifecycle combined test set passes 301 cases. This pins the local
   decoder provider; it does not attest promotion evidence or source provenance.
+- 2026-11-02 decoder-entry follow-up: lifecycle parsing now captures the
+  `tomllib.loads` provider before invocation. Three forged self-restoring
+  decoder regressions reject syntax, version and ID mismatch claims even when
+  the public parser is restored during its own call. This is a local parser
+  identity check, not independent evidence attestation.

@@ -621,6 +621,30 @@ def test_lifecycle_parser_rejects_native_forged_toml_provider(
     )
 
 
+@pytest.mark.parametrize("tamper", ("syntax", "schema", "algorithm-id"))
+def test_lifecycle_parser_rejects_decoder_restoring_itself_during_call(
+    monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    """The parser identity at entry, not after return, controls admission."""
+    source = _base(validator.EXPERIMENTAL)
+    native_loads = validator.tomllib.loads
+    fabricated = native_loads(source)
+    if tamper == "syntax":
+        source = "! invalid lifecycle TOML"
+    elif tamper == "schema":
+        source = source.replace("schema_version = 1", "schema_version = 2")
+    else:
+        fabricated["algorithm"]["id"] = "fabricated-executable-id"
+
+    def self_restoring(_text: str) -> object:
+        monkeypatch.setattr(validator.tomllib, "loads", native_loads)
+        return fabricated
+
+    monkeypatch.setattr(validator.tomllib, "loads", self_restoring)
+    with pytest.raises(validator.AlgorithmLifecycleError, match="TOML decoder provider"):
+        _ = validator._parse_document(source)
+
+
 @pytest.mark.parametrize(
     "fault_type",
     [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],
