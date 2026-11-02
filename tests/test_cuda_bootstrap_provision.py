@@ -2452,6 +2452,48 @@ def test_cuda_publication_rejects_toolkit_mutation_during_marker_write(
     assert not (tmp_path / f".temp/cuda-provision-{LINUX_PLATFORM}").exists()
 
 
+@pytest.mark.skipif(os.name != "posix", reason="requires descriptor directory listing")
+def test_cuda_publication_does_not_trust_omitted_path_iterator_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged pathname iterator cannot hide an unlisted staged library."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    native_write = cuda_validation._write_staged_file_exclusively
+    native_iterdir = Path.iterdir
+    injected = False
+    hidden = False
+
+    def inject_after_marker(path: Path, content: bytes, label: str) -> tuple[int, int]:
+        nonlocal injected
+        receipt = native_write(path, content, label)
+        if label == "CUDA completion marker":
+            _ = (path.parent / "lib64/unlisted.so").write_bytes(b"untrusted")
+            injected = True
+        return receipt
+
+    def hide_unlisted(path: Path) -> Iterator[Path]:
+        nonlocal hidden
+        for child in native_iterdir(path):
+            if injected and child.name == "unlisted.so":
+                hidden = True
+                continue
+            yield child
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            cuda_validation, "_write_staged_file_exclusively", inject_after_marker
+        )
+        isolated.setattr(Path, "iterdir", hide_unlisted)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="enumeration"):
+            _ = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM, downloader=_download_fixture(payload)
+            )
+    assert injected
+    assert hidden
+    assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
 def _tar_symlink_payload() -> bytes:
     """Build a synthetic archive with a contained library symlink."""
     output = io.BytesIO()

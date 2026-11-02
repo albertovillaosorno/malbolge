@@ -1092,6 +1092,43 @@ def _cuda_overlay_destination_members(destination: Path) -> dict[
             else:
                 _fail("CUDA staged overlay destination has special member")
             known[relative] = (status.st_dev, status.st_ino, kind, content)
+        # Path iteration may silently omit a destination child, letting an
+        # unverified member survive both before/after copy receipts. Compare
+        # its names against the directory physically listed by the host.
+        if os.name == "posix":
+            descriptor = _open_staging_parent(folder)
+            if descriptor is None:
+                _fail("CUDA staged overlay scan requires native directory descriptor")
+            try:
+                names = os.listdir(descriptor)
+                _ = _require_staging_parent_unchanged(folder, descriptor)
+            except CudaProvisionError:
+                raise
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay physical member scan failed"
+                ) from error
+            finally:
+                try:
+                    os.close(descriptor)
+                except (OSError, TypeError, ValueError, RuntimeError) as error:
+                    raise CudaProvisionError(
+                        "CUDA staged overlay scan descriptor close failed"
+                    ) from error
+        else:
+            try:
+                names = os.listdir(folder)
+            except (OSError, TypeError, ValueError, RuntimeError) as error:
+                raise CudaProvisionError(
+                    "CUDA staged overlay physical member scan failed"
+                ) from error
+        if (
+            type(names) is not list
+            or any(type(name) is not str for name in names)
+            or len(names) != len(entries)
+            or set(names) != {child.name for child in entries}
+        ):
+            _fail("CUDA staged overlay destination enumeration mismatch")
     return known
 
 
