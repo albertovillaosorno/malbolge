@@ -334,7 +334,12 @@ def _extract_rpm_headers(
     verify_development_asset(data, asset)
     _require_physical_directories(staging, "staging")
     package_staging = staging / asset.name.removesuffix(RPM_SUFFIX)
-    package_staging.mkdir(parents=True)
+    try:
+        package_staging.mkdir(parents=True)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            "LLVM development package stage creation failed"
+        ) from error
     parent_identity = _staging_directory_identity(staging)
     package_identity = _staging_directory_identity(package_staging)
 
@@ -686,7 +691,12 @@ def _prepare_staging(staging: Path) -> None:
     _require_physical_directories(staging, "staging")
     if _preflight_path_status(staging, staging.exists, "staging"):
         _fail(f"LLVM development staging already exists: {staging}")
-    staging.mkdir(parents=True)
+    try:
+        staging.mkdir(parents=True)
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        raise LlvmDevelopmentProvisionError(
+            "LLVM development staging creation failed"
+        ) from error
     _require_physical_directories(staging, "staging")
 
 
@@ -828,7 +838,12 @@ def provision_development_identity(
             staged_root / LLVM_DEVELOPMENT_MARKER, _marker_bytes(identity)
         )
         _require_development_destination(identity.development_root)
-        identity.development_root.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            identity.development_root.parent.mkdir(parents=True, exist_ok=True)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmDevelopmentProvisionError(
+                "LLVM development destination parent creation failed"
+            ) from error
         _require_development_destination(identity.development_root)
         try:
             _ = identity.development_root.lstat()

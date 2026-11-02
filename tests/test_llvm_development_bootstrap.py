@@ -644,6 +644,51 @@ def test_development_provision_rechecks_destination_after_extraction(
     assert not identity.development_root.exists()
 
 
+@pytest.mark.parametrize("location", ["staging", "package", "destination"])
+def test_development_host_directory_creation_faults_are_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+) -> None:
+    """Host mkdir failures preserve their cause and never publish a kit."""
+    identity = _identity(tmp_path)
+    stage = tmp_path / ".temp/llvm-development-provision-linux-x86_64"
+    paths = {
+        "staging": stage,
+        "package": stage / "packages" / PACKAGE_NAME.removesuffix(".rpm"),
+        "destination": identity.development_root.parent,
+    }
+    fault_path = paths[location]
+    native_mkdir = Path.mkdir
+    fault = OSError(f"host refused {location} directory")
+
+    def faulty_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        if path == fault_path:
+            raise fault
+        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "mkdir", faulty_mkdir)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="creation failed",
+        ) as observed:
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path,
+                identity,
+                downloader=_downloader([]),
+                extractor=_extract_headers if location == "destination" else None,
+            )
+    assert observed.value.__cause__ is fault
+    assert not stage.exists()
+    assert not identity.development_root.exists()
+
+
 def test_development_child_stage_creation_fault_cleans_owned_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
