@@ -1869,13 +1869,13 @@ def _capture(arguments: list[str]) -> str | None:
         return None
     if max(len(completed.stdout), len(completed.stderr)) > _HOST_MAX_CAPTURE_CHARS:
         return None
-    # Version banners are evidence: trimming their whitespace could turn a
-    # padded or multi-line diagnostic into the exact pinned release.
-    output = (
-        completed.stdout
-        if len(arguments) == 2 and arguments[1] == "--version"
-        else completed.stdout.strip()
+    # Version banners and the resource root are authority receipts: trimming
+    # could turn padded or multi-line output into valid pinned inputs.
+    exact_receipt = len(arguments) == 2 and arguments[1] in (
+        "--version",
+        "-print-resource-dir",
     )
+    output = completed.stdout if exact_receipt else completed.stdout.strip()
     return output or None
 
 
@@ -1941,8 +1941,23 @@ def _linux_runtime_paths(clang: Path) -> tuple[Path, Path, Path] | None:
     llvm = _ldd_library(clang, _LLVM_LIBRARY_NAMES[0])
     if resource_text is None or clang_cpp is None or llvm is None:
         return None
+    # Clang normally emits one absolute directory path with an optional final
+    # native line ending. Do not silently admit extra lines or padding.
+    if resource_text.endswith("\r\n"):
+        resource_text = resource_text[:-2]
+    elif resource_text.endswith("\n"):
+        resource_text = resource_text[:-1]
+    if (
+        not resource_text
+        or resource_text != resource_text.strip()
+        or not resource_text.isprintable()
+    ):
+        return None
     try:
-        resource_dir = Path(resource_text).resolve(strict=True)
+        reported = Path(resource_text)
+        if not reported.is_absolute():
+            return None
+        resource_dir = reported.resolve(strict=True)
     except (OSError, ValueError, TypeError, RuntimeError):
         return None
     if not _physical_directory(resource_dir):

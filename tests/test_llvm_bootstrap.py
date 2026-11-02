@@ -3219,6 +3219,80 @@ def test_llvm_host_resource_discovery_rejects_foreign_directory_status(
     assert llvm_validation._linux_runtime_paths(clang) is None  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize(
+    "receipt",
+    (
+        " {path}\n",
+        "{path} \n",
+        "{path}\n\n",
+        "{path}\r",
+        "\n{path}\n",
+    ),
+)
+def test_llvm_host_resource_receipt_does_not_trim_ambiguous_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: str
+) -> None:
+    """Host resource paths cannot be recovered from padded or forged stdout."""
+    resource = tmp_path / "resource-dir"
+    resource.mkdir()
+    clang = tmp_path / "clang"
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        assert args == [str(clang), "-print-resource-dir"]
+        return sp.CompletedProcess(
+            args, 0, stdout=receipt.format(path=resource), stderr=""
+        )
+
+    monkeypatch.setattr(sp, "run", run)
+    monkeypatch.setattr(llvm_validation, "_ldd_library", lambda _clang, _name: library)
+    assert llvm_validation._linux_runtime_paths(clang) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_llvm_host_resource_receipt_requires_absolute_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relative output cannot bind its meaning to the bootstrap cwd."""
+    resource = tmp_path / "relative-resources"
+    resource.mkdir()
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(llvm_validation, "_capture", lambda _args: resource.name)
+    monkeypatch.setattr(llvm_validation, "_ldd_library", lambda _clang, _name: library)
+    assert (
+        llvm_validation._linux_runtime_paths(  # pyright: ignore[reportPrivateUsage]
+            tmp_path / "clang"
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("terminator", ("", "\n", "\r\n"))
+def test_llvm_host_resource_receipt_accepts_canonical_line_endings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, terminator: str
+) -> None:
+    """Single native LF/CRLF terminators preserve a real resource path."""
+    resource = tmp_path / "resource-dir"
+    resource.mkdir()
+    clang = tmp_path / "clang"
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        assert args == [str(clang), "-print-resource-dir"]
+        return sp.CompletedProcess(args, 0, stdout=f"{resource}{terminator}", stderr="")
+
+    monkeypatch.setattr(sp, "run", run)
+    monkeypatch.setattr(llvm_validation, "_ldd_library", lambda _clang, _name: library)
+    assert llvm_validation._linux_runtime_paths(clang) == (  # pyright: ignore[reportPrivateUsage]
+        resource,
+        library,
+        library,
+    )
+
+
 def test_llvm_host_resource_discovery_accepts_native_directory(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
