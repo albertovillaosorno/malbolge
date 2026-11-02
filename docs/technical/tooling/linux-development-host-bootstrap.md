@@ -124,7 +124,9 @@ Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact
 singleton `--version` probe from the same pinned `expected_tools` authority that
 bootstrap verifies, then delegate every other argument vector to the provisioned
-native launcher.
+native launcher. Installed tool version checks accept the pinned first-line
+banner with printable build metadata, but reject invisible or control-format
+characters even if the pinned prefix otherwise matches.
 
 The pytest delegation also binds `PYTHONPYCACHEPREFIX` below `.cache`. Ruff
 remains a byte-identical alias, and Windows retains native binary aliases for

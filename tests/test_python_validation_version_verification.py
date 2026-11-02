@@ -43,6 +43,10 @@ from scripts.bootstrap import python_validation
         "pytest 9.1.1forged",
         "pytest 9.1.1-other",
         "pytest 9.1.1\tforged",
+        "pytest 9.1.1 \x1b[31mforged",
+        "pytest 9.1.1 \rforged",
+        "pytest 9.1.1 \u202eforged",
+        "pytest 9.1.1 \x7fforged",
     ],
 )
 def test_python_tool_version_rejects_embedded_expected_banner(

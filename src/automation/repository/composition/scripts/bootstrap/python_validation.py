@@ -2092,7 +2092,9 @@ def _verify_tool(
     if _jig_source_identity(path) != original:
         _fail(f"provisioned tool changed during version probe: {path}")
     first_line = output.partition("\n")[0]
-    if first_line != expected and not first_line.startswith(f"{expected} "):
+    if not first_line.isprintable() or (
+        first_line != expected and not first_line.startswith(f"{expected} ")
+    ):
         _fail(f"unexpected {executable} version: {first_line!r}")
 
 
