@@ -48,6 +48,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Self, cast, override
 
 import pytest
+from compression import zstd
 from scripts.bootstrap import cuda_validation, project
 
 if TYPE_CHECKING:
@@ -4353,6 +4354,45 @@ def test_cuda_corrupted_zip_deflate_is_typed_without_publication(
             staging=tmp_path / "stage",
         )
     assert isinstance(caught.value.__cause__, zlib.error)
+    assert not (tmp_path / "toolkit").exists()
+
+
+def test_cuda_corrupted_zip_zstandard_is_typed_without_publication(
+    tmp_path: Path,
+) -> None:
+    """Malformed Zstandard members cannot escape the pinned ZIP boundary."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(
+        output, "w", compression=zipfile.ZIP_ZSTANDARD
+    ) as archive:
+        archive.writestr(NVRTC_MEMBER, NVRTC_BYTES * 256)
+    payload = bytearray(output.getvalue())
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        info = archive.getinfo(NVRTC_MEMBER)
+    offset = (
+        info.header_offset
+        + zipfile.sizeFileHeader
+        + len(info.filename.encode("utf-8"))
+        + len(info.extra)
+    )
+    payload[offset] = 0xFF  # Invalid Zstandard frame descriptor.
+    damaged = bytes(payload)
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path,
+        _manifest(tmp_path, damaged, {"relative_path": _ZIP_PACKAGE_PATH}),
+        LINUX_PLATFORM,
+    ).packages[0]
+    with pytest.raises(
+        cuda_validation.CudaProvisionError,
+        match="cannot extract CUDA zip archive: ZstdError",
+    ) as caught:
+        cuda_validation.extract_cuda_package(
+            damaged,
+            package,
+            tmp_path / "toolkit",
+            staging=tmp_path / "stage",
+        )
+    assert type(caught.value.__cause__) is zstd.ZstdError
     assert not (tmp_path / "toolkit").exists()
 
 

@@ -59,6 +59,8 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_IFDIR, S_IFMT, S_IFREG, S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING, Final, Never, cast
 
+from compression import zstd
+
 if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import IO, BinaryIO
@@ -757,6 +759,7 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
         lzma.LZMAError,
         zipfile.BadZipFile,
         zlib.error,
+        zstd.ZstdError,
         TypeError,
         ValueError,
         RuntimeError,
