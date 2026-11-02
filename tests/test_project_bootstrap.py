@@ -1229,6 +1229,41 @@ def test_platform_identity_normalizes_windows_and_linux() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "system,machine",
+    [
+        ("Windows\n", "AMD64"),
+        ("Windows", "AMD64\r"),
+        (" Linux", "x86_64"),
+        ("Linux", "x86_64 "),
+        ("Windows\t", "AMD64"),
+    ],
+)
+def test_platform_identity_rejects_whitespace_host_aliases(
+    system: str, machine: str
+) -> None:
+    """A malformed host receipt cannot select supported native packages."""
+    assert project.host_platform_id(system=system, machine=machine) not in {
+        WINDOWS_PLATFORM,
+        LINUX_PLATFORM,
+        LINUX_AARCH64,
+    }
+
+
+def test_platform_identity_rejects_foreign_host_string_hooks() -> None:
+    """Host identity discovery cannot invoke foreign string normalizers."""
+
+    class HostString(str):
+        @override
+        def strip(self, chars: str | None = None) -> Never:
+            raise AssertionError("foreign platform identity normalizer invoked")
+
+    observed = project.host_platform_id(
+        system=HostString("Windows"), machine="AMD64"
+    )
+    assert observed not in {WINDOWS_PLATFORM, LINUX_PLATFORM}
+
+
 def _linux_llvm_observation(
     tmp_path: Path,
 ) -> llvm_validation.LlvmHostObservation:

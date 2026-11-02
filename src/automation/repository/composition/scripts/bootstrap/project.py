@@ -281,6 +281,18 @@ def initialize_local_directories(root: Path = ROOT) -> tuple[Path, ...]:
     return directories
 
 
+def _host_identity_token(observed: object) -> str:
+    """Reject foreign or whitespace-padded host identity observations."""
+    if (
+        type(observed) is not str
+        or not observed
+        or not observed.isprintable()
+        or observed != observed.strip()
+    ):
+        return UNKNOWN_PLATFORM
+    return observed.lower()
+
+
 def host_platform_id(
     *,
     system: str | None = None,
@@ -292,8 +304,12 @@ def host_platform_id(
         Lowercase operating-system and architecture identity.
 
     """
-    observed_system = (system or platform.system()).strip().lower()
-    observed_machine = (machine or platform.machine()).strip().lower()
+    observed_system = _host_identity_token(
+        platform.system() if system is None else system
+    )
+    observed_machine = _host_identity_token(
+        platform.machine() if machine is None else machine
+    )
     operating_system = SYSTEM_NAMES.get(
         observed_system,
         observed_system or UNKNOWN_PLATFORM,
