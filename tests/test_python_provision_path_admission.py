@@ -317,6 +317,62 @@ def test_python_provision_rechecks_after_pip_uninstall_before_launchers(
     assert foreign.read_bytes() == PAYLOAD
 
 
+@pytest.mark.parametrize("stage", ["launchers", "aliases"])
+def test_python_provision_rechecks_interpreter_after_publication_callbacks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    """No publishing callback can leave a redirected Python as ready."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    outside = tmp_path / "outside-python"
+    _ = outside.write_bytes(PAYLOAD)
+    invocations: list[str] = []
+
+    def swap_interpreter() -> None:
+        _ = layout.python.unlink()
+        _ = layout.python.symlink_to(outside)
+
+    def write_launchers(
+        _layout: python_validation.ValidationEnvironmentLayout,
+        *,
+        windows: bool,
+    ) -> None:
+        _ = windows
+        invocations.append("launchers")
+        if stage == "launchers":
+            swap_interpreter()
+
+    def write_aliases(
+        _layout: python_validation.ValidationEnvironmentLayout,
+        *,
+        windows: bool,
+    ) -> tuple[tuple[str, Path], ...]:
+        _ = windows
+        invocations.append("aliases")
+        if stage == "launchers":
+            raise AssertionError("aliases reached substituted Python")
+        swap_interpreter()
+        return ()
+
+    def fake_command(_command: list[str]) -> str:
+        return ""
+
+    monkeypatch.setattr(python_validation, "ensure_uv", _local_uv)
+    monkeypatch.setattr(python_validation, "_run", fake_command)
+    monkeypatch.setattr(python_validation, "write_launchers", write_launchers)
+    monkeypatch.setattr(python_validation, "write_jig_tool_aliases", write_aliases)
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        python_validation._provision(  # pyright: ignore[reportPrivateUsage]
+            layout, root=root
+        )
+    expected = ["launchers"] if stage == "launchers" else ["launchers", "aliases"]
+    assert invocations == expected
+    assert outside.read_bytes() == PAYLOAD
+
+
 def test_python_provision_rejects_late_installed_interpreter_before_builder(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

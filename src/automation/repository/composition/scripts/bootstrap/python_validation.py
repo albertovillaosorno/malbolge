@@ -2180,7 +2180,13 @@ def _provision(
         layout.python, sync_target, context="pip uninstall"
     )
     write_launchers(layout, windows=WINDOWS)
+    _ = _require_python_interpreter_identity(
+        layout.python, sync_target, context="launcher publication"
+    )
     _ = write_jig_tool_aliases(layout, windows=WINDOWS)
+    _ = _require_python_interpreter_identity(
+        layout.python, sync_target, context="Jig alias publication"
+    )
 
 
 def _verify_tool(

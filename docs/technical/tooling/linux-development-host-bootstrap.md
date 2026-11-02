@@ -121,8 +121,9 @@ to that checkout. The venv and interpreter require native physical path
 receipts before invoking `uv pip sync` or creating the environment. Redirected
 parents/interpreters, non-directory environments, and externally hardlinked
 interpreters fail closed. Interpreter identity is rechecked after uv bootstrap,
-after virtual-environment creation, and between pip sync, pip uninstall and
-launcher publication: changed inodes, injected links, or late substitutions
+after virtual-environment creation, between pip sync and pip uninstall,
+and after native launcher and Jig alias publication: changed inodes,
+injected links, or late substitutions
 fail before subsequent commands. These checks narrow callback mutation windows
 but do not make concurrent ancestor swaps atomic.
 
