@@ -3108,3 +3108,127 @@ def test_llvm_host_capture_binds_probe_deadline(
     monkeypatch.setattr(sp, "run", fake_run)
     assert llvm_validation._capture(["clang", "--version"]) == "clang version 22.1.8"  # pyright: ignore[reportPrivateUsage]
     assert seen == [15]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("fault", [OSError, RuntimeError])
+def test_llvm_publish_types_destination_parent_close_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """Final import close failures preserve the native cause, not a raw fault."""
+    staged = tmp_path / "staged-llvm"
+    staged.mkdir()
+    destination = tmp_path / ".dependencies" / "llvm" / LLVM_VERSION
+    native_open = os.open
+    native_close = os.close
+    parent_descriptors: set[int] = set()
+    close_fault = fault("foreign directory close failure")
+
+    def track_open(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == destination.parent:
+            parent_descriptors.add(descriptor)
+        return descriptor
+
+    def fail_parent_close(descriptor: int) -> None:
+        native_close(descriptor)
+        if descriptor in parent_descriptors:
+            parent_descriptors.remove(descriptor)
+            raise close_fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", track_open)
+        isolated.setattr(os, "close", fail_parent_close)
+        with pytest.raises(
+            llvm_validation.LlvmImportError, match="destination parent close failed"
+        ) as caught:
+            llvm_validation._publish_linux_import(  # pyright: ignore[reportPrivateUsage]
+                tmp_path, staged, destination
+            )
+    assert caught.value.__cause__ is close_fault
+    assert not parent_descriptors
+    assert destination.is_dir()
+    assert not staged.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+def test_llvm_publish_rejects_physical_parent_replaced_during_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A rename into a detached parent cannot report a successful import."""
+    staged = tmp_path / "staged-llvm"
+    staged.mkdir()
+    parent = tmp_path / ".dependencies" / "llvm"
+    parent.mkdir(parents=True)
+    destination = parent / LLVM_VERSION
+    parked = tmp_path / "parked-llvm-parent"
+    foreign = tmp_path / "foreign-llvm-parent"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"foreign parent data")
+    native_replace = os.replace
+    swapped = False
+
+    def swap_during_rename(
+        source: str | os.PathLike[str],
+        target: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped:
+            _ = parent.rename(parked)
+            _ = foreign.rename(parent)
+            swapped = True
+        native_replace(source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+
+    monkeypatch.setattr(os, "replace", swap_during_rename)
+    with pytest.raises(
+        llvm_validation.LlvmImportError, match="destination parent changed"
+    ):
+        llvm_validation._publish_linux_import(  # pyright: ignore[reportPrivateUsage]
+            tmp_path, staged, destination
+        )
+    assert swapped
+    assert (parent / sentinel.name).read_bytes() == b"foreign parent data"
+    assert not destination.exists()
+
+
+@pytest.mark.parametrize("receipt", [None, False, 0])
+def test_llvm_publish_rejects_false_success_without_source_move(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, receipt: object
+) -> None:
+    """A host no-op must not attest an import without moving the staged inode."""
+    staged = tmp_path / "staged-llvm"
+    staged.mkdir()
+    destination = tmp_path / ".dependencies" / "llvm" / LLVM_VERSION
+    calls = 0
+
+    def false_replace(
+        _source: str | os.PathLike[str],
+        _target: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> object:
+        nonlocal calls
+        calls += 1
+        return receipt
+
+    monkeypatch.setattr(os, "replace", false_replace)
+    with pytest.raises(llvm_validation.LlvmImportError, match="publication"):
+        llvm_validation._publish_linux_import(  # pyright: ignore[reportPrivateUsage]
+            tmp_path, staged, destination
+        )
+    assert calls == 1
+    assert staged.is_dir()
+    assert not destination.exists()

@@ -1043,9 +1043,18 @@ def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
             ) from error
         else:
             _fail("LLVM import destination became occupied before publication")
-        _ = os.replace(staged, destination.name, dst_dir_fd=descriptor)
-        if not _physical_directory(parent):
+        staged_inode = _native_directory_inode(staged)
+        if staged_inode is None:
+            _fail("LLVM import staging source must be physical")
+        published = os.replace(staged, destination.name, dst_dir_fd=descriptor)
+        if _native_directory_inode(parent) != (opened.st_dev, opened.st_ino):
             _fail("LLVM import destination parent changed during publication")
+        if (
+            published is not None
+            or _native_directory_inode(destination) != staged_inode
+            or _native_directory_inode(staged) is not None
+        ):
+            _fail("LLVM import destination publication did not move staged inode")
     except LlvmImportError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -1053,7 +1062,12 @@ def _publish_linux_import(root: Path, staged: Path, destination: Path) -> None:
             f"LLVM import destination publication failed: {type(error).__name__}"
         ) from error
     finally:
-        os.close(descriptor)
+        try:
+            os.close(descriptor)
+        except (OSError, ValueError, TypeError, RuntimeError) as error:
+            raise LlvmImportError(
+                f"LLVM import destination parent close failed: {type(error).__name__}"
+            ) from error
 
 
 def import_linux_llvm(root: Path, observation: LlvmHostObservation) -> Path:
