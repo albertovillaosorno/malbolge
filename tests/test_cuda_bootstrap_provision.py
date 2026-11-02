@@ -1249,3 +1249,95 @@ def test_provision_types_marker_status_host_fault(
             downloader=_download_fixture(payload),
         )
     assert not (tmp_path / TOOLKIT_ROOT).exists()
+
+
+@pytest.mark.parametrize("operation", ["is_symlink", "is_junction"])
+def test_cuda_directory_status_cannot_mask_physical_symlink(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """Redirected directories need physical metadata despite host predicates."""
+    external = tmp_path / "outside"
+    external.mkdir()
+    link = tmp_path / "linked"
+    try:
+        _ = link.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory symlinks unavailable: {error}")
+    native = getattr(Path, operation)
+
+    def forged(path: Path) -> bool:
+        return False if path == link else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, operation, forged)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="redirect"
+        ):
+            cuda_validation._require_physical_directories(link, "staging")
+    assert link.is_symlink()
+
+
+@pytest.mark.parametrize("foreign", [None, 0, "", 0.0])
+def test_cuda_directory_rejects_foreign_junction_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """Nonbool junction status cannot certify an existing staging directory."""
+    root = tmp_path / "root"
+    root.mkdir()
+    native = Path.is_junction
+
+    def status(path: Path) -> object:
+        return foreign if path == root else native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_junction", status)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="native"):
+            cuda_validation._require_physical_directories(root, "staging")
+
+
+@pytest.mark.parametrize("foreign", [None, 0, object()])
+def test_cuda_directory_rejects_foreign_stat_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """Foreign lstat status is not proof of a physical staging directory."""
+    root = tmp_path / "root"
+    root.mkdir()
+    native = Path.lstat
+
+    def forged(path: Path) -> os.stat_result:
+        if path == root:
+            return cast("os.stat_result", foreign)
+        return native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", forged)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="native"):
+            cuda_validation._require_physical_directories(root, "staging")
+
+
+def test_cuda_directory_types_host_stat_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unexpected file-status faults retain a typed staging failure."""
+    root = tmp_path / "root"
+    root.mkdir()
+    native = Path.lstat
+    failure = PermissionError("denied physical status")
+
+    def status(path: Path) -> os.stat_result:
+        if path == root:
+            raise failure
+        return native(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", status)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="status") as caught:
+            cuda_validation._require_physical_directories(root, "staging")
+    assert caught.value.__cause__ is failure

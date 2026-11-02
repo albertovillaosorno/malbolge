@@ -47,6 +47,8 @@ from pathlib import Path
 from pathlib import PurePosixPath
 from pathlib import PureWindowsPath
 import shutil
+from stat import S_ISDIR
+from stat import S_ISLNK
 from stat import S_ISREG
 import tarfile
 from typing import Final
@@ -500,18 +502,34 @@ def _safe_zip_extract(data: bytes, staging: Path) -> Path:
 
 
 def _require_physical_directories(path: Path, label: str) -> None:
-    """Reject linked or non-directory ancestors before filesystem mutation."""
+    """Require native physical directory metadata for every existing ancestor."""
     for component in (path, *path.parents):
-        if component.is_symlink() or component.is_junction():
+        try:
+            status = component.lstat()
+        except FileNotFoundError:
+            continue
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                f"CUDA {label} path status failed: {type(error).__name__}"
+            ) from error
+        if type(status) is not os.stat_result:
+            _fail(f"CUDA {label} path requires native status: {component}")
+        try:
+            junction = component.is_junction()
+        except (OSError, TypeError, ValueError, RuntimeError) as error:
+            raise CudaProvisionError(
+                f"CUDA {label} junction status failed: {type(error).__name__}"
+            ) from error
+        if type(junction) is not bool:
+            _fail(f"CUDA {label} path requires native junction status: {component}")
+        if S_ISLNK(status.st_mode) or junction:
             _fail(f"CUDA {label} path must not redirect: {component}")
-        if component.exists() and not component.is_dir():
+        if not S_ISDIR(status.st_mode):
             _fail(f"CUDA {label} path must be a directory: {component}")
 
 
 def _require_toolkit_destination(path: Path) -> None:
-    _require_physical_directories(path.parent, "toolkit destination")
-    if path.is_symlink() or path.is_junction():
-        _fail(f"CUDA toolkit destination must not redirect: {path}")
+    _require_physical_directories(path, "toolkit destination")
 
 
 def _prepare_staging(path: Path) -> None:

@@ -60,6 +60,9 @@ hardlinks become typed extraction errors instead of escaping as host key errors.
 Direct package extraction also preflights the toolkit overlay destination and
 all its parents before staging and again before copying verified package bytes;
 linked destination roots cannot redirect writes outside the requested toolkit.
+Staging and destination ancestry now require native `lstat` results proving
+physical directories; linked leaves and untrusted junction status cannot be
+hidden behind false-like host predicates, and status faults fail typed.
 Normal bootstrap remains offline with respect to CUDA and reports a missing
 toolkit instead of installing one implicitly. The current Linux package
 surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed
