@@ -27,6 +27,8 @@
 
 from __future__ import annotations
 
+import io
+import sys
 # Directly exercises the validator's private subprocess admission functions.
 # ruff: file-ignore[private-member-access]
 # pyright: reportPrivateUsage=false
@@ -727,3 +729,131 @@ def test_manual_validator_rejects_mutated_subprocess_invocation(
         validator.InputError, match=r"invalid .* process receipt"
     ):
         _execute_probe(probe, Path("/synthetic/clang"))
+
+
+CLI_SHORT_OUTPUT = "short"
+CLI_BOOLEAN_OUTPUT = "boolean"
+CLI_FOREIGN_OUTPUT = "foreign"
+CLI_FAILED_WRITE = "write-error"
+CLI_BAD_FLUSH = "flush"
+CLI_LONG_OUTPUT = "overstated"
+CLI_NO_COUNT = "missing"
+CLI_FLOAT_OUTPUT = "float"
+CLI_HELP_FLAG = "--help"
+CLI_CLANG_TIDY_FLAG = "--clang-tidy"
+CLI_REQUIRED_DETAIL = "required"
+
+
+class ForeignCliWriteReceipt(int):
+    """A nonnative count that cannot certify printed compiler diagnostics."""
+
+
+class BrokenCliText(io.StringIO):
+    """Emit exact host output faults without relying on a real terminal."""
+
+    def __init__(self, failure: str) -> None:
+        """Set the deterministic injected write or flush failure."""
+        super().__init__()
+        self.failure: str = failure
+
+    @override
+    def write(self, message: str) -> int:
+        if self.failure == CLI_FAILED_WRITE:
+            detail = "injected host output failure"
+            raise OSError(detail)
+        forged: object = {
+            CLI_SHORT_OUTPUT: len(message) - 1,
+            CLI_BOOLEAN_OUTPUT: True,
+            CLI_FOREIGN_OUTPUT: ForeignCliWriteReceipt(len(message)),
+            CLI_LONG_OUTPUT: len(message) + 1,
+            CLI_NO_COUNT: None,
+            CLI_FLOAT_OUTPUT: float(len(message)),
+        }.get(self.failure, len(message))
+        return cast("int", forged)
+
+    @override
+    def flush(self) -> None:
+        if self.failure == CLI_BAD_FLUSH:
+            return cast("None", object())
+        return super().flush()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        CLI_SHORT_OUTPUT,
+        CLI_BOOLEAN_OUTPUT,
+        CLI_FOREIGN_OUTPUT,
+        CLI_LONG_OUTPUT,
+        CLI_NO_COUNT,
+        CLI_FLOAT_OUTPUT,
+        CLI_FAILED_WRITE,
+        CLI_BAD_FLUSH,
+    ],
+)
+def test_manual_c_help_rejects_incomplete_output(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Help cannot report success if the usage text was not delivered."""
+    monkeypatch.setattr(sys, "argv", ["manual-guest-c", CLI_HELP_FLAG])
+    monkeypatch.setattr(sys, "stdout", BrokenCliText(failure))
+    assert validator.main() == validator.CONFIGURATION_ERROR
+
+
+def test_manual_c_help_native_output_still_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Ordinary help retains the standard argparse success behavior."""
+    monkeypatch.setattr(sys, "argv", ["manual-guest-c", CLI_HELP_FLAG])
+    with pytest.raises(SystemExit) as caught:
+        _ = validator.main()
+    assert caught.value.code == 0
+    assert CLI_CLANG_TIDY_FLAG in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [CLI_SHORT_OUTPUT, CLI_BOOLEAN_OUTPUT, CLI_FAILED_WRITE, CLI_BAD_FLUSH],
+)
+def test_manual_c_failed_diagnostic_retains_nonzero_status(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """A rejected guest-C invocation never escapes through broken stderr."""
+
+    def reject_config(_arguments: object) -> Never:
+        del _arguments
+        detail = "unavailable LLVM toolchain"
+        raise validator.InputError(detail)
+
+    monkeypatch.setattr(validator, "_configuration", reject_config)
+    monkeypatch.setattr(validator, "_parse_arguments", validator._Arguments)
+    monkeypatch.setattr(sys, "stderr", BrokenCliText(failure))
+    assert validator.main() == validator.CONFIGURATION_ERROR
+
+
+@pytest.mark.parametrize(
+    "failure", [CLI_SHORT_OUTPUT, CLI_FOREIGN_OUTPUT, CLI_BAD_FLUSH]
+)
+def test_manual_c_argparse_error_stays_nonzero_with_bad_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    """Missing positional input cannot be validated via broken usage output."""
+    monkeypatch.setattr(sys, "argv", ["manual-guest-c"])
+    monkeypatch.setattr(sys, "stderr", BrokenCliText(failure))
+    assert validator.main() == validator.CONFIGURATION_ERROR
+
+
+def test_manual_c_argparse_error_native_output(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Normal argparse failures retain their ordinary unsuccessful exit."""
+    monkeypatch.setattr(sys, "argv", ["manual-guest-c"])
+    with pytest.raises(SystemExit) as caught:
+        _ = validator.main()
+    assert caught.value.code == validator.CONFIGURATION_ERROR
+    assert CLI_REQUIRED_DETAIL in capsys.readouterr().err

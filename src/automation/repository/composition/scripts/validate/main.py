@@ -41,7 +41,10 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] - fixed executab
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Never, cast
+from typing import TYPE_CHECKING, Never, cast, override
+
+if TYPE_CHECKING:
+    from typing import TextIO
 
 if __package__ in {None, ""}:
     composition_root = Path(__file__).resolve().parents[2]
@@ -217,8 +220,44 @@ def _default_plugin(clang_tidy: Path) -> Path | None:
     return _native_resolved_path(PLUGIN_LIBRARY, context="plugin library")
 
 
+def _write_cli_record(stream: TextIO, message: str) -> bool:
+    """Accept only a complete native write and successful output flush.
+
+    Returns:
+        Whether the entire text record was delivered.
+
+    """
+    try:
+        written = stream.write(message)
+        if type(written) is not int or written != len(message):
+            return False
+        return stream.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        return False
+
+
+class _ManualArgumentParser(argparse.ArgumentParser):
+    """Authenticate argparse output before allowing successful help exits."""
+
+    @override
+    def _print_message(self, message: str, file: object = None) -> None:
+        if not message:
+            return
+        stream = sys.stderr if file is None else file
+        if not _write_cli_record(cast("TextIO", stream), message):
+            _fail("guest-C argument output write or flush failed")
+
+
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = _ManualArgumentParser(
         description=(
             "Validate only named C translation units against the Malbolge "
             "guest-C compatibility profile."
@@ -574,7 +613,8 @@ def _validate_sources(configuration: _Configuration) -> int:
 
 
 def _write_error(error: object) -> None:
-    _ = sys.stderr.write(f"error: {_safe_error_detail(error)}\n")
+    diagnostic = f"error: {_safe_error_detail(error)}\n"
+    _ = _write_cli_record(sys.stderr, diagnostic)
 
 
 def main() -> int:

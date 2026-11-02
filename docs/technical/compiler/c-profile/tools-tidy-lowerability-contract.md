@@ -63,7 +63,9 @@ missing, short, boolean, or overstated write receipts cannot certify a clean
 preflight or manual validation result. Argparse help and invalid-argument
 records use the same delivery checks, so incomplete `--help` output cannot
 return a successful exit. A failed stderr report retains nonzero validation
-status even when its own write or flush fails.
+status even when its own write or flush fails. The manual dispatcher enforces
+this independently for its own error diagnostics and argparse usage/help;
+non-native receipts never certify an ordinary successful help exit.
 
 Recursive discovery is reserved for an explicitly selected `doom` directory.
 This convenience rejects linked or junction directory roots and descendants
