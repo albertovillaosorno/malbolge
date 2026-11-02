@@ -3007,3 +3007,48 @@ def test_cuda_publication_types_destination_parent_close_fault(
     assert caught.value.__cause__ is failure
     assert destination.is_dir()
     assert not staged.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.parametrize("substitution", ["no-rename", "foreign-directory"])
+def test_cuda_publication_rejects_false_successful_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    substitution: str,
+) -> None:
+    """The renamed toolkit must retain the original staged directory inode."""
+    staged = tmp_path / "owned-staging-toolkit"
+    staged.mkdir()
+    payload = staged / "payload.bin"
+    _ = payload.write_bytes(b"verified contents")
+    parent = tmp_path / "toolkit-parent"
+    parent.mkdir()
+    destination = parent / "toolkit"
+    observed = False
+
+    def fake_success(
+        source: str | os.PathLike[str], target: str | os.PathLike[str],
+        *, src_dir_fd: int | None = None, dst_dir_fd: int | None = None,
+    ) -> None:
+        nonlocal observed
+        if Path(source) == staged and target == destination.name:
+            observed = True
+            if substitution == "foreign-directory":
+                destination.mkdir()
+                _ = (destination / "foreign.txt").write_text("foreign contents")
+            return
+        raise AssertionError("unexpected rename target")
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "replace", fake_success)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="publication"):
+            cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+                staged, destination
+            )
+    assert observed
+    assert staged.is_dir()
+    assert payload.read_bytes() == b"verified contents"
+    if substitution == "no-rename":
+        assert not destination.exists()
+    else:
+        assert (destination / "foreign.txt").read_text() == "foreign contents"

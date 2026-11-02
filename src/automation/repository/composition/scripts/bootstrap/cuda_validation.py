@@ -1029,6 +1029,7 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
     if os.name != "posix":
         _ = staged.replace(destination)
         return
+    staged_identity = _owned_staging_identity(staged)
     flags = (
         os.O_RDONLY
         | getattr(os, "O_DIRECTORY", 0)
@@ -1063,6 +1064,15 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
                 "CUDA toolkit destination became occupied before publication"
             )
         _ = os.replace(staged, destination.name, dst_dir_fd=descriptor)
+        received = os.stat(
+            destination.name, dir_fd=descriptor, follow_symlinks=False
+        )
+        if (
+            type(received) is not os.stat_result
+            or not S_ISDIR(received.st_mode)
+            or (received.st_dev, received.st_ino) != staged_identity
+        ):
+            _fail("CUDA toolkit destination publication receipt mismatch")
         _require_physical_directories(parent, "toolkit destination")
         named = parent.lstat()
         if (
