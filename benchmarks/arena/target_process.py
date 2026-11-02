@@ -590,6 +590,7 @@ def _run(
     )
     _admit_command(command)
     prepared = _limited_command(command, enforce=limits.enforce_child_limits)
+    expected_arguments = tuple(prepared)
     started = monotonic()
     try:
         child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
@@ -607,6 +608,26 @@ def _run(
         message = "bounded target child launch failed"
         raise TargetProcessError(message) from error
     try:
+        # Popen exposes the exact list it was asked to execute. A substituted
+        # or mutated argument receipt cannot certify our requested command,
+        # even if the foreign child returns valid-looking output and status.
+        try:
+            launched_arguments = child.args
+        except Exception as error:
+            message = "bounded target child launch command identity inspection failed"
+            raise TargetProcessError(message) from error
+        if (
+            type(launched_arguments) is not list
+            or launched_arguments is not prepared
+            or len(launched_arguments) != len(expected_arguments)
+            or any(
+                type(argument) is not str or argument != expected
+                for argument, expected in zip(
+                    launched_arguments, expected_arguments, strict=True
+                )
+            )
+        ):
+            _fail("bounded target child launch returned invalid command identity")
         deadline = started + limits.timeout_seconds
         if input_bytes is not None:
             _send_input(child, input_bytes)

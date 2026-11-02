@@ -991,6 +991,37 @@ def test_output_selector_failure_is_typed_and_retains_cause(
 
 
 @pytest.mark.parametrize(
+    "forgery", ["different-command", "copied-command", "mutated-command"]
+)
+def test_substituted_child_argv_cannot_receive_original_command_credit(
+    monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """A real launched child must match the prepared native argument identity."""
+    native_popen = target_process.sp.Popen
+    substituted = False
+
+    def launch(command: list[str], **kwargs: Any) -> sp.Popen[bytes]:
+        nonlocal substituted
+        substituted = True
+        if forgery == "different-command":
+            actual = _child("print('different program')")
+        elif forgery == "copied-command":
+            actual = command.copy()
+        else:
+            command[-1] = "print('mutated program')"
+            actual = command
+        return cast("sp.Popen[bytes]", native_popen(actual, **kwargs))
+
+    monkeypatch.setattr(target_process.sp, "Popen", launch)
+    with pytest.raises(target_process.TargetProcessError, match="command identity"):
+        target_process.invoke(
+            _child("print('expected program')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    assert substituted
+
+
+@pytest.mark.parametrize(
     "forgery", ["swapped-stream", "boolean-slot", "copied-key", "write-mask"]
 )
 def test_output_selector_rejects_forged_readiness_receipts(
