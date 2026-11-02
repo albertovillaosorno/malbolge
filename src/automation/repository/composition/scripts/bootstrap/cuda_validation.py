@@ -41,6 +41,7 @@ from __future__ import annotations
 import ctypes
 import errno
 import hashlib
+import http.client
 import io
 import json
 import lzma
@@ -1706,7 +1707,7 @@ def _download_cuda_package(
         )
         with response:
             data = response.read(max_bytes + 1)
-    except (OSError, TypeError, ValueError, RuntimeError) as error:
+    except (OSError, http.client.HTTPException, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
             f"cannot download pinned CUDA package: {_native_error_name(error)}"
         ) from error

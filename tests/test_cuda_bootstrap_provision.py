@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import io
 import json
 import lzma
@@ -373,6 +374,30 @@ def test_cuda_download_types_network_host_failures(
     ) as caught:
         _ = cuda_validation._download_cuda_package(url)
     assert caught.value.__cause__ is error
+    assert response.closed == (phase == "read")
+
+
+@pytest.mark.parametrize("phase", ("open", "read"))
+def test_cuda_download_normalizes_incomplete_http_response(
+    monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """A truncated HTTP body is a typed provisioning failure, not a host leak."""
+    failure = http.client.IncompleteRead(b"partial", 8)
+    response = _NetworkResponse(failure)
+    url = cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+
+    def open_url(_request: object, *, timeout: int) -> _NetworkResponse:
+        assert timeout == 120
+        if phase == "open":
+            raise failure
+        return response
+
+    monkeypatch.setattr(cuda_validation.urllib.request, "urlopen", open_url)
+    with pytest.raises(
+        cuda_validation.CudaProvisionError, match="IncompleteRead"
+    ) as caught:
+        _ = cuda_validation._download_cuda_package(url)
+    assert caught.value.__cause__ is failure
     assert response.closed == (phase == "read")
 
 
