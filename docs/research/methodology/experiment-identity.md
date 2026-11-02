@@ -78,9 +78,15 @@ research algorithm directory and the canonical `experiment.toml` leaf; neither
 a matching directory basename nor rewritten provenance can mint a new ID.
 
 TOML parser capacity errors, including oversized decimal integer tokens,
-return typed manifest errors instead of host exceptions. TOML remains the
-checked-in serialization, but the schema owns semantics independently of that
-format. The standalone manifest validator CLI only reports success after an
+return typed manifest errors instead of host exceptions. The core parser now
+also refuses a runtime replacement of the standard-library TOML decoder before
+admitting source identity. Three red-first regressions show that otherwise a
+native-shaped forged receipt can hide invalid syntax, change the declared
+schema version, or replace a recorded Git commit without changing source text.
+This pins the chosen decoder provider, not the authenticity of a source file or
+all of the interpreter runtime's internals. TOML remains the checked-in
+serialization, but the schema owns semantics independently of that format.
+The standalone manifest validator CLI only reports success after an
 exact native text-write count and a completed flush. Short writes, foreign
 output receipts, and failed stdout delivery return nonzero; failed diagnostic
 delivery cannot convert invalid manifests into a successful process exit.

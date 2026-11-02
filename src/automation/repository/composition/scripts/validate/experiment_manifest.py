@@ -46,6 +46,10 @@ from typing import Never, TextIO, cast
 
 import tomllib
 
+# A replaced runtime decoder cannot assert what the original manifest says.
+# Retain the stdlib entrypoint selected when this validator was imported.
+_NATIVE_TOML_LOADS = tomllib.loads
+
 from scripts.repository_root import repository_root
 from scripts.research_layout import research_algorithm_directories
 from scripts.validate import target_profile
@@ -298,6 +302,12 @@ def _parse_document(text: str) -> dict[str, object]:
         _fail(f"unsupported experiment schema: {version}")
     for table_name in CORE_TABLES:
         _ = _table(document, table_name)
+    # The native dict and field shapes alone do not certify that the parser
+    # read these bytes. Reject swapped decoders even if they return an otherwise
+    # valid-looking schema or run identity. Preserve malformed-receipt errors
+    # above this point so their original diagnostic remains useful.
+    if tomllib.loads is not _NATIVE_TOML_LOADS:
+        _fail("experiment manifest TOML decoder provider changed")
     return document
 
 

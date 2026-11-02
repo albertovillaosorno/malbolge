@@ -1190,6 +1190,32 @@ def test_profile_independent_scope_is_valid_without_fingerprint() -> None:
 
 
 @pytest.mark.parametrize(
+    "tamper",
+    ["syntax", "schema", "run-commit"],
+)
+def test_core_manifest_refuses_substituted_toml_provider_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tamper: str,
+) -> None:
+    """Native-shaped parser output cannot invent core source/run identity."""
+    source = _run_manifest()
+    native = validator.tomllib.loads(source)
+    if tamper == "syntax":
+        source = "this is not a TOML manifest"
+    elif tamper == "schema":
+        source = source.replace("schema_version = 1", "schema_version = 2")
+    else:
+        native["run"]["commit"] = "c" * 40
+    with monkeypatch.context() as context:
+        context.setattr(validator.tomllib, "loads", lambda _text: native)
+        with pytest.raises(
+            validator.ExperimentManifestError, match="TOML.*provider"
+        ):
+            validator.parse_manifest(source)
+    assert validator.parse_manifest(_run_manifest()).run is not None
+
+
+@pytest.mark.parametrize(
     "fault_type",
     [validator.tomllib.TOMLDecodeError, ValueError, TypeError, RuntimeError],
 )

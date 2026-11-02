@@ -67,4 +67,7 @@ source constants.
   identity. Negative outcomes remain valid run records.
 - `tests/test_experiment_manifest.py` exercises repository identity, exact
   commit/hash shape, failure outcomes, stopping bounds, mandatory verification,
-  and plan/run separation.
+  and plan/run separation. Three additional red-first tests now reject a
+  substituted TOML decoder returning native-looking run evidence for malformed
+  source, wrong schema version, or a forged commit. The full 163-case manifest
+  suite passes. This confirms decoder-provider stability, not source provenance.
