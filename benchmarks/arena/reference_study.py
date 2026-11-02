@@ -898,6 +898,9 @@ def _validate_plan(plan: StudyPlan) -> None:
 
 
 _STUDY_WORKSPACE_PREFIX = "arena-host-c-study-"
+# Preserve the native scan provider identity: even a real OS iterator could
+# be redirected to a different empty directory by a substituted provider.
+_SYSTEM_SCANDIR = os.scandir
 
 
 def _admit_study_workspace(receipt: object) -> Path:
@@ -933,6 +936,8 @@ def _admit_study_workspace(receipt: object) -> Path:
         # an occupied-directory/iterator failure before writing evidence.
         entries = os.scandir(directory)
         try:
+            if os.scandir is not _SYSTEM_SCANDIR:
+                _fail("host-C reference workspace returned foreign scan provider")
             occupied = next(entries, None) is not None
         finally:
             if entries.close() is not None:

@@ -1206,6 +1206,58 @@ def test_host_reference_workspace_scandir_cannot_certify_unsafe_entry(
     assert marker.read_bytes() == b"untouched"
 
 
+def test_host_reference_workspace_rejects_forged_empty_scandir_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign empty iterator cannot certify an occupied workspace."""
+    folder = tmp_path / "arena-host-c-study-foreign"
+    folder.mkdir()
+    marker = folder / "preserve.txt"
+    marker.write_bytes(b"untouched")
+    closed = False
+
+    class FalseEmptyScan:
+        def __iter__(self) -> FalseEmptyScan:
+            return self
+
+        def __next__(self) -> object:
+            raise StopIteration
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(reference_study.os, "scandir", lambda _folder: FalseEmptyScan())
+        with pytest.raises(reference_study.ReferenceStudyError, match="workspace"):
+            reference_study._admit_study_workspace(str(folder))
+    assert closed
+    assert marker.read_bytes() == b"untouched"
+
+
+def test_host_reference_workspace_rejects_redirected_native_scandir_inventory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real iterator over a different empty directory cannot certify ours."""
+    folder = tmp_path / "arena-host-c-study-foreign"
+    folder.mkdir()
+    marker = folder / "preserve.txt"
+    marker.write_bytes(b"untouched")
+    decoy = tmp_path / "empty-decoy"
+    decoy.mkdir()
+    native_scandir = reference_study.os.scandir
+
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(
+            reference_study.os, "scandir", lambda _folder: native_scandir(decoy)
+        )
+        with pytest.raises(reference_study.ReferenceStudyError, match="workspace"):
+            reference_study._admit_study_workspace(str(folder))
+    assert marker.read_bytes() == b"untouched"
+
+
 class _ForgedWorkspaceName(str):
     """A foreign tempfile text receipt must not redirect output or cleanup."""
 
