@@ -57,6 +57,100 @@ def _prepare_provision_stub(
     return commands
 
 
+def test_python_validation_layout_anchors_relative_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Validation paths stay bound to their checkout after cwd changes."""
+    monkeypatch.chdir(tmp_path)
+    layout = python_validation.validation_layout(Path("checkout"))
+    assert layout == python_validation.validation_layout(tmp_path / "checkout")
+    assert layout.environment.is_absolute()
+
+
+def test_python_provision_anchors_uv_and_pip_after_cwd_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The uv callback must not relocate subsequent pip target paths."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    monkeypatch.chdir(tmp_path)
+    layout = python_validation.validation_layout(Path("checkout"))
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    invoked_roots: list[Path] = []
+    commands: list[list[str]] = []
+
+    def change_during_uv(root: Path) -> Path:
+        invoked_roots.append(root)
+        monkeypatch.chdir(outside)
+        return checkout / "uv"
+
+    def collect(command: list[str]) -> str:
+        commands.append(command)
+        return ""
+
+    def no_launchers(
+        _layout: python_validation.ValidationEnvironmentLayout,
+        *,
+        windows: bool,
+    ) -> None:
+        _ = windows
+
+    def no_aliases(
+        _layout: python_validation.ValidationEnvironmentLayout,
+        *,
+        windows: bool,
+    ) -> tuple[tuple[str, Path], ...]:
+        _ = windows
+        return ()
+
+    monkeypatch.setattr(python_validation, "ensure_uv", change_during_uv)
+    monkeypatch.setattr(python_validation, "_run", collect)
+    monkeypatch.setattr(python_validation, "write_launchers", no_launchers)
+    monkeypatch.setattr(python_validation, "write_jig_tool_aliases", no_aliases)
+    python_validation._provision(layout, root=Path("checkout"))
+    assert invoked_roots == [checkout]
+    assert len(commands) == 2
+    assert all(command[0] == str(checkout / "uv") for command in commands)
+    assert all(str(layout.python) in command for command in commands)
+    assert not (outside / "checkout").exists()
+
+
+def test_python_initialize_keeps_relative_checkout_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An intervening provisioning callback cannot move the validation root."""
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    provisioned: list[Path] = []
+    verified: list[Path] = []
+
+    def change_during_provision(
+        layout: python_validation.ValidationEnvironmentLayout,
+        *,
+        root: Path,
+    ) -> None:
+        provisioned.append(root)
+        assert layout.environment.is_absolute()
+        monkeypatch.chdir(outside)
+
+    def verify(layout: python_validation.ValidationEnvironmentLayout) -> None:
+        verified.append(layout.environment)
+
+    monkeypatch.setattr(python_validation, "_check_host_python", lambda: None)
+    monkeypatch.setattr(python_validation, "_provision", change_during_provision)
+    monkeypatch.setattr(python_validation, "_verify", verify)
+    monkeypatch.chdir(tmp_path)
+    result = python_validation.initialize(Path("checkout"))
+    assert provisioned == [checkout]
+    assert result == python_validation.validation_layout(checkout)
+    assert verified == [result.environment]
+
+
 @pytest.mark.parametrize("link", ["interpreter", "environment", "ancestor"])
 def test_python_provision_rejects_redirected_environment_before_pip(
     tmp_path: Path,

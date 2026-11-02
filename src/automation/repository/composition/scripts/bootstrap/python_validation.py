@@ -1282,7 +1282,9 @@ def validation_layout(
         Exact environment, interpreter, launcher, and tool paths.
 
     """
-    environment = root / ".dependencies" / "python" / "3.14.7"
+    # Anchor all tool and interpreter paths without dereferencing aliases.
+    selected_root = root.absolute()
+    environment = selected_root / ".dependencies" / "python" / "3.14.7"
     scripts = environment / ("Scripts" if windows else "bin")
     executable_suffix = ".exe" if windows else ""
     launcher_suffix = ".cmd" if windows else ""
@@ -2099,8 +2101,9 @@ def _provision(
     *,
     root: Path = ROOT,
 ) -> None:
+    selected_root = root.absolute()
     if type(layout) is not ValidationEnvironmentLayout or layout != validation_layout(
-        root
+        selected_root
     ):
         _fail("Python provisioning layout must match the selected checkout")
     # uv pip sync can modify the selected Python interpreter and environment.
@@ -2112,7 +2115,7 @@ def _provision(
     )
     if python_status is not None and python_status.st_nlink != 1:
         _fail("Python provisioned interpreter must be single-link")
-    uv = ensure_uv(root)
+    uv = ensure_uv(selected_root)
     if python_status is None:
         builder = venv.EnvBuilder(with_pip=False, clear=False)
         builder.create(layout.environment)
@@ -2171,8 +2174,9 @@ def initialize(root: Path = ROOT) -> ValidationEnvironmentLayout:
 
     """
     _check_host_python()
-    layout = LAYOUT if root == ROOT else validation_layout(root)
-    _provision(layout, root=root)
+    selected_root = root.absolute()
+    layout = LAYOUT if selected_root == ROOT else validation_layout(selected_root)
+    _provision(layout, root=selected_root)
     _verify(layout)
     return layout
 
