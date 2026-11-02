@@ -57,6 +57,9 @@ provision errors for network-open and body-read host faults, preserving the
 original cause without invoking foreign exception formatting.
 Tar archive hardlink targets must remain under their package root; unresolved
 hardlinks become typed extraction errors instead of escaping as host key errors.
+Direct package extraction also preflights the toolkit overlay destination and
+all its parents before staging and again before copying verified package bytes;
+linked destination roots cannot redirect writes outside the requested toolkit.
 Normal bootstrap remains offline with respect to CUDA and reports a missing
 toolkit instead of installing one implicitly. The current Linux package
 surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed

@@ -532,13 +532,16 @@ def extract_cuda_package(
 ) -> None:
     """Overlay one verified CUDA package into a staged toolkit directory."""
     verify_cuda_package(data, package)
+    _require_toolkit_destination(destination)
     package_staging = staging / package.name
     _prepare_staging(package_staging)
     if package.relative_path.endswith(".zip"):
         extracted = _safe_zip_extract(data, package_staging)
     else:
         extracted = _safe_tar_extract(data, package_staging)
+    _require_toolkit_destination(destination)
     destination.mkdir(parents=True, exist_ok=True)
+    _require_toolkit_destination(destination)
     _ = shutil.copytree(
         extracted, destination, dirs_exist_ok=True, symlinks=True
     )

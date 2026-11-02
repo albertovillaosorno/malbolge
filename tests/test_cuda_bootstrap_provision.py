@@ -380,6 +380,43 @@ def test_tar_extraction_strips_single_archive_root(tmp_path: Path) -> None:
     ).read_bytes() == BUILTINS_BYTES
 
 
+@pytest.mark.parametrize("kind", ["linked-leaf", "linked-parent"])
+def test_cuda_extract_rejects_redirected_overlay_destination(
+    tmp_path: Path,
+    kind: str,
+) -> None:
+    """Direct extraction cannot overlay verified bytes into a linked target."""
+    payload = _payload()
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, _manifest(tmp_path, payload), LINUX_PLATFORM
+    ).packages[0]
+    external = tmp_path / "outside"
+    external.mkdir()
+    sentinel = external / "sentinel.txt"
+    _ = sentinel.write_bytes(b"unrelated filesystem content")
+    if kind == "linked-leaf":
+        destination = tmp_path / "toolkit"
+        link = destination
+        target = external
+    else:
+        parent = tmp_path / "linked-parent"
+        destination = parent / "toolkit"
+        link = parent
+        target = external
+    try:
+        _ = link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
+
+    with pytest.raises(cuda_validation.CudaProvisionError, match="redirect"):
+        cuda_validation.extract_cuda_package(
+            payload, package, destination, staging=tmp_path / "stage"
+        )
+    assert sentinel.read_bytes() == b"unrelated filesystem content"
+    assert list(external.iterdir()) == [sentinel]
+    assert link.is_symlink()
+
+
 def test_tar_extraction_rejects_parent_escape(tmp_path: Path) -> None:
     """Archive members cannot escape package staging or toolkit roots."""
     payload = _tar_xz({f"{ARCHIVE_ROOT}/../../escape": b"forged"})
