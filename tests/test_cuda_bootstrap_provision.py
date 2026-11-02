@@ -57,7 +57,7 @@ from scripts.bootstrap import cuda_validation, project
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
-    from typing import BinaryIO
+    from typing import IO, BinaryIO
 
 LINUX_PLATFORM = "linux-x86_64"
 FILE_REDIRECT = "file"
@@ -6591,3 +6591,94 @@ def test_cuda_archive_member_open_faults_remain_typed(
             )
     assert caught.value.__cause__ is failure
     assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
+
+
+@pytest.mark.parametrize("archive_format", ("tar", "zip"))
+@pytest.mark.parametrize(
+    "forgery",
+    ("short-read", "close-fault", "close-receipt", "body-close-fault"),
+)
+def test_cuda_archive_member_context_cannot_suppress_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    archive_format: str,
+    forgery: str,
+) -> None:
+    """A foreign member stream cannot turn failed extraction into publication."""
+    is_zip = archive_format == "zip"
+    payload = _zip_payload() if is_zip else _payload()
+    manifest = _manifest(
+        tmp_path,
+        payload,
+        {"relative_path": _ZIP_PACKAGE_PATH if is_zip else PACKAGE_PATH},
+    )
+    package = cuda_validation.load_cuda_provision_manifest(
+        tmp_path, manifest, LINUX_PLATFORM
+    ).packages[0]
+    native_zip_open = zipfile.ZipFile.open
+    native_tar_open = tarfile.TarFile.extractfile
+    stream_closed: list[str] = []
+    context_exited: list[str] = []
+    close_error = OSError("foreign archive member close failure")
+
+    class ForgedMember:
+        def __init__(self, stream: IO[bytes]) -> None:
+            self.stream = stream
+
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> bool:
+            context_exited.append("exit")
+            self.stream.close()
+            return True
+
+        def read(self, size: int) -> bytes:
+            if forgery in ("short-read", "body-close-fault"):
+                return b""
+            return self.stream.read(size)
+
+        def close(self) -> object:
+            stream_closed.append("close")
+            self.stream.close()
+            if forgery in ("close-fault", "body-close-fault"):
+                raise close_error
+            return True if forgery == "close-receipt" else None
+
+    def forged_open(
+        archive: zipfile.ZipFile | tarfile.TarFile,
+        member: str | zipfile.ZipInfo | tarfile.TarInfo,
+    ) -> ForgedMember:
+        if isinstance(archive, zipfile.ZipFile):
+            assert isinstance(member, (str, zipfile.ZipInfo))
+            native = native_zip_open(archive, member)
+        else:
+            assert isinstance(archive, tarfile.TarFile)
+            assert isinstance(member, (str, tarfile.TarInfo))
+            native = native_tar_open(archive, member)
+        assert native is not None
+        return ForgedMember(native)
+
+    with monkeypatch.context() as isolated:
+        if is_zip:
+            isolated.setattr(zipfile.ZipFile, "open", forged_open)
+        else:
+            isolated.setattr(tarfile.TarFile, "extractfile", forged_open)
+        expected = (
+            "member length mismatch"
+            if forgery in ("short-read", "body-close-fault")
+            else "member close"
+        )
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match=expected
+        ) as caught:
+            cuda_validation.extract_cuda_package(
+                payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
+            )
+    assert stream_closed == ["close"]
+    assert context_exited == []
+    assert not (tmp_path / "toolkit/lib64/libnvrtc.so.13").exists()
+    if forgery == "close-fault":
+        assert caught.value.__cause__ is close_error
+    elif forgery == "body-close-fault":
+        assert any("close also failed" in note for note in caught.value.__notes__)

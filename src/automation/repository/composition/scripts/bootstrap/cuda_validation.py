@@ -663,6 +663,36 @@ def _write_verified_bytes(path: Path, payload: bytes) -> None:
     _write_staged_file_exclusively(path, payload, "CUDA staging payload")
 
 
+def _write_archive_member_from_stream(
+    source: IO[bytes],
+    destination: Path,
+    size: int,
+) -> None:
+    """Write one member without delegating rejection to replaceable exit hooks."""
+    try:
+        _write_verified_bytes(destination, _read_bounded_archive_member(source, size))
+    except BaseException as primary:
+        try:
+            receipt = cast("object", source.close())
+        except Exception as error:  # noqa: BLE001
+            BaseException.add_note(
+                primary,
+                "CUDA archive member close also failed: " + type(error).__name__,
+            )
+        else:
+            if receipt is not None:
+                BaseException.add_note(
+                    primary, "CUDA archive member close receipt invalid"
+                )
+        raise
+    try:
+        receipt = cast("object", source.close())
+    except Exception as error:
+        raise CudaProvisionError("CUDA archive member close failed") from error
+    if receipt is not None:
+        _fail("CUDA archive member close receipt must be native")
+
+
 def _write_tar_member(
     archive: tarfile.TarFile,
     member: tarfile.TarInfo,
@@ -735,11 +765,7 @@ def _write_tar_member(
     source = archive.extractfile(source_member)
     if source is None:
         _fail(f"CUDA archive member is not readable: {member.name}")
-    with source:
-        _write_verified_bytes(
-            destination,
-            _read_bounded_archive_member(source, source_member.size),
-        )
+    _write_archive_member_from_stream(source, destination, source_member.size)
 
 
 def _extract_tar_archive(archive: tarfile.TarFile, staging: Path) -> Path:
@@ -811,10 +837,8 @@ def _extract_zip_archive(archive: zipfile.ZipFile, staging: Path) -> Path:
             _ensure_toolkit_destination_parent(destination)
             continue
         _ensure_toolkit_destination_parent(destination.parent)
-        with archive.open(info) as source:
-            _write_verified_bytes(
-                destination, _read_bounded_archive_member(source, info.file_size)
-            )
+        source = archive.open(info)
+        _write_archive_member_from_stream(source, destination, info.file_size)
     extracted = staging / root_name
     if not extracted.is_dir():
         _fail("CUDA archive package root is not a directory")
