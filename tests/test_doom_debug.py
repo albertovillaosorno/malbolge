@@ -35,8 +35,9 @@
 from __future__ import annotations
 
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, final, override
 
 import pytest
 from scripts.debug import doom
@@ -398,3 +399,93 @@ def test_doom_debug_build_accepts_physical_existing_or_missing_output(
     config.executable.unlink()
     assert DEBUG_DIRECTORY(config.source) == debug_root
     assert not config.executable.exists()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "short",
+        "overlong",
+        "boolean",
+        "foreign-count",
+        "missing-count",
+        "write-error",
+        "missing-flush",
+        "foreign-flush",
+        "flush-error",
+    ],
+)
+def test_doom_console_requires_complete_native_delivery(
+    monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Native console receipts must prove a complete successful output record."""
+
+    class ForeignCount(int):
+        @override
+        def __eq__(self, other: object) -> bool:
+            del other
+            raise AssertionError("foreign console count compared")
+
+    @final
+    class Sink:
+        def __init__(self, kind: str) -> None:
+            self.kind = kind
+            self.messages: list[str] = []
+            self.flushes = 0
+
+        def write(self, value: str) -> object:
+            self.messages.append(value)
+            if self.kind == "write-error":
+                raise OSError("synthetic stream failure")
+            if self.kind == "short":
+                return len(value) - 1
+            if self.kind == "overlong":
+                return len(value) + 1
+            if self.kind == "boolean":
+                return True
+            if self.kind == "foreign-count":
+                return ForeignCount(len(value))
+            if self.kind == "missing-count":
+                return None
+            return len(value)
+
+        def flush(self) -> object:
+            self.flushes += 1
+            if self.kind == "flush-error":
+                raise OSError("synthetic flush failure")
+            if self.kind == "foreign-flush":
+                return False
+            return None
+
+    sink = Sink(failure)
+    if failure == "missing-flush":
+        monkeypatch.delattr(Sink, "flush")
+    monkeypatch.setattr(sys, "stdout", sink)
+    with pytest.raises(doom.DoomDebugError, match="console.*write or flush"):
+        doom._write_standard_output("standalone Clang validation: PASS\n")  # pyright: ignore[reportPrivateUsage]
+    assert sink.messages == ["standalone Clang validation: PASS\n"]
+
+
+def test_doom_console_success_requires_completed_flush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native output stream still supports the normal console path."""
+
+    @final
+    class Sink:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+            self.flushed = False
+
+        def write(self, value: str) -> int:
+            self.messages.append(value)
+            return len(value)
+
+        def flush(self) -> None:
+            self.flushed = True
+
+    sink = Sink()
+    monkeypatch.setattr(sys, "stdout", sink)
+    doom._write_standard_output("standalone Clang validation: PASS\n")  # pyright: ignore[reportPrivateUsage]
+    assert sink.messages == ["standalone Clang validation: PASS\n"]
+    assert sink.flushed

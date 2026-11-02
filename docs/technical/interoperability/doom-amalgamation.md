@@ -86,7 +86,9 @@ descriptor before echoing at most one MiB to the console. The complete
 sanitizer diagnostic stream remains in the retained log file. Neither the log
 path nor its output bytes may be substituted after process execution; these
 local admission checks do not make arbitrary concurrent parent replacement
-atomic.
+atomic. Console summaries and bounded log echoes must receive an exact native
+write count and successful flush before the debug runner proceeds; incomplete
+or foreign output delivery raises a typed DOOM debug error.
 
 A no-CRT deterministic harness produced identical multi-TU and single-TU
 framebuffer/audio transcripts:

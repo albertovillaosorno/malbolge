@@ -151,8 +151,27 @@ def _fail(message: str) -> Never:
 
 
 def _write_standard_output(text: str) -> None:
-    _ = sys.stdout.write(text)
-    _ = sys.stdout.flush()
+    """Report success only after a complete native text write and flush."""
+    try:
+        written = sys.stdout.write(text)
+        if type(written) is not int or written != len(text):
+            delivered = False
+        else:
+            delivered = sys.stdout.flush() is None
+    except (
+        AttributeError,
+        IndexError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
+        raise DoomDebugError(
+            "DOOM debug console output write or flush failed"
+        ) from error
+    if not delivered:
+        _fail("DOOM debug console output write or flush failed")
 
 
 def _existing_file(path: Path, description: str) -> Path:
