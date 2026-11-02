@@ -989,6 +989,9 @@ def _manifest(
 
 
 _STUDY_WORKSPACE_PREFIX = "arena-target-echo-"
+# Bind workspace emptiness checks to the imported scanner provider. A native
+# iterator redirected to a different directory is not a workspace receipt.
+_SYSTEM_SCANDIR = os.scandir
 
 
 def _admit_new_study_workspace(receipt: object) -> Path:
@@ -1022,6 +1025,8 @@ def _admit_new_study_workspace(receipt: object) -> Path:
         # suppress a nonempty-directory rejection before study creation.
         entries = os.scandir(directory)
         try:
+            if os.scandir is not _SYSTEM_SCANDIR:
+                _fail("target echo study workspace returned foreign scan provider")
             occupied = next(entries, None) is not None
         finally:
             if entries.close() is not None:

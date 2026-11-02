@@ -987,6 +987,48 @@ def test_target_echo_workspace_scandir_cannot_certify_unsafe_entry(
     assert marker.read_bytes() == b"untouched"
 
 
+@pytest.mark.parametrize("forgery", ["false-empty", "redirected-native"])
+def test_target_echo_workspace_rejects_substituted_empty_scanner_provider(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Foreign and redirected native scans cannot certify an occupied study."""
+    folder = tmp_path / "arena-target-echo-foreign"
+    folder.mkdir()
+    marker = folder / "preserve.txt"
+    marker.write_bytes(b"untouched")
+    decoy = tmp_path / "empty-decoy"
+    decoy.mkdir()
+    closed = False
+    native_scandir = os.scandir
+
+    class FalseEmptyScan:
+        def __iter__(self) -> FalseEmptyScan:
+            return self
+
+        def __next__(self) -> object:
+            raise StopIteration
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    def forged_scan(_directory: Path) -> object:
+        if forgery == "redirected-native":
+            return native_scandir(decoy)
+        return FalseEmptyScan()
+
+    monkeypatch.setattr(target_echo_reference, "_TEMP", tmp_path)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(target_echo_reference.os, "scandir", forged_scan)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="workspace"
+        ):
+            target_echo_reference._admit_new_study_workspace(str(folder))
+    if forgery == "false-empty":
+        assert closed
+    assert marker.read_bytes() == b"untouched"
+
+
 class _ForeignTargetStudyWorkspaceStat:
     """Reject fabricated leaf metadata without evaluating untrusted fields."""
 
@@ -1026,7 +1068,8 @@ def test_target_echo_workspace_receipt_metadata_is_typed_and_bounded(
     monkeypatch.setattr(target_echo_reference, "_TEMP", tmp_path)
     with monkeypatch.context() as scoped:
         scoped.setattr(Path, "lstat", probe_lstat)
-        scoped.setattr(os, "scandir", probe_scandir)
+        if kind == "scandir-fault":
+            scoped.setattr(os, "scandir", probe_scandir)
         if kind == "valid":
             assert (
                 target_echo_reference._admit_new_study_workspace(str(workspace))
