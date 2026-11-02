@@ -3495,6 +3495,26 @@ def test_rust_import_rejects_alias_replaced_after_hardlink(
     assert not project.rust_toolchain_import_complete(destination)
 
 
+@pytest.mark.parametrize(
+    "tool_id", ["../cargo", "cargo/../cargo", "C:cargo", "cargo\\other", "NUL"]
+)
+def test_rust_import_rejects_nonlocal_tool_ids(
+    tmp_path: Path, tool_id: str
+) -> None:
+    """An imported tool ID must not address a different alias or device."""
+    source = tmp_path / "host-rust"
+    (source / "bin").mkdir(parents=True)
+    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
+    destination = tmp_path / ".dependencies/rust" / RUST_CHANNEL
+    with pytest.raises(project.InitializationError, match="path segment"):
+        _ = project.import_rust_toolchain(
+            source, destination, tool_ids=(tool_id,), windows=False
+        )
+    assert not destination.exists()
+    assert not project.rust_toolchain_import_complete(destination)
+    assert not (destination / "bin/cargo.bin").exists()
+
+
 def test_rustup_resolver_never_queries_uninstalled_channel(
     tmp_path: Path,
 ) -> None:

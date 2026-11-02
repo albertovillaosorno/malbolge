@@ -1519,6 +1519,16 @@ def write_rust_linker_adapters(
     )
 
 
+def _admit_rust_import_tool_ids(tool_ids: tuple[str, ...]) -> None:
+    """Keep neutral Rust alias names to one unambiguous local path segment."""
+    if type(tool_ids) is not tuple:
+        _fail("imported Rust tool IDs must be a native tuple")
+    for tool_id in tool_ids:
+        if type(tool_id) is not str or not tool_id:
+            _fail("imported Rust tool ID must be one repository-local path segment")
+        _ = _path_segment(tool_id, "imported Rust tool ID")
+
+
 def _rust_import_alias_status(path: Path, parent_fd: int | None) -> os.stat_result:
     if parent_fd is None:
         return path.lstat()
@@ -1642,6 +1652,7 @@ def _ensure_rust_toolchain_aliases(
         Alias paths inside the imported native toolchain `bin` directory.
 
     """
+    _admit_rust_import_tool_ids(tool_ids)
     suffix = ".exe" if windows else ""
     parent = toolchain_root / "bin"
     expected = _rust_adapter_parent_identity(parent) if os.name == "posix" else None
@@ -1702,6 +1713,7 @@ def import_rust_toolchain(
         Alias paths inside the imported native toolchain `bin` directory.
 
     """
+    _admit_rust_import_tool_ids(tool_ids)
     _admit_import_destination(destination, "Rust")
     _ = shutil.copytree(
         source,
