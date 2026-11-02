@@ -1869,7 +1869,13 @@ def _capture(arguments: list[str]) -> str | None:
         return None
     if max(len(completed.stdout), len(completed.stderr)) > _HOST_MAX_CAPTURE_CHARS:
         return None
-    output = completed.stdout.strip()
+    # Version banners are evidence: trimming their whitespace could turn a
+    # padded or multi-line diagnostic into the exact pinned release.
+    output = (
+        completed.stdout
+        if len(arguments) == 2 and arguments[1] == "--version"
+        else completed.stdout.strip()
+    )
     return output or None
 
 

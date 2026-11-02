@@ -1816,6 +1816,22 @@ def test_linux_import_types_resource_traversal_failure(
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
 
 
+@pytest.mark.parametrize(
+    "banner",
+    (
+        " clang version 22.1.8",
+        "clang version 22.1.8 ",
+        "clang version 22.1.8\t",
+        "clang version 22.1.8\n\n",
+        "\nclang version 22.1.8",
+        "clang version 22.1.8\r",
+    ),
+)
+def test_llvm_host_version_rejects_whitespace_forgery(banner: str) -> None:
+    """A release receipt must not contain extra padding or blank lines."""
+    assert not llvm_validation.llvm_version_matches(banner)
+
+
 def test_wrong_host_version_is_not_admitted() -> None:
     """A different host Clang release cannot satisfy the pinned toolchain."""
     assert llvm_validation.llvm_version_matches("clang version 22.1.8") is True
@@ -3335,6 +3351,31 @@ def test_llvm_host_capture_treats_host_launch_faults_as_unavailable(
     assert llvm_validation._capture(["clang", "--version"]) is None  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize(
+    "banner",
+    (
+        " clang version 22.1.8\n",
+        "clang version 22.1.8 \n",
+        "clang version 22.1.8\n\n",
+        "clang version 22.1.8\r",
+        "\nclang version 22.1.8",
+    ),
+)
+def test_llvm_host_version_probe_preserves_untrusted_whitespace(
+    monkeypatch: pytest.MonkeyPatch, banner: str
+) -> None:
+    """Subprocess capture cannot trim forged whitespace into a pinned version."""
+    command = ["/usr/bin/clang", "--version"]
+
+    def fake_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout=banner, stderr="")
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    assert not llvm_validation._linux_tool_versions_match(  # pyright: ignore[reportPrivateUsage]
+        (Path(command[0]),) * 3
+    )
+
+
 @pytest.mark.parametrize("status", (0, 1))
 def test_llvm_host_capture_accepts_native_text_receipts(
     monkeypatch: pytest.MonkeyPatch,
@@ -3350,7 +3391,7 @@ def test_llvm_host_capture_accepts_native_text_receipts(
 
     monkeypatch.setattr(sp, "run", fake_run)
     assert llvm_validation._capture(command) == (  # pyright: ignore[reportPrivateUsage]
-        "clang version 22.1.8" if status == 0 else None
+        "clang version 22.1.8\n" if status == 0 else None
     )
 
 
