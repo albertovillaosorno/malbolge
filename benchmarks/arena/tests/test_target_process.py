@@ -1036,6 +1036,95 @@ def test_output_selector_rejects_forged_readiness_receipts(
     assert injected
 
 
+@pytest.mark.parametrize("exit_receipt", [True, False, 0, "confirmed"])
+def test_selector_exit_cannot_suppress_or_fake_capture_completion(
+    monkeypatch: pytest.MonkeyPatch, exit_receipt: object
+) -> None:
+    """An output overrun must never become success via selector cleanup."""
+    native_selector = target_process.selectors.DefaultSelector
+
+    class ForgedSelector:
+        def __init__(self) -> None:
+            self.selector = native_selector()
+
+        def __enter__(self) -> target_process.selectors.BaseSelector:
+            return self.selector.__enter__()
+
+        def __exit__(self, *args: object) -> object:
+            self.selector.__exit__(*args)
+            return exit_receipt
+
+    monkeypatch.setattr(target_process.selectors, "DefaultSelector", ForgedSelector)
+    with pytest.raises(target_process.TargetProcessError, match="stdout|selector"):
+        target_process.invoke(
+            _child("import os; os.write(1,b'overflow')"),
+            stdout_limit=2,
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+
+
+@pytest.mark.parametrize("exit_receipt", [True, False, 0, "confirmed"])
+def test_selector_exit_requires_native_none_after_success(
+    monkeypatch: pytest.MonkeyPatch, exit_receipt: object
+) -> None:
+    """A completed selector capture still needs an exact cleanup receipt."""
+    native_selector = target_process.selectors.DefaultSelector
+
+    class ForgedSelector:
+        def __init__(self) -> None:
+            self.selector = native_selector()
+
+        def __enter__(self) -> target_process.selectors.BaseSelector:
+            return self.selector.__enter__()
+
+        def __exit__(self, *args: object) -> object:
+            self.selector.__exit__(*args)
+            return exit_receipt
+
+    monkeypatch.setattr(target_process.selectors, "DefaultSelector", ForgedSelector)
+    with pytest.raises(target_process.TargetProcessError, match="selector cleanup"):
+        target_process.invoke(
+            _child("import os; os.write(1,b'complete')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+
+
+@pytest.mark.parametrize("primary", [False, True])
+def test_selector_cleanup_failure_keeps_primary_capture_verdict(
+    monkeypatch: pytest.MonkeyPatch, *, primary: bool
+) -> None:
+    """A selector close failure cannot replace the output-limit rejection."""
+    native_selector = target_process.selectors.DefaultSelector
+    fault = RuntimeError("injected selector cleanup failure")
+
+    class BrokenSelector:
+        def __init__(self) -> None:
+            self.selector = native_selector()
+
+        def __enter__(self) -> target_process.selectors.BaseSelector:
+            return self.selector.__enter__()
+
+        def __exit__(self, *args: object) -> None:
+            self.selector.__exit__(*args)
+            raise fault
+
+    monkeypatch.setattr(target_process.selectors, "DefaultSelector", BrokenSelector)
+    with pytest.raises(
+        target_process.TargetProcessError,
+        match="stdout exceeded|selector cleanup failed",
+    ) as caught:
+        target_process.invoke(
+            _child("import os; os.write(1,b'overflow')"),
+            stdout_limit=2 if primary else target_process.DEFAULT_STDOUT_LIMIT,
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+    if primary:
+        assert caught.value.__cause__ is None
+        assert any("selector cleanup also failed" in note for note in caught.value.__notes__)
+    else:
+        assert caught.value.__cause__ is fault
+
+
 def test_output_capture_requires_both_real_eof_receipts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

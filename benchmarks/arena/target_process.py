@@ -336,6 +336,40 @@ def _read_ready(
     return False
 
 
+@contextmanager
+def _checked_selector() -> Iterator[selectors.BaseSelector]:
+    """Close selector resources without accepting a forged suppression receipt."""
+    manager = selectors.DefaultSelector()
+    watched = manager.__enter__()
+    try:
+        yield watched
+    except BaseException as primary:
+        try:
+            receipt: object = manager.__exit__(
+                type(primary), primary, primary.__traceback__
+            )
+        except Exception as error:
+            BaseException.add_note(
+                primary,
+                "bounded target selector cleanup also failed: "
+                + _cleanup_error_detail(error),
+            )
+        else:
+            if receipt is not None:
+                BaseException.add_note(
+                    primary, "bounded target selector cleanup returned invalid receipt"
+                )
+        raise
+    else:
+        try:
+            receipt = manager.__exit__(None, None, None)
+        except Exception as error:
+            message = "bounded target selector cleanup failed"
+            raise TargetProcessError(message) from error
+        if receipt is not None:
+            _fail("bounded target selector cleanup returned invalid receipt")
+
+
 def _collect(
     child: sp.Popen[bytes],
     limits: _ProcessLimits,
@@ -357,7 +391,7 @@ def _collect(
         )
         if stream_fds[0] == stream_fds[1]:
             _fail("bounded target output requires distinct pipe descriptors")
-        with selectors.DefaultSelector() as watched:
+        with _checked_selector() as watched:
             # Register the already validated integer snapshots, not mutable
             # stream objects whose fileno() could change during registration.
             # A forged readiness key must not relabel or redirect the pipes.
