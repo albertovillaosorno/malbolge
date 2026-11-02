@@ -99,6 +99,7 @@ FOREIGN_PARENT_BYTES = b"foreign-parent"
 FOREIGN_ROOT_BYTES = b"foreign-root"
 FOREIGN_TOOLCHAIN_BYTES = b"foreign-toolchain"
 FOREIGN_RUSTLIB_BYTES = b"foreign-rustlib"
+FOREIGN_IMPORT_BYTES = b"do not change foreign tree"
 GIT_HELPER_BYTES = b"git-helper"
 GIT_MARKER_BYTES = b"malbolge-git-import/v1\n"
 RUST_MARKER_BYTES = b"malbolge-rust-toolchain-import/v1\n"
@@ -6930,6 +6931,49 @@ def _prepare_foreign_rust_toolchain(tmp_path: Path) -> Path:
     return foreign
 
 
+def _assert_import_copy_swap_state(
+    destination: Path, parked: Path, foreign_root: Path, *, component: str
+) -> None:
+    """Verify import root substitution does not populate the foreign tree."""
+    native_name = "git" if component == GIT_COMPONENT else "cargo"
+    payload = GIT_BYTES if component == GIT_COMPONENT else RUST_CARGO_BYTES
+    assert (foreign_root / "sentinel").read_bytes() == FOREIGN_IMPORT_BYTES
+    assert not (foreign_root / "bin" / native_name).exists()
+    assert (parked / "bin" / native_name).read_bytes() == payload
+    assert not project.git_import_complete(destination)
+    assert not project.rust_toolchain_import_complete(destination)
+
+
+def _prepare_import_parent_swap(
+    tmp_path: Path, component: str
+) -> tuple[Path, Path, Path, Path, Path]:
+    """Create the physical host, absent import and foreign parent for races.
+
+    Returns:
+        Host source, import destination, import parent, parked parent, foreign.
+
+    """
+    source = _make_import_race_source(tmp_path)
+    destination = tmp_path / ".dependencies" / component / GIT_VERSION
+    parent = destination.parent
+    parent.mkdir(parents=True)
+    parked = tmp_path / "retained-parent"
+    foreign = tmp_path / "foreign-parent"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(FOREIGN_PARENT_BYTES)
+    return source, destination, parent, parked, foreign
+
+
+def _assert_import_parent_swap_state(
+    foreign_root: Path, destination: Path
+) -> None:
+    """Verify foreign parent remains inert after attempted import creation."""
+    assert (foreign_root / "sentinel").read_bytes() == FOREIGN_PARENT_BYTES
+    assert not (foreign_root / GIT_VERSION).exists()
+    assert not project.git_import_complete(destination)
+    assert not project.rust_toolchain_import_complete(destination)
+
+
 def _assert_nested_rust_import_state(foreign_root: Path, parked: Path) -> None:
     """Prove the nested replacement was not written and the old tree was."""
     assert (foreign_root / "sentinel").read_bytes() == FOREIGN_RUSTLIB_BYTES
@@ -6950,12 +6994,10 @@ def test_import_copy_never_writes_to_replaced_destination_root(
     substitution: str,
 ) -> None:
     """A late imported-root exchange must never populate a foreign bin tree."""
-    sentinel = b"do not change foreign tree"
     source, destination, parked, foreign = _prepare_import_root_swap(
-        tmp_path, component, sentinel=sentinel
+        tmp_path, component, sentinel=FOREIGN_IMPORT_BYTES
     )
     native_name = "git" if component == GIT_COMPONENT else "cargo"
-    payload = GIT_BYTES if component == GIT_COMPONENT else RUST_CARGO_BYTES
     native_link = os.link
     swapped = False
 
@@ -6991,11 +7033,9 @@ def test_import_copy_never_writes_to_replaced_destination_root(
     foreign_root = (
         foreign if substitution == SYMLINK_SUBSTITUTION else destination
     )
-    assert (foreign_root / "sentinel").read_bytes() == sentinel
-    assert not (foreign_root / "bin" / native_name).exists()
-    assert (parked / "bin" / native_name).read_bytes() == payload
-    assert not project.git_import_complete(destination)
-    assert not project.rust_toolchain_import_complete(destination)
+    _assert_import_copy_swap_state(
+        destination, parked, foreign_root, component=component
+    )
 
 
 @pytest.mark.skipif(os.name != POSIX_NAME, reason="POSIX import directory race")
@@ -7009,17 +7049,9 @@ def test_import_root_parent_swap_before_creation_preserves_foreign_tree(
     substitution: str,
 ) -> None:
     """Parent replacement after admission cannot create under a foreign root."""
-    source = tmp_path / "host"
-    (source / "bin").mkdir(parents=True)
-    _ = (source / "bin/git").write_bytes(GIT_BYTES)
-    _ = (source / "bin/cargo").write_bytes(RUST_CARGO_BYTES)
-    destination = tmp_path / ".dependencies" / component / GIT_VERSION
-    parent = destination.parent
-    parent.mkdir(parents=True)
-    parked = tmp_path / "retained-parent"
-    foreign = tmp_path / "foreign-parent"
-    foreign.mkdir()
-    _ = (foreign / "sentinel").write_bytes(b"foreign-parent")
+    source, destination, parent, parked, foreign = _prepare_import_parent_swap(
+        tmp_path, component
+    )
     original_admit = cast(
         "Callable[[Path, str], None]",
         vars(project)["_admit_import_destination"],
@@ -7045,10 +7077,7 @@ def test_import_root_parent_swap_before_creation_preserves_foreign_tree(
             _import_host_component(source, destination, component)
     assert swapped
     foreign_root = foreign if substitution == SYMLINK_SUBSTITUTION else parent
-    assert (foreign_root / "sentinel").read_bytes() == FOREIGN_PARENT_BYTES
-    assert not (foreign_root / GIT_VERSION).exists()
-    assert not project.git_import_complete(destination)
-    assert not project.rust_toolchain_import_complete(destination)
+    _assert_import_parent_swap_state(foreign_root, destination)
 
 
 @pytest.mark.skipif(
