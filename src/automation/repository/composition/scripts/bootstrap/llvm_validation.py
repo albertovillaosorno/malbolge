@@ -53,6 +53,8 @@ LINUX_PLATFORM: Final = "linux-x86_64"
 WINDOWS_PLATFORM: Final = "windows-x86_64"
 _TOOL_NAMES: Final = ("clang", "clang-tidy", "clang-format")
 _LLVM_LIBRARY_NAMES: Final = ("libLLVM.so.22.1", "libclang-cpp.so.22.1")
+_HOST_CAPTURE_TIMEOUT_SECONDS: Final = 15
+_HOST_MAX_CAPTURE_CHARS: Final = 16_384
 
 
 class LlvmImportError(RuntimeError):
@@ -718,8 +720,9 @@ def _capture(arguments: list[str]) -> str | None:
             capture_output=True,
             shell=False,
             text=True,
+            timeout=_HOST_CAPTURE_TIMEOUT_SECONDS,
         )
-    except (OSError, ValueError, TypeError, RuntimeError):
+    except (OSError, ValueError, TypeError, RuntimeError, sp.TimeoutExpired):
         return None
     if type(completed) is not sp.CompletedProcess:
         return None
@@ -736,6 +739,8 @@ def _capture(arguments: list[str]) -> str | None:
         or type(completed.stderr) is not str
         or completed.returncode != 0
     ):
+        return None
+    if max(len(completed.stdout), len(completed.stderr)) > _HOST_MAX_CAPTURE_CHARS:
         return None
     output = completed.stdout.strip()
     return output or None

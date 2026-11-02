@@ -1982,3 +1982,59 @@ def test_llvm_host_capture_accepts_native_text_receipts(
     assert llvm_validation._capture(command) == (  # pyright: ignore[reportPrivateUsage]
         "clang version 22.1.8" if status == 0 else None
     )
+
+
+@pytest.mark.parametrize("stream", ("stdout", "stderr"))
+def test_llvm_host_capture_rejects_oversized_native_output(
+    monkeypatch: pytest.MonkeyPatch,
+    stream: str,
+) -> None:
+    """Optional host probe output may not be arbitrarily large."""
+    command = ["clang", "--version"]
+
+    def fake_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        output = "x" * 16_385
+        return sp.CompletedProcess(
+            args,
+            0,
+            stdout=output if stream == "stdout" else "clang version 22.1.8",
+            stderr=output if stream == "stderr" else "",
+        )
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    assert llvm_validation._capture(command) is None  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("foreign", (False, True))
+def test_llvm_host_capture_treats_timeout_as_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: bool,
+) -> None:
+    """A hung optional host probe remains missing, without exception formatting."""
+
+    class ForeignTimeout(sp.TimeoutExpired):
+        @override
+        def __str__(self) -> str:
+            raise AssertionError("foreign LLVM timeout formatter invoked")
+
+    def fake_run(_args: list[str], **_kwargs: object) -> None:
+        timeout = ForeignTimeout if foreign else sp.TimeoutExpired
+        raise timeout(cmd="clang", timeout=15)
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    assert llvm_validation._capture(["clang", "--version"]) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_llvm_host_capture_binds_probe_deadline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every optional LLVM host command must have a finite launch deadline."""
+    seen: list[object] = []
+
+    def fake_run(args: list[str], **kwargs: object) -> sp.CompletedProcess[str]:
+        seen.append(kwargs.get("timeout"))
+        return sp.CompletedProcess(args, 0, stdout="clang version 22.1.8", stderr="")
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    assert llvm_validation._capture(["clang", "--version"]) == "clang version 22.1.8"  # pyright: ignore[reportPrivateUsage]
+    assert seen == [15]
