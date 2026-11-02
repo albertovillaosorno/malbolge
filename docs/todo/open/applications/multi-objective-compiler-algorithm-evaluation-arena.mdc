@@ -594,6 +594,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   Failures from reading an opened evidence stream now retain the typed
   evidence-error boundary with the original stream exception as the cause;
   five injected read-exception categories have negative regressions.
+  A substituted evidence stream context manager must not suppress a body
+  exception: the bounded reader rechecks its saved primary failure after
+  `__exit__` before admitting bytes. Two red-first cases previously published
+  bytes after a forged close receipt or leaked an untyped `UnboundLocalError`
+  after a failed read; both now preserve typed rejection and its original cause.
+  This protects a local read boundary, not source authenticity or atomicity.
 - An optional Clopper-Pearson 95% reported-success interval now uses all
   attempted trials, exact binomial-tail inversion and outward rational-grid
   bounds. It rejects empty and over-limit sample populations instead of
@@ -634,8 +640,14 @@ appearing equally "perfect" after crossing an arbitrary threshold.
 - Arena stdout publication now compares the native serializer receipt
   with a separate canonical encoder result before writing, rejecting fabricated
   valid or invalid JSON text. Five red-first source substitutions plus two
-  operator-level no-JSON failures exercise this check; it cannot protect
-  against compromise of both encoder paths.
+  operator-level no-JSON failures exercise this initial check; agreement
+  between two dynamic encoders alone does not prove canonical content.
+  The publisher now also compares both dynamic encoder results against a
+  separately import-bound standard-library JSON iterator before writing.
+  Five red-first shared-class/encoder-method substitutions and an iterator
+  factory regression guard against both dynamic encoders agreeing on altered
+  text. This confirms local encoding consistency, not stdout sink integrity
+  or authenticity against compromise of the canonical iterator itself.
 - Operator report output now requires exact text write counts and an explicit
   successful stdout flush across both arena CLI routes, rejecting malformed
   return values, truncation, and injected stream errors as nonzero exits.
