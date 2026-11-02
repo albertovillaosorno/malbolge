@@ -929,9 +929,16 @@ def _admit_study_workspace(receipt: object) -> Path:
     try:
         # A real mkdtemp creates an empty directory. Refuse an occupied
         # same-prefix path before writing into it or treating it as ours.
-        with os.scandir(directory) as entries:
-            if next(entries, None) is not None:
-                _fail("host-C reference workspace was not newly empty")
+        # Do not let a substituted scanner context redirect entry or swallow
+        # an occupied-directory/iterator failure before writing evidence.
+        entries = os.scandir(directory)
+        try:
+            occupied = next(entries, None) is not None
+        finally:
+            if entries.close() is not None:
+                _fail("host-C reference workspace scan close receipt invalid")
+        if occupied:
+            _fail("host-C reference workspace was not newly empty")
     except ReferenceStudyError:
         raise
     except Exception as error:

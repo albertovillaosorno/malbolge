@@ -2501,6 +2501,51 @@ class _ForeignNativeWorkspaceText(str):
     """An allocator can report text that is not a native stdlib string."""
 
 
+@pytest.mark.parametrize("forgery", ["suppressed", "redirected", "bad-close"])
+def test_host_c_workspace_scandir_cannot_certify_unsafe_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """Untrusted scandir context hooks must not certify occupied workspaces."""
+    folder = tmp_path / "arena-host-c-oracle-foreign"
+    folder.mkdir()
+    marker = folder / "preserve.txt"
+    marker.write_bytes(b"untouched")
+    closed: list[str] = []
+
+    class ForgedScan:
+        def __enter__(self) -> object:
+            return iter(()) if forgery == "redirected" else self
+
+        def __exit__(self, *_args: object) -> bool:
+            return True
+
+        def __iter__(self) -> ForgedScan:
+            return self
+
+        def __next__(self) -> object:
+            if forgery == "suppressed":
+                raise OSError("untrusted directory scan failed")
+            if forgery == "bad-close":
+                raise StopIteration
+            return object()
+
+        def close(self) -> object:
+            closed.append("closed")
+            return True if forgery == "bad-close" else None
+
+    monkeypatch.setattr(host_c_oracle, "_TEMP", tmp_path)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(host_c_oracle.os, "scandir", lambda _directory: ForgedScan())
+        with pytest.raises(host_c_oracle.HostOracleError, match="workspace"):
+            host_c_oracle._admit_native_workspace_receipt(
+                str(folder), prefix="arena-host-c-oracle-"
+            )
+    assert closed == ["closed"]
+    assert marker.read_bytes() == b"untouched"
+
+
 @pytest.mark.parametrize(
     "kind",
     [
@@ -2569,6 +2614,54 @@ def test_host_c_native_workspace_rejects_unowned_enter_result_without_cleanup(
         assert target.read_bytes() == b"preserve"
     if kind == "occupied-prefix":
         assert (target / "preserve.txt").read_text() == "preserve"
+
+
+@pytest.mark.parametrize("receipt", [False, True, 0, "closed"])
+@pytest.mark.parametrize("failed_body", [False, True])
+def test_host_c_workspace_rejects_nonvoid_cleanup_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+    failed_body: bool,
+) -> None:
+    """A forged context close cannot certify cleanup or mask a failed body."""
+    root = tmp_path
+    folder = root / "arena-host-c-oracle-cleanup"
+    folder.mkdir()
+    primary = host_c_oracle.HostOracleError("original host oracle rejection")
+    calls: list[str] = []
+
+    class ForgedWorkspace:
+        name = str(folder)
+
+        def __enter__(self) -> str:
+            return str(folder)
+
+        def __exit__(self, *_args: object) -> object:
+            calls.append("exit")
+            return receipt
+
+    monkeypatch.setattr(host_c_oracle, "_TEMP", root)
+    monkeypatch.setattr(
+        host_c_oracle.tempfile,
+        "TemporaryDirectory",
+        lambda **_kwargs: ForgedWorkspace(),
+    )
+    if failed_body:
+        with (
+            pytest.raises(host_c_oracle.HostOracleError) as caught,
+            host_c_oracle._native_workspace("arena-host-c-oracle-"),
+        ):
+            raise primary
+        assert caught.value is primary
+        assert any("cleanup" in note for note in primary.__notes__)
+    else:
+        with (
+            pytest.raises(host_c_oracle.HostOracleError, match="cleanup"),
+            host_c_oracle._native_workspace("arena-host-c-oracle-"),
+        ):
+            pass
+    assert calls == ["exit"]
 
 
 def test_host_c_workspace_rejects_foreign_context_cleanup_target(

@@ -659,9 +659,16 @@ def _admit_native_workspace_receipt(receipt: object, *, prefix: str) -> Path:
     if type(details) is not os.stat_result or not stat.S_ISDIR(details.st_mode):
         _fail("host-C workspace context requires a physical directory")
     try:
-        with os.scandir(directory) as entries:
-            if next(entries, None) is not None:
-                _fail("host-C workspace context requires an initially empty directory")
+        # The scanner's context hooks can redirect entry or suppress a failed
+        # nonempty check. Inspect the iterator itself and close it explicitly.
+        entries = os.scandir(directory)
+        try:
+            occupied = next(entries, None) is not None
+        finally:
+            if entries.close() is not None:
+                _fail("host-C workspace context scan close receipt invalid")
+        if occupied:
+            _fail("host-C workspace context requires an initially empty directory")
     except HostOracleError:
         raise
     except Exception as error:
@@ -691,15 +698,28 @@ def _native_workspace(prefix: str) -> Iterator[Path]:
         yield directory
     except BaseException as primary:
         try:
-            workspace.__exit__(type(primary), primary, primary.__traceback__)
+            receipt: object = workspace.__exit__(
+                type(primary), primary, primary.__traceback__
+            )
         except Exception as cleanup:
             BaseException.add_note(
                 primary,
                 f"host-C workspace cleanup also failed: {_cleanup_error_detail(cleanup)}",
             )
+        else:
+            if receipt is not None:
+                BaseException.add_note(
+                    primary, "host-C workspace cleanup returned invalid receipt"
+                )
         raise
     else:
-        workspace.__exit__(None, None, None)
+        try:
+            receipt = workspace.__exit__(None, None, None)
+        except Exception as error:
+            message = "host-C workspace cleanup failed"
+            raise HostOracleError(message) from error
+        if receipt is not None:
+            _fail("host-C workspace cleanup returned invalid receipt")
 
 
 def replay_one(

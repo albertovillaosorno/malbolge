@@ -1163,6 +1163,49 @@ def test_host_reference_rejects_forged_workspace_root_metadata_before_allocation
     assert list(outside.iterdir()) == []
 
 
+@pytest.mark.parametrize("forgery", ["suppressed", "redirected", "bad-close"])
+def test_host_reference_workspace_scandir_cannot_certify_unsafe_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """Untrusted scandir context hooks must not certify occupied workspaces."""
+    folder = tmp_path / "arena-host-c-study-foreign"
+    folder.mkdir()
+    marker = folder / "preserve.txt"
+    marker.write_bytes(b"untouched")
+    closed: list[str] = []
+
+    class ForgedScan:
+        def __enter__(self) -> object:
+            return iter(()) if forgery == "redirected" else self
+
+        def __exit__(self, *_args: object) -> bool:
+            return True
+
+        def __iter__(self) -> ForgedScan:
+            return self
+
+        def __next__(self) -> object:
+            if forgery == "suppressed":
+                raise OSError("untrusted directory scan failed")
+            if forgery == "bad-close":
+                raise StopIteration
+            return object()
+
+        def close(self) -> object:
+            closed.append("closed")
+            return True if forgery == "bad-close" else None
+
+    monkeypatch.setattr(reference_study, "_LOCAL", tmp_path)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(reference_study.os, "scandir", lambda _directory: ForgedScan())
+        with pytest.raises(reference_study.ReferenceStudyError, match="workspace"):
+            reference_study._admit_study_workspace(str(folder))
+    assert closed == ["closed"]
+    assert marker.read_bytes() == b"untouched"
+
+
 class _ForgedWorkspaceName(str):
     """A foreign tempfile text receipt must not redirect output or cleanup."""
 

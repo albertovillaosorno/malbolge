@@ -1018,9 +1018,16 @@ def _admit_new_study_workspace(receipt: object) -> Path:
     if type(details) is not os.stat_result or not stat.S_ISDIR(details.st_mode):
         _fail("target echo study workspace must be a physical directory")
     try:
-        with os.scandir(directory) as entries:
-            if next(entries, None) is not None:
-                _fail("target echo study workspace was not initially empty")
+        # A substituted scanner context cannot redirect the inventory or
+        # suppress a nonempty-directory rejection before study creation.
+        entries = os.scandir(directory)
+        try:
+            occupied = next(entries, None) is not None
+        finally:
+            if entries.close() is not None:
+                _fail("target echo study workspace scan close receipt invalid")
+        if occupied:
+            _fail("target echo study workspace was not initially empty")
     except TargetEchoStudyError:
         raise
     except Exception as error:
