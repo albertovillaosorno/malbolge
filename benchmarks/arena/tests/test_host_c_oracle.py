@@ -1452,6 +1452,53 @@ def test_host_cleanup_retries_direct_reap_after_group_signal(
     assert events == ["communicate", "group", "wait", "kill", "wait"]
 
 
+@pytest.mark.parametrize(
+    "forgery",
+    ["swapped", "mutated", "foreign-list", "non-string", "missing", "valid"],
+)
+def test_host_c_stage_requires_exact_launched_command_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """A successful child stage must belong to the prepared native argv."""
+
+    class ForeignArgs(list[str]):
+        def __eq__(self, other: object) -> bool:
+            del other
+            pytest.fail("foreign child argv equality executed")
+
+    class ChildProbe:
+        def __init__(self, args: object) -> None:
+            self.args = args
+
+    def forged_popen(command: list[str], **_kwargs: object) -> ChildProbe:
+        if forgery == "swapped":
+            receipt: object = ["unrelated-executable"]
+        elif forgery == "mutated":
+            command[0] = "unrelated-executable"
+            receipt = command
+        elif forgery == "foreign-list":
+            receipt = ForeignArgs(command)
+        elif forgery == "non-string":
+            receipt = [*command[:-1], True]
+        elif forgery == "missing":
+            return cast("ChildProbe", object())
+        else:
+            receipt = command
+        return ChildProbe(receipt)
+
+    monkeypatch.setattr(host_c_oracle, "_limited_command", lambda command: command)
+    monkeypatch.setattr(host_c_oracle, "_system_tool", lambda _name: "/usr/bin/time")
+    monkeypatch.setattr(host_c_oracle.sp, "Popen", forged_popen)
+    monkeypatch.setattr(host_c_oracle, "_wait_child", lambda _child, _label: None)
+    monkeypatch.setattr(host_c_oracle, "_read_stage_rss", lambda _path: 4096)
+    if forgery == "valid":
+        assert host_c_oracle._bounded_child(["guest"], tmp_path, "compile") == 4096
+    else:
+        with pytest.raises(host_c_oracle.HostOracleError, match="command"):
+            host_c_oracle._bounded_child(["guest"], tmp_path, "compile")
+    assert not list(tmp_path.glob("host-c-stage-rss-*"))
+
+
 def test_host_child_has_real_kernel_limits(tmp_path: Path) -> None:
     """Linux enforces the resource limits before executing user code."""
     script = (
@@ -2981,7 +3028,11 @@ def test_host_c_unexpected_rss_unlink_fault_retains_primary_failure(
 
     monkeypatch.setattr(host_c_oracle, "_limited_command", lambda command: command)
     monkeypatch.setattr(host_c_oracle, "_system_tool", lambda _name: "/usr/bin/time")
-    monkeypatch.setattr(host_c_oracle.sp, "Popen", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(
+        host_c_oracle.sp,
+        "Popen",
+        lambda command, **_kwargs: host_c_oracle.sp.CompletedProcess(command, 0),
+    )
     monkeypatch.setattr(host_c_oracle, "_wait_child", finish)
     monkeypatch.setattr(host_c_oracle, "_read_stage_rss", lambda _path: 1024)
     monkeypatch.setattr(Path, "unlink", fail_unlink)

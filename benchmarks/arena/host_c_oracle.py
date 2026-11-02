@@ -470,16 +470,20 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
     fd, output_path = _admit_rss_temporary_receipt(temporary, cwd)
     try:
         _close_rss_temporary_descriptor(fd)
+        # Retain the exact prepared argv independently of a child transport
+        # that can mutate its list before returning a success-looking handle.
+        command_receipt = [
+            time_tool,
+            "--format=%M",
+            "--output",
+            output_path,
+            "--",
+            *limited,
+        ]
+        expected_command = command_receipt.copy()
         try:
             child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
-                [
-                    time_tool,
-                    "--format=%M",
-                    "--output",
-                    output_path,
-                    "--",
-                    *limited,
-                ],
+                command_receipt,
                 cwd=cwd,
                 shell=False,
                 stdin=sp.DEVNULL,
@@ -491,6 +495,26 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
             message = f"host-C challenge oracle {label} could not start"
             raise HostOracleError(message) from error
         _wait_child(child, label)
+        # A successful child wait is not evidence that Popen represented the
+        # stage we requested. Only the unmodified native argv object passed
+        # to Popen may authorize its RSS receipt.
+        try:
+            launched_arguments = child.args
+        except Exception as error:
+            message = "host-C challenge oracle child command receipt unavailable"
+            raise HostOracleError(message) from error
+        if (
+            type(launched_arguments) is not list
+            or launched_arguments is not command_receipt
+            or len(launched_arguments) != len(expected_command)
+            or any(
+                type(argument) is not str or argument != expected
+                for argument, expected in zip(
+                    launched_arguments, expected_command, strict=True
+                )
+            )
+        ):
+            _fail("host-C challenge oracle child command receipt mismatch")
         return _read_stage_rss(Path(output_path))
     finally:
         primary = sys.exception()
