@@ -1037,6 +1037,57 @@ def test_development_publication_types_unprintable_rename_failure(
     assert not identity.development_root.exists()
 
 
+@pytest.mark.parametrize("parent", ["staging", "destination"])
+def test_development_publication_parent_close_fault_is_typed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    parent: str,
+) -> None:
+    """A postmove parent close failure retains its host cause and typed error."""
+    if os.name != "posix":
+        pytest.skip("POSIX publication descriptor closure")
+    identity = _identity(tmp_path)
+    native_rename = os.rename
+    native_close = os.close
+    closing: set[int] = set()
+    fault = OSError("synthetic publication parent close fault")
+
+    def capture_final_rename(
+        source: str | os.PathLike[str],
+        target: str | os.PathLike[str],
+        *,
+        src_dir_fd: int | None = None,
+        dst_dir_fd: int | None = None,
+    ) -> None:
+        if source == "development" and target == identity.development_root.name:
+            selected = src_dir_fd if parent == "staging" else dst_dir_fd
+            assert selected is not None
+            closing.add(selected)
+        native_rename(
+            source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
+        )
+
+    def fault_final_parent_close(descriptor: int) -> None:
+        native_close(descriptor)
+        if descriptor in closing:
+            closing.remove(descriptor)
+            raise fault
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "rename", capture_final_rename)
+        isolated.setattr(os, "close", fault_final_parent_close)
+        with pytest.raises(
+            llvm_development_validation.LlvmDevelopmentProvisionError,
+            match="parent descriptor close failed",
+        ) as observed:
+            _ = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([]), extractor=_extract_headers
+            )
+    assert observed.value.__cause__ is fault
+    assert not closing
+    assert (identity.development_root / "include/clang/AST/AST.h").read_bytes() == HEADER_BYTES
+
+
 def test_development_provision_rechecks_destination_after_extraction(
     tmp_path: Path,
 ) -> None:

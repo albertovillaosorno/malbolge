@@ -953,9 +953,9 @@ def _publish_development_root(
                 "LLVM development destination publication failed"
             ) from error
         finally:
-            os.close(target_parent)
+            _close_physical_parent(target_parent, "destination")
     finally:
-        os.close(source_parent)
+        _close_physical_parent(source_parent, "staging")
 
 
 def _stage_development_assets(
