@@ -70,6 +70,7 @@ CUDA_PROVISION_SCHEMA_VERSION: Final = 1
 CUDA_TOOLCHAIN_SCHEMA_VERSION: Final = 1
 _MAX_MANIFEST_BYTES: Final = 1024 * 1024
 _MAX_MARKER_BYTES: Final = 16 * 1024
+_MAX_CUDA_DOWNLOAD_BYTES: Final = 128 * 1024 * 1024
 SHA256_HEX_LENGTH: Final = 64
 LOWER_HEX_DIGITS: Final = frozenset("0123456789abcdef")
 PARENT_SEGMENT: Final = ".."
@@ -580,7 +581,11 @@ def extract_cuda_package(
     shutil.rmtree(package_staging)
 
 
-def _download_cuda_package(url: str) -> bytes:
+def _download_cuda_package(
+    url: str, *, max_bytes: int = _MAX_CUDA_DOWNLOAD_BYTES
+) -> bytes:
+    if type(max_bytes) is not int or not 0 < max_bytes <= _MAX_CUDA_DOWNLOAD_BYTES:
+        _fail("CUDA network package exceeds pinned byte limit")
     request = urllib.request.Request(  # ruff: ignore[suspicious-url-open-usage]
         url,
         headers={"User-Agent": "malbolge-bootstrap/1"},
@@ -594,13 +599,15 @@ def _download_cuda_package(url: str) -> bytes:
             ),
         )
         with response:
-            data = response.read()
+            data = response.read(max_bytes + 1)
     except (OSError, TypeError, ValueError, RuntimeError) as error:
         raise CudaProvisionError(
             f"cannot download pinned CUDA package: {type(error).__name__}"
         ) from error
     if type(data) is not bytes:
         _fail("CUDA network response must contain native bytes")
+    if len(data) > max_bytes:
+        _fail("CUDA network response exceeds pinned byte limit")
     return data
 
 
@@ -672,12 +679,16 @@ def provision_cuda_manifest(
     staging = root / ".temp" / f"cuda-provision-{platform_id}"
     staged_toolkit = staging / "toolkit"
     _prepare_staging(staging)
-    download = downloader or _download_cuda_package
     package_staging = staging / "packages"
     try:
         for package in manifest.packages:
             _require_physical_directories(staging, "staging")
-            data = download(manifest.base_url + package.relative_path)
+            url = manifest.base_url + package.relative_path
+            data = (
+                _download_cuda_package(url, max_bytes=package.size)
+                if downloader is None
+                else downloader(url)
+            )
             extract_cuda_package(
                 data,
                 package,

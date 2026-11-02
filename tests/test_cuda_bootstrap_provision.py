@@ -221,7 +221,7 @@ class _NetworkResponse:
     def __exit__(self, *_args: object) -> None:
         self.closed = True
 
-    def read(self) -> bytes:
+    def read(self, _limit: int) -> bytes:
         if isinstance(self.value, Exception):
             raise self.value
         return cast("bytes", self.value)
@@ -1609,3 +1609,52 @@ def test_cuda_source_open_types_host_faults(
         ) as caught:
             _ = cuda_validation._read_manifest_source(source, "CUDA provision manifest")
     assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("overflow", [False, True])
+def test_cuda_network_download_bounded_to_pinned_package_size(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    overflow: bool,
+) -> None:
+    """HTTPS streaming reads at most pinned size+1 before any extraction."""
+    payload = _payload()
+    manifest = _manifest(tmp_path, payload)
+    observed_limits: list[int] = []
+    response_closed = False
+
+    class _BoundedResponse:
+        def __enter__(self) -> Self:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            nonlocal response_closed
+            response_closed = True
+
+        def read(self, limit: int) -> bytes:
+            observed_limits.append(limit)
+            assert type(limit) is int
+            assert limit == len(payload) + 1
+            return payload + b"x" if overflow else payload
+
+    def open_url(request: object, *, timeout: int) -> _BoundedResponse:
+        assert isinstance(request, cuda_validation.urllib.request.Request)
+        assert request.full_url == cuda_validation.NVIDIA_CUDA_REDIST_BASE + PACKAGE_PATH
+        assert timeout == 120
+        return _BoundedResponse()
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(cuda_validation.urllib.request, "urlopen", open_url)
+        if overflow:
+            with pytest.raises(cuda_validation.CudaProvisionError, match="byte limit"):
+                _ = cuda_validation.provision_cuda_manifest(
+                    tmp_path, manifest, LINUX_PLATFORM
+                )
+            assert not (tmp_path / TOOLKIT_ROOT).exists()
+        else:
+            result = cuda_validation.provision_cuda_manifest(
+                tmp_path, manifest, LINUX_PLATFORM
+            )
+            assert (result / "lib64/libnvrtc.so.13").read_bytes() == NVRTC_BYTES
+    assert observed_limits == [len(payload) + 1]
+    assert response_closed

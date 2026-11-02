@@ -70,6 +70,9 @@ not a matching-size mutable buffer or subclass. Read-adapter faults become typed
 CUDA provision failures with the original cause retained.
 Source file opens must likewise yield a native nonnegative integer descriptor;
 foreign or boolean handles cannot be wrapped or closed as though host-owned.
+CUDA HTTP reads are bounded by the tracked per-package byte size plus one
+byte, with a 128 MiB absolute fetch ceiling; oversized bodies fail before
+hashing or extraction. Explicit injected downloaders retain their URL API.
 Normal bootstrap remains offline with respect to CUDA and reports a missing
 toolkit instead of installing one implicitly. The current Linux package
 surface is the NVIDIA CUDA 13.3.1 NVRTC 13.3.33 redistributable; the installed
