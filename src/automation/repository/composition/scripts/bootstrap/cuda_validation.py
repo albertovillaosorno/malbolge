@@ -38,26 +38,22 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import dataclass
+import ctypes
+import errno
 import hashlib
 import io
 import json
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
 import shutil
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
+import sys
 import tarfile
-from typing import Final
-from typing import Never
-from typing import TYPE_CHECKING
-from typing import cast
 import urllib.request
 import zipfile
+from contextlib import suppress
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import TYPE_CHECKING, Final, Never, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1016,6 +1012,44 @@ def _write_staged_file_at_parent(
     return identity
 
 
+def _rename_cuda_toolkit_no_replace(
+    source: str, destination: str, *, src_dir_fd: int, dst_dir_fd: int
+) -> None:
+    """Atomically publish a Linux toolkit without overwriting a late occupant."""
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        renameat2 = libc.renameat2
+    except (OSError, ValueError, TypeError, RuntimeError, AttributeError) as error:
+        raise CudaProvisionError(
+            "CUDA toolkit publication requires native Linux no-replace rename"
+        ) from error
+    renameat2.argtypes = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+    renameat2.restype = ctypes.c_int
+    result = cast(
+        "object",
+        renameat2(
+            src_dir_fd,
+            os.fsencode(source),
+            dst_dir_fd,
+            os.fsencode(destination),
+            1,  # Linux RENAME_NOREPLACE
+        ),
+    )
+    if type(result) is not int:
+        _fail("CUDA toolkit publication rename requires native receipt")
+    if result != 0:
+        error_number = ctypes.get_errno()
+        if error_number == errno.EEXIST:
+            _fail("CUDA toolkit destination became occupied during publication")
+        raise OSError(error_number, "CUDA toolkit no-replace rename failed")
+
+
 def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
     """Pin a POSIX destination directory across the final toolkit rename.
 
@@ -1030,17 +1064,12 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
         _ = staged.replace(destination)
         return
     staged_identity = _owned_staging_identity(staged)
-    flags = (
-        os.O_RDONLY
-        | getattr(os, "O_DIRECTORY", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
-    )
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(parent, flags)
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise CudaProvisionError(
-            "CUDA toolkit destination parent open failed: "
-            f"{type(error).__name__}"
+            f"CUDA toolkit destination parent open failed: {type(error).__name__}"
         ) from error
     if type(descriptor) is not int or descriptor < 0:
         _fail("CUDA toolkit destination parent requires native descriptor")
@@ -1060,13 +1089,38 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
         except FileNotFoundError:
             pass
         else:
-            _fail(
-                "CUDA toolkit destination became occupied before publication"
-            )
-        _ = os.replace(staged, destination.name, dst_dir_fd=descriptor)
-        received = os.stat(
-            destination.name, dir_fd=descriptor, follow_symlinks=False
-        )
+            _fail("CUDA toolkit destination became occupied before publication")
+        if sys.platform != "linux":
+            _ = os.replace(staged, destination.name, dst_dir_fd=descriptor)
+        else:
+            source_parent = _open_staging_parent(staged.parent)
+            if source_parent is None:
+                _fail("CUDA toolkit staging source requires native parent")
+            try:
+                source_status = os.stat(
+                    staged.name, dir_fd=source_parent, follow_symlinks=False
+                )
+                if (
+                    type(source_status) is not os.stat_result
+                    or not S_ISDIR(source_status.st_mode)
+                    or (source_status.st_dev, source_status.st_ino) != staged_identity
+                ):
+                    _fail("CUDA toolkit staging source changed before publication")
+                _rename_cuda_toolkit_no_replace(
+                    staged.name,
+                    destination.name,
+                    src_dir_fd=source_parent,
+                    dst_dir_fd=descriptor,
+                )
+                _require_staging_parent_unchanged(staged.parent, source_parent)
+            finally:
+                try:
+                    os.close(source_parent)
+                except (OSError, ValueError, TypeError, RuntimeError) as error:
+                    raise CudaProvisionError(
+                        "CUDA toolkit staging source parent close failed"
+                    ) from error
+        received = os.stat(destination.name, dir_fd=descriptor, follow_symlinks=False)
         if (
             type(received) is not os.stat_result
             or not S_ISDIR(received.st_mode)
@@ -1075,17 +1129,16 @@ def _publish_cuda_toolkit(staged: Path, destination: Path) -> None:
             _fail("CUDA toolkit destination publication receipt mismatch")
         _require_physical_directories(parent, "toolkit destination")
         named = parent.lstat()
-        if (
-            type(named) is not os.stat_result
-            or (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino)
+        if type(named) is not os.stat_result or (opened.st_dev, opened.st_ino) != (
+            named.st_dev,
+            named.st_ino,
         ):
             _fail("CUDA toolkit destination parent changed during publication")
     except CudaProvisionError:
         raise
     except (OSError, ValueError, TypeError, RuntimeError) as error:
         raise CudaProvisionError(
-            "CUDA toolkit destination publication failed: "
-            f"{type(error).__name__}"
+            f"CUDA toolkit destination publication failed: {type(error).__name__}"
         ) from error
     finally:
         try:

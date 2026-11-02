@@ -52,6 +52,10 @@ toolkit. The completion marker must be a bounded stable regular file, with no
 symlinked leaf or parent; invalid markers cannot assert an installed toolkit.
 The completion marker is bootstrap-owned: a package archive cannot provide a
 regular, linked, or dangling marker leaf for the provisioner to overwrite.
+On Linux, final toolkit publication pins both staging-source and destination
+parent descriptors and uses atomic `renameat2(RENAME_NOREPLACE)`. An empty
+foreign destination inserted after the final absence check is never erased;
+source and destination parent identities are rechecked after the rename.
 The HTTP downloader also requires native response bytes and raises typed CUDA
 provision errors for network-open and body-read host faults, preserving the
 original cause without invoking foreign exception formatting.

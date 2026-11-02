@@ -38,17 +38,14 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
+import sys
 import tarfile
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
-from typing import Self
 import zipfile
+from pathlib import Path
+from typing import TYPE_CHECKING, Self, cast, override
 
 import pytest
-from scripts.bootstrap import cuda_validation
-from scripts.bootstrap import project
+from scripts.bootstrap import cuda_validation, project
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -880,9 +877,7 @@ def test_cuda_never_replaces_late_occupied_toolkit_destination(
     assert not list(destination.iterdir())
 
 
-@pytest.mark.skipif(
-    os.name != "posix", reason="requires POSIX directory descriptors"
-)
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux renameat2")
 def test_cuda_publication_does_not_follow_late_parent_swap(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -897,26 +892,26 @@ def test_cuda_publication_does_not_follow_late_parent_swap(
     outside.mkdir()
     sentinel = outside / "sentinel"
     _ = sentinel.write_bytes(b"external data")
-    native_replace = os.replace
+    native_rename = cuda_validation._rename_cuda_toolkit_no_replace  # pyright: ignore[reportPrivateUsage]
     swapped = False
 
     def race_final_rename(
-        source: str | os.PathLike[str],
-        destination: str | os.PathLike[str],
+        source: str,
+        destination: str,
         *,
-        src_dir_fd: int | None = None,
-        dst_dir_fd: int | None = None,
+        src_dir_fd: int,
+        dst_dir_fd: int,
     ) -> None:
         nonlocal swapped
-        if Path(source) == staged:
+        if source == staged.name:
             _ = parent.rename(parked)
             _ = parent.symlink_to(outside, target_is_directory=True)
             swapped = True
-        native_replace(
-            source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd
-        )
+        native_rename(source, destination, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
 
-    monkeypatch.setattr(os, "replace", race_final_rename)
+    monkeypatch.setattr(
+        cuda_validation, "_rename_cuda_toolkit_no_replace", race_final_rename
+    )
     with pytest.raises(cuda_validation.CudaProvisionError, match="destination"):
         _ = cuda_validation.provision_cuda_manifest(
             tmp_path,
@@ -3009,7 +3004,7 @@ def test_cuda_publication_types_destination_parent_close_fault(
     assert not staged.exists()
 
 
-@pytest.mark.skipif(os.name != "posix", reason="requires POSIX directory descriptors")
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux renameat2")
 @pytest.mark.parametrize("substitution", ["no-rename", "foreign-directory"])
 def test_cuda_publication_rejects_false_successful_rename(
     tmp_path: Path,
@@ -3027,11 +3022,14 @@ def test_cuda_publication_rejects_false_successful_rename(
     observed = False
 
     def fake_success(
-        source: str | os.PathLike[str], target: str | os.PathLike[str],
-        *, src_dir_fd: int | None = None, dst_dir_fd: int | None = None,
+        source: str,
+        target: str,
+        *,
+        src_dir_fd: int,
+        dst_dir_fd: int,
     ) -> None:
         nonlocal observed
-        if Path(source) == staged and target == destination.name:
+        if source == staged.name and target == destination.name:
             observed = True
             if substitution == "foreign-directory":
                 destination.mkdir()
@@ -3040,7 +3038,9 @@ def test_cuda_publication_rejects_false_successful_rename(
         raise AssertionError("unexpected rename target")
 
     with monkeypatch.context() as isolated:
-        isolated.setattr(os, "replace", fake_success)
+        isolated.setattr(
+            cuda_validation, "_rename_cuda_toolkit_no_replace", fake_success
+        )
         with pytest.raises(cuda_validation.CudaProvisionError, match="publication"):
             cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
                 staged, destination
@@ -3052,3 +3052,143 @@ def test_cuda_publication_rejects_false_successful_rename(
         assert not destination.exists()
     else:
         assert (destination / "foreign.txt").read_text() == "foreign contents"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux renameat2")
+def test_cuda_publication_does_not_replace_occupant_after_final_absence_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The final rename cannot erase a directory inserted after the last check."""
+    staged = tmp_path / "owned-staging-toolkit"
+    staged.mkdir()
+    _ = (staged / "verified.bin").write_bytes(b"trusted toolkit")
+    parent = tmp_path / "toolkit-parent"
+    parent.mkdir()
+    destination = parent / "toolkit"
+    native_stat = os.stat
+    occupied = False
+
+    def occupy_after_absence(
+        path: str | os.PathLike[str],
+        *,
+        dir_fd: int | None = None,
+        follow_symlinks: bool = True,
+    ) -> os.stat_result:
+        nonlocal occupied
+        try:
+            return native_stat(path, dir_fd=dir_fd, follow_symlinks=follow_symlinks)
+        except FileNotFoundError:
+            if path == destination.name and dir_fd is not None and not occupied:
+                destination.mkdir()
+                occupied = True
+            raise
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "stat", occupy_after_absence)
+        with pytest.raises(cuda_validation.CudaProvisionError, match="occupied"):
+            cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+                staged, destination
+            )
+    assert occupied
+    assert destination.is_dir()
+    assert not tuple(destination.iterdir())
+    assert (staged / "verified.bin").read_bytes() == b"trusted toolkit"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux renameat2")
+def test_cuda_publication_rejects_staging_parent_swap_during_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Publication cannot attest a stage whose named source parent changes."""
+    source_parent = tmp_path / "owned-source"
+    source_parent.mkdir()
+    staged = source_parent / "toolkit"
+    staged.mkdir()
+    _ = (staged / "trusted.bin").write_bytes(b"trusted toolkit")
+    parked = tmp_path / "parked-source"
+    outside = tmp_path / "foreign-source"
+    outside.mkdir()
+    foreign_stage = outside / "toolkit"
+    foreign_stage.mkdir()
+    _ = (foreign_stage / "foreign.bin").write_bytes(b"foreign toolkit")
+    destination_parent = tmp_path / "toolkit-parent"
+    destination_parent.mkdir()
+    destination = destination_parent / "toolkit"
+    native_rename = cuda_validation._rename_cuda_toolkit_no_replace  # pyright: ignore[reportPrivateUsage]
+    swapped = False
+
+    def replace_named_source(
+        source: str, target: str, *, src_dir_fd: int, dst_dir_fd: int
+    ) -> None:
+        nonlocal swapped
+        _ = source_parent.rename(parked)
+        _ = outside.rename(source_parent)
+        swapped = True
+        native_rename(source, target, src_dir_fd=src_dir_fd, dst_dir_fd=dst_dir_fd)
+
+    monkeypatch.setattr(
+        cuda_validation, "_rename_cuda_toolkit_no_replace", replace_named_source
+    )
+    with pytest.raises(cuda_validation.CudaProvisionError, match="staging parent"):
+        cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+            staged, destination
+        )
+    assert swapped
+    assert (source_parent / "toolkit/foreign.bin").read_bytes() == b"foreign toolkit"
+    assert not (source_parent / "toolkit/trusted.bin").exists()
+    assert (destination / "trusted.bin").read_bytes() == b"trusted toolkit"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="requires Linux renameat2")
+@pytest.mark.parametrize("fault", [UnprintableHostOSError, UnprintableHostRuntimeError])
+def test_cuda_publication_types_staging_source_parent_close_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: type[Exception],
+) -> None:
+    """An owned source descriptor close fault remains typed after publication."""
+    parent = tmp_path / "staging-parent"
+    parent.mkdir()
+    staged = parent / "toolkit"
+    staged.mkdir()
+    _ = (staged / "trusted.bin").write_bytes(b"trusted toolkit")
+    destination = tmp_path / "published-toolkit"
+    native_open = os.open
+    native_close = os.close
+    source_descriptor: int | None = None
+    failure = fault("foreign source close failure")
+    closed = False
+
+    def capture_source(
+        path: str | os.PathLike[str],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal source_descriptor
+        descriptor = native_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == parent:
+            source_descriptor = descriptor
+        return descriptor
+
+    def fail_source_close(descriptor: int) -> None:
+        nonlocal closed
+        native_close(descriptor)
+        if descriptor == source_descriptor:
+            closed = True
+            raise failure
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "open", capture_source)
+        isolated.setattr(os, "close", fail_source_close)
+        with pytest.raises(
+            cuda_validation.CudaProvisionError, match="staging source parent close"
+        ) as caught:
+            cuda_validation._publish_cuda_toolkit(  # pyright: ignore[reportPrivateUsage]
+                staged, destination
+            )
+    assert closed
+    assert caught.value.__cause__ is failure
+    assert (destination / "trusted.bin").read_bytes() == b"trusted toolkit"
+    assert not staged.exists()
