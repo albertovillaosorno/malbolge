@@ -132,11 +132,12 @@ def research_algorithm_directories(root: Path) -> tuple[tuple[str, Path], ...]:
     if not _unlinked_directory(root, domain_root):
         message = f"research domain directory missing or not regular: {domain_root}"
         raise OSError(message)
-    entries = {
-        directory.name: directory
-        for directory in domain_root.iterdir()
-        if _manifest_is_file(directory / "experiment.toml", root)
-    }
+    entries: dict[str, Path] = {}
+    for directory in domain_root.iterdir():
+        if type(directory) is not type(domain_root) or directory.parent != domain_root:
+            raise OSError("research scan requires native immediate directory entry")
+        if _manifest_is_file(directory / "experiment.toml", root):
+            entries[directory.name] = directory
     state_graph = root / "src/research/algorithms/composition/state-graph"
     if _manifest_is_file(state_graph / "experiment.toml", root):
         if STATE_GRAPH_ID in entries:

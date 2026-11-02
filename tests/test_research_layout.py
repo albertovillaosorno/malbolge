@@ -53,6 +53,47 @@ def test_directory_without_manifest_remains_excluded(tmp_path: Path) -> None:
     assert research_layout.research_algorithm_directories(tmp_path) == ()
 
 
+@pytest.mark.parametrize("kind", ("opaque", "foreign", "outside", "nested"))
+def test_discovery_rejects_unbound_directory_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Domain enumeration must inspect only its exact native children."""
+    domain = _domain_root(tmp_path)
+    domain.mkdir(parents=True)
+    outside = tmp_path / "outside" / "candidate"
+    nested = domain / "nested" / "candidate"
+    for directory in (outside, nested):
+        directory.mkdir(parents=True)
+        _ = (directory / "experiment.toml").write_text("schema_version = 1\n")
+
+    class ForeignPath(type(domain)):
+        @override
+        def __getattribute__(self, name: str) -> object:
+            if name in {"name", "parent"}:
+                raise AssertionError("foreign research directory hook executed")
+            return cast("object", super().__getattribute__(name))
+
+    forged: object = {
+        "opaque": object(),
+        "foreign": ForeignPath(domain / "candidate"),
+        "outside": outside,
+        "nested": nested,
+    }[kind]
+    native_iterdir = Path.iterdir
+
+    def forged_iterdir(path: Path) -> Iterator[Path]:
+        if path == domain:
+            yield cast("Path", forged)
+        else:
+            yield from native_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", forged_iterdir)
+    with pytest.raises(OSError, match="native immediate directory entry"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
 def test_inaccessible_manifest_status_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -31,10 +31,10 @@ tests, verifier integration, and Git-ignored local `out/` artifacts.
 `src/automation/repository/composition/scripts/validate/research_mirror.py`
 enforces the repository shape. The shared research layout discovery also
 rejects linked algorithm directories and redirected in-root directory
-ancestors before admitting an `experiment.toml` identity. Discovery requires
-exact native filesystem stat receipts, integer file-mode members, and boolean
-junction results before interpreting modes or truthiness; forged host results
-fail closed.
+ancestors before admitting an `experiment.toml` identity. Discovery admits only
+native immediate children of the domain research root. It requires exact native
+filesystem stat receipts, integer file-mode members, and boolean junction
+results before interpreting modes or truthiness; forged host results fail closed.
 
 The direct research-mirror validator separately requires native stat containers,
 exact integer file-mode fields, and boolean junction receipts for each path
