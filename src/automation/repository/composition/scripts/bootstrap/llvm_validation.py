@@ -875,7 +875,7 @@ def _write_import_marker(root: Path, platform_id: str) -> None:
 def _write_linux_aliases(root: Path) -> tuple[Path, ...]:
     aliases: list[Path] = []
     alias_root = root / "jig-bin"
-    alias_root.mkdir(parents=True, exist_ok=True)
+    _create_physical_import_directory(alias_root, label="LLVM import staging aliases")
     for tool in _TOOL_NAMES:
         alias = alias_root / f"{tool}.bin"
         _write_linux_alias(alias, _linux_wrapper(tool))

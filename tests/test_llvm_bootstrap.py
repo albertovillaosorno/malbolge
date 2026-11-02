@@ -3496,3 +3496,46 @@ def test_linux_import_does_not_create_child_in_swapped_staging_parent(
     assert not (foreign_tree / child.name).exists()
     assert (parked / child.name).is_dir()
     assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires Linux directory descriptors")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+def test_linux_import_does_not_create_aliases_in_swapped_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A foreign staging root may never receive Jig wrapper directories."""
+    observation = _host_observation(tmp_path)
+    staged = tmp_path / ".temp/llvm-import-linux-x86_64/llvm"
+    alias_root = staged / "jig-bin"
+    parked = tmp_path / "parked-stage-llvm"
+    foreign = tmp_path / "foreign-alias-stage"
+    foreign.mkdir()
+    sentinel = foreign / "sentinel"
+    _ = sentinel.write_bytes(b"unrelated alias parent")
+    native_mkdir = os.mkdir
+    replaced = False
+
+    def swap_at_alias_directory_creation(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal replaced
+        if (Path(path) == alias_root or path == alias_root.name) and not replaced:
+            _ = staged.rename(parked)
+            if replacement == "symlink":
+                _ = staged.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(staged)
+            replaced = True
+        native_mkdir(path, mode=mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(os, "mkdir", swap_at_alias_directory_creation)
+    with pytest.raises(llvm_validation.LlvmImportError, match="staging|alias|parent"):
+        _ = llvm_validation.import_linux_llvm(tmp_path, observation)
+    assert replaced
+    foreign_tree = foreign if replacement == "symlink" else staged
+    assert (foreign_tree / "sentinel").read_bytes() == b"unrelated alias parent"
+    assert not (foreign_tree / alias_root.name).exists()
+    assert not (tmp_path / llvm_validation.LLVM_ROOT).exists()
