@@ -35,8 +35,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
+from datetime import datetime
+from datetime import time
+from datetime import timezone
 import json
 import tomllib
+from tomllib import loads as _SOURCE_TOML_LOADS
 from typing import Never
 from typing import Protocol
 from typing import cast
@@ -145,12 +150,78 @@ def _parse_plan(text: str) -> dict[str, object]:
     if type(text) is not str:
         _fail("superoptimization plan must use exact string text")
     try:
-        parsed = cast("object", tomllib.loads(text))
+        # The plan's literal TOML is the research record. Public decoder
+        # substitution cannot rewrite the preregistered identity it contains.
+        source_plan = cast("object", _SOURCE_TOML_LOADS(text))
+        provider_plan = cast("object", tomllib.loads(text))
     except tomllib.TOMLDecodeError as error:
         _fail(f"invalid superoptimization plan TOML: {error}")
-    if not isinstance(parsed, dict):
+    except Exception as error:  # noqa: BLE001 - external parser stays typed
+        message = f"superoptimization plan TOML decoder failed: {type(error).__name__}"
+        raise RunRecordError(message) from error
+    if not _native_toml_equal(provider_plan, source_plan):
+        _fail("superoptimization plan parser disagrees with source TOML")
+    if type(source_plan) is not dict:
         _fail("superoptimization plan root must be a table")
-    return cast("dict[str, object]", parsed)
+    return cast("dict[str, object]", source_plan)
+
+
+def _native_toml_equal(provider: object, source: object) -> bool:
+    """Compare exact standard TOML values, never foreign traversal methods.
+
+    Returns:
+        Whether both parser trees have identical native nested source values.
+
+    """
+    pending: list[tuple[object, object]] = [(provider, source)]
+    while pending:
+        observed, expected = pending.pop()
+        if type(observed) is not type(expected):
+            return False
+        if type(expected) is dict:
+            observed_map = cast("dict[object, object]", observed)
+            source_map = cast("dict[str, object]", expected)
+            if len(observed_map) != len(source_map):
+                return False
+            if any(type(key) is not str for key in observed_map):
+                return False
+            for key, value in source_map.items():
+                if key not in observed_map:
+                    return False
+                pending.append((observed_map[key], value))
+        elif type(expected) is list:
+            observed_list = cast("list[object]", observed)
+            source_list = cast("list[object]", expected)
+            if len(observed_list) != len(source_list):
+                return False
+            pending.extend(zip(observed_list, source_list, strict=True))
+        elif type(expected) is float:
+            if cast("float", observed).hex() != cast("float", expected).hex():
+                return False
+        elif type(expected) is datetime:
+            observed_datetime = cast("datetime", observed)
+            source_datetime = cast("datetime", expected)
+            if (
+                type(observed_datetime.tzinfo) not in {type(None), timezone}
+                or type(source_datetime.tzinfo) not in {type(None), timezone}
+                or repr(observed_datetime) != repr(source_datetime)
+            ):
+                return False
+        elif type(expected) is time:
+            observed_time = cast("time", observed)
+            source_time = cast("time", expected)
+            if (
+                type(observed_time.tzinfo) not in {type(None), timezone}
+                or type(source_time.tzinfo) not in {type(None), timezone}
+                or repr(observed_time) != repr(source_time)
+            ):
+                return False
+        elif type(expected) in {str, int, bool, date}:
+            if observed != expected:
+                return False
+        else:
+            return False
+    return True
 
 
 def _preregistered_plan(plan: dict[str, object]) -> _PreregisteredPlan:

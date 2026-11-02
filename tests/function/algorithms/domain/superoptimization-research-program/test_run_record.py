@@ -358,3 +358,118 @@ def test_measurement_run_manifest_rejects_one_repetition_bound_drift() -> None:
             _provenance(),
             series,
         )
+
+
+def test_run_record_rejects_forged_toml_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public decoder cannot rewrite a frozen evaluation budget."""
+    original_loads = tomllib.loads
+
+    def changed_budget(text: str) -> dict[str, object]:
+        parsed = cast("dict[str, object]", original_loads(text))
+        budget = cast("dict[str, object]", parsed["budget"])
+        budget["candidate_evaluations"] = _EVALUATIONS + 1
+        return parsed
+
+    monkeypatch.setattr(tomllib, "loads", changed_budget)
+    result = replace(_result(), evaluation_budget=_EVALUATIONS + 1)
+    with pytest.raises(_RUN_RECORD_MODULE.RunRecordError, match="parser.*source"):
+        _ = _RUN_RECORD_MODULE.render_run_manifest(
+            _PLAN.read_text(encoding="utf-8"), _provenance(), result
+        )
+
+
+def test_run_record_rejects_forged_toml_measurement_repetitions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A parser cannot rewrite the frozen measurement repetition count."""
+    original_loads = tomllib.loads
+
+    def changed_repetitions(text: str) -> dict[str, object]:
+        parsed = cast("dict[str, object]", original_loads(text))
+        measurement = cast("dict[str, object]", parsed["measurement"])
+        measurement["repetitions"] = _REPETITIONS + 1
+        return parsed
+
+    monkeypatch.setattr(tomllib, "loads", changed_repetitions)
+    series = replace(_series(), repetitions=(_result(),) * (_REPETITIONS + 1))
+    with pytest.raises(_RUN_RECORD_MODULE.RunRecordError, match="parser.*source"):
+        _ = _RUN_RECORD_MODULE.render_measurement_run_manifest(
+            _PLAN.read_text(encoding="utf-8"), _provenance(), series
+        )
+
+
+def test_run_record_rejects_forged_invalid_toml_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Invalid source TOML cannot be admitted by a substituted decoder."""
+    original_loads = tomllib.loads
+    valid = _PLAN.read_text(encoding="utf-8")
+    forged = cast("dict[str, object]", original_loads(valid))
+    monkeypatch.setattr(tomllib, "loads", lambda _text: forged)
+    with pytest.raises(_RUN_RECORD_MODULE.RunRecordError, match="invalid.*TOML"):
+        _ = _RUN_RECORD_MODULE.render_run_manifest(
+            valid + "\n[invalid\n", _provenance(), _result()
+        )
+
+
+class _ForeignBudget(dict[str, object]):
+    """An untrusted TOML object may carry executable table methods."""
+
+    def get(self, key: str, default: object = None) -> object:
+        del key, default
+        raise AssertionError("foreign budget get invoked")
+
+
+def test_run_record_rejects_foreign_toml_budget_table(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign nested parser tables cannot execute during plan admission."""
+    original_loads = tomllib.loads
+
+    def foreign_budget(text: str) -> dict[str, object]:
+        parsed = cast("dict[str, object]", original_loads(text))
+        parsed["budget"] = _ForeignBudget(
+            cast("dict[str, object]", parsed["budget"])
+        )
+        return parsed
+
+    monkeypatch.setattr(tomllib, "loads", foreign_budget)
+    with pytest.raises(_RUN_RECORD_MODULE.RunRecordError, match="parser.*source"):
+        _ = _RUN_RECORD_MODULE.render_run_manifest(
+            _PLAN.read_text(encoding="utf-8"), _provenance(), _result()
+        )
+
+
+def test_run_record_accepts_equivalent_public_toml_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent public decoder wrappers remain source-compatible."""
+    original_loads = tomllib.loads
+    monkeypatch.setattr(tomllib, "loads", lambda text: original_loads(text))
+    rendered = _RUN_RECORD_MODULE.render_run_manifest(
+        _PLAN.read_text(encoding="utf-8"), _provenance(), _result()
+    )
+    assert 'record_kind = "run"' in rendered
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, AttributeError, OverflowError])
+def test_run_record_contains_public_toml_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    """Provider exceptions stay typed and retain their exact root cause."""
+    failure = error_type("bad TOML provider")
+
+    def fail_provider(_text: str) -> object:
+        raise failure
+
+    monkeypatch.setattr(tomllib, "loads", fail_provider)
+    with pytest.raises(
+        _RUN_RECORD_MODULE.RunRecordError, match="TOML decoder failed"
+    ) as caught:
+        _ = _RUN_RECORD_MODULE.render_run_manifest(
+            _PLAN.read_text(encoding="utf-8"), _provenance(), _result()
+        )
+    assert caught.value.__cause__ is failure

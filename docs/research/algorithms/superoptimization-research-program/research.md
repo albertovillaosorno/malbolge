@@ -83,8 +83,14 @@ bounded-comparison result with the frozen plan and caller-supplied exact commit,
 workload hash, host, toolchain, outcome, accelerator identity, and raw-output
 path. It emits the shared schema-v1 `[run]` identity plus algorithm-specific
 schedule metrics, rejects result/plan bound drift, requires the result candidate
-count and provenance workload SHA-256 to match the frozen concrete challenge,
-and delegates core commit/outcome/path validation to the repository's
+count and provenance workload SHA-256 to match the frozen concrete challenge.
+The renderer now independently corroborates a public TOML parser result against
+the source-bound standard-library parse of the original plan text, comparing
+exact native nested values before any budget, seed, challenge, or repetition
+identity can be admitted. A substituted public decoder cannot rewrite the
+preregistered plan under unchanged source text; the underlying TOML parser
+remains a shared trust dependency. The renderer delegates core
+commit/outcome/path validation to the repository's
 experiment-manifest authority. It does not write evidence or discover
 
 provenance. The `pilot.py` orchestration layer separately revalidates the plan's
