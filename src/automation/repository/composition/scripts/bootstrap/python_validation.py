@@ -2133,6 +2133,19 @@ def _require_python_interpreter_identity(
     return observed
 
 
+def _python_requirements_identity() -> tuple[int, int, int, int, int]:
+    """Require one bounded physical, single-link validation requirements file.
+
+    Returns:
+        Original source identity for checks around external pip execution.
+
+    """
+    identity = _jig_source_identity(REQUIREMENTS)
+    if identity[2] <= 0 or identity[2] > MAX_UV_MANIFEST_BYTES:
+        _fail("Python validation requirements exceed supported byte limits")
+    return identity
+
+
 def _provision(
     layout: ValidationEnvironmentLayout,
     *,
@@ -2152,6 +2165,7 @@ def _provision(
     )
     if python_status is not None and python_status.st_nlink != 1:
         _fail("Python provisioned interpreter must be single-link")
+    requirements_identity = _python_requirements_identity()
     uv = ensure_uv(selected_root)
     # Reject a post-uv redirect or inode substitution before running pip.
     _ = _require_python_interpreter_identity(
@@ -2168,6 +2182,8 @@ def _provision(
         _fail("Python provisioned interpreter missing before pip sync")
     if sync_target.st_nlink != 1:
         _fail("Python provisioned interpreter must be single-link")
+    if _python_requirements_identity() != requirements_identity:
+        _fail("Python validation requirements changed before pip sync")
     _ = _run([
         str(uv),
         "pip",
@@ -2181,6 +2197,8 @@ def _provision(
     _ = _require_python_interpreter_identity(
         layout.python, sync_target, context="pip sync"
     )
+    if _python_requirements_identity() != requirements_identity:
+        _fail("Python validation requirements changed during pip sync")
     _ = _run([
         str(uv),
         "pip",

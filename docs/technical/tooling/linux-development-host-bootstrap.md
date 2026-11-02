@@ -128,8 +128,10 @@ after virtual-environment creation, between pip sync and pip uninstall,
 and after native launcher and Jig alias publication: changed inodes,
 injected links, or late substitutions fail before subsequent commands. A
 builder that returns without creating a physical Python interpreter cannot
-invoke pip sync. These checks narrow callback mutation windows
-but do not make concurrent ancestor swaps atomic.
+invoke pip sync. The tracked Python requirements source must be a bounded,
+physical, single-link file; its identity is checked before uv bootstraps and
+before and after pip sync. These checks narrow callback mutation windows but
+do not make concurrent ancestor swaps atomic.
 
 Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact

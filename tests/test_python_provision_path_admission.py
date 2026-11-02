@@ -560,6 +560,123 @@ def test_python_provision_rejects_builder_missing_interpreter_before_pip(
     assert not layout.python.exists()
 
 
+@pytest.mark.parametrize("link_kind", ["symlink", "hardlink"])
+def test_python_provision_rejects_linked_requirements_before_pip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, link_kind: str
+) -> None:
+    """uv pip sync must never consume externally linked requirements."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    foreign = tmp_path / "outside-requirements"
+    _ = foreign.write_text("foreign-package==1.0\n", encoding="utf-8")
+    requirements = tmp_path / "requirements.txt"
+    try:
+        if link_kind == "symlink":
+            _ = requirements.symlink_to(foreign)
+        else:
+            os.link(foreign, requirements)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"{link_kind} unavailable: {error}")
+    monkeypatch.setattr(python_validation, "REQUIREMENTS", requirements)
+    commands = _prepare_provision_stub(monkeypatch, root)
+    with pytest.raises(python_validation.ProvisionError, match="redirect|single-link"):
+        python_validation._provision(layout, root=root)
+    assert not commands
+    assert foreign.read_text(encoding="utf-8") == "foreign-package==1.0\n"
+
+
+def test_python_provision_rejects_requirements_swapped_during_uv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid preflight cannot admit a late redirected sync source."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    requirements = tmp_path / "requirements.txt"
+    _ = requirements.write_text("pytest==9.1.1\n", encoding="utf-8")
+    outside = tmp_path / "outside-requirements"
+    _ = outside.write_text("foreign-package==1.0\n", encoding="utf-8")
+    monkeypatch.setattr(python_validation, "REQUIREMENTS", requirements)
+    commands: list[list[str]] = []
+
+    def substitute_during_uv(requested_root: Path) -> Path:
+        assert requested_root == root
+        requirements.unlink()
+        _ = requirements.symlink_to(outside)
+        return root / "uv"
+
+    def forbidden_pip(command: list[str]) -> Never:
+        commands.append(command)
+        raise AssertionError("uv pip reached redirected requirements")
+
+    monkeypatch.setattr(python_validation, "ensure_uv", substitute_during_uv)
+    monkeypatch.setattr(python_validation, "_run", forbidden_pip)
+    with pytest.raises(python_validation.ProvisionError, match="redirect"):
+        python_validation._provision(layout, root=root)
+    assert not commands
+    assert outside.read_text(encoding="utf-8") == "foreign-package==1.0\n"
+
+
+def test_python_provision_rejects_requirements_mutation_during_pip_sync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pip sync command cannot leave a modified authority as ready."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    requirements = tmp_path / "requirements.txt"
+    _ = requirements.write_text("pytest==9.1.1\n", encoding="utf-8")
+    monkeypatch.setattr(python_validation, "REQUIREMENTS", requirements)
+    commands: list[list[str]] = []
+
+    def sync_and_modify(command: list[str]) -> str:
+        commands.append(command)
+        if command[1:3] != ["pip", "sync"]:
+            raise AssertionError("pip uninstall reached mutated requirements")
+        _ = requirements.write_text("ruff==0.16.9\n", encoding="utf-8")
+        return ""
+
+    monkeypatch.setattr(python_validation, "ensure_uv", _local_uv)
+    monkeypatch.setattr(python_validation, "_run", sync_and_modify)
+    with pytest.raises(python_validation.ProvisionError, match="requirements changed"):
+        python_validation._provision(layout, root=root)
+    assert len(commands) == 1
+    assert commands[0][1:3] == ["pip", "sync"]
+
+
+def test_python_provision_rejects_oversized_requirements_before_uv(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unbounded requirements source must not reach uv or pip."""
+    root = tmp_path / "checkout"
+    root.mkdir()
+    layout = python_validation.validation_layout(root)
+    layout.scripts.mkdir(parents=True)
+    _ = layout.python.write_bytes(PAYLOAD)
+    requirements = tmp_path / "requirements.txt"
+    _ = requirements.write_bytes(b"x" * 9)
+    monkeypatch.setattr(python_validation, "REQUIREMENTS", requirements)
+    monkeypatch.setattr(python_validation, "MAX_UV_MANIFEST_BYTES", 8)
+    invoked = False
+
+    def forbidden_uv(_root: Path) -> Never:
+        nonlocal invoked
+        invoked = True
+        raise AssertionError("uv bootstrap reached oversized requirements")
+
+    monkeypatch.setattr(python_validation, "ensure_uv", forbidden_uv)
+    with pytest.raises(python_validation.ProvisionError, match="byte limits"):
+        python_validation._provision(layout, root=root)
+    assert not invoked
+
+
 @pytest.mark.parametrize(
     "mutation", ["other_checkout", "other_authority", "other_launcher"]
 )
