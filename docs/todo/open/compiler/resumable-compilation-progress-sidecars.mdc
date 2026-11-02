@@ -811,8 +811,10 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   forged valid native progress JSON mapping returned by substituted
   `json.loads` while the original source names another operation. Bounded
   progress metadata now receives a second validated `json.JSONDecoder` parse
-  and admits only agreeing records; the shared host parser remains a trust
-  limitation, and these checks do not attest simultaneous provider tampering.
+  and admits only agreeing records. Two further red-first pointer/checkpoint
+  cases reject a primary JSON loader that replaces the public reference class
+  mid-call: an import-bound decoder independently corroborates changed public
+  providers. Shared host parser internals remain a trust limitation.
 
   Fifteen red-first injected decoder-fault fixtures now preserve a typed
   progress or portable checkpoint JSON failure and its original exception

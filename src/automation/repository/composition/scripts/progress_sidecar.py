@@ -74,6 +74,7 @@ if TYPE_CHECKING:
     from collections.abc import Generator
 
 _NATIVE_PATH_TYPE: Final = type(Path())
+_NATIVE_JSON_DECODER: Final = json.JSONDecoder
 SCHEMA_ID: Final = "malbolge-progress-v1"
 CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
@@ -970,10 +971,13 @@ def _decode_portable_checkpoint_document(
     # Keep the direct document parser source-bound too, not just the public
     # decode path's later canonical-wire check. A substituted convenience
     # decoder cannot conceal malformed bytes or change native identity fields.
+    # Keep the public provider for explicit dependency-fault diagnostics while
+    # binding its identity before invocation, so mid-call restoration is visible.
+    reference_decoder = json.JSONDecoder
     try:
         independent = cast(
             "object",
-            json.JSONDecoder(object_pairs_hook=_reject_duplicate_pairs).decode(text),
+            reference_decoder(object_pairs_hook=_reject_duplicate_pairs).decode(text),
         )
     except ProgressSidecarError:
         raise
@@ -984,6 +988,27 @@ def _decode_portable_checkpoint_document(
     reference = _portable_checkpoint_from_document(
         _mapping(independent, "portable checkpoint"),
     )
+    if reference_decoder is not _NATIVE_JSON_DECODER:
+        try:
+            native_tree = cast(
+                "object",
+                _NATIVE_JSON_DECODER(
+                    object_pairs_hook=_reject_duplicate_pairs
+                ).decode(text),
+            )
+        except ProgressSidecarError:
+            raise
+        except (ValueError, RecursionError) as error:
+            _fail(f"invalid checkpoint JSON: {_host_error_detail(error)}")
+        except Exception as error:
+            _fail_with_source(
+                f"invalid checkpoint JSON: {_host_error_detail(error)}", error
+            )
+        native_reference = _portable_checkpoint_from_document(
+            _mapping(native_tree, "portable checkpoint"),
+        )
+        if reference != native_reference:
+            _fail("checkpoint JSON decoder providers disagree")
     if envelope != reference:
         _fail("checkpoint JSON decoder providers disagree")
     return envelope
@@ -1845,10 +1870,13 @@ def loads(text: str) -> ProgressSidecar:
     # A substituted convenience decoder can return a native-looking record
     # unrelated to the source. Independently decode the original wire text
     # through the JSONDecoder object before accepting its identity fields.
+    # Keep the public provider for explicit dependency-fault diagnostics while
+    # binding its identity before invocation, so mid-call restoration is visible.
+    reference_decoder = json.JSONDecoder
     try:
         independent = cast(
             "object",
-            json.JSONDecoder(object_pairs_hook=_reject_duplicate_pairs).decode(text),
+            reference_decoder(object_pairs_hook=_reject_duplicate_pairs).decode(text),
         )
     except ProgressSidecarError:
         raise
@@ -1859,6 +1887,27 @@ def loads(text: str) -> ProgressSidecar:
     reference = validate(
         _from_document(_mapping(independent, "progress sidecar"))
     )
+    if reference_decoder is not _NATIVE_JSON_DECODER:
+        try:
+            native_tree = cast(
+                "object",
+                _NATIVE_JSON_DECODER(
+                    object_pairs_hook=_reject_duplicate_pairs
+                ).decode(text),
+            )
+        except ProgressSidecarError:
+            raise
+        except (ValueError, RecursionError) as error:
+            _fail(f"invalid progress JSON: {_host_error_detail(error)}")
+        except Exception as error:
+            _fail_with_source(
+                f"invalid progress JSON: {_host_error_detail(error)}", error
+            )
+        native_reference = validate(
+            _from_document(_mapping(native_tree, "progress sidecar"))
+        )
+        if reference != native_reference:
+            _fail("progress JSON decoder providers disagree")
     if sidecar != reference:
         _fail("progress JSON decoder providers disagree")
     # A short noncanonical UTF-8 spelling may expand beyond the canonical

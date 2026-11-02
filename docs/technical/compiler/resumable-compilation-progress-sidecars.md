@@ -68,17 +68,20 @@ progress identity fields. The original (at most 1 MiB) source is decoded through
 `json.JSONDecoder` as a separate entrypoint with duplicate-key rejection and
 record validation; both admitted records must match before operator or resume
 use. Three red-first direct/file/CLI regressions demonstrate fail-closed
-rejection. These entrypoints share the host JSON implementation: this is a
-local-consistency check, not independent source authentication or defense
-against simultaneous tampering with both decoders.
+rejection. The reference provider is also bound before invocation and, when
+replaced, corroborated against the import-bound `json.JSONDecoder` class.
+This rejects a primary loader that changes the public reference decoder
+mid-call to obtain two agreeing forged receipts. The bounded native-class
+check does not authenticate shared JSON implementation internals or the host.
 
 Portable checkpoint document parsing now applies the same two-decoder native
 value corroboration before returning an envelope, rather than relying only on
 the public decode path's later canonical JSON check. A substituted JSON loader
 cannot fabricate its stage or hide malformed/duplicate source input from the
-direct parser. Equivalent source-faithful adapters remain admissible. This
-protects the parser's local source/receipt boundary; it does not authenticate
-host decoders that have both been compromised.
+direct parser. Equivalent source-faithful adapters remain admissible. When the
+public reference decoder changes, a third import-bound reference checks its
+validated envelope. This protects local source/receipt identity, not shared
+host decoder internals or independent source provenance.
 
 Both progress JSON entrypoints and portable checkpoint JSON decoding also retain
 the typed `ProgressSidecarError` boundary when a decoder dependency raises an

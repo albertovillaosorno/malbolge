@@ -5571,6 +5571,60 @@ def test_progress_json_rejects_substituted_native_document(
         assert "JSON decoder providers disagree" in captured.err
 
 
+@pytest.mark.parametrize("surface", ["pointer", "checkpoint"])
+def test_progress_rejects_joint_midcall_json_decoder_forgery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    surface: str,
+) -> None:
+    """A primary loader cannot mint a matching fake reference decoder."""
+    if surface == "pointer":
+        sidecar = _sidecar(tmp_path)
+        wire = progress.encode(sidecar).decode("utf-8")
+        forged = progress.to_document(
+            replace(sidecar, operation_id="forged-operation")
+        )
+    else:
+        checkpointed = _checkpointed(_sidecar(tmp_path), partial=None)
+        wire = progress.encode_portable_checkpoint(
+            _resume_identity(),
+            _checkpoint_position(checkpointed),
+            "test-codec",
+            payload=b"state",
+        )
+        forged = cast("dict[str, object]", json.loads(wire))
+        forged["stage"] = "forged-stage"
+
+    class ForgedReferenceDecoder:
+        def __init__(self, *, object_pairs_hook: object) -> None:
+            del object_pairs_hook
+
+        def decode(self, _text: str) -> object:
+            return forged
+
+    with monkeypatch.context() as context:
+
+        def injected_loader(_text: str, **_kwargs: object) -> object:
+            context.setattr(json, "JSONDecoder", ForgedReferenceDecoder)
+            return forged
+
+        context.setattr(json, "loads", injected_loader)
+        diagnostic = (
+            "JSON decoder providers disagree"
+            if surface == "pointer"
+            else "checkpoint JSON decoder providers disagree"
+        )
+        with pytest.raises(ERROR, match=diagnostic):
+            if surface == "pointer":
+                _ = progress.loads(cast("str", wire))
+            else:
+                decoder = cast(
+                    "Callable[[bytes], object]",
+                    vars(progress)["_decode_portable_checkpoint_document"],
+                )
+                _ = decoder(cast("bytes", wire))
+
+
 def test_duplicate_and_unknown_json_keys_fail_closed(tmp_path: Path) -> None:
     """JSON transport cannot overwrite authority or extend v1 silently."""
     sidecar = _sidecar(tmp_path)
