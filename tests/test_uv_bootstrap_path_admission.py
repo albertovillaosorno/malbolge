@@ -29,13 +29,11 @@
 from __future__ import annotations
 
 import os
-from typing import TYPE_CHECKING
+from pathlib import Path
+from typing import cast
 
 import pytest
 from scripts.bootstrap import python_validation
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 PLATFORM_ID = "linux-x86_64"
 BINARY = b"synthetic-pinned-uv"
@@ -270,3 +268,130 @@ def test_uv_rejects_staging_name_swapped_during_chmod(
     assert retained.read_bytes() == BINARY
     assert stage.is_symlink()
     assert not executable.exists()
+
+
+@pytest.mark.parametrize("predicate", ["is_symlink", "is_junction"])
+def test_uv_rejects_nonnative_provision_directory_link_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    predicate: str,
+) -> None:
+    """A nonboolean parent link status must stop before a download or write."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    original = getattr(Path, predicate)
+
+    def forged(path: Path) -> bool:
+        if path == root:
+            return cast("bool", cast("object", 0))
+        return cast("bool", original(path))
+
+    monkeypatch.setattr(Path, predicate, forged)
+    with pytest.raises(python_validation.ProvisionError, match="native"):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert not (root / ".dependencies").exists()
+
+
+@pytest.mark.parametrize("predicate", ["is_symlink", "is_junction"])
+def test_uv_rejects_nonnative_installed_leaf_link_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    predicate: str,
+) -> None:
+    """An existing executable cannot be trusted on a false-like host status."""
+    artifact = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    executable = python_validation.uv_executable(artifact, root)
+    executable.parent.mkdir(parents=True)
+    _ = executable.write_bytes(BINARY)
+    original = getattr(Path, predicate)
+
+    def forged(path: Path) -> bool:
+        if path == executable:
+            return cast("bool", cast("object", 0))
+        return cast("bool", original(path))
+
+    monkeypatch.setattr(Path, predicate, forged)
+    with pytest.raises(python_validation.ProvisionError, match="native"):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert executable.read_bytes() == BINARY
+
+
+class _ForeignUvStatus:
+    """Foreign status with accurate-looking native metadata values."""
+
+    def __init__(self, observed: os.stat_result) -> None:
+        self.st_mode: int = observed.st_mode
+        self.st_nlink: int = observed.st_nlink
+        self.st_dev: int = observed.st_dev
+        self.st_ino: int = observed.st_ino
+        self.st_size: int = observed.st_size
+
+
+def test_uv_rejects_foreign_installed_file_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged leaf lstat values must not authorize execution of installed uv."""
+    artifact = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    executable = python_validation.uv_executable(artifact, root)
+    executable.parent.mkdir(parents=True)
+    _ = executable.write_bytes(BINARY)
+    original = Path.lstat
+
+    def forged(path: Path) -> os.stat_result:
+        observed = original(path)
+        if path == executable:
+            return cast("os.stat_result", cast("object", _ForeignUvStatus(observed)))
+        return observed
+
+    monkeypatch.setattr(Path, "lstat", forged)
+    with pytest.raises(python_validation.ProvisionError, match="native"):
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert executable.read_bytes() == BINARY
+
+
+def test_uv_rejects_forged_staging_file_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign stat proxy cannot prove staged-executable inode ownership."""
+    stage = tmp_path / "uv.tmp"
+    _ = stage.write_bytes(BINARY)
+    original = Path.lstat
+    status = original(stage)
+
+    def forged(path: Path) -> os.stat_result:
+        observed = original(path)
+        if path == stage:
+            return cast("os.stat_result", cast("object", _ForeignUvStatus(observed)))
+        return observed
+
+    monkeypatch.setattr(Path, "lstat", forged)
+    assert not python_validation._uv_stage_is_owned(
+        stage, (status.st_dev, status.st_ino), expected_size=len(BINARY)
+    )
+
+
+def test_uv_types_provision_directory_status_fault(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host filesystem faults cannot escape the typed uv provision boundary."""
+    _ = _mock_uv(monkeypatch)
+    root = tmp_path / "checkout"
+    root.mkdir()
+    original = Path.lstat
+    failure = PermissionError("directory status denied")
+
+    def fault(path: Path) -> os.stat_result:
+        if path == root:
+            raise failure
+        return original(path)
+
+    monkeypatch.setattr(Path, "lstat", fault)
+    with pytest.raises(python_validation.ProvisionError, match="inspect") as raised:
+        _ = python_validation.ensure_uv(root, platform_id=PLATFORM_ID)
+    assert raised.value.__cause__ is failure

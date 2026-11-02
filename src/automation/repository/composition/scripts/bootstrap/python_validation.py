@@ -460,24 +460,58 @@ def _uv_version_matches(output: str, version: str) -> bool:
     return output == expected or output.startswith(f"{expected} ")
 
 
-def _admit_uv_directory(
+def _uv_physical_provision_status(
     path: Path,
     *,
-    required: bool = False,
+    required: bool,
 ) -> os.stat_result | None:
-    """Reject nonphysical directories in a uv provisioning path.
-
-    Returns:
-        Physical directory metadata, or None for an optional missing path.
-
-    """
-    if path.is_symlink() or path.is_junction():
+    """Admit native host link and physical-file observations for a uv path."""
+    try:
+        symlink = path.is_symlink()
+        junction = path.is_junction()
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "cannot inspect uv provision path link status"
+        raise ProvisionError(message) from error
+    if type(symlink) is not bool or type(junction) is not bool:
+        _fail(f"uv provision link status must be native: {path}")
+    if symlink or junction:
         _fail(f"uv provision path must not redirect: {path}")
     try:
         status = path.lstat()
     except FileNotFoundError:
         if required:
             _fail(f"uv provision path disappeared: {path}")
+        return None
+    except (OSError, ValueError, TypeError, RuntimeError) as error:
+        message = "cannot inspect uv provision path file status"
+        raise ProvisionError(message) from error
+    if type(status) is not os.stat_result or any(
+        type(field) is not int
+        for field in (
+            status.st_mode,
+            status.st_nlink,
+            status.st_dev,
+            status.st_ino,
+            status.st_size,
+        )
+    ):
+        _fail(f"uv provision file status must be native: {path}")
+    return status
+
+
+def _admit_uv_directory(
+    path: Path,
+    *,
+    required: bool = False,
+) -> os.stat_result | None:
+    """Require a physical uv provisioning directory if present.
+
+    Returns:
+        Physical directory metadata, or None for an optional missing path.
+
+    """
+    status = _uv_physical_provision_status(path, required=required)
+    if status is None:
         return None
     if not stat.S_ISDIR(status.st_mode):
         _fail(f"uv provision parent must be a directory: {path}")
@@ -495,14 +529,7 @@ def _uv_leaf_status(
         Physical leaf status, or None when an optional leaf is missing.
 
     """
-    if path.is_symlink() or path.is_junction():
-        _fail(f"uv provision path must not redirect: {path}")
-    try:
-        return path.lstat()
-    except FileNotFoundError:
-        if required:
-            _fail(f"uv provision path disappeared: {path}")
-        return None
+    return _uv_physical_provision_status(path, required=required)
 
 
 def _admit_uv_regular_file(
@@ -562,7 +589,18 @@ def _uv_stage_is_owned(
     except OSError, ValueError, TypeError, RuntimeError:
         return False
     return (
-        stat.S_ISREG(status.st_mode)
+        type(status) is os.stat_result
+        and all(
+            type(field) is int
+            for field in (
+                status.st_mode,
+                status.st_nlink,
+                status.st_dev,
+                status.st_ino,
+                status.st_size,
+            )
+        )
+        and stat.S_ISREG(status.st_mode)
         and status.st_nlink == 1
         and (status.st_dev, status.st_ino) == identity
         and (expected_size is None or status.st_size == expected_size)

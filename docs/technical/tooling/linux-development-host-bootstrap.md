@@ -38,8 +38,8 @@ uses the same one-MiB physical regular-file admission and stable descriptor
 checks before its URL, version, artifact, and digest fields are interpreted.
 Manifest ancestry is also checked through native physical directory `lstat`
 receipts: a false-like or forged link predicate cannot authorize symlinked
-parent traversal. Leaf and parent redirect predicates must return exact booleans,
-and file identity must come from native regular-file status with native integers.
+parent traversal. Leaf and parent redirect predicates require exact booleans;
+file identity requires native regular-file status with native integers.
 Failed uv manifest stream wrapping closes its owned descriptor and surfaces
 a typed bootstrap error with the original host failure as its cause.
 Pinned uv release downloads accept only exact native byte responses; an
@@ -53,8 +53,12 @@ binary or creating new files. New uv payloads use an exclusively created
 `uv.tmp` descriptor with no-follow admission, exact write count, and descriptor-
 bound executable permissions. The original stage inode, single-link count, and
 byte size must still match before atomic publication; cleanup unlinks only the
-owned stage. An existing staging path is not truncated, and an executable that
-appears during provisioning is not overwritten. These checks do not make
+owned stage. Provisioning directory and executable leaf checks also require
+native boolean redirect observations and native physical stat records; malformed
+host status and filesystem query faults cannot admit installed binaries or
+staging aliases. Stage ownership rechecks likewise reject foreign stat proxies.
+Existing staging paths are not truncated, and executables that appear during
+provisioning are not overwritten. These checks do not make
 arbitrary concurrent ancestor directory swaps atomic.
 Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact
