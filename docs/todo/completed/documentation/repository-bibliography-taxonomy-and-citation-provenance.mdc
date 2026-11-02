@@ -83,7 +83,8 @@ repository policy merely because they are cited.
   cases. Fenced code, indented code, and HTML comments cannot impersonate
   Markdown section headings, stable IDs, review dates, source entries, or
   externally cataloged URLs; external-reference admission rejects non-native
-  URL containers and members before their hooks execute. Source records,
+  URL containers and members before their hooks execute; malformed URL hosts,
+  schemes, or ports are rejected with typed errors. Source records,
   identity entries, and dependency pins likewise require native text/containers.
   Inline comment removal
   cannot synthesize headings or bullets. Visible evidence surrounding literal

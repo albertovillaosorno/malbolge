@@ -844,6 +844,43 @@ def test_durable_external_reference_requires_canonical_coverage() -> None:
         )
 
 
+@pytest.mark.parametrize("side", ("references", "sources"))
+@pytest.mark.parametrize(
+    "invalid",
+    (
+        "https:///missing-host",
+        "https://",
+        "ftp://example.com/source",
+        "https://[not-an-ip]/doc",
+        "https://example.com:bad-port/source",
+        "https://example.com:65536/source",
+    ),
+)
+def test_external_coverage_rejects_malformed_urls_with_typed_failure(
+    side: str, invalid: str
+) -> None:
+    """Bad absolute URLs and parser faults cannot masquerade as provenance."""
+    references = (invalid,) if side == "references" else ()
+    sources = (invalid,) if side == "sources" else ()
+    with pytest.raises(
+        validator.BibliographyValidationError, match="invalid external reference URL"
+    ):
+        _ = validator.validate_external_reference_coverage(references, sources)
+
+
+@pytest.mark.parametrize(
+    "url",
+    (
+        "https://example.com/a?b=1#fragment",
+        "https://example.com:443/source",
+        "https://[2001:db8::1]/evidence",
+    ),
+)
+def test_external_coverage_accepts_valid_absolute_http_urls(url: str) -> None:
+    """Ordinary source locations remain accepted after malformed URL checks."""
+    assert validator.validate_external_reference_coverage((url,), (url,)) == 1
+
+
 def test_git_transport_suffix_does_not_split_source_identity() -> None:
     """A Git transport suffix resolves to the canonical repository identity."""
     count = validator.validate_external_reference_coverage(

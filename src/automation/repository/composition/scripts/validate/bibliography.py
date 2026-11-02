@@ -815,7 +815,14 @@ def _validate_validation_requirements() -> None:
 
 def _normalized_url(value: str) -> str:
     cleaned = value.rstrip(".,;:)]}")
-    parts = urlsplit(cleaned)
+    try:
+        parts = urlsplit(cleaned)
+        hostname = parts.hostname
+        _ = parts.port
+    except ValueError as error:
+        raise BibliographyValidationError("invalid external reference URL") from error
+    if parts.scheme.lower() not in ("http", "https") or not hostname:
+        _fail("invalid external reference URL")
     path = parts.path.rstrip("/").removesuffix(".git")
     return urlunsplit(
         (
