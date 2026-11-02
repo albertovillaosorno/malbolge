@@ -2163,6 +2163,78 @@ def test_target_child_receipts_allow_matching_patterned_vm_command(
     ) == (analyze.VERIFIED, 1, 3)
 
 
+@pytest.mark.parametrize("stage", ["emitter", "guest"])
+@pytest.mark.parametrize(
+    "receipt", ["matching", "wrong-command", "missing-separator", "bare-command"]
+)
+def test_target_measured_child_requires_exact_vm_suffix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+    receipt: str,
+) -> None:
+    """GNU-time-wrapped children retain the exact emitter and VM invocation."""
+    from dataclasses import replace
+
+    path = tmp_path / "candidate.malbolge"
+    _ = path.write_bytes(b"!")
+    context = replace(
+        _synthetic_target_context(tmp_path, site="raw"),
+        measure_child_rss=True,
+    )
+    monkeypatch.setattr(target_echo_reference, "_ROOT", tmp_path)
+    monkeypatch.setattr(
+        target_echo_reference, "_read_source_bytes", lambda *_a, **_k: b"!"
+    )
+
+    def observed(command: list[str], selected: str) -> sp.CompletedProcess[bytes]:
+        argv = command.copy()
+        if stage == selected and receipt == "wrong-command":
+            argv[0] = "/foreign/runner"
+        wrapper = [
+            "/usr/bin/time",
+            "--format=%M",
+            "--output",
+            "/tmp/rss.txt",
+            "--",
+            "/usr/bin/prlimit",
+            "--as=1:1",
+            "--",
+        ]
+        if stage == selected and receipt == "missing-separator":
+            wrapper.pop()
+        if stage == selected and receipt == "bare-command":
+            wrapper = []
+        output = (
+            b""
+            if selected == "emitter"
+            else bytes([target_echo_reference.CLASSIC_EOF_BYTE])
+        )
+        return sp.CompletedProcess([*wrapper, *argv], 0, output, b"")
+
+    def emitter(
+        _context: target_echo_reference._Context, command: list[str]
+    ) -> sp.CompletedProcess[bytes]:
+        return observed(command, "emitter")
+
+    def runner(*_args: object, **_kwargs: object) -> sp.CompletedProcess[bytes]:
+        return observed([str(context.runner), str(path)], "guest")
+
+    monkeypatch.setattr(target_echo_reference, "_emit_attempt", emitter)
+    monkeypatch.setattr(target_echo_reference, "_run_guest", runner)
+    if receipt == "matching":
+        assert target_echo_reference._classify_attempt(
+            path, context, ["input"], pairs=1
+        ) == (analyze.VERIFIED, 1, None)
+    else:
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="child.*command"
+        ):
+            target_echo_reference._classify_attempt(
+                path, context, ["input"], pairs=1
+            )
+
+
 def test_target_emitter_rejects_hostile_completion_before_stdout_hooks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

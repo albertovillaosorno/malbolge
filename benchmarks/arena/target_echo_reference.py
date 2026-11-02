@@ -193,7 +193,7 @@ def _read_source_bytes(relative: str, *, limit: int) -> bytes:
 
 
 def _admit_child_result(
-    result: sp.CompletedProcess[bytes], *, command: list[str]
+    result: sp.CompletedProcess[bytes], *, command: list[str], measured: bool = False
 ) -> sp.CompletedProcess[bytes]:
     """Bind a native child completion to the exact prepared invocation.
 
@@ -211,8 +211,21 @@ def _admit_child_result(
     if (
         type(result.args) is not list
         or any(type(argument) is not str for argument in result.args)
-        or result.args != command
     ):
+        _fail("target echo child result does not match launched command")
+    actual = tuple(result.args)
+    expected = tuple(command)
+    # Measured children run under GNU time and prlimit. Their validated native
+    # transport returns wrapper argv, which must end in the exact guest command.
+    if measured:
+        matching = (
+            len(actual) > len(expected)
+            and actual[-len(expected) - 1] == "--"
+            and actual[-len(expected) :] == expected
+        )
+    else:
+        matching = actual == expected
+    if not matching:
         _fail("target echo child result does not match launched command")
     return result
 
@@ -705,7 +718,9 @@ def _classify_attempt(
         command.append("--auto-layout")
     prepared = [*command, *operations]
     emitted = _admit_child_result(
-        _emit_attempt(context, prepared.copy()), command=prepared
+        _emit_attempt(context, prepared.copy()),
+        command=prepared,
+        measured=context.measure_child_rss,
     )
     if emitted.returncode != 0 or emitted.stdout or not path.is_file():
         return "tool_failed", None, None
@@ -722,7 +737,9 @@ def _classify_attempt(
     ):
         return analyze.VERIFIER_REJECTED, None, None
     execution = _admit_child_result(
-        _run_guest(context, path, pairs), command=_guest_command(context, path)
+        _run_guest(context, path, pairs),
+        command=_guest_command(context, path),
+        measured=context.measure_child_rss,
     )
     expected = (
         bytes([CLASSIC_EOF_BYTE]) * pairs
