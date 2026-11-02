@@ -469,10 +469,10 @@ def _zip_member_bytes(data: bytes, member: str) -> bytes:
         ):
             _fail("uv zip member requires native size and type metadata")
         unix_type = stat.S_IFMT(info.external_attr >> 16)
-        dos_directory = bool(info.external_attr & 0x10)
+        dos_nonfile = bool(info.external_attr & 0x18)
         if (
             info.is_dir()
-            or dos_directory
+            or dos_nonfile
             or unix_type not in (0, stat.S_IFREG)
         ):
             _fail("uv zip member must be a regular file")

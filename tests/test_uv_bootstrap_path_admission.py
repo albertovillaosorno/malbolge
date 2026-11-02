@@ -800,6 +800,25 @@ def test_uv_zip_rejects_dos_directory_attribute_without_trailing_slash() -> None
         _ = python_validation._zip_member_bytes(output.getvalue(), "uv.exe")
 
 
+def test_uv_zip_rejects_dos_volume_label_with_executable_name() -> None:
+    """A DOS volume label is not an ordinary executable archive file."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        member = zipfile.ZipInfo("uv.exe")
+        member.create_system = 0
+        member.external_attr = 0x08
+        archive.writestr(member, BINARY)
+    extract = cast(
+        "Callable[[bytes, str], bytes]",
+        vars(python_validation)["_zip_member_bytes"],
+    )
+    with pytest.raises(
+        python_validation.ProvisionError,
+        match="uv zip member must be a regular file",
+    ):
+        _ = extract(output.getvalue(), "uv.exe")
+
+
 def test_uv_zip_rejects_duplicate_selected_executable() -> None:
     """Ambiguous duplicate ZIP names cannot select executable contents."""
     output = io.BytesIO()

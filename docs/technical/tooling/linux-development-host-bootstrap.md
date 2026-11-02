@@ -71,8 +71,8 @@ EOF cause.
 Malformed ZIP deflate, LZMA, and Zstandard streams similarly produce typed
 provisioning errors with the original decompression cause preserved.
 ZIP entries must also have regular-file Unix type metadata when encoded, and
-may not advertise directory status through their DOS attributes even if their
-archive names resemble executable files. Duplicate names for the selected
+may not advertise DOS directory or volume-label status even if their names
+resemble executable files. Duplicate names for the selected
 ZIP executable are rejected as ambiguous. The executable writer independently
 requires native bounded bytes before it
 creates its exclusive staging file, even if called with an injected extractor.
