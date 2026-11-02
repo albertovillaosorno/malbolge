@@ -4316,6 +4316,26 @@ def test_python_bootstrap_converts_launch_failures_to_typed_errors(
     assert ("ForeignOSError" in str(caught.value)) == (kind == "foreign-os")
 
 
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_optional_host_probe_rejects_oversized_native_output(
+    monkeypatch: pytest.MonkeyPatch,
+    stream: str,
+) -> None:
+    """Optional host output is bounded even when the process claims success."""
+    command = ["git", "--version"]
+    huge = "x" * (project.MAX_AUTHORITY_BYTES + 1)
+    stdout = huge if stream == "stdout" else "git version 2.55.0\n"
+    stderr = huge if stream == "stderr" else ""
+
+    def run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(sp, "run", run)
+    assert (
+        project._optional_host_command_output(command) is None  # pyright: ignore[reportPrivateUsage]
+    )
+
+
 @pytest.mark.parametrize(
     "probe", ("git-version", "git-exec", "rustup-list", "rustup-which")
 )

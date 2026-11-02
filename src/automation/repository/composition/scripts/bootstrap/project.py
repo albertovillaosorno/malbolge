@@ -652,6 +652,8 @@ def _optional_host_command_output(command: list[str]) -> str | None:
         or type(native.stderr) is not str
     ):
         return None
+    if max(len(native.stdout), len(native.stderr)) > MAX_AUTHORITY_BYTES:
+        return None
     return native.stdout.strip() or None
 
 
