@@ -78,6 +78,11 @@ Stage ownership rechecks likewise reject foreign stat proxies.
 Existing staging paths are not truncated, and executables that appear during
 provisioning are not overwritten. These checks do not make
 arbitrary concurrent ancestor directory swaps atomic.
+UV manifest and Jig tool-source readers require a native buffered binary
+reader backed by the original native raw file descriptor. A foreign stream
+wrapper or a native reader bound to a substitute descriptor cannot supply
+bootstrap authority bytes.
+
 Python keeps native platform launchers and publishes neutral Jig aliases below
 `.dependencies`. On POSIX, BasedPyright and pytest aliases answer only the exact
 singleton `--version` probe from the same pinned `expected_tools` authority that
@@ -106,6 +111,11 @@ alias or launcher. Before replacement, stage identity, regular-file type,
 exclusive link count and exact byte size are rechecked against the admitted
 original descriptor. Cleanup unlinks only the original owned inode, leaving
 foreign symlink or hardlink replacements untouched on rejection.
+Jig tool-source and alias ancestry checks require native physical `lstat`
+receipts and reject masked redirects, foreign stat proxies, and untyped host
+inspection faults. Temporary descriptor and pathname status receipts must
+also be native, and forged stage status cannot authorize publication.
+
 Native Windows
 CMD and POSIX Python/pytest launcher scripts use the same physical preflight
 and private atomic replacement, checking both launcher destinations before
