@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from hashlib import sha256
 import json
+from json import dumps as _SOURCE_JSON_DUMPS
 import os
 from pathlib import Path
 from re import compile as compile_pattern
@@ -222,14 +223,36 @@ def encode_ticket_admission_telemetry_lineage_signature_trust_manifest(
 
     """
     validated = _validated_manifest(manifest)
-    text = json.dumps(
-        asdict(validated),
-        allow_nan=False,
-        ensure_ascii=True,
-        separators=(",", ":"),
-        sort_keys=True,
-    )
+    text = _canonical_json(asdict(validated))
     return f"{text}\n".encode()
+
+
+def _canonical_json(mapping: dict[str, object]) -> str:
+    """Admit a public JSON writer only when original source output agrees."""
+    try:
+        # First seal the source-owned fingerprint and reference identities.
+        # A substituted public writer can mutate its mapping or return a
+        # plausible but unrelated set of trusted signature keys.
+        source_text = _SOURCE_JSON_DUMPS(
+            mapping,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        rendered = json.dumps(
+            mapping,
+            allow_nan=False,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except Exception as error:  # noqa: BLE001 - provider failure stays typed
+        message = f"signature trust JSON serializer failed: {type(error).__name__}"
+        raise TicketAdmissionTelemetryLineageSignatureTrustManifestError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        _raise_manifest("signature trust JSON serializer disagrees with source")
+    return source_text
 
 
 def decode_ticket_admission_telemetry_lineage_signature_trust_manifest(

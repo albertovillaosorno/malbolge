@@ -961,8 +961,13 @@ canonical
 key-free JSON. It defaults to 256 entries and 64 KiB, sorts by composite
 identity,
 requires globally unique references, publishes a stable SHA-256 fingerprint, and
-supports only explicit bounded reads or atomic replacement. Resolution requires
-exact caller-supplied algorithm/key/reference coverage and exact public-key
+supports only explicit bounded reads or atomic replacement. Canonical
+encoding checks the mutable public JSON writer against source-owned output
+captured before public mutation; a jointly substituted decoder/writer cannot
+invent trusted algorithm, key, reference, fingerprint, or validity-window
+metadata absent from the source bytes. Underlying JSON internals remain a
+shared trust dependency. Resolution requires exact caller-supplied
+algorithm/key/reference coverage and exact public-key
 bytes
 matching the persisted fingerprint before building manifest-bound in-memory
 signature trust. The same public-key ID may exist under distinct algorithms.

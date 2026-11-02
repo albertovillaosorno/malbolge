@@ -973,3 +973,103 @@ def test_resolved_trust_supports_algorithm_and_key_rotation() -> None:
     )
     assert comparison.first.key_id == OLD_KEY_ID
     assert comparison.second.key_id == NEW_KEY_ID
+
+
+def test_signature_manifest_rejects_joint_json_provider_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty signed-key manifest cannot decode to forged signature trust."""
+    empty = build_manifest(())
+    original_bytes = encode_manifest(empty)
+    forged = _mapping(encode_manifest(_rotation_manifest()))
+    original_text = original_bytes.decode("utf-8").removesuffix("\n")
+
+    monkeypatch.setattr(manifest.json, "loads", lambda *_args, **_kwargs: forged)
+    monkeypatch.setattr(
+        manifest.json, "dumps", lambda *_args, **_kwargs: original_text
+    )
+    with pytest.raises(SignatureTrustManifestError, match="serializer|canonical"):
+        _ = decode_manifest(original_bytes)
+
+
+def test_signature_manifest_rejects_forged_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unrelated text cannot be published as canonical signature trust."""
+    monkeypatch.setattr(manifest.json, "dumps", lambda *_args, **_kwargs: "{}")
+    with pytest.raises(SignatureTrustManifestError, match="serializer"):
+        _ = encode_manifest(_rotation_manifest())
+
+
+def test_signature_manifest_rejects_mutating_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted writer cannot erase trusted public key fingerprints."""
+    original_dumps = manifest.json.dumps
+
+    def altered_writer(value: dict[str, object], **kwargs: object) -> str:
+        value["entries"] = []
+        return original_dumps(value, **kwargs)
+
+    monkeypatch.setattr(manifest.json, "dumps", altered_writer)
+    with pytest.raises(SignatureTrustManifestError, match="serializer"):
+        _ = encode_manifest(_rotation_manifest())
+
+
+class _ForeignJsonText(str):
+    """A hostile JSON receipt could execute comparison hooks."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign JSON equality invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        pytest.param(None, id="missing"),
+        pytest.param(b"{}", id="binary"),
+        pytest.param(_ForeignJsonText("{}"), id="foreign-str"),
+    ],
+)
+def test_signature_manifest_rejects_non_native_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only exact native canonical text can publish trusted references."""
+    monkeypatch.setattr(manifest.json, "dumps", lambda *_args, **_kwargs: receipt)
+    with pytest.raises(SignatureTrustManifestError, match="serializer"):
+        _ = encode_manifest(_rotation_manifest())
+
+
+@pytest.mark.parametrize(
+    "error_type", [RuntimeError, AttributeError, IndexError, OverflowError]
+)
+def test_signature_manifest_contains_json_writer_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    """External writer errors remain typed with their original cause."""
+    failure = error_type("substituted serializer failure")
+
+    def fail_writer(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    monkeypatch.setattr(manifest.json, "dumps", fail_writer)
+    with pytest.raises(SignatureTrustManifestError, match="serializer failed") as caught:
+        _ = encode_manifest(_rotation_manifest())
+    assert caught.value.__cause__ is failure
+
+
+def test_signature_manifest_accepts_equivalent_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A distinct equivalent writer preserves exact signature trust metadata."""
+    original_dumps = manifest.json.dumps
+    monkeypatch.setattr(
+        manifest.json, "dumps", lambda *args, **kwargs: original_dumps(*args, **kwargs)
+    )
+    original = _rotation_manifest()
+    assert decode_manifest(encode_manifest(original)) == original
