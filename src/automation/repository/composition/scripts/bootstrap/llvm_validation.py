@@ -1896,9 +1896,14 @@ def _ldd_library(executable: Path, soname: str) -> Path | None:
     # receipt resolves to a physical library.
     if len(matches) != 1:
         return None
-    path_text = matches[0].removeprefix(prefix).split(" (", 1)[0]
+    mapping = matches[0].removeprefix(prefix)
+    # The address trailer is required; do not admit a truncated or diagnostic
+    # line. A greedy pathname keeps legitimate parenthesized directories.
+    parsed = re.fullmatch(r"(/.+) \(0x[0-9a-fA-F]+\)", mapping)
+    if parsed is None:
+        return None
     try:
-        path = Path(path_text)
+        path = Path(parsed.group(1))
         if not path.is_absolute():
             return None
         resolved = path.resolve(strict=True)

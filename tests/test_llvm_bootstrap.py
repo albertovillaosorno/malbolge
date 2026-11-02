@@ -3089,6 +3089,49 @@ def test_llvm_ldd_accepts_physical_library(
     )
 
 
+@pytest.mark.parametrize(
+    "suffix", ["", " (not-an-address)", " (0x1234) diagnostics appended"]
+)
+def test_llvm_ldd_rejects_malformed_loader_mapping(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    suffix: str,
+) -> None:
+    """Malformed loader receipts cannot authorize a physical library."""
+    library = tmp_path / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+    line = f"libLLVM.so.22.1 => {library}{suffix}"
+
+    def capture(arguments: list[str]) -> str:
+        assert arguments == ["ldd", str(tmp_path / "clang")]
+        return line
+
+    monkeypatch.setattr(llvm_validation, "_capture", capture)
+    entrypoint = vars(llvm_validation)["_ldd_library"]
+    resolve = cast("Callable[[Path, str], Path | None]", entrypoint)
+    assert resolve(tmp_path / "clang", "libLLVM.so.22.1") is None
+
+
+def test_llvm_ldd_accepts_parenthesized_library_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Path parentheses are data, not a loader-address delimiter."""
+    directory = tmp_path / "llvm (debug)"
+    directory.mkdir()
+    library = directory / "libLLVM.so.22.1"
+    _ = library.write_bytes(LLVM_BYTES)
+    line = f"libLLVM.so.22.1 => {library} (0x1234)"
+
+    def capture(arguments: list[str]) -> str:
+        assert arguments == ["ldd", str(tmp_path / "clang")]
+        return line
+
+    monkeypatch.setattr(llvm_validation, "_capture", capture)
+    entrypoint = vars(llvm_validation)["_ldd_library"]
+    resolve = cast("Callable[[Path, str], Path | None]", entrypoint)
+    assert resolve(tmp_path / "clang", "libLLVM.so.22.1") == library
+
+
 @pytest.mark.parametrize("second_line", ["same", "other", "missing"])
 def test_llvm_ldd_rejects_ambiguous_duplicate_soname(
     tmp_path: Path,
