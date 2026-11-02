@@ -112,7 +112,12 @@ evaluation, 60-second, and 512 MiB bounds. Applicability requires stable address
 identity and no intervening write; unique search states is the primary metric,
 and semantic drift is a rejection condition. The registered 10,000-observation
 challenge spans all 94 graphical encryption starts plus deterministic classic
-rotate samples. The paired protocol was committed before measurement at
+rotate samples. Its frozen workload JSON and SHA-256 identity now corroborate
+public JSON serialization with an import-bound standard-library encoder class.
+Writer-only, encoder-only, and joint replacement cannot rewrite the workload
+identity without a typed failure; modification of Python's underlying encoder
+implementation remains outside this check. The paired protocol was committed
+before measurement at
 `9ff48346`, fixes raw-then-canonicalized order, retains all five repetitions,
 
 and uses no warmup deletion. The retained run preserves one exact semantic

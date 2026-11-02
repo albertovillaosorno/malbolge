@@ -32,12 +32,12 @@
 
 """Exact evidence for the frozen history-residue challenge corpus."""
 
-from hashlib import sha256
 import importlib.util
-from pathlib import Path
+import json
 import sys
-from typing import Protocol
-from typing import cast
+from hashlib import sha256
+from pathlib import Path
+from typing import Protocol, cast
 
 import pytest
 
@@ -176,3 +176,76 @@ def test_history_challenge_workload_identity_is_canonical() -> None:
     assert _COUNT_MARKER in payload
     assert _CHALLENGE_MARKER in payload
     assert all(marker not in payload for marker in _FORBIDDEN_MARKERS)
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+def test_history_workload_rejects_substituted_json_providers(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """Frozen source identity cannot be rewritten by a public JSON provider."""
+    baseline = _CHALLENGE.workload_bytes()
+    forged = baseline.decode().replace(
+        '"candidate_count":10000', '"candidate_count":9999',
+    )
+    assert forged.encode() != baseline
+
+    class ForgedEncoder:
+        def __init__(self, **_options: object) -> None:
+            pass
+
+        def encode(self, _document: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        if provider in ("encoder", "joint"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if provider in ("writer", "joint"):
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged)
+        with pytest.raises(
+            _CHALLENGE.InvalidHistoryChallengeCandidateError,
+            match="workload JSON serializer disagrees with source",
+        ):
+            _ = _CHALLENGE.workload_bytes()
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder"))
+def test_history_workload_contains_json_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """Faulty public providers do not leak untyped provenance exceptions."""
+    class FailingEncoder:
+        def __init__(self, **_options: object) -> None:
+            raise RuntimeError("encoder failure")
+
+    def failing_writer(*_args: object, **_kwargs: object) -> str:
+        raise RuntimeError("writer failure")
+
+    with monkeypatch.context() as patch:
+        if provider == "writer":
+            patch.setattr(json, "dumps", failing_writer)
+        else:
+            patch.setattr(json, "JSONEncoder", FailingEncoder)
+        with pytest.raises(
+            _CHALLENGE.InvalidHistoryChallengeCandidateError,
+            match="workload JSON serializer failed",
+        ) as captured:
+            _ = _CHALLENGE.workload_bytes()
+        assert isinstance(captured.value.__cause__, RuntimeError)
+
+
+def test_history_workload_accepts_equivalent_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent public adapters retain the source-bound workload identity."""
+    baseline = _CHALLENGE.workload_bytes()
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert _CHALLENGE.workload_bytes() == baseline
+        assert _CHALLENGE.workload_sha256() == sha256(baseline).hexdigest()

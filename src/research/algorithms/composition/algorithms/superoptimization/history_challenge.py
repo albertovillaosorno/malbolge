@@ -34,9 +34,9 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from hashlib import sha256
-import json
 from typing import Final
 
 from verifier import emitted_malbolge_classic as classic
@@ -47,6 +47,7 @@ HISTORY_CANDIDATE_ENCODING_ID: Final = (
     "encryption-94x70-plus-rotate-171x20-v1"
 )
 HISTORY_PROFILE_ID: Final = "malbolge-1998"
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 KIND_ENCRYPTION: Final = "self-encryption"
 KIND_ROTATE: Final = "rotate"
@@ -192,8 +193,21 @@ def workload_bytes() -> bytes:
         "rotate_visits_per_sample": _ROTATE_VISITS,
         "verifier": HISTORY_VERIFIER_ID,
     }
-    text = json.dumps(document, sort_keys=True, separators=(",", ":"))
-    return text.encode("utf-8")
+    try:
+        # json.dumps and import-bound dumps both consult the mutable public
+        # JSONEncoder. Capture the original class for an independent receipt.
+        source_text = _SOURCE_JSON_ENCODER(
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(document)
+        rendered = json.dumps(document, sort_keys=True, separators=(",", ":"))
+    except Exception as error:
+        message = f"workload JSON serializer failed: {type(error).__name__}"
+        raise InvalidHistoryChallengeCandidateError(message) from error
+    if type(rendered) is not str or rendered != source_text:
+        message = "workload JSON serializer disagrees with source"
+        raise InvalidHistoryChallengeCandidateError(message)
+    return source_text.encode("utf-8")
 
 
 def workload_sha256() -> str:
