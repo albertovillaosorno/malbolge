@@ -565,9 +565,15 @@ def _tar_payload_size(archive: tarfile.TarFile, member: tarfile.TarInfo) -> int:
 def _tar_members(
     archive: tarfile.TarFile,
 ) -> tuple[str, tuple[tarfile.TarInfo, ...]]:
-    members = tuple(archive.getmembers())
-    if len(members) > _MAX_CUDA_ARCHIVE_MEMBERS:
-        _fail("CUDA archive member count exceeds limit")
+    # TarFile.getmembers() reads the entire inventory before returning. Stop
+    # while scanning instead so an oversized archive cannot exhaust memory
+    # before the member-count admission check.
+    admitted: list[tarfile.TarInfo] = []
+    for member in archive:
+        if len(admitted) >= _MAX_CUDA_ARCHIVE_MEMBERS:
+            _fail("CUDA archive member count exceeds limit")
+        admitted.append(member)
+    members = tuple(admitted)
     names = tuple(member.name for member in members)
     root_name = _common_archive_root(names)
     for member in members:

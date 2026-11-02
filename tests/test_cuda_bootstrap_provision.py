@@ -52,7 +52,7 @@ from compression import zstd
 from scripts.bootstrap import cuda_validation, project
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
 LINUX_PLATFORM = "linux-x86_64"
 FILE_REDIRECT = "file"
@@ -1755,6 +1755,11 @@ def test_cuda_tar_rejects_excess_member_count_before_link_resolution(
         tmp_path, manifest, LINUX_PLATFORM
     ).packages[0]
     monkeypatch.setattr(cuda_validation, "_MAX_CUDA_ARCHIVE_MEMBERS", 2)
+
+    def reject_unbounded_inventory(_archive: tarfile.TarFile) -> None:
+        raise AssertionError
+
+    monkeypatch.setattr(tarfile.TarFile, "getmembers", reject_unbounded_inventory)
     with pytest.raises(cuda_validation.CudaProvisionError, match="member count"):
         cuda_validation.extract_cuda_package(
             payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
@@ -4257,14 +4262,15 @@ def test_cuda_rejects_oversized_declared_archive_member_before_read(
 
         monkeypatch.setattr(zipfile.ZipFile, "infolist", oversized_zip)
     else:
-        original_tar = tarfile.TarFile.getmembers
+        original_tar = tarfile.TarFile.__iter__
 
-        def oversized_tar(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
-            members = original_tar(archive)
-            members[0].size = 1024 * 1024 * 1024
-            return members
+        def oversized_tar(archive: tarfile.TarFile) -> Iterator[tarfile.TarInfo]:
+            for member in original_tar(archive):
+                if member.name == NVRTC_MEMBER:
+                    member.size = 1024 * 1024 * 1024
+                yield member
 
-        monkeypatch.setattr(tarfile.TarFile, "getmembers", oversized_tar)
+        monkeypatch.setattr(tarfile.TarFile, "__iter__", oversized_tar)
     with pytest.raises(cuda_validation.CudaProvisionError, match="member byte limit"):
         cuda_validation.extract_cuda_package(
             payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
@@ -4300,17 +4306,16 @@ def test_cuda_rejects_excessive_combined_archive_expansion(
 
         monkeypatch.setattr(zipfile.ZipFile, "infolist", many_zip)
     else:
-        original_tar = tarfile.TarFile.getmembers
+        original_tar = tarfile.TarFile.__iter__
 
-        def many_tar(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
-            members = original_tar(archive)
+        def many_tar(archive: tarfile.TarFile) -> Iterator[tarfile.TarInfo]:
+            yield from original_tar(archive)
             for i in range(9):
                 extra = tarfile.TarInfo(f"{ARCHIVE_ROOT}/lib64/fake{i}.so")
                 extra.size = oversized_size
-                members.append(extra)
-            return members
+                yield extra
 
-        monkeypatch.setattr(tarfile.TarFile, "getmembers", many_tar)
+        monkeypatch.setattr(tarfile.TarFile, "__iter__", many_tar)
     with pytest.raises(cuda_validation.CudaProvisionError, match="expanded byte limit"):
         cuda_validation.extract_cuda_package(
             payload, package, tmp_path / "toolkit", staging=tmp_path / "stage"
