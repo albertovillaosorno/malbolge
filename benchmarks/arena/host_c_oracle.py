@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import shutil
 import stat
@@ -611,6 +612,7 @@ def _canonical_payload(
     )
     try:
         digest = sha256(generated.source).hexdigest()
+        independent = hashlib.sha256(generated.source).hexdigest()
     except Exception as error:
         # Hashing is a dependency; its faults must remain typed replay
         # failures without invoking foreign exception formatting hooks.
@@ -618,6 +620,10 @@ def _canonical_payload(
         raise HostOracleError(message) from error
     if (
         type(digest) is not str
+        or type(independent) is not str
+        or len(digest) != 64
+        or len(independent) != 64
+        or digest != independent
         or digest != source_sha256
         or len(generated.oracle) != ORACLE_BYTES
     ):

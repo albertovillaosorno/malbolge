@@ -434,6 +434,24 @@ def test_direct_bundle_rejects_untrusted_source_hash_receipt(
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
+def test_bundle_replay_rejects_fabricated_equal_source_hash_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged native digest must not legitimize a false workload identity."""
+    case, files = _direct_bundle()
+    false_digest = "0" * challenge_bundles.SHA256_HEX_LENGTH
+    assert case["workload_sha256"] != false_digest
+    case["workload_sha256"] = false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(challenge_bundles, "sha256", lambda _source: ForgedHash())
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match="SHA-256"):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
 @pytest.mark.parametrize("stage", ["digest", "hexdigest"])
 def test_direct_bundle_types_unexpected_source_hash_fault(
     monkeypatch: pytest.MonkeyPatch,

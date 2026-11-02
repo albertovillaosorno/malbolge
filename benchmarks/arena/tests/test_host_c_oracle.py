@@ -805,6 +805,22 @@ def test_host_c_canonical_replay_requires_native_source_hash_receipt(
         host_c_oracle._canonical_payload(_case(), PROFILE, expected)
 
 
+def test_host_c_replay_rejects_fabricated_equal_source_hash_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fake native digest matching a false claim cannot authorize replay."""
+    false_digest = "0" * 64
+    assert _digest() != false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(host_c_oracle, "sha256", lambda _source: ForgedHash())
+    with pytest.raises(host_c_oracle.HostOracleError, match="source.*identity"):
+        host_c_oracle._canonical_payload(_case(), PROFILE, false_digest)
+
+
 def test_host_c_forged_source_hash_never_enters_native_workspace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
