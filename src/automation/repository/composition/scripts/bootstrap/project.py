@@ -2978,11 +2978,25 @@ def _rust_validation_adapter_ready(
 ) -> bool:
     if not _platform_family(platform_id, LINUX_SYSTEM):
         return True
+    linker_environment = _rust_linux_linker_environment(platform_id)
+    if linker_environment is None:
+        return False
     linker = toolchain_root / "bin" / "cc"
     marker = toolchain_root / RUST_LINUX_ADAPTER_MARKER
-    return _import_completion_marker_matches(
-        marker, RUST_LINUX_ADAPTER_CONTENT
-    ) and _linux_adapter_script_ready(linker)
+    if not (
+        _import_completion_marker_matches(marker, RUST_LINUX_ADAPTER_CONTENT)
+        and _linux_adapter_script_ready(linker)
+    ):
+        return False
+    for tool_id in _rust_validation_tool_ids(toolchain_root):
+        alias = toolchain_root / "bin" / f"{tool_id}.bin"
+        expected = _rust_validation_alias_script(tool_id, linker_environment)
+        if not (
+            _import_completion_marker_matches(alias, expected.encode("ascii"))
+            and _imported_binary_alias_ready(alias, windows=False)
+        ):
+            return False
+    return True
 
 
 def inspect_rust(root: Path, platform_id: str) -> ComponentStatus:

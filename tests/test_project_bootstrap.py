@@ -77,6 +77,12 @@ CAPTURED_BOOTSTRAP_ARGUMENTS = "captured bootstrap arguments"
 RUST_CHANNEL = "1.98.1"
 RUST_NIGHTLY_CHANNEL = "nightly-2026-07-14"
 RUST_CARGO_BYTES = b"cargo-1.98.1"
+RUST_LINUX_CARGO_WRAPPER_BYTES = (
+    '#!/bin/sh\n'
+    'tool_dir=${0%/*}\n'
+    'export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER="$tool_dir/cc"\n'
+    'exec "$tool_dir/cargo" "$@"\n'
+).encode("ascii")
 RUST_RUSTC_BYTES = b"rustc-1.98.1"
 RUST_STD_BYTES = b"rust-std"
 RUFF_BYTES = b"ruff"
@@ -4712,7 +4718,7 @@ def test_rust_inspection_requires_completed_neutral_alias(
     toolchain = tmp_path / ".dependencies" / "rust" / RUST_CHANNEL
     cargo = toolchain / "bin" / "cargo.bin"
     cargo.parent.mkdir(parents=True)
-    cargo.touch()
+    _ = cargo.write_bytes(RUST_LINUX_CARGO_WRAPPER_BYTES)
     cargo.chmod(0o700)
     _ = (toolchain / project.RUST_IMPORT_MARKER).write_text(
         "malbolge-rust-toolchain-import/v1\n",
@@ -4753,7 +4759,7 @@ def _linux_rust_inspection_tree(tmp_path: Path) -> Path:
     binary = toolchain / "bin"
     binary.mkdir(parents=True)
     cargo = binary / "cargo.bin"
-    _ = cargo.write_bytes(RUST_CARGO_BYTES)
+    _ = cargo.write_bytes(RUST_LINUX_CARGO_WRAPPER_BYTES)
     cargo.chmod(0o700)
     _ = (toolchain / project.RUST_IMPORT_MARKER).write_text(
         "malbolge-rust-toolchain-import/v1\n", encoding="ascii"
@@ -4771,6 +4777,108 @@ def _linux_rust_inspection_tree(tmp_path: Path) -> Path:
         is project.ComponentState.READY
     )
     return toolchain
+
+
+def test_rust_inspection_rejects_tampered_linux_cargo_wrapper(
+    tmp_path: Path,
+) -> None:
+    """A valid adapter marker cannot authorize an arbitrary Cargo wrapper."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    alias = toolchain / "bin/cargo.bin"
+    _ = alias.write_text('#!/bin/sh\nexec /bin/false "$@"\n', encoding="ascii")
+    alias.chmod(0o700)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+    assert (
+        project.inspect_rust(tmp_path, WINDOWS_PLATFORM).state
+        is project.ComponentState.READY
+    )
+
+
+def test_rust_inspection_rejects_hardlinked_linux_cargo_wrapper(
+    tmp_path: Path,
+) -> None:
+    """Even matching wrapper bytes cannot authorize a hardlinked alias."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    alias = toolchain / "bin/cargo.bin"
+    external = tmp_path / "outside-cargo-wrapper"
+    try:
+        os.link(alias, external)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"hardlinks unavailable: {error}")
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+@pytest.mark.parametrize("mutation", ("hardlink", "restored-mtime-rewrite"))
+def test_rust_inspection_rejects_linux_wrapper_mutated_after_read(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """Cargo wrapper attestation must recheck bytes and inode after reading."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    alias = toolchain / "bin/cargo.bin"
+    external = tmp_path / "outside-rust-wrapper"
+    native_read = project._read_authority_bytes  # pyright: ignore[reportPrivateUsage]
+    mutated = False
+
+    def change_after_read(path: Path) -> bytes:
+        nonlocal mutated
+        content = native_read(path)
+        if path == alias and not mutated:
+            original = alias.stat()
+            if mutation == "hardlink":
+                os.link(alias, external)
+            else:
+                _ = alias.write_bytes(b"!" + content[1:])
+                os.utime(alias, ns=(original.st_atime_ns, original.st_mtime_ns))
+            mutated = True
+        return content
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(project, "_read_authority_bytes", change_after_read)
+        assert (
+            project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+            is project.ComponentState.MISSING
+        )
+    assert mutated
+
+
+def test_rust_inspection_rejects_wrapper_for_wrong_linux_architecture(
+    tmp_path: Path,
+) -> None:
+    """A wrapper for x86-64 must not authorize AArch64 linker environment."""
+    _ = _linux_rust_inspection_tree(tmp_path)
+    assert (
+        project.inspect_rust(tmp_path, LINUX_AARCH64).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_nightly_rust_inspection_checks_all_generated_validation_wrappers(
+    tmp_path: Path,
+) -> None:
+    """The Linux Clippy/fmt adapter marker covers each generated alias."""
+    nightly = tmp_path / ".dependencies/rust" / RUST_NIGHTLY_CHANNEL
+    binary = nightly / "bin"
+    binary.mkdir(parents=True)
+    for tool_id in ("cargo-clippy", "cargo-fmt"):
+        _ = (binary / tool_id).write_bytes(tool_id.encode("ascii"))
+    linker = tmp_path / "host-cc"
+    _ = linker.write_bytes(b"host linker")
+    _ = project.write_rust_linker_adapters(
+        (nightly,), LINUX_PLATFORM, linker=linker
+    )
+    readiness = cast(
+        "Callable[[Path, str], bool]",
+        vars(project)["_rust_validation_adapter_ready"],
+    )
+    assert readiness(nightly, LINUX_PLATFORM)
+    _ = (binary / "cargo-fmt.bin").write_bytes(b"unexpected wrapper")
+    assert not readiness(nightly, LINUX_PLATFORM)
 
 
 def test_rust_inspection_rejects_nonexecutable_cargo_alias(
