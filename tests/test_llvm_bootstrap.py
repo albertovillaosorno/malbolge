@@ -2200,23 +2200,26 @@ def test_llvm_copy_file_rejects_existing_parent_replaced_during_mkdir(
     foreign.mkdir()
     sentinel = foreign / "sentinel"
     _ = sentinel.write_bytes(b"foreign sentinel")
-    native_mkdir = Path.mkdir
+    native_mkdir = os.mkdir
     swapped = False
 
     def swap_after_existing_mkdir(
-        path: Path,
+        path: str | os.PathLike[str],
         mode: int = 0o777,
-        parents: bool = False,
-        exist_ok: bool = False,
+        *,
+        dir_fd: int | None = None,
     ) -> None:
         nonlocal swapped
-        native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
-        if path == parent and not swapped:
-            _ = parent.rename(parked)
-            _ = foreign.rename(parent)
-            swapped = True
+        try:
+            native_mkdir(path, mode, dir_fd=dir_fd)
+        except FileExistsError:
+            if (path == parent.name or Path(path) == parent) and not swapped:
+                _ = parent.rename(parked)
+                _ = foreign.rename(parent)
+                swapped = True
+            raise
 
-    monkeypatch.setattr(Path, "mkdir", swap_after_existing_mkdir)
+    monkeypatch.setattr(os, "mkdir", swap_after_existing_mkdir)
     with pytest.raises(llvm_validation.LlvmImportError, match="parent"):
         llvm_validation._copy_file(  # pyright: ignore[reportPrivateUsage]
             source, destination
@@ -3702,3 +3705,49 @@ def test_llvm_resource_copy_does_not_populate_swapped_destination_parent(
     foreign_parent = foreign if replacement == "symlink" else swapped_parent
     assert (foreign_parent / "sentinel").read_bytes() == b"unrelated resource directory"
     assert not (foreign_parent / created.name).exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires physical directory pinning")
+@pytest.mark.parametrize("replacement", ["physical", "symlink"])
+def test_llvm_copy_file_does_not_create_missing_parent_in_swapped_stage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A missing import bin directory cannot be created in a foreign stage."""
+    source = tmp_path / "host-tool"
+    _ = source.write_bytes(b"native clang bytes")
+    staged = tmp_path / "owned-stage"
+    staged.mkdir()
+    destination = staged / "bin/clang"
+    parked = tmp_path / "parked-stage"
+    foreign = tmp_path / "foreign-stage"
+    foreign.mkdir()
+    _ = (foreign / "sentinel").write_bytes(b"foreign bytes")
+    native_mkdir = os.mkdir
+    swapped = False
+
+    def swap_during_bin_creation(
+        path: str | os.PathLike[str],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal swapped
+        if not swapped and (Path(path) == destination.parent or path == "bin"):
+            _ = staged.rename(parked)
+            if replacement == "symlink":
+                _ = staged.symlink_to(foreign, target_is_directory=True)
+            else:
+                _ = foreign.rename(staged)
+            swapped = True
+        native_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(os, "mkdir", swap_during_bin_creation)
+        with pytest.raises(llvm_validation.LlvmImportError, match="parent"):
+            llvm_validation._copy_file(  # pyright: ignore[reportPrivateUsage]
+                source, destination
+            )
+    assert swapped
+    foreign_stage = foreign if replacement == "symlink" else staged
+    assert (foreign_stage / "sentinel").read_bytes() == b"foreign bytes"
+    assert not (foreign_stage / "bin").exists()

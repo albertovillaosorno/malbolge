@@ -507,16 +507,23 @@ def _link_or_copy_in_parent(
 
 
 def _copy_file(source: Path, destination: Path) -> None:
-    admitted_parent = _native_directory_inode(destination.parent)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if (
-        admitted_parent is not None
-        and _native_directory_inode(destination.parent) != admitted_parent
+    """Create one import file under the originally admitted physical parent."""
+    original_parent_inode = _native_directory_inode(destination.parent)
+    ancestor_inode = _native_directory_inode(destination.parent.parent)
+    if ancestor_inode is None:
+        _fail("LLVM import file parent ancestor must be physical")
+    _create_physical_import_directory(
+        destination.parent,
+        label="LLVM import file parent",
+        expected_parent_inode=ancestor_inode,
+        exist_ok=True,
+    )
+    parent_inode = _native_directory_inode(destination.parent)
+    if parent_inode is None or (
+        original_parent_inode is not None and parent_inode != original_parent_inode
     ):
         _fail("LLVM import destination parent changed during mkdir")
-    _ = _link_or_copy(
-        str(source), str(destination), expected_parent_inode=admitted_parent
-    )
+    _ = _link_or_copy(str(source), str(destination), expected_parent_inode=parent_inode)
 
 
 def _require_physical_resources(root: Path) -> None:
