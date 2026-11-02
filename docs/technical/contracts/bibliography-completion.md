@@ -78,11 +78,13 @@ to increase the record count is invalid.
 
 ## Implementation
 
-Complete. The bibliography contains 48 source/provenance records, including 44
+Complete. The bibliography contains 55 source/provenance records, including 44
 required baseline records. The validator checks record shape, dated uncertainty,
-unique stable identities, exact Python dependency pins, and 20 distinct durable
+unique stable identities, exact Python dependency pins, and 22 distinct durable
 external references discovered across source, manifests, technical documents,
 completed lifecycle evidence, generated text artifacts, and Jig configuration.
+The LLVM version-banner literal `http://llvm.org/` is cataloged as source text,
+not represented as a separately fetched or version-verifying authority.
 
 Open TODO records and synthetic tests are excluded from durable-reference
 coverage because they are planning state and negative fixtures rather than

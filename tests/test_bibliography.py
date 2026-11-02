@@ -54,7 +54,7 @@ C_RECORD = ROOT / "docs" / "bibliography" / "languages" / "c.md"
 EXPECTED_RECORDS = 55
 EXPECTED_BASELINE = 44
 EXPECTED_VALIDATION_PACKAGES = 9
-EXPECTED_DURABLE_REFERENCES = 21
+EXPECTED_DURABLE_REFERENCES = 22
 PYTEST_CACHE_DIRECTORY = ".pytest_cache"
 MISSING_COVERAGE_MESSAGE = "lack bibliography coverage"
 DUPLICATE_IDENTITY_MESSAGE = "duplicate stable identifier"
@@ -127,6 +127,19 @@ def test_repository_bibliography_taxonomy_and_baseline_are_valid() -> None:
     assert report.required_validation_package_count == EXPECTED_VALIDATION_PACKAGES
     assert report.covered_external_reference_count == EXPECTED_DURABLE_REFERENCES
     assert report.categories == validator.CATEGORIES
+
+
+def test_llvm_banner_url_is_covered_by_existing_clang_tidy_identity() -> None:
+    """The pinned LLVM version-banner literal needs its source identity record."""
+    version_matcher = ROOT / (
+        "src/automation/repository/composition/scripts/bootstrap/llvm_validation.py"
+    )
+    banner_uri = "http://llvm.org/"
+    assert banner_uri in version_matcher.read_text(encoding="utf-8")
+    record = ROOT / "docs/bibliography/tooling/clang-tidy.md"
+    record_text = record.read_text(encoding="utf-8")
+    source_urls = validator._urls_from_text(record_text)  # pyright: ignore[reportPrivateUsage]
+    assert validator.validate_external_reference_coverage((banner_uri,), source_urls) == 1
 
 
 def test_source_record_requires_explicit_uncertainty() -> None:

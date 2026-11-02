@@ -63,6 +63,9 @@ terms into the repository Apache-2.0 license.
 - The official LLVM 22.1.8 Windows executable does not provide the registry
   export needed by this out-of-tree DLL layout, so the repository relinks the
   same pinned `clangTidyMain` libraries behind one narrow registry bridge.
+- The repository's pinned Clang tooling version matcher recognizes LLVM's
+  literal legacy homepage URI in its version banner. That string is not
+  evidence of the installed tool's version or the homepage's contents.
 
 ### Unresolved
 
@@ -79,3 +82,6 @@ lowerability coverage remains governed by later TODO contracts.
   2026-08-08.
 - <https://download.fedoraproject.org/pub/fedora/linux/updates/44/> - accessed
   2026-08-17.
+- <http://llvm.org/> - literal URI in the reviewed LLVM/Clang version-banner
+  matcher; recorded for source coverage, not independently fetched or relied on
+  as release provenance (repository source review 2026-11-02).
