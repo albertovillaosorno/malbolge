@@ -3755,6 +3755,50 @@ def test_rust_inspection_rejects_embedded_linker_commands(
     )
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        '/usr/bin/cc; touch /tmp/hijack',
+        '/usr/bin/cc && touch /tmp/hijack',
+        '$(touch /tmp/hijack)',
+        '/usr/bin/cc $(touch /tmp/hijack)',
+        '/usr/bin/cc | tee /tmp/hijack',
+        '/usr/bin/cc > /tmp/hijack',
+        '/usr/bin/cc # harmless-looking comment',
+        '/usr/bin/cc\\evil',
+        '/usr/bin/cc ;',
+        'sh -c hacked',
+    ],
+)
+def test_rust_inspection_rejects_shell_linker_injection(
+    tmp_path: Path, command: str
+) -> None:
+    """A plausible two-line linker shim cannot include other shell work."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    linker = toolchain / "bin/cc"
+    _ = linker.write_text(f'#!/bin/sh\nexec {command} "$@"\n', encoding="ascii")
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.MISSING
+    )
+
+
+def test_rust_inspection_accepts_canonically_quoted_linker_path(
+    tmp_path: Path
+) -> None:
+    """Generated linker shims may safely quote an absolute path with spaces."""
+    toolchain = _linux_rust_inspection_tree(tmp_path)
+    linker = toolchain / "bin/cc"
+    _ = linker.write_text(
+        "#!/bin/sh\nexec '/opt/vendor toolchain/bin/cc' \"$@\"\n",
+        encoding="ascii",
+    )
+    assert (
+        project.inspect_rust(tmp_path, LINUX_PLATFORM).state
+        is project.ComponentState.READY
+    )
+
+
 def test_git_version_match_accepts_portable_and_windows_distribution() -> None:
     """Portable Git version accepts exact upstream and distribution suffixes."""
     assert project.git_version_line_matches(GIT_VERSION, "git version 2.55.0")

@@ -1495,6 +1495,28 @@ def _imported_binary_alias_ready(alias: Path, *, windows: bool) -> bool:
     return type(executable) is bool and executable
 
 
+def _canonical_linux_linker_script(content: bytes) -> bool:
+    """Require the exact safe shell spelling generated for one absolute linker."""
+    prefix = b"#!/bin/sh\nexec "
+    suffix = b' "$@"\n'
+    if (
+        not content.startswith(prefix)
+        or not content.endswith(suffix)
+        or content.count(b"\n") != RUST_LINUX_ADAPTER_LINE_COUNT
+    ):
+        return False
+    try:
+        word = content[len(prefix) : -len(suffix)].decode("ascii")
+        tokens = shlex.split(word, posix=True)
+    except (UnicodeDecodeError, ValueError):
+        return False
+    return (
+        len(tokens) == 1
+        and Path(tokens[0]).is_absolute()
+        and shlex.quote(tokens[0]) == word
+    )
+
+
 def _linux_adapter_script_ready(linker: Path) -> bool:
     """Validate one stable, physical and executable Linux linker shim.
 
@@ -1523,9 +1545,7 @@ def _linux_adapter_script_ready(linker: Path) -> bool:
     except (InitializationError, OSError, ValueError, TypeError, RuntimeError):
         return False
     return (
-        content.startswith(b"#!/bin/sh\nexec ")
-        and content.endswith(b' "$@"\n')
-        and content.count(b"\n") == RUST_LINUX_ADAPTER_LINE_COUNT
+        _canonical_linux_linker_script(content)
         and bool(current.st_mode & (stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH))
         and type(executable) is bool
         and executable
