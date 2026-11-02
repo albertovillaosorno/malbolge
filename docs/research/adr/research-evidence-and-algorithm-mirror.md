@@ -34,7 +34,8 @@ rejects linked algorithm directories and redirected in-root directory
 ancestors before admitting an `experiment.toml` identity. Discovery admits only
 native immediate children of the domain research root. It requires exact native
 filesystem stat receipts, integer file-mode members, and boolean junction
-results before interpreting modes or truthiness; forged host results fail closed.
+results before interpreting modes or truthiness; forged host results fail
+closed.
 
 The direct research-mirror validator separately requires native stat containers,
 exact integer file-mode fields, and boolean junction receipts for each path
@@ -43,7 +44,9 @@ cannot certify mirror identity. Directory scans admit only native immediate
 children of the inspected root, not foreign or unrelated paths from an
 untrusted directory iterator. Shared discovery receipts must be native tuples
 of distinct IDs and canonical executable paths; duplicated or redirected ID
-projections cannot satisfy the mirror contract.
+projections cannot satisfy the mirror contract. Both directory scanners
+reject repeated entries before sets or maps can silently collapse their
+identity.
 
 Every direct research ID under either mirror root must exist on both sides.
 The special composition state-graph experiment and domain algorithm

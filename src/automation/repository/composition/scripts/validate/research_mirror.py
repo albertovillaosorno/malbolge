@@ -142,6 +142,7 @@ def _physical_status(path: Path, context: str) -> os.stat_result:
 def _directory_ids(root: Path) -> frozenset[str]:
     _require_directory(root, "research mirror root")
     identifiers: set[str] = set()
+    seen_names: set[str] = set()
     try:
         children = tuple(root.iterdir())
     except (OSError, ValueError, TypeError, RuntimeError) as error:
@@ -150,7 +151,11 @@ def _directory_ids(root: Path) -> frozenset[str]:
     for path in children:
         if type(path) is not type(root) or path.parent != root:
             _fail("research mirror scan requires native immediate directory entry")
-        if path.name.startswith("."):
+        identifier = path.name
+        if identifier in seen_names:
+            _fail(f"research mirror scan duplicate directory entry: {identifier}")
+        seen_names.add(identifier)
+        if identifier.startswith("."):
             continue
         try:
             status = _native_status(path.lstat(), "research mirror ID")
@@ -163,9 +168,9 @@ def _directory_ids(root: Path) -> frozenset[str]:
                 f"research mirror ID status failed: {detail}"
             ) from error
         if redirected:
-            _fail(f"research mirror ID must not redirect: {path.name}")
+            _fail(f"research mirror ID must not redirect: {identifier}")
         if S_ISDIR(status.st_mode):
-            identifiers.add(path.name)
+            identifiers.add(identifier)
     return frozenset(identifiers)
 
 

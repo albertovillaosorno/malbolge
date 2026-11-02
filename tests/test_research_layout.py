@@ -94,6 +94,29 @@ def test_discovery_rejects_unbound_directory_entries(
         _ = research_layout.research_algorithm_directories(tmp_path)
 
 
+def test_discovery_rejects_repeated_directory_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated native directory receipts must not collapse into one ID."""
+    domain = _domain_root(tmp_path)
+    candidate = domain / "candidate"
+    candidate.mkdir(parents=True)
+    _ = (candidate / "experiment.toml").write_text("schema_version = 1\n")
+    native_iterdir = Path.iterdir
+
+    def duplicate_iterdir(path: Path) -> Iterator[Path]:
+        if path == domain:
+            yield candidate
+            yield candidate
+        else:
+            yield from native_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", duplicate_iterdir)
+    with pytest.raises(OSError, match="duplicate directory entry"):
+        _ = research_layout.research_algorithm_directories(tmp_path)
+
+
 def test_inaccessible_manifest_status_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

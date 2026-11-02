@@ -310,6 +310,31 @@ def test_mirror_directory_scan_requires_native_immediate_children(
         _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_mirror_scan_rejects_repeated_directory_entry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Repeated native mirror entries cannot be collapsed into one ID."""
+    monkeypatch.setattr(validator, "ROOT", tmp_path)
+    documents = tmp_path / "documents"
+    child = documents / "candidate"
+    child.mkdir(parents=True)
+    native_iterdir = Path.iterdir
+
+    def duplicate_iterdir(path: Path) -> Iterator[Path]:
+        if path == documents:
+            yield child
+            yield child
+        else:
+            yield from native_iterdir(path)
+
+    monkeypatch.setattr(Path, "iterdir", duplicate_iterdir)
+    with pytest.raises(
+        validator.ResearchMirrorError, match="duplicate directory entry"
+    ):
+        _ = validator._directory_ids(documents)  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize("fault_type", [OSError, ValueError, RuntimeError])
 @pytest.mark.parametrize("operation", ("id_lstat", "id_junction", "iterdir"))
 def test_mirror_directory_discovery_host_faults_are_typed(
