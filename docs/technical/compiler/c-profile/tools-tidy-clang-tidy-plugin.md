@@ -108,9 +108,10 @@ redirected include ancestor, altered marker, or incomplete extraction is not
 admitted as ready; an existing incomplete root must be repaired rather than
 silently using ambient headers or repeating a network download.
 Readiness checks admit only exact native symlink/junction decisions and
-regular-file stat results with bounded integer modes for the completion marker,
-required headers, and their physical ancestors. False-like foreign statuses or
-duck-typed stat objects cannot certify a reusable development root.
+regular-file stat results with bounded integer modes for the completion marker
+and required headers. Every readiness ancestor additionally requires an exact
+native physical directory `lstat`; masked symlinks, false-like foreign statuses,
+or duck-typed stat objects cannot certify a reusable development root.
 Before staging writes or destination publication, directory and leaf preflights
 also require native boolean symlink, junction, existence, and directory status.
 Each existing directory and ancestor additionally requires a native physical

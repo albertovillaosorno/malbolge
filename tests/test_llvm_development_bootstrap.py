@@ -499,6 +499,57 @@ def test_development_marker_rejects_required_header_parent_alias(
     assert not llvm_development_validation.development_root_matches(identity)
 
 
+@pytest.mark.parametrize("alias_kind", ["root", "header_parent"])
+def test_development_readiness_rejects_masked_linked_ancestor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias_kind: str
+) -> None:
+    """False native link answers cannot hide an actual linked header ancestor."""
+    identity = _provisioned_identity(tmp_path)
+    alias = (
+        identity.development_root
+        if alias_kind == "root"
+        else identity.development_root / "include/clang/AST"
+    )
+    relocated = alias.with_name(f"{alias.name}-physical")
+    _ = alias.replace(relocated)
+    try:
+        _ = alias.symlink_to(relocated, target_is_directory=True)
+    except (OSError, NotImplementedError) as error:
+        pytest.skip(f"directory links unavailable: {error}")
+    native_is_symlink = Path.is_symlink
+
+    def hidden_link(path: Path) -> bool:
+        return False if path == alias else native_is_symlink(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "is_symlink", hidden_link)
+        assert not llvm_development_validation.development_root_matches(identity)
+    assert alias.is_symlink()
+
+
+@pytest.mark.parametrize("ancestor_kind", ["root", "header_parent"])
+def test_development_readiness_rejects_foreign_ancestor_lstat(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ancestor_kind: str
+) -> None:
+    """A duck-typed ancestor directory status cannot certify local headers."""
+    identity = _provisioned_identity(tmp_path)
+    ancestor = (
+        identity.development_root
+        if ancestor_kind == "root"
+        else identity.development_root / "include/clang/AST"
+    )
+    native_lstat = Path.lstat
+
+    def foreign_lstat(path: Path) -> object:
+        if path == ancestor:
+            return SimpleNamespace(st_mode=0o40700, st_dev=1, st_ino=1)
+        return native_lstat(path)
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(Path, "lstat", foreign_lstat)
+        assert not llvm_development_validation.development_root_matches(identity)
+
+
 def test_development_marker_rejects_same_byte_inode_replacement(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

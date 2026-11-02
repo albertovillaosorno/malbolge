@@ -385,6 +385,14 @@ def _native_regular_status(value: object) -> bool:
     return type(mode) is int and 0 <= mode <= 0xFFFF_FFFF and S_ISREG(mode)
 
 
+def _native_directory_status(value: object) -> bool:
+    """Require a native physical directory lstat, never a path predicate alone."""
+    if type(value) is not os.stat_result:
+        return False
+    mode = value.st_mode
+    return type(mode) is int and 0 <= mode <= 0xFFFF_FFFF and S_ISDIR(mode)
+
+
 def _unlinked_component(path: Path) -> bool:
     """Require native symlink and junction decisions for one path component."""
     linked = path.is_symlink()
@@ -406,8 +414,13 @@ def _direct_regular(path: Path) -> bool:
     """
     try:
         return (
-            all(_unlinked_component(component) for component in (path, *path.parents))
+            _unlinked_component(path)
             and _native_regular_status(path.lstat())
+            and all(
+                _unlinked_component(parent)
+                and _native_directory_status(parent.lstat())
+                for parent in path.parents
+            )
         )
     except (OSError, ValueError, TypeError, RuntimeError):
         return False
@@ -540,14 +553,6 @@ def _preflight_path_status(
     if type(observed) is not bool:
         _fail(f"LLVM development {label} path has invalid status: {path}")
     return observed
-
-
-def _native_directory_status(value: object) -> bool:
-    """Require a native physical directory lstat, never a path predicate alone."""
-    if type(value) is not os.stat_result:
-        return False
-    mode = value.st_mode
-    return type(mode) is int and 0 <= mode <= 0xFFFF_FFFF and S_ISDIR(mode)
 
 
 def _require_physical_directories(path: Path, label: str) -> None:
