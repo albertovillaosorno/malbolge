@@ -34,15 +34,12 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
-from statistics import median
-from statistics import pstdev
 import sys
+from dataclasses import asdict, dataclass
+from statistics import median, pstdev
 from time import perf_counter_ns
-from typing import Final
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from accelerator.classic_run import RunStatus
 from accelerator.classic_step import StepTermination
@@ -51,13 +48,13 @@ from accelerator.cuda.classic_run import CudaClassicRunAdapter
 from benchmarks.accelerator.classic_workload import classic_noop_request
 
 if TYPE_CHECKING:
-    from accelerator.classic_run import ClassicRunObservation
-    from accelerator.classic_run import ClassicRunRequest
+    from accelerator.classic_run import ClassicRunObservation, ClassicRunRequest
 
 BATCH_SIZES: Final = (1, 8, 32, 128)
 SAMPLE_COUNT: Final = 15
 SEGMENT_STEPS: Final = 64
 PREPARED_STEPS: Final = SAMPLE_COUNT * SEGMENT_STEPS
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +67,44 @@ class ResidentThroughputRow:
     raw_ns: tuple[int, ...]
     vm_segments_per_second: float
     vm_steps_per_second: float
+
+
+class ResidentClassicReportError(ValueError):
+    """Retained resident CUDA throughput evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Require public JSON to match source-bound native encoding."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"resident classic JSON writer failed: {type(error).__name__}"
+        raise ResidentClassicReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "resident classic JSON writer differs from source"
+        raise ResidentClassicReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require an exact stdout write receipt and a successful void flush."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"resident classic stdout write failed: {type(error).__name__}"
+        raise ResidentClassicReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "resident classic stdout write incomplete"
+        raise ResidentClassicReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"resident classic stdout flush failed: {type(error).__name__}"
+        raise ResidentClassicReportError(message) from error
+    if flushed is not None:
+        message = "resident classic stdout flush incomplete"
+        raise ResidentClassicReportError(message)
 
 
 def main() -> int:
@@ -99,7 +134,7 @@ def main() -> int:
         "segment_steps": SEGMENT_STEPS,
         "timed_region": "CudaClassicRunSession.advance only",
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 

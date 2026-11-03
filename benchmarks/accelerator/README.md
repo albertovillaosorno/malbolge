@@ -291,6 +291,13 @@ are outside the timed `advance()` region by design. The benchmark prepares 960
 no-op cells, executes fifteen 64-step resident segments, and records batch sizes
 1, 8, 32, and 128.
 
+The resident-session stdout report is checked against the import-bound native
+JSON encoder before publication, so modified public serializers cannot forge
+launch-only timings or device identity. Complete native character-write and
+successful flush receipts are required. The classic resident-session companion
+uses the same fail-closed output checks; hardware-free synthetic samples test
+both reporting boundaries without making CUDA throughput claims.
+
 Run with:
 
 ```powershell
