@@ -253,6 +253,15 @@ format.
   subclasses for both staging and destination before any path conversion or
   filesystem method can run. Two red-first regressions preserve exact native
   path admission, host selector checks, and existing target collision behavior.
+- Two further red-first publication regressions show pinned native path-string
+  equality rejects identical staging/output roots and admits distinct roots
+  despite late `Path.__eq__` overrides.
+- Source/oracle behavior authoring uses pinned host realpath resolution and
+  canonical native path text to compare repository/tool bindings, so late path
+  equality or resolution overrides cannot start a mismatched probe. Four
+  red-first regressions cover both host hooks and both binding roles. Two more
+  show that mirror copy-completion receipts cannot be forged or denied by a
+  late `Path.__eq__` override.
 - Generic mapped semantic placement now hashes canonical units, uniquely locates
   them
   in candidate source, maps them back to raw spans, preserves unrelated raw

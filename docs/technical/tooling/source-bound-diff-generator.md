@@ -163,6 +163,9 @@ the staged directory before rename and the published destination afterward.
 Foreign metadata claiming directory type or matching inode identity cannot
 trigger a rename or certify its completion. A post-rename attestation failure
 reports unsuccessful confirmation without deleting an already moved directory.
+Staging/destination identity uses pinned native path spellings rather than
+mutable `Path.__eq__` methods. Two red-first regressions show that late equality
+overrides cannot falsely equate distinct roots or admit an identical pair.
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.
@@ -415,11 +418,17 @@ not followed), and the mirror must match that admitted snapshot before probes.
 All identity, compatibility, and bug programs run against the same mirror, which
 prevents interleaved live source edits from combining probe evidence from
 different source versions. Original candidate and mirror snapshots are rechecked
-after each probe group. Context resolution, source snapshot and baseline
-recheck, mirror creation, and temporary observation root failures retain typed
-causes without executing foreign exception formatting callbacks. The copy is
-not atomic; external source writers can race the snapshot/copy boundary and
-still require caller coordination.
+after each probe group. Source/oracle repository and tool bindings are
+compared using pinned host realpath resolution and canonical path strings,
+including Windows case semantics. Four red-first regressions ensure late
+`Path.__eq__` or `os.path.realpath` overrides cannot merge distinct bindings
+before a probe runs. Observation mirror copy completion likewise requires
+matching pinned native path strings: two red-first regressions prevent late
+equality overrides from admitting a foreign completion or rejecting a valid
+one. Context resolution, source snapshot and baseline recheck, mirror creation,
+and temporary observation root failures retain typed causes without executing
+foreign exception formatting callbacks. The copy is not atomic; external source
+writers can race the snapshot/copy boundary and still require coordination.
 Compatibility programs contribute success/failure rather than an identity
 digest. Application-specific harnesses and logical tool resolution
 remain
