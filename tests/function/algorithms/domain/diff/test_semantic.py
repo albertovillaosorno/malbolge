@@ -1176,3 +1176,74 @@ def test_semantic_constructors_ignore_late_postinit_override(
         with pytest.raises(SemanticPlacementError):
             _ = constructor(**invalid)
     assert calls == 0, "late semantic validator admitted invalid evidence"
+
+
+@pytest.mark.parametrize(
+    ("field", "forgery"),
+    [
+        ("edit", None),
+        ("unit_start", 0),
+        ("unit_end", 0),
+        ("raw_start", 0),
+        ("raw_end", 0),
+    ],
+)
+def test_semantic_replay_ignores_late_located_edit_getters(
+    monkeypatch: pytest.MonkeyPatch, field: str, forgery: object
+) -> None:
+    """Located edit coordinates and payload cannot be changed by class hooks."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    plan = build_semantic_plan(source, target)
+    record_type = cast("type[object]", vars(semantic_module)["_LocatedEdit"])
+    original = record_type.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forgery
+        return cast("object", original(record, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__getattribute__", forged_getter)
+        result = apply_semantic_plan(source, plan, _map)
+    assert result == target.raw
+    assert calls == 0, "late located-edit getter changed replay evidence"
+
+
+def test_semantic_overlap_check_ignores_late_located_edit_getters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A class getter cannot forge independent coordinates for overlaps."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    edit = build_semantic_plan(source, target).edits[0]
+    record_type = cast("type[object]", vars(semantic_module)["_LocatedEdit"])
+    constructor = cast("Callable[..., object]", record_type)
+    first = constructor(
+        edit=edit, unit_start=0, unit_end=2, raw_start=0, raw_end=4
+    )
+    second = constructor(
+        edit=edit, unit_start=1, unit_end=3, raw_start=2, raw_end=5
+    )
+    original = record_type.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if record is first and name in {"unit_end", "raw_end"}:
+            calls += 1
+            return 0
+        return cast("object", original(record, name))
+
+    validate = cast(
+        "Callable[[tuple[object, ...]], None]",
+        vars(semantic_module)["_require_nonoverlapping_edits"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__getattribute__", forged_getter)
+        with pytest.raises(SemanticPlacementError, match="overlap or reorder"):
+            validate((first, second))
+    assert calls == 0, "late getter hid overlapping candidate edits"

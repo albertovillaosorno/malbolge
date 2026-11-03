@@ -292,6 +292,38 @@ class _LocatedEdit:
     raw_end: int
 
 
+# Placement must keep its computed bounds after host callbacks replace class
+# accessors. These slots are private to semantic replay, not public metadata.
+_LOCATED_EDIT_SLOT = cast(
+    "MemberDescriptorType", _LocatedEdit.__dict__["edit"]
+)
+_LOCATED_UNIT_START_SLOT = cast(
+    "MemberDescriptorType", _LocatedEdit.__dict__["unit_start"]
+)
+_LOCATED_UNIT_END_SLOT = cast(
+    "MemberDescriptorType", _LocatedEdit.__dict__["unit_end"]
+)
+_LOCATED_RAW_START_SLOT = cast(
+    "MemberDescriptorType", _LocatedEdit.__dict__["raw_start"]
+)
+_LOCATED_RAW_END_SLOT = cast(
+    "MemberDescriptorType", _LocatedEdit.__dict__["raw_end"]
+)
+
+
+def _located_edit_fields(
+    located: _LocatedEdit,
+) -> tuple[SemanticEdit, int, int, int, int]:
+    """Read computed edit coordinates without replaceable class getters."""
+    return (
+        cast("SemanticEdit", _LOCATED_EDIT_SLOT.__get__(located, _LocatedEdit)),
+        cast("int", _LOCATED_UNIT_START_SLOT.__get__(located, _LocatedEdit)),
+        cast("int", _LOCATED_UNIT_END_SLOT.__get__(located, _LocatedEdit)),
+        cast("int", _LOCATED_RAW_START_SLOT.__get__(located, _LocatedEdit)),
+        cast("int", _LOCATED_RAW_END_SLOT.__get__(located, _LocatedEdit)),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _AnchorPair:
     source_start: int
@@ -849,39 +881,43 @@ def _locate_edits(
             )
         )
     ordered = _NATIVE_TUPLE(
-        _NATIVE_SORTED(located, key=lambda item: (item.raw_start, item.raw_end))
+        _NATIVE_SORTED(
+            located, key=lambda item: _located_edit_fields(item)[3:]
+        )
     )
     _require_nonoverlapping_edits(ordered)
     return ordered
 
 
 def _require_nonoverlapping_edits(ordered: tuple[_LocatedEdit, ...]) -> None:
-    previous: _LocatedEdit | None = None
+    previous: tuple[SemanticEdit, int, int, int, int] | None = None
     insertion_boundaries: set[int] = _NATIVE_SET()
     for item in ordered:
-        if item.unit_start == item.unit_end:
-            if item.unit_start in insertion_boundaries:
+        fields = _located_edit_fields(item)
+        _, unit_start, unit_end, raw_start, _ = fields
+        if unit_start == unit_end:
+            if unit_start in insertion_boundaries:
                 message = (
                     "semantic edits overlap or reorder in candidate source"
                 )
                 raise SemanticPlacementError(message)
-            insertion_boundaries.add(item.unit_start)
+            insertion_boundaries.add(unit_start)
         if previous is not None and (
-            item.raw_start < previous.raw_end
-            or item.unit_start < previous.unit_end
+            raw_start < previous[4] or unit_start < previous[2]
         ):
             message = "semantic edits overlap or reorder in candidate source"
             raise SemanticPlacementError(message)
-        previous = item
+        previous = fields
 
 
 def _apply_raw_edits(raw: bytes, edits: tuple[_LocatedEdit, ...]) -> bytes:
     output = raw
     for item in _NATIVE_REVERSED(edits):
+        edit, _, _, raw_start, raw_end = _located_edit_fields(item)
         output = (
-            output[: item.raw_start]
-            + read_semantic_edit(item.edit)[1]
-            + output[item.raw_end :]
+            output[:raw_start]
+            + read_semantic_edit(edit)[1]
+            + output[raw_end:]
         )
     return output
 
@@ -892,9 +928,8 @@ def _expected_digests(
 ) -> tuple[bytes, ...]:
     expected = _NATIVE_LIST(_view_digests(candidate))
     for item in _NATIVE_REVERSED(edits):
-        expected[item.unit_start : item.unit_end] = (
-            read_semantic_edit(item.edit)[2]
-        )
+        edit, unit_start, unit_end, _, _ = _located_edit_fields(item)
+        expected[unit_start:unit_end] = read_semantic_edit(edit)[2]
     return _NATIVE_TUPLE(expected)
 
 
