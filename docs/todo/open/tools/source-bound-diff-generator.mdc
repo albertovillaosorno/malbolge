@@ -82,6 +82,12 @@ format.
   BasedPyright reported zero errors, pinned Ruff had no new findings, and
   diff checks passed. Callback truthfulness, external writers, and global
   Jig validation are not established by this safeguard.
+- Source identity and source-binding share path validation now pins
+  import-original `bool()` for Windows reserved characters (`a74091b47`).
+  Four red-first parameterized cases cover admitted unsafe names and falsely
+  denied safe names. All 362 combined focused tests, scoped Ruff, strict
+  source/test BasedPyright, and diff checks passed. This is not isolation
+  against trusted module mutation or external filesystem races.
 - Rust emitter template-overwrite preflight now pins import-original host
   `os.path.realpath` before and after `Path.resolve` (`f15620ff7`). Two
   red-first laundering/denial cases and 152 focused emitter tests passed.
@@ -92,6 +98,13 @@ format.
   symlink-alias regressions pass, with 160 focused emitter and 3,348 integrated
   diff tests green; scoped Ruff, strict BasedPyright, and diff checks pass.
   Checks remain non-atomic against concurrent host/filesystem mutations.
+- Rust emitter parent-directory staging now uses import-original
+  `reversed()` (`e7ec05dca`). A forged post-import iterator previously
+  silently skipped nested directory creation; one red-first regression and
+  all 163 emitter tests passed postcommit. Scoped Ruff, strict source/test
+  BasedPyright, and diff checks passed. The shared integrated diff suite
+  passed 3,602 tests in 128.99 seconds; external filesystem races and direct
+  trusted module-state edits remain unresolved.
 - Compatible materialization now checks import-original host realpath,
   `os.fspath`/`os.lstat`/`os.readlink`/`os.getcwd`/`stat.S_ISLNK`, and native
   `Path` factories around source/output and nested-file resolution

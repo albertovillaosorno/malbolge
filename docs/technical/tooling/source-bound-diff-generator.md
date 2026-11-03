@@ -633,6 +633,15 @@ with scoped Ruff, strict source/test BasedPyright, and diff checks clean.
 The guard is not isolation against concurrent filesystem writes or direct
 trusted module-state mutation.
 
+Emitter parent-directory staging now also pins the import-original
+`reversed()` (`e7ec05dca`). A late replacement previously erased the parent
+walk, silently leaving a nested output stage uncreated. One red-first
+regression, all 163 postcommit emitter tests, scoped Ruff, strict source/test
+BasedPyright, and diff checks passed. The complete shared diff suite passed
+3,602 tests in 128.99 seconds after the fix, with concurrent peer changes
+present. Host filesystem races and direct trusted module-state edits remain
+outside this guard.
+
 The standalone Rust exact runtime now checks source-root metadata without
 following links before attempting a candidate snapshot (`e894ca859`). A
 compile-and-run regression first reproduced a linked source root passing
@@ -875,6 +884,16 @@ with no generated graph; a bounded 105-second `jig check` attempt timed out
 (exit 124) at native-validator scheduling, without a clean Jig verdict.
 
 ### Implemented Tree-Level Admission
+
+Source identity and source-binding share-envelope Windows filename checks now
+pin the import-original `bool()` (`a74091b47`). Replacing `builtins.bool`
+previously admitted reserved-character filenames or denied safe paths, altering
+source lineage and distributable binding admission. Two red-first parameterized
+cases per layer cover both directions, with three source-identity constructors
+exercised in each admission case. All 362 combined admission/source-binding
+tests passed postcommit; scoped Ruff, strict source/test BasedPyright and diff
+checks were clean. This closes the tested late builtin hook, not direct trusted
+module-state mutation or concurrent host filesystem changes.
 
 The generic admission layer accepts only consumer-selected canonical identity
 files. It is reference-driven: candidate-only files do not improve similarity.
