@@ -74,6 +74,23 @@ class BehaviorProgramError(ValueError):
     """Raised when behavior programs cannot form an unambiguous profile."""
 
 
+def _behavior_error_detail(error: BaseException) -> str:
+    """Keep host and delegated error display hooks outside probe admission."""
+    if type(error) in (
+        OSError,
+        PermissionError,
+        ValueError,
+        RuntimeError,
+        ExactTreeError,
+        ProbeExecutionError,
+        BehaviorProgramError,
+    ):
+        arguments = cast("tuple[object, ...]", error.args)
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+    return type(error).__name__
+
+
 def _require_selected_program(program: ProbeProgram, context: str) -> None:
     """Require at least one observation in an identity or bug program.
 
@@ -363,7 +380,8 @@ def _resolved_context_path(path: Path, description: str) -> Path:
     try:
         return path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"behavior {description} resolution failed: {path}: {error}"
+        detail = _behavior_error_detail(error)
+        message = f"behavior {description} resolution failed: {path}: {detail}"
         raise BehaviorProgramError(message) from error
 
 
@@ -424,7 +442,8 @@ def _require_authoring_trees_unchanged(
         try:
             current = _snapshot_observed_source(root)
         except ProbeExecutionError as error:
-            message = f"behavior tree changed during authoring: {error}"
+            detail = _behavior_error_detail(error)
+            message = f"behavior tree changed during authoring: {detail}"
             raise ProbeExecutionError(message) from error
         if current != expected:
             message = "behavior source/oracle tree changed during authoring"
@@ -596,7 +615,8 @@ def _snapshot_observed_source(root: Path) -> TreeSnapshot:
     try:
         return snapshot_tree(root)
     except ExactTreeError as error:
-        message = f"behavior candidate tree changed between probes: {error}"
+        detail = _behavior_error_detail(error)
+        message = f"behavior candidate tree changed between probes: {detail}"
         raise ProbeExecutionError(message) from error
 
 
@@ -627,7 +647,8 @@ def _admit_observation_mirror(
     try:
         completion = shutil.copytree(context.source_root, mirror, symlinks=True)
     except Exception as error:
-        message = f"behavior candidate mirror failed: {error}"
+        detail = _behavior_error_detail(error)
+        message = f"behavior candidate mirror failed: {detail}"
         raise ProbeExecutionError(message) from error
     if type(completion) is not type(Path()) or completion != mirror:
         message = "behavior candidate mirror copy reported non-native completion"
@@ -651,7 +672,8 @@ def _temporary_observation_root() -> tempfile.TemporaryDirectory[str]:
     try:
         return tempfile.TemporaryDirectory(prefix="diff-behavior-source-")
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"behavior observation temporary root failed: {error}"
+        detail = _behavior_error_detail(error)
+        message = f"behavior observation temporary root failed: {detail}"
         raise ProbeExecutionError(message) from error
 
 

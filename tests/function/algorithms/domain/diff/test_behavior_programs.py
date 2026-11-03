@@ -40,9 +40,10 @@ import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, cast, override
 
 import pytest
+from algorithms.diff import behavior_programs as behavior_module
 from algorithms.diff.behavior import BugState
 from algorithms.diff.behavior_programs import (
     AuthoredBehaviorPrograms,
@@ -54,6 +55,7 @@ from algorithms.diff.behavior_programs import (
     evaluate_behavior_programs,
     observe_behavior_programs,
 )
+from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.probe_exec import (
     PathArgument,
     ProbeCommand,
@@ -68,7 +70,10 @@ from algorithms.diff.probe_exec import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from algorithms.diff.behavior import BehaviorProfile
+    from algorithms.diff.model import TreeSnapshot
 
 _PYTHON_TOOL = "python"
 _IDENTITY_A = "identity-a"
@@ -169,6 +174,147 @@ def _authored(
         _context(oracle, tmp_path),
     )
     return authored, source, oracle
+
+
+class _HostileBehaviorHostError(RuntimeError):
+    """A host error must not execute its custom formatter."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile behavior host formatter executed"
+        raise AssertionError(message)
+
+
+class _HostileBehaviorTreeError(ExactTreeError):
+    """Delegated source snapshots cannot format foreign error types."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile behavior tree formatter executed"
+        raise AssertionError(message)
+
+
+class _HostileBehaviorProbeError(ProbeExecutionError):
+    """Cross-stage execution errors may also carry foreign callbacks."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile probe formatter executed"
+        raise AssertionError(message)
+
+
+def test_behavior_context_error_does_not_format_foreign_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Path resolution must retain a typed error with original cause."""
+    source, oracle = _trees(tmp_path)
+    original_resolve = Path.resolve
+    failure = _HostileBehaviorHostError("foreign root")
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tmp_path:
+            raise failure
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(
+        BehaviorProgramError, match="repository resolution failed"
+    ) as caught:
+        _ = author_behavior_programs(
+            _programs(), _context(source, tmp_path), _context(oracle, tmp_path)
+        )
+    _expect(caught.value.__cause__ is failure, "host failure cause was lost")
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        ("mirror", "candidate mirror failed"),
+        ("temporary", "temporary root failed"),
+        ("snapshot", "candidate tree changed between probes"),
+    ],
+)
+def test_behavior_observation_does_not_format_foreign_host_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    expected: str,
+) -> None:
+    """Admitted probes cannot run formatter hooks from filesystem faults."""
+    authored, source, _ = _authored(tmp_path)
+    failure = (
+        _HostileBehaviorTreeError("foreign snapshot")
+        if operation == "snapshot"
+        else _HostileBehaviorHostError("foreign host")
+    )
+    if operation == "mirror":
+
+        def fail_copy(
+            source_root: Path, destination: Path, *, symlinks: bool = False
+        ) -> Path:
+            _ = source_root, destination, symlinks
+            raise failure
+
+        monkeypatch.setattr(shutil, "copytree", fail_copy)
+    elif operation == "temporary":
+
+        def fail_temporary(*, prefix: str) -> tempfile.TemporaryDirectory[str]:
+            _ = prefix
+            raise failure
+
+        monkeypatch.setattr(tempfile, "TemporaryDirectory", fail_temporary)
+    else:
+        original_snapshot = cast(
+            "Callable[[Path], TreeSnapshot]",
+            vars(behavior_module)["snapshot_tree"],
+        )
+
+        def fail_snapshot(path: Path) -> TreeSnapshot:
+            if path == source:
+                raise failure
+            return original_snapshot(path)
+
+        monkeypatch.setattr(behavior_module, "snapshot_tree", fail_snapshot)
+
+    with pytest.raises(ProbeExecutionError, match=expected) as caught:
+        _ = observe_behavior_programs(authored, _context(source, tmp_path))
+    _expect(caught.value.__cause__ is failure, "original host cause was lost")
+    _expect(
+        (source / "identity.txt").read_bytes() == _STABLE_IDENTITY_BYTES,
+        "a hostile observation changed the original source",
+    )
+
+
+def test_behavior_authoring_does_not_format_foreign_probe_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cross-stage source rechecks cannot invoke foreign error formatters."""
+    source, oracle = _trees(tmp_path)
+    original = cast(
+        "Callable[[Path], TreeSnapshot]",
+        vars(behavior_module)["_snapshot_observed_source"],
+    )
+    reads = 0
+    failure = _HostileBehaviorProbeError("foreign baseline recheck")
+
+    def fail_recheck(path: Path) -> TreeSnapshot:
+        nonlocal reads
+        if path == source:
+            reads += 1
+            if reads == 2:
+                raise failure
+        return original(path)
+
+    monkeypatch.setattr(
+        behavior_module, "_snapshot_observed_source", fail_recheck
+    )
+    with pytest.raises(
+        ProbeExecutionError, match="tree changed during authoring"
+    ) as caught:
+        _ = author_behavior_programs(
+            _programs(), _context(source, tmp_path), _context(oracle, tmp_path)
+        )
+    _expect(caught.value.__cause__ is failure, "recheck cause was lost")
 
 
 @pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
@@ -760,11 +906,14 @@ def test_observation_mirror_requires_native_copy_completion(
     native_copy = shutil.copytree
 
     class ForeignReceipt(type(Path())):
+        @override
         def __eq__(self, other: object) -> bool:
             del other
             raise AssertionError("foreign mirror receipt equality evaluated")
 
-        __hash__ = Path.__hash__
+        @override
+        def __hash__(self) -> int:
+            return Path.__hash__(self)
 
     def forged_copy(
         source_root: Path, destination: Path, *, symlinks: bool = False

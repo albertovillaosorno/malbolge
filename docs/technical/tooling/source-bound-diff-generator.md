@@ -410,8 +410,11 @@ not followed), and the mirror must match that admitted snapshot before probes.
 All identity, compatibility, and bug programs run against the same mirror, which
 prevents interleaved live source edits from combining probe evidence from
 different source versions. Original candidate and mirror snapshots are rechecked
-after each probe group. The copy is not atomic; external source writers can race
-the snapshot/copy boundary and still require caller coordination.
+after each probe group. Context resolution, source snapshot and baseline
+recheck, mirror creation, and temporary observation root failures retain typed
+causes without executing foreign exception formatting callbacks. The copy is
+not atomic; external source writers can race the snapshot/copy boundary and
+still require caller coordination.
 Compatibility programs contribute success/failure rather than an identity
 digest. Application-specific harnesses and logical tool resolution
 remain
