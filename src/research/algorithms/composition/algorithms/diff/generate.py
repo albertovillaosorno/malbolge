@@ -92,6 +92,36 @@ _NATIVE_PATH_RAW_SLOT = cast(
 )
 _NATIVE_PATH_STR_SLOT = cast("MemberDescriptorType", PurePath.__dict__["_str"])
 _NATIVE_PATH_STRING = Path.__str__
+# Native Path methods still call mutable inherited PurePath parsers and
+# slotted descriptors. Reject hook changes before touching uncached paths.
+_PATH_PARSER_HOOK_NAMES = (
+    "__getattribute__",
+    "__getattr__",
+    "__setattr__",
+    "_str",
+    "_raw_paths",
+    "_drv",
+    "_root",
+    "_tail_cached",
+    "_raw_path",
+    "_tail",
+    "_parse_path",
+    "_format_parsed_parts",
+    "_from_parsed_parts",
+    "_from_parsed_string",
+    "parser",
+)
+_NATIVE_PATH_CLASS_HOOKS = _NATIVE_TUPLE(
+    (
+        path_class,
+        _NATIVE_TUPLE(
+            (name, path_class.__dict__.get(name))
+            for name in _PATH_PARSER_HOOK_NAMES
+        ),
+    )
+    for path_class in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(path_class, PurePath)
+)
 _HOST_PATH_SEP = os.sep
 _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
@@ -412,6 +442,11 @@ def _require_native_host_realpath(name: str) -> None:
         or os.path.join is not _NATIVE_HOST_JOIN
         or os.path.sep is not _NATIVE_HOST_SEP
         or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or _NATIVE_ANY(
+            path_class.__dict__.get(name) is not original
+            for path_class, hooks in _NATIVE_PATH_CLASS_HOOKS
+            for name, original in hooks
+        )
         or os.fspath is not _NATIVE_OS_FSPATH
         or os.lstat is not _NATIVE_OS_LSTAT
         or os.readlink is not _NATIVE_OS_READLINK

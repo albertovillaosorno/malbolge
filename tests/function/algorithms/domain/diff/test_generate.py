@@ -573,6 +573,34 @@ def test_generator_rejects_late_host_splitroot_redirection(
     assert calls == 0, "mutable host parser redirected the source root"
 
 
+def test_generator_rejects_late_purepath_parser_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An inherited class parser cannot exchange an uncached source path."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    source_label = str(recipe.source_root)
+    recipe = replace(recipe, source_root=Path(source_label))
+    original_parse = cast(
+        "Callable[[str], tuple[str, str, str]]",
+        PurePath.__dict__["_parse_path"].__get__(None, PurePath),
+    )
+    redirected_label = str(tmp_path / "unrelated-source")
+    calls = 0
+
+    def forged_parse(_cls: type[PurePath], raw: str) -> tuple[str, str, str]:
+        nonlocal calls
+        if raw == source_label:
+            calls += 1
+            return original_parse(redirected_label)
+        return original_parse(raw)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_parse_path", classmethod(forged_parse))
+        with pytest.raises(ValueError, match="host path hooks changed"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0, "late PurePath parser redirected source identity"
+
+
 @pytest.mark.parametrize("hook", ["splitdrive", "sep", "altsep", "join"])
 def test_generator_rejects_changed_native_host_parser_dependencies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
