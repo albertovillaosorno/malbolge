@@ -3216,3 +3216,70 @@ def test_observation_root_rejects_late_creation_and_cleanup_dispatch(
         ):
             assert Path(root).is_dir()
     assert calls == 0, "foreign temporary filesystem dispatch was called"
+
+
+@pytest.mark.parametrize(
+    ("route", "detail"),
+    [
+        ("selected-program", "lacks native command evidence"),
+        ("selected-command", "incomplete command selectors"),
+        ("bug-fields", "missing native fields"),
+        ("behavior-fields", "missing native fields"),
+        ("authored-bug-fields", "missing native fields"),
+        ("authored-behavior-fields", "missing native fields"),
+        ("authored-profile", "valid native profile evidence"),
+        ("run-context", "invalid native context evidence"),
+    ],
+)
+def test_native_behavior_receipts_reject_late_exception_class_aliases(
+    monkeypatch: pytest.MonkeyPatch, route: str, detail: str
+) -> None:
+    """An incomplete native record cannot evade a changed builtin catch."""
+    native_attribute_error = builtins.AttributeError
+    native_type_error = builtins.TypeError
+    caught: BehaviorProgramError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        patched.setattr(builtins, "TypeError", RuntimeError)
+        try:
+            if route == "selected-program":
+                behavior_module._require_selected_program(  # pyright: ignore[reportPrivateUsage]
+                    object.__new__(ProbeProgram), "identity"
+                )
+            elif route == "selected-command":
+                program = object.__new__(ProbeProgram)
+                object.__setattr__(
+                    program, "commands", (object.__new__(ProbeCommand),)
+                )
+                behavior_module._require_selected_program(  # pyright: ignore[reportPrivateUsage]
+                    program, "identity"
+                )
+            elif route == "bug-fields":
+                _ = behavior_module.read_bug_program(object.__new__(BugProgram))
+            elif route == "behavior-fields":
+                _ = behavior_module.read_behavior_programs(
+                    object.__new__(BehaviorPrograms)
+                )
+            elif route == "authored-bug-fields":
+                _ = behavior_module.read_authored_bug(
+                    object.__new__(AuthoredBugProgram)
+                )
+            elif route == "authored-behavior-fields":
+                _ = behavior_module.read_authored_behavior(
+                    object.__new__(AuthoredBehaviorPrograms)
+                )
+            elif route == "authored-profile":
+                _ = AuthoredBehaviorPrograms(
+                    object.__new__(BehaviorProfile), (), (), ()
+                )
+            else:
+                _ = behavior_module._require_run_context(  # pyright: ignore[reportPrivateUsage]
+                    object.__new__(ProbeRunContext), "behavior context"
+                )
+        except BehaviorProgramError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+            builtins.__dict__["TypeError"] = native_type_error
+    assert type(caught) is BehaviorProgramError, (route, caught)
+    assert detail in str(caught)

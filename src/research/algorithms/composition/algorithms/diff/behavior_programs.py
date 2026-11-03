@@ -151,6 +151,8 @@ _NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_BOOL = builtins.bool
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
 _NATIVE_OBJECT_NEW = object.__new__
@@ -344,7 +346,7 @@ def _require_selected_program(program: ProbeProgram, context: str) -> None:
             "tuple[ProbeCommand, ...]",
             _PROGRAM_COMMANDS_SLOT.__get__(program, ProbeProgram),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = f"{context} program lacks native command evidence"
         raise BehaviorProgramError(message) from error
     if _NATIVE_TYPE(commands) is not _NATIVE_TUPLE or not commands:
@@ -358,7 +360,7 @@ def _require_selected_program(program: ProbeProgram, context: str) -> None:
         try:
             stdout = _COMMAND_STDOUT_SLOT.__get__(command, ProbeCommand)
             exit_code = _COMMAND_EXIT_SLOT.__get__(command, ProbeCommand)
-        except AttributeError as error:
+        except _NATIVE_ATTRIBUTE_ERROR as error:
             message = f"{context} program has incomplete command selectors"
             raise BehaviorProgramError(message) from error
         if (
@@ -425,7 +427,7 @@ def read_bug_program(program: BugProgram) -> tuple[ProbeProgram, str]:
             ),
             cast("str", _BUG_CORRECTION_SLOT.__get__(program, BugProgram)),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "bug behavior program is missing native fields"
         raise BehaviorProgramError(message) from error
 
@@ -552,7 +554,7 @@ def read_behavior_programs(
                 _BEHAVIOR_BUGS_SLOT.__get__(programs, BehaviorPrograms),
             ),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "behavior programs are missing native fields"
         raise BehaviorProgramError(message) from error
 
@@ -674,7 +676,7 @@ def read_authored_bug(
                 "bytes", _AUTHORED_BUG_FIXED_SLOT.__get__(bug, AuthoredBugProgram)
             ),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "authored bug record is missing native fields"
         raise BehaviorProgramError(message) from error
 
@@ -715,7 +717,7 @@ class AuthoredBehaviorPrograms:
             raise BehaviorProgramError(message)
         try:
             _PROFILE_VALIDATOR(profile)
-        except (BehaviorPolicyError, AttributeError, TypeError) as error:
+        except (BehaviorPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
             message = "authored behavior requires valid native profile evidence"
             raise BehaviorProgramError(message) from error
         _require_identity_program_tuple(identity, "authored identity programs")
@@ -778,7 +780,7 @@ def read_authored_behavior(
                 _AUTHORED_BUGS_SLOT.__get__(authored, AuthoredBehaviorPrograms),
             ),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "authored programs are missing native fields"
         raise BehaviorProgramError(message) from error
 
@@ -905,7 +907,7 @@ def _require_run_context(value: object, context: str) -> ProbeRunContext:
     # type identity is insufficient before repository/tool comparison or reads.
     try:
         _PROBE_RUN_CONTEXT_VALIDATOR(value)
-    except (ProbeProgramError, AttributeError, TypeError) as error:
+    except (ProbeProgramError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = f"{context} contains invalid native context evidence"
         raise BehaviorProgramError(message) from error
     return value
