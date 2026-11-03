@@ -2823,6 +2823,37 @@ at `f0f00e231`. They do not guarantee atomic isolation from concurrent
 filesystem writers or trusted direct object-state mutation. The global Jig
 governance gate remains separately non-green on pre-existing repository rules.
 
+## Native exception-class admission continuation (2026-11-03)
+
+The source-bound diff runtime now preserves its original CPython exception
+classes at native receipt and host-failure boundaries, rather than resolving
+mutable builtin names at each `except` site. Admission (`af790034e`) and
+semantic placement (`f990f92e1`) cover incomplete exact-native metadata
+and mapper callback failures, with seven and four red-first regressions.
+Their focused suites passed 178 and 156 tests, and integrated diff suites
+passed 3,872 and 3,890 tests respectively.
+
+Source-pin validation and trusted read-error notes (`cca0bd8c0`) passed
+three red-first cases, 208 focused, and 3,905 integrated tests. Protected
+plan evidence before authentication and publication (`8fdaec147`) passed
+seven red-first cases, 227 focused, and 3,912 integrated tests. Source-
+binding threshold, anchor, policy and candidate receipt checks (`d6845107b`)
+passed five red-first cases, 204 focused, and 3,919 integrated tests.
+
+Exact baseline materialization (`90b6cad9f`) now catches original native
+error types in read-note handling, plan validation, directories, and output
+publication. More importantly, a callback that replaces `Exception` then
+fails during output staging no longer bypasses staging cleanup. Five
+red-first cases, 339 focused, and 3,924 integrated diff tests passed.
+All six commits have signed DCO trailers and were pushed to `main`; Ruff
+and strict source typing are clean. One inherited `test_exact.py:4517`
+BasedPyright error remains outside changed lines. This work does not claim
+atomic protection from concurrent external writers or direct trusted-state
+mutation. A bounded repository Jig check exited 1 before validator
+completion: its tool projection uses `/usr/bin/chktex` 1.7.9 instead of
+required 1.7.10, despite a separate user-local 1.7.10 binary. No green
+global Jig verdict is claimed.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

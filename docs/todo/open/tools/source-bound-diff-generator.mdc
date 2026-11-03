@@ -1584,6 +1584,33 @@ format.
   checks were clean. Global Jig and external host/filesystem races remain
   outside this verification.
 
+- Native exception error-class admission across source-bound diff now holds
+  import-original `AttributeError` in tree-admission receipts (`af790034e`,
+  seven red-first cases, 178 focused and 3,872 integrated tests) and
+  semantic readers/mapper callbacks (`f990f92e1`, four red-first cases,
+  156 focused and 3,890 integrated tests). Both changes passed scoped
+  Ruff, strict BasedPyright, and DCO push verification.
+- Source-revision pins now retain their owned `SourcePinError` on malformed
+  native pin/evidence slots and missing reader exception notes even after
+  late builtin exception aliases (`cca0bd8c0`, three red-first cases,
+  208 focused and 3,905 integrated tests). Protected authenticated plans
+  similarly retain typed failures before decryption/publication across
+  seven nested receipt boundaries (`8fdaec147`, seven red-first cases,
+  227 focused and 3,912 integrated tests). Scoped lint/type checks passed.
+- Source-binding policies, candidate identities, and threshold receipts
+  now use import-original builtin exception classes (`d6845107b`, five
+  red-first cases, 204 focused and 3,919 integrated tests). Exact-tree
+  read notes, authoring-plan validation, output directory creation,
+  publication, and failed-stage cleanup also retain their native catches
+  (`90b6cad9f`, five red-first cases, 339 focused and 3,924 integrated
+  tests). These scoped fixes were DCO signed and pushed; one pre-existing
+  `test_exact.py:4517` strict typing diagnostic remains outside changes.
+  Source-tree external writers, trusted direct state mutation, and a
+  repository-wide green Jig verdict remain outside this evidence. The
+  bounded repository Jig check exits 1 because its tool projection uses
+  `/usr/bin/chktex` 1.7.9 instead of required 1.7.10; a separate
+  user-local ChkTeX 1.7.10 binary is present.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
