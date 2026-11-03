@@ -2620,3 +2620,58 @@ def test_writer_ignores_late_os_mkdir_redirect(
     assert output.read_text(encoding="utf-8") == emit_rust_transform(
         protected, _PROFILE
     )
+
+
+def test_writer_ignores_late_temporary_with_name_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stage creation must ignore late Path.with_name redirection."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated" / "main.rs"
+    outside = tmp_path / "unexpected-stage.rs"
+    original_with_name = Path.with_name
+    intercepted = 0
+
+    def forged_with_name(path: Path, name: str) -> Path:
+        nonlocal intercepted
+        if path == output and name.startswith(".main.rs."):
+            intercepted += 1
+            return outside
+        return original_with_name(path, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "with_name", forged_with_name)
+        write_rust_transform(protected, _PROFILE, output)
+    assert intercepted == 0
+    assert not outside.exists()
+    assert output.read_text(encoding="utf-8") == emit_rust_transform(
+        protected, _PROFILE
+    )
+
+
+def test_writer_ignores_late_output_parent_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mutated Path.parent cannot create an unrelated output directory."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated" / "main.rs"
+    unrelated = tmp_path / "unexpected-parent"
+    original_parent = Path.parent.fget
+    assert original_parent is not None
+    intercepted = 0
+
+    def forged_parent(path: Path) -> Path:
+        nonlocal intercepted
+        if path == output:
+            intercepted += 1
+            return unrelated
+        return original_parent(path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "parent", property(forged_parent))
+        write_rust_transform(protected, _PROFILE, output)
+    assert intercepted == 0
+    assert not unrelated.exists()
+    assert output.read_text(encoding="utf-8") == emit_rust_transform(
+        protected, _PROFILE
+    )

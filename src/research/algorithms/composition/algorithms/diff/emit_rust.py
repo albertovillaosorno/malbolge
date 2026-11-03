@@ -92,6 +92,8 @@ _NATIVE_OS_UNLINK = os.unlink
 _NATIVE_OS_FSENCODE = os.fsencode
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
+_NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
+_NATIVE_PATH_WITH_NAME = Path.with_name
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 
@@ -534,7 +536,7 @@ def _validate_output_parent_chain(parent: Path) -> None:
     candidate = parent
     while True:
         _validate_output_parent(candidate, _output_mode(candidate, "parent"))
-        ancestor = candidate.parent
+        ancestor = _NATIVE_PATH_PARENT(candidate)
         if _NATIVE_PATH_STRING(ancestor) == _NATIVE_PATH_STRING(candidate):
             return
         candidate = ancestor
@@ -542,21 +544,23 @@ def _validate_output_parent_chain(parent: Path) -> None:
 
 def _prepare_output_path(output_path: Path) -> Path:
     _validate_output_leaf(output_path)
-    _validate_output_parent_chain(output_path.parent)
+    parent = _NATIVE_PATH_PARENT(output_path)
+    _validate_output_parent_chain(parent)
     try:
-        _output_mkdir(output_path.parent)
+        _output_mkdir(parent)
     except (OSError, ValueError, RuntimeError) as error:
         message = (
             "Rust output parent creation failed: "
-            f"{output_path.parent}: {_safe_emission_error_detail(error)}"
+            f"{parent}: {_safe_emission_error_detail(error)}"
         )
         raise RustEmissionError(message) from error
-    _validate_output_parent_chain(output_path.parent)
+    _validate_output_parent_chain(parent)
     return output_path
 
 
 def _temporary_output_path(output_path: Path) -> Path:
-    return output_path.with_name(f".{output_path.name}.{token_hex(8)}.tmp")
+    name = f".{_NATIVE_PATH_NAME(output_path)}.{token_hex(8)}.tmp"
+    return _NATIVE_PATH_WITH_NAME(output_path, name)
 
 
 def _cleanup_owned_temporary(path: Path) -> str | None:
@@ -671,7 +675,7 @@ def write_rust_transform(
     try:
         _verify_rust_source_bytes(temporary, expected, "staged")
         _validate_output_leaf(prepared_output)
-        _validate_output_parent_chain(prepared_output.parent)
+        _validate_output_parent_chain(_NATIVE_PATH_PARENT(prepared_output))
         published = _output_replace(temporary, prepared_output)
         if (
             _NATIVE_TYPE(published) is not _NATIVE_PATH_TYPE
