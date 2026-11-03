@@ -272,6 +272,19 @@ or slice-offset spoofing. This protects the local model admission boundary
 from late class hooks, not intentional instance-storage mutation or racing
 external filesystem writers.
 
+The nested model admission boundary also reruns captured original validators
+for exact native file records inside `TreeSnapshot`, segments inside patch
+instructions, and both source/target snapshots and instructions inside
+`ExactAuthoringPlan` (`1d0a9d529`). Previously `object.__new__` records with
+malformed hashes, sizes, paths, segment coordinates, or inconsistent instruction
+kinds could bypass child constructors. Incomplete stored slots now raise typed
+`TreeModelError` rather than leaking `AttributeError`. Nineteen red-first cases
+passed, with 94 model tests and 3,015 integrated diff tests passing before
+commit and 167 model/fingerprint tests passing after commit. Scoped Ruff,
+strict BasedPyright, and diff checks were clean. These checks are not atomic
+against instance mutation or external source-tree races; Jig doctor remains
+degraded (graph absent), and the bounded global check timed out.
+
 The six exact-authoring model constructors now also write all seventeen
 fields through captured original storage descriptors instead of
 `object.__setattr__`, which dispatches replaceable class property setters.
