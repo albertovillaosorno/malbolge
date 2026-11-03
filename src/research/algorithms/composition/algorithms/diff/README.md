@@ -56,10 +56,20 @@ closed. Snapshot, oracle replay, instruction and passthrough file reads now
 open nonblocking, no-follow file descriptors where supported, require the
 opened inode and pathname to agree on a regular file before and after bounded
 64 KiB read chunks, and reject incomplete, growing or metadata-changing inode
-reads. This prevents a regular-file stat from authorizing a later leaf symlink
-or writerless FIFO read, but does not provide an atomic filesystem snapshot or
-prevent concurrent parent-directory replacement; external writers still need
-coordination. Empty directories are outside the version-one byte-tree model.
+reads.
+
+Snapshot classification and descriptor admission require exact native
+`os.stat_result` records instead of trusting synthetic status objects.
+Descriptor reads and EOF checks require native bytes, junction checks require
+actual booleans, and resolved roots and leaf paths require native `Path` results
+before their methods can run. Filesystem failures retain typed
+causes without invoking foreign exception string formatters.
+
+This prevents a
+regular-file stat from authorizing a later leaf symlink or writerless FIFO
+read, but does not provide an atomic filesystem snapshot or prevent concurrent
+parent-directory replacement; external writers still need coordination. Empty
+directories are outside the version-one byte-tree model.
 
 Exact recipes may declare sorted, non-overlapping `passthrough_roots`. Those
 roots

@@ -46,6 +46,7 @@ from stat import S_ISLNK
 from stat import S_ISREG
 import sys
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstruction
@@ -75,6 +76,7 @@ _FILE_READ_FLAGS = (
 )
 _ZERO = 0
 _NUL = "\x00"
+_NATIVE_STAT_RESULT = os.stat_result
 
 
 class ExactTreeError(RuntimeError):
@@ -188,7 +190,7 @@ def _filter_snapshot(
 
 
 def _raise_tree_walk_error(error: OSError | ValueError | RuntimeError) -> None:
-    message = f"tree traversal failed: {error}"
+    message = f"tree traversal failed: {_safe_host_error_detail(error)}"
     raise ExactTreeError(message) from error
 
 
@@ -265,20 +267,45 @@ def _tree_paths_excluding(
 
 def _entry_mode(path: Path, context: str) -> int | None:
     try:
-        return path.lstat().st_mode
+        receipt = path.lstat()
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} status failed: {error}"
+        message = f"{context} status failed: {_safe_host_error_detail(error)}"
         raise ExactTreeError(message) from error
+    _ = _require_native_status(receipt, context)
+    return receipt.st_mode
 
 
 def _is_redirect(path: Path, mode: int) -> bool:
     try:
-        return S_ISLNK(mode) or path.is_junction()
+        if S_ISLNK(mode):
+            return True
+        is_junction = path.is_junction()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"tree redirect status failed: {path}: {error}"
+        detail = _safe_host_error_detail(error)
+        message = f"tree redirect status failed: {path}: {detail}"
         raise ExactTreeError(message) from error
+    if type(is_junction) is not bool:
+        message = "tree redirect status requires native boolean"
+        raise ExactTreeError(message)
+    return is_junction
+
+
+def _require_native_status(receipt: object, context: str) -> os.stat_result:
+    """Require exact native file-status metadata at trust boundaries.
+
+    Returns:
+        The native host filesystem status receipt.
+
+    Raises:
+        ExactTreeError: The status is a fabricated or foreign record.
+
+    """
+    if type(receipt) is not _NATIVE_STAT_RESULT:
+        message = f"{context} requires native filesystem status"
+        raise ExactTreeError(message)
+    return receipt
 
 
 def _file_identity(status: os.stat_result) -> tuple[int, ...]:
@@ -294,17 +321,34 @@ def _file_identity(status: os.stat_result) -> tuple[int, ...]:
 def _admit_opened_file(
     descriptor: int, path: Path, context: str
 ) -> os.stat_result:
-    opened = os.fstat(descriptor)
-    named = path.lstat()
+    opened = _require_native_status(os.fstat(descriptor), context)
+    named = _require_native_status(path.lstat(), context)
     regular_identity = (
         S_ISREG(opened.st_mode)
         and S_ISREG(named.st_mode)
         and (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino)
     )
-    if not regular_identity or path.is_junction():
+    if not regular_identity or _is_redirect(path, named.st_mode):
         message = f"{context} read lost regular file identity: {path}"
         raise ExactTreeError(message)
     return opened
+
+
+def _read_native_chunk(descriptor: int, count: int, context: str) -> bytes:
+    """Require exact host byte receipts, including the EOF observation.
+
+    Returns:
+        A native byte string returned by the descriptor reader.
+
+    Raises:
+        ExactTreeError: The reader provided a foreign result.
+
+    """
+    chunk = os.read(descriptor, count)
+    if type(chunk) is not bytes:
+        message = f"{context} requires native read bytes"
+        raise ExactTreeError(message)
+    return chunk
 
 
 def _read_admitted_descriptor(
@@ -313,12 +357,12 @@ def _read_admitted_descriptor(
     payload = bytearray()
     while len(payload) < length:
         requested = min(_FILE_READ_CHUNK_BYTES, length - len(payload))
-        chunk = os.read(descriptor, requested)
+        chunk = _read_native_chunk(descriptor, requested, context)
         if not chunk or len(chunk) > requested:
             message = f"{context} read did not match admitted byte length"
             raise ExactTreeError(message)
         payload.extend(chunk)
-    if os.read(descriptor, 1):
+    if _read_native_chunk(descriptor, 1, context):
         message = f"{context} read exceeded admitted byte length"
         raise ExactTreeError(message)
     return bytes(payload)
@@ -331,11 +375,40 @@ def _safe_host_error_detail(error: BaseException) -> str:
         The native single-string reason or the exception's class name.
 
     """
-    if type(error) in (OSError, ValueError, RuntimeError):
-        arguments = error.args
+    if type(error) in {ExactTreeError, OSError, ValueError, RuntimeError}:
+        arguments = cast("tuple[object, ...]", error.args)
         if len(arguments) == 1 and type(arguments[0]) is str:
             return arguments[0]
+        if type(error) is OSError and len(arguments) > 1:
+            reason = arguments[1]
+            if type(reason) is str:
+                return reason
     return type(error).__name__
+
+
+def _verify_closed_source(
+    path: Path, context: str, before_close: os.stat_result
+) -> None:
+    """Reject pathname replacement or metadata mutation after descriptor close.
+
+    Raises:
+        ExactTreeError: The closed source no longer matches its admitted inode.
+
+    """
+    # Finalizers may change or replace the named file after the last fstat.
+    try:
+        final = path.lstat()
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"{context} status failed after descriptor close: {path}"
+        raise ExactTreeError(message) from error
+    final = _require_native_status(final, context)
+    if (
+        not S_ISREG(final.st_mode)
+        or _is_redirect(path, final.st_mode)
+        or _file_identity(before_close) != _file_identity(final)
+    ):
+        message = f"{context} source changed after descriptor close: {path}"
+        raise ExactTreeError(message)
 
 
 def _read_bound_file(path: Path, context: str) -> bytes:
@@ -358,23 +431,31 @@ def _read_bound_file(path: Path, context: str) -> bytes:
             # an overridden primary.add_note hook while reporting the failure.
             BaseException.add_note(
                 primary,
-                "file descriptor close also failed: " + _safe_host_error_detail(error),
+                "file descriptor close also failed: "
+                + _safe_host_error_detail(error),
             )
-    # Finalizers may change or replace the named file after the last fstat.
-    # Check the physical identity after closing, before releasing the bytes.
-    try:
-        final = path.lstat()
-    except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} status failed after descriptor close: {path}"
-        raise ExactTreeError(message) from error
-    if (
-        not S_ISREG(final.st_mode)
-        or _is_redirect(path, final.st_mode)
-        or _file_identity(after) != _file_identity(final)
-    ):
-        message = f"{context} source changed after descriptor close: {path}"
-        raise ExactTreeError(message)
+    _verify_closed_source(path, context, after)
     return payload
+
+
+def _copy_native_failure_notes(
+    error: BaseException, failure: ExactTreeError
+) -> None:
+    """Copy trusted notes without invoking foreign exception accessors."""
+    try:
+        notes = cast(
+            "object",
+            # Direct native dispatch bypasses an overridden foreign accessor.
+            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                error, "__notes__"
+            ),
+        )
+    except AttributeError:
+        return
+    if type(notes) is list:
+        for note in cast("list[object]", notes):
+            if type(note) is str:
+                BaseException.add_note(failure, note)
 
 
 def read_exact_regular_file(path: Path, context: str) -> bytes:
@@ -392,17 +473,10 @@ def read_exact_regular_file(path: Path, context: str) -> bytes:
     except ExactTreeError:
         raise
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} read failed: {path}: {_safe_host_error_detail(error)}"
+        detail = _safe_host_error_detail(error)
+        message = f"{context} read failed: {path}: {detail}"
         failure = ExactTreeError(message)
-        # Native BaseException access bypasses a subclass's __getattribute__.
-        try:
-            notes: object = BaseException.__getattribute__(error, "__notes__")
-        except AttributeError:
-            notes = ()
-        if type(notes) is list:
-            for note in notes:
-                if type(note) is str:
-                    BaseException.add_note(failure, note)
+        _copy_native_failure_notes(error, failure)
         raise failure from error
 
 
@@ -441,6 +515,22 @@ def _require_filesystem_root(value: object, context: str) -> None:
         raise ExactTreeError(message) from error
 
 
+def _require_native_resolved_path(value: object, context: str) -> Path:
+    """Reject a foreign path returned by a host resolution callback.
+
+    Returns:
+        The host-native resolved path.
+
+    Raises:
+        ExactTreeError: The resolution callback returned a foreign path.
+
+    """
+    if type(value) is not type(Path()):
+        message = f"{context} resolution must return native Path"
+        raise ExactTreeError(message)
+    return value
+
+
 def _resolved_tree_root(root: Path) -> Path:
     _require_filesystem_root(root, "tree root")
     mode = _entry_mode(root, "tree root")
@@ -454,10 +544,12 @@ def _resolved_tree_root(root: Path) -> Path:
         message = f"tree root is not a directory: {root}"
         raise ExactTreeError(message)
     try:
-        return root.resolve(strict=True)
+        resolved = root.resolve(strict=True)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"tree root resolution failed: {root}: {error}"
+        detail = _safe_host_error_detail(error)
+        message = f"tree root resolution failed: {root}: {detail}"
         raise ExactTreeError(message) from error
+    return _require_native_resolved_path(resolved, "tree root")
 
 
 def snapshot_tree(root: Path) -> TreeSnapshot:
@@ -764,10 +856,17 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        resolved_path = path.resolve()
-        resolved_root = root.resolve()
+        resolved_path = _require_native_resolved_path(
+            path.resolve(), "tree path"
+        )
+        resolved_root = _require_native_resolved_path(
+            root.resolve(), "tree root"
+        )
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"tree path resolution failed: {relative_path!r}: {error}"
+        message = (
+            "tree path resolution failed: "
+            f"{relative_path!r}: {_safe_host_error_detail(error)}"
+        )
         raise ExactTreeError(message) from error
     try:
         _ = resolved_path.relative_to(resolved_root)
@@ -816,7 +915,9 @@ def _write_output_file(path: Path, data: bytes, context: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         written = path.write_bytes(data)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} write failed: {path}: {error}"
+        message = f"{context} write failed: {path}: " + _safe_host_error_detail(
+            error
+        )
         raise ExactTreeError(message) from error
     if type(written) is not int or written != len(data):
         message = f"{context} short or invalid byte count: {path}"
@@ -833,7 +934,8 @@ def _make_output_directory(
     try:
         path.mkdir(parents=parents, exist_ok=exist_ok)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} creation failed: {path}: {error}"
+        detail = _safe_host_error_detail(error)
+        message = f"{context} creation failed: {path}: {detail}"
         raise ExactTreeError(message) from error
 
 
@@ -994,10 +1096,14 @@ def _resolved_output_root(output_root: Path) -> Path:
         message = f"output root must not be linked: {output_root}"
         raise ExactTreeError(message)
     try:
-        return output_root.resolve()
+        resolved = output_root.resolve()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"output root resolution failed: {output_root}: {error}"
+        message = (
+            "output root resolution failed: "
+            f"{output_root}: {_safe_host_error_detail(error)}"
+        )
         raise ExactTreeError(message) from error
+    return _require_native_resolved_path(resolved, "output root")
 
 
 def _cleanup_exact_staging(path: Path) -> str | None:
@@ -1006,12 +1112,15 @@ def _cleanup_exact_staging(path: Path) -> str | None:
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
-        return str(error)
+        return _safe_host_error_detail(error)
     return None
 
 
 def _raise_exact_cleanup_failure(error: Exception, cleanup_error: str) -> None:
-    message = f"{error}; staging cleanup failed: {cleanup_error}"
+    message = (
+        _safe_host_error_detail(error)
+        + f"; staging cleanup failed: {cleanup_error}"
+    )
     raise ExactTreeError(message) from error
 
 
@@ -1019,7 +1128,9 @@ def _publish_exact_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
     except OSError as error:
-        message = f"exact output publication failed: {error}"
+        message = "exact output publication failed: " + _safe_host_error_detail(
+            error
+        )
         raise ExactTreeError(message) from error
 
 

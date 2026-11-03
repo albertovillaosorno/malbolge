@@ -44,8 +44,10 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - bounded no-shell FIFO regression.
 import sys
 import textwrap
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -84,6 +86,12 @@ _PATCH_RANGE_CASE = "patch-range"
 _LITERAL_SIZE_CASE = "literal-size"
 _LITERAL_DIGEST_CASE = "literal-digest"
 _SHORT_WRITE = "short"
+_EXACT_POSTCLOSE_READS = 3
+_EXACT_NATIVE_CLOSE = "native"
+_EXACT_NATIVE_CLOSE_DETAIL = "native close failure"
+_EXACT_NOTES_ATTRIBUTE = "__notes__"
+_EXACT_INPLACE_REWRITE = "inplace-rewrite"
+_EXACT_TAMPERED = b"tampered"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -126,6 +134,7 @@ def _synthetic_pair(tmp_path: Path) -> tuple[Path, Path]:
 class _ForeignExactRoot(type(Path())):
     """An overridden filesystem path cannot establish tree authority."""
 
+    @override
     def __str__(self) -> str:
         message = "foreign exact root path conversion was evaluated"
         raise AssertionError(message)
@@ -1003,6 +1012,138 @@ def test_snapshot_root_status_error_fails_closed(
         _ = snapshot_tree(root)
 
 
+@pytest.mark.parametrize("target_kind", ["root", "entry"])
+def test_exact_snapshot_rejects_non_native_path_status(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    """Foreign stat records must not certify root or discovered entry modes."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    leaf = root / "leaf"
+    _ = leaf.write_bytes(b"trusted")
+    target = {"root": root, "entry": leaf}[target_kind]
+    original_lstat = Path.lstat
+    forged = False
+
+    def forge_status(path: Path) -> object:
+        nonlocal forged
+        if path == target:
+            forged = True
+            return SimpleNamespace(st_mode=original_lstat(path).st_mode)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forge_status)
+    with pytest.raises(ExactTreeError, match="native filesystem status"):
+        _ = snapshot_tree(root)
+    _expect(forged, "the forged stat receipt was not consumed")
+
+
+@pytest.mark.parametrize("target_kind", ["root", "entry"])
+def test_exact_snapshot_rejects_foreign_junction_verdict(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    target_kind: str,
+) -> None:
+    """A false-like non-bool cannot certify that a path is not a junction."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    leaf = root / "leaf"
+    _ = leaf.write_bytes(b"trusted")
+    target = {"root": root, "entry": leaf}[target_kind]
+    native_junction = Path.is_junction
+    checked = False
+
+    def forged_verdict(path: Path) -> object:
+        nonlocal checked
+        if path == target:
+            checked = True
+            return 0
+        return native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_verdict)
+    with pytest.raises(ExactTreeError, match="native boolean"):
+        _ = snapshot_tree(root)
+    _expect(checked, "foreign junction verdict was not reached")
+
+
+@pytest.mark.parametrize("role", ["root", "output", "source-path"])
+def test_exact_rejects_foreign_resolved_path_before_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    role: str,
+) -> None:
+    """Resolution must not inject a Path subclass into filesystem authority."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    selected = {
+        "root": source,
+        "output": output,
+        "source-path": source / _MOVED_SOURCE,
+    }[role]
+    foreign = _ForeignExactRoot(selected)
+    native_resolve = Path.resolve
+    observed = False
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal observed
+        if path == selected:
+            observed = True
+            return foreign
+        return native_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    action = {
+        "root": lambda: snapshot_tree(source),
+        "output": lambda: materialize_exact_plan(source, plan, output),
+        "source-path": lambda: materialize_exact_plan(source, plan, output),
+    }[role]
+    with pytest.raises(ExactTreeError, match="native Path"):
+        _ = action()
+    _expect(observed, "foreign resolved path was not consumed")
+    _expect(not output.exists(), "foreign resolution published output")
+
+
+class _HostileExactHostError(OSError):
+    """External host callbacks must not control diagnostic formatting."""
+
+    @override
+    def __str__(self) -> str:
+        message = "foreign exact-tree formatter executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("operation", ["status", "junction", "walk", "resolve"])
+def test_exact_snapshot_rejects_hostile_host_errors_without_formatting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """Keep failing filesystem callbacks inside the typed tree boundary."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    _ = (root / "leaf").write_bytes(b"trusted")
+    fault = _HostileExactHostError("host refused")
+    methods = {
+        "status": ("lstat", "tree root status failed"),
+        "junction": ("is_junction", "tree redirect status failed"),
+        "walk": ("walk", "tree traversal failed"),
+        "resolve": ("resolve", "tree root resolution failed"),
+    }
+    method, expected = methods[operation]
+
+    def fail_host(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise fault
+
+    monkeypatch.setattr(Path, method, fail_host)
+    with pytest.raises(ExactTreeError, match=expected) as caught:
+        _ = snapshot_tree(root)
+    _expect(caught.value.__cause__ is fault, "foreign host cause was lost")
+
+
 def test_snapshot_rejects_linked_root_when_supported(tmp_path: Path) -> None:
     """A linked root cannot erase the exact tree boundary during resolution."""
     target = tmp_path / "target"
@@ -1215,7 +1356,39 @@ def test_snapshot_read_error_remains_primary_after_close_failure(
     )
 
 
-@pytest.mark.parametrize("secondary_kind", ["native", "foreign", "hostile-args"])
+class _ExactForeignPrimaryError(ExactTreeError):
+    """A foreign primary exception must not control note propagation."""
+
+    @override
+    def add_note(self, note: str) -> None:
+        del note
+        message = "foreign primary note hook executed"
+        raise AssertionError(message)
+
+
+class _ExactHostileArgument:
+    """No exception error-detail path may format arbitrary arguments."""
+
+    @override
+    def __str__(self) -> str:
+        message = "foreign host argument formatter executed"
+        raise AssertionError(message)
+
+
+class _ExactHostileNoteError(OSError):
+    """No exception error-detail path may dispatch foreign note accessors."""
+
+    @override
+    def __getattribute__(self, name: str) -> object:
+        if name == _EXACT_NOTES_ATTRIBUTE:
+            message = "foreign host note accessor executed"
+            raise AssertionError(message)
+        return cast("object", super().__getattribute__(name))
+
+
+@pytest.mark.parametrize(
+    "secondary_kind", ["native", "foreign", "hostile-args"]
+)
 def test_exact_descriptor_close_cannot_override_original_read_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1225,27 +1398,11 @@ def test_exact_descriptor_close_cannot_override_original_read_failure(
     leaf = tmp_path / "leaf"
     _ = leaf.write_bytes(b"payload")
 
-    def reject_note(self: BaseException, note: str) -> None:
-        del self, note
-        raise AssertionError("foreign primary note hook executed")
-
-    primary_type = type(
-        "ForeignExactReadError", (ExactTreeError,), {"add_note": reject_note}
-    )
-    primary = primary_type("rejected original descriptor read")
-
-    class ForeignCloseError(OSError):
-        def __str__(self) -> str:
-            raise AssertionError("foreign close formatter executed")
-
-    class HostileArgument:
-        def __str__(self) -> str:
-            raise AssertionError("foreign close argument formatter executed")
-
+    primary = _ExactForeignPrimaryError("rejected original descriptor read")
     secondary = {
-        "native": OSError("native close failure"),
-        "foreign": ForeignCloseError("foreign close failure"),
-        "hostile-args": OSError(HostileArgument()),
+        "native": OSError(_EXACT_NATIVE_CLOSE_DETAIL),
+        "foreign": _HostileExactHostError("foreign close failure"),
+        "hostile-args": OSError(_ExactHostileArgument()),
     }[secondary_kind]
     original_close = os.close
 
@@ -1260,8 +1417,10 @@ def test_exact_descriptor_close_cannot_override_original_read_failure(
     with monkeypatch.context() as patch:
         patch.setattr(os, "read", fail_read)
         patch.setattr(os, "close", fail_close)
-        with pytest.raises(ExactTreeError) as caught:
-            exact_module.read_exact_regular_file(leaf, "tree entry")
+        with pytest.raises(
+            ExactTreeError, match="rejected original descriptor read"
+        ) as caught:
+            _ = exact_module.read_exact_regular_file(leaf, "tree entry")
 
     _expect(caught.value is primary, "cleanup replaced primary file error")
     notes = cast("list[str]", getattr(primary, "__notes__", []))
@@ -1269,9 +1428,9 @@ def test_exact_descriptor_close_cannot_override_original_read_failure(
         len(notes) == 1 and _CLOSE_FAILURE_NOTE in notes[0],
         "native cleanup note missing from original error",
     )
-    if secondary_kind == "native":
+    if secondary_kind == _EXACT_NATIVE_CLOSE:
         _expect(
-            "native close failure" in notes[0],
+            _EXACT_NATIVE_CLOSE_DETAIL in notes[0],
             "trusted native close detail was lost",
         )
 
@@ -1288,24 +1447,10 @@ def test_exact_regular_reader_cannot_dispatch_foreign_host_error_hooks(
     leaf = tmp_path / "leaf"
     _ = leaf.write_bytes(b"payload")
 
-    class HostileHostError(OSError):
-        def __str__(self) -> str:
-            raise AssertionError("foreign host read formatter executed")
-
-    class HostileArgument:
-        def __str__(self) -> str:
-            raise AssertionError("host error argument formatter executed")
-
-    class HostileNoteReader(OSError):
-        def __getattribute__(self, name: str) -> object:
-            if name == "__notes__":
-                raise AssertionError("foreign host note accessor executed")
-            return super().__getattribute__(name)
-
     fault = {
-        "foreign-str": HostileHostError("host read failed"),
-        "native-hostile-arg": OSError(HostileArgument()),
-        "foreign-notes": HostileNoteReader("host read failed"),
+        "foreign-str": _HostileExactHostError("host read failed"),
+        "native-hostile-arg": OSError(_ExactHostileArgument()),
+        "foreign-notes": _ExactHostileNoteError("host read failed"),
     }[fault_kind]
 
     def fail_read(descriptor: int, count: int) -> bytes:
@@ -1314,8 +1459,10 @@ def test_exact_regular_reader_cannot_dispatch_foreign_host_error_hooks(
 
     with monkeypatch.context() as patch:
         patch.setattr(os, "read", fail_read)
-        with pytest.raises(ExactTreeError, match="tree entry read failed") as caught:
-            exact_module.read_exact_regular_file(leaf, "tree entry")
+        with pytest.raises(
+            ExactTreeError, match="tree entry read failed"
+        ) as caught:
+            _ = exact_module.read_exact_regular_file(leaf, "tree entry")
 
     _expect(caught.value.__cause__ is fault, "foreign host read cause lost")
     _expect(
@@ -1339,8 +1486,116 @@ def test_exact_regular_reader_preserves_native_host_error_detail(
 
     monkeypatch.setattr(os, "read", fail_read)
     with pytest.raises(ExactTreeError, match="native read denied") as caught:
-        exact_module.read_exact_regular_file(leaf, "tree entry")
+        _ = exact_module.read_exact_regular_file(leaf, "tree entry")
     _expect(caught.value.__cause__ is primary, "native read cause lost")
+
+
+def test_exact_reader_rejects_foreign_junction_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fake false-like junction verdict cannot approve a direct file read."""
+    leaf = tmp_path / "leaf"
+    _ = leaf.write_bytes(b"trusted")
+    native_junction = Path.is_junction
+
+    def foreign_verdict(path: Path) -> object:
+        return 0 if path == leaf else native_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", foreign_verdict)
+    with pytest.raises(ExactTreeError, match="native boolean"):
+        _ = exact_module.read_exact_regular_file(leaf, "tree entry")
+
+
+@pytest.mark.parametrize("phase", ["body", "eof"])
+def test_exact_reader_rejects_foreign_read_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """Neither a foreign body nor EOF callback may authorize file evidence."""
+    leaf = tmp_path / "leaf"
+    _ = leaf.write_bytes(b"trusted")
+    native_read = os.read
+    reads = 0
+
+    def foreign_read(descriptor: int, count: int) -> bytes:
+        nonlocal reads
+        reads += 1
+        observed = native_read(descriptor, count)
+        if (phase, reads) in {("body", 1), ("eof", 2)}:
+            return cast("bytes", cast("object", bytearray(observed)))
+        return observed
+
+    monkeypatch.setattr(os, "read", foreign_read)
+    with pytest.raises(ExactTreeError, match="native read bytes"):
+        _ = exact_module.read_exact_regular_file(leaf, "tree entry")
+
+
+def test_exact_reader_rejects_forged_postclose_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A counterfeit final pathname receipt cannot release stale bytes."""
+    leaf = tmp_path / "leaf"
+    _ = leaf.write_bytes(b"trusted")
+    native_lstat = Path.lstat
+    receipts: list[Path] = []
+
+    def forged_final_status(path: Path) -> object:
+        if path == leaf:
+            receipts.append(path)
+            if len(receipts) == _EXACT_POSTCLOSE_READS:
+                return SimpleNamespace(st_mode=native_lstat(path).st_mode)
+        return native_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_final_status)
+    with pytest.raises(ExactTreeError, match="native filesystem status"):
+        _ = exact_module.read_exact_regular_file(leaf, "tree entry")
+    _expect(
+        len(receipts) == _EXACT_POSTCLOSE_READS,
+        "the final pathname receipt was not checked",
+    )
+
+
+def test_exact_reader_rejects_forged_descriptor_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fabricated fstat inode must not let redirected file bytes escape."""
+    leaf = tmp_path / "leaf"
+    _ = leaf.write_bytes(b"trusted")
+    foreign = tmp_path / "foreign"
+    _ = foreign.write_bytes(b"hostile")
+    trusted_status = leaf.lstat()
+    original_open = os.open
+    original_fstat = os.fstat
+    redirected = False
+
+    def redirect_open(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        nonlocal redirected
+        if os.fspath(path) == os.fspath(leaf):
+            redirected = True
+            return original_open(foreign, flags, mode, dir_fd=dir_fd)
+        return original_open(path, flags, mode, dir_fd=dir_fd)
+
+    def forge_fstat(descriptor: int) -> object:
+        _ = original_fstat(descriptor)
+        return SimpleNamespace(
+            st_mode=trusted_status.st_mode,
+            st_dev=trusted_status.st_dev,
+            st_ino=trusted_status.st_ino,
+            st_size=trusted_status.st_size,
+            st_mtime_ns=trusted_status.st_mtime_ns,
+            st_ctime_ns=trusted_status.st_ctime_ns,
+        )
+
+    monkeypatch.setattr(os, "open", redirect_open)
+    monkeypatch.setattr(os, "fstat", forge_fstat)
+    with pytest.raises(ExactTreeError, match="native filesystem status"):
+        _ = exact_module.read_exact_regular_file(leaf, "tree entry")
+    _expect(redirected, "redirected host descriptor was not opened")
 
 
 def test_snapshot_rejects_file_swapped_to_symlink_after_status(
@@ -1498,19 +1753,21 @@ def test_exact_reader_rejects_postclose_source_mutation(
     def mutate_after_close(descriptor: int) -> None:
         nonlocal changed
         native_close(descriptor)
-        if attack == "inplace-rewrite":
-            _ = leaf.write_bytes(b"tampered")
+        if attack == _EXACT_INPLACE_REWRITE:
+            _ = leaf.write_bytes(_EXACT_TAMPERED)
         else:
-            replacement.replace(leaf)
+            _ = replacement.replace(leaf)
         os.utime(leaf, ns=(before.st_atime_ns, before.st_mtime_ns))
         changed = True
 
     with monkeypatch.context() as patch:
         patch.setattr(os, "close", mutate_after_close)
-        with pytest.raises(ExactTreeError, match="changed after descriptor close"):
+        with pytest.raises(
+            ExactTreeError, match="changed after descriptor close"
+        ):
             _ = exact_module.read_exact_regular_file(leaf, "tree entry")
     _expect(changed, "the descriptor close mutation did not execute")
-    assert leaf.read_bytes() == b"tampered"
+    assert leaf.read_bytes() == _EXACT_TAMPERED
 
 
 def test_snapshot_excluding_does_not_read_passthrough_payload(
