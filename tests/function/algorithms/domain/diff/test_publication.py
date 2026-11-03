@@ -153,6 +153,39 @@ def test_publication_ignores_post_import_directory_classifier(
     assert not destination.exists()
 
 
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux directory publication",
+)
+def test_publication_ignores_post_import_native_os_lstat_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pinned Path.lstat must not delegate to a mutated os.lstat hook."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    _ = staging.write_bytes(_OURS)
+    native_lstat = os.lstat
+    calls = 0
+
+    def forged_lstat(path: str | bytes | os.PathLike[str]) -> os.stat_result:
+        nonlocal calls
+        receipt = native_lstat(path)
+        if Path(os.fsdecode(path)) in {staging, destination}:
+            calls += 1
+            fields = list(receipt)
+            fields[stat.ST_MODE] = stat.S_IFDIR | 0o755
+            return os.stat_result(fields)
+        return receipt
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "lstat", forged_lstat)
+        with pytest.raises(OSError, match="staging must be"):
+            publication.publish_directory_no_replace(staging, destination)
+    assert calls == 0
+    assert staging.read_bytes() == _OURS
+    assert not destination.exists()
+
+
 def test_publication_rejects_foreign_or_aliased_inputs() -> None:
     """Validate path and host metadata before any platform rename primitive."""
     staging = Path("staging")
@@ -305,6 +338,37 @@ def test_windows_publication_ignores_post_import_rename_redirection(
             publication, "os", SimpleNamespace(name="nt", fsencode=os.fsencode)
         )
         patched.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+        patched.setattr(publication, "_HOST_OS_NAME", "nt")
+        patched.setattr(publication, "_HOST_PLATFORM", "win32")
+        publication.publish_directory_no_replace(
+            staging, destination, os_name="nt", platform="win32"
+        )
+    assert calls == 0
+    assert not staging.exists()
+    assert (destination / "payload").read_bytes() == _OURS
+    assert not redirected.exists()
+
+
+def test_windows_publication_ignores_post_import_native_os_rename_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pinned Path.rename must not delegate to a mutated os.rename hook."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    redirected = tmp_path / "redirected"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    native_rename = os.rename
+    calls = 0
+
+    def forged_rename(source: Path | str, target: Path | str) -> None:
+        nonlocal calls
+        _ = target
+        calls += 1
+        native_rename(source, redirected)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "rename", forged_rename)
         patched.setattr(publication, "_HOST_OS_NAME", "nt")
         patched.setattr(publication, "_HOST_PLATFORM", "win32")
         publication.publish_directory_no_replace(

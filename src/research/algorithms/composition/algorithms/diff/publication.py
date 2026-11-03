@@ -54,8 +54,8 @@ _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_IS_DIR: Final = stat.S_ISDIR
 # Keep syscall path encoding outside mutable process-global os path hooks.
 _NATIVE_PATH_STRING: Final = Path.__str__
-_NATIVE_PATH_LSTAT: Final = Path.lstat
-_NATIVE_PATH_RENAME: Final = Path.rename
+_NATIVE_OS_LSTAT: Final = os.lstat
+_NATIVE_OS_RENAME: Final = os.rename
 _FILESYSTEM_ENCODING: Final = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS: Final = sys.getfilesystemencodeerrors()
 _NATIVE_GET_ERRNO: Final = ctypes.get_errno
@@ -84,6 +84,27 @@ def _native_fsencode_path(path: Path) -> bytes:
     return _NATIVE_PATH_STRING(path).encode(
         _FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS
     )
+
+
+def _native_path_lstat(path: Path) -> os.stat_result:
+    """Inspect a native path without mutable pathlib or os dispatch hooks.
+
+    Returns:
+        The native host status record for the given path.
+
+    """
+    return _NATIVE_OS_LSTAT(_NATIVE_PATH_STRING(path))
+
+
+def _native_path_rename(source: Path, destination: Path) -> None:
+    """Rename using the host operation bound before domain code can run."""
+    _NATIVE_OS_RENAME(
+        _NATIVE_PATH_STRING(source), _NATIVE_PATH_STRING(destination)
+    )
+
+
+_NATIVE_PATH_LSTAT: Final = _native_path_lstat
+_NATIVE_PATH_RENAME: Final = _native_path_rename
 
 
 def _linux_rename_noreplace(source: Path, destination: Path) -> None:
