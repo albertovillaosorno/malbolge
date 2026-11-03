@@ -298,6 +298,18 @@ and diff checks clean. This guards only the import registration boundary;
 consumer code is still trusted and external concurrent writes are not isolated.
 Neither status check nor import is atomic against external filesystem writes;
 this is not a sandbox for trusted consumer-domain code.
+Generator domain preflight now revalidates the original stored fields of
+callback-returned `SourcePinEvidence` with its captured native constructor
+guard (`a27f430de`). Previously, an object built with `object.__new__` could
+pass the exact-type check despite a missing digest, zero/boolean file count,
+or malformed digest, and the generator would proceed to oracle preflight.
+Four red-first malformed-record variants and three late validator/getter-hook
+regressions now reject that evidence with `DomainContractError` before the
+oracle callback. All 263 focused generator tests passed; strict source/test
+BasedPyright reported no errors, pinned Ruff findings matched the preexisting
+baseline, and the diff check was clean. This validates receipt shape and
+invariants, not the truth of a consumer callback's claim or concurrent changes
+to external files. Repository-wide Jig verification remains unverified.
 A frozen, slotted Python evidence record still permits its *class* slot
 reader or `__getattribute__` to be replaced after consumer code executes.
 Source-lineage, behavior, and conjunctive transform admission therefore read
