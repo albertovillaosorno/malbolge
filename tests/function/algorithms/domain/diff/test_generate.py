@@ -41,6 +41,7 @@ import ntpath
 import os
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -55,11 +56,13 @@ from algorithms.diff.generate import (
 )
 from algorithms.diff.model import FileRecord
 from algorithms.diff.protected import protect_exact_plan
+from algorithms.diff.provenance import SourcePinEvidence
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sized
 
     from algorithms.diff.admission import IdentityTree
+    from algorithms.diff.domain import DiffDomain
     from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.protected import ProtectedExactPlan
     from algorithms.diff.source_binding import SourceBindingPolicy
@@ -1040,6 +1043,182 @@ def test_generator_recipe_ignores_late_sort_and_set_hooks(
             rejected = True
     assert rejected, "late sorted/set hook admitted invalid passthrough roots"
 
+
+class _ForeignProfile(str):
+    """An inexact profile label that still supports text operations."""
+
+
+@pytest.mark.parametrize(
+    ("field", "foreign", "pretend"),
+    [
+        ("minimum_source_similarity", True, float),
+        ("source_binding_maximum_anchors", True, int),
+        ("ignore_formatting_for_identity", 7, bool),
+        ("profile", _ForeignProfile("synthetic"), str),
+        ("mode", object(), TransformMode),
+    ],
+)
+def test_generator_recipe_rejects_late_type_spoofed_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    foreign: object,
+    pretend: type,
+) -> None:
+    """Hostile type hooks cannot admit foreign recipe policy values."""
+    recipe = replace(
+        _recipe(tmp_path, mode=TransformMode.COMPATIBLE), **{field: foreign}
+    )
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return pretend if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            if field == "minimum_source_similarity":
+                generate_module._validate_fraction(field, foreign)
+            elif field == "source_binding_maximum_anchors":
+                _ = generate_module._validate_binding_count(field, foreign, 255)
+            elif field == "ignore_formatting_for_identity":
+                generate_module._validate_identity_flags(recipe)
+            else:
+                generate_module._validate_recipe_identity(recipe)
+        except TypeError as error:
+            rejected = field in str(error)
+    assert rejected, f"late type hook admitted foreign {field}"
+
+
+def test_generator_recipe_rejects_late_type_spoofed_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject foreign source paths before executing their fspath hooks."""
+    foreign = _ForeignRecipePath(tmp_path / "redirect")
+    native_type = type
+    path_type = type(Path())
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return path_type if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            generate_module._validate_path(foreign, "source_root")
+        except TypeError as error:
+            rejected = "source_root must use exact pathlib Path" in str(error)
+    assert rejected, "late type hook accessed a foreign path"
+
+
+def test_generator_recipe_rejects_late_type_spoofed_resolve_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign resolved path cannot be approved by a late type hook."""
+    path = tmp_path / "source"
+    foreign = _ForgedResolvedRecipePath(path)
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return native_type(path) if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            generate_module, "_NATIVE_PATH_RESOLVE", lambda _: foreign
+        )
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            _ = generate_module._resolve_recipe_path(path, "source_root")
+        except ValueError:
+            rejected = True
+    assert rejected, "late type hook accepted a foreign path resolution"
+
+
+def test_generator_recipe_rejects_late_tuple_hook_topology(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late tuple replacement must not reorder untrusted root labels."""
+    unordered = ("zeta", "alpha")
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", lambda _: unordered)
+        try:
+            generate_module._validate_passthrough_topology(unordered)
+        except ValueError:
+            rejected = True
+    assert rejected, "late tuple hook admitted unordered passthrough roots"
+
+
+def test_generator_recipe_rejects_late_type_spoofed_domain_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Foreign provenance results cannot masquerade as admitted records."""
+    foreign = SimpleNamespace(file_count=1, snapshot_sha256="0" * 64)
+    fake_domain = cast(
+        "DiffDomain",
+        cast(
+            "object",
+            SimpleNamespace(
+                validate_source_provenance=lambda _: foreign,
+                validate_authoring_oracle=lambda _: None,
+            ),
+        ),
+    )
+    recipe = replace(
+        _recipe(tmp_path, mode=TransformMode.COMPATIBLE),
+        domain_module=tmp_path / "domain.py",
+    )
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return SourcePinEvidence if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            generate_module, "load_diff_domain", lambda _: fake_domain
+        )
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            generate_module._preflight_domain(recipe)
+        except DomainContractError:
+            rejected = True
+    assert rejected, "late type hook admitted foreign source provenance"
+
+
+def test_generator_replay_rejects_late_len_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged length cannot approve wrong snapshot size metadata."""
+    content = b"immutable replay"
+    file = tmp_path / "source.bin"
+    record = FileRecord(
+        path="source.bin",
+        sha256=hashlib.sha256(content).hexdigest(),
+        size=len(content) + 1,
+    )
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        if value is content:
+            return record.size
+        return native_len(cast("Sized", value))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            generate_module,
+            "read_exact_regular_file",
+            lambda _path, _name: content,
+        )
+        patch.setattr(builtins, "len", forged_len)
+        try:
+            _ = generate_module._read_exact_identity_file(file, record)
+        except ExactTreeError:
+            rejected = True
+    assert rejected, "late len hook admitted incorrect source size"
 
 def test_generator_rejects_foreign_recipe_fields_before_output(
     tmp_path: Path,

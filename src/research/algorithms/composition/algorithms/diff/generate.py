@@ -64,8 +64,12 @@ _SHA256_FACTORY = hashlib.sha256
 _NATIVE_ISFINITE = math.isfinite
 # Policy checks must keep their pre-domain Python semantics after hook loading.
 _NATIVE_ANY = builtins.any
-_NATIVE_SORTED = builtins.sorted
+_NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
+_NATIVE_SORTED = builtins.sorted
+_NATIVE_TUPLE = builtins.tuple
+_NATIVE_TYPE = builtins.type
+_NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Domain callbacks cannot redefine the host path containment verdict.
 _NATIVE_IS_RELATIVE_TO = Path.is_relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
@@ -113,14 +117,14 @@ class DiffGeneratorUnavailableError(RuntimeError):
 
 
 def _validate_fraction(name: str, value: object) -> None:
-    if type(value) is int:
+    if _NATIVE_TYPE(value) is int:
         # Only zero and one are integral fractions in [0, 1]. Reject other
         # integers before float conversion, which can raise OverflowError.
         if value not in {0, 1}:
             message = f"{name} must be a finite fraction in [0, 1]"
             raise ValueError(message)
         return
-    if type(value) is not float:
+    if _NATIVE_TYPE(value) is not float:
         message = f"{name} must be a finite numeric fraction in [0, 1]"
         raise TypeError(message)
     if not _NATIVE_ISFINITE(value) or value < 0.0 or value > 1.0:
@@ -131,7 +135,7 @@ def _validate_fraction(name: str, value: object) -> None:
 def _validate_binding_count(
     name: str, value: object, maximum: int | None
 ) -> int:
-    if type(value) is not int:
+    if _NATIVE_TYPE(value) is not int:
         message = f"{name} must use the exact integer type"
         raise TypeError(message)
     if value < 1 or (maximum is not None and value > maximum):
@@ -166,7 +170,7 @@ def _validate_binding_policy(recipe: DiffRecipe) -> None:
 def _validate_path(value: object, name: str) -> None:
     # Reject Path subclasses before evaluating __fspath__ or .resolve:
     # either override can redirect authoring reads and output publication.
-    if type(value) is not type(Path()):
+    if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{name} must use exact pathlib Path"
         raise TypeError(message)
     if _NUL in os.fspath(value):
@@ -185,7 +189,7 @@ def _resolve_recipe_path(path: Path, name: str) -> Path:
     except (OSError, ValueError, RuntimeError) as error:
         message = f"{name} could not be resolved safely"
         raise ValueError(message) from error
-    if type(resolved) is not type(path):
+    if _NATIVE_TYPE(resolved) is not _NATIVE_TYPE(path):
         message = f"{name} could not be resolved safely"
         raise ValueError(message)
     return resolved
@@ -220,7 +224,7 @@ def _validate_recipe_paths(recipe: DiffRecipe) -> None:
 
 
 def _validate_profile_text(value: object) -> None:
-    if type(value) is not str:
+    if _NATIVE_TYPE(value) is not str:
         message = "profile must use the exact string type"
         raise TypeError(message)
     if not value:
@@ -238,7 +242,7 @@ def _validate_profile_text(value: object) -> None:
 
 def _validate_recipe_identity(recipe: DiffRecipe) -> None:
     _validate_profile_text(recipe.profile)
-    if type(recipe.mode) is not TransformMode:
+    if _NATIVE_TYPE(recipe.mode) is not TransformMode:
         message = "mode must use the exact TransformMode type"
         raise TypeError(message)
 
@@ -265,7 +269,7 @@ def _canonical_passthrough_root(root: str) -> bool:
 
 
 def _validate_passthrough_topology(roots: tuple[str, ...]) -> None:
-    if roots != tuple(_NATIVE_SORTED(_NATIVE_SET(roots))):
+    if roots != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(roots))):
         message = "passthrough_roots must be canonical, sorted and disjoint"
         raise ValueError(message)
     for index, root in enumerate(roots):
@@ -275,11 +279,11 @@ def _validate_passthrough_topology(roots: tuple[str, ...]) -> None:
 
 
 def _validate_passthrough_roots(value: object) -> None:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "passthrough_roots must use the exact immutable tuple type"
         raise TypeError(message)
     items = cast("tuple[object, ...]", value)
-    if _NATIVE_ANY(type(root) is not str for root in items):
+    if _NATIVE_ANY(_NATIVE_TYPE(root) is not str for root in items):
         message = "passthrough_roots entries must use the exact string type"
         raise TypeError(message)
     roots = cast("tuple[str, ...]", value)
@@ -300,13 +304,13 @@ def _validate_identity_flags(recipe: DiffRecipe) -> None:
             recipe.ignore_formatting_for_identity,
         ),
     ):
-        if type(value) is not bool:
+        if _NATIVE_TYPE(value) is not bool:
             message = f"{name} must be an exact boolean"
             raise TypeError(message)
 
 
 def _validate_recipe(recipe: DiffRecipe) -> None:
-    if type(recipe) is not DiffRecipe:
+    if _NATIVE_TYPE(recipe) is not DiffRecipe:
         message = "diff recipe must use the exact DiffRecipe type"
         raise TypeError(message)
     _validate_recipe_paths(recipe)
@@ -325,8 +329,9 @@ def _validate_recipe(recipe: DiffRecipe) -> None:
 
 def _read_exact_identity_file(path: Path, record: FileRecord) -> bytes:
     replay = read_exact_regular_file(path, "exact source identity")
-    if len(replay) != record.size or _SHA256_FACTORY(replay).hexdigest() != (
-        record.sha256
+    if (
+        _NATIVE_LEN(replay) != record.size
+        or _SHA256_FACTORY(replay).hexdigest() != record.sha256
     ):
         message = f"exact source identity changed after planning: {record.path}"
         raise ExactTreeError(message)
@@ -394,7 +399,7 @@ def _preflight_domain(recipe: DiffRecipe) -> None:
         raise DiffGeneratorUnavailableError(message)
     domain = load_diff_domain(recipe.domain_module)
     evidence = domain.validate_source_provenance(recipe.source_root)
-    if type(evidence) is not SourcePinEvidence:
+    if _NATIVE_TYPE(evidence) is not SourcePinEvidence:
         message = "domain source provenance hook must return SourcePinEvidence"
         raise DomainContractError(message)
     oracle_result = domain.validate_authoring_oracle(recipe.oracle_root)
