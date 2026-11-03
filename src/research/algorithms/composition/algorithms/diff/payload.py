@@ -62,6 +62,7 @@ _NATIVE_ZIP = zip
 _NATIVE_RANGE = range
 _NATIVE_LEN = len
 _NATIVE_FROM_BYTES = int.from_bytes
+_NATIVE_OBJECT_NEW = object.__new__
 
 _KEY_BYTES = 32
 _NONCE_BYTES = 12
@@ -131,6 +132,10 @@ _PAYLOAD_CIPHERTEXT_SLOT = cast(
 _PAYLOAD_TAG_SLOT = cast(
     "MemberDescriptorType", AuthenticatedPayload.__dict__["tag"]
 )
+_PAYLOAD_INIT = cast(
+    "Callable[[AuthenticatedPayload, bytes, bytes], None]",
+    AuthenticatedPayload.__dict__["__init__"],
+)
 
 
 def _payload_fields(payload: AuthenticatedPayload) -> tuple[bytes, bytes]:
@@ -138,6 +143,13 @@ def _payload_fields(payload: AuthenticatedPayload) -> tuple[bytes, bytes]:
         _PAYLOAD_CIPHERTEXT_SLOT.__get__(payload, AuthenticatedPayload),
         _PAYLOAD_TAG_SLOT.__get__(payload, AuthenticatedPayload),
     )
+
+
+def _new_authenticated_payload(ciphertext: bytes, tag: bytes) -> AuthenticatedPayload:
+    """Bind computed AEAD bytes to original record allocation and validation."""
+    payload = _NATIVE_OBJECT_NEW(AuthenticatedPayload)
+    _PAYLOAD_INIT(payload, ciphertext, tag)
+    return payload
 
 
 def _require_key_nonce(key: object, nonce: object) -> None:
@@ -300,7 +312,7 @@ def chacha20_poly1305_encrypt(
         initial_counter=_ONE,
     )
     tag = _poly1305_mac(_mac_data(aad, ciphertext), one_time_key)
-    return AuthenticatedPayload(ciphertext=ciphertext, tag=tag)
+    return _new_authenticated_payload(ciphertext=ciphertext, tag=tag)
 
 
 def chacha20_poly1305_decrypt(

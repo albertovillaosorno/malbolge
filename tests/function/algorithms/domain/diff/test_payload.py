@@ -34,8 +34,12 @@
 
 import builtins
 import hmac
+import os
+import subprocess
+import sys
 from collections.abc import Iterable, Sized
 from dataclasses import replace
+from types import MemberDescriptorType
 from typing import cast, override
 
 import pytest
@@ -726,3 +730,59 @@ def test_payload_constructor_writes_original_fields(
         payload = AuthenticatedPayload(b"payload", bytes(16))
     assert type(payload) is AuthenticatedPayload
     assert calls == 0, "valid payload dispatched late field setter"
+
+
+@pytest.mark.parametrize("field", ["ciphertext", "tag"])
+def test_encrypt_ignores_late_payload_initializer(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Late class initializers cannot replace computed AEAD output bytes."""
+    expected = chacha20_poly1305_encrypt(_RFC_KEY, _RFC_NONCE, b"source-bound")
+    native_init = AuthenticatedPayload.__init__
+    slot = cast("MemberDescriptorType", AuthenticatedPayload.__dict__[field])
+    calls = 0
+
+    def forged_init(
+        self: AuthenticatedPayload, ciphertext: bytes, tag: bytes
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        native_init(self, ciphertext, tag)
+        slot.__set__(
+            self,
+            bytes(len(ciphertext)) if field == "ciphertext" else bytes(16),
+        )
+
+    with monkeypatch.context() as patched:
+        patched.setattr(AuthenticatedPayload, "__init__", forged_init)
+        observed = chacha20_poly1305_encrypt(
+            _RFC_KEY, _RFC_NONCE, b"source-bound"
+        )
+    assert observed == expected, "late constructor replaced authenticated output"
+    assert calls == 0, "late payload initializer was consulted"
+
+
+def test_encrypt_ignores_late_payload_allocator_in_isolated_process() -> None:
+    """A class __new__ hook must not replace authenticated encryption output."""
+    script = """
+from algorithms.diff.payload import AuthenticatedPayload, chacha20_poly1305_encrypt
+key = bytes(range(32))
+nonce = bytes(range(12))
+expected = chacha20_poly1305_encrypt(key, nonce, b"verified literal")
+def forbidden_new(cls, *args, **kwargs):
+    raise AssertionError("late payload __new__ was consulted")
+AuthenticatedPayload.__new__ = staticmethod(forbidden_new)
+observed = chacha20_poly1305_encrypt(key, nonce, b"verified literal")
+assert observed == expected
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
