@@ -67,6 +67,7 @@ from algorithms.diff.model import (
     TreeSnapshot,
     _file_fields,
     _oracle_literal_data,
+    _plan_fields,
     _snapshot_files,
     _source_slice_fields,
     reserved_windows_component,
@@ -1502,24 +1503,28 @@ def build_compatible_plan(
     """
     request = _require_build_request(request)
     exact = build_exact_plan(request.source_root, request.oracle_root)
+    # Consumer mappers run during instruction construction and can replace
+    # ExactAuthoringPlan class getters. Keep the admitted original snapshots
+    # and instructions for both drift checks and returned plan provenance.
+    planned_source, planned_target, planned_instructions, _ = _plan_fields(exact)
     context = _new_build_context(
         request=request,
         exact=exact,
-        source_records=_record_map(exact.source),
+        source_records=_record_map(planned_source),
     )
     instructions = _NATIVE_TUPLE(
         _compatible_instruction(context, instruction)
-        for instruction in exact.instructions
+        for instruction in planned_instructions
     )
     _require_tree_unchanged(
-        request.source_root, exact.source, "source", phase="authoring"
+        request.source_root, planned_source, "source", phase="authoring"
     )
     _require_tree_unchanged(
-        request.oracle_root, exact.target, "target", phase="authoring"
+        request.oracle_root, planned_target, "target", phase="authoring"
     )
     return _new_compatible_plan(
-        source=exact.source,
-        target=exact.target,
+        source=planned_source,
+        target=planned_target,
         reference_identity=request.reference_identity,
         admission_policy=request.admission_policy,
         instructions=instructions,

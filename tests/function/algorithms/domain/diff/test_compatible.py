@@ -82,6 +82,7 @@ from algorithms.diff.compatible import (
 from algorithms.diff.exact import ExactTreeError, build_exact_plan, snapshot_tree
 from algorithms.diff.mapped import MappedUnit, MappedView
 from algorithms.diff.model import (
+    ExactAuthoringPlan,
     ExactInstruction,
     ExactInstructionKind,
     OracleLiteral,
@@ -99,7 +100,7 @@ if TYPE_CHECKING:
         Mapper,
         Postcondition,
     )
-    from algorithms.diff.model import ExactAuthoringPlan, TreeSnapshot
+    from algorithms.diff.model import TreeSnapshot
 
 _TOKEN = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s]")
 _SOURCE_CODE = b"alpha = old ; omega"
@@ -4261,3 +4262,116 @@ def test_compatible_semantic_routing_ignores_late_plan_constructor(
         assert admitted.admitted
     assert (output / "code.src").read_bytes() == _EXPECTED_CODE
     assert calls == 0
+
+
+@pytest.mark.parametrize("field", ["source", "target"])
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_compatible_authoring_rejects_spoofed_exact_plan_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    hook: str,
+) -> None:
+    """A mapper cannot substitute live source/oracle evidence after planning."""
+    source, oracle = _roots(tmp_path)
+    changed_root = source if field == "source" else oracle
+    changed = changed_root / "code.src"
+    spoofed = False
+    getter_calls = 0
+
+    def mapper(path: str, data: bytes) -> MappedView | None:
+        nonlocal spoofed
+        if path == "code.src" and not spoofed:
+            spoofed = True
+            _ = changed.write_bytes(changed.read_bytes() + b" corrupted")
+            forged_snapshot = snapshot_tree(changed_root)
+
+            def forged_getter(_plan: ExactAuthoringPlan) -> TreeSnapshot:
+                nonlocal getter_calls
+                getter_calls += 1
+                return forged_snapshot
+
+            if hook == "slot":
+                patched.setattr(ExactAuthoringPlan, field, property(forged_getter))
+            else:
+                original_getter = ExactAuthoringPlan.__getattribute__
+
+                def forged_getattribute(
+                    plan: ExactAuthoringPlan, name: str
+                ) -> object:
+                    if name == field:
+                        return forged_getter(plan)
+                    return cast("object", original_getter(plan, name))
+
+                patched.setattr(
+                    ExactAuthoringPlan, "__getattribute__", forged_getattribute
+                )
+        return _mapper(path, data)
+
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=mapper,
+    )
+    with (
+        monkeypatch.context() as patched,
+        pytest.raises(CompatiblePlanError, match=f"compatible {field} tree changed"),
+    ):
+        _ = build_compatible_plan(request)
+    assert spoofed, "mapper did not change the source or oracle tree"
+    assert getter_calls == 0, "mutable exact-plan getter certified altered bytes"
+
+
+@pytest.mark.parametrize("field", ["source", "target"])
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_compatible_authoring_uses_stored_exact_plan_for_valid_tree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    hook: str,
+) -> None:
+    """Valid exact snapshots remain usable after late class getter changes."""
+    source, oracle = _roots(tmp_path)
+    getter_calls = 0
+
+    def build_then_replace(
+        source_root: Path, oracle_root: Path
+    ) -> ExactAuthoringPlan:
+        plan = build_exact_plan(source_root, oracle_root)
+
+        def forbidden_getter(_plan: ExactAuthoringPlan) -> TreeSnapshot:
+            nonlocal getter_calls
+            getter_calls += 1
+            raise AssertionError("late exact-plan getter consulted")
+
+        if hook == "slot":
+            patched.setattr(ExactAuthoringPlan, field, property(forbidden_getter))
+        else:
+            original_getter = ExactAuthoringPlan.__getattribute__
+
+            def forbidden_getattribute(
+                item: ExactAuthoringPlan, name: str
+            ) -> object:
+                if name == field:
+                    return forbidden_getter(item)
+                return cast("object", original_getter(item, name))
+
+            patched.setattr(
+                ExactAuthoringPlan, "__getattribute__", forbidden_getattribute
+            )
+        return plan
+
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "build_exact_plan", build_then_replace)
+        plan = build_compatible_plan(request)
+    assert getter_calls == 0, "late exact-plan getter altered valid authoring"
+    assert len(plan.instructions) > 0
