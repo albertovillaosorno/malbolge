@@ -41,6 +41,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
+from algorithms.diff import semantic as semantic_module
 from algorithms.diff.mapped import MappedUnit, MappedView
 from algorithms.diff.semantic import (
     SemanticAuthoringPlan,
@@ -52,7 +53,7 @@ from algorithms.diff.semantic import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sized
 
 _TOKEN = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s]")
 _REPLACED = b"extra ; alpha   = new ; omega tail"
@@ -526,3 +527,113 @@ def test_semantic_public_boundaries_reject_boolean_and_foreign_inputs() -> None:
             empty,
             cast("Callable[[bytes], MappedView]", object()),
         )
+
+
+@pytest.mark.parametrize("foreign", [bytearray(b"replacement"), b"short"])
+def test_semantic_late_type_or_len_rejects_foreign_digest_or_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+) -> None:
+    """Late mutable builtins cannot admit foreign replacement evidence."""
+    digest = b"x" * 32
+    locator = SemanticLocator((digest,), (), ())
+    native_type = type
+    native_len = len
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    def forged_len(value: object) -> int:
+        return 32 if value is foreign else native_len(cast("Sized", value))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "len", forged_len)
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            if isinstance(foreign, bytearray):
+                _ = SemanticEdit(
+                    locator, cast("bytes", cast("object", foreign)), (digest,)
+                )
+            else:
+                _ = SemanticLocator((cast("bytes", foreign),), (), ())
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late builtin hook admitted foreign semantic data"
+
+
+def test_semantic_late_type_rejects_foreign_edit_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Plan admission must retain exact immutable edit records."""
+    foreign = SimpleNamespace(
+        locator=None, replacement=b"no", replacement_digests=()
+    )
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return SemanticEdit if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            _ = SemanticAuthoringPlan(
+                (cast("SemanticEdit", cast("object", foreign)),)
+            )
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late type hook admitted foreign semantic edit"
+
+
+def test_semantic_late_tuple_does_not_erase_mapped_units(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hostile tuple hooks cannot erase canonical source digest evidence."""
+    view = _map(b"alpha")
+    observed = None
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", lambda _: ())
+        observed = semantic_module._view_digests(view)
+    assert len(observed) == len(view.units)
+
+
+def test_semantic_late_callable_rejects_nonmapper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false callable hook cannot authorize non-functions as mappers."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "callable", lambda _: True)
+        try:
+            semantic_module._validate_mapper(object())
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late callable hook admitted a foreign mapper"
+
+
+def test_semantic_late_type_rejects_forged_mapper_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign mapped output cannot masquerade as an admitted view."""
+    raw = b"output"
+    foreign = SimpleNamespace(raw=raw, units=())
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return MappedView if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            semantic_module._map_semantic_output(
+                cast(
+                    "Callable[[bytes], MappedView]",
+                    cast("object", lambda _: foreign),
+                ),
+                raw,
+            )
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late type hook admitted foreign mapped evidence"

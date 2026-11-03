@@ -49,9 +49,13 @@ _ZERO = 0
 _ONE = 1
 # Preserve exact metadata and edit ordering after domain callbacks run.
 _NATIVE_ANY = builtins.any
+_NATIVE_CALLABLE = builtins.callable
+_NATIVE_LEN = builtins.len
 _NATIVE_MAX = builtins.max
 _NATIVE_MIN = builtins.min
 _NATIVE_SORTED = builtins.sorted
+_NATIVE_TUPLE = builtins.tuple
+_NATIVE_TYPE = builtins.type
 # Verify placement using a constructor pinned before host hooks can replace it.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -85,12 +89,13 @@ class SemanticLocator:
             self.after_digests,
         )
         for group in groups:
-            if type(group) is not tuple:
+            if _NATIVE_TYPE(group) is not tuple:
                 message = "semantic locator digests must use immutable tuples"
                 raise SemanticPlacementError(message)
             items = cast("tuple[object, ...]", group)
             if _NATIVE_ANY(
-                type(digest) is not bytes or len(digest) != _SHA256_BYTES
+                _NATIVE_TYPE(digest) is not bytes
+                or _NATIVE_LEN(digest) != _SHA256_BYTES
                 for digest in items
             ):
                 message = "semantic locator digests must be exact SHA-256 bytes"
@@ -115,18 +120,19 @@ class SemanticEdit:
             SemanticPlacementError: Edit metadata is malformed.
 
         """
-        if type(self.locator) is not SemanticLocator:
+        if _NATIVE_TYPE(self.locator) is not SemanticLocator:
             message = "semantic edit locator must use the exact locator type"
             raise SemanticPlacementError(message)
-        if type(self.replacement) is not bytes:
+        if _NATIVE_TYPE(self.replacement) is not bytes:
             message = "semantic replacement must use exact bytes"
             raise SemanticPlacementError(message)
-        if type(self.replacement_digests) is not tuple:
+        if _NATIVE_TYPE(self.replacement_digests) is not tuple:
             message = "semantic replacement digests must use an immutable tuple"
             raise SemanticPlacementError(message)
         items = cast("tuple[object, ...]", self.replacement_digests)
         if _NATIVE_ANY(
-            type(digest) is not bytes or len(digest) != _SHA256_BYTES
+            _NATIVE_TYPE(digest) is not bytes
+            or _NATIVE_LEN(digest) != _SHA256_BYTES
             for digest in items
         ):
             message = "semantic replacement digests must be exact SHA-256 bytes"
@@ -146,10 +152,12 @@ class SemanticAuthoringPlan:
             SemanticPlacementError: Plan records are mutable or foreign.
 
         """
-        if type(self.edits) is not tuple:
+        if _NATIVE_TYPE(self.edits) is not tuple:
             message = "semantic edits must use the exact immutable tuple type"
             raise SemanticPlacementError(message)
-        if _NATIVE_ANY(type(edit) is not SemanticEdit for edit in self.edits):
+        if _NATIVE_ANY(
+            _NATIVE_TYPE(edit) is not SemanticEdit for edit in self.edits
+        ):
             message = "semantic plan contains a foreign edit record"
             raise SemanticPlacementError(message)
 
@@ -207,7 +215,7 @@ class _SemanticBuildContext:
 
 
 def _frame(value: bytes) -> bytes:
-    return len(value).to_bytes(8, byteorder="big") + value
+    return _NATIVE_LEN(value).to_bytes(8, byteorder="big") + value
 
 
 def _unit_digest(canonical: bytes) -> bytes:
@@ -215,7 +223,7 @@ def _unit_digest(canonical: bytes) -> bytes:
 
 
 def _view_digests(view: MappedView) -> tuple[bytes, ...]:
-    return tuple(_unit_digest(unit.canonical) for unit in view.units)
+    return _NATIVE_TUPLE(_unit_digest(unit.canonical) for unit in view.units)
 
 
 def _replacement_bytes(view: MappedView, start: int, end: int) -> bytes:
@@ -234,7 +242,7 @@ def _locator(
     context_units: int,
 ) -> SemanticLocator:
     before_start = _NATIVE_MAX(_ZERO, start - context_units)
-    after_end = _NATIVE_MIN(len(source_digests), end + context_units)
+    after_end = _NATIVE_MIN(_NATIVE_LEN(source_digests), end + context_units)
     return SemanticLocator(
         source_digests=source_digests[start:end],
         before_digests=source_digests[before_start:start],
@@ -305,7 +313,7 @@ def _reconstruct_lis(
         selected.append(pairs[cursor])
         cursor = predecessors[cursor]
     selected.reverse()
-    return tuple(selected)
+    return _NATIVE_TUPLE(selected)
 
 
 def _lis_pairs(pairs: tuple[_AnchorPair, ...]) -> tuple[_AnchorPair, ...]:
@@ -313,10 +321,10 @@ def _lis_pairs(pairs: tuple[_AnchorPair, ...]) -> tuple[_AnchorPair, ...]:
         return ()
     tail_targets: list[int] = []
     tail_indices: list[int] = []
-    predecessors = [-_ONE] * len(pairs)
+    predecessors = [-_ONE] * _NATIVE_LEN(pairs)
     for index, pair in enumerate(pairs):
         position = bisect_left(tail_targets, pair.target_start)
-        if position == len(tail_targets):
+        if position == _NATIVE_LEN(tail_targets):
             tail_targets.append(pair.target_start)
             tail_indices.append(index)
         else:
@@ -340,7 +348,7 @@ def _non_overlapping_pairs(
         selected.append(pair)
         source_end = pair.source_start + width
         target_end = pair.target_start + width
-    return tuple(selected)
+    return _NATIVE_TUPLE(selected)
 
 
 def _window_pairs(
@@ -360,7 +368,7 @@ def _window_pairs(
         region.target_end,
         width=width,
     )
-    return tuple(
+    return _NATIVE_TUPLE(
         _NATIVE_SORTED(
             (
                 _AnchorPair(source_offset, target_windows[window])
@@ -496,8 +504,8 @@ def _matching_blocks(
     target: tuple[bytes, ...],
 ) -> tuple[_MatchBlock, ...]:
     context = _MatchContext(source=source, target=target)
-    region = _Region(_ZERO, len(source), _ZERO, len(target))
-    return tuple(_region_blocks(context, region))
+    region = _Region(_ZERO, _NATIVE_LEN(source), _ZERO, _NATIVE_LEN(target))
+    return _NATIVE_TUPLE(_region_blocks(context, region))
 
 
 def _edit_ranges(
@@ -523,16 +531,19 @@ def _edit_ranges(
             )
         source_cursor = block.source_start + block.length
         target_cursor = block.target_start + block.length
-    if source_cursor != len(source) or target_cursor != len(target):
+    if (
+        source_cursor != _NATIVE_LEN(source)
+        or target_cursor != _NATIVE_LEN(target)
+    ):
         edits.append(
             _EditRange(
                 source_cursor,
-                len(source),
+                _NATIVE_LEN(source),
                 target_cursor,
-                len(target),
+                _NATIVE_LEN(target),
             )
         )
-    return tuple(edits)
+    return _NATIVE_TUPLE(edits)
 
 
 def _semantic_edit(
@@ -574,10 +585,13 @@ def build_semantic_plan(
         unlocatable by construction.
 
     """
-    if type(source) is not MappedView or type(target) is not MappedView:
+    if (
+        _NATIVE_TYPE(source) is not MappedView
+        or _NATIVE_TYPE(target) is not MappedView
+    ):
         message = "semantic build inputs must use exact MappedView records"
         raise SemanticPlacementError(message)
-    if type(context_units) is not int or context_units < _ONE:
+    if _NATIVE_TYPE(context_units) is not int or context_units < _ONE:
         message = "semantic placement context_units must be a positive integer"
         raise SemanticPlacementError(message)
     source_digests = _view_digests(source)
@@ -588,7 +602,7 @@ def build_semantic_plan(
         target=target,
         context_units=context_units,
     )
-    edits = tuple(
+    edits = _NATIVE_TUPLE(
         _semantic_edit(context, edit)
         for edit in _edit_ranges(source_digests, target_digests)
     )
@@ -600,10 +614,13 @@ def _context_matches(
     locator: SemanticLocator,
     start: int,
 ) -> bool:
-    source_end = start + len(locator.source_digests)
-    before_count = len(locator.before_digests)
-    after_count = len(locator.after_digests)
-    fits = start >= before_count and source_end + after_count <= len(candidate)
+    source_end = start + _NATIVE_LEN(locator.source_digests)
+    before_count = _NATIVE_LEN(locator.before_digests)
+    after_count = _NATIVE_LEN(locator.after_digests)
+    fits = (
+        start >= before_count
+        and source_end + after_count <= _NATIVE_LEN(candidate)
+    )
     source_matches = (
         fits and candidate[start:source_end] == locator.source_digests
     )
@@ -624,18 +641,18 @@ def _position_seeds(
 ) -> tuple[int, ...]:
     if locator.source_digests:
         first = locator.source_digests[0]
-        return tuple(
+        return _NATIVE_TUPLE(
             index for index, digest in enumerate(candidate) if digest == first
         )
     if locator.before_digests:
         final_before = locator.before_digests[-_ONE]
-        return tuple(
+        return _NATIVE_TUPLE(
             index + _ONE
             for index, digest in enumerate(candidate)
             if digest == final_before
         )
     first_after = locator.after_digests[0]
-    return tuple(
+    return _NATIVE_TUPLE(
         index for index, digest in enumerate(candidate) if digest == first_after
     )
 
@@ -644,7 +661,7 @@ def _candidate_positions(
     candidate: tuple[bytes, ...],
     locator: SemanticLocator,
 ) -> tuple[int, ...]:
-    return tuple(
+    return _NATIVE_TUPLE(
         start
         for start in _position_seeds(candidate, locator)
         if _context_matches(candidate, locator, start)
@@ -656,10 +673,10 @@ def _unique_position(
     locator: SemanticLocator,
 ) -> int:
     positions = _candidate_positions(candidate, locator)
-    if len(positions) != _ONE:
+    if _NATIVE_LEN(positions) != _ONE:
         message = (
             "semantic source locator is missing or ambiguous: "
-            f"found {len(positions)} placements"
+            f"found {_NATIVE_LEN(positions)} placements"
         )
         raise SemanticPlacementError(message)
     return positions[0]
@@ -669,8 +686,8 @@ def _raw_span(view: MappedView, start: int, end: int) -> tuple[int, int]:
     if start == end:
         offset = (
             view.units[start].raw_start
-            if start < len(view.units)
-            else len(view.raw)
+            if start < _NATIVE_LEN(view.units)
+            else _NATIVE_LEN(view.raw)
         )
         return offset, offset
     return view.units[start].raw_start, view.units[end - _ONE].raw_end
@@ -684,7 +701,7 @@ def _locate_edits(
     located: list[_LocatedEdit] = []
     for edit in plan.edits:
         unit_start = _unique_position(digests, edit.locator)
-        unit_end = unit_start + len(edit.locator.source_digests)
+        unit_end = unit_start + _NATIVE_LEN(edit.locator.source_digests)
         raw_start, raw_end = _raw_span(candidate, unit_start, unit_end)
         located.append(
             _LocatedEdit(
@@ -695,7 +712,7 @@ def _locate_edits(
                 raw_end=raw_end,
             )
         )
-    ordered = tuple(
+    ordered = _NATIVE_TUPLE(
         _NATIVE_SORTED(located, key=lambda item: (item.raw_start, item.raw_end))
     )
     _require_nonoverlapping_edits(ordered)
@@ -742,11 +759,11 @@ def _expected_digests(
         expected[item.unit_start : item.unit_end] = (
             item.edit.replacement_digests
         )
-    return tuple(expected)
+    return _NATIVE_TUPLE(expected)
 
 
 def _validate_mapper(value: object) -> None:
-    if not callable(value):
+    if not _NATIVE_CALLABLE(value):
         message = "semantic mapper must be callable"
         raise SemanticPlacementError(message)
 
@@ -761,7 +778,7 @@ def _map_semantic_output(
         # Preserve the original error as the cause without formatting it.
         message = "semantic mapper failed after edit application"
         raise SemanticPlacementError(message) from error
-    if type(mapped) is not MappedView:
+    if _NATIVE_TYPE(mapped) is not MappedView:
         message = "semantic mapper must return the exact MappedView type"
         raise SemanticPlacementError(message)
     if mapped.raw != output:
@@ -785,10 +802,10 @@ def apply_semantic_plan(
         or re-tokenization does not match the intended canonical unit sequence.
 
     """
-    if type(candidate) is not MappedView:
+    if _NATIVE_TYPE(candidate) is not MappedView:
         message = "semantic candidate must use the exact MappedView type"
         raise SemanticPlacementError(message)
-    if type(plan) is not SemanticAuthoringPlan:
+    if _NATIVE_TYPE(plan) is not SemanticAuthoringPlan:
         message = "semantic plan must use the exact authoring-plan type"
         raise SemanticPlacementError(message)
     _validate_mapper(mapper)
