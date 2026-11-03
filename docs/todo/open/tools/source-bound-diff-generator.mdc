@@ -861,6 +861,15 @@ format.
   scoped Ruff, strict BasedPyright, and diff checks were clean. Global Jig
   still lacks a green verdict; direct stored-instance mutation and external
   filesystem writers remain outside this process boundary.
+- Pinned-source normalization now requires import-original host
+  `os.path.realpath` before root preflight, after the status receipt, and
+  after native `Path.resolve` (`11740f2b4`). Six red-first redirect, denial,
+  and status-callback swap cases passed; 160 focused provenance and 3,273
+  integrated diff tests passed. Ruff, strict source BasedPyright, and diff
+  checks were clean; unrelated existing test typing diagnostics remain.
+  Jig doctor is degraded (graph absent), and a 120-second global check timed
+  out without a green verdict. Direct instance mutation and external source
+  writers remain outside scope.
 
 - Source-binding policies now verify original stored `AnchorPolicy`
   dimensions, and bind/recover preflight rejects incomplete native binding,

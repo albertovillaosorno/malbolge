@@ -402,6 +402,19 @@ were clean. This does not provide concurrent writer exclusion or isolation
 from trusted direct stored-instance mutation, and global Jig validation still
 lacks a green result.
 
+Source provenance root resolution now checks the import-captured host
+`os.path.realpath` before preflight, again after the root status receipt,
+and after the original `Path.resolve` (`11740f2b4`). A late host resolver
+could previously redirect an admitted source snapshot to a different tree,
+reject a valid pin, or be installed during the status callback. Six red-first
+snapshot/pin cases prove the guard; all 160 provenance and 3,273 integrated
+diff tests passed, with scoped Ruff, source strict BasedPyright, and diff
+checks clean. Existing unrelated test typing diagnostics remain. These
+identity checks do not make resolution atomic against external filesystem
+writers or isolate trusted direct mutation. Jig doctor remains degraded
+(graph absent), and a bounded 120-second global check timed out without a
+repository-wide green verdict.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from
