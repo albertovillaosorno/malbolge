@@ -1678,3 +1678,86 @@ def test_linux_publication_rejects_late_ctypes_function_pointer_flags(
             publication.publish_directory_no_replace(staging, destination)
     assert rejected.value.errno == errno.ENOTSUP
     assert staging.is_dir() and not destination.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux no-replace directory semantics",
+)
+def test_linux_publication_rejects_cdll_redirect_after_late_any_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changing builtins.any cannot silence the native CDLL integrity gate."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    fake_rename = Mock(return_value=0)
+    caught: OSError | None = None
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes.CDLL, "renameat2", fake_rename, raising=False)
+        patched.setattr(builtins, "any", lambda _items: False)
+        try:
+            publication.publish_directory_no_replace(staging, destination)
+        except OSError as error:
+            caught = error
+
+    assert caught is not None and caught.errno == errno.ENOTSUP
+    assert fake_rename.call_count == 0, "forged renameat2 symbol reached dispatch"
+    assert (staging / "payload").read_bytes() == _OURS
+    assert list(destination.iterdir()) == []
+
+
+@pytest.mark.parametrize("false_or_true", [False, True])
+def test_publication_path_guard_ignores_late_any_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    false_or_true: bool,
+) -> None:
+    """Path evidence does not trust a consumer-installed builtin aggregate."""
+    from pathlib import PurePath
+
+    path = tmp_path / "target"
+    native_path_string = publication._native_path_string  # pyright: ignore[reportPrivateUsage]
+    original = cast("property", PurePath.__dict__["_tail"])
+    original_text = native_path_string(path)
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda _items: false_or_true)
+        if not false_or_true:
+            patched.setattr(PurePath, "_tail", property(lambda value: original.__get__(value, PurePath)))
+        if false_or_true:
+            assert native_path_string(path) == original_text
+        else:
+            with pytest.raises(OSError, match="path hooks changed"):
+                _ = native_path_string(path)
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux no-replace directory semantics",
+)
+def test_linux_publication_rejects_loader_override_after_late_any_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changing the aggregate builtin cannot hide ctypes ABI substitution."""
+    destination = tmp_path / "destination"
+    calls = 0
+
+    def foreign_loader(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return object()
+
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes, "_dlopen", foreign_loader)
+        patched.setattr(builtins, "any", lambda _items: False)
+        try:
+            publication._require_native_cdll_dispatch(destination)  # pyright: ignore[reportPrivateUsage]
+        except OSError as error:
+            caught = error
+
+    assert caught is not None and caught.errno == errno.ENOTSUP
+    assert calls == 0, "replaced ctypes loader was consulted"

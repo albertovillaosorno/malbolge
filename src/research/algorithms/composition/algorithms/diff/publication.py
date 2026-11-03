@@ -54,6 +54,7 @@ _RENAME_NOREPLACE: Final = 1
 _NUL: Final = "\x00"
 # Admission must not trust process-global builtins replaced by consumers.
 _NATIVE_TYPE: Final = builtins.type
+_NATIVE_ANY: Final = builtins.any
 _NATIVE_STR_TYPE: Final = builtins.str
 _NATIVE_INT_TYPE: Final = builtins.int
 _NATIVE_PATH_TYPE: Final = _NATIVE_TYPE(Path())
@@ -190,7 +191,7 @@ def _native_posix_path_string(path: Path) -> str:
 
 def _native_path_string(path: Path) -> str:
     """Read a native Path spelling without late Python class or os path hooks."""
-    if any(
+    if _NATIVE_ANY(
         path_class.__dict__.get(name) is not original
         for path_class, hooks in _NATIVE_PATH_CLASS_HOOKS
         for name, original in hooks
@@ -246,12 +247,12 @@ _NATIVE_PATH_RENAME: Final = _native_path_rename
 def _require_native_cdll_dispatch(destination: Path) -> None:
     """Fail closed when late ctypes class hooks could redirect renameat2."""
     if (
-        any(
+        _NATIVE_ANY(
             cdll_class.__dict__.get(name) is not original
             for cdll_class, hooks in _NATIVE_CDLL_CLASS_HOOKS
             for name, original in hooks
         )
-        or any(
+        or _NATIVE_ANY(
             ctypes.__dict__.get(name) is not original
             for name, original in _NATIVE_CTYPES_CDLL_GLOBALS
         )
