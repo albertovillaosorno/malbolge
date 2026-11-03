@@ -270,6 +270,14 @@ format.
   Five late-hook/alias regressions and 125 postcommit domain tests pass;
   strict source/test typing, Ruff, and diff checks are clean. Concurrent
   host mutation and external filesystem writers remain out of scope.
+- Native domain `Path.parent` traversal now pins `Path.with_segments` and
+  inherited native `PurePath` reconstruction hooks (`2ccef7350`). Two
+  red-first cases previously executed a late foreign callback before
+  admission; twelve concrete/inherited callback and linked-parent variants
+  now reject safely. All 140 focused postcommit domain tests and 926 adjacent
+  precommit tests pass, with scoped Ruff, strict source/test typing, and diff
+  checks clean. Direct trusted-state mutation and external filesystem races
+  are still outside this guard.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode

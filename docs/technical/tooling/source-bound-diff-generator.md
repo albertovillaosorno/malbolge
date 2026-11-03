@@ -391,6 +391,18 @@ domain tests pass, with scoped Ruff, strict source/test BasedPyright, and
 diff checks clean. Host mutation and filesystem races remain outside this
 process-level guarantee.
 
+Domain module loading now also pins import-original `Path.with_segments`
+across native concrete and inherited `PurePath` classes (`2ccef7350`).
+Previously, the captured `Path.parent` constructor still dispatched through
+this mutable method when walking parent directories; a late replacement could
+run foreign code before module admission or conceal a linked module ancestor.
+Two red-first foreign-callback cases reproduced the missing guard. Twelve
+constructor and linked-parent variants now reject before executing substituted
+hooks. All 140 focused postcommit domain tests and 926 adjacent precommit
+module/generator/exact/provenance tests pass; scoped Ruff, strict source/test
+BasedPyright, and diff checks are clean. This in-process check cannot stop
+external filesystem races or direct trusted-state mutation.
+
 This hook guard is not an atomic external path snapshot.
 
 The guard does not sandbox authorized consumer code, prevent direct trusted
