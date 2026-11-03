@@ -1326,3 +1326,130 @@ def test_protected_recovery_ignores_late_payload_slice_descriptor(
         recovered = recover_exact_plan(protected, _identity(source_files))
     assert recovered == expected
     assert calls == 0, "late slice descriptor changed authenticated AAD"
+
+
+def test_protected_instruction_constructor_ignores_late_path_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged getter cannot conceal an unsafe stored output path."""
+    original_getattribute = ProtectedInstruction.__getattribute__
+    calls = 0
+
+    def forged_path(value: ProtectedInstruction, name: str) -> object:
+        nonlocal calls
+        if name == "output_path":
+            calls += 1
+            return "safe.bin"
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            ProtectedInstruction, "__getattribute__", forged_path
+        )
+        with pytest.raises(ProtectedPlanError, match="canonical relative path"):
+            _ = ProtectedInstruction(
+                output_path="../unsafe.bin",
+                kind=ProtectedInstructionKind.COPY_SOURCE,
+                expected_sha256="0" * 64,
+                source_path="source.bin",
+            )
+    assert calls == 0, "late getter concealed an unsafe instruction path"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "output_path",
+        "kind",
+        "expected_sha256",
+        "source_path",
+        "payload_slice",
+        "segments",
+    ],
+)
+def test_recovery_ignores_late_protected_instruction_getters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """AAD framing and decoded instructions must use signed slot contents."""
+    _, _, source_files, expected, protected = _protected(tmp_path)
+    original_getattribute = ProtectedInstruction.__getattribute__
+    calls = 0
+
+    def forged_field(value: ProtectedInstruction, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return object()
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            ProtectedInstruction, "__getattribute__", forged_field
+        )
+        recovered = recover_exact_plan(protected, _identity(source_files))
+    assert recovered == expected
+    assert calls == 0, "late instruction getter influenced AAD"
+
+
+def test_recovery_ignores_late_protected_instruction_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late metadata class descriptors cannot substitute signed digests."""
+    _, _, source_files, expected, protected = _protected(tmp_path)
+    calls = 0
+
+    def forged_digest(_value: ProtectedInstruction) -> str:
+        nonlocal calls
+        calls += 1
+        return "0" * 64
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            ProtectedInstruction, "expected_sha256", property(forged_digest)
+        )
+        recovered = recover_exact_plan(protected, _identity(source_files))
+    assert recovered == expected
+    assert calls == 0, "late instruction descriptor influenced AAD"
+
+
+@pytest.mark.parametrize("hook", ["metadata", "shape"])
+def test_protected_instruction_constructor_ignores_late_validation_methods(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Post-init admission cannot delegate to mutable class validators."""
+    calls = 0
+
+    def skip_validation(_value: ProtectedInstruction) -> None:
+        nonlocal calls
+        calls += 1
+
+    def approve_shape(_value: ProtectedInstruction) -> bool:
+        nonlocal calls
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patched:
+        if hook == "metadata":
+            patched.setattr(
+                ProtectedInstruction, "_validate_metadata", skip_validation
+            )
+        else:
+            patched.setattr(
+                ProtectedInstruction, "_shape_is_valid", approve_shape
+            )
+        if hook == "metadata":
+            with pytest.raises(ProtectedPlanError, match="canonical relative"):
+                _ = ProtectedInstruction(
+                    output_path="../unsafe.bin",
+                    kind=ProtectedInstructionKind.COPY_SOURCE,
+                    expected_sha256="0" * 64,
+                    source_path="source.bin",
+                )
+        else:
+            with pytest.raises(ProtectedPlanError, match="invalid protected"):
+                _ = ProtectedInstruction(
+                    output_path="safe.bin",
+                    kind=ProtectedInstructionKind.COPY_SOURCE,
+                    expected_sha256="0" * 64,
+                )
+    assert calls == 0, "late class method overrode instruction admission"

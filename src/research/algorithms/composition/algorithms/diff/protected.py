@@ -252,67 +252,127 @@ class ProtectedInstruction:
                 invalid.
 
         """
-        self._validate_metadata()
-        if not self._shape_is_valid():
-            message = f"invalid protected instruction fields for {self.kind!r}"
+        _INSTRUCTION_VALIDATE_METADATA(self)
+        if not _INSTRUCTION_SHAPE_IS_VALID(self):
+            kind = _instruction_fields(self)[1]
+            message = f"invalid protected instruction fields for {kind!r}"
             raise ProtectedPlanError(message)
 
     def _validate_metadata(self) -> None:
+        (
+            output_path,
+            kind,
+            expected_sha256,
+            source_path,
+            payload_slice,
+            segments,
+        ) = _instruction_fields(self)
         if (
-            _NATIVE_TYPE(self.output_path) is not _NATIVE_STR
-            or not self.output_path
+            _NATIVE_TYPE(output_path) is not _NATIVE_STR
+            or not output_path
         ):
             message = "protected instruction output path must be non-empty"
             raise ProtectedPlanError(message)
         _require_utf8_path(
-            self.output_path, "protected instruction output path"
+            output_path, "protected instruction output path"
         )
-        if _NATIVE_TYPE(self.kind) is not ProtectedInstructionKind:
+        if _NATIVE_TYPE(kind) is not ProtectedInstructionKind:
             message = "protected instruction kind must use the exact enum type"
             raise ProtectedPlanError(message)
         _require_sha256_hex(
-            self.expected_sha256, "protected instruction sha256"
+            expected_sha256, "protected instruction sha256"
         )
-        if self.source_path is not None and (
-            _NATIVE_TYPE(self.source_path) is not _NATIVE_STR
-            or not self.source_path
+        if source_path is not None and (
+            _NATIVE_TYPE(source_path) is not _NATIVE_STR
+            or not source_path
         ):
             message = (
                 "protected instruction source path must be non-empty or None"
             )
             raise ProtectedPlanError(message)
         _require_optional_utf8_path(
-            self.source_path, "protected instruction source path"
+            source_path, "protected instruction source path"
         )
         if (
-            self.payload_slice is not None
-            and _NATIVE_TYPE(self.payload_slice) is not PayloadSlice
+            payload_slice is not None
+            and _NATIVE_TYPE(payload_slice) is not PayloadSlice
         ):
             message = (
                 "protected instruction payload slice must use the exact record"
             )
             raise ProtectedPlanError(message)
-        _validate_protected_segments(self.segments)
+        _validate_protected_segments(segments)
 
     def _shape_is_valid(self) -> bool:
-        if self.kind is ProtectedInstructionKind.COPY_SOURCE:
+        _, kind, _, source_path, payload_slice, segments = _instruction_fields(
+            self
+        )
+        if kind is ProtectedInstructionKind.COPY_SOURCE:
             return (
-                self.source_path is not None
-                and self.payload_slice is None
-                and not self.segments
+                source_path is not None
+                and payload_slice is None
+                and not segments
             )
-        if self.kind is ProtectedInstructionKind.PATCH_SOURCE:
+        if kind is ProtectedInstructionKind.PATCH_SOURCE:
             return (
-                self.source_path is not None
-                and self.payload_slice is None
-                and _NATIVE_BOOL(self.segments)
+                source_path is not None
+                and payload_slice is None
+                and _NATIVE_BOOL(segments)
             )
         return (
-            self.kind is ProtectedInstructionKind.PAYLOAD
-            and self.source_path is None
-            and self.payload_slice is not None
-            and not self.segments
+            kind is ProtectedInstructionKind.PAYLOAD
+            and source_path is None
+            and payload_slice is not None
+            and not segments
         )
+
+
+# The instruction record is part of authenticated metadata. Preserve the
+# original storage descriptors before a consumer can replace class accessors.
+_INSTRUCTION_OUTPUT_SLOT = cast(
+    "MemberDescriptorType", ProtectedInstruction.__dict__["output_path"]
+)
+_INSTRUCTION_KIND_SLOT = cast(
+    "MemberDescriptorType", ProtectedInstruction.__dict__["kind"]
+)
+_INSTRUCTION_SHA256_SLOT = cast(
+    "MemberDescriptorType", ProtectedInstruction.__dict__["expected_sha256"]
+)
+_INSTRUCTION_SOURCE_SLOT = cast(
+    "MemberDescriptorType", ProtectedInstruction.__dict__["source_path"]
+)
+_INSTRUCTION_PAYLOAD_SLOT = cast(
+    "MemberDescriptorType", ProtectedInstruction.__dict__["payload_slice"]
+)
+_INSTRUCTION_SEGMENTS_SLOT = cast(
+    "MemberDescriptorType", ProtectedInstruction.__dict__["segments"]
+)
+
+
+def _instruction_fields(instruction: ProtectedInstruction) -> tuple[
+    str,
+    ProtectedInstructionKind,
+    str,
+    str | None,
+    PayloadSlice | None,
+    tuple[ProtectedSegment, ...],
+]:
+    return (
+        _INSTRUCTION_OUTPUT_SLOT.__get__(instruction, ProtectedInstruction),
+        _INSTRUCTION_KIND_SLOT.__get__(instruction, ProtectedInstruction),
+        _INSTRUCTION_SHA256_SLOT.__get__(instruction, ProtectedInstruction),
+        _INSTRUCTION_SOURCE_SLOT.__get__(instruction, ProtectedInstruction),
+        _INSTRUCTION_PAYLOAD_SLOT.__get__(instruction, ProtectedInstruction),
+        _INSTRUCTION_SEGMENTS_SLOT.__get__(instruction, ProtectedInstruction),
+    )
+
+
+# Pin the original validators as well as field descriptors. Authoring must
+# not invoke late replacement methods installed on the class by consumers.
+_INSTRUCTION_VALIDATE_METADATA = ProtectedInstruction.__dict__[
+    "_validate_metadata"
+]
+_INSTRUCTION_SHAPE_IS_VALID = ProtectedInstruction.__dict__["_shape_is_valid"]
 
 
 def _require_static_target_outside_passthrough(
@@ -330,7 +390,7 @@ def _require_static_target_outside_passthrough(
 def _require_unique_instruction_outputs(
     instructions: tuple[ProtectedInstruction, ...],
 ) -> None:
-    paths = _NATIVE_TUPLE(item.output_path for item in instructions)
+    paths = _NATIVE_TUPLE(_instruction_fields(item)[0] for item in instructions)
     if _NATIVE_LEN(paths) != _NATIVE_LEN(_NATIVE_SET(paths)):
         message = "protected instructions require unique output paths"
         raise ProtectedPlanError(message)
@@ -340,7 +400,8 @@ def _require_instructions_match_target(
     instructions: tuple[ProtectedInstruction, ...], target: TreeSnapshot
 ) -> None:
     authored_outputs = _NATIVE_TUPLE(
-        (item.output_path, item.expected_sha256) for item in instructions
+        (_instruction_fields(item)[0], _instruction_fields(item)[2])
+        for item in instructions
     )
     target_outputs = _NATIVE_TUPLE(
         (item.path, item.sha256) for item in target.files
@@ -561,31 +622,36 @@ def _segment_bytes(segment: ProtectedSegment) -> bytes:
 
 
 def _instruction_bytes(instruction: ProtectedInstruction) -> bytes:
-    if instruction.kind is ProtectedInstructionKind.COPY_SOURCE:
+    (
+        output_path,
+        kind_value,
+        expected_sha256,
+        source_value,
+        slice_reference,
+        instruction_segments,
+    ) = _instruction_fields(instruction)
+    if kind_value is ProtectedInstructionKind.COPY_SOURCE:
         kind = b"C"
-    elif instruction.kind is ProtectedInstructionKind.PATCH_SOURCE:
+    elif kind_value is ProtectedInstructionKind.PATCH_SOURCE:
         kind = b"P"
     else:
         kind = b"L"
     source_path = (
-        b"\x00"
-        if instruction.source_path is None
-        else b"\x01" + _frame_text(instruction.source_path)
+        b"\x00" if source_value is None else b"\x01" + _frame_text(source_value)
     )
-    slice_reference = instruction.payload_slice
     if slice_reference is None:
         payload_slice = b"\x00"
     else:
         offset, length = _payload_slice_fields(slice_reference)
         payload_slice = b"\x01" + _u64(offset) + _u64(length)
-    segments = b"".join(_segment_bytes(item) for item in instruction.segments)
+    segments = b"".join(_segment_bytes(item) for item in instruction_segments)
     return b"".join((
         kind,
-        _frame_text(instruction.output_path),
-        _frame_text(instruction.expected_sha256),
+        _frame_text(output_path),
+        _frame_text(expected_sha256),
         source_path,
         payload_slice,
-        _u64(_NATIVE_LEN(instruction.segments)),
+        _u64(_NATIVE_LEN(instruction_segments)),
         segments,
     ))
 
@@ -826,32 +892,40 @@ def _exact_instruction(
     instruction: ProtectedInstruction,
     plaintext: bytes,
 ) -> ExactInstruction:
-    if instruction.kind is ProtectedInstructionKind.COPY_SOURCE:
+    (
+        output_path,
+        kind,
+        expected_sha256,
+        source_path,
+        payload_slice,
+        segments,
+    ) = _instruction_fields(instruction)
+    if kind is ProtectedInstructionKind.COPY_SOURCE:
         return ExactInstruction(
-            output_path=instruction.output_path,
+            output_path=output_path,
             kind=ExactInstructionKind.COPY_SOURCE,
-            expected_sha256=instruction.expected_sha256,
-            source_path=instruction.source_path,
+            expected_sha256=expected_sha256,
+            source_path=source_path,
         )
-    if instruction.kind is ProtectedInstructionKind.PATCH_SOURCE:
+    if kind is ProtectedInstructionKind.PATCH_SOURCE:
         return ExactInstruction(
-            output_path=instruction.output_path,
+            output_path=output_path,
             kind=ExactInstructionKind.PATCH_SOURCE,
-            expected_sha256=instruction.expected_sha256,
-            source_path=instruction.source_path,
+            expected_sha256=expected_sha256,
+            source_path=source_path,
             segments=_NATIVE_TUPLE(
                 _exact_segment(segment, plaintext)
-                for segment in instruction.segments
+                for segment in segments
             ),
         )
-    if instruction.payload_slice is None:
+    if payload_slice is None:
         message = "protected payload instruction lost its payload range"
         raise ProtectedPlanError(message)
     return ExactInstruction(
-        output_path=instruction.output_path,
+        output_path=output_path,
         kind=ExactInstructionKind.LITERAL_ORACLE,
-        expected_sha256=instruction.expected_sha256,
-        literal=_payload_slice(plaintext, instruction.payload_slice),
+        expected_sha256=expected_sha256,
+        literal=_payload_slice(plaintext, payload_slice),
     )
 
 
