@@ -181,6 +181,18 @@ states before these fixes. Trusted callback execution, direct instance-storage
 mutation, and concurrent filesystem writers remain separate trust boundaries;
 these changes do not create a sandbox or an atomic source snapshot.
 
+The six exact-authoring model records (`FileRecord`, `TreeSnapshot`,
+`SourceSlice`, `OracleLiteral`, `ExactInstruction`, and `ExactAuthoringPlan`)
+now invoke original constructor validators instead of late class
+`__post_init__` hooks. Instruction kind checks and plan/source-reference
+verification read captured original slots for instructions, snapshots,
+file digests, target metadata, and source-slice coordinates. Twenty-five
+red-first tests cover invalid or valid dataclass replacements, forged
+instruction and plan getters, changed validation helpers, and source digest
+or slice-offset spoofing. This protects the local model admission boundary
+from late class hooks, not intentional instance-storage mutation or racing
+external filesystem writers.
+
 Pinned-source snapshots also require native `os.stat_result` receipts for the
 source root, selected paths and parent components, and file-identity rechecks.
 Foreign mode and inode records cannot certify pinned provenance. Filesystem
@@ -201,6 +213,15 @@ Forged metadata cannot approve output publication or overwrite an existing file.
 Output status, junction, parent creation, rename and temporary cleanup errors
 retain typed causes and native diagnostic text without executing foreign
 exception string hooks; cleanup errors cannot mask the original failure.
+The exact Rust emitter also serializes source/target metadata, authenticated
+ciphertext and tag, threshold binding, anchor policy, and bound shares from
+captured original record slots. Class getters substituted after admission
+cannot rewrite emitted recovery constants. Template self-overwrite checks,
+output ancestor traversal, and rename receipts compare pinned native path
+spellings instead of late `Path.__eq__`. Twenty-six red-first regressions
+cover these emission and publication hooks. The output preflight still cannot
+make concurrent filesystem writes atomic and is not a sandbox for trusted code.
+
 The same publisher admits only the running host's exact native `pathlib.Path`
 type for both staging and destination before querying filesystem methods.
 Caller-defined `Path` subclasses may override path resolution, file status, or

@@ -274,9 +274,21 @@ format.
   and materialization envelopes now require exact native host `Path` roots;
   eight red-first cases cover snapshot/source/oracle/candidate/output roles
   before any overriding path method or filesystem publication can run.
+- Six exact authoring model record constructors now call original validators,
+  and instruction-kind, tree, copy/patch source and target consistency checks
+  read captured original slots rather than replaceable class getters. Twenty-
+  five red-first regressions cover construction, dataclass replacement, forged
+  instruction/plan metadata, and source digest/slice offsets. Direct mutation
+  of stored records and concurrent source writers remain outside this guard.
 - The Python generated-Rust source emitter now admits only an exact native
   `pathlib.Path` output before rendering or staging, with red-first regressions
   for both render-only and disk-output APIs.
+- Rust emission now pins the authenticated plan, ciphertext/tag, threshold
+  binding, anchor policy, and share slots before late consumer class hooks.
+  Native path spellings also protect runtime-template collision checks, output
+  ancestor termination, and rename receipts from forged `Path.__eq__` values.
+  Twenty-six red-first regressions cover those fields and publisher checks;
+  external filesystem race prevention remains out of scope.
 - The no-replace directory publisher now rejects foreign `pathlib.Path`
   subclasses for both staging and destination before any path conversion or
   filesystem method can run. Two red-first regressions preserve exact native
