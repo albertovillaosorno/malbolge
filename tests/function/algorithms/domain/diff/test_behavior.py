@@ -40,6 +40,7 @@ import sys
 from collections import UserString
 from collections.abc import Callable
 from dataclasses import fields, replace
+from decimal import Decimal
 from types import MemberDescriptorType
 from typing import cast
 
@@ -381,6 +382,42 @@ def test_behavior_similarity_fails_immediately_above_observed_score() -> None:
         BehaviorAdmissionError, match="behavior identity similarity"
     ):
         _ = require_behavior(_profile(), observations, above)
+
+
+def test_behavior_similarity_rejects_rounded_decimal_threshold() -> None:
+    """A rounded-up decimal threshold cannot admit a smaller probe ratio."""
+    total = 11
+    threshold = 1 / total
+    assert Decimal(str(threshold)) > Decimal(1) / Decimal(total)
+    profile = BehaviorProfile(
+        identity=tuple(
+            IdentityProbe(
+                probe_id=f"identity-{index:02d}", expected_digest=bytes([index])
+            )
+            for index in range(total)
+        ),
+        compatibility=(),
+        bugs=(),
+    )
+    observations = BehaviorObservations(
+        identity=tuple(
+            IdentityObservation(
+                probe_id=f"identity-{index:02d}",
+                digest=bytes([index]) if index == 0 else b"different",
+            )
+            for index in range(total)
+        ),
+        compatibility=(),
+        bugs=(),
+    )
+    evidence = evaluate_behavior(profile, observations, threshold)
+    assert evidence.similarity == threshold
+    assert evidence.reasons == ("insufficient behavior identity similarity",)
+    with pytest.raises(BehaviorAdmissionError, match="identity similarity"):
+        _ = require_behavior(profile, observations, threshold)
+    below_threshold = math.nextafter(threshold, 0.0)
+    assert Decimal(str(below_threshold)) < Decimal(1) / Decimal(total)
+    assert require_behavior(profile, observations, below_threshold).admitted
 
 
 def test_identity_probe_unavailable_fails_even_when_threshold_could_pass() -> (

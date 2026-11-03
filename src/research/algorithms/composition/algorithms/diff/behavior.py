@@ -38,6 +38,7 @@ import builtins
 import math
 from collections.abc import Callable
 from dataclasses import dataclass
+from decimal import Decimal as _native_decimal
 from enum import StrEnum
 from types import MemberDescriptorType
 from typing import cast
@@ -1079,6 +1080,15 @@ def _bug_routing(
     return _NATIVE_TUPLE(apply), _NATIVE_TUPLE(skip), _NATIVE_TUPLE(reasons)
 
 
+def _below_similarity_threshold(matched: int, total: int, minimum: float) -> bool:
+    """Compare exact probe counts to the configured decimal policy fraction."""
+    # Rounded division may equal a threshold that is slightly above the true
+    # ratio (for example 1/11). Interpret the input float's canonical decimal,
+    # consistently with source-binding thresholds, without losing precision.
+    numerator, denominator = _native_decimal(_NATIVE_STR(minimum)).as_integer_ratio()
+    return matched * denominator < total * numerator
+
+
 def _behavior_decision(
     profile: BehaviorProfile,
     observations: BehaviorObservations,
@@ -1086,7 +1096,9 @@ def _behavior_decision(
 ) -> tuple[int, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     matched, identity_reasons = _identity_evidence(profile, observations)
     reasons = _NATIVE_LIST(identity_reasons)
-    if matched / _NATIVE_LEN(_profile_fields(profile)[0]) < minimum_similarity:
+    if _below_similarity_threshold(
+        matched, _NATIVE_LEN(_profile_fields(profile)[0]), minimum_similarity
+    ):
         reasons.append("insufficient behavior identity similarity")
     reasons.extend(_compatibility_reasons(profile, observations))
     apply, skip, bug_reasons = _bug_routing(profile, observations)
