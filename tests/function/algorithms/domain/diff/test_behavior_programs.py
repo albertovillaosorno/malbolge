@@ -2756,3 +2756,99 @@ def test_behavior_context_validation_ignores_late_post_init_override(
             native, "source behavior context"
         ) is native
     assert calls == 0, "late validator was called instead of the original"
+
+
+def test_behavior_context_rejects_late_lazy_path_tail_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lazy PurePath string fields cannot replace a repository binding."""
+    from pathlib import PurePath
+
+    repository = tmp_path / "repository"
+    different = tmp_path / "different"
+    original_tail = cast("property", PurePath.__dict__["_tail"])
+    calls = 0
+
+    def redirected_tail(value: PurePath) -> list[str]:
+        nonlocal calls
+        if value is repository:
+            calls += 1
+            return cast("list[str]", original_tail.__get__(different, PurePath))
+        return cast("list[str]", original_tail.__get__(value, PurePath))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_tail", property(redirected_tail))
+        with pytest.raises(BehaviorProgramError, match="host resolver hooks changed"):
+            _ = behavior_module._resolved_context_path(  # pyright: ignore[reportPrivateUsage]
+                repository, "repository"
+            )
+    assert calls == 0, "late lazy path getter redirected the repository binding"
+
+
+@pytest.mark.parametrize("owner_kind", ["base", "concrete"])
+@pytest.mark.parametrize(
+    "hook",
+    [
+        "_tail",
+        "_raw_path",
+        "drive",
+        "root",
+        "parser",
+        "_parse_path",
+        "_format_parsed_parts",
+        "_from_parsed_parts",
+        "with_segments",
+        "__fspath__",
+        ],
+)
+def test_behavior_context_rejects_late_path_string_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_kind: str,
+    hook: str,
+) -> None:
+    """Reject changes to lazy base or concrete path hooks before dispatch."""
+    from pathlib import PurePath
+
+    repository = tmp_path / "repository"
+    owner = PurePath if owner_kind == "base" else type(repository)
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late path hook was called")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, hook, forbidden, raising=False)
+        with pytest.raises(BehaviorProgramError, match="host resolver hooks changed"):
+            _ = behavior_module._resolved_context_path(  # pyright: ignore[reportPrivateUsage]
+                repository, "repository"
+            )
+    assert calls == 0, "changed path hook ran before the native guard"
+
+
+def test_behavior_context_rejects_lazy_hook_changed_mid_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Resolver must recheck lazy Path descriptors after host resolution."""
+    from pathlib import PurePath
+
+    repository = tmp_path / "repository"
+    original = behavior_module._NATIVE_PATH_RESOLVE  # pyright: ignore[reportPrivateUsage]
+    altered = False
+
+    def mutate_after_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal altered
+        resolved = original(path, strict=strict)
+        patched.setattr(PurePath, "_tail", property(lambda _value: ["other"]))
+        altered = True
+        return resolved
+
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", mutate_after_resolve)
+        with pytest.raises(BehaviorProgramError, match="host resolver hooks changed"):
+            _ = behavior_module._resolved_context_path(  # pyright: ignore[reportPrivateUsage]
+                repository, "repository"
+            )
+    assert altered, "the resolver did not reach the post-check"

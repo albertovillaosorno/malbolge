@@ -40,7 +40,7 @@ import shutil
 import stat
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, TypeVar, cast
 
 from algorithms.diff.behavior import (
@@ -92,6 +92,45 @@ _NATIVE_PATH_TYPE = type(Path())
 _NATIVE_CONCRETE_PATH_NEW = _NATIVE_PATH_TYPE.__new__
 _NATIVE_CONCRETE_PATH_INIT = _NATIVE_PATH_TYPE.__init__
 _NATIVE_CONCRETE_PATH_GETATTRIBUTE = _NATIVE_PATH_TYPE.__getattribute__
+# Path.__str__ resolves lazy PurePath state through replaceable class
+# descriptors even when the bound method itself is import-original. Pin those
+# dependencies so a domain callback cannot redirect a context tool or root.
+_CONTEXT_PATH_HOOK_NAMES = (
+    "with_segments",
+    "__new__",
+    "__init__",
+    "__getattribute__",
+    "__getattr__",
+    "__setattr__",
+    "__fspath__",
+    "_str",
+    "_raw_paths",
+    "_drv",
+    "_root",
+    "_tail_cached",
+    "_raw_path",
+    "_tail",
+    "_str_normcase",
+    "_str_normcase_cached",
+    "_from_parsed_parts",
+    "_from_parsed_string",
+    "drive",
+    "root",
+    "parser",
+    "_parse_path",
+    "_format_parsed_parts",
+)
+_NATIVE_CONTEXT_PATH_HOOKS = tuple(
+    (
+        path_class,
+        tuple(
+            (name, path_class.__dict__.get(name))
+            for name in _CONTEXT_PATH_HOOK_NAMES
+        ),
+    )
+    for path_class in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(path_class, PurePath)
+)
 _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = builtins.type
 _NATIVE_TUPLE = builtins.tuple
@@ -123,6 +162,11 @@ def _require_native_context_resolver() -> None:
         is not _NATIVE_CONCRETE_PATH_GETATTRIBUTE
         or _NATIVE_PATH_TYPE.__new__ is not _NATIVE_CONCRETE_PATH_NEW
         or _NATIVE_PATH_TYPE.__init__ is not _NATIVE_CONCRETE_PATH_INIT
+        or _NATIVE_ANY(
+            path_class.__dict__.get(name) is not original
+            for path_class, hooks in _NATIVE_CONTEXT_PATH_HOOKS
+            for name, original in hooks
+        )
     ):
         message = "behavior host resolver hooks changed"
         raise BehaviorProgramError(message)
