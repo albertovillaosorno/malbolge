@@ -36,37 +36,39 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-import hashlib
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
-from typing import TYPE_CHECKING
-from typing import cast
+from hashlib import sha256 as _native_sha256
+from pathlib import PurePosixPath, PureWindowsPath
+from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import IdentityTree
-from algorithms.diff.exact import materialize_exact_plan
-from algorithms.diff.exact import snapshot_tree_excluding
-from algorithms.diff.model import ExactAuthoringPlan
-from algorithms.diff.model import ExactInstruction
-from algorithms.diff.model import ExactInstructionKind
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import SourceSlice
-from algorithms.diff.model import TreeSnapshot
-from algorithms.diff.payload import AuthenticatedPayload
-from algorithms.diff.payload import chacha20_poly1305_decrypt
-from algorithms.diff.payload import chacha20_poly1305_encrypt
-from algorithms.diff.source_binding import SourceBindingError
-from algorithms.diff.source_binding import bind_secret
-from algorithms.diff.source_binding import hkdf_expand_sha256
-from algorithms.diff.source_binding import hkdf_extract_sha256
-from algorithms.diff.source_binding import recover_secret
-from algorithms.diff.source_binding import validate_threshold_binding
+from algorithms.diff.exact import materialize_exact_plan, snapshot_tree_excluding
+from algorithms.diff.model import (
+    ExactAuthoringPlan,
+    ExactInstruction,
+    ExactInstructionKind,
+    OracleLiteral,
+    SourceSlice,
+    TreeSnapshot,
+)
+from algorithms.diff.payload import (
+    AuthenticatedPayload,
+    chacha20_poly1305_decrypt,
+    chacha20_poly1305_encrypt,
+)
+from algorithms.diff.source_binding import (
+    SourceBindingError,
+    bind_secret,
+    hkdf_expand_sha256,
+    hkdf_extract_sha256,
+    recover_secret,
+    validate_threshold_binding,
+)
 
 if TYPE_CHECKING:
     from pathlib import Path
 
     from algorithms.diff.model import ExactSegment
-    from algorithms.diff.source_binding import SourceBindingPolicy
-    from algorithms.diff.source_binding import ThresholdBinding
+    from algorithms.diff.source_binding import SourceBindingPolicy, ThresholdBinding
 
 _ZERO = 0
 _ONE = 1
@@ -209,21 +211,15 @@ class ProtectedInstruction:
         if type(self.output_path) is not str or not self.output_path:
             message = "protected instruction output path must be non-empty"
             raise ProtectedPlanError(message)
-        _require_utf8_path(
-            self.output_path, "protected instruction output path"
-        )
+        _require_utf8_path(self.output_path, "protected instruction output path")
         if type(self.kind) is not ProtectedInstructionKind:
             message = "protected instruction kind must use the exact enum type"
             raise ProtectedPlanError(message)
-        _require_sha256_hex(
-            self.expected_sha256, "protected instruction sha256"
-        )
+        _require_sha256_hex(self.expected_sha256, "protected instruction sha256")
         if self.source_path is not None and (
             type(self.source_path) is not str or not self.source_path
         ):
-            message = (
-                "protected instruction source path must be non-empty or None"
-            )
+            message = "protected instruction source path must be non-empty or None"
             raise ProtectedPlanError(message)
         _require_optional_utf8_path(
             self.source_path, "protected instruction source path"
@@ -232,9 +228,7 @@ class ProtectedInstruction:
             self.payload_slice is not None
             and type(self.payload_slice) is not PayloadSlice
         ):
-            message = (
-                "protected instruction payload slice must use the exact record"
-            )
+            message = "protected instruction payload slice must use the exact record"
             raise ProtectedPlanError(message)
         _validate_protected_segments(self.segments)
 
@@ -312,33 +306,23 @@ class ProtectedMetadata:
             type(self.source) is not TreeSnapshot
             or type(self.target) is not TreeSnapshot
         ):
-            message = (
-                "protected metadata snapshots must use exact TreeSnapshot "
-                "records"
-            )
+            message = "protected metadata snapshots must use exact TreeSnapshot records"
             raise ProtectedPlanError(message)
         if type(self.instructions) is not tuple or any(
             type(item) is not ProtectedInstruction for item in self.instructions
         ):
-            message = (
-                "protected metadata instructions must be exact immutable "
-                "records"
-            )
+            message = "protected metadata instructions must be exact immutable records"
             raise ProtectedPlanError(message)
         _require_unique_instruction_outputs(self.instructions)
         _require_instructions_match_target(self.instructions, self.target)
         if type(self.passthrough_roots) is not tuple:
             message = "protected passthrough roots must use an immutable tuple"
             raise ProtectedPlanError(message)
-        if any(
-            type(root) is not str or not root for root in self.passthrough_roots
-        ):
+        if any(type(root) is not str or not root for root in self.passthrough_roots):
             message = "protected passthrough roots must be non-empty strings"
             raise ProtectedPlanError(message)
         _require_utf8_roots(self.passthrough_roots)
-        _require_static_target_outside_passthrough(
-            self.target, self.passthrough_roots
-        )
+        _require_static_target_outside_passthrough(self.target, self.passthrough_roots)
 
 
 @dataclass(frozen=True, slots=True)
@@ -376,14 +360,19 @@ class ProtectedExactPlan:
             message = "protected plan nonce must use exact 12-byte input"
             raise ProtectedPlanError(message)
         if type(self.payload) is not AuthenticatedPayload:
-            message = (
-                "protected plan payload must use the exact authenticated type"
-            )
+            message = "protected plan payload must use the exact authenticated type"
             raise ProtectedPlanError(message)
         try:
             _ = validate_threshold_binding(self.binding)
         except SourceBindingError as error:
-            message = f"protected plan binding is invalid: {error}"
+            # Only the exact known exception may contribute a diagnostic
+            # message. A foreign subclass can execute code from __str__.
+            detail = type(error).__name__
+            if type(error) is SourceBindingError:
+                arguments = cast("tuple[object, ...]", error.args)
+                if len(arguments) == _ONE and type(arguments[0]) is str:
+                    detail = arguments[0]
+            message = f"protected plan binding is invalid: {detail}"
             raise ProtectedPlanError(message) from error
 
 
@@ -421,11 +410,13 @@ def _u64(value: int) -> bytes:
 def _snapshot_bytes(snapshot: TreeSnapshot) -> bytes:
     parts = [_u64(len(snapshot.files))]
     for record in snapshot.files:
-        parts.extend((
-            _frame_text(record.path),
-            _frame_text(record.sha256),
-            _u64(record.size),
-        ))
+        parts.extend(
+            (
+                _frame_text(record.path),
+                _frame_text(record.sha256),
+                _u64(record.size),
+            )
+        )
     return b"".join(parts)
 
 
@@ -457,15 +448,17 @@ def _instruction_bytes(instruction: ProtectedInstruction) -> bytes:
         )
     )
     segments = b"".join(_segment_bytes(item) for item in instruction.segments)
-    return b"".join((
-        kind,
-        _frame_text(instruction.output_path),
-        _frame_text(instruction.expected_sha256),
-        source_path,
-        payload_slice,
-        _u64(len(instruction.segments)),
-        segments,
-    ))
+    return b"".join(
+        (
+            kind,
+            _frame_text(instruction.output_path),
+            _frame_text(instruction.expected_sha256),
+            source_path,
+            payload_slice,
+            _u64(len(instruction.segments)),
+            segments,
+        )
+    )
 
 
 def _roots_bytes(roots: tuple[str, ...]) -> bytes:
@@ -495,15 +488,17 @@ def protected_plan_aad(
     instruction_bytes = b"".join(
         _instruction_bytes(instruction) for instruction in metadata.instructions
     )
-    return b"".join((
-        _AAD_MAGIC,
-        _frame_bytes(context),
-        _frame_bytes(_snapshot_bytes(metadata.source)),
-        _frame_bytes(_snapshot_bytes(metadata.target)),
-        _roots_bytes(metadata.passthrough_roots),
-        _u64(len(metadata.instructions)),
-        instruction_bytes,
-    ))
+    return b"".join(
+        (
+            _AAD_MAGIC,
+            _frame_bytes(context),
+            _frame_bytes(_snapshot_bytes(metadata.source)),
+            _frame_bytes(_snapshot_bytes(metadata.target)),
+            _roots_bytes(metadata.passthrough_roots),
+            _u64(len(metadata.instructions)),
+            instruction_bytes,
+        )
+    )
 
 
 def _metadata(
@@ -548,8 +543,7 @@ def _protect_instruction(
             expected_sha256=instruction.expected_sha256,
             source_path=instruction.source_path,
             segments=tuple(
-                _protected_segment(segment, builder)
-                for segment in instruction.segments
+                _protected_segment(segment, builder) for segment in instruction.segments
             ),
         )
     if instruction.literal is None:
@@ -564,7 +558,7 @@ def _protect_instruction(
 
 
 def _source_identity_digest(reference_identity: IdentityTree) -> bytes:
-    digest = hashlib.sha256()
+    digest = _native_sha256()
     digest.update(b"source-bound-exact-plan-identity-v1\0")
     digest.update(_u64(len(reference_identity.files)))
     for identity_file in reference_identity.files:
@@ -581,9 +575,9 @@ def _derive_payload_key(
     context: bytes,
 ) -> bytes:
     source_material = _source_identity_digest(reference_identity)
-    aad_digest = hashlib.sha256(aad).digest()
-    plaintext_digest = hashlib.sha256(plaintext).digest()
-    salt = hashlib.sha256(
+    aad_digest = _native_sha256(aad).digest()
+    plaintext_digest = _native_sha256(plaintext).digest()
+    salt = _native_sha256(
         _KEY_DOMAIN + _frame_bytes(context) + _frame_bytes(aad_digest)
     ).digest()
     pseudorandom_key = hkdf_extract_sha256(salt, source_material)
@@ -596,10 +590,10 @@ def _derive_payload_key(
 
 
 def _binding_context(aad: bytes, context: bytes) -> bytes:
-    digest = hashlib.sha256()
+    digest = _native_sha256()
     digest.update(_BINDING_CONTEXT_DOMAIN)
     digest.update(_frame_bytes(context))
-    digest.update(_frame_bytes(hashlib.sha256(aad).digest()))
+    digest.update(_frame_bytes(_native_sha256(aad).digest()))
     return digest.digest()
 
 
@@ -607,10 +601,7 @@ def _validate_protect_inputs(
     plan: object, reference_identity: object, context: object
 ) -> None:
     if type(plan) is not ExactAuthoringPlan:
-        message = (
-            "protected authoring plan must use the exact ExactAuthoringPlan "
-            "type"
-        )
+        message = "protected authoring plan must use the exact ExactAuthoringPlan type"
         raise ProtectedPlanError(message)
     if type(reference_identity) is not IdentityTree:
         message = "protected reference must use the exact IdentityTree type"
@@ -641,8 +632,7 @@ def protect_exact_plan(
     _validate_protect_inputs(plan, reference_identity, context)
     builder = _PayloadBuilder(bytearray())
     instructions = tuple(
-        _protect_instruction(instruction, builder)
-        for instruction in plan.instructions
+        _protect_instruction(instruction, builder) for instruction in plan.instructions
     )
     plaintext = bytes(builder.data)
     metadata = _metadata(
@@ -717,8 +707,7 @@ def _exact_instruction(
             expected_sha256=instruction.expected_sha256,
             source_path=instruction.source_path,
             segments=tuple(
-                _exact_segment(segment, plaintext)
-                for segment in instruction.segments
+                _exact_segment(segment, plaintext) for segment in instruction.segments
             ),
         )
     if instruction.payload_slice is None:
@@ -765,8 +754,7 @@ def recover_exact_plan(
         aad=aad,
     )
     instructions = tuple(
-        _exact_instruction(instruction, plaintext)
-        for instruction in plan.instructions
+        _exact_instruction(instruction, plaintext) for instruction in plan.instructions
     )
     return ExactAuthoringPlan(
         source=plan.source,
@@ -790,10 +778,7 @@ def materialize_protected_exact_plan(
 
     """
     plan = _require_protected_exact_plan(plan)
-    if (
-        snapshot_tree_excluding(source_root, plan.passthrough_roots)
-        != plan.source
-    ):
+    if snapshot_tree_excluding(source_root, plan.passthrough_roots) != plan.source:
         message = "source tree does not match protected exact source snapshot"
         raise ProtectedPlanError(message)
     exact = recover_exact_plan(plan, candidate_identity)

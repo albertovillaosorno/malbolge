@@ -34,32 +34,30 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import hashlib
 import shutil
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import replace
+from typing import TYPE_CHECKING, cast, override
 
-from algorithms.diff.admission import identity_tree
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.exact import snapshot_tree
-from algorithms.diff.fingerprints import AnchorPolicy
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import TreeSnapshot
-from algorithms.diff.payload import AuthenticatedPayload
-from algorithms.diff.payload import PayloadCryptoError
-from algorithms.diff.protected import PayloadSlice
-from algorithms.diff.protected import ProtectedInstruction
-from algorithms.diff.protected import ProtectedInstructionKind
-from algorithms.diff.protected import ProtectedMetadata
-from algorithms.diff.protected import ProtectedPlanError
-from algorithms.diff.protected import materialize_protected_exact_plan
-from algorithms.diff.protected import protect_exact_plan
-from algorithms.diff.protected import protected_plan_aad
-from algorithms.diff.protected import recover_exact_plan
-from algorithms.diff.source_binding import SourceBindingError
-from algorithms.diff.source_binding import SourceBindingPolicy
 import pytest
+from algorithms.diff import protected as protected_module
+from algorithms.diff.admission import identity_tree
+from algorithms.diff.exact import build_exact_plan, snapshot_tree
+from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.model import OracleLiteral, TreeSnapshot
+from algorithms.diff.payload import AuthenticatedPayload, PayloadCryptoError
+from algorithms.diff.protected import (
+    PayloadSlice,
+    ProtectedInstruction,
+    ProtectedInstructionKind,
+    ProtectedMetadata,
+    ProtectedPlanError,
+    materialize_protected_exact_plan,
+    protect_exact_plan,
+    protected_plan_aad,
+    recover_exact_plan,
+)
+from algorithms.diff.source_binding import SourceBindingError, SourceBindingPolicy
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -129,9 +127,7 @@ def _policy() -> SourceBindingPolicy:
 
 def _protected(
     tmp_path: Path,
-) -> tuple[
-    Path, Path, dict[str, bytes], ExactAuthoringPlan, ProtectedExactPlan
-]:
+) -> tuple[Path, Path, dict[str, bytes], ExactAuthoringPlan, ProtectedExactPlan]:
     source, oracle, source_files = _fixture(tmp_path)
     exact = build_exact_plan(source, oracle)
     protected = protect_exact_plan(
@@ -220,6 +216,46 @@ def test_payload_key_schedule_depends_on_unserialized_source_bytes(
     _expect(source.is_dir(), "source fixture disappeared")
 
 
+def test_protected_key_schedule_resists_replaced_global_sha256(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Distinct literal streams cannot reuse a key and fixed nonce via a forged hash."""
+    source, oracle, source_files = _fixture(tmp_path)
+    original = build_exact_plan(source, oracle)
+    _write(oracle, "new.bin", b"different-oracle-literal-stream")
+    changed = build_exact_plan(source, oracle)
+    identity = _identity(source_files)
+
+    calls = 0
+
+    class _CollidingHash:
+        def update(self, _data: bytes) -> None:
+            _ = _data
+
+        def digest(self) -> bytes:
+            return bytes(32)
+
+    def fake_sha256(_data: bytes = b"") -> _CollidingHash:
+        nonlocal calls
+        calls += 1
+        return _CollidingHash()
+
+    monkeypatch.setattr(hashlib, "sha256", fake_sha256)
+    first = protect_exact_plan(
+        original, identity, binding_policy=_policy(), context=_CONTEXT
+    )
+    second = protect_exact_plan(
+        changed, identity, binding_policy=_policy(), context=_CONTEXT
+    )
+    _expect(first.nonce == second.nonce, "fixed nonce contract changed")
+    _expect(
+        first.binding.secret_commitment != second.binding.secret_commitment,
+        "foreign hash caused identical encryption keys for distinct plaintexts",
+    )
+    _expect(calls == 0, "mutable process-global SHA-256 was consulted")
+
+
 def test_source_plus_protected_plan_reconstructs_oracle_without_oracle_runtime(
     tmp_path: Path,
 ) -> None:
@@ -293,9 +329,7 @@ def test_protected_authoring_rejects_foreign_inputs(tmp_path: Path) -> None:
             binding_policy=policy,
             context=_CONTEXT,
         )
-    with pytest.raises(
-        ProtectedPlanError, match=r"authoring context.*exact bytes"
-    ):
+    with pytest.raises(ProtectedPlanError, match=r"authoring context.*exact bytes"):
         _ = protect_exact_plan(
             exact,
             identity,
@@ -304,9 +338,7 @@ def test_protected_authoring_rejects_foreign_inputs(tmp_path: Path) -> None:
         )
 
 
-@pytest.mark.parametrize(
-    "invalid", ["unencodable" + chr(0xD800), "nul\x00path"]
-)
+@pytest.mark.parametrize("invalid", ["unencodable" + chr(0xD800), "nul\x00path"])
 def test_protected_path_metadata_rejects_unserializable_text(
     invalid: str,
 ) -> None:
@@ -424,9 +456,7 @@ def test_protected_metadata_rejects_duplicate_output_instructions(
         _ = replace(protected, instructions=duplicate)
 
 
-@pytest.mark.parametrize(
-    "mutation", [_MISSING, _REORDERED, _WRONG_DIGEST, _EXTRA]
-)
+@pytest.mark.parametrize("mutation", [_MISSING, _REORDERED, _WRONG_DIGEST, _EXTRA])
 def test_protected_metadata_rejects_target_instruction_mismatch(
     tmp_path: Path, mutation: str
 ) -> None:
@@ -440,9 +470,7 @@ def test_protected_metadata_rejects_target_instruction_mismatch(
     elif mutation == _WRONG_DIGEST:
         instructions[0] = replace(instructions[0], expected_sha256="0" * 64)
     else:
-        instructions.append(
-            replace(instructions[0], output_path="extra-target.bin")
-        )
+        instructions.append(replace(instructions[0], output_path="extra-target.bin"))
     mismatched = tuple(instructions)
 
     with pytest.raises(ProtectedPlanError, match="match the target snapshot"):
@@ -523,16 +551,12 @@ def test_protected_plan_envelope_requires_exact_runtime_types(
             protected,
             nonce=cast("bytes", cast("object", bytearray(protected.nonce))),
         )
-    with pytest.raises(
-        ProtectedPlanError, match=r"payload.*exact authenticated"
-    ):
+    with pytest.raises(ProtectedPlanError, match=r"payload.*exact authenticated"):
         _ = replace(
             protected,
             payload=cast("AuthenticatedPayload", object()),
         )
-    with pytest.raises(
-        ProtectedPlanError, match=r"binding.*exact ThresholdBinding"
-    ):
+    with pytest.raises(ProtectedPlanError, match=r"binding.*exact ThresholdBinding"):
         _ = replace(
             protected,
             binding=cast("ThresholdBinding", object()),
@@ -551,15 +575,44 @@ def test_protected_plan_envelope_requires_exact_runtime_types(
     _expect(not output.exists(), "foreign protected plan published output")
 
 
+class _HostileBindingError(SourceBindingError):
+    """An injected binding error must not execute diagnostic hooks."""
+
+    @override
+    def __str__(self) -> str:
+        message = "foreign error formatter was called"
+        raise AssertionError(message)
+
+
+def test_protected_plan_does_not_format_foreign_binding_exceptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A hostile binding validator cannot run arbitrary code via error text."""
+    _, _, _, _, protected = _protected(tmp_path)
+
+    def reject_binding(_binding: ThresholdBinding) -> ThresholdBinding:
+        message = "foreign binding validator"
+        raise _HostileBindingError(message)
+
+    monkeypatch.setattr(protected_module, "validate_threshold_binding", reject_binding)
+    with pytest.raises(
+        ProtectedPlanError, match="binding is invalid: _HostileBindingError"
+    ) as caught:
+        _ = replace(protected, binding=protected.binding)
+    _expect(
+        type(caught.value.__cause__) is _HostileBindingError,
+        "foreign binding error cause was lost",
+    )
+
+
 def test_protected_plan_rejects_malformed_binding_metadata(
     tmp_path: Path,
 ) -> None:
     """Validate the complete source binding before a plan becomes emit-ready."""
     _, _, _, _, protected = _protected(tmp_path)
     malformed_count = replace(protected.binding, threshold=True)
-    with pytest.raises(
-        ProtectedPlanError, match=r"binding is invalid.*threshold"
-    ):
+    with pytest.raises(ProtectedPlanError, match=r"binding is invalid.*threshold"):
         _ = replace(protected, binding=malformed_count)
 
     first = protected.binding.shares[0]
@@ -669,7 +722,6 @@ def test_protected_passthrough_can_change_after_authoring(
     )
 
     _expect(
-        (output / "external/game.bin").read_bytes()
-        == _PASSTHROUGH_RUNTIME_DATA,
+        (output / "external/game.bin").read_bytes() == _PASSTHROUGH_RUNTIME_DATA,
         "protected passthrough pinned external bytes",
     )
