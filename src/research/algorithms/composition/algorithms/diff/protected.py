@@ -42,7 +42,7 @@ from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.admission import IdentityFile, IdentityTree
+from algorithms.diff.admission import AdmissionPolicyError, IdentityFile, IdentityTree
 from algorithms.diff.exact import (
     _new_exact_instruction,  # pyright: ignore[reportPrivateUsage]
     _new_exact_plan,  # pyright: ignore[reportPrivateUsage]
@@ -121,6 +121,11 @@ _IDENTITY_FILES_SLOT = cast("MemberDescriptorType", IdentityTree.__dict__["files
 _IDENTITY_PATH_SLOT = cast("MemberDescriptorType", IdentityFile.__dict__["path"])
 _IDENTITY_CANONICAL_SLOT = cast(
     "MemberDescriptorType", IdentityFile.__dict__["canonical"]
+)
+# Exact native source trees can be allocated without their validators. Check
+# original nested identity storage before hashing it into an authoring key.
+_IDENTITY_TREE_VALIDATOR = cast(
+    "Callable[[IdentityTree], None]", IdentityTree.__dict__["__post_init__"]
 )
 # AAD must serialize precisely the fields validated by tree model admission.
 # Read original slots rather than caller-mutable TreeSnapshot/FileRecord getters.
@@ -1141,6 +1146,11 @@ def _validate_protect_inputs(
     if _NATIVE_TYPE(reference_identity) is not IdentityTree:
         message = "protected reference must use the exact IdentityTree type"
         raise ProtectedPlanError(message)
+    try:
+        _IDENTITY_TREE_VALIDATOR(reference_identity)
+    except (AdmissionPolicyError, AttributeError, TypeError) as error:
+        message = "protected reference contains invalid native identity evidence"
+        raise ProtectedPlanError(message) from error
     if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "protected authoring context must use non-empty exact bytes"
         raise ProtectedPlanError(message)

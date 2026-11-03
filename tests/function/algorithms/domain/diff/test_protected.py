@@ -362,6 +362,70 @@ def test_protected_authoring_rejects_foreign_inputs(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "malformed",
+    (
+        "missing-tree-slot",
+        "mutable-files",
+        "missing-child-path",
+        "foreign-child-path",
+        "mutable-canonical",
+        "duplicate-path",
+    ),
+)
+def test_protected_authoring_revalidates_native_identity_before_key_derivation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    malformed: str,
+) -> None:
+    """Forged source identity must fail typed before any payload key is derived."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    forged = object.__new__(IdentityTree)
+    native_file = object.__new__(IdentityFile)
+    if malformed != "missing-child-path":
+        path = None if malformed == "foreign-child-path" else "source.bin"
+        cast("MemberDescriptorType", IdentityFile.__dict__["path"]).__set__(
+            native_file, path
+        )
+    canonical = (
+        bytearray(b"source") if malformed == "mutable-canonical" else b"source"
+    )
+    cast("MemberDescriptorType", IdentityFile.__dict__["canonical"]).__set__(
+        native_file, canonical
+    )
+    if malformed != "missing-tree-slot":
+        if malformed == "mutable-files":
+            records: object = [native_file]
+        elif malformed == "duplicate-path":
+            records = (native_file, native_file)
+        else:
+            records = (native_file,)
+        cast("MemberDescriptorType", IdentityTree.__dict__["files"]).__set__(
+            forged, records
+        )
+
+    calls = 0
+
+    def reject_early_key_derivation(_identity: IdentityTree) -> bytes:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("unvalidated identity reached the payload key schedule")
+
+    with monkeypatch.context() as patched:
+        # The owning model's late class hook must not waive initial admission.
+        patched.setattr(IdentityTree, "__post_init__", lambda _tree: None)
+        patched.setattr(IdentityFile, "__post_init__", lambda _file: None)
+        patched.setattr(
+            protected_module, "_source_identity_digest", reject_early_key_derivation
+        )
+        with pytest.raises(ProtectedPlanError, match="invalid native identity"):
+            _ = protect_exact_plan(
+                exact, forged, binding_policy=_policy(), context=_CONTEXT
+            )
+    assert calls == 0
+
+
+@pytest.mark.parametrize(
     "invalid", ["nested/../escape.bin", "nested//unsafe.bin"]
 )
 def test_protected_path_admission_ignores_late_any_hook(
