@@ -51,6 +51,10 @@ _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
 _NATIVE_POW = builtins.pow
 _NATIVE_SORTED = builtins.sorted
+_NATIVE_TYPE = type
+_NATIVE_LEN = len
+_NATIVE_RANGE = range
+_NATIVE_TUPLE = tuple
 
 
 class FingerprintPolicyError(ValueError):
@@ -72,8 +76,8 @@ class AnchorPolicy:
 
         """
         if (
-            type(self.window_bytes) is not int
-            or type(self.selection_modulus) is not int
+            _NATIVE_TYPE(self.window_bytes) is not int
+            or _NATIVE_TYPE(self.selection_modulus) is not int
         ):
             message = "anchor window and selection modulus must be integers"
             raise FingerprintPolicyError(message)
@@ -101,23 +105,24 @@ class StableAnchor:
             FingerprintPolicyError: Digest or offset metadata is invalid.
 
         """
-        if type(self.digest) is not bytes or len(self.digest) != _SHA256_BYTES:
+        native_bytes = _NATIVE_TYPE(self.digest) is bytes
+        if not native_bytes or _NATIVE_LEN(self.digest) != _SHA256_BYTES:
             message = "stable anchor digest must be exactly 32 bytes"
             raise FingerprintPolicyError(message)
-        if type(self.offset) is not int or self.offset < _ZERO:
+        if _NATIVE_TYPE(self.offset) is not int or self.offset < _ZERO:
             message = "stable anchor offset must be a non-negative integer"
             raise FingerprintPolicyError(message)
 
 
 def _require_coverage_count(value: object, context: str) -> int:
-    if type(value) is not int or value < _ZERO:
+    if _NATIVE_TYPE(value) is not int or value < _ZERO:
         message = f"{context} must be a non-negative integer"
         raise FingerprintPolicyError(message)
     return value
 
 
 def _require_coverage_ratio(value: object) -> float:
-    if type(value) is not float or not 0.0 <= value <= 1.0:
+    if _NATIVE_TYPE(value) is not float or not 0.0 <= value <= 1.0:
         message = "anchor coverage ratio must be an exact float in [0, 1]"
         raise FingerprintPolicyError(message)
     return value
@@ -198,13 +203,13 @@ def _scan_anchor_windows(
     data: bytes,
     policy: AnchorPolicy,
 ) -> tuple[dict[bytes, StableAnchor], int]:
-    last_offset = len(data) - policy.window_bytes
+    last_offset = _NATIVE_LEN(data) - policy.window_bytes
     selected: dict[bytes, StableAnchor] = {}
     rolling = _initial_rolling_hash(data, policy.window_bytes)
     leading_power = _rolling_power(policy.window_bytes)
     fallback_value = rolling
     fallback_offset = _ZERO
-    for offset in range(last_offset + _ONE):
+    for offset in _NATIVE_RANGE(last_offset + _ONE):
         if rolling < fallback_value:
             fallback_value = rolling
             fallback_offset = offset
@@ -242,19 +247,19 @@ def stable_anchors(
         FingerprintPolicyError: Input bytes or policy metadata is invalid.
 
     """
-    if type(data) is not bytes:
+    if _NATIVE_TYPE(data) is not bytes:
         message = "stable anchor input must use exact bytes"
         raise FingerprintPolicyError(message)
-    if type(policy) is not AnchorPolicy:
+    if _NATIVE_TYPE(policy) is not AnchorPolicy:
         message = "stable anchor policy must use the exact AnchorPolicy type"
         raise FingerprintPolicyError(message)
-    if len(data) < policy.window_bytes:
+    if _NATIVE_LEN(data) < policy.window_bytes:
         return _small_input_anchor(data)
     selected, fallback_offset = _scan_anchor_windows(data, policy)
     if not selected:
         fallback = _selected_anchor(data, fallback_offset, policy.window_bytes)
         selected[fallback.digest] = fallback
-    return tuple(
+    return _NATIVE_TUPLE(
         _NATIVE_SORTED(selected.values(), key=lambda anchor: anchor.offset)
     )
 
@@ -272,20 +277,21 @@ def anchor_coverage(
         FingerprintPolicyError: Anchor collections contain foreign records.
 
     """
-    if type(reference) is not tuple or type(candidate) is not tuple:
+    reference_type = _NATIVE_TYPE(reference)
+    candidate_type = _NATIVE_TYPE(candidate)
+    if reference_type is not tuple or candidate_type is not tuple:
         message = "anchor coverage inputs must use exact immutable tuples"
         raise FingerprintPolicyError(message)
-    if any(
-        type(anchor) is not StableAnchor for anchor in (*reference, *candidate)
-    ):
-        message = "anchor coverage inputs contain a foreign anchor record"
-        raise FingerprintPolicyError(message)
+    for anchor in (*reference, *candidate):
+        if _NATIVE_TYPE(anchor) is not StableAnchor:
+            message = "anchor coverage inputs contain a foreign anchor record"
+            raise FingerprintPolicyError(message)
     reference_digests = {anchor.digest for anchor in reference}
     candidate_digests = {anchor.digest for anchor in candidate}
-    total = len(reference_digests)
+    total = _NATIVE_LEN(reference_digests)
     if total == _ZERO:
         return AnchorCoverage(matched=_ZERO, total=_ZERO, ratio=1.0)
-    matched = len(reference_digests & candidate_digests)
+    matched = _NATIVE_LEN(reference_digests & candidate_digests)
     return AnchorCoverage(
         matched=matched,
         total=total,

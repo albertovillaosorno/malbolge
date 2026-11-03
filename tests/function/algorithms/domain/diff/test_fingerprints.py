@@ -33,8 +33,8 @@
 """Tests for deterministic content-defined stable anchors."""
 
 import builtins
+from collections.abc import Iterable, Sized
 import hashlib
-from typing import TYPE_CHECKING
 from typing import cast
 
 from algorithms.diff.fingerprints import AnchorCoverage
@@ -44,9 +44,6 @@ from algorithms.diff.fingerprints import StableAnchor
 from algorithms.diff.fingerprints import anchor_coverage
 from algorithms.diff.fingerprints import stable_anchors
 import pytest
-
-if TYPE_CHECKING:
-    from collections.abc import Iterable
 
 _BLOCK_COUNT = 256
 _INSERTION = b"target-only insertion that shifts all later offsets"
@@ -130,6 +127,134 @@ def test_anchor_offsets_resist_post_import_sorted_swap(
 
     assert observed == expected, "mutable sorted hook reordered source evidence"
     assert calls == 0, "mutable global sorting hook was consulted"
+
+
+def test_anchor_selection_ignores_late_range_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A domain hook cannot remove rolling-hash windows from evidence."""
+    source = _synthetic_bytes("range-lineage")
+    expected = stable_anchors(source)
+    native_range = range
+    calls = 0
+
+    def erase_window_scan(*args: int) -> range:
+        nonlocal calls
+        if len(args) == 1:
+            calls += 1
+            return native_range(0)
+        return native_range(*args)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "range", erase_window_scan)
+        observed = stable_anchors(source)
+
+    _expect(observed == expected, "range override changed source anchors")
+    _expect(calls == 0, "mutable range was consulted")
+
+
+def test_anchor_coverage_rejects_foreign_record_after_any_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged any() cannot admit a foreign immutable anchor record."""
+    foreign = cast("StableAnchor", object())
+    calls = 0
+
+    def suppress_foreign_record(_items: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "any", suppress_foreign_record)
+        try:
+            _ = anchor_coverage((foreign,), ())
+        except FingerprintPolicyError:
+            rejected = True
+
+    _expect(rejected, "foreign anchor was accepted after any override")
+    _expect(calls == 0, "mutable any was consulted")
+
+
+def test_anchor_policy_rejects_bool_after_type_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late type() spoofing cannot admit Boolean anchor dimensions."""
+    native_type = type
+    calls = 0
+
+    def disguise_boolean(value: object) -> type[object]:
+        nonlocal calls
+        if value is True:
+            calls += 1
+            return int
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", disguise_boolean)
+        try:
+            _ = AnchorPolicy(window_bytes=True)
+        except FingerprintPolicyError:
+            rejected = True
+
+    _expect(rejected, "Boolean anchor width was admitted")
+    _expect(calls == 0, "mutable type was consulted")
+
+
+def test_stable_anchor_rejects_short_digest_after_len_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late len() spoofing cannot admit undersized digest evidence."""
+    short_digest = b"short"
+    native_len = len
+    calls = 0
+
+    def disguise_length(value: Sized) -> int:
+        nonlocal calls
+        if value is short_digest:
+            calls += 1
+            return 32
+        return native_len(value)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "len", disguise_length)
+        try:
+            _ = StableAnchor(digest=short_digest, offset=0)
+        except FingerprintPolicyError:
+            rejected = True
+
+    _expect(rejected, "short digest was accepted after len override")
+    _expect(calls == 0, "mutable len was consulted")
+
+
+def test_anchor_selection_rejects_mutable_data_after_type_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign mutable source cannot masquerade as immutable SHA input."""
+    foreign = bytearray(b"source")
+    native_type = type
+    calls = 0
+
+    def disguise_bytes(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return bytes
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", disguise_bytes)
+        try:
+            _ = stable_anchors(cast("bytes", cast("object", foreign)))
+        except FingerprintPolicyError:
+            rejected = True
+
+    _expect(rejected, "mutable input was admitted as source bytes")
+    _expect(calls == 0, "mutable type was consulted")
 
 
 def test_content_defined_anchors_survive_insertion_shift() -> None:
