@@ -77,6 +77,7 @@ from algorithms.diff.model import (
 from algorithms.diff.publication import publish_directory_no_replace
 from algorithms.diff.semantic import (
     SemanticAuthoringPlan,
+    SemanticEdit,
     apply_semantic_plan,
     build_semantic_plan,
     read_semantic_plan,
@@ -105,6 +106,7 @@ _NATIVE_TYPE = builtins.type
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
+_NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_ZIP = builtins.zip
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
@@ -502,6 +504,107 @@ _MATERIALIZE_CONTEXT_SLOTS = {
     name: cast("MemberDescriptorType", _MaterializeContext.__dict__[name])
     for name in _MaterializeContext.__dataclass_fields__
 }
+
+
+# Internal authoring and materialization receipts must not dispatch through
+# mutable record-class constructors after a mapper or filesystem callback.
+_COMPATIBLE_INSTRUCTION_INIT = cast(
+    "Callable[[CompatibleInstruction, str, CompatibleFileKind, str | None, str | None, SemanticAuthoringPlan | None, ExactInstruction | None, bytes | None, tuple[str | None, ...]], None]",
+    CompatibleInstruction.__dict__["__init__"],
+)
+_COMPATIBLE_PLAN_INIT = cast(
+    "Callable[[CompatibleAuthoringPlan, TreeSnapshot, TreeSnapshot, IdentityTree, AdmissionPolicy, tuple[CompatibleInstruction, ...], bool], None]",
+    CompatibleAuthoringPlan.__dict__["__init__"],
+)
+_BUILD_CONTEXT_INIT = cast(
+    "Callable[[_BuildContext, CompatibleBuildRequest, ExactAuthoringPlan, dict[str, FileRecord]], None]",
+    _BuildContext.__dict__["__init__"],
+)
+_MATERIALIZE_CONTEXT_INIT = cast(
+    "Callable[[_MaterializeContext, Path, Mapper, frozenset[str], frozenset[str]], None]",
+    _MaterializeContext.__dict__["__init__"],
+)
+_ROUTED_SEMANTIC_PLAN_INIT = cast(
+    "Callable[[SemanticAuthoringPlan, tuple[SemanticEdit, ...]], None]",
+    SemanticAuthoringPlan.__dict__["__init__"],
+)
+
+
+def _new_compatible_instruction(
+    output_path: str,
+    kind: CompatibleFileKind,
+    source_path: str | None = None,
+    source_sha256: str | None = None,
+    semantic: SemanticAuthoringPlan | None = None,
+    exact: ExactInstruction | None = None,
+    literal: bytes | None = None,
+    correction_ids: tuple[str | None, ...] = (),
+) -> CompatibleInstruction:
+    instruction = _NATIVE_OBJECT_NEW(CompatibleInstruction)
+    _COMPATIBLE_INSTRUCTION_INIT(
+        instruction,
+        output_path,
+        kind,
+        source_path,
+        source_sha256,
+        semantic,
+        exact,
+        literal,
+        correction_ids,
+    )
+    return instruction
+
+
+def _new_compatible_plan(
+    source: TreeSnapshot,
+    target: TreeSnapshot,
+    reference_identity: IdentityTree,
+    admission_policy: AdmissionPolicy,
+    instructions: tuple[CompatibleInstruction, ...],
+    preserve_candidate_only: bool = True,
+) -> CompatibleAuthoringPlan:
+    plan = _NATIVE_OBJECT_NEW(CompatibleAuthoringPlan)
+    _COMPATIBLE_PLAN_INIT(
+        plan,
+        source,
+        target,
+        reference_identity,
+        admission_policy,
+        instructions,
+        preserve_candidate_only,
+    )
+    return plan
+
+
+def _new_build_context(
+    request: CompatibleBuildRequest,
+    exact: ExactAuthoringPlan,
+    source_records: dict[str, FileRecord],
+) -> _BuildContext:
+    context = _NATIVE_OBJECT_NEW(_BuildContext)
+    _BUILD_CONTEXT_INIT(context, request, exact, source_records)
+    return context
+
+
+def _new_materialize_context(
+    candidate_root: Path,
+    mapper: Mapper,
+    corrections_to_apply: frozenset[str],
+    corrections_to_skip: frozenset[str],
+) -> _MaterializeContext:
+    context = _NATIVE_OBJECT_NEW(_MaterializeContext)
+    _MATERIALIZE_CONTEXT_INIT(
+        context, candidate_root, mapper, corrections_to_apply, corrections_to_skip
+    )
+    return context
+
+
+def _new_routed_semantic_plan(
+    edits: tuple[SemanticEdit, ...],
+) -> SemanticAuthoringPlan:
+    plan = _NATIVE_OBJECT_NEW(SemanticAuthoringPlan)
+    _ROUTED_SEMANTIC_PLAN_INIT(plan, edits)
+    return plan
 
 
 def _build_request(context: _BuildContext) -> CompatibleBuildRequest:
@@ -957,7 +1060,7 @@ def _bind_instruction_corrections(
     correction_ids = _NATIVE_LIST(_normalized_correction_ids(fields))
     for binding in bindings:
         _apply_correction_binding(correction_ids, binding)
-    return CompatibleInstruction(
+    return _new_compatible_instruction(
         output_path=fields.output_path,
         kind=fields.kind,
         source_path=fields.source_path,
@@ -1006,7 +1109,7 @@ def bind_compatible_corrections(
         )
         for item, view in instruction_views
     )
-    return CompatibleAuthoringPlan(
+    return _new_compatible_plan(
         source=fields.source,
         target=fields.target,
         reference_identity=fields.reference_identity,
@@ -1247,7 +1350,7 @@ def _literal_instruction(
     context: _BuildContext,
     instruction: ExactInstruction,
 ) -> CompatibleInstruction:
-    return CompatibleInstruction(
+    return _new_compatible_instruction(
         output_path=instruction.output_path,
         kind=CompatibleFileKind.CREATE_LITERAL,
         literal=_tree_bytes(
@@ -1264,12 +1367,12 @@ def _mapped_instruction(
 ) -> CompatibleInstruction:
     semantic = build_semantic_plan(*mapped)
     if not read_semantic_plan(semantic):
-        return CompatibleInstruction(
+        return _new_compatible_instruction(
             output_path=instruction.output_path,
             kind=CompatibleFileKind.COPY_CANDIDATE,
             source_path=source_path,
         )
-    return CompatibleInstruction(
+    return _new_compatible_instruction(
         output_path=instruction.output_path,
         kind=CompatibleFileKind.SEMANTIC_PATCH,
         source_path=source_path,
@@ -1283,7 +1386,7 @@ def _exact_instruction(
     source_path: str,
 ) -> CompatibleInstruction:
     record = _build_source_records(context)[source_path]
-    return CompatibleInstruction(
+    return _new_compatible_instruction(
         output_path=instruction.output_path,
         kind=CompatibleFileKind.EXACT_GATED,
         source_path=source_path,
@@ -1399,7 +1502,7 @@ def build_compatible_plan(
     """
     request = _require_build_request(request)
     exact = build_exact_plan(request.source_root, request.oracle_root)
-    context = _BuildContext(
+    context = _new_build_context(
         request=request,
         exact=exact,
         source_records=_record_map(exact.source),
@@ -1414,7 +1517,7 @@ def build_compatible_plan(
     _require_tree_unchanged(
         request.oracle_root, exact.target, "target", phase="authoring"
     )
-    return CompatibleAuthoringPlan(
+    return _new_compatible_plan(
         source=exact.source,
         target=exact.target,
         reference_identity=request.reference_identity,
@@ -1507,7 +1610,7 @@ def _routed_semantic_plan(
         )
         if correction_id is None or correction_id in _materialize_apply(context)
     )
-    return SemanticAuthoringPlan(edits=edits)
+    return _new_routed_semantic_plan(edits)
 
 
 def _materialize_semantic(
@@ -1698,7 +1801,7 @@ def _populate_staging(
     candidate: TreeSnapshot,
     staging: Path,
 ) -> None:
-    context = _MaterializeContext(
+    context = _new_materialize_context(
         candidate_root=request.candidate_root,
         mapper=request.mapper,
         corrections_to_apply=_NATIVE_FROZENSET(

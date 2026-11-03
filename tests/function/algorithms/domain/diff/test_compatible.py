@@ -40,6 +40,9 @@ import ntpath
 import os
 import re
 import shutil
+import subprocess
+import sys
+from contextlib import ExitStack, contextmanager
 from dataclasses import replace
 from pathlib import Path
 from types import MemberDescriptorType, SimpleNamespace
@@ -87,7 +90,7 @@ from algorithms.diff.model import (
 from algorithms.diff.semantic import SemanticAuthoringPlan
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sized
+    from collections.abc import Callable, Iterable, Iterator, Sized
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior import BehaviorEvidence
@@ -4049,4 +4052,212 @@ def test_compatible_transient_routing_ignores_late_correction_getter(
         routed = routed_plan(context, semantic)
     assert semantic.semantic is not None
     assert len(routed.edits) == len(semantic.semantic.edits)
+    assert calls == 0
+
+
+_HOOK_CHILD_ENV = "MALBOLGE_COMPATIBLE_NEW_HOOK_CHILD"
+
+
+def _run_new_hook_in_child(hook: str, request: pytest.FixtureRequest) -> bool:
+    """Keep Python's class ``tp_new`` slot mutation out of the test runner."""
+    if hook != "__new__" or os.environ.get(_HOOK_CHILD_ENV) == "1":
+        return False
+    env = os.environ.copy()
+    env[_HOOK_CHILD_ENV] = "1"
+    result = subprocess.run(
+        [sys.executable, "-B", "-m", "pytest", request.node.nodeid, "-q"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env=env,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    return True
+
+
+_MISSING_CONSTRUCTOR = object()
+
+
+@contextmanager
+def _guard_late_constructor(
+    owner: type, hook: str, replacement: Callable[..., None]
+) -> Iterator[None]:
+    """Restore inherited ``__new__`` by deleting, not rebinding, its hook."""
+    original = owner.__dict__.get(hook, _MISSING_CONSTRUCTOR)
+    setattr(owner, hook, replacement)
+    try:
+        yield
+    finally:
+        if original is _MISSING_CONSTRUCTOR:
+            delattr(owner, hook)
+        else:
+            setattr(owner, hook, original)
+
+
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+@pytest.mark.parametrize(
+    "record_type", [CompatibleInstruction, compatible_module.CompatibleAuthoringPlan]
+)
+def test_compatible_authoring_ignores_late_receipt_constructors(
+    tmp_path: Path,
+    record_type: type,
+    hook: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    """A mapper must not forge instructions or the final authored plan."""
+    if _run_new_hook_in_child(hook, request):
+        return
+    source, oracle = _roots(tmp_path)
+    calls = 0
+    installed = False
+
+    def forbidden_constructor(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late compatible receipt constructor executed")
+
+    with ExitStack() as stack:
+
+        def mapper(path: str, raw: bytes) -> MappedView | None:
+            nonlocal installed
+            if not installed:
+                stack.enter_context(
+                    _guard_late_constructor(record_type, hook, forbidden_constructor)
+                )
+                installed = True
+            return _mapper(path, raw)
+
+        build_request = CompatibleBuildRequest(
+            source_root=source,
+            oracle_root=oracle,
+            reference_identity=_identity(source),
+            admission_policy=_policy(),
+            mapper=mapper,
+        )
+        plan = build_compatible_plan(build_request)
+        assert any(item.output_path == "code.src" for item in plan.instructions)
+    assert installed and calls == 0
+
+
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+@pytest.mark.parametrize(
+    "record_type", [CompatibleInstruction, compatible_module.CompatibleAuthoringPlan]
+)
+def test_compatible_binding_ignores_late_receipt_constructors(
+    tmp_path: Path,
+    record_type: type,
+    hook: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Correction binding cannot be intercepted by replaced record hooks."""
+    if _run_new_hook_in_child(hook, request):
+        return
+    plan = _plan(tmp_path)
+    binding = CompatibleCorrectionBinding("code.src", 0, "fix")
+    calls = 0
+
+    def forbidden_constructor(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late correction receipt constructor executed")
+
+    with _guard_late_constructor(record_type, hook, forbidden_constructor):
+        routed = bind_compatible_corrections(plan, (binding,))
+        assert any("fix" in item.correction_ids for item in routed.instructions)
+    assert calls == 0
+
+
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+def test_compatible_build_context_ignores_late_constructor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Exact authoring callbacks cannot rewrite the transient build context."""
+    if _run_new_hook_in_child(hook, request):
+        return
+    source, oracle = _roots(tmp_path)
+    build_request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    owner = vars(compatible_module)["_BuildContext"]
+    original = compatible_module.build_exact_plan
+    calls = 0
+
+    def forbidden_constructor(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late compatible build-context constructor executed")
+
+    with monkeypatch.context() as patched, ExitStack() as stack:
+
+        def install_after_exact(*args: Path) -> ExactAuthoringPlan:
+            result = original(*args)
+            stack.enter_context(_guard_late_constructor(owner, hook, forbidden_constructor))
+            return result
+
+        patched.setattr(compatible_module, "build_exact_plan", install_after_exact)
+        plan = build_compatible_plan(build_request)
+        assert any(item.output_path == "code.src" for item in plan.instructions)
+    assert calls == 0
+
+
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+def test_compatible_materialize_context_ignores_late_constructor(
+    tmp_path: Path,
+    hook: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    """Admission cannot redirect candidate bytes through a context hook."""
+    if _run_new_hook_in_child(hook, request):
+        return
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "published"
+    materialize_request = _request(candidate, plan, output)
+    owner = vars(compatible_module)["_MaterializeContext"]
+    calls = 0
+
+    def forbidden_constructor(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late compatible materialize context executed")
+
+    with _guard_late_constructor(owner, hook, forbidden_constructor):
+        admitted = materialize_compatible_plan(materialize_request)
+        assert admitted.admitted
+    assert (output / "code.src").read_bytes() == _EXPECTED_CODE
+    assert calls == 0
+
+
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+def test_compatible_semantic_routing_ignores_late_plan_constructor(
+    tmp_path: Path,
+    hook: str,
+    request: pytest.FixtureRequest,
+) -> None:
+    """The selected semantic edit subset cannot be swapped during replay."""
+    if _run_new_hook_in_child(hook, request):
+        return
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "published"
+    materialize_request = _request(candidate, plan, output)
+    calls = 0
+
+    def forbidden_constructor(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late semantic routing plan constructor executed")
+
+    with _guard_late_constructor(SemanticAuthoringPlan, hook, forbidden_constructor):
+        admitted = materialize_compatible_plan(materialize_request)
+        assert admitted.admitted
+    assert (output / "code.src").read_bytes() == _EXPECTED_CODE
     assert calls == 0
