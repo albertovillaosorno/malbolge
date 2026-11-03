@@ -37,6 +37,7 @@ from __future__ import annotations
 from builtins import any as _native_any
 from builtins import bool as _native_bool
 from builtins import bytes as _native_bytes
+from builtins import enumerate as _native_enumerate
 from builtins import int as _native_int
 from builtins import isinstance as _native_isinstance
 from builtins import len as _native_len
@@ -515,7 +516,7 @@ def _validate_passthrough_topology(ordered: tuple[str, ...]) -> None:
     if ordered != _native_tuple(_native_sorted(_native_set(ordered))):
         message = "exact plan passthrough roots must be unique and sorted"
         raise TreeModelError(message)
-    for index, root in enumerate(ordered):
+    for index, root in _native_enumerate(ordered):
         prefix = root + "/"
         successors = ordered[index + 1 :]
         if _native_any(other.startswith(prefix) for other in successors):

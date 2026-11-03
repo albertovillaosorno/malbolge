@@ -38,6 +38,7 @@ import builtins
 from typing import TYPE_CHECKING
 from typing import cast
 
+from algorithms.diff import model as model_module
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import ExactInstructionKind
@@ -48,6 +49,8 @@ from algorithms.diff.model import TreeModelError
 from algorithms.diff.model import TreeSnapshot
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pytest
 
 _HASH = "0" * 64
@@ -224,3 +227,52 @@ def test_model_rejects_late_range_spoofed_file_ancestor(
         except TreeModelError:
             rejected = True
     assert rejected, "late range hook erased a nested snapshot conflict"
+
+
+def test_model_rejects_late_enumerate_spoofed_passthrough_overlap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late position iterator cannot hide ancestor passthrough roots."""
+    topology = cast(
+        "Callable[[tuple[str, ...]], None]",
+        vars(model_module)["_validate_passthrough_topology"],
+    )
+
+    def omit_all_roots(values: object) -> tuple[()]:
+        del values
+        return ()
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "enumerate", omit_all_roots)
+        try:
+            topology(("src", "src/deeper"))
+        except TreeModelError:
+            rejected = True
+    assert rejected, (
+        "late enumerate hook admitted overlapping passthrough roots"
+    )
+
+
+def test_model_native_passthrough_topology_survives_late_enumerate_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid and invalid native root topology is independent of aliases."""
+    topology = cast(
+        "Callable[[tuple[str, ...]], None]",
+        vars(model_module)["_validate_passthrough_topology"],
+    )
+
+    def omit_all_roots(values: object) -> tuple[()]:
+        del values
+        return ()
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "enumerate", omit_all_roots)
+        topology(("src", "tests"))
+        try:
+            topology(("src", "src/deeper"))
+        except TreeModelError:
+            rejected = True
+    assert rejected, "overlapping native roots were accepted"
