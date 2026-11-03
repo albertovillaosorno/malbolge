@@ -1123,6 +1123,17 @@ were clean; the six inherited test typing errors and broader Jig failures
 remain outside the patch. Hook identity checks do not make external filesystem
 or concurrent host-code mutations atomic.
 
+The probe resolver also pins import-original `os.lstat`, `os.readlink`,
+`os.getcwd`, and `stat.S_ISLNK` (`8edcd9f7b`), which original host realpath
+still consults beneath `Path.resolve`. A substituted `os.lstat` was reproduced
+returning a symlink alias rather than its real target, so later probe root or
+tool containment could be laundered. Four late-hook replacements and one
+mid-resolution replacement now fail closed. All 384 postcommit probe tests
+and 3,391 precommit integrated diff tests passed. Strict probe-source typing
+retains three unrelated existing errors; full Jig validation has no green
+verdict. The identity checks remain non-atomic against external writers or
+concurrent process-global mutation.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record

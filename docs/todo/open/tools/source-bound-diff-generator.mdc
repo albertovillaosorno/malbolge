@@ -380,6 +380,13 @@ format.
 - Probe resolution now pins `Path.with_segments` (`17b56bba3`) before and
   after native `Path.resolve`, blocking two red-first native source/tool
   redirections. All 379 focused and 3,340 integrated diff tests passed.
+- Probe resolver dependencies `os.lstat`, `os.readlink`, `os.getcwd`,
+  and `stat.S_ISLNK` are now pinned (`8edcd9f7b`) around native path
+  resolution. An injected lstat hook previously returned the symlink alias
+  rather than its real target. Five red-first late/mid-resolution cases,
+  384 postcommit probe tests and 3,391 integrated diff tests passed. Strict
+  source typing retains three existing unrelated errors; full Jig remains
+  unverified. External writer and host mutation races remain out of scope.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.
