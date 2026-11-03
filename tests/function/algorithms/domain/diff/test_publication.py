@@ -755,6 +755,42 @@ def _fake_linux_host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="linux"))
 
 
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux renameat2",
+)
+def test_linux_publication_ignores_post_import_loader_overwrite_shim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced global C loader cannot bypass no-replace directory publication."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    _ = (staging / "new").write_bytes(_OURS)
+    calls = 0
+
+    def wrong_rename(*args: int | bytes) -> int:
+        nonlocal calls
+        calls += 1
+        source, target = args[1], args[3]
+        assert type(source) is bytes and type(target) is bytes
+        os.rename(os.fsdecode(source), os.fsdecode(target))
+        return 0
+
+    def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+        del _name, _options
+        return SimpleNamespace(renameat2=Mock(side_effect=wrong_rename))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes, "CDLL", fake_cdll)
+        with pytest.raises(FileExistsError):
+            publication.publish_directory_no_replace(staging, destination)
+    assert calls == 0, "late C loader replaced an existing output directory"
+    assert (staging / "new").read_bytes() == _OURS
+    assert list(destination.iterdir()) == []
+
+
 @pytest.mark.parametrize("status", [False, None, "no rename"])
 def test_linux_publication_rejects_foreign_native_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: object
@@ -769,7 +805,7 @@ def test_linux_publication_rejects_foreign_native_status(
         _ = (_name, _options)
         return SimpleNamespace(renameat2=native)
 
-    monkeypatch.setattr(ctypes, "CDLL", fake_cdll)
+    monkeypatch.setattr(publication, "_NATIVE_CDLL", fake_cdll)
     _fake_linux_host(monkeypatch)
     with pytest.raises(OSError, match="invalid status") as rejected:
         publication.publish_directory_no_replace(staging, destination)
@@ -810,7 +846,7 @@ def test_linux_publication_ignores_mutated_error_hooks(
     _ = ctypes.set_errno(0 if hook == "get_errno" else errno.EEXIST)
     try:
         with monkeypatch.context() as patched:
-            patched.setattr(ctypes, "CDLL", fake_cdll)
+            patched.setattr(publication, "_NATIVE_CDLL", fake_cdll)
             if hook == "get_errno":
                 patched.setattr(ctypes, "get_errno", forged_errno)
             else:
@@ -846,7 +882,7 @@ def test_linux_publication_rejects_invalid_native_errno(
     _ = ctypes.set_errno(reported_errno)
     try:
         with monkeypatch.context() as patched:
-            patched.setattr(ctypes, "CDLL", fake_cdll)
+            patched.setattr(publication, "_NATIVE_CDLL", fake_cdll)
             with pytest.raises(
                 OSError, match="invalid errno status"
             ) as rejected:
@@ -875,7 +911,7 @@ def test_linux_publication_contains_native_loader_errors(
         message = "broken native loader"
         raise failure_type(message)
 
-    monkeypatch.setattr(ctypes, "CDLL", fail_cdll)
+    monkeypatch.setattr(publication, "_NATIVE_CDLL", fail_cdll)
     _fake_linux_host(monkeypatch)
     with pytest.raises(OSError, match="unavailable") as rejected:
         publication.publish_directory_no_replace(staging, destination)
@@ -906,7 +942,7 @@ def test_linux_publication_contains_native_call_errors(
         _ = (_name, _options)
         return SimpleNamespace(renameat2=native)
 
-    monkeypatch.setattr(ctypes, "CDLL", fake_cdll)
+    monkeypatch.setattr(publication, "_NATIVE_CDLL", fake_cdll)
     _fake_linux_host(monkeypatch)
     with pytest.raises(OSError, match="invocation failed") as rejected:
         publication.publish_directory_no_replace(staging, destination)
@@ -932,7 +968,7 @@ def test_publication_rejects_foreign_success_without_rename(
             _ = (_name, _options)
             return SimpleNamespace(renameat2=native)
 
-        monkeypatch.setattr(ctypes, "CDLL", fake_cdll)
+        monkeypatch.setattr(publication, "_NATIVE_CDLL", fake_cdll)
         _fake_linux_host(monkeypatch)
         os_name, host_platform = "posix", "linux"
     else:
@@ -985,7 +1021,7 @@ def test_linux_publication_rejects_success_for_different_directory(
         _ = (_name, _options)
         return SimpleNamespace(renameat2=Mock(side_effect=foreign_rename))
 
-    monkeypatch.setattr(ctypes, "CDLL", fake_cdll)
+    monkeypatch.setattr(publication, "_NATIVE_CDLL", fake_cdll)
     _fake_linux_host(monkeypatch)
     with pytest.raises(OSError, match="publication.*not completed"):
         publication.publish_directory_no_replace(
