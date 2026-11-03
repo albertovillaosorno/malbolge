@@ -74,6 +74,7 @@ _ORACLE_TREE = "oracle"
 _STD_MARKER = b"use std::"
 _LITERAL_MARKER = b"target-only"
 _OUTPUT_ALGORITHM = "output_algorithm"
+_EXACT_STRING_TYPE = "exact string type"
 
 
 def _blocks(label: str) -> bytes:
@@ -1282,3 +1283,132 @@ def test_generator_rejects_out_of_range_binding_counts(
             not recipe.output_algorithm.exists(),
             "invalid binding count wrote output",
         )
+
+
+# Fixed private preflight entrypoints: test the real checks without a writer.
+_VALIDATE_FRACTION = cast(
+    "Callable[[str, object], None]",
+    generate_module.__dict__["_validate_fraction"],
+)
+_VALIDATE_BINDING_COUNT = cast(
+    "Callable[[str, object, int | None], int]",
+    generate_module.__dict__["_validate_binding_count"],
+)
+_VALIDATE_PROFILE_TEXT = cast(
+    "Callable[[object], None]",
+    generate_module.__dict__["_validate_profile_text"],
+)
+_VALIDATE_PASSTHROUGH_ROOTS = cast(
+    "Callable[[object], None]",
+    generate_module.__dict__["_validate_passthrough_roots"],
+)
+_VALIDATE_IDENTITY_FLAGS = cast(
+    "Callable[[DiffRecipe], None]",
+    generate_module.__dict__["_validate_identity_flags"],
+)
+
+
+@pytest.mark.parametrize(
+    ("native_name", "invalid"),
+    [("int", True), ("float", True)],
+)
+def test_recipe_fraction_rejects_late_numeric_alias_for_boolean(
+    monkeypatch: pytest.MonkeyPatch,
+    native_name: str,
+    invalid: object,
+) -> None:
+    """Late number aliases cannot certify Boolean policy thresholds."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, native_name, bool)
+        try:
+            _VALIDATE_FRACTION("minimum_source_similarity", invalid)
+        except TypeError, ValueError:
+            rejected = True
+    assert rejected, "Boolean fraction passed a late numeric alias"
+
+
+def test_recipe_binding_count_rejects_late_integer_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Boolean cannot become an exact share count through an int alias."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            invalid_count: object = True
+            _ = _VALIDATE_BINDING_COUNT(
+                "source_binding_maximum_anchors", invalid_count, 255
+            )
+        except TypeError:
+            rejected = True
+    assert rejected, "Boolean share count passed late integer alias"
+
+
+def test_recipe_profile_rejects_late_string_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign profile strings cannot authenticate a public target identity."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignProfile)
+        try:
+            _VALIDATE_PROFILE_TEXT(_ForeignProfile("foreign"))
+        except TypeError as error:
+            rejected = _EXACT_STRING_TYPE in error.args[0]
+    assert rejected, "subclassed profile passed late string alias"
+
+
+def test_recipe_passthrough_rejects_late_string_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign root strings cannot pass exact passthrough admission."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignProfile)
+        try:
+            _VALIDATE_PASSTHROUGH_ROOTS((_ForeignProfile("assets"),))
+        except TypeError as error:
+            rejected = _EXACT_STRING_TYPE in error.args[0]
+    assert rejected, "foreign passthrough path passed late string alias"
+
+
+def test_recipe_identity_flags_reject_late_boolean_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Integers cannot masquerade as formatting flags after a late alias."""
+    recipe = replace(
+        _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE),
+        ignore_comments_for_identity=cast("bool", cast("object", 1)),
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bool", int)
+        try:
+            _VALIDATE_IDENTITY_FLAGS(recipe)
+        except TypeError:
+            rejected = True
+    assert rejected, "integer formatting flag passed late bool alias"
+
+
+def test_recipe_native_metadata_survives_late_type_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid native fields remain valid despite foreign builtin names."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        _VALIDATE_FRACTION("minimum_source_similarity", 1)
+        _ = _VALIDATE_BINDING_COUNT("source_binding_maximum_anchors", 2, 255)
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "float", bool)
+        _VALIDATE_FRACTION("minimum_source_similarity", 0.5)
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignProfile)
+        _VALIDATE_PROFILE_TEXT("native-profile")
+    _VALIDATE_PASSTHROUGH_ROOTS(("assets",))
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bool", int)
+        _VALIDATE_IDENTITY_FLAGS(recipe)
