@@ -615,6 +615,48 @@ def test_generator_rejects_changed_native_host_parser_dependencies(
             _validate_realpath_recipe(recipe)
 
 
+@pytest.mark.parametrize("helper", ["isinstance", "len"])
+def test_generator_rejects_late_realpath_builtin_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    """The native realpath cannot call replaced builtin path helpers."""
+    selected = tmp_path / "source"
+    selected.mkdir()
+    original = cast("Callable[..., object]", getattr(builtins, helper))
+    calls = 0
+
+    def watched(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, helper, watched)
+        try:
+            _ = generate_module._resolve_recipe_path(selected, "source_root")
+        except ValueError as error:
+            rejected = "host path hooks changed" in str(error)
+    assert rejected, f"late builtin {helper} was admitted"
+    assert calls == 0, f"late builtin {helper} callback was executed"
+
+
+def test_generator_rejects_late_realpath_bytes_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A swapped builtin bytes type cannot alter host realpath dispatch."""
+    selected = tmp_path / "source"
+    selected.mkdir()
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", str)
+        try:
+            _ = generate_module._resolve_recipe_path(selected, "source_root")
+        except ValueError as error:
+            rejected = "host path hooks changed" in str(error)
+    assert rejected, "late bytes alias reached native realpath"
+
+
 def test_generator_rejects_replaced_host_realpath_denial(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

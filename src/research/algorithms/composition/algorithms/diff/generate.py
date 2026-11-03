@@ -75,6 +75,8 @@ _NATIVE_ISFINITE = math.isfinite
 _NATIVE_ANY = builtins.any
 _NATIVE_ALL = builtins.all
 _NATIVE_LEN = builtins.len
+_NATIVE_ISINSTANCE = builtins.isinstance
+_NATIVE_BYTES_TYPE = builtins.bytes
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TUPLE = builtins.tuple
@@ -442,6 +444,9 @@ def _require_native_host_realpath(name: str) -> None:
         or os.path.join is not _NATIVE_HOST_JOIN
         or os.path.sep is not _NATIVE_HOST_SEP
         or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.bytes is not _NATIVE_BYTES_TYPE
+        or builtins.len is not _NATIVE_LEN
         or _NATIVE_ANY(
             path_class.__dict__.get(name) is not original
             for path_class, hooks in _NATIVE_PATH_CLASS_HOOKS
