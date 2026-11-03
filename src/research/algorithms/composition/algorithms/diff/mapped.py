@@ -41,6 +41,8 @@ _ZERO = 0
 # Preserve exact-record admission after untrusted domain callback execution.
 _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = builtins.type
+_NATIVE_BYTES = builtins.bytes
+_NATIVE_INT = builtins.int
 _NATIVE_LEN = builtins.len
 _NATIVE_TUPLE = builtins.tuple
 
@@ -64,12 +66,15 @@ class MappedUnit:
             MappedViewError: Canonical bytes or raw coordinates are invalid.
 
         """
-        if _NATIVE_TYPE(self.canonical) is not bytes or not self.canonical:
+        if (
+            _NATIVE_TYPE(self.canonical) is not _NATIVE_BYTES
+            or not self.canonical
+        ):
             message = "mapped canonical unit must be non-empty exact bytes"
             raise MappedViewError(message)
         if (
-            _NATIVE_TYPE(self.raw_start) is not int
-            or _NATIVE_TYPE(self.raw_end) is not int
+            _NATIVE_TYPE(self.raw_start) is not _NATIVE_INT
+            or _NATIVE_TYPE(self.raw_end) is not _NATIVE_INT
         ):
             message = "mapped raw coordinates must use exact integers"
             raise MappedViewError(message)
@@ -104,7 +109,7 @@ class MappedView:
             MappedViewError: A unit escapes raw bytes or overlaps a prior unit.
 
         """
-        if _NATIVE_TYPE(self.raw) is not bytes:
+        if _NATIVE_TYPE(self.raw) is not _NATIVE_BYTES:
             message = "mapped raw source must use exact bytes"
             raise MappedViewError(message)
         if _NATIVE_TYPE(self.units) is not _NATIVE_TUPLE:

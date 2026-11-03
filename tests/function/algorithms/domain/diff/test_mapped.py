@@ -255,3 +255,66 @@ def test_mapped_records_reject_foreign_runtime_metadata() -> None:
         )
     with pytest.raises(MappedViewError, match="foreign unit"):
         _ = MappedView(b"a", (cast("MappedUnit", object()),))
+
+
+def test_mapped_unit_rejects_late_bytes_alias_for_mutable_canonical(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late bytes aliases cannot admit mutable canonical unit metadata."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = MappedUnit(
+                cast("bytes", cast("object", bytearray(b"A"))), 0, 1
+            )
+        except MappedViewError:
+            rejected = True
+    assert rejected, "mutable canonical unit passed a late bytes alias"
+
+
+def test_mapped_view_rejects_late_bytes_alias_for_mutable_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late bytes aliases cannot admit mutable raw source evidence."""
+    unit = MappedUnit(b"A", 0, 1)
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = MappedView(
+                cast("bytes", cast("object", bytearray(b"a"))),
+                (unit,),
+            )
+        except MappedViewError:
+            rejected = True
+    assert rejected, "mutable mapped source passed a late bytes alias"
+
+
+def test_mapped_unit_rejects_late_integer_alias_for_boolean_span(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late int aliases cannot certify Boolean source offsets."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", bool)
+        try:
+            _ = MappedUnit(canonical=b"A", raw_start=True, raw_end=True)
+        except MappedViewError:
+            rejected = True
+    assert rejected, "Boolean raw offsets passed a late integer alias"
+
+
+def test_mapped_native_metadata_survives_late_builtin_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late bytes/int aliases do not reject valid native mapping records."""
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", bool)
+        unit = MappedUnit(b"A", 0, 1)
+    assert unit.raw_start == 0
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", bytearray)
+        view = MappedView(b"a", (MappedUnit(b"A", 0, 1),))
+    assert view.canonical == _CANONICAL_PAIR[:1]
