@@ -42,6 +42,8 @@ from algorithms.diff.behavior import BehaviorEvidence
 
 # Conjunctive gate validation must not trust late global builtins hooks.
 _NATIVE_ANY = builtins.any
+_NATIVE_TYPE = type
+_NATIVE_TUPLE = tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,8 +63,8 @@ class TransformAdmissionEvidence:
         """
         source = _require_source_evidence(self.source)
         behavior = _require_behavior_evidence(self.behavior)
-        if type(self.reasons) is not tuple or _NATIVE_ANY(
-            type(reason) is not str for reason in self.reasons
+        if _NATIVE_TYPE(self.reasons) is not _NATIVE_TUPLE or _NATIVE_ANY(
+            _NATIVE_TYPE(reason) is not str for reason in self.reasons
         ):
             message = "transform admission reasons must use exact strings"
             raise AdmissionError(message)
@@ -82,14 +84,14 @@ class TransformAdmissionEvidence:
 
 
 def _require_source_evidence(value: object) -> TreeAdmissionEvidence:
-    if type(value) is not TreeAdmissionEvidence:
+    if _NATIVE_TYPE(value) is not TreeAdmissionEvidence:
         message = "transform gate requires exact TreeAdmissionEvidence"
         raise AdmissionError(message)
     return value
 
 
 def _require_behavior_evidence(value: object) -> BehaviorEvidence:
-    if type(value) is not BehaviorEvidence:
+    if _NATIVE_TYPE(value) is not BehaviorEvidence:
         message = "transform gate requires exact BehaviorEvidence"
         raise AdmissionError(message)
     return value
@@ -106,7 +108,7 @@ def _canonical_reasons(
         reasons.append("source lineage admission failed")
     if behavior.reasons:
         reasons.append("behavior admission failed")
-    return tuple(reasons)
+    return _NATIVE_TUPLE(reasons)
 
 
 def combine_admission(

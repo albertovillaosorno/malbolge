@@ -35,9 +35,10 @@
 from __future__ import annotations
 
 import builtins
+from collections.abc import Iterable
 import hashlib
 from dataclasses import replace
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Self, cast
 
 import pytest
 from algorithms.diff.admission import (
@@ -168,6 +169,65 @@ def test_gate_rejects_foreign_and_forged_evidence_records() -> None:
             behavior=behavior,
             reasons=(),
         )
+
+
+def test_gate_rejects_failed_source_after_late_tuple_subclass_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tuple constructor cannot erase both rounds of rejection checks."""
+    source = _source_evidence("unrelated")
+    behavior = _behavior_evidence()
+    native_tuple = tuple
+    calls = 0
+
+    class ErasingTuple(native_tuple[str, ...]):
+        def __new__(cls, values: Iterable[str]) -> Self:
+            nonlocal calls
+            calls += 1
+            if list(values) == ["source lineage admission failed"]:
+                return native_tuple.__new__(cls, ())
+            return native_tuple.__new__(cls, values)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", ErasingTuple)
+        try:
+            _ = require_transform_admission(source, behavior)
+        except AdmissionError:
+            rejected = True
+
+    _expect(rejected, "tuple substitution erased mandatory source rejection")
+    _expect(calls == 0, "mutable tuple constructor was consulted")
+
+
+def test_gate_rejects_foreign_source_after_late_type_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged type check cannot promote arbitrary source evidence."""
+    foreign = object()
+    native_type = type
+    native_source_type = native_type(_source_evidence("reference"))
+    forged_source = cast("TreeAdmissionEvidence", foreign)
+    behavior = _behavior_evidence()
+    calls = 0
+
+    def forge_source_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return native_source_type
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forge_source_type)
+        try:
+            _ = combine_admission(forged_source, behavior)
+        except AdmissionError:
+            rejected = True
+
+    _expect(rejected, "foreign source evidence passed after type spoof")
+    _expect(calls == 0, "mutable type function was consulted")
 
 
 @pytest.mark.parametrize("failing_family", ["source", "behavior"])
