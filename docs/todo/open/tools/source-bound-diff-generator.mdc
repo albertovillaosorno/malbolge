@@ -54,6 +54,13 @@ format.
   Boolean numeric aliases, mutable collection substitutes, and foreign records
   fail through the owning domain boundary. Compatible mappers and postconditions
   also keep exceptions and foreign return records inside that boundary.
+- Consumer-domain bundles, generator source/oracle preflight hooks, source-pin
+  commitments, and portable behavior-program records now preserve original
+  constructor validators and stored hook/evidence slots. Authoring, candidate
+  observation, and bug-state classification read stored probes and digests;
+  twenty-four red-first regressions cover replaced validators, forged getters,
+  skipped preflights, and omitted mandatory probes. This isolates late class
+  hooks, not direct instance mutation or concurrent filesystem writers.
   Compatible instruction/correction paths and provenance-pin roots reject
   Windows drive-prefixed labels before they can influence a consumer path.
 - The exact authoring planner/materializer reconstructs deterministic byte

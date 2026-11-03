@@ -163,6 +163,24 @@ trusted code directly rewriting instance storage, mutating third-party
 callbacks, or changing files concurrently. Immutable record construction and
 process-hook isolation do not defend against arbitrary trusted code directly
 rewriting stored object state.
+
+Four further fail-closed boundaries keep consumer domain admission and authoring
+bound to the original record storage. `DiffDomain` invokes its captured
+constructor validator and reads the original callable hook slots, rather than
+trusting a later `__post_init__` or class getter. Generator preflight requires
+an exact domain bundle and invokes its stored source-provenance and
+oracle-validation callbacks; a late getter cannot skip either check. `SourcePin`
+and `SourcePinEvidence` likewise retain their original constructor validators
+and read stored repository, selected roots, file count, and snapshot digest
+when verifying an observed tree. The four behavior-program record types keep
+captured constructor guards and slot readers; source/oracle authoring,
+transcript classification, and candidate observation use the admitted stored
+probe groups and bug digests. Twenty-four red-first tests reproduced validator
+replacement, spoofed metadata or callbacks, omitted probes, and altered bug
+states before these fixes. Trusted callback execution, direct instance-storage
+mutation, and concurrent filesystem writers remain separate trust boundaries;
+these changes do not create a sandbox or an atomic source snapshot.
+
 Pinned-source snapshots also require native `os.stat_result` receipts for the
 source root, selected paths and parent components, and file-identity rechecks.
 Foreign mode and inode records cannot certify pinned provenance. Filesystem
