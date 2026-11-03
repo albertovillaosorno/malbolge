@@ -39,11 +39,12 @@ import hashlib
 import io
 import os
 import shutil
+import stat
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePath
 from stat import S_ISDIR, S_ISLNK
 from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast
@@ -119,6 +120,25 @@ _NATIVE_IS_RELATIVE_TO = _NATIVE_PATH_TYPE.is_relative_to
 _NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_REALPATH = os.path.realpath
+_NATIVE_OS_FSPATH = os.fspath
+_NATIVE_OS_READLINK = os.readlink
+_NATIVE_OS_GETCWD = os.getcwd
+_NATIVE_STAT_ISLNK = stat.S_ISLNK
+# Capturing Path.resolve does not capture its dynamic host and class hooks.
+_RESOLVER_HOOK_NAMES = (
+    "with_segments", "__new__", "__init__", "__getattribute__",
+    "__fspath__", "__str__", "_str", "_raw_paths", "_parse_path",
+    "_format_parsed_parts",
+)
+_NATIVE_RESOLVER_HOOKS = tuple(
+    (
+        path_class,
+        tuple((name, path_class.__dict__.get(name)) for name in _RESOLVER_HOOK_NAMES),
+    )
+    for path_class in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(path_class, PurePath)
+)
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
@@ -131,6 +151,33 @@ _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_IS_SYMLINK = S_ISLNK
 # Cleanup must not use a consumer-replaced global filesystem helper.
 _NATIVE_RMTREE = shutil.rmtree
+
+
+def _require_native_resolution() -> None:
+    """Fail closed on late filesystem or pathlib resolution hook changes."""
+    if (
+        os.path.realpath is not _NATIVE_OS_REALPATH
+        or os.fspath is not _NATIVE_OS_FSPATH
+        or os.lstat is not _NATIVE_OS_LSTAT
+        or os.readlink is not _NATIVE_OS_READLINK
+        or os.getcwd is not _NATIVE_OS_GETCWD
+        or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or any(
+            path_class.__dict__.get(name) is not original
+            for path_class, hooks in _NATIVE_RESOLVER_HOOKS
+            for name, original in hooks
+        )
+    ):
+        message = "compatible path resolution hooks changed"
+        raise CompatiblePlanError(message)
+
+
+def _trusted_resolve(path: Path) -> Path:
+    """Pin native resolver dependencies before and after resolving a path."""
+    _require_native_resolution()
+    result = _NATIVE_RESOLVE(path)
+    _require_native_resolution()
+    return result
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -654,9 +701,10 @@ def _materialize_apply(context: _MaterializeContext) -> frozenset[str]:
 def _validate_request_path(value: object, context: str) -> None:
     # Request paths authorize both source reads and output publication.
     # Reject user-defined Path overrides before any conversion or resolution.
-    if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
+    if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{context} must use exact pathlib Path"
         raise CompatiblePlanError(message)
+    _require_native_resolution()
     raw = _NATIVE_PATH_STRING(value)
     if _NUL in raw:
         message = f"{context} path cannot contain NUL"
@@ -671,7 +719,7 @@ def _validate_request_path(value: object, context: str) -> None:
 
 def _resolve_request_root(path: Path, context: str) -> Path:
     try:
-        resolved = _NATIVE_RESOLVE(path)
+        resolved = _trusted_resolve(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"compatible {context} root resolution failed: {detail}"
@@ -1191,10 +1239,11 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
 
 def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
+    _require_native_resolution()
     path = root.joinpath(*normalized.split("/"))
     try:
-        resolved_path = _NATIVE_RESOLVE(path)
-        resolved_root = _NATIVE_RESOLVE(root)
+        resolved_path = _trusted_resolve(path)
+        resolved_root = _trusted_resolve(root)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_compatible_error_detail(error)
         message = (

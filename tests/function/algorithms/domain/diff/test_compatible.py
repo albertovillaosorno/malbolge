@@ -1334,6 +1334,142 @@ def test_compatible_output_cannot_be_nested_inside_candidate(
     )
 
 
+def test_compatible_containment_rejects_late_host_realpath_forgery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late realpath substitution must not authorize output inside input."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = candidate / "nested" / "out"
+    request = _request(candidate, plan, output)
+    guard = cast(
+        "Callable[[CompatibleMaterializeRequest], None]",
+        vars(compatible_module)["_require_output_outside_candidate"],
+    )
+    native_realpath = os.path.realpath
+    calls = 0
+
+    def forged_realpath(
+        path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> str:
+        nonlocal calls
+        calls += 1
+        if os.fspath(path) == str(output):
+            return str(tmp_path / "outside")
+        return cast("str", native_realpath(path, *args, **kwargs))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(CompatiblePlanError, match="resolution.*hooks changed"):
+            guard(request)
+    assert calls == 0
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("hook", ["lstat", "readlink", "getcwd", "fspath"])
+def test_compatible_containment_rejects_late_host_resolver_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A pinned Path.resolve must not invoke late host filesystem callbacks."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(compatible_module)["_resolve_request_root"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted resolver dependency executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, hook, forbidden)
+        with pytest.raises(CompatiblePlanError, match="resolution.*hooks changed"):
+            resolve(candidate, "candidate")
+    assert calls == 0
+
+
+@pytest.mark.parametrize("hook", ["with_segments", "__new__", "__init__"])
+def test_compatible_containment_rejects_late_path_factories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Native Path resolution still delegates through late class factories."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(compatible_module)["_resolve_request_root"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted native Path factory executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, hook, forbidden)
+        with pytest.raises(CompatiblePlanError, match="resolution.*hooks changed"):
+            resolve(candidate, "candidate")
+    assert calls == 0
+
+
+def test_compatible_containment_rejects_late_symlink_classifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late stat.S_ISLNK replacement cannot change resolver authority."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(compatible_module)["_resolve_request_root"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted symlink classifier executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(compatible_module.stat, "S_ISLNK", forbidden)
+        with pytest.raises(CompatiblePlanError, match="resolution.*hooks changed"):
+            resolve(candidate, "candidate")
+    assert calls == 0
+
+
+def test_compatible_containment_checks_mutation_after_resolver(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late changes during resolution must not certify resolved output."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    original_resolve = cast(
+        "Callable[[Path], Path]", vars(compatible_module)["_NATIVE_RESOLVE"]
+    )
+    calls = 0
+    with monkeypatch.context() as patch:
+
+        def mutate_after_resolve(path: Path) -> Path:
+            nonlocal calls
+            resolved = original_resolve(path)
+            if calls == 0:
+                calls += 1
+                patch.setattr(os.path, "realpath", lambda *_args, **_kwargs: "/other")
+            return resolved
+
+        patch.setattr(compatible_module, "_NATIVE_RESOLVE", mutate_after_resolve)
+        resolve = cast(
+            "Callable[[Path, str], Path]",
+            vars(compatible_module)["_resolve_request_root"],
+        )
+        with pytest.raises(CompatiblePlanError, match="resolution.*hooks changed"):
+            resolve(candidate, "candidate")
+    assert calls == 1
+
+
 def _forge_nested_output_resolution(
     monkeypatch: pytest.MonkeyPatch,
     output: Path,
