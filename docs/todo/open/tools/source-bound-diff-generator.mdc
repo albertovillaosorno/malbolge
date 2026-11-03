@@ -127,6 +127,12 @@ format.
   cases passed, with 237 focused and 2,716 integrated diff tests, scoped
   Ruff, and strict source BasedPyright all green. Direct stored-object mutation
   and filesystem races remain unresolved trust boundaries.
+- Exact snapshot creation now pins original native allocation and initializers
+  for `FileRecord` and `TreeSnapshot` after filesystem callbacks
+  (`ddb920753`). Ten red-first class-hook cases passed, with 322 focused
+  exact/model and 2,799 integrated diff tests. Scoped Ruff and source
+  BasedPyright had zero errors (three existing warnings). This guards late
+  class hooks, not direct instance mutation or external filesystem races.
 - Synthetic tests cover exact reconstruction, deterministic planning, binary
   data,
   moves, modifications, creations, deletions, source mutation, and symlink
@@ -487,6 +493,14 @@ format.
   with scoped Ruff and source BasedPyright at zero errors. Direct record
   mutation, untrusted host processes, and external writers remain outside
   this class-hook boundary.
+- Completed probe process observations now avoid the mutable
+  `subprocess.CompletedProcess` class and read an internally allocated,
+  native-slotted `_CapturedProcess` receipt (`6c1263d65`). Five red-first
+  class/initializer/getter attacks and eleven new cases cover stdout,
+  stderr, exit-code, and private receipt hooks. All 357 postcommit focused
+  and 2,799 precommit integrated diff tests passed; scoped Ruff, source
+  BasedPyright, and diff checks were clean. Direct live-object mutation,
+  external process interference, and filesystem races remain outside scope.
 - Portable behavior authoring/observation now construct ten record types
   through original initializers and native allocation (`375e65304`).
   Twenty red-first `__init__`/`__new__` cases pass; allocation overrides

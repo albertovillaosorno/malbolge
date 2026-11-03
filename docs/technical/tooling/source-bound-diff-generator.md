@@ -108,6 +108,14 @@ integrated diff tests passed; scoped Ruff and strict source BasedPyright had
 zero errors. These are class-hook guards, not protection against direct
 stored-instance mutation or external filesystem races.
 
+Internal exact tree snapshots also pin native allocation and original
+initializers for `FileRecord` and `TreeSnapshot` after filesystem callbacks
+(`ddb920753`). Ten red-first late constructor-hook regressions passed, along
+with 322 focused exact/model and 2,799 integrated diff tests. Scoped Ruff and
+source BasedPyright reported zero errors (three older warnings). As with the
+other guards, direct instance mutation and external writer races remain
+outside this protection.
+
 This local plan is verification evidence, not a distributable transform. Raw
 `OracleLiteral` bytes must never cross the public emission boundary. A later
 source-binding stage must convert them to recovery material that cannot be
@@ -656,6 +664,16 @@ All 346 focused probe-execution tests passed after the commit and 2,778
 integrated diff tests passed before it; scoped Ruff and source BasedPyright
 had no errors. This does not isolate arbitrary direct writes to live records
 or external process/filesystem interference.
+
+The completed-child receipt is now an internal `_CapturedProcess` with
+captured native allocation, the original initializer, and native slot reads
+(`6c1263d65`). This removes mutable `subprocess.CompletedProcess` class,
+constructor, stdout, stderr, and return-code getters from the evidence path.
+Five late-hook regressions failed before the fix; eleven new cases passed,
+as did all 357 postcommit focused and 2,799 precommit integrated diff tests.
+Scoped Ruff, source BasedPyright, and diff checks were clean. Direct
+live-object mutation and external process/filesystem races remain outside
+these boundaries.
 
 A probe batch validates the candidate source as a regular-file-only tree and
 rejects an OS temporary-directory parent resolving inside that source before
