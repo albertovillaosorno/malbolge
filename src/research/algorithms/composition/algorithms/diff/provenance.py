@@ -66,6 +66,8 @@ _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TUPLE = builtins.tuple
 _NATIVE_TYPE = builtins.type
+_NATIVE_INT = builtins.int
+_NATIVE_STR = builtins.str
 _NATIVE_ZIP = builtins.zip
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
@@ -116,7 +118,7 @@ class SourcePin:
 
 
 def _validate_repository(repository: object) -> None:
-    if _NATIVE_TYPE(repository) is not str or not repository:
+    if _NATIVE_TYPE(repository) is not _NATIVE_STR or not repository:
         message = "source pin repository must be a non-empty string"
         raise SourcePinError(message)
     if _NUL in repository:
@@ -136,7 +138,7 @@ def _is_lower_hex(value: str, length: int) -> bool:
 
 
 def _validate_commit(commit: object) -> None:
-    if _NATIVE_TYPE(commit) is not str or not _is_lower_hex(
+    if _NATIVE_TYPE(commit) is not _NATIVE_STR or not _is_lower_hex(
         commit, _COMMIT_HEX_LENGTH
     ):
         message = "source pin commit must be 40 lowercase hexadecimal characters"
@@ -144,13 +146,13 @@ def _validate_commit(commit: object) -> None:
 
 
 def _validate_file_count(file_count: object) -> None:
-    if _NATIVE_TYPE(file_count) is not int or file_count < _ONE:
+    if _NATIVE_TYPE(file_count) is not _NATIVE_INT or file_count < _ONE:
         message = "source pin file_count must be a positive integer"
         raise SourcePinError(message)
 
 
 def _validate_snapshot_sha256(snapshot_sha256: object) -> None:
-    if _NATIVE_TYPE(snapshot_sha256) is not str or not _is_lower_hex(
+    if _NATIVE_TYPE(snapshot_sha256) is not _NATIVE_STR or not _is_lower_hex(
         snapshot_sha256, _SHA256_HEX_LENGTH
     ):
         message = "source pin snapshot_sha256 must be lowercase SHA-256"
@@ -158,11 +160,11 @@ def _validate_snapshot_sha256(snapshot_sha256: object) -> None:
 
 
 def _validate_roots(roots: object) -> None:
-    if _NATIVE_TYPE(roots) is not tuple:
+    if _NATIVE_TYPE(roots) is not _NATIVE_TUPLE:
         message = "source pin roots must use the exact immutable tuple type"
         raise SourcePinError(message)
     items = cast("tuple[object, ...]", roots)
-    if _NATIVE_ANY(_NATIVE_TYPE(root) is not str for root in items):
+    if _NATIVE_ANY(_NATIVE_TYPE(root) is not _NATIVE_STR for root in items):
         message = "source pin roots must contain exact string paths"
         raise SourcePinError(message)
     string_roots = cast("tuple[str, ...]", roots)
@@ -218,7 +220,7 @@ def _utf8_pinned_path(path: str) -> bytes:
 
 
 def _validate_relative_path(relative_path: object) -> str:
-    if _NATIVE_TYPE(relative_path) is not str:
+    if _NATIVE_TYPE(relative_path) is not _NATIVE_STR:
         message = "pinned source path must use the exact string type"
         raise SourcePinError(message)
     # Root labels are lexical evidence, not mutable pathlib method results.
@@ -245,7 +247,10 @@ def _host_error_detail(error: BaseException) -> str:
         OSError, ValueError, RuntimeError, ExactTreeError
     ):
         arguments = cast("tuple[object, ...]", error.args)
-        if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is str:
+        if (
+            _NATIVE_LEN(arguments) == 1
+            and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR
+        ):
             return arguments[0]
     return _NATIVE_TYPE(error).__name__
 

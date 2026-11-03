@@ -61,6 +61,9 @@ if TYPE_CHECKING:
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _EXPECTED_FILE_COUNT = 3
 _WINDOWS_OS_NAME = "nt"
+_REPOSITORY_ERROR = "repository must be a non-empty string"
+_ROOTS_ERROR = "exact immutable tuple type"
+_ROOT_ENTRY_ERROR = "exact string paths"
 
 
 def _write(root: Path, relative: str, data: bytes) -> None:
@@ -1298,3 +1301,125 @@ def test_source_pin_late_bool_spoof_rejects_drive_prefix(
         except SourcePinError:
             rejected = True
     assert rejected, "late bool hook admitted a drive-relative root"
+
+
+def test_source_pin_rejects_late_string_alias_for_foreign_repository(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An imported consumer cannot authorize subclassed repository names."""
+    validate_repository = cast(
+        "Callable[[object], None]",
+        vars(provenance_module)["_validate_repository"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignPinRepository)
+        try:
+            validate_repository(_ForeignPinRepository("repo"))
+        except SourcePinError as error:
+            rejected = _REPOSITORY_ERROR in error.args[0]
+    assert rejected, "foreign repository passed late string type alias"
+
+
+def test_source_pin_rejects_late_integer_alias_for_boolean_file_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Boolean count cannot become native provenance evidence."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            _ = SourcePinEvidence(file_count=True, snapshot_sha256="0" * 64)
+        except SourcePinError:
+            rejected = True
+    assert rejected, "Boolean file count passed late integer alias"
+
+
+def test_source_pin_rejects_late_tuple_alias_for_mutable_roots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable selected-root list cannot masquerade as tuple evidence."""
+    validate_roots = cast(
+        "Callable[[object], None]",
+        vars(provenance_module)["_validate_roots"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        try:
+            validate_roots(["src"])
+        except SourcePinError as error:
+            rejected = _ROOTS_ERROR in error.args[0]
+    assert rejected, "mutable selected roots passed late tuple alias"
+
+
+def test_source_pin_rejects_late_string_alias_for_foreign_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A subclassed digest must never qualify as an exact source pin."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignPinRepository)
+        try:
+            _ = SourcePinEvidence(1, _ForeignPinRepository("0" * 64))
+        except SourcePinError:
+            rejected = True
+    assert rejected, "foreign snapshot digest passed late string alias"
+
+
+def test_source_pin_native_evidence_survives_late_builtin_type_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Genuine strings, numeric counts and tuple roots remain accepted."""
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignPinRepository)
+        valid = SourcePinEvidence(1, "0" * 64)
+        repository_validation = cast(
+            "Callable[[object], None]",
+            vars(provenance_module)["_validate_repository"],
+        )
+        repository_validation("repo")
+    assert valid.snapshot_sha256 == "0" * 64
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        native = SourcePinEvidence(1, "0" * 64)
+    assert native.file_count == 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        pin = SourcePin("repo", _COMMIT, ("src",), 1, "0" * 64)
+    assert pin.roots == ("src",)
+
+
+def test_source_pin_host_error_detail_survives_late_string_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native exception evidence is not hidden by a late string alias."""
+    detail = cast(
+        "Callable[[BaseException], str]",
+        vars(provenance_module)["_host_error_detail"],
+    )
+    error = ExactTreeError("native pinned file read failed")
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", bytes)
+        actual = detail(error)
+    assert actual == error.args[0]
+
+
+def test_source_pin_rejects_late_string_alias_for_foreign_root_entry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A subclassed selected root never qualifies as exact path text."""
+    validate_roots = cast(
+        "Callable[[object], None]",
+        vars(provenance_module)["_validate_roots"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignPinRepository)
+        try:
+            validate_roots((_ForeignPinRepository("src"),))
+        except SourcePinError as error:
+            rejected = _ROOT_ENTRY_ERROR in error.args[0]
+    assert rejected, "foreign root path passed late string alias"
