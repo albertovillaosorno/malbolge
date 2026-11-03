@@ -94,8 +94,8 @@ _NATIVE_PATH_RAW_SLOT = cast(
 )
 _NATIVE_PATH_STR_SLOT = cast("MemberDescriptorType", PurePath.__dict__["_str"])
 _NATIVE_PATH_STRING = Path.__str__
-# Native Path methods still call mutable inherited PurePath parsers and
-# slotted descriptors. Reject hook changes before touching uncached paths.
+# Native Path formatting, resolution, and equality still consult inherited
+# PurePath getters and slotted descriptors. Reject changes before path use.
 _PATH_PARSER_HOOK_NAMES = (
     "__getattribute__",
     "__getattr__",
@@ -104,6 +104,10 @@ _PATH_PARSER_HOOK_NAMES = (
     "_raw_paths",
     "_drv",
     "_root",
+    "drive",
+    "root",
+    "_str_normcase",
+    "_str_normcase_cached",
     "_tail_cached",
     "_raw_path",
     "_tail",

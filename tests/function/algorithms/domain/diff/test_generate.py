@@ -76,6 +76,7 @@ _ORACLE_TREE = "oracle"
 _STD_MARKER = b"use std::"
 _LITERAL_MARKER = b"target-only"
 _OUTPUT_ALGORITHM = "output_algorithm"
+_HOST_PATH_HOOKS_CHANGED = "host path hooks changed"
 _EXACT_STRING_TYPE = "exact string type"
 _RAW_PATH_SLOT_NAME = "_raw_paths"
 _RAW_GETATTRIBUTE_MODE = "getattribute"
@@ -655,6 +656,99 @@ def test_generator_rejects_late_realpath_bytes_alias(
         except ValueError as error:
             rejected = "host path hooks changed" in str(error)
     assert rejected, "late bytes alias reached native realpath"
+
+
+@pytest.mark.parametrize("hook", ["drive", "root"])
+def test_generator_rejects_late_purepath_component_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Uncached path formatting must not call late public component getters."""
+    source = tmp_path / "source"
+    source.mkdir()
+    selected = Path(str(source))
+    native_getter = cast("property", PurePath.__dict__[hook]).fget
+    assert native_getter is not None
+    calls = 0
+
+    def forged_getter(path: PurePath) -> str:
+        nonlocal calls
+        if path is selected:
+            calls += 1
+            message = "late public path component getter was consulted"
+            raise AssertionError(message)
+        return cast("str", native_getter(path))
+
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(generate_module)["_resolve_recipe_path"],
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, hook, property(forged_getter))
+        try:
+            _ = resolve(selected, "source_root")
+        except ValueError as error:
+            rejected = _HOST_PATH_HOOKS_CHANGED in str(error)
+    assert rejected, f"late PurePath.{hook} getter was admitted"
+    assert calls == 0, f"late PurePath.{hook} getter was executed"
+
+
+def test_generator_rejects_late_path_normalized_equality_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign normalized-label getter cannot hide output inside source."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    recipe = replace(
+        recipe, output_algorithm=recipe.source_root / "nested" / "generated.rs"
+    )
+    native_getter = cast("property", PurePath.__dict__["_str_normcase"]).fget
+    assert native_getter is not None
+    calls = 0
+
+    def forged_normcase(path: PurePath) -> str:
+        nonlocal calls
+        label = cast("str", native_getter(path))
+        if path.name == _SOURCE_TREE:
+            calls += 1
+            return f"{label}:{id(path)}"
+        return label
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_str_normcase", property(forged_normcase))
+        try:
+            _validate_realpath_recipe(recipe)
+        except ValueError as error:
+            rejected = _HOST_PATH_HOOKS_CHANGED in str(error)
+    assert rejected, "late normalized equality admitted an in-source output"
+    assert calls == 0, "late normalized path identity callback was executed"
+
+
+def test_generator_rejects_late_path_normalized_label_cache_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The original equality getter cannot trust a swapped cache descriptor."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    calls = 0
+
+    def forged_cache(_path: PurePath) -> str:
+        nonlocal calls
+        del _path
+        calls += 1
+        message = "late path equality cache callback was consulted"
+        raise AssertionError(message)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            PurePath, "_str_normcase_cached", property(forged_cache)
+        )
+        try:
+            _validate_realpath_recipe(recipe)
+        except ValueError as error:
+            rejected = _HOST_PATH_HOOKS_CHANGED in str(error)
+    assert rejected, "late equality cache descriptor was admitted"
+    assert calls == 0, "late equality cache descriptor was executed"
 
 
 def test_generator_rejects_replaced_host_realpath_denial(
