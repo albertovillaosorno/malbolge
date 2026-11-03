@@ -1453,3 +1453,107 @@ def test_protected_instruction_constructor_ignores_late_validation_methods(
                     expected_sha256="0" * 64,
                 )
     assert calls == 0, "late class method overrode instruction admission"
+
+
+@pytest.mark.parametrize(
+    ("field", "forged", "message"),
+    [
+        ("source", object(), "snapshots"),
+        ("target", object(), "snapshots"),
+        ("instructions", [], "exact immutable"),
+        ("passthrough_roots", [], "immutable tuple"),
+    ],
+)
+def test_protected_metadata_constructor_ignores_late_getter_forgery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    forged: object,
+    message: str,
+) -> None:
+    """A late class getter cannot conceal malformed stored metadata."""
+    _, _, _, _, protected = _protected(tmp_path)
+    original_getattribute = ProtectedMetadata.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: ProtectedMetadata, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return cast("object", getattr(protected, name))
+        return cast("object", original_getattribute(value, name))
+
+    values: dict[str, object] = {
+        "source": protected.source,
+        "target": protected.target,
+        "instructions": protected.instructions,
+        "passthrough_roots": protected.passthrough_roots,
+    }
+    values[field] = forged
+    with monkeypatch.context() as patched:
+        patched.setattr(ProtectedMetadata, "__getattribute__", forged_attribute)
+        with pytest.raises(ProtectedPlanError, match=message):
+            constructor = cast(
+                "Callable[..., ProtectedMetadata]", ProtectedMetadata
+            )
+            _ = constructor(**values)
+    assert calls == 0, "late metadata getter concealed malformed storage"
+
+
+@pytest.mark.parametrize(
+    "field", ["source", "target", "instructions", "passthrough_roots"]
+)
+def test_protected_aad_ignores_late_metadata_field_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Framed metadata must match the originally admitted stored fields."""
+    _, _, _, _, protected = _protected(tmp_path)
+    metadata = ProtectedMetadata(
+        source=protected.source,
+        target=protected.target,
+        instructions=protected.instructions,
+        passthrough_roots=protected.passthrough_roots,
+    )
+    expected = protected_plan_aad(metadata, context=_CONTEXT)
+    original_getattribute = ProtectedMetadata.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: ProtectedMetadata, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return object()
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ProtectedMetadata, "__getattribute__", forged_attribute)
+        actual = protected_plan_aad(metadata, context=_CONTEXT)
+    assert actual == expected
+    assert calls == 0, "late metadata getter influenced authenticated AAD"
+
+
+def test_protected_aad_ignores_late_metadata_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A later class descriptor cannot replace authenticated instructions."""
+    _, _, _, _, protected = _protected(tmp_path)
+    metadata = ProtectedMetadata(
+        source=protected.source,
+        target=protected.target,
+        instructions=protected.instructions,
+    )
+    expected = protected_plan_aad(metadata, context=_CONTEXT)
+    calls = 0
+
+    def forged_instructions(_value: ProtectedMetadata) -> tuple[()]:
+        nonlocal calls
+        calls += 1
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            ProtectedMetadata, "instructions", property(forged_instructions)
+        )
+        actual = protected_plan_aad(metadata, context=_CONTEXT)
+    assert actual == expected
+    assert calls == 0, "late descriptor altered protected metadata framing"

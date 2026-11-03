@@ -427,33 +427,62 @@ class ProtectedMetadata:
             ProtectedPlanError: Metadata is mutable, foreign, or malformed.
 
         """
+        source, target, instructions, roots = _metadata_fields(self)
         if (
-            _NATIVE_TYPE(self.source) is not TreeSnapshot
-            or _NATIVE_TYPE(self.target) is not TreeSnapshot
+            _NATIVE_TYPE(source) is not TreeSnapshot
+            or _NATIVE_TYPE(target) is not TreeSnapshot
         ):
             message = "protected metadata snapshots must use exact TreeSnapshot records"
             raise ProtectedPlanError(message)
-        if _NATIVE_TYPE(self.instructions) is not _NATIVE_TUPLE or _NATIVE_ANY(
+        if _NATIVE_TYPE(instructions) is not _NATIVE_TUPLE or _NATIVE_ANY(
             _NATIVE_TYPE(item) is not ProtectedInstruction
-            for item in self.instructions
+            for item in instructions
         ):
             message = "protected metadata instructions must be exact immutable records"
             raise ProtectedPlanError(message)
-        _require_unique_instruction_outputs(self.instructions)
-        _require_instructions_match_target(self.instructions, self.target)
-        if _NATIVE_TYPE(self.passthrough_roots) is not _NATIVE_TUPLE:
+        _require_unique_instruction_outputs(instructions)
+        _require_instructions_match_target(instructions, target)
+        if _NATIVE_TYPE(roots) is not _NATIVE_TUPLE:
             message = "protected passthrough roots must use an immutable tuple"
             raise ProtectedPlanError(message)
         if _NATIVE_ANY(
             _NATIVE_TYPE(root) is not _NATIVE_STR or not root
-            for root in self.passthrough_roots
+            for root in roots
         ):
             message = "protected passthrough roots must be non-empty strings"
             raise ProtectedPlanError(message)
-        _require_utf8_roots(self.passthrough_roots)
-        _require_static_target_outside_passthrough(
-            self.target, self.passthrough_roots
-        )
+        _require_utf8_roots(roots)
+        _require_static_target_outside_passthrough(target, roots)
+
+
+# Store original metadata descriptors before later consumer code can replace
+# class getters used by framing or the direct-construction trust boundary.
+_METADATA_SOURCE_SLOT = cast(
+    "MemberDescriptorType", ProtectedMetadata.__dict__["source"]
+)
+_METADATA_TARGET_SLOT = cast(
+    "MemberDescriptorType", ProtectedMetadata.__dict__["target"]
+)
+_METADATA_INSTRUCTIONS_SLOT = cast(
+    "MemberDescriptorType", ProtectedMetadata.__dict__["instructions"]
+)
+_METADATA_ROOTS_SLOT = cast(
+    "MemberDescriptorType", ProtectedMetadata.__dict__["passthrough_roots"]
+)
+
+
+def _metadata_fields(metadata: ProtectedMetadata) -> tuple[
+    TreeSnapshot,
+    TreeSnapshot,
+    tuple[ProtectedInstruction, ...],
+    tuple[str, ...],
+]:
+    return (
+        _METADATA_SOURCE_SLOT.__get__(metadata, ProtectedMetadata),
+        _METADATA_TARGET_SLOT.__get__(metadata, ProtectedMetadata),
+        _METADATA_INSTRUCTIONS_SLOT.__get__(metadata, ProtectedMetadata),
+        _METADATA_ROOTS_SLOT.__get__(metadata, ProtectedMetadata),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -683,16 +712,17 @@ def protected_plan_aad(
     if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "protected-plan context must be non-empty exact bytes"
         raise ProtectedPlanError(message)
+    source, target, instructions, roots = _metadata_fields(metadata)
     instruction_bytes = b"".join(
-        _instruction_bytes(instruction) for instruction in metadata.instructions
+        _instruction_bytes(instruction) for instruction in instructions
     )
     return b"".join((
         _AAD_MAGIC,
         _frame_bytes(context),
-        _frame_bytes(_snapshot_bytes(metadata.source)),
-        _frame_bytes(_snapshot_bytes(metadata.target)),
-        _roots_bytes(metadata.passthrough_roots),
-        _u64(_NATIVE_LEN(metadata.instructions)),
+        _frame_bytes(_snapshot_bytes(source)),
+        _frame_bytes(_snapshot_bytes(target)),
+        _roots_bytes(roots),
+        _u64(_NATIVE_LEN(instructions)),
         instruction_bytes,
     ))
 
