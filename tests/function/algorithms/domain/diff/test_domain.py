@@ -348,6 +348,146 @@ def test_domain_loader_accepts_surrogateescaped_module_name(
     assert callable(loaded.build_identity_tree)
 
 
+def test_domain_module_identity_ignores_late_os_fspath(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The registration key must hash the actual native module path bytes."""
+    module = tmp_path / "domain.py"
+    expected = domain_module._module_name(module)
+    native_fspath = os.fspath
+    module_label = str(module)
+    calls = 0
+
+    def forged_fspath(
+        value: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+    ) -> str | bytes:
+        nonlocal calls
+        if value == module_label:
+            calls += 1
+            return "forged-consumer-identity.py"
+        return native_fspath(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "fspath", forged_fspath)
+        actual = domain_module._module_name(module)
+    assert actual == expected
+    assert calls == 0, "domain identity used mutable os.fspath"
+
+
+def test_domain_loader_rejects_late_os_fspath_module_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late filesystem path hook cannot import a different local module."""
+    admitted = tmp_path / "admitted.py"
+    redirected = tmp_path / "redirected.py"
+    _write(admitted, _COMPLETE.replace("return None", "return 'admitted'"))
+    _write(redirected, _COMPLETE.replace("return None", "return 'redirected'"))
+    native_fspath = os.fspath
+    admitted_label = str(admitted)
+
+    def forged_fspath(
+        value: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+    ) -> str | bytes:
+        if value == admitted_label:
+            return str(redirected)
+        return native_fspath(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "fspath", forged_fspath)
+        with pytest.raises(DomainContractError, match="module.*resolution"):
+            _ = load_diff_domain(admitted)
+
+
+def test_domain_loader_rejects_late_os_fspath_hardlink_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Identical inodes do not license a different import module path."""
+    admitted = tmp_path / "admitted.py"
+    redirected = tmp_path / "other" / "admitted.py"
+    redirected.parent.mkdir()
+    _write(admitted, _COMPLETE)
+    try:
+        os.link(admitted, redirected)
+    except OSError:
+        pytest.skip("host does not permit regular-file hardlinks")
+    native_fspath = os.fspath
+    admitted_label = str(admitted)
+
+    def forged_fspath(
+        value: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+    ) -> str | bytes:
+        if value == admitted_label:
+            return str(redirected)
+        return native_fspath(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "fspath", forged_fspath)
+        with pytest.raises(DomainContractError, match="module.*resolution"):
+            _ = load_diff_domain(admitted)
+
+
+def test_domain_loader_rejects_late_getcwd_hardlink_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced process CWD function cannot reroute relative module import."""
+    admitted_parent = tmp_path / "admitted"
+    redirected_parent = tmp_path / "other"
+    admitted_parent.mkdir()
+    redirected_parent.mkdir()
+    admitted = admitted_parent / "domain.py"
+    redirected = redirected_parent / "domain.py"
+    _write(admitted, _COMPLETE)
+    try:
+        os.link(admitted, redirected)
+    except OSError:
+        pytest.skip("host does not permit regular-file hardlinks")
+
+    with monkeypatch.context() as patched:
+        patched.chdir(admitted_parent)
+        patched.setattr(os, "getcwd", lambda: str(redirected_parent))
+        with pytest.raises(DomainContractError, match="module.*resolution"):
+            _ = load_diff_domain(Path("domain.py"))
+
+
+
+def test_domain_loader_rejects_late_readlink_hardlink_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged symlink resolution cannot redirect a regular module file."""
+    admitted = tmp_path / "admitted.py"
+    redirected = tmp_path / "other" / "admitted.py"
+    redirected.parent.mkdir()
+    _write(admitted, _COMPLETE)
+    try:
+        os.link(admitted, redirected)
+    except OSError:
+        pytest.skip("host does not permit regular-file hardlinks")
+    admitted_label = str(admitted)
+    native_lstat = os.lstat
+    native_readlink = os.readlink
+    stat_fields = native_lstat(admitted)
+    fake_link = os.stat_result((stat.S_IFLNK | 0o777, *stat_fields[1:]))
+
+    def forged_lstat(path: str | bytes | os.PathLike[str]) -> os.stat_result:
+        if path == admitted_label:
+            return fake_link
+        return native_lstat(path)
+
+    def forged_readlink(path: str | bytes | os.PathLike[str]) -> str:
+        if path == admitted_label:
+            return str(redirected)
+        result = native_readlink(path)
+        if isinstance(result, bytes):
+            return os.fsdecode(result)
+        return result
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "lstat", forged_lstat)
+        patched.setattr(os, "readlink", forged_readlink)
+        with pytest.raises(DomainContractError, match="module.*resolution"):
+            _ = load_diff_domain(admitted)
+
+
 def test_direct_domain_bundle_rejects_foreign_hook(tmp_path: Path) -> None:
     """Do not let direct dataclass construction bypass callable admission."""
     module = tmp_path / "domain.py"

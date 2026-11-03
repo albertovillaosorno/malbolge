@@ -39,10 +39,10 @@ from dataclasses import dataclass
 import hashlib
 import importlib.util
 import os
+import sys
 from pathlib import Path
 from stat import S_ISLNK
 from stat import S_ISREG
-import sys
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -76,8 +76,13 @@ _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_PARENT = Path.parent
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_REALPATH = os.path.realpath
+_NATIVE_OS_FSPATH = os.fspath
+_NATIVE_OS_GETCWD = os.getcwd
+_NATIVE_OS_READLINK = os.readlink
 _NATIVE_OS_IS_JUNCTION = os.path.isjunction
-_NATIVE_OS_FSENCODE = os.fsencode
+# os.fsencode delegates to mutable os.fspath even when its function is pinned.
+_FILESYSTEM_ENCODING = sys.getfilesystemencoding()
+_FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 _SHA256_FACTORY = hashlib.sha256
 
 
@@ -90,6 +95,17 @@ def _native_path_lstat(path: Path) -> os.stat_result:
 
 
 def _native_path_resolve(path: Path, *, strict: bool = False) -> Path:
+    # realpath dynamically consults these process-global helpers even when
+    # the outer function is pinned. A changed CWD, lstat, or readlink can
+    # redirect an import, including to a hardlink with identical inode data.
+    if (
+        os.fspath is not _NATIVE_OS_FSPATH
+        or os.getcwd is not _NATIVE_OS_GETCWD
+        or os.lstat is not _NATIVE_OS_LSTAT
+        or os.readlink is not _NATIVE_OS_READLINK
+    ):
+        message = "diff domain module resolution requires native path helpers"
+        raise DomainContractError(message)
     return Path(_NATIVE_OS_REALPATH(_NATIVE_PATH_STRING(path), strict=strict))
 
 
@@ -148,7 +164,9 @@ class DiffDomain:
 
 def _module_name(path: Path) -> str:
     digest = _SHA256_FACTORY(
-        _NATIVE_OS_FSENCODE(_NATIVE_PATH_STRING(path))
+        _NATIVE_PATH_STRING(path).encode(
+            _FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS
+        )
     ).hexdigest()[:16]
     return f"_malbolge_diff_domain_{digest}"
 
@@ -215,7 +233,9 @@ def _reject_linked_module_ancestors(path: Path) -> None:
         current = _native_path_parent(current)
 
 
-def _resolved_native_module_path(path: Path) -> Path:
+def _resolved_native_module_path(
+    path: Path, admitted: os.stat_result | None = None
+) -> Path:
     """Require a native canonical path before import machinery receives it.
 
     Returns:
@@ -232,6 +252,28 @@ def _resolved_native_module_path(path: Path) -> Path:
         raise DomainContractError(message) from error
     if _NATIVE_TYPE(resolved) is not _NATIVE_PATH_TYPE:
         message = "diff domain module resolution requires native Path"
+        raise DomainContractError(message)
+    # os.path.realpath itself consults mutable os.fspath. A late consumer
+    # hook can redirect a path even though the outer function is pinned.
+    # Require the resolved module to be the same physical file admitted above.
+    try:
+        original = (
+            _require_native_module_status(_NATIVE_PATH_LSTAT(path), "module")
+            if admitted is None
+            else admitted
+        )
+        resolved_status = _require_native_module_status(
+            _NATIVE_PATH_LSTAT(resolved), "resolved module"
+        )
+    except (OSError, ValueError, RuntimeError) as error:
+        message = "diff domain module resolution status failed"
+        raise DomainContractError(message) from error
+    if (
+        original.st_dev != resolved_status.st_dev
+        or original.st_ino != resolved_status.st_ino
+        or not S_ISREG(resolved_status.st_mode)
+    ):
+        message = "diff domain module resolution changed file identity"
         raise DomainContractError(message)
     return resolved
 
@@ -261,7 +303,7 @@ def _regular_module_path(path: Path) -> Path:
         )
         raise DomainContractError(message)
     _reject_linked_module_ancestors(path)
-    return _resolved_native_module_path(path)
+    return _resolved_native_module_path(path, receipt)
 
 
 def _restore_domain_registration(
