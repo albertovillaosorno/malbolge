@@ -73,6 +73,7 @@ _NUL = "\x00"
 _NATIVE_OS_ERROR = builtins.OSError
 _NATIVE_VALUE_ERROR = builtins.ValueError
 _NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_EXCEPTION = builtins.Exception
 _NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
 _NATIVE_CALLABLE = builtins.callable
 _NATIVE_ANY = builtins.any
@@ -525,7 +526,7 @@ def _prepare_module(
     try:
         spec = _NATIVE_IMPORT_SPEC(name, _NATIVE_PATH_STRING(resolved))
         loader = spec.loader if spec is not None else None
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         message = (
             "diff domain import preparation failed: "
             f"{_NATIVE_PATH_STRING(resolved)}"
@@ -536,7 +537,7 @@ def _prepare_module(
         raise DomainContractError(message)
     try:
         module = _NATIVE_IMPORT_MODULE(spec)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         message = (
             "diff domain import preparation failed: "
             f"{_NATIVE_PATH_STRING(resolved)}"
@@ -553,7 +554,7 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None, str]:
     sys.modules[name] = module
     try:
         completion = exec_module(module)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         _restore_domain_registration(name, previous)
         message = (
             "diff domain module execution failed: "
@@ -582,7 +583,7 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None, str]:
 def _callable(module: ModuleType, name: str) -> Callable[..., object]:
     try:
         value = _NATIVE_GETATTR(module, name, None)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         message = f"diff domain hook lookup failed for {name!r}"
         raise DomainContractError(message) from error
     if not _NATIVE_CALLABLE(value):
@@ -616,7 +617,7 @@ def load_diff_domain(path: object) -> DiffDomain:
             )
             raise DomainContractError(message)
         return domain
-    except Exception:
+    except _NATIVE_EXCEPTION:
         _restore_domain_registration(name, previous)
         raise
 

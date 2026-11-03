@@ -2090,3 +2090,59 @@ def test_domain_loader_rejects_late_parent_link_concealment(
         with pytest.raises(DomainContractError, match="path hooks changed"):
             _ = load_diff_domain(linked_module)
     assert calls == 0, "forged parent skipped linked-domain validation"
+
+
+@pytest.mark.parametrize("stage", ["execution", "validation"])
+def test_domain_loader_restores_module_after_late_exception_alias(
+    tmp_path: Path, stage: str
+) -> None:
+    """Imported code cannot disable typed failures or module rollback."""
+    module = tmp_path / "exception_alias_domain.py"
+    source = "import builtins\nbuiltins.Exception = LookupError\n"
+    if stage == "execution":
+        source += "raise RuntimeError('consumer failed')\n"
+    _write(module, source)
+    name = domain_module._module_name(module.resolve())
+    original_registration = sys.modules.get(name)
+    original_exception = builtins.Exception
+    caught: RuntimeError | DomainContractError | None = None
+    try:
+        _ = load_diff_domain(module)
+    except (RuntimeError, DomainContractError) as error:
+        caught = error
+    finally:
+        builtins.__dict__["Exception"] = original_exception
+    assert type(caught) is DomainContractError, (stage, caught)
+    assert sys.modules.get(name) is original_registration
+
+
+@pytest.mark.parametrize("stage", ["preparation", "hook"])
+def test_domain_import_errors_are_typed_after_exception_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    """Native import and hook errors cannot bypass changed Exception catches."""
+    failure = RuntimeError("native boundary failed")
+    original = builtins.Exception
+
+    def denied(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    caught: DomainContractError | None = None
+    with monkeypatch.context() as patched:
+        if stage == "preparation":
+            patched.setattr(importlib.util, "spec_from_file_location", denied)
+            patched.setattr(domain_module, "_NATIVE_IMPORT_SPEC", denied)
+        else:
+            patched.setattr(domain_module, "_NATIVE_GETATTR", denied)
+        patched.setattr(builtins, "Exception", LookupError)
+        try:
+            if stage == "preparation":
+                _ = domain_module._prepare_module(tmp_path / "domain.py", "isolated")
+            else:
+                _ = domain_module._callable(ModuleType("consumer"), "missing")
+        except DomainContractError as error:
+            caught = error
+        finally:
+            builtins.__dict__["Exception"] = original
+    assert caught is not None, stage
+    assert caught.__cause__ is failure
