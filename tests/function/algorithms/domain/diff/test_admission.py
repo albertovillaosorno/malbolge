@@ -38,7 +38,7 @@ import math
 import ntpath
 import os
 from collections.abc import Callable, Iterable
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import PurePosixPath
 from types import MemberDescriptorType
 from typing import cast
@@ -1603,3 +1603,89 @@ def test_tree_evidence_constructor_rejects_late_field_forgery(
                 policy=cast("AdmissionPolicy", values["policy"]),
             )
     assert calls == 0, "late tree getter participated in source admission"
+
+
+@pytest.mark.parametrize("via_replace", [False, True])
+@pytest.mark.parametrize(
+    ("valid", "invalid_fields", "message"),
+    [
+        (
+            IdentityFile("source.c", b"source"),
+            {"path": "../escape.c"},
+            "identity path",
+        ),
+        (
+            IdentityTree((IdentityFile("source.c", b"source"),)),
+            {
+                "files": (
+                    IdentityFile("source.c", b"source"),
+                    IdentityFile("other.c", b"other"),
+                )
+            },
+            "unique and sorted",
+        ),
+        (
+            AdmissionPolicy(0.5, 0.5, 1, 1),
+            {"minimum_anchor_files": 0},
+            "positive integer",
+        ),
+        (
+            FileAdmissionEvidence("source.c", 1.0, 1.0, 1, 1),
+            {"matched_anchor_count": 2},
+            "matched anchor",
+        ),
+        (
+            TreeAdmissionEvidence(
+                1.0,
+                1.0,
+                1,
+                1,
+                (FileAdmissionEvidence("source.c", 1.0, 1.0, 1, 1),),
+                (),
+                AdmissionPolicy(0.5, 0.5, 1, 1),
+            ),
+            {"source_similarity": 0.0},
+            "source similarity",
+        ),
+    ],
+    ids=[
+        "identity-file",
+        "identity-tree",
+        "policy",
+        "file-evidence",
+        "tree-evidence",
+    ],
+)
+def test_admission_record_construction_pins_original_validator(
+    monkeypatch: pytest.MonkeyPatch,
+    valid: (
+        IdentityFile
+        | IdentityTree
+        | AdmissionPolicy
+        | FileAdmissionEvidence
+        | TreeAdmissionEvidence
+    ),
+    invalid_fields: dict[str, object],
+    message: str,
+    via_replace: bool,
+) -> None:
+    """Reject invalid lineage records despite a substituted class validator."""
+    record_type = cast("Callable[..., object]", type(valid))
+    constructor_fields = {
+        field.name: getattr(valid, field.name) for field in fields(valid)
+    }
+    constructor_fields.update(invalid_fields)
+    calls = 0
+
+    def skip_validation(_record: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(valid), "__post_init__", skip_validation)
+        with pytest.raises(AdmissionPolicyError, match=message):
+            if via_replace:
+                _ = replace(valid, **invalid_fields)
+            else:
+                _ = record_type(**constructor_fields)
+    assert calls == 0, "late validator skipped source-lineage admission"

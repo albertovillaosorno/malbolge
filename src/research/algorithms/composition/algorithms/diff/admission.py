@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import MemberDescriptorType
 from typing import cast
@@ -83,6 +84,7 @@ _NATIVE_DICT = builtins.dict
 _NATIVE_ANY = builtins.any
 _NATIVE_ALL = builtins.all
 _NATIVE_LEN = builtins.len
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_FROZENSET = builtins.frozenset
 # Fingerprint receipt classes retain mutable class-level attribute hooks.
 _ANCHOR_DIGEST_SLOT = cast(
@@ -172,12 +174,18 @@ def _require_file_path_topology(paths: tuple[str, ...]) -> None:
             ancestor += "/" + component
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class IdentityFile:
     """One consumer-canonicalized file admitted to source identity."""
 
     path: str
     canonical: bytes
+
+    def __init__(self, path: str, canonical: bytes) -> None:
+        """Seal portable identity with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "path", path)
+        _NATIVE_OBJECT_SETATTR(self, "canonical", canonical)
+        _IDENTITY_FILE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require one normalized portable relative file path.
@@ -198,6 +206,12 @@ class IdentityFile:
             raise AdmissionPolicyError(message)
 
 
+# Dataclass construction must not dispatch through a late class hook.
+_IDENTITY_FILE_VALIDATOR = cast(
+    "Callable[[IdentityFile], None]", IdentityFile.__dict__["__post_init__"]
+)
+
+
 # Do not let late class-level readers override canonical source identity.
 _IDENTITY_PATH_SLOT = cast(
     "MemberDescriptorType", IdentityFile.__dict__["path"]
@@ -214,11 +228,16 @@ def _identity_fields(file: IdentityFile) -> tuple[str, bytes]:
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class IdentityTree:
     """Explicit set of consumer-selected files participating in identity."""
 
     files: tuple[IdentityFile, ...]
+
+    def __init__(self, files: tuple[IdentityFile, ...]) -> None:
+        """Seal sorted source identity with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "files", files)
+        _IDENTITY_TREE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require sorted unique paths for deterministic evidence.
@@ -243,6 +262,12 @@ class IdentityTree:
         _require_file_path_topology(paths)
 
 
+# Dataclass construction must not dispatch through a late class hook.
+_IDENTITY_TREE_VALIDATOR = cast(
+    "Callable[[IdentityTree], None]", IdentityTree.__dict__["__post_init__"]
+)
+
+
 _IDENTITY_FILES_SLOT = cast(
     "MemberDescriptorType", IdentityTree.__dict__["files"]
 )
@@ -255,7 +280,7 @@ def _tree_files(tree: IdentityTree) -> tuple[IdentityFile, ...]:
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class AdmissionPolicy:
     """Thresholds and distribution requirements for source admission."""
 
@@ -265,6 +290,32 @@ class AdmissionPolicy:
     minimum_anchors_per_file: int
     structural_policy: AnchorPolicy = _STRUCTURAL_POLICY
     anchor_policy: AnchorPolicy = _ANCHOR_POLICY
+
+    def __init__(
+        self,
+        minimum_source_similarity: float,
+        minimum_anchor_coverage: float,
+        minimum_anchor_files: int,
+        minimum_anchors_per_file: int,
+        structural_policy: AnchorPolicy = _STRUCTURAL_POLICY,
+        anchor_policy: AnchorPolicy = _ANCHOR_POLICY,
+    ) -> None:
+        """Seal source admission thresholds with the original validator."""
+        _NATIVE_OBJECT_SETATTR(
+            self, "minimum_source_similarity", minimum_source_similarity
+        )
+        _NATIVE_OBJECT_SETATTR(
+            self, "minimum_anchor_coverage", minimum_anchor_coverage
+        )
+        _NATIVE_OBJECT_SETATTR(
+            self, "minimum_anchor_files", minimum_anchor_files
+        )
+        _NATIVE_OBJECT_SETATTR(
+            self, "minimum_anchors_per_file", minimum_anchors_per_file
+        )
+        _NATIVE_OBJECT_SETATTR(self, "structural_policy", structural_policy)
+        _NATIVE_OBJECT_SETATTR(self, "anchor_policy", anchor_policy)
+        _ADMISSION_POLICY_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Validate threshold and positive-count requirements.
@@ -290,6 +341,13 @@ class AdmissionPolicy:
         if _NATIVE_TYPE(anchors) is not AnchorPolicy:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise AdmissionPolicyError(message)
+
+
+# Dataclass construction must not dispatch through a late class hook.
+_ADMISSION_POLICY_VALIDATOR = cast(
+    "Callable[[AdmissionPolicy], None]",
+    AdmissionPolicy.__dict__["__post_init__"],
+)
 
 
 # A frozen policy's class descriptors can still be replaced by consumers.
@@ -539,7 +597,7 @@ def _validate_policy_bound_evidence(
         raise AdmissionPolicyError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class FileAdmissionEvidence:
     """Structural and anchor evidence for one reference identity file."""
 
@@ -549,9 +607,38 @@ class FileAdmissionEvidence:
     reference_anchor_count: int
     matched_anchor_count: int
 
+    def __init__(
+        self,
+        path: str,
+        structural_similarity: float,
+        anchor_coverage: float | None,
+        reference_anchor_count: int,
+        matched_anchor_count: int,
+    ) -> None:
+        """Seal per-file source evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "path", path)
+        _NATIVE_OBJECT_SETATTR(
+            self, "structural_similarity", structural_similarity
+        )
+        _NATIVE_OBJECT_SETATTR(self, "anchor_coverage", anchor_coverage)
+        _NATIVE_OBJECT_SETATTR(
+            self, "reference_anchor_count", reference_anchor_count
+        )
+        _NATIVE_OBJECT_SETATTR(
+            self, "matched_anchor_count", matched_anchor_count
+        )
+        _FILE_ADMISSION_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require internally coherent per-file source evidence."""
         _validate_file_admission_evidence(self)
+
+
+# Dataclass construction must not dispatch through a late class hook.
+_FILE_ADMISSION_VALIDATOR = cast(
+    "Callable[[FileAdmissionEvidence], None]",
+    FileAdmissionEvidence.__dict__["__post_init__"],
+)
 
 
 # Per-file admission is also a class-mutable frozen record. Read raw slots.
@@ -608,7 +695,7 @@ def _file_evidence_fields(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class TreeAdmissionEvidence:
     """Aggregated source-lineage evidence with deterministic failure reasons."""
 
@@ -619,6 +706,30 @@ class TreeAdmissionEvidence:
     files: tuple[FileAdmissionEvidence, ...]
     reasons: tuple[str, ...]
     policy: AdmissionPolicy
+
+    def __init__(
+        self,
+        source_similarity: float,
+        anchor_coverage: float,
+        eligible_anchor_files: int,
+        satisfied_anchor_files: int,
+        files: tuple[FileAdmissionEvidence, ...],
+        reasons: tuple[str, ...],
+        policy: AdmissionPolicy,
+    ) -> None:
+        """Seal aggregate source evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "source_similarity", source_similarity)
+        _NATIVE_OBJECT_SETATTR(self, "anchor_coverage", anchor_coverage)
+        _NATIVE_OBJECT_SETATTR(
+            self, "eligible_anchor_files", eligible_anchor_files
+        )
+        _NATIVE_OBJECT_SETATTR(
+            self, "satisfied_anchor_files", satisfied_anchor_files
+        )
+        _NATIVE_OBJECT_SETATTR(self, "files", files)
+        _NATIVE_OBJECT_SETATTR(self, "reasons", reasons)
+        _NATIVE_OBJECT_SETATTR(self, "policy", policy)
+        _TREE_ADMISSION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require aggregate evidence and a policy-consistent decision."""
@@ -633,6 +744,13 @@ class TreeAdmissionEvidence:
 
         """
         return not _TREE_REASONS_SLOT.__get__(self, TreeAdmissionEvidence)
+
+
+# Dataclass construction must not dispatch through a late class hook.
+_TREE_ADMISSION_VALIDATOR = cast(
+    "Callable[[TreeAdmissionEvidence], None]",
+    TreeAdmissionEvidence.__dict__["__post_init__"],
+)
 
 
 # Class-level slot descriptors are mutable after consumer module imports.
