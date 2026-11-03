@@ -241,6 +241,51 @@ class _RecoveredShare:
     value: bytes
 
 
+# Private intermediate evidence cannot be reinterpreted by consumer hooks.
+_ANCHOR_PATH_SLOT = cast(
+    "MemberDescriptorType", _AnchorMaterial.__dict__["source_path"]
+)
+_ANCHOR_DIGEST_SLOT = cast(
+    "MemberDescriptorType", _AnchorMaterial.__dict__["digest"]
+)
+_ANCHOR_WINDOW_SLOT = cast(
+    "MemberDescriptorType", _AnchorMaterial.__dict__["window"]
+)
+_RECOVERED_PATH_SLOT = cast(
+    "MemberDescriptorType", _RecoveredShare.__dict__["source_path"]
+)
+_RECOVERED_X_SLOT = cast(
+    "MemberDescriptorType", _RecoveredShare.__dict__["x"]
+)
+_RECOVERED_VALUE_SLOT = cast(
+    "MemberDescriptorType", _RecoveredShare.__dict__["value"]
+)
+
+
+def _anchor_path(value: _AnchorMaterial) -> str:
+    return _ANCHOR_PATH_SLOT.__get__(value, _AnchorMaterial)
+
+
+def _anchor_digest(value: _AnchorMaterial) -> bytes:
+    return _ANCHOR_DIGEST_SLOT.__get__(value, _AnchorMaterial)
+
+
+def _anchor_window_bytes(value: _AnchorMaterial) -> bytes:
+    return _ANCHOR_WINDOW_SLOT.__get__(value, _AnchorMaterial)
+
+
+def _recovered_path(value: _RecoveredShare) -> str:
+    return _RECOVERED_PATH_SLOT.__get__(value, _RecoveredShare)
+
+
+def _recovered_x(value: _RecoveredShare) -> int:
+    return _RECOVERED_X_SLOT.__get__(value, _RecoveredShare)
+
+
+def _recovered_value(value: _RecoveredShare) -> bytes:
+    return _RECOVERED_VALUE_SLOT.__get__(value, _RecoveredShare)
+
+
 # Source identities are admitted at construction; mutable class getters must
 # not change the actual bytes or path labels used to bind or recover secrets.
 _IDENTITY_FILES_SLOT = cast(
@@ -637,7 +682,7 @@ def _require_distributed_materials(
     selected: tuple[_AnchorMaterial, ...],
     minimum_anchor_files: int,
 ) -> None:
-    selected_files = {item.source_path for item in selected}
+    selected_files = {_anchor_path(item) for item in selected}
     if _NATIVE_LEN(selected_files) < minimum_anchor_files:
         message = "reference identity lacks distributed source-binding anchors"
         raise SourceBindingPolicyError(message)
@@ -665,11 +710,11 @@ def _share_mask(
     length: int,
 ) -> bytes:
     salt = _context_digest(context)
-    pseudorandom_key = hkdf_extract_sha256(salt, material.window)
+    pseudorandom_key = hkdf_extract_sha256(salt, _anchor_window_bytes(material))
     info = (
         b"source-binding-anchor-share-mask-v1\0"
-        + _frame(material.source_path.encode("utf-8"))
-        + _frame(material.digest)
+        + _frame(_anchor_path(material).encode("utf-8"))
+        + _frame(_anchor_digest(material))
         + x.to_bytes(2, byteorder="big")
     )
     return hkdf_expand_sha256(pseudorandom_key, info, length)
@@ -788,8 +833,8 @@ def bind_secret(
     paired = _NATIVE_ZIP(materials, raw_shares, strict=True)
     bound_shares = _NATIVE_TUPLE(
         BoundShare(
-            source_path=material.source_path,
-            anchor_digest=material.digest,
+            source_path=_anchor_path(material),
+            anchor_digest=_anchor_digest(material),
             x=x,
             masked_share=_xor_bytes(
                 share,
@@ -1000,7 +1045,9 @@ def _candidate_materials(
     materials: dict[tuple[str, bytes], _AnchorMaterial] = {}
     for identity_file in _identity_files(candidate):
         for material in _file_anchor_materials(identity_file, policy):
-            materials[material.source_path, material.digest] = material
+            materials[
+                _anchor_path(material), _anchor_digest(material)
+            ] = material
     return materials
 
 
@@ -1041,7 +1088,7 @@ def _require_recovery_distribution(
     binding: ThresholdBinding,
     available: tuple[_RecoveredShare, ...],
 ) -> None:
-    available_files = {share.source_path for share in available}
+    available_files = {_recovered_path(share) for share in available}
     if _NATIVE_LEN(available_files) < _binding_minimum_files(binding):
         message = (
             "insufficient distributed source-bound files: "
@@ -1063,12 +1110,14 @@ def _select_distributed_quorum(
     """
     first_by_file: dict[str, _RecoveredShare] = {}
     for share in available:
-        if share.source_path not in first_by_file:
-            first_by_file[share.source_path] = share
+        if _recovered_path(share) not in first_by_file:
+            first_by_file[_recovered_path(share)] = share
     required_files = _binding_minimum_files(binding)
     distributed = _NATIVE_TUPLE(first_by_file.values())[:required_files]
-    chosen_x = {share.x for share in distributed}
-    remaining = _NATIVE_TUPLE(s for s in available if s.x not in chosen_x)
+    chosen_x = {_recovered_x(share) for share in distributed}
+    remaining = _NATIVE_TUPLE(
+        share for share in available if _recovered_x(share) not in chosen_x
+    )
     remaining_count = _binding_threshold(binding) - _NATIVE_LEN(distributed)
     return (*distributed, *remaining[:remaining_count])
 
@@ -1101,7 +1150,7 @@ def recover_secret(
         raise SourceBindingError(message)
     _require_recovery_distribution(admitted, available)
     raw_shares = _NATIVE_TUPLE(
-        (share.x, share.value)
+        (_recovered_x(share), _recovered_value(share))
         for share in _select_distributed_quorum(admitted, available)
     )
     secret = _recover_shares(raw_shares)

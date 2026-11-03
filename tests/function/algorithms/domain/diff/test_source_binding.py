@@ -342,6 +342,64 @@ def test_recovery_uses_stored_candidate_source_identity(
         assert recover_secret(binding, reference) == _SECRET
 
 
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [
+        ("source_path", "src/forged.c"),
+        ("digest", b"forged"),
+        ("window", b"forged source bytes"),
+    ],
+)
+def test_anchor_material_ignores_late_getter_forgery(
+    monkeypatch: pytest.MonkeyPatch, field: str, forged: object
+) -> None:
+    """An internal anchor getter must not redefine masked secret shares."""
+    reference = _reference()
+    policy = _policy()
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    anchor_type = vars(binding_module)["_AnchorMaterial"]
+
+    def forged_getattr(value: object, name: str) -> object:
+        if name == field:
+            return forged
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(anchor_type, "__getattribute__", forged_getattr)
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+    assert observed == expected
+
+
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [
+        ("source_path", "src/forged.c"),
+        ("x", 17),
+        ("value", b"forged recovered share"),
+    ],
+)
+def test_recovered_share_ignores_late_getter_forgery(
+    monkeypatch: pytest.MonkeyPatch, field: str, forged: object
+) -> None:
+    """A late in-memory receipt getter cannot change a verified quorum."""
+    reference = _reference()
+    binding = bind_secret(
+        reference, _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    recovered_type = vars(binding_module)["_RecoveredShare"]
+
+    def forged_getattr(value: object, name: str) -> object:
+        if name == field:
+            return forged
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(recovered_type, "__getattribute__", forged_getattr)
+        assert recover_secret(binding, reference) == _SECRET
+
+
 def test_binding_policy_validation_rejects_late_getattribute_forgery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
