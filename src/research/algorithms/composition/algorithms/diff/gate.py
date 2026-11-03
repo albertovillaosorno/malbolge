@@ -49,6 +49,8 @@ from algorithms.diff.behavior import BehaviorEvidence, BehaviorPolicyError
 
 # Conjunctive gate validation must not trust late global builtins hooks.
 _NATIVE_ANY = builtins.any
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
 _NATIVE_TYPE = type
 _NATIVE_STR = builtins.str
 _NATIVE_TUPLE = tuple
@@ -134,7 +136,7 @@ class TransformAdmissionEvidence:
         # never ran the constructor's conjunctive validation.
         try:
             _TRANSFORM_ADMISSION_VALIDATOR(self)
-        except AttributeError as error:
+        except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "transform gate evidence has incomplete native metadata"
             raise AdmissionError(message) from error
         return not _GATE_REASONS_SLOT.__get__(self, TransformAdmissionEvidence)
@@ -187,7 +189,7 @@ def _require_source_evidence(value: object) -> TreeAdmissionEvidence:
         raise AdmissionError(message)
     try:
         _SOURCE_VALIDATOR(value)
-    except (AdmissionPolicyError, AttributeError, TypeError) as error:
+    except (AdmissionPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "transform gate source evidence is invalid"
         raise AdmissionError(message) from error
     return value
@@ -199,7 +201,7 @@ def _require_behavior_evidence(value: object) -> BehaviorEvidence:
         raise AdmissionError(message)
     try:
         _BEHAVIOR_VALIDATOR(value)
-    except (BehaviorPolicyError, AttributeError, TypeError) as error:
+    except (BehaviorPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "transform gate behavior evidence is invalid"
         raise AdmissionError(message) from error
     return value

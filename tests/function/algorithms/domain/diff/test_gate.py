@@ -789,3 +789,32 @@ def test_gate_admitted_rejects_foreign_verdict_receiver(receiver_kind: str) -> N
             getter = cast("property", TransformAdmissionEvidence.__dict__["admitted"]).fget
             assert getter is not None
             _ = getter(object())
+
+
+@pytest.mark.parametrize("entrypoint", ["source", "behavior", "admitted"])
+def test_gate_retains_typed_incomplete_receipt_after_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A consumer cannot disable native missing-slot error handling."""
+    source = _source_evidence("reference")
+    behavior = _behavior_evidence()
+    gate = object.__new__(TransformAdmissionEvidence)
+    if entrypoint == "source":
+        source = cast("TreeAdmissionEvidence", object.__new__(type(source)))
+    elif entrypoint == "behavior":
+        behavior = cast("BehaviorEvidence", object.__new__(type(behavior)))
+    native_attribute_error = builtins.AttributeError
+    caught: AdmissionError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if entrypoint == "admitted":
+                _ = gate.admitted
+            else:
+                _ = combine_admission(source, behavior)
+        except AdmissionError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(caught) is AdmissionError, caught
+    assert "incomplete" in str(caught) or "invalid" in str(caught)
