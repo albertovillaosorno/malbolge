@@ -92,6 +92,7 @@ _NATIVE_MAX = builtins.max
 _NATIVE_SORTED = builtins.sorted
 # Keep share admission and key derivation independent of late host hooks.
 _NATIVE_ANY = builtins.any
+_NATIVE_BOOL = builtins.bool
 _NATIVE_BYTEARRAY = builtins.bytearray
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_SET = builtins.set
@@ -952,7 +953,7 @@ def _is_windows_reserved_component(component: str) -> bool:
     device = component.partition(".")[0].rstrip(" ").upper()
     return (
         (component[-1:] in {".", " "} and component not in {".", ".."})
-        or bool(_WINDOWS_RESERVED_CHARACTERS.intersection(component))
+        or _NATIVE_BOOL(_WINDOWS_RESERVED_CHARACTERS.intersection(component))
         or device in _WINDOWS_RESERVED_DEVICES
     )
 

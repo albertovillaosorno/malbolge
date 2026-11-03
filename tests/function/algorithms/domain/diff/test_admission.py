@@ -352,6 +352,47 @@ def test_identity_path_rejects_late_truth_hooks(
     assert evidence_rejected, "late predicate admitted unsafe evidence path"
 
 
+@pytest.mark.parametrize(
+    ("path", "forged_result", "expected_admitted"),
+    [
+        ("src/invalid?.c", False, False),
+        ("src/valid.c", True, True),
+    ],
+)
+def test_identity_path_ignores_late_bool_predicate(
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    forged_result: bool,
+    expected_admitted: bool,
+) -> None:
+    """A late bool hook cannot suppress reserved names or deny valid paths."""
+    calls = 0
+
+    def forged_bool(value: object) -> bool:
+        nonlocal calls
+        del value
+        calls += 1
+        return forged_result
+
+    constructors = (
+        lambda: IdentityFile(path, b"source"),
+        lambda: identity_tree({path: b"source"}),
+        lambda: FileAdmissionEvidence(path, 1.0, 1.0, 1, 1),
+    )
+    accepted: list[bool] = []
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", forged_bool)
+        for constructor in constructors:
+            try:
+                _ = constructor()
+            except AdmissionPolicyError:
+                accepted.append(False)
+            else:
+                accepted.append(True)
+    assert accepted == [expected_admitted] * len(constructors)
+    assert calls == 0, "late bool predicate ran during path admission"
+
+
 def test_identity_file_rejects_late_type_spoof(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

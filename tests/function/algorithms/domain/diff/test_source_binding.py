@@ -1652,6 +1652,51 @@ def test_recovery_reserved_share_paths_resist_host_hook_swap(
         _ = recover_secret(malformed, cast("IdentityTree", object()))
 
 
+@pytest.mark.parametrize(
+    ("replacement", "forged_result", "expected_admitted"),
+    [
+        ("src/unsafe?.c", False, False),
+        ("src/valid.c", True, True),
+    ],
+)
+def test_binding_share_path_ignores_late_bool_predicate(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+    forged_result: bool,
+    expected_admitted: bool,
+) -> None:
+    """A mutable bool hook cannot alter Windows share-path admission."""
+    original = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    forged = replace(
+        original,
+        shares=(
+            replace(original.shares[0], source_path=replacement),
+            *original.shares[1:],
+        ),
+    )
+    calls = 0
+
+    def forged_bool(value: object) -> bool:
+        nonlocal calls
+        del value
+        calls += 1
+        return forged_result
+
+    admitted = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", forged_bool)
+        try:
+            _ = validate_threshold_binding(forged)
+        except SourceBindingError:
+            pass
+        else:
+            admitted = True
+    assert admitted is expected_admitted
+    assert calls == 0, "late bool hook participated in share-path admission"
+
+
 def _forge_ntpath_any(patched: pytest.MonkeyPatch, invalid: str) -> None:
     del invalid
     native_any = builtins.any

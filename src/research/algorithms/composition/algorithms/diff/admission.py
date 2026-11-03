@@ -84,6 +84,7 @@ _NATIVE_TUPLE = builtins.tuple
 _NATIVE_DICT = builtins.dict
 _NATIVE_ANY = builtins.any
 _NATIVE_ALL = builtins.all
+_NATIVE_BOOL = builtins.bool
 _NATIVE_LEN = builtins.len
 _NATIVE_FROZENSET = builtins.frozenset
 _NATIVE_OBJECT_NEW = object.__new__
@@ -124,7 +125,7 @@ def _is_windows_reserved_component(component: str) -> bool:
     device = component.partition(".")[0].rstrip(" ").upper()
     return (
         (component[-1:] in {".", " "} and component not in {".", ".."})
-        or bool(_WINDOWS_RESERVED_CHARACTERS.intersection(component))
+        or _NATIVE_BOOL(_WINDOWS_RESERVED_CHARACTERS.intersection(component))
         or device in _WINDOWS_RESERVED_DEVICES
     )
 
