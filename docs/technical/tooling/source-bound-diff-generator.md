@@ -637,6 +637,16 @@ postcommit provenance tests pass, with Ruff, strict source/test BasedPyright,
 and diff checks clean. These in-process guards are not an atomic filesystem
 snapshot or protection against direct trusted-module edits.
 
+Pinned-source discovery now sorts directory entries using canonical
+relative labels rather than calling mutable `Path.__lt__` (`168a85c2d`).
+A late comparator replacement previously executed during source-pin
+verification and could raise an untyped exception. Two red-first reverse
+and raising-comparator cases pass, together with all 201 provenance and
+605 adjacent provenance/domain/generator tests postcommit. Ruff, strict
+source/test BasedPyright, and diff checks were clean. The full-suite
+3,735-test baseline predates this fix; external filesystem races and
+direct trusted-state mutation remain outside its guarantee.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from

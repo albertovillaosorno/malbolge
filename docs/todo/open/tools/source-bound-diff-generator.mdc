@@ -875,6 +875,14 @@ format.
   Ruff, strict BasedPyright, and diff checks passed. Direct stored-record
   edits, external source-tree writers, and global Jig remain outside
   this bounded validation.
+- Pinned-source discovery now sorts guarded portable labels instead of
+  executing late `Path.__lt__` during directory ordering (`168a85c2d`).
+  Reverse and raising comparator hooks failed red-first, then passed;
+  201 focused provenance and 605 adjacent provenance/domain/generator
+  tests passed postcommit. Scoped Ruff, strict BasedPyright, and diff
+  checks passed. Full diff integration before this change had 3,735
+  passes; no new full-suite verdict is claimed. External filesystem
+  races and direct trusted-state edits remain out of scope.
 - Source pin snapshot/verification, relocatable tree authoring/materialization
   and domain module loading now admit only exact native `Path` types before
   filesystem or import methods execute; six red-first tests cover each public
