@@ -104,15 +104,27 @@ _NATIVE_OS_GETCWD = os.getcwd
 _NATIVE_STAT_ISLNK = stat.S_ISLNK
 # Path.resolve retains mutable host conversion, symlink, and Path factory
 # dependencies even when the resolver method itself is captured at import.
+# The original __str__ also calls lazy PurePath parser and tail descriptors;
+# without these checks a late getter can redirect source/output containment.
 _PATH_RESOLUTION_HOOK_NAMES = (
     "with_segments",
     "__new__",
     "__init__",
     "__getattribute__",
+    "__getattr__",
+    "__setattr__",
     "__fspath__",
     "__str__",
     "_str",
     "_raw_paths",
+    "_drv",
+    "_root",
+    "_tail_cached",
+    "_raw_path",
+    "_tail",
+    "drive",
+    "root",
+    "parser",
     "_parse_path",
     "_format_parsed_parts",
 )

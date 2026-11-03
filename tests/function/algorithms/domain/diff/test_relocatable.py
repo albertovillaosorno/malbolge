@@ -1219,6 +1219,71 @@ def test_relocatable_output_rejects_late_path_factories(
     assert not output.exists()
 
 
+def test_relocatable_output_rejects_late_path_tail_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged lazy path tail cannot launder a source-contained output."""
+    from pathlib import PurePath
+
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "inside"
+    external = tmp_path / "external"
+    original_tail = cast("property", PurePath.__dict__["_tail"])
+    require_output = cast(
+        "Callable[[Path, Path], None]",
+        vars(relocatable_module)["_require_external_output_root"],
+    )
+    calls = 0
+
+    def forged_tail(value: PurePath) -> list[str]:
+        nonlocal calls
+        if value is output:
+            calls += 1
+            return list(external.parts[1:])
+        return cast("list[str]", original_tail.__get__(value, PurePath))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_tail", property(forged_tail))
+        with pytest.raises(RelocationError, match="path resolution hooks changed"):
+            require_output(candidate, output)
+    assert calls == 0, "the late path-tail redirection was consulted"
+
+
+@pytest.mark.parametrize(
+    "hook",
+    ["drive", "root", "_raw_path", "_tail_cached", "parser", "_drv", "_root"],
+)
+@pytest.mark.parametrize("concrete", [False, True])
+def test_relocatable_path_resolution_rejects_late_path_string_descriptors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    concrete: bool,
+) -> None:
+    """Original Path.resolve still reads mutable pathlib lazy-parser hooks."""
+    from pathlib import PurePath
+
+    path = tmp_path / "source"
+    path.mkdir()
+    owner = type(path) if concrete else PurePath
+    resolve = cast(
+        "Callable[[Path], Path]", vars(relocatable_module)["_trusted_resolve"]
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted pathlib path-string hook executed")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, hook, property(forbidden), raising=False)
+        with pytest.raises(RelocationError, match="path resolution hooks changed"):
+            _ = resolve(path)
+    assert calls == 0, "late pathname descriptor was consulted"
+
+
 def test_relocatable_path_rejects_post_import_containment_spoof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
