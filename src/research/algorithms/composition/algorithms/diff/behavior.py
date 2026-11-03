@@ -1080,12 +1080,16 @@ def _bug_routing(
     return _NATIVE_TUPLE(apply), _NATIVE_TUPLE(skip), _NATIVE_TUPLE(reasons)
 
 
-def _below_similarity_threshold(matched: int, total: int, minimum: float) -> bool:
+def _below_similarity_threshold(
+    matched: int, total: int, minimum: float
+) -> bool:
     """Compare exact probe counts to the configured decimal policy fraction."""
     # Rounded division may equal a threshold that is slightly above the true
     # ratio (for example 1/11). Interpret the input float's canonical decimal,
     # consistently with source-binding thresholds, without losing precision.
-    numerator, denominator = _native_decimal(_NATIVE_STR(minimum)).as_integer_ratio()
+    numerator, denominator = _native_decimal(
+        _NATIVE_STR(minimum)
+    ).as_integer_ratio()
     return matched * denominator < total * numerator
 
 

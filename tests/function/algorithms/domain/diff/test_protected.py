@@ -377,7 +377,7 @@ def test_protected_authoring_revalidates_native_identity_before_key_derivation(
     monkeypatch: pytest.MonkeyPatch,
     malformed: str,
 ) -> None:
-    """Forged source identity must fail typed before any payload key is derived."""
+    """Reject forged native identity before payload key derivation."""
     source, oracle, _ = _fixture(tmp_path)
     exact = build_exact_plan(source, oracle)
     forged = object.__new__(IdentityTree)
@@ -409,14 +409,17 @@ def test_protected_authoring_revalidates_native_identity_before_key_derivation(
     def reject_early_key_derivation(_identity: IdentityTree) -> bytes:
         nonlocal calls
         calls += 1
-        raise AssertionError("unvalidated identity reached the payload key schedule")
+        message = "unvalidated identity reached the payload key schedule"
+        raise AssertionError(message)
 
     with monkeypatch.context() as patched:
         # The owning model's late class hook must not waive initial admission.
         patched.setattr(IdentityTree, "__post_init__", lambda _tree: None)
         patched.setattr(IdentityFile, "__post_init__", lambda _file: None)
         patched.setattr(
-            protected_module, "_source_identity_digest", reject_early_key_derivation
+            protected_module,
+            "_source_identity_digest",
+            reject_early_key_derivation,
         )
         with pytest.raises(ProtectedPlanError, match="invalid native identity"):
             _ = protect_exact_plan(

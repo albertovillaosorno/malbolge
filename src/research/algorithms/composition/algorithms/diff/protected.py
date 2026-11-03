@@ -42,7 +42,11 @@ from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.admission import AdmissionPolicyError, IdentityFile, IdentityTree
+from algorithms.diff.admission import (
+    AdmissionPolicyError,
+    IdentityFile,
+    IdentityTree,
+)
 from algorithms.diff.exact import (
     _new_exact_instruction,  # pyright: ignore[reportPrivateUsage]
     _new_exact_plan,  # pyright: ignore[reportPrivateUsage]
@@ -1149,7 +1153,9 @@ def _validate_protect_inputs(
     try:
         _IDENTITY_TREE_VALIDATOR(reference_identity)
     except (AdmissionPolicyError, AttributeError, TypeError) as error:
-        message = "protected reference contains invalid native identity evidence"
+        message = (
+            "protected reference contains invalid native identity evidence"
+        )
         raise ProtectedPlanError(message) from error
     if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "protected authoring context must use non-empty exact bytes"
