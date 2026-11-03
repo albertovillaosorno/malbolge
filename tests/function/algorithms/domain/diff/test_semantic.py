@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import TYPE_CHECKING
 from typing import cast
@@ -195,6 +196,76 @@ def test_changed_or_ambiguous_source_region_fails_closed() -> None:
             plan,
             _map,
         )
+
+
+class _ForgedSemanticUnitDigest:
+    """Stand-in hash object supplying one chosen SHA-256 digest."""
+
+    def __init__(self, digest: bytes) -> None:
+        self.digest_value: bytes = digest
+
+    def digest(self) -> bytes:
+        """Return the spoofed digest.
+
+        Returns:
+            A valid-size but substituted SHA-256 digest.
+
+        """
+        return self.digest_value
+
+
+def test_semantic_locator_rejects_hostile_post_import_hash_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged digest cannot turn unrelated candidate tokens into source."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    candidate = _map(b"alpha = upstream ; omega")
+    plan = build_semantic_plan(source, target)
+    genuine_constructor = hashlib.sha256
+    original_unit = b"old"
+    source_frame = (
+        b"semantic-placement-unit-v1\0"
+        + len(original_unit).to_bytes(8, "big")
+        + original_unit
+    )
+    original_digest = genuine_constructor(source_frame).digest()
+
+    def forged_constructor(data: bytes = b"") -> object:
+        if data.endswith(b"upstream"):
+            return _ForgedSemanticUnitDigest(original_digest)
+        return genuine_constructor(data)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(hashlib, "sha256", forged_constructor)
+        with pytest.raises(
+            SemanticPlacementError, match="missing or ambiguous"
+        ):
+            _ = apply_semantic_plan(candidate, plan, _map)
+
+
+def test_semantic_authoring_ignores_hostile_hash_constructor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing the ambient hash constructor cannot erase an authored edit."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+
+    def forged_constructor(data: bytes = b"") -> _ForgedSemanticUnitDigest:
+        del data
+        return _ForgedSemanticUnitDigest(b"z" * 32)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(hashlib, "sha256", forged_constructor)
+        plan = build_semantic_plan(source, target)
+        observed = apply_semantic_plan(source, plan, _map)
+
+    _expect(
+        bool(plan.edits), "hostile constructor suppressed the semantic edit"
+    )
+    _expect(
+        observed == target.raw, "hostile constructor changed authored output"
+    )
 
 
 def test_retokenization_rejects_unsafe_insertion_seam() -> None:

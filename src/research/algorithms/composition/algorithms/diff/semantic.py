@@ -47,7 +47,9 @@ if TYPE_CHECKING:
 
 _ZERO = 0
 _ONE = 1
-_SHA256_BYTES = hashlib.sha256().digest_size
+# Verify placement using a constructor pinned before host hooks can replace it.
+_SHA256_FACTORY = hashlib.sha256
+_SHA256_BYTES = _SHA256_FACTORY().digest_size
 _DEFAULT_CONTEXT_UNITS = 4
 _UNIT_DOMAIN = b"semantic-placement-unit-v1\0"
 _ANCHOR_WIDTHS = (8, 4, 2, 1)
@@ -204,7 +206,7 @@ def _frame(value: bytes) -> bytes:
 
 
 def _unit_digest(canonical: bytes) -> bytes:
-    return hashlib.sha256(_UNIT_DOMAIN + _frame(canonical)).digest()
+    return _SHA256_FACTORY(_UNIT_DOMAIN + _frame(canonical)).digest()
 
 
 def _view_digests(view: MappedView) -> tuple[bytes, ...]:
