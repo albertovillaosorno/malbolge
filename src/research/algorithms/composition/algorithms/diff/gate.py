@@ -47,7 +47,6 @@ _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = type
 _NATIVE_STR = builtins.str
 _NATIVE_TUPLE = tuple
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 # Slotted frozen dataclass fields still have mutable *class* descriptors.
 # Retain the original slot readers before loading any consumer hooks.
 _SOURCE_REASONS_SLOT = cast(
@@ -73,9 +72,9 @@ class TransformAdmissionEvidence:
         reasons: tuple[str, ...],
     ) -> None:
         """Validate conjunctive admission with the captured native guard."""
-        _NATIVE_OBJECT_SETATTR(self, "source", source)
-        _NATIVE_OBJECT_SETATTR(self, "behavior", behavior)
-        _NATIVE_OBJECT_SETATTR(self, "reasons", reasons)
+        _GATE_SOURCE_SLOT.__set__(self, source)
+        _GATE_BEHAVIOR_SLOT.__set__(self, behavior)
+        _GATE_REASONS_SLOT.__set__(self, reasons)
         _TRANSFORM_ADMISSION_VALIDATOR(self)
 
     def __post_init__(self) -> None:

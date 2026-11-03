@@ -534,3 +534,53 @@ def test_gate_constructor_keeps_valid_after_validator_override(
     assert clone == admitted
     assert clone.admitted
     assert calls == 0, "late gate validator rejected valid evidence"
+
+
+@pytest.mark.parametrize("field", ["source", "behavior", "reasons"])
+def test_gate_constructor_rejects_forged_field_setter(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Late field setters cannot turn failed evidence into admission."""
+    admitted = combine_admission(_source_evidence("reference"), _behavior_evidence())
+    slot = TransformAdmissionEvidence.__dict__[field]
+    original_value = getattr(admitted, field)
+    invalid: dict[str, object] = {
+        "source": _source_evidence("unrelated"),
+        "behavior": _behavior_evidence(compatible=False),
+        "reasons": ("forged",),
+    }
+    calls = 0
+
+    def sanitize(self: TransformAdmissionEvidence, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(self, original_value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(TransformAdmissionEvidence, field, property(fset=sanitize))
+        with pytest.raises(AdmissionError):
+            _ = replace(admitted, **{field: invalid[field]})
+    assert calls == 0, "gate field setter laundered invalid evidence"
+
+
+@pytest.mark.parametrize("field", ["source", "behavior", "reasons"])
+def test_gate_constructor_writes_original_slots(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Valid conjunctive evidence does not execute a foreign setter."""
+    admitted = combine_admission(_source_evidence("reference"), _behavior_evidence())
+    original_value = getattr(admitted, field)
+    calls = 0
+
+    def forbidden_setter(_self: TransformAdmissionEvidence, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("gate constructor dispatched foreign setter")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            TransformAdmissionEvidence, field, property(fset=forbidden_setter)
+        )
+        reconstructed = replace(admitted, **{field: original_value})
+    assert type(reconstructed) is TransformAdmissionEvidence
+    assert calls == 0, "gate constructor dispatched late setter"
