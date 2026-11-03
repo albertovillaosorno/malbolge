@@ -3380,7 +3380,12 @@ def test_behavior_host_errors_ignore_late_builtin_exception_aliases(
             builtins.__dict__["RuntimeError"] = native_runtime_error
             builtins.__dict__["Exception"] = native_exception
     assert type(caught) is expected, (route, caught)
-    assert caught is not None and caught.__cause__ is failure
+    assert caught is not None
+    if route == "context":
+        assert "resolver hooks changed" in str(caught)
+        assert caught.__cause__ is None
+    else:
+        assert caught.__cause__ is failure
 
 
 def test_behavior_correction_rejects_late_unicode_error_class_alias(
@@ -3401,3 +3406,30 @@ def test_behavior_correction_rejects_late_unicode_error_class_alias(
             builtins.__dict__["UnicodeEncodeError"] = native_unicode_error
     assert type(caught) is BehaviorProgramError
     assert "UTF-8" in str(caught)
+
+
+@pytest.mark.parametrize(
+    ("alias", "replacement"),
+    [("str", bytes), ("OSError", ValueError)],
+)
+def test_behavior_context_rejects_late_native_type_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+    replacement: type[object],
+) -> None:
+    """Original host resolution must reject changed builtin class identities."""
+    original = cast("type[object]", getattr(builtins, alias))
+    caught: BehaviorProgramError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, alias, replacement)
+        try:
+            _ = behavior_module._resolved_context_path(  # pyright: ignore[reportPrivateUsage]
+                tmp_path, "repository"
+            )
+        except BehaviorProgramError as error:
+            caught = error
+        finally:
+            builtins.__dict__[alias] = original
+    assert type(caught) is BehaviorProgramError, (alias, caught)
+    assert "resolver hooks changed" in str(caught)

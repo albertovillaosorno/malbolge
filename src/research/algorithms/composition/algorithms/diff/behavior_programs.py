@@ -221,6 +221,8 @@ def _require_native_context_resolver() -> None:
         or builtins.len is not _NATIVE_LEN
         or builtins.bytes is not _NATIVE_BYTES
         or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.str is not _NATIVE_STR
+        or builtins.OSError is not _NATIVE_OS_ERROR
         or Path.__new__ is not _NATIVE_PATH_NEW
         or Path.__init__ is not _NATIVE_PATH_INIT
         or Path.__getattribute__ is not _NATIVE_PATH_GETATTRIBUTE
