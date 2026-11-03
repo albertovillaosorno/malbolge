@@ -2573,6 +2573,23 @@ Default Ruff and diff checks are clean; strict project typing retains 121
 existing findings across the source and test files, none at newly added lines.
 This guards late process-hook replacement, not external filesystem races.
 
+Probe source attestation now compares original stored `TreeSnapshot` and
+`FileRecord` path, digest, and size fields instead of mutable dataclass
+comparison hooks (`16cafeeff`). Six red-first cases showed forged equality
+could hide a changed mirror copy, post-command mirror, or original candidate
+source. The same change reads original snapshot file lists and source-file
+paths for inode-disjointness checks; two additional red-first cases blocked
+forged getters. All 438 postcommit probe tests and 1,158 adjacent tests passed.
+
+Source-pin parent traversal now checks original `Path`/`PurePath` forward and
+in-place division hooks before following any parent components (`f0f00e231`).
+Four red-first cases previously executed foreign callbacks before provenance
+admission; all 205 postcommit provenance and 900 adjacent tests passed.
+Together these guards passed a fresh, clean integrated diff run of 3,792 tests
+at `f0f00e231`. They do not guarantee atomic isolation from concurrent
+filesystem writers or trusted direct object-state mutation. The global Jig
+governance gate remains separately non-green on pre-existing repository rules.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

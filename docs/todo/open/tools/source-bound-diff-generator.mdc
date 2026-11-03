@@ -1411,6 +1411,19 @@ format.
   lineage view now use error-reporting recursive walks; inaccessible subtrees
   fail closed instead of disappearing from source identity or provenance.
 
+- Probe source-tree integrity comparisons now read captured native snapshot
+  and file slots, not mutable dataclass equality (`16cafeeff`). Six red-first
+  copy/mirror/original-source cases and two native inode-getter cases pass.
+  All 438 postcommit probe and 1,158 adjacent tests passed; source typing,
+  Ruff, and diff checks were clean. Concurrent filesystem races remain open.
+- Source-pin path admission now rejects late `Path`/`PurePath` division and
+  in-place division substitutions before parent traversal (`f0f00e231`).
+  Four red-first foreign-callback cases pass; 205 postcommit provenance and
+  900 adjacent tests, strict source/test typing, Ruff, and diff checks passed.
+  A clean full diff run passed 3,792 tests on the final source revision.
+  Global Jig rules and concurrent external filesystem writers remain outside
+  this scoped security verification.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
