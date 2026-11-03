@@ -69,6 +69,12 @@ and population standard deviation. Adapter construction/kernel compilation is
 outside timing. This is width-scaling evidence for full-state materialization,
 not a compute/search-heavy benchmark.
 
+Before publication, the stdout report is corroborated against the import-bound
+native JSON encoder, preventing a replaced public serializer from silently
+changing measured device or raw-sample evidence. Exact native character-write
+and successful flush receipts are required for a success exit. Synthetic rows
+exercise these reporting checks without CUDA hardware.
+
 Run with:
 
 ```powershell
