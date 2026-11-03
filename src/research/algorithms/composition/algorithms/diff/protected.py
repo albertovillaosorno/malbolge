@@ -681,7 +681,13 @@ class ProtectedExactPlan:
             # message. A foreign subclass can execute code from __str__.
             detail = _NATIVE_TYPE(error).__name__
             if _NATIVE_TYPE(error) is SourceBindingError:
-                arguments = cast("tuple[object, ...]", error.args)
+                # Read native exception storage, not a mutable class getter.
+                arguments = cast(
+                    "tuple[object, ...]",
+                    BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                        error, "args"
+                    ),
+                )
                 if (
                     _NATIVE_LEN(arguments) == _ONE
                     and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR

@@ -842,6 +842,35 @@ def test_protected_plan_rejects_malformed_binding_metadata(
         _ = replace(protected, binding=malformed_binding)
 
 
+@pytest.mark.parametrize("getter_result", ["raise", "forge"])
+def test_protected_plan_binding_diagnostic_ignores_late_native_error_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    getter_result: str,
+) -> None:
+    """Native binding failures must not call mutable exception class hooks."""
+    _, _, _, _, protected = _protected(tmp_path)
+    malformed = replace(protected.binding, threshold=True)
+    getter_calls: list[str] = []
+
+    def forged_getattribute(error: BaseException, name: str) -> object:
+        if name == "args":
+            getter_calls.append(name)
+            if getter_result == "raise":
+                raise AssertionError("late binding error getter executed")
+            return ("forged binding reason",)
+        return BaseException.__getattribute__(error, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SourceBindingError, "__getattribute__", forged_getattribute)
+        with pytest.raises(
+            ProtectedPlanError, match=r"binding is invalid.*threshold"
+        ) as caught:
+            _ = replace(protected, binding=malformed)
+    assert type(caught.value.__cause__) is SourceBindingError
+    assert getter_calls == []
+
+
 def test_ciphertext_or_tag_tampering_fails_before_output(
     tmp_path: Path,
 ) -> None:
