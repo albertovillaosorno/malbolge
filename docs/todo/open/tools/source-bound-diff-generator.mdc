@@ -495,6 +495,15 @@ format.
 - Two further red-first publication regressions show pinned native path-string
   equality rejects identical staging/output roots and admits distinct roots
   despite late `Path.__eq__` overrides.
+- Directory publication now rejects late native `Path` getter/cache hooks
+  and bypasses `os.fspath` redirection for uncached POSIX raw path parts
+  (`25c0a4d38`). Four red-first redirected-publication cases, two
+  platform-specific getter regressions, fourteen lexical fixture cases, and
+  4,368 enumerated POSIX combinations support the boundary. All 87 focused
+  publication and 2,840 integrated diff tests passed postcommit; scoped Ruff,
+  strict BasedPyright, and diff checks were clean. Jig doctor was degraded;
+  `jig check` timed out after 100 seconds with no passing verdict. This does
+  not isolate direct private object mutation or concurrent filesystem writers.
 - Probe runtime `_CommandResult`, `_PipeCapture`, and `_RunningProbe`
   receipts now use captured original initializers and native allocation
   (`82e32113e`). Eight late `__init__`/`__new__` regression cases pass;
@@ -609,6 +618,12 @@ format.
   focused provenance tests and 2,689 integrated diff tests. Scoped Ruff and
   BasedPyright had zero errors (46 older type warnings). Direct instance edits
   and concurrent filesystem mutation remain outside these class-hook guards.
+- Source-pin root preflight now rejects late native `Path` class getters,
+  cache descriptors, and builtin-path formatting redirection (`bce5af0c1`).
+  Fifteen red-first cases and 140 postcommit provenance tests passed; the
+  integrated diff suite had passed 2,840 tests before the provenance commit.
+  Scoped Ruff and source BasedPyright were error-free. Direct private record
+  edits and external concurrent filesystem writes remain outside this guard.
 
 - `passthrough_roots` are authenticated plan metadata. Source/oracle must match
   there

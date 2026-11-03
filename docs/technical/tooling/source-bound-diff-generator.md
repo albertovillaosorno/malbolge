@@ -269,6 +269,16 @@ tests and 2,689 integrated diff tests passed, with zero scoped Ruff and
 BasedPyright errors (46 pre-existing type warnings). This guards against late
 class hooks, not direct trusted object edits or concurrent filesystem writers.
 
+Source-pin root admission also rejects late `pathlib` class getter and cache
+substitutions before using the captured path formatter (`bce5af0c1`). The
+original class-chain dependency snapshot prevents forged root spellings from
+selecting another tree and producing unrelated provenance evidence. Fifteen
+red-first class, descriptor, and builtin cases passed, as did 140 provenance
+tests rechecked after publication. The integrated diff suite previously passed
+2,840 tests before this provenance change was committed. Scoped Ruff and
+source BasedPyright remained error-free. This protects in-process class-hook
+substitution, not direct stored-instance edits or external filesystem races.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from
@@ -426,6 +436,23 @@ than leaking a ctypes exception. The original exception type is pinned
 against later alias substitution. DCO `fb8c2583b` adds a red-first call
 failure and loader/alias regressions; all 67 publication tests passed, as
 did 2,257 other diff tests excluding live probe edits.
+
+Directory publication previously trusted `Path.__str__` through a captured
+callable, which still dispatched late path cache and class getter hooks. Both
+`Path.__getattribute__` and `os.fspath` could redirect a native destination
+while preserving exact `Path` type. Signed `25c0a4d38` pins the native path
+class dispatch chain; POSIX spelling derives from original raw-part storage,
+not mutable path hooks. Windows uses the original cached-string slot and
+fails closed when its uncached path formatting depends on a changed host hook.
+Four red-first redirection cases and two platform-class hook cases now prove
+rejection or unredirected publication. Fourteen lexical edge fixtures and
+4,368 exhaustive small combinations agreed with native POSIX spelling. All
+87 focused publication and 2,840 integrated diff tests passed postcommit,
+with scoped Ruff, strict BasedPyright, and diff checks clean. Jig doctor was
+degraded and a bounded 100-second `jig check` timed out during native
+validation scheduling; no repository-wide clean verdict is asserted. Direct
+private object mutation and concurrent external filesystem writers are not
+isolated by this guard.
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.
