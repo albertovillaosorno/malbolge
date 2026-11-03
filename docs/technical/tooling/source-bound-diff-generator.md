@@ -1304,6 +1304,19 @@ increase in existing Ruff diagnostics or Git diff whitespace errors.
 This does not make external source-tree mutations atomic, provide compatible
 transform admission, or establish a repository-wide Jig pass.
 
+Relocatable authoring now import-pins the original `ExactAuthoringPlan`
+validator before the first source snapshot or byte read (`bf576eaa8`). Exact
+native plans created without their constructor previously reached source I/O
+with modified target-only literal bytes, a missing target slot, reordered
+instructions, or a boolean source slice. Four red-first cases now reject
+those nested metadata violations before I/O; two additional tests preserve
+valid native storage and reject late `__post_init__` replacement. All 219
+focused relocatable and 3,192 integrated diff tests passed; strict source
+BasedPyright reported zero errors, with no new test typing or Ruff diagnostics
+and no Git whitespace errors. This protects structural plan admission, not
+arbitrary valid plan authorship or concurrent filesystem writers. A global
+Jig green result remains unverified.
+
 Relocatable output staging now uses import-pinned `io.open` with exclusive `xb`
 mode, native `os.mkdir` for parent creation, and original `Path.parent`,
 `Path.name`, and `Path.with_name` readers. Late consumer replacements of these
