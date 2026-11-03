@@ -37,10 +37,11 @@ from __future__ import annotations
 import builtins
 import hashlib
 import math
+import os
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
+from pathlib import Path, PurePath
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, NamedTuple, cast
 
@@ -83,12 +84,18 @@ _NATIVE_FLOAT = builtins.float
 _NATIVE_STR = builtins.str
 _NATIVE_BOOL = builtins.bool
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
+_NATIVE_OBJECT_NEW = object.__new__
+_NATIVE_PATH_RAW_SLOT = cast(
+    "MemberDescriptorType", PurePath.__dict__["_raw_paths"]
+)
+_NATIVE_PATH_STR_SLOT = cast("MemberDescriptorType", PurePath.__dict__["_str"])
+_NATIVE_PATH_STRING = Path.__str__
+_HOST_PATH_SEP = os.sep
 _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 # Domain callbacks cannot redefine the host path containment verdict.
 _NATIVE_PATH_EQ = Path.__eq__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
-_NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
 _NATIVE_PATH_RESOLVE = Path.resolve
 _MAX_SHARES = 255
 _NUL = "\x00"
@@ -501,6 +508,29 @@ def _validate_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
     return snapshot
 
 
+def _native_source_identity_path(root: Path, relative: str) -> Path:
+    """Append a canonical source label without mutable host path factories."""
+    path = cast("Path", _NATIVE_OBJECT_NEW(_NATIVE_PATH_TYPE))
+    components = cast(
+        "list[str]", _NATIVE_PATH_RAW_SLOT.__get__(root, PurePath)
+    )
+    _NATIVE_PATH_RAW_SLOT.__set__(path, [*components, relative])
+    # pathlib's lazy string formatting invokes process-global os.fspath.
+    # Cache the admitted lexical child spelling without late host hooks.
+    root_spelling = _NATIVE_PATH_STRING(root)
+    host_relative = relative.replace("/", _HOST_PATH_SEP)
+    if root_spelling == ".":
+        spelling = host_relative
+    elif root_spelling.endswith(_HOST_PATH_SEP) or (
+        _HOST_PATH_SEP == "\\" and root_spelling.endswith(":")
+    ):
+        spelling = root_spelling + host_relative
+    else:
+        spelling = root_spelling + _HOST_PATH_SEP + host_relative
+    _NATIVE_PATH_STR_SLOT.__set__(path, spelling)
+    return path
+
+
 def _read_exact_identity_file(path: Path, record: FileRecord) -> bytes:
     replay = read_exact_regular_file(path, "exact source identity")
     relative_path, expected_digest, expected_size = _file_fields(record)
@@ -521,7 +551,7 @@ def _raw_exact_identity(
     for record in _snapshot_files(source):
         relative = _file_fields(record)[0]
         files[relative] = _read_exact_identity_file(
-            _NATIVE_PATH_WITH_SEGMENTS(recipe.source_root, recipe.source_root, relative),
+            _native_source_identity_path(recipe.source_root, relative),
             record,
         )
     return identity_tree(files)

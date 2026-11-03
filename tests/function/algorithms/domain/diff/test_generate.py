@@ -1997,3 +1997,86 @@ def test_generator_source_replay_ignores_late_path_join_hooks(
         identity = generate_module._raw_exact_identity(recipe, source)
     assert len(identity.files) == 2
     assert observed_calls == 0, "late Path join hook was consulted"
+
+
+def test_generator_source_replay_ignores_late_builtin_type_for_path_factory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late type() substitution cannot replace source identity path factory."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    source = generate_module.snapshot_tree_excluding(recipe.source_root, ())
+    native_type = type
+    attempts = 0
+
+    def forged_type(value: object) -> object:
+        nonlocal attempts
+        if value is recipe.source_root:
+            attempts += 1
+            return lambda *_args: tmp_path / "foreign.bin"
+        return native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        identity = generate_module._raw_exact_identity(recipe, source)
+    assert len(identity.files) == 2
+    assert attempts == 0, "mutable type() chose source path construction"
+
+
+@pytest.mark.parametrize("hook", ["fspath", "new", "init"])
+def test_generator_source_replay_ignores_late_native_path_factory_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """Path constructors cannot retarget admitted file reads after preflight."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    source = generate_module.snapshot_tree_excluding(recipe.source_root, ())
+    foreign = tmp_path / "foreign.bin"
+    _ = foreign.write_bytes(b"foreign")
+    attempts = 0
+    native_fspath = os.fspath
+    native_init = Path.__init__
+
+    def forged_fspath(value: object) -> str:
+        nonlocal attempts
+        if value == "a.bin":
+            attempts += 1
+            return str(foreign)
+        return native_fspath(cast("os.PathLike[str]", value))
+
+    def forged_new(cls: type[Path], *args: object) -> Path:
+        nonlocal attempts
+        attempts += 1
+        return foreign
+
+    def forged_init(self: Path, *args: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        native_init(self, foreign)
+
+    with monkeypatch.context() as patched:
+        if hook == "fspath":
+            patched.setattr(os, "fspath", forged_fspath)
+        elif hook == "new":
+            patched.setattr(Path, "__new__", forged_new)
+        else:
+            patched.setattr(Path, "__init__", forged_init)
+        identity = generate_module._raw_exact_identity(recipe, source)
+    assert len(identity.files) == 2
+    assert attempts == 0, "late native path construction was consulted"
+
+
+@pytest.mark.parametrize("root_text", [".", "/", "//", "relative", "/tmp/existing"])
+@pytest.mark.parametrize("relative", ["file.bin", "nested/file.bin"])
+def test_generator_native_source_child_matches_pathlib_normalization(
+    root_text: str,
+    relative: str,
+) -> None:
+    """Pinned source path construction preserves native root spelling."""
+    root = Path(root_text)
+    child = generate_module._native_source_identity_path(root, relative)
+    expected = Path(root, relative)
+    assert type(child) is type(expected)
+    assert str(child) == str(expected)
+    assert child == expected
