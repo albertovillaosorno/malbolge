@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import io
 import os
-from pathlib import Path
+from pathlib import Path, PurePath
 from secrets import token_hex
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from types import MemberDescriptorType
@@ -90,7 +90,53 @@ _NATIVE_OS_MKDIR = os.mkdir
 _NATIVE_OS_REPLACE = os.replace
 _NATIVE_OS_UNLINK = os.unlink
 _NATIVE_OS_FSENCODE = os.fsencode
-_NATIVE_PATH_STRING = Path.__str__
+_NATIVE_PATH_STR = Path.__str__
+_NATIVE_OS_FSPATH = os.fspath
+# A captured Path.__str__ still follows late class descriptor and os.fspath
+# hooks. Freeze its full native class dependency chain before domain callbacks.
+_PATH_STRING_DEPENDENCIES = (
+    "__getattribute__",
+    "__getattr__",
+    "__setattr__",
+    "__str__",
+    "__fspath__",
+    "_str",
+    "_raw_paths",
+    "_drv",
+    "_root",
+    "_tail_cached",
+    "_raw_path",
+    "_tail",
+    "drive",
+    "root",
+    "_parse_path",
+    "_format_parsed_parts",
+    "parser",
+)
+_NATIVE_PATH_STRING_HOOKS = tuple(
+    (
+        path_class,
+        tuple(
+            (name, path_class.__dict__.get(name)) for name in _PATH_STRING_DEPENDENCIES
+        ),
+    )
+    for path_class in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(path_class, PurePath)
+)
+
+
+def _native_path_string(path: Path) -> str:
+    """Reject late path formatter substitution before any filesystem access."""
+    if os.fspath is not _NATIVE_OS_FSPATH or any(
+        path_class.__dict__.get(name) is not original
+        for path_class, hooks in _NATIVE_PATH_STRING_HOOKS
+        for name, original in hooks
+    ):
+        raise RustEmissionError("Rust transform path hooks changed")
+    return _NATIVE_PATH_STR(path)
+
+
+_NATIVE_PATH_STRING = _native_path_string
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
 _NATIVE_PATH_WITH_NAME = Path.with_name
@@ -104,8 +150,7 @@ def _record_slots(
     record_type: type[object], names: tuple[str, ...]
 ) -> tuple[MemberDescriptorType, ...]:
     return _NATIVE_TUPLE(
-        cast("MemberDescriptorType", record_type.__dict__[name])
-        for name in names
+        cast("MemberDescriptorType", record_type.__dict__[name]) for name in names
     )
 
 
@@ -119,15 +164,32 @@ def _stored_fields(
     )
 
 
-_PLAN_SLOTS = _record_slots(ProtectedExactPlan, (
-    "source", "target", "instructions", "passthrough_roots",
-    "context", "nonce", "payload", "binding",
-))
+_PLAN_SLOTS = _record_slots(
+    ProtectedExactPlan,
+    (
+        "source",
+        "target",
+        "instructions",
+        "passthrough_roots",
+        "context",
+        "nonce",
+        "payload",
+        "binding",
+    ),
+)
 _PAYLOAD_SLOTS = _record_slots(AuthenticatedPayload, ("ciphertext", "tag"))
-_BINDING_SLOTS = _record_slots(ThresholdBinding, (
-    "context", "threshold", "minimum_anchor_files", "secret_length",
-    "secret_commitment", "anchor_policy", "shares",
-))
+_BINDING_SLOTS = _record_slots(
+    ThresholdBinding,
+    (
+        "context",
+        "threshold",
+        "minimum_anchor_files",
+        "secret_length",
+        "secret_commitment",
+        "anchor_policy",
+        "shares",
+    ),
+)
 _ANCHOR_SLOTS = _record_slots(AnchorPolicy, (
     "window_bytes", "selection_modulus",
 ))
