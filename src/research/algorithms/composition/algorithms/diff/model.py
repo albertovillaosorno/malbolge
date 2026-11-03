@@ -223,6 +223,14 @@ class TreeSnapshot:
         ):
             message = "tree snapshot contains a foreign file record"
             raise TreeModelError(message)
+        # Exact native file types can still be allocated without __init__.
+        # Revalidate their stored fields before the snapshot trusts them.
+        for record in files:
+            try:
+                _FILE_RECORD_VALIDATOR(record)
+            except AttributeError as error:
+                message = "tree snapshot contains an incomplete native file record"
+                raise TreeModelError(message) from error
         paths = _native_tuple(_file_fields(item)[0] for item in files)
         if paths != _native_tuple(_native_sorted(_native_set(paths))):
             message = "tree snapshot paths must be unique and sorted"
@@ -244,7 +252,7 @@ _SNAPSHOT_FILES_SLOT = cast(
 
 
 def _snapshot_files(snapshot: TreeSnapshot) -> tuple[FileRecord, ...]:
-    return _SNAPSHOT_FILES_SLOT.__get__(snapshot, TreeSnapshot)
+    return cast("tuple[FileRecord, ...]", _SNAPSHOT_FILES_SLOT.__get__(snapshot, TreeSnapshot))
 
 
 class ExactInstructionKind(StrEnum):
@@ -348,7 +356,7 @@ _ORACLE_LITERAL_DATA_SLOT = cast(
 
 
 def _oracle_literal_data(literal: OracleLiteral) -> bytes:
-    return _ORACLE_LITERAL_DATA_SLOT.__get__(literal, OracleLiteral)
+    return cast("bytes", _ORACLE_LITERAL_DATA_SLOT.__get__(literal, OracleLiteral))
 
 
 ExactSegment = SourceSlice | OracleLiteral
@@ -366,6 +374,16 @@ def _validate_exact_segments(value: object) -> None:
     if _native_any(foreign):
         message = "exact instruction contains a foreign segment record"
         raise TreeModelError(message)
+    # An exact segment type can be allocated without its original initializer.
+    for segment in segments:
+        try:
+            if _native_type(segment) is SourceSlice:
+                _SOURCE_SLICE_VALIDATOR(segment)
+            else:
+                _ORACLE_LITERAL_VALIDATOR(cast("OracleLiteral", segment))
+        except AttributeError as error:
+            message = "exact instruction contains an incomplete native segment"
+            raise TreeModelError(message) from error
 
 
 def _validate_exact_instruction_metadata(instruction: ExactInstruction) -> None:
@@ -555,6 +573,20 @@ class ExactAuthoringPlan:
         ):
             message = "exact plan instructions must be exact immutable records"
             raise TreeModelError(message)
+        # Plans may receive exact native snapshots/instructions whose own
+        # initializers were skipped; require their captured validators here.
+        for snapshot in (source, target):
+            try:
+                _TREE_SNAPSHOT_VALIDATOR(snapshot)
+            except AttributeError as error:
+                message = "exact plan contains an incomplete native snapshot"
+                raise TreeModelError(message) from error
+        for instruction in instructions:
+            try:
+                _EXACT_INSTRUCTION_VALIDATOR(instruction)
+            except AttributeError as error:
+                message = "exact plan contains an incomplete native instruction"
+                raise TreeModelError(message) from error
         paths = _native_tuple(
             _instruction_fields(item)[0] for item in instructions
         )

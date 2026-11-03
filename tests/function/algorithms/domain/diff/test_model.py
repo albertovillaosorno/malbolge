@@ -38,6 +38,7 @@ import builtins
 import ntpath
 import os
 from dataclasses import replace
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -396,6 +397,135 @@ def test_model_tree_snapshot_constructor_ignores_late_files_getter(
     assert calls == 0, "late tree getter concealed mutable files"
 
 
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("path", "../unsafe"),
+        ("sha256", "short"),
+        ("sha256", bytearray(32)),
+        ("size", -1),
+        ("size", True),
+    ],
+)
+def test_tree_snapshot_revalidates_fabricated_native_file(
+    field: str, invalid: object
+) -> None:
+    """An exact file instance cannot bypass nested snapshot admission."""
+    record = object.__new__(FileRecord)
+    values: dict[str, object] = {"path": "safe.bin", "sha256": _HASH, "size": 1}
+    values[field] = invalid
+    for name, value in values.items():
+        slot = cast("MemberDescriptorType", FileRecord.__dict__[name])
+        slot.__set__(record, value)
+    with pytest.raises(TreeModelError):
+        _ = TreeSnapshot((record,))
+
+
+@pytest.mark.parametrize("missing", ["path", "sha256", "size"])
+def test_tree_snapshot_rejects_incomplete_native_file(missing: str) -> None:
+    """Missing native file metadata fails closed with a model error."""
+    record = object.__new__(FileRecord)
+    values: dict[str, object] = {"path": "safe.bin", "sha256": _HASH, "size": 1}
+    for name, value in values.items():
+        if name == missing:
+            continue
+        slot = cast("MemberDescriptorType", FileRecord.__dict__[name])
+        slot.__set__(record, value)
+    with pytest.raises(TreeModelError, match="incomplete native file"):
+        _ = TreeSnapshot((record,))
+
+
+@pytest.mark.parametrize(
+    ("kind", "field", "invalid"),
+    [
+        (SourceSlice, "offset", -1),
+        (SourceSlice, "offset", True),
+        (SourceSlice, "length", 0),
+        (OracleLiteral, "data", bytearray(b"mutable")),
+    ],
+)
+def test_exact_instruction_revalidates_fabricated_native_segment(
+    kind: type[SourceSlice | OracleLiteral], field: str, invalid: object
+) -> None:
+    """Patch instructions cannot inherit constructor-bypassed segment data."""
+    segment = object.__new__(kind)
+    values: dict[str, object] = (
+        {"offset": 0, "length": 1}
+        if kind is SourceSlice
+        else {"data": b"safe"}
+    )
+    values[field] = invalid
+    for name, value in values.items():
+        slot = cast("MemberDescriptorType", kind.__dict__[name])
+        slot.__set__(segment, value)
+    with pytest.raises(TreeModelError):
+        _ = ExactInstruction(
+            "out.bin", ExactInstructionKind.PATCH_SOURCE, _HASH,
+            source_path="src.bin",
+            segments=(segment,),
+        )
+
+
+@pytest.mark.parametrize("kind", [SourceSlice, OracleLiteral])
+def test_exact_instruction_rejects_incomplete_native_segment(
+    kind: type[SourceSlice | OracleLiteral],
+) -> None:
+    """Uninitialized source segments fail as typed model errors."""
+    segment = object.__new__(kind)
+    with pytest.raises(TreeModelError, match="incomplete native segment"):
+        _ = ExactInstruction(
+            "out.bin", ExactInstructionKind.PATCH_SOURCE, _HASH,
+            source_path="src.bin",
+            segments=(segment,),
+        )
+
+
+def test_exact_plan_revalidates_unsorted_native_source_snapshot() -> None:
+    """Source snapshots cannot conceal unordered native file records."""
+    source = object.__new__(TreeSnapshot)
+    files = (FileRecord("z.bin", _HASH, 1), FileRecord("a.bin", _HASH, 1))
+    slot = cast("MemberDescriptorType", TreeSnapshot.__dict__["files"])
+    slot.__set__(source, files)
+    with pytest.raises(TreeModelError, match="unique and sorted"):
+        _ = ExactAuthoringPlan(source, TreeSnapshot(()), ())
+
+
+@pytest.mark.parametrize("role", ["source", "target"])
+def test_exact_plan_rejects_incomplete_native_snapshot(role: str) -> None:
+    """Uninitialized native source/target records cannot bypass plan checks."""
+    missing = object.__new__(TreeSnapshot)
+    source = missing if role == "source" else TreeSnapshot(())
+    target = missing if role == "target" else TreeSnapshot(())
+    with pytest.raises(TreeModelError, match="incomplete native snapshot"):
+        _ = ExactAuthoringPlan(source, target, ())
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_exact_plan_revalidates_fabricated_native_instruction(
+    missing: bool,
+) -> None:
+    """A kind-inconsistent native instruction cannot borrow target identity."""
+    instruction = object.__new__(ExactInstruction)
+    values: dict[str, object] = {
+        "output_path": "out.bin",
+        "kind": ExactInstructionKind.LITERAL_ORACLE,
+        "expected_sha256": _HASH,
+        "source_path": None,
+        "literal": None,
+        "segments": (),
+    }
+    for name, value in values.items():
+        if missing and name == "literal":
+            continue
+        slot = cast("MemberDescriptorType", ExactInstruction.__dict__[name])
+        slot.__set__(instruction, value)
+    with pytest.raises(TreeModelError):
+        _ = ExactAuthoringPlan(
+            TreeSnapshot(()), TreeSnapshot((FileRecord("out.bin", _HASH, 0),)),
+            (instruction,),
+        )
+
+
 def test_model_snapshot_path_order_ignores_late_file_descriptor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -504,7 +634,11 @@ def test_model_exact_output_length_ignores_late_segment_getters(
 
     with monkeypatch.context() as patched:
         patched.setattr(record_type, "__getattribute__", forged_attribute)
-        observed = model_module._exact_segment_length(segment)
+        segment_length = cast(
+            "Callable[[SourceSlice | OracleLiteral], int]",
+            model_module.__dict__["_exact_segment_length"],
+        )
+        observed = segment_length(segment)
     assert observed == 2, "late segment getter inflated planned output length"
     assert calls == 0, "late segment getter influenced output-size admission"
 
@@ -773,7 +907,7 @@ def test_model_constructor_does_not_dispatch_forged_property_setter(
     field: str,
 ) -> None:
     """A swapped field setter cannot sanitize rejected constructor data."""
-    slot = record_type.__dict__[field]
+    slot = cast("MemberDescriptorType", record_type.__dict__[field])
     calls = 0
 
     def forged_setter(self: ModelRecord, _value: object) -> None:
