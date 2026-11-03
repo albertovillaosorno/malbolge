@@ -42,6 +42,7 @@ from ntpath import isreserved as _native_isreserved
 from ntpath import splitdrive as _native_splitdrive
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
+from sys import getfilesystemencoding as _get_filesystem_encoding
 from typing import Final, cast
 
 from algorithms.diff.exact import ExactTreeError, read_exact_regular_file
@@ -78,6 +79,11 @@ _NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
+# Match os.fsencode's host codec without late os.fspath/fsencode lookups.
+_FILESYSTEM_ENCODING = _get_filesystem_encoding()
+_FILESYSTEM_ERRORS = (
+    "strict" if _FILESYSTEM_ENCODING == "mbcs" else "surrogateescape"
+)
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -389,7 +395,7 @@ def _validate_root_path(root: object) -> None:
         raise SourcePinError(message)
     try:
         _ = raw.encode("utf-8")
-        _ = os.fsencode(root)
+        _ = raw.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
     except UnicodeError as error:
         message = "pinned source root path must be filesystem-encodable"
         raise SourcePinError(message) from error

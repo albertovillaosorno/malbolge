@@ -1425,6 +1425,28 @@ def test_source_pin_rejects_late_string_alias_for_foreign_root_entry(
     assert rejected, "foreign root path passed late string alias"
 
 
+def test_source_pin_root_admission_ignores_late_fsencode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer filesystem-codec hook cannot redirect pin preflight."""
+    _write(tmp_path, "src/a.c", b"trusted revision bytes")
+    baseline = source_snapshot_evidence(tmp_path, ("src",))
+    calls = 0
+
+    def forged_fsencode(value: object) -> bytes:
+        nonlocal calls
+        del value
+        calls += 1
+        raise AssertionError("consumer filesystem-codec hook executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "fsencode", forged_fsencode)
+        observed = source_snapshot_evidence(tmp_path, ("src",))
+    assert observed == baseline
+    assert calls == 0, "consumer filesystem-codec hook was consulted"
+
+
 @pytest.mark.parametrize("selected", ["src", "src/a.c"])
 def test_source_pin_selected_root_ignores_late_joinpath(
     tmp_path: Path,
