@@ -88,6 +88,12 @@ format.
   also pin thirty original slot writers, with five red-first rejection and
   thirty valid-field cases. This blocks late class property setter laundering
   at construction; it is not complete downstream getter or instance isolation.
+- Two compatible transient contexts now pin seven constructor fields and read
+  original descriptors for source, mapper, candidate, and correction routing.
+  Seven red-first setter and three getter regressions (`5a37898fa`) protect
+  late class-hook substitution; 235 compatible tests passed after commit and
+  2,539 diff tests passed before it. Direct instance mutation and concurrent
+  external filesystem writers remain out of scope.
 - Five subsequent repairs pin seven consumer-domain hooks, both authenticated
   payload fields, three conjunctive gate fields, thirteen behavior-program
   fields, and four transient aggregate source-admission fields. The aggregate

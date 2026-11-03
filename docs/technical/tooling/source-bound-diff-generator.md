@@ -237,6 +237,15 @@ validate through their existing captured slot-reading views. These setter
 fixes do not claim to shield all later consumer getters, direct record mutation,
 or concurrent filesystem writers.
 
+The private compatible `_BuildContext` and `_MaterializeContext` now write seven
+transient authoring and routing fields through captured original slots, and
+subsequent planning reads the original descriptors. Seven reproduced late-setter
+interceptions and three getter-redirection regressions in `5a37898fa` guard
+source/oracle selection, candidate reads, mapper selection, and semantic
+correction routing. All 235 compatible tests passed after that signed commit;
+2,539 integrated diff tests passed before it. The guarantees exclude direct
+instance-storage mutation and concurrent filesystem modification.
+
 Five further class-hook admission repairs close late setter and getter
 redirection in the trusted consumer and decision records. The seven `DiffDomain`
 hooks (`12b1c897b`) now construct through their original descriptors, as do
