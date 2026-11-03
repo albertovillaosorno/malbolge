@@ -1264,3 +1264,65 @@ def test_materialization_ignores_late_envelope_source_descriptor(
         )
     assert snapshot_tree(output) == expected
     assert calls == 0, "late source descriptor influenced output admission"
+
+
+def test_payload_slice_constructor_ignores_late_coordinate_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late class getter cannot conceal negative stored slice bounds."""
+    original_getattribute = PayloadSlice.__getattribute__
+    calls = 0
+
+    def forged_offset(value: PayloadSlice, name: str) -> object:
+        nonlocal calls
+        if name == "offset":
+            calls += 1
+            return 0
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PayloadSlice, "__getattribute__", forged_offset)
+        with pytest.raises(ProtectedPlanError, match="non-negative"):
+            _ = PayloadSlice(offset=-1, length=2)
+    assert calls == 0, "late slice getter concealed negative storage"
+
+
+def test_payload_slice_reads_original_coordinates_after_late_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Decoded literal ranges must match authenticated stored coordinates."""
+    reference = PayloadSlice(offset=2, length=3)
+    original_getattribute = PayloadSlice.__getattribute__
+    calls = 0
+
+    def forged_offset(value: PayloadSlice, name: str) -> object:
+        nonlocal calls
+        if name == "offset":
+            calls += 1
+            return 0
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PayloadSlice, "__getattribute__", forged_offset)
+        recovered = protected_module._payload_slice(b"abcdef", reference)
+    assert recovered == b"cde"
+    assert calls == 0, "late slice getter redirected literal range"
+
+
+def test_protected_recovery_ignores_late_payload_slice_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Serialized AAD and recovered literals use identical slice coordinates."""
+    _, _, source_files, expected, protected = _protected(tmp_path)
+    calls = 0
+
+    def forged_offset(_value: PayloadSlice) -> int:
+        nonlocal calls
+        calls += 1
+        return 0
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PayloadSlice, "offset", property(forged_offset))
+        recovered = recover_exact_plan(protected, _identity(source_files))
+    assert recovered == expected
+    assert calls == 0, "late slice descriptor changed authenticated AAD"

@@ -202,15 +202,32 @@ class PayloadSlice:
             ProtectedPlanError: Offset or length is negative.
 
         """
+        offset, length = _payload_slice_fields(self)
         if (
-            _NATIVE_TYPE(self.offset) is not _NATIVE_INT
-            or _NATIVE_TYPE(self.length) is not _NATIVE_INT
+            _NATIVE_TYPE(offset) is not _NATIVE_INT
+            or _NATIVE_TYPE(length) is not _NATIVE_INT
         ):
             message = "payload slice coordinates must use exact integers"
             raise ProtectedPlanError(message)
-        if self.offset < _ZERO or self.length < _ZERO:
+        if offset < _ZERO or length < _ZERO:
             message = "payload slices require non-negative offset and length"
             raise ProtectedPlanError(message)
+
+
+# The authenticated byte ranges are stored slots, never late class getters.
+_PAYLOAD_SLICE_OFFSET_SLOT = cast(
+    "MemberDescriptorType", PayloadSlice.__dict__["offset"]
+)
+_PAYLOAD_SLICE_LENGTH_SLOT = cast(
+    "MemberDescriptorType", PayloadSlice.__dict__["length"]
+)
+
+
+def _payload_slice_fields(reference: PayloadSlice) -> tuple[int, int]:
+    return (
+        _PAYLOAD_SLICE_OFFSET_SLOT.__get__(reference, PayloadSlice),
+        _PAYLOAD_SLICE_LENGTH_SLOT.__get__(reference, PayloadSlice),
+    )
 
 
 ProtectedSegment = SourceSlice | PayloadSlice
@@ -539,7 +556,8 @@ def _snapshot_bytes(snapshot: TreeSnapshot) -> bytes:
 def _segment_bytes(segment: ProtectedSegment) -> bytes:
     if _NATIVE_ISINSTANCE(segment, SourceSlice):
         return b"S" + _u64(segment.offset) + _u64(segment.length)
-    return b"P" + _u64(segment.offset) + _u64(segment.length)
+    offset, length = _payload_slice_fields(segment)
+    return b"P" + _u64(offset) + _u64(length)
 
 
 def _instruction_bytes(instruction: ProtectedInstruction) -> bytes:
@@ -554,15 +572,12 @@ def _instruction_bytes(instruction: ProtectedInstruction) -> bytes:
         if instruction.source_path is None
         else b"\x01" + _frame_text(instruction.source_path)
     )
-    payload_slice = (
-        b"\x00"
-        if instruction.payload_slice is None
-        else (
-            b"\x01"
-            + _u64(instruction.payload_slice.offset)
-            + _u64(instruction.payload_slice.length)
-        )
-    )
+    slice_reference = instruction.payload_slice
+    if slice_reference is None:
+        payload_slice = b"\x00"
+    else:
+        offset, length = _payload_slice_fields(slice_reference)
+        payload_slice = b"\x01" + _u64(offset) + _u64(length)
     segments = b"".join(_segment_bytes(item) for item in instruction.segments)
     return b"".join((
         kind,
@@ -790,11 +805,12 @@ def protect_exact_plan(
 
 
 def _payload_slice(plaintext: bytes, reference: PayloadSlice) -> bytes:
-    end = reference.offset + reference.length
+    offset, length = _payload_slice_fields(reference)
+    end = offset + length
     if end > _NATIVE_LEN(plaintext):
         message = "protected payload slice exceeds authenticated plaintext"
         raise ProtectedPlanError(message)
-    return plaintext[reference.offset : end]
+    return plaintext[offset:end]
 
 
 def _exact_segment(
