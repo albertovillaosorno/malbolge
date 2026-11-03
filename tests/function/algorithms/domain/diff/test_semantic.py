@@ -34,21 +34,22 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import re
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast, override
 
-from algorithms.diff.mapped import MappedUnit
-from algorithms.diff.mapped import MappedView
-from algorithms.diff.semantic import SemanticAuthoringPlan
-from algorithms.diff.semantic import SemanticEdit
-from algorithms.diff.semantic import SemanticLocator
-from algorithms.diff.semantic import SemanticPlacementError
-from algorithms.diff.semantic import apply_semantic_plan
-from algorithms.diff.semantic import build_semantic_plan
 import pytest
+from algorithms.diff.mapped import MappedUnit, MappedView
+from algorithms.diff.semantic import (
+    SemanticAuthoringPlan,
+    SemanticEdit,
+    SemanticLocator,
+    SemanticPlacementError,
+    apply_semantic_plan,
+    build_semantic_plan,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -402,6 +403,107 @@ def test_semantic_metadata_requires_exact_digest_records() -> None:
         )
     with pytest.raises(SemanticPlacementError, match="foreign edit"):
         _ = SemanticAuthoringPlan((cast("SemanticEdit", object()),))
+
+
+def test_semantic_digest_records_reject_late_any_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late any replacement cannot admit invalid digest sizes or edit types."""
+    source_digest = b"a" * 32
+    locator = SemanticLocator((source_digest,), (), ())
+    attempts = (
+        lambda: SemanticLocator((b"short",), (), ()),
+        lambda: SemanticEdit(locator, b"new", (b"short",)),
+        lambda: SemanticAuthoringPlan(
+            (
+                cast(
+                    "SemanticEdit",
+                    cast(
+                        "object",
+                        SimpleNamespace(locator=locator, replacement=b"new"),
+                    ),
+                ),
+            )
+        ),
+    )
+    rejected: list[bool] = []
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: type(values) is tuple)
+        for attempt in attempts:
+            try:
+                _ = attempt()
+            except SemanticPlacementError:
+                rejected.append(True)
+            else:
+                rejected.append(False)
+    assert rejected == [True, True, True], (
+        "late any hook admitted foreign evidence"
+    )
+
+
+def test_semantic_locator_rejects_late_any_empty_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late any replacement cannot forge a nonempty locator."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: type(values) is tuple)
+        try:
+            _ = SemanticLocator((), (), ())
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late any hook admitted an empty source locator"
+
+
+def test_semantic_placement_rejects_late_sorted_edit_drop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An untrusted sorter cannot omit duplicate edits before overlap checks."""
+    source = _map(b"a ; b")
+    target = _map(b"a ; x ; b")
+    plan = build_semantic_plan(source, target, context_units=2)
+    assert len(plan.edits) == 1
+    duplicate = SemanticAuthoringPlan((plan.edits[0], plan.edits[0]))
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            builtins, "sorted", lambda values, *, key=None: list(values)[:1]
+        )
+        try:
+            _ = apply_semantic_plan(source, duplicate, _map)
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late sorted hook discarded a duplicate edit"
+
+
+
+@pytest.mark.parametrize(
+    ("hook", "result", "candidate_raw"),
+    [
+        ("max", 9999, b"x ; old ; b"),
+        ("min", 0, b"a ; old ; y"),
+    ],
+)
+def test_semantic_locator_context_rejects_late_bounds_override(
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    result: int,
+    candidate_raw: bytes,
+) -> None:
+    """Late bound arithmetic cannot erase authoring-side source context."""
+    source = _map(b"a ; old ; b")
+    target = _map(b"a ; new ; b")
+    candidate = _map(candidate_raw)
+    baseline = build_semantic_plan(source, target, context_units=2)
+    with pytest.raises(SemanticPlacementError, match="missing or ambiguous"):
+        _ = apply_semantic_plan(candidate, baseline, _map)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, hook, lambda left, right: result)
+        altered = build_semantic_plan(source, target, context_units=2)
+
+    with pytest.raises(SemanticPlacementError, match="missing or ambiguous"):
+        _ = apply_semantic_plan(candidate, altered, _map)
 
 
 def test_semantic_public_boundaries_reject_boolean_and_foreign_inputs() -> None:

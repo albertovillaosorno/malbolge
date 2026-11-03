@@ -34,11 +34,11 @@
 
 from __future__ import annotations
 
+import builtins
+import hashlib
 from bisect import bisect_left
 from dataclasses import dataclass
-import hashlib
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.mapped import MappedView
 
@@ -47,6 +47,11 @@ if TYPE_CHECKING:
 
 _ZERO = 0
 _ONE = 1
+# Preserve exact metadata and edit ordering after domain callbacks run.
+_NATIVE_ANY = builtins.any
+_NATIVE_MAX = builtins.max
+_NATIVE_MIN = builtins.min
+_NATIVE_SORTED = builtins.sorted
 # Verify placement using a constructor pinned before host hooks can replace it.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -84,13 +89,13 @@ class SemanticLocator:
                 message = "semantic locator digests must use immutable tuples"
                 raise SemanticPlacementError(message)
             items = cast("tuple[object, ...]", group)
-            if any(
+            if _NATIVE_ANY(
                 type(digest) is not bytes or len(digest) != _SHA256_BYTES
                 for digest in items
             ):
                 message = "semantic locator digests must be exact SHA-256 bytes"
                 raise SemanticPlacementError(message)
-        if not any(groups):
+        if not _NATIVE_ANY(groups):
             message = "semantic locator requires source or context evidence"
             raise SemanticPlacementError(message)
 
@@ -120,7 +125,7 @@ class SemanticEdit:
             message = "semantic replacement digests must use an immutable tuple"
             raise SemanticPlacementError(message)
         items = cast("tuple[object, ...]", self.replacement_digests)
-        if any(
+        if _NATIVE_ANY(
             type(digest) is not bytes or len(digest) != _SHA256_BYTES
             for digest in items
         ):
@@ -144,7 +149,7 @@ class SemanticAuthoringPlan:
         if type(self.edits) is not tuple:
             message = "semantic edits must use the exact immutable tuple type"
             raise SemanticPlacementError(message)
-        if any(type(edit) is not SemanticEdit for edit in self.edits):
+        if _NATIVE_ANY(type(edit) is not SemanticEdit for edit in self.edits):
             message = "semantic plan contains a foreign edit record"
             raise SemanticPlacementError(message)
 
@@ -228,8 +233,8 @@ def _locator(
     *,
     context_units: int,
 ) -> SemanticLocator:
-    before_start = max(_ZERO, start - context_units)
-    after_end = min(len(source_digests), end + context_units)
+    before_start = _NATIVE_MAX(_ZERO, start - context_units)
+    after_end = _NATIVE_MIN(len(source_digests), end + context_units)
     return SemanticLocator(
         source_digests=source_digests[start:end],
         before_digests=source_digests[before_start:start],
@@ -238,7 +243,7 @@ def _locator(
 
 
 def _common_prefix_length(context: _MatchContext, region: _Region) -> int:
-    limit = min(
+    limit = _NATIVE_MIN(
         region.source_end - region.source_start,
         region.target_end - region.target_start,
     )
@@ -253,7 +258,7 @@ def _common_prefix_length(context: _MatchContext, region: _Region) -> int:
 
 
 def _common_suffix_length(context: _MatchContext, region: _Region) -> int:
-    limit = min(
+    limit = _NATIVE_MIN(
         region.source_end - region.source_start,
         region.target_end - region.target_start,
     )
@@ -356,7 +361,7 @@ def _window_pairs(
         width=width,
     )
     return tuple(
-        sorted(
+        _NATIVE_SORTED(
             (
                 _AnchorPair(source_offset, target_windows[window])
                 for window, source_offset in source_windows.items()
@@ -691,7 +696,7 @@ def _locate_edits(
             )
         )
     ordered = tuple(
-        sorted(located, key=lambda item: (item.raw_start, item.raw_end))
+        _NATIVE_SORTED(located, key=lambda item: (item.raw_start, item.raw_end))
     )
     _require_nonoverlapping_edits(ordered)
     return ordered
