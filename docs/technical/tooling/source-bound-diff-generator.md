@@ -687,6 +687,18 @@ a bounded 105-second global check timed out at native-validator scheduling.
 These in-process dispatch guards do not isolate direct module-private
 mutation, malicious native code, or concurrent external filesystem writers.
 
+A later Linux publisher audit found `ctypes.CDLL.__new__` missing from the
+class-dispatch identity checks (`709f045e6`). Replacing this allocator with a
+foreign library returning an overwriting `os.rename` shim could silently
+replace an occupied empty destination. The guard now rejects this late
+constructor substitution before native loading. One red-first reproduction,
+102 postcommit publication tests, and 3,381 precommit integrated diff tests
+passed; scoped Ruff, strict BasedPyright, and diff checks were clean. The
+allocator regression runs in a child process because even a restored Python
+3.14 class patch can corrupt subsequent native CDLL construction. Direct
+private state mutation, malicious native code, and concurrent writers remain
+out of scope.
+
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.

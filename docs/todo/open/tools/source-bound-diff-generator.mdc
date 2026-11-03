@@ -756,6 +756,14 @@ format.
   BasedPyright, and diff checks were clean; Jig doctor remained degraded and
   a 105-second global check timed out without a green verdict. External
   races and direct private-state mutation remain outside this guard.
+- Linux native no-replace publication now also pins the original
+  `ctypes.CDLL.__new__` allocator (`709f045e6`). One red-first regression
+  showed a fake allocator could silently overwrite an occupied empty
+  destination using `os.rename`; it now fails with `ENOTSUP` before callback
+  execution. The isolated regression avoids ctypes constructor contamination;
+  102 postcommit publication and 3,381 precommit integrated diff tests passed,
+  with scoped Ruff, strict BasedPyright, and diff checks clean. Host/native
+  races and direct module-private mutation remain excluded.
 - Probe runtime `_CommandResult`, `_PipeCapture`, and `_RunningProbe`
   receipts now use captured original initializers and native allocation
   (`82e32113e`). Eight late `__init__`/`__new__` regression cases pass;
