@@ -151,6 +151,7 @@ def _native_path_string(path: Path) -> str:
         or os.path.join is not _NATIVE_HOST_JOIN
         or os.path.sep is not _NATIVE_HOST_SEP
         or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or builtins.str is not _NATIVE_STR_TYPE
         or builtins.bytes is not _NATIVE_BYTES_TYPE
         or builtins.isinstance is not _NATIVE_ISINSTANCE
         or builtins.len is not _NATIVE_LEN
@@ -781,6 +782,7 @@ def _require_native_host_realpath() -> None:
         or os.path.join is not _NATIVE_HOST_JOIN
         or os.path.sep is not _NATIVE_HOST_SEP
         or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or builtins.str is not _NATIVE_STR_TYPE
         or builtins.bytes is not _NATIVE_BYTES_TYPE
         or builtins.isinstance is not _NATIVE_ISINSTANCE
         or builtins.len is not _NATIVE_LEN

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import os
 from pathlib import Path
 
@@ -116,3 +117,24 @@ def test_emitter_rejects_late_fspath_redirect_of_fresh_output(
     assert calls == 0
     assert not destination.exists()
     assert not (tmp_path / "redirected.rs").exists()
+
+
+@pytest.mark.parametrize("entrypoint", ["preflight", "template"])
+def test_emitter_rejects_late_host_str_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """Late str aliases must not reach pathname parsing or resolver dispatch."""
+    destination = tmp_path / "destination.rs"
+    observed: Exception | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "str", bytes)
+        try:
+            if entrypoint == "preflight":
+                emit_rust._validate_output_path(destination)
+            else:
+                emit_rust._require_output_not_runtime_template(destination)
+        except emit_rust.RustEmissionError as error:
+            observed = error
+    assert type(observed) is emit_rust.RustEmissionError, observed
+    assert "path hooks changed" in str(observed)
+    assert not destination.exists()
