@@ -3132,3 +3132,27 @@ def test_rust_emitter_ignores_late_protected_plan_validator_override(
         expected = emit_rust_transform(protected, _PROFILE)
     assert calls == 0
     assert "const NONCE_HEX" in expected
+
+
+def test_writer_stage_rejects_late_path_from_parsed_parts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pinned with_name must not delegate to a replaced class path factory."""
+    output = tmp_path / "generated" / "main.rs"
+    redirected = tmp_path / "foreign-stage.rs"
+    stage = cast(
+        "Callable[[Path], Path]",
+        vars(emit_rust_module)["_temporary_output_path"],
+    )
+    calls = 0
+
+    def forged_parts(_path: Path, *_parts: object) -> Path:
+        nonlocal calls
+        calls += 1
+        return redirected
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "_from_parsed_parts", forged_parts)
+        with pytest.raises(RustEmissionError, match="path hooks changed"):
+            _ = stage(output)
+    assert calls == 0, "late path factory redirected temporary stage"

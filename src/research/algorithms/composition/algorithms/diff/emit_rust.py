@@ -108,6 +108,9 @@ _NATIVE_HOST_ALTSEP = os.path.altsep
 # A captured Path.__str__ still follows late class descriptor and os.fspath
 # hooks. Freeze its full native class dependency chain before domain callbacks.
 _PATH_STRING_DEPENDENCIES = (
+    # A captured with_name still dispatches through mutable path factories.
+    "_from_parsed_parts",
+    "_from_parsed_string",
     "__getattribute__",
     "__getattr__",
     "__setattr__",
@@ -681,8 +684,19 @@ def _prepare_output_path(output_path: Path) -> Path:
 
 
 def _temporary_output_path(output_path: Path) -> Path:
+    # Even the original with_name implementation dynamically resolves class
+    # factories, so recheck immediately before and after stage construction.
+    _require_native_host_realpath()
+    _ = _NATIVE_PATH_STRING(output_path)
     name = f".{_NATIVE_PATH_NAME(output_path)}.{token_hex(8)}.tmp"
-    return _NATIVE_PATH_WITH_NAME(output_path, name)
+    _require_native_host_realpath()
+    temporary = _NATIVE_PATH_WITH_NAME(output_path, name)
+    _require_native_host_realpath()
+    if _NATIVE_TYPE(temporary) is not _NATIVE_PATH_TYPE:
+        message = "Rust temporary output requires native Path"
+        raise RustEmissionError(message)
+    _ = _NATIVE_PATH_STRING(temporary)
+    return temporary
 
 
 def _cleanup_owned_temporary(path: Path) -> str | None:
