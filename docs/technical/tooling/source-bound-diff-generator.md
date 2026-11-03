@@ -2276,6 +2276,20 @@ getters; all 165 emitter tests passed postcommit. Scoped Ruff, strict
 source/test BasedPyright, and diff checks are clean. Neither guard prevents
 external filesystem races or direct trusted storage mutation.
 
+Protected exact-plan binding rejection now reads the original native
+`SourceBindingError.args` storage instead of class getters (`eaaf7545b`).
+Two red-first raised/forged getter cases retain the real threshold diagnostic
+and typed cause; all 214 protected tests passed postcommit. Scoped Ruff,
+strict source/test BasedPyright, and diff checks were clean. This guard does
+not isolate direct trusted object mutation or concurrent filesystem writers.
+
+Native POSIX directory publication now pins the original builtin `list`
+identity when validating `PurePath` raw parts (`8e0d3ec95`). Two red-first
+false-denial cases and a public Linux no-replace move with the global `list`
+alias replaced passed; all 109 publication tests passed postcommit. Scoped
+Ruff, strict source/test BasedPyright, and diff checks were clean. Host
+filesystem races and global Jig governance remain outside this evidence.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

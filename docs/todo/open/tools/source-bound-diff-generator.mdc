@@ -926,6 +926,11 @@ format.
   tests, Ruff, strict source/test BasedPyright, and diff checks clean. The
   later full diff run lacked a returned verdict; 3,560 earlier integrated
   tests predated this change. Jig and host-race guarantees remain open.
+- Native POSIX publication pins the original `list` identity when admitting
+  `PurePath` raw components (`8e0d3ec95`). Two red-first late builtin alias
+  cases and a real Linux no-replace move passed, with 109 postcommit focused
+  tests, scoped Ruff, strict source/test BasedPyright, and diff checks clean.
+  Direct stored-path mutation, host races, and Jig governance remain open.
 - Probe runtime `_CommandResult`, `_PipeCapture`, and `_RunningProbe`
   receipts now use captured original initializers and native allocation
   (`82e32113e`). Eight late `__init__`/`__new__` regression cases pass;
@@ -1207,6 +1212,12 @@ format.
   tests passed, with scoped Ruff, strict BasedPyright, and diff checks clean.
   Jig doctor remains degraded (graph absent), and its global check timed out;
   external writers and direct instance mutation are still out of scope.
+- Protected exact plans now retrieve exact native `SourceBindingError`
+  argument storage without invoking late class getters (`eaaf7545b`).
+  Two red-first raised/forged diagnostic cases retain the true threshold
+  failure and typed cause; all 214 postcommit protected tests passed.
+  Scoped Ruff, strict source/test BasedPyright, and diff checks were clean.
+  This does not isolate external writer races or direct stored-data mutation.
 - `passthrough_roots` are authenticated plan metadata. Source/oracle must match
   there
   during authoring, but later runtime bytes and candidate-only files under those
