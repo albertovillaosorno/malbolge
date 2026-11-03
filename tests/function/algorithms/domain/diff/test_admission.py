@@ -2388,3 +2388,31 @@ def test_native_anchor_error_ignores_late_imported_policy_alias(
                 )
                 source = identity_tree({"source.c": b"original source"})
                 _ = evaluate_admission(source, source, policy)
+
+
+def test_admission_accepts_native_policy_after_late_anchor_type_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer class alias cannot reject an unchanged native anchor policy."""
+    source = identity_tree({"source.c": b"unchanged source"})
+    policy = AdmissionPolicy(0.0, 0.0, 1, 1)
+    expected = evaluate_admission(source, source, policy)
+    with monkeypatch.context() as patched:
+        patched.setattr(admission_module, "AnchorPolicy", dict)
+        observed = evaluate_admission(source, source, policy)
+    assert observed == expected
+
+
+def test_admission_rejects_foreign_anchor_after_late_type_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rebound imported types must not admit foreign nested anchor evidence."""
+    foreign = cast("AnchorPolicy", cast("object", {}))
+    with monkeypatch.context() as patched:
+        patched.setattr(admission_module, "AnchorPolicy", dict)
+        with pytest.raises(
+            AdmissionPolicyError, match="structural_policy must use the exact"
+        ):
+            _ = AdmissionPolicy(
+                0.0, 0.0, 1, 1, structural_policy=foreign, anchor_policy=foreign
+            )

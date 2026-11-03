@@ -89,7 +89,8 @@ _NATIVE_LEN = builtins.len
 _NATIVE_FROZENSET = builtins.frozenset
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
-# Nested validator failures must retain their imported native error class.
+# Nested admission must retain the imported policy class and error.
+_NATIVE_ANCHOR_POLICY = AnchorPolicy
 _NATIVE_FINGERPRINT_POLICY_ERROR = FingerprintPolicyError
 _NATIVE_OBJECT_NEW = object.__new__
 _ORIGINAL_ANCHOR_POLICY_VALIDATOR = cast(
@@ -352,10 +353,10 @@ class AdmissionPolicy:
         if _NATIVE_TYPE(per_file) is not _NATIVE_INT or per_file < _ONE:
             message = "minimum_anchors_per_file must be a positive integer"
             raise AdmissionPolicyError(message)
-        if _NATIVE_TYPE(structural) is not AnchorPolicy:
+        if _NATIVE_TYPE(structural) is not _NATIVE_ANCHOR_POLICY:
             message = "structural_policy must use the exact AnchorPolicy type"
             raise AdmissionPolicyError(message)
-        if _NATIVE_TYPE(anchors) is not AnchorPolicy:
+        if _NATIVE_TYPE(anchors) is not _NATIVE_ANCHOR_POLICY:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise AdmissionPolicyError(message)
         _require_valid_anchor_policies(structural, anchors)
