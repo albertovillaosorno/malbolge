@@ -34,20 +34,18 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
-from statistics import median
 import sys
-from typing import Final
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from statistics import median
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cuda.classic_run import CudaClassicRunAdapter
 
-from benchmarks.accelerator.classic_workload import STEP_BUDGET
-from benchmarks.accelerator.classic_workload import WORKLOAD_DESCRIPTION
-from benchmarks.accelerator.classic_workload import classic_noop_request
 from benchmarks.accelerator.classic_workload import (
+    STEP_BUDGET,
+    WORKLOAD_DESCRIPTION,
+    classic_noop_request,
     validate_classic_noop_results,
 )
 
@@ -57,6 +55,7 @@ if TYPE_CHECKING:
 
 BATCH_SIZES: Final = (1, 8, 32, 128)
 SAMPLE_COUNT: Final = 15
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +72,44 @@ class PhaseSummary:
     total_ns: int
     upload_ns: int
     validation_plan_ns: int
+
+
+class ClassicPhaseReportError(ValueError):
+    """Retained classic CUDA evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Corroborate public JSON against source-bound native encoding."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"classic phase JSON writer failed: {type(error).__name__}"
+        raise ClassicPhaseReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "classic phase JSON writer differs from source"
+        raise ClassicPhaseReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Reject incomplete native write acknowledgements and failed flushes."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"classic phase stdout write failed: {type(error).__name__}"
+        raise ClassicPhaseReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "classic phase stdout write incomplete"
+        raise ClassicPhaseReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"classic phase stdout flush failed: {type(error).__name__}"
+        raise ClassicPhaseReportError(message) from error
+    if flushed is not None:
+        message = "classic phase stdout flush incomplete"
+        raise ClassicPhaseReportError(message)
 
 
 def main() -> int:
@@ -109,7 +146,7 @@ def main() -> int:
         "step_budget": STEP_BUDGET,
         "workload": WORKLOAD_DESCRIPTION,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
@@ -134,21 +171,13 @@ def _summarize(
     samples: tuple[ClassicRunPhaseProfile, ...],
 ) -> PhaseSummary:
     return PhaseSummary(
-        allocate_ns=_median_values(
-            tuple(sample.allocate_ns for sample in samples)
-        ),
+        allocate_ns=_median_values(tuple(sample.allocate_ns for sample in samples)),
         batch_size=batch_size,
         decode_ns=_median_values(tuple(sample.decode_ns for sample in samples)),
-        download_ns=_median_values(
-            tuple(sample.download_ns for sample in samples)
-        ),
-        host_build_ns=_median_values(
-            tuple(sample.host_build_ns for sample in samples)
-        ),
+        download_ns=_median_values(tuple(sample.download_ns for sample in samples)),
+        host_build_ns=_median_values(tuple(sample.host_build_ns for sample in samples)),
         kernel_ns=_median_values(tuple(sample.kernel_ns for sample in samples)),
-        release_ns=_median_values(
-            tuple(sample.release_ns for sample in samples)
-        ),
+        release_ns=_median_values(tuple(sample.release_ns for sample in samples)),
         total_ns=_median_values(tuple(sample.total_ns for sample in samples)),
         upload_ns=_median_values(tuple(sample.upload_ns for sample in samples)),
         validation_plan_ns=_median_values(

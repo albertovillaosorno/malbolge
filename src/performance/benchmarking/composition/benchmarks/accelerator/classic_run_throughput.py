@@ -34,22 +34,19 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
-from statistics import median
-from statistics import pstdev
 import sys
+from dataclasses import asdict, dataclass
+from statistics import median, pstdev
 from time import perf_counter_ns
-from typing import Final
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cuda.classic_run import CudaClassicRunAdapter
 
-from benchmarks.accelerator.classic_workload import STEP_BUDGET
-from benchmarks.accelerator.classic_workload import WORKLOAD_DESCRIPTION
-from benchmarks.accelerator.classic_workload import classic_noop_request
 from benchmarks.accelerator.classic_workload import (
+    STEP_BUDGET,
+    WORKLOAD_DESCRIPTION,
+    classic_noop_request,
     validate_classic_noop_results,
 )
 
@@ -58,6 +55,7 @@ if TYPE_CHECKING:
 
 BATCH_SIZES: Final = (1, 8, 32, 128)
 SAMPLE_COUNT: Final = 15
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +69,44 @@ class ThroughputRow:
     pstdev_ns: float
     raw_ns: tuple[int, ...]
     step_budget: int
+
+
+class ClassicThroughputReportError(ValueError):
+    """Retained classic CUDA evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Corroborate public JSON against source-bound native encoding."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"classic throughput JSON writer failed: {type(error).__name__}"
+        raise ClassicThroughputReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "classic throughput JSON writer differs from source"
+        raise ClassicThroughputReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Reject incomplete native write acknowledgements and failed flushes."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"classic throughput stdout write failed: {type(error).__name__}"
+        raise ClassicThroughputReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "classic throughput stdout write incomplete"
+        raise ClassicThroughputReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"classic throughput stdout flush failed: {type(error).__name__}"
+        raise ClassicThroughputReportError(message) from error
+    if flushed is not None:
+        message = "classic throughput stdout flush incomplete"
+        raise ClassicThroughputReportError(message)
 
 
 def main() -> int:
@@ -101,7 +137,7 @@ def main() -> int:
         "step_budget": STEP_BUDGET,
         "workload": WORKLOAD_DESCRIPTION,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 

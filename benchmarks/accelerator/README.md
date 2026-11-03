@@ -25,6 +25,11 @@ finish by budget exhaustion; validation occurs outside the timed interval. This
 is an end-to-end adapter measurement including host packing, transfer, kernel,
 copy-back, and decode costs.
 
+Retained JSON must match the import-bound native encoder before publication,
+so a replaced serializer cannot silently forge device or batch timing evidence.
+An exact native character-write receipt and successful flush are required.
+Hardware-free synthetic rows test this report boundary without running CUDA.
+
 Run with:
 
 ```powershell
@@ -38,6 +43,10 @@ host batch construction, device allocation, upload, kernel+sync, download,
 result decode, and release. The ordinary `evaluate()` path does not collect
 these
 timings.
+
+The phase report also corroborates output against the import-bound native JSON
+encoder and requires exact stdout write and flush acknowledgements. Synthetic
+phase samples exercise report integrity without claiming CUDA measurements.
 
 Run with:
 
