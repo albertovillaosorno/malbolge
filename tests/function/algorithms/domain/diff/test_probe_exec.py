@@ -2546,6 +2546,150 @@ def test_probe_logical_identifiers_require_portable_utf8(invalid: str) -> None:
             _ = build()
 
 
+@pytest.mark.parametrize("role", ["rooted-escape", "repository-overlap"])
+def test_probe_rejects_mutated_containment_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """A replaced pathlib containment hook cannot authorize unsafe inputs."""
+    source = tmp_path / "source"
+    _ = (source / "victim.txt").parent.mkdir()
+    _ = (source / "victim.txt").write_bytes(b"source bytes")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    context = _context(
+        source, tmp_path if role == "repository-overlap" else repository
+    )
+    if role == "rooted-escape":
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        _ = (outside / "private.txt").write_bytes(b"unrelated bytes")
+        try:
+            (repository / "alias").symlink_to(outside, target_is_directory=True)
+        except OSError:
+            pytest.skip("directory symlinks unavailable")
+        native_relative = Path.relative_to
+
+        def forged_relative(
+            path: Path, other: object, *, walk_up: bool = False
+        ) -> Path:
+            if path == outside / "private.txt":
+                return Path(".")
+            return native_relative(path, other, walk_up=walk_up)
+
+        monkeypatch.setattr(Path, "relative_to", forged_relative)
+        rooted_path = cast(
+            "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+            vars(probe_exec_module)["_rooted_path"],
+        )
+        with pytest.raises(
+            ProbeExecutionError, match="escapes authorized root"
+        ):
+            _ = rooted_path(
+                PathArgument(ProbeRoot.REPOSITORY, "alias/private.txt"),
+                context,
+                tmp_path / "scratch",
+            )
+    else:
+        native_is_relative = Path.is_relative_to
+
+        def forged_inside(path: Path, other: object) -> bool:
+            if path == source / "victim.txt" and other == source:
+                return False
+            return native_is_relative(path, other)
+
+        monkeypatch.setattr(Path, "is_relative_to", forged_inside)
+        require_disjoint = cast(
+            "Callable[[PathArgument, ProbeRunContext, Path], None]",
+            vars(probe_exec_module)["_require_repository_argument_disjoint"],
+        )
+        with pytest.raises(
+            ProbeExecutionError, match="overlaps original source"
+        ):
+            require_disjoint(
+                PathArgument(ProbeRoot.REPOSITORY, "source/victim.txt"),
+                context,
+                source,
+            )
+
+
+@pytest.mark.parametrize(
+    "role", ["root", "rooted", "tool", "repository-second", "temporary"]
+)
+def test_probe_rejects_foreign_resolved_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """No foreign path result may attest containment, tools or temp roots."""
+    source = tmp_path / "source"
+    source.mkdir()
+    repository_file = tmp_path / "repository.txt"
+    _ = repository_file.write_bytes(b"repository bytes")
+    context = _context(source, tmp_path)
+    native_resolve = Path.resolve
+    targeted = {
+        "root": tmp_path,
+        "rooted": repository_file,
+        "tool": Path(sys.executable),
+        "repository-second": repository_file,
+        "temporary": Path(tempfile.gettempdir()),
+    }[role]
+    calls = 0
+
+    class ForgedResolvedPath(type(Path())):
+        """Foreign subclass may override containment or command rendering."""
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        result = native_resolve(path, strict=strict)
+        if path == targeted:
+            calls += 1
+            if role != "repository-second" or calls == 2:
+                return ForgedResolvedPath(result)
+        return result
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    if role == "root":
+        require_root = cast(
+            "Callable[[Path, str], Path]",
+            vars(probe_exec_module)["_resolved_root"],
+        )
+        invoke: Callable[[], object] = lambda: require_root(
+            tmp_path, "repository"
+        )
+    elif role == "rooted":
+        rooted_path = cast(
+            "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+            vars(probe_exec_module)["_rooted_path"],
+        )
+        invoke = lambda: rooted_path(
+            PathArgument(ProbeRoot.REPOSITORY, repository_file.name),
+            context,
+            tmp_path / "scratch",
+        )
+    elif role == "tool":
+        require_tool = cast(
+            "Callable[[Path], Path]",
+            vars(probe_exec_module)["_resolved_tool_path"],
+        )
+        invoke = lambda: require_tool(targeted)
+    elif role == "repository-second":
+        require_disjoint = cast(
+            "Callable[[PathArgument, ProbeRunContext, Path], None]",
+            vars(probe_exec_module)["_require_repository_argument_disjoint"],
+        )
+        invoke = lambda: require_disjoint(
+            PathArgument(ProbeRoot.REPOSITORY, repository_file.name),
+            context,
+            source,
+        )
+    else:
+        invoke = lambda: run_probe_program(
+            _program("foreign-temporary-root", "pass"), context
+        )
+    with pytest.raises(ProbeExecutionError, match="native resolved Path"):
+        _ = invoke()
+    assert calls >= 1
+
+
 def test_probe_program_and_context_require_immutable_exact_records(
     tmp_path: Path,
 ) -> None:

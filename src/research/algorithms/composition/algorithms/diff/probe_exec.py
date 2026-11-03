@@ -72,6 +72,7 @@ _CHILD_REAP_SECONDS = 2.0
 _POSIX_OS_NAME = "posix"
 _MIN_HARDLINK_COUNT = 2
 _NATIVE_STAT_RESULT = os.stat_result
+_NATIVE_RELATIVE_TO = Path.relative_to
 # Native stream adapters can raise non-I/O ordinary exceptions as well.
 _PIPE_DEPENDENCY_ERRORS = (
     OSError,
@@ -415,13 +416,31 @@ def _validate_relative_path(relative_path: object) -> None:
         raise ProbeProgramError(message)
 
 
+def _native_path_inside(path: Path, root: Path) -> bool:
+    """Check native Path containment without a mutable process-global hook."""
+    try:
+        _ = _NATIVE_RELATIVE_TO(path, root)
+    except ValueError:
+        return False
+    return True
+
+
+def _native_resolved_path(result: Path, description: str) -> Path:
+    """Reject a foreign Path subtype before containment or process use."""
+    if type(result) is not type(Path()):
+        message = f"probe {description} requires native resolved Path"
+        raise ProbeExecutionError(message)
+    return result
+
+
 def _resolved_root(path: Path, description: str) -> Path:
     try:
-        return path.resolve()
+        resolved = path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe {description} root resolution failed: {path}: {detail}"
         raise ProbeExecutionError(message) from error
+    return _native_resolved_path(resolved, f"{description} root")
 
 
 def _root_path(
@@ -449,8 +468,9 @@ def _rooted_path(
         detail = _safe_probe_error_detail(error)
         message = f"probe path resolution failed: {candidate}: {detail}"
         raise ProbeExecutionError(message) from error
+    resolved = _native_resolved_path(resolved, "rooted path")
     try:
-        _ = resolved.relative_to(root)
+        _ = _NATIVE_RELATIVE_TO(resolved, root)
     except ValueError as error:
         message = f"probe path escapes authorized root: {argument.relative_path!r}"
         raise ProbeExecutionError(message) from error
@@ -459,11 +479,12 @@ def _rooted_path(
 
 def _resolved_tool_path(path: Path) -> Path:
     try:
-        return path.resolve()
+        resolved = path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe tool resolution failed: {path}: {detail}"
         raise ProbeExecutionError(message) from error
+    return _native_resolved_path(resolved, "tool")
 
 
 def _tool_map(context: ProbeRunContext) -> dict[str, Path]:
@@ -1273,7 +1294,8 @@ def _require_repository_argument_disjoint(
         detail = _safe_probe_error_detail(error)
         message = f"probe repository argument resolution failed: {detail}"
         raise ProbeExecutionError(message) from error
-    if resolved.is_relative_to(original_source):
+    resolved = _native_resolved_path(resolved, "repository argument")
+    if _native_path_inside(resolved, original_source):
         message = "probe repository path overlaps original source tree"
         raise ProbeExecutionError(message)
     _require_disjoint_source_inode(original_source, resolved)
@@ -1314,8 +1336,11 @@ def _run_isolated_batch(
     except (OSError, ValueError, RuntimeError) as error:
         message = "probe temporary parent resolution failed"
         raise ProbeExecutionError(message) from error
+    temporary_parent = _native_resolved_path(
+        temporary_parent, "temporary parent"
+    )
     original_source = _resolved_root(context.source_root, "source")
-    if temporary_parent.is_relative_to(original_source):
+    if _native_path_inside(temporary_parent, original_source):
         message = "probe temporary parent overlaps original source tree"
         raise ProbeExecutionError(message)
     with _temporary_probe_root("diff-probe-batch-", parent=temporary_parent) as batch:
