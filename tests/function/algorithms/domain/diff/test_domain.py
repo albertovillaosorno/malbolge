@@ -622,6 +622,60 @@ def test_domain_loader_rejects_linked_parent_directory(
         _ = load_diff_domain(alias / "domain.py")
 
 
+def test_domain_loader_rejects_linked_parent_after_path_parent_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late Path.parent must not remove linked ancestors from module admission."""
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    module = real_parent / "domain.py"
+    _write(module, _COMPLETE)
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real_parent, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    linked_module = alias / "domain.py"
+    native_parent = Path.parent
+    forged_calls = 0
+
+    def forged_parent(path: Path) -> Path:
+        nonlocal forged_calls
+        if path == linked_module:
+            forged_calls += 1
+            return tmp_path
+        return native_parent.__get__(path, type(path))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "parent", property(forged_parent))
+        with pytest.raises(DomainContractError, match="linked parent"):
+            _ = load_diff_domain(linked_module)
+    assert forged_calls == 0
+
+
+def test_domain_loader_rejects_linked_parent_after_path_equality_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late Path equality override cannot terminate the ancestor walk."""
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    _write(real_parent / "domain.py", _COMPLETE)
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real_parent, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    linked_module = alias / "domain.py"
+
+    def forged_equal(_: object, __: object) -> bool:
+        return True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__eq__", forged_equal)
+        with pytest.raises(DomainContractError, match="linked parent"):
+            _ = load_diff_domain(linked_module)
+
+
 def test_domain_module_parent_status_error_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

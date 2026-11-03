@@ -67,11 +67,16 @@ _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_PATH_TYPE = type(Path())
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_PATH_PARENT = Path.parent
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_REALPATH = os.path.realpath
 _NATIVE_OS_IS_JUNCTION = os.path.isjunction
 _NATIVE_OS_FSENCODE = os.fsencode
 _SHA256_FACTORY = hashlib.sha256
+
+
+def _native_path_parent(path: Path) -> Path:
+    return _NATIVE_PATH_PARENT.__get__(path, type(path))
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -182,8 +187,10 @@ def _require_native_module_status(
 
 
 def _reject_linked_module_ancestors(path: Path) -> None:
-    current = path.parent
-    while current != current.parent:
+    current = _native_path_parent(path)
+    while _NATIVE_PATH_STRING(current) != _NATIVE_PATH_STRING(
+        _native_path_parent(current)
+    ):
         try:
             receipt = _NATIVE_PATH_LSTAT(current)
         except (OSError, ValueError, RuntimeError) as error:
@@ -199,7 +206,7 @@ def _reject_linked_module_ancestors(path: Path) -> None:
                 f"{_NATIVE_PATH_STRING(current)!r}"
             )
             raise DomainContractError(message)
-        current = current.parent
+        current = _native_path_parent(current)
 
 
 def _resolved_native_module_path(path: Path) -> Path:
