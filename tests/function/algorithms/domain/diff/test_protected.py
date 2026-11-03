@@ -547,6 +547,36 @@ def test_protected_path_metadata_rejects_unserializable_text(
         )
 
 
+@pytest.mark.parametrize("location", ["output", "source", "root"])
+def test_protected_utf8_admission_preserves_native_unicode_error_catch(
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+) -> None:
+    """Late exception aliases cannot leak raw errors at protected path admission."""
+    invalid = "unencodable" + chr(0xD800)
+    caught = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "UnicodeError", LookupError)
+        try:
+            if location == "root":
+                _ = ProtectedMetadata(
+                    source=TreeSnapshot(files=()),
+                    target=TreeSnapshot(files=()),
+                    instructions=(),
+                    passthrough_roots=(invalid,),
+                )
+            else:
+                _ = ProtectedInstruction(
+                    output_path=invalid if location == "output" else "target.bin",
+                    kind=ProtectedInstructionKind.COPY_SOURCE,
+                    expected_sha256="0" * 64,
+                    source_path=invalid if location == "source" else "source.bin",
+                )
+        except ProtectedPlanError as error:
+            caught = "UTF-8-encodable text" in str(error)
+    assert caught, "late UnicodeError alias leaked or bypassed protected path rejection"
+
+
 @pytest.mark.parametrize(
     "invalid",
     [

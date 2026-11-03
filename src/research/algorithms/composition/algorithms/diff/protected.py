@@ -121,6 +121,7 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_BYTEARRAY = builtins.bytearray
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
+_NATIVE_UNICODE_ERROR = builtins.UnicodeError
 # The authoring key schedule must hash the admitted identity's original
 # storage, not mutable dataclass field getters installed after import.
 _IDENTITY_FILES_SLOT = cast("MemberDescriptorType", IdentityTree.__dict__["files"])
@@ -176,7 +177,7 @@ def _require_utf8_path(value: str, context: str) -> None:
         raise ProtectedPlanError(message)
     try:
         _ = value.encode("utf-8")
-    except UnicodeError as error:
+    except _NATIVE_UNICODE_ERROR as error:
         message = f"{context} must use UTF-8-encodable text"
         raise ProtectedPlanError(message) from error
     # Lexical canonicalization must not delegate to mutable pathlib methods.
