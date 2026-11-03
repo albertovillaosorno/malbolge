@@ -40,7 +40,6 @@ from builtins import enumerate as _native_enumerate
 from builtins import int as _native_int
 from builtins import isinstance as _native_isinstance
 from builtins import len as _native_len
-from builtins import object as _native_object
 from builtins import range as _native_range
 from builtins import set as _native_set
 from builtins import sorted as _native_sorted
@@ -56,7 +55,6 @@ from types import MemberDescriptorType
 from typing import cast
 
 _ZERO = 0
-_NATIVE_OBJECT_SETATTR = _native_object.__setattr__
 _SHA256_HEX_LENGTH = 64
 _HEX_DIGITS = frozenset("0123456789abcdef")
 _BACKSLASH = "\\"
@@ -145,9 +143,9 @@ class FileRecord:
         size: int,
     ) -> None:
         """Admit record fields through the captured original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "path", path)
-        _NATIVE_OBJECT_SETATTR(self, "sha256", sha256)
-        _NATIVE_OBJECT_SETATTR(self, "size", size)
+        _FILE_PATH_SLOT.__set__(self, path)
+        _FILE_DIGEST_SLOT.__set__(self, sha256)
+        _FILE_SIZE_SLOT.__set__(self, size)
         _FILE_RECORD_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -204,7 +202,7 @@ class TreeSnapshot:
         files: tuple[FileRecord, ...],
     ) -> None:
         """Admit record fields through the captured original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "files", files)
+        _SNAPSHOT_FILES_SLOT.__set__(self, files)
         _TREE_SNAPSHOT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -270,8 +268,8 @@ class SourceSlice:
         length: int,
     ) -> None:
         """Admit record fields through the captured original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "offset", offset)
-        _NATIVE_OBJECT_SETATTR(self, "length", length)
+        _SOURCE_SLICE_OFFSET_SLOT.__set__(self, offset)
+        _SOURCE_SLICE_LENGTH_SLOT.__set__(self, length)
         _SOURCE_SLICE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -324,7 +322,7 @@ class OracleLiteral:
         data: bytes,
     ) -> None:
         """Admit record fields through the captured original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "data", data)
+        _ORACLE_LITERAL_DATA_SLOT.__set__(self, data)
         _ORACLE_LITERAL_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -415,12 +413,12 @@ class ExactInstruction:
         segments: tuple[ExactSegment, ...] = (),
     ) -> None:
         """Admit record fields through the captured original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "output_path", output_path)
-        _NATIVE_OBJECT_SETATTR(self, "kind", kind)
-        _NATIVE_OBJECT_SETATTR(self, "expected_sha256", expected_sha256)
-        _NATIVE_OBJECT_SETATTR(self, "source_path", source_path)
-        _NATIVE_OBJECT_SETATTR(self, "literal", literal)
-        _NATIVE_OBJECT_SETATTR(self, "segments", segments)
+        _INSTRUCTION_OUTPUT_SLOT.__set__(self, output_path)
+        _INSTRUCTION_KIND_SLOT.__set__(self, kind)
+        _INSTRUCTION_SHA256_SLOT.__set__(self, expected_sha256)
+        _INSTRUCTION_SOURCE_SLOT.__set__(self, source_path)
+        _INSTRUCTION_LITERAL_SLOT.__set__(self, literal)
+        _INSTRUCTION_SEGMENTS_SLOT.__set__(self, segments)
         _EXACT_INSTRUCTION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -531,10 +529,10 @@ class ExactAuthoringPlan:
         passthrough_roots: tuple[str, ...] = (),
     ) -> None:
         """Admit record fields through the captured original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "source", source)
-        _NATIVE_OBJECT_SETATTR(self, "target", target)
-        _NATIVE_OBJECT_SETATTR(self, "instructions", instructions)
-        _NATIVE_OBJECT_SETATTR(self, "passthrough_roots", passthrough_roots)
+        _PLAN_SOURCE_SLOT.__set__(self, source)
+        _PLAN_TARGET_SLOT.__set__(self, target)
+        _PLAN_INSTRUCTIONS_SLOT.__set__(self, instructions)
+        _PLAN_ROOTS_SLOT.__set__(self, passthrough_roots)
         _EXACT_AUTHORING_PLAN_VALIDATOR(self)
 
     def __post_init__(self) -> None:

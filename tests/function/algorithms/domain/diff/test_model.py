@@ -754,3 +754,137 @@ def test_model_plan_does_not_trust_late_source_slice_offset(
                 TreeSnapshot((target_file,)), (instruction,),
             )
     assert calls == 0, "late slice offset getter influenced plan admission"
+
+
+@pytest.mark.parametrize(
+    ("record_type", "field"),
+    [
+        (FileRecord, "path"),
+        (TreeSnapshot, "files"),
+        (SourceSlice, "length"),
+        (OracleLiteral, "data"),
+        (ExactInstruction, "output_path"),
+        (ExactAuthoringPlan, "passthrough_roots"),
+    ],
+)
+def test_model_constructor_does_not_dispatch_forged_property_setter(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[ModelRecord],
+    field: str,
+) -> None:
+    """A swapped field setter cannot sanitize rejected constructor data."""
+    slot = record_type.__dict__[field]
+    calls = 0
+
+    def forged_setter(self: ModelRecord, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        repaired: object
+        if field == "path":
+            repaired = "safe"
+        elif field == "files":
+            repaired = ()
+        elif field == "length":
+            repaired = 1
+        elif field == "data":
+            repaired = b"safe"
+        elif field == "output_path":
+            repaired = "target"
+        else:
+            repaired = ()
+        slot.__set__(self, repaired)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, field, property(fset=forged_setter))
+        with pytest.raises(TreeModelError):
+            if record_type is FileRecord:
+                _ = FileRecord("../unsafe", _HASH, 1)
+            elif record_type is TreeSnapshot:
+                _ = TreeSnapshot(
+                    cast("tuple[FileRecord, ...]", cast("object", []))
+                )
+            elif record_type is SourceSlice:
+                _ = SourceSlice(0, 0)
+            elif record_type is OracleLiteral:
+                _ = OracleLiteral(
+                    cast("bytes", cast("object", bytearray(b"unsafe")))
+                )
+            elif record_type is ExactInstruction:
+                _ = ExactInstruction(
+                    output_path="../unsafe",
+                    kind=ExactInstructionKind.COPY_SOURCE,
+                    expected_sha256=_HASH,
+                    source_path="source",
+                )
+            else:
+                _ = ExactAuthoringPlan(
+                    source=TreeSnapshot(()),
+                    target=TreeSnapshot(()),
+                    instructions=(),
+                    passthrough_roots=cast(
+                        "tuple[str, ...]", cast("object", ["unsafe"])
+                    ),
+                )
+    assert calls == 0, f"constructor dispatched forged {field} setter"
+
+
+@pytest.mark.parametrize(
+    ("record_type", "field"),
+    [
+        (FileRecord, "path"),
+        (FileRecord, "sha256"),
+        (FileRecord, "size"),
+        (TreeSnapshot, "files"),
+        (SourceSlice, "offset"),
+        (SourceSlice, "length"),
+        (OracleLiteral, "data"),
+        (ExactInstruction, "output_path"),
+        (ExactInstruction, "kind"),
+        (ExactInstruction, "expected_sha256"),
+        (ExactInstruction, "source_path"),
+        (ExactInstruction, "literal"),
+        (ExactInstruction, "segments"),
+        (ExactAuthoringPlan, "source"),
+        (ExactAuthoringPlan, "target"),
+        (ExactAuthoringPlan, "instructions"),
+        (ExactAuthoringPlan, "passthrough_roots"),
+    ],
+)
+def test_model_valid_constructor_writes_all_original_slots(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[ModelRecord],
+    field: str,
+) -> None:
+    """Valid model construction never invokes a substituted field setter."""
+    calls = 0
+
+    def forbidden_setter(_self: ModelRecord, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("constructor dispatched a foreign field setter")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, field, property(fset=forbidden_setter))
+        if record_type is FileRecord:
+            value = FileRecord("file", _HASH, 1)
+        elif record_type is TreeSnapshot:
+            value = TreeSnapshot(())
+        elif record_type is SourceSlice:
+            value = SourceSlice(0, 1)
+        elif record_type is OracleLiteral:
+            value = OracleLiteral(b"literal")
+        elif record_type is ExactInstruction:
+            value = ExactInstruction(
+                output_path="output",
+                kind=ExactInstructionKind.COPY_SOURCE,
+                expected_sha256=_HASH,
+                source_path="source",
+            )
+        else:
+            value = ExactAuthoringPlan(
+                source=TreeSnapshot(()),
+                target=TreeSnapshot(()),
+                instructions=(),
+            )
+    assert type(value) is record_type
+    assert calls == 0, f"valid {record_type.__name__}.{field} used foreign setter"
