@@ -679,6 +679,65 @@ def test_emitter_ignores_late_str_spoof_of_error_detail(
     assert type(detail) is str
 
 
+def test_emitter_error_detail_bypasses_late_native_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exact Rust error cannot execute a later class args accessor."""
+    failure = RustEmissionError("trusted emission failure")
+    original = RustEmissionError.__getattribute__
+    calls = 0
+
+    def reject_args(error: RustEmissionError, name: str) -> object:
+        nonlocal calls
+        if name == "args":
+            calls += 1
+            raise AssertionError("late Rust error accessor executed")
+        return cast("object", original(error, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(RustEmissionError, "__getattribute__", reject_args)
+        assert (
+            emit_rust_module._safe_emission_error_detail(failure)
+            == "trusted emission failure"
+        )
+    assert calls == 0, "native error text called a late class getter"
+
+
+def test_writer_status_preserves_native_error_without_late_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rust output failures keep native diagnostics and original causes."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    failure = RustEmissionError("trusted status failure")
+    original_getter = RustEmissionError.__getattribute__
+    original_lstat = Path.lstat
+    calls = 0
+
+    def fail_lstat(path: Path) -> os.stat_result:
+        if path == output:
+            raise failure
+        return original_lstat(path)
+
+    def reject_args(error: RustEmissionError, name: str) -> object:
+        nonlocal calls
+        if name == "args":
+            calls += 1
+            raise AssertionError("late Rust output error getter executed")
+        return cast("object", original_getter(error, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_NATIVE_PATH_LSTAT", fail_lstat)
+        patch.setattr(RustEmissionError, "__getattribute__", reject_args)
+        with pytest.raises(
+            RustEmissionError, match="trusted status failure"
+        ) as caught:
+            write_rust_transform(protected, _PROFILE, output)
+    assert caught.value.__cause__ is failure
+    assert not output.exists()
+    assert calls == 0, "Rust output bridge called a late class getter"
+
+
 def test_emitter_template_error_never_formats_foreign_exception(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

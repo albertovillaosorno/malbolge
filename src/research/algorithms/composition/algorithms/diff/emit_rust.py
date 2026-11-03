@@ -552,7 +552,14 @@ def _safe_emission_error_detail(error: Exception) -> str:
         RuntimeError,
         ValueError,
     }:
-        arguments = cast("tuple[object, ...]", error.args)
+        # Exact native error classes can acquire late instance accessors.
+        # Read the BaseException slot without invoking the mutable getter.
+        arguments = cast(
+            "tuple[object, ...]",
+            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                error, "args"
+            ),
+        )
         if _NATIVE_LEN(arguments) == 1:
             reason = arguments[0]
             if _NATIVE_TYPE(reason) is _NATIVE_STR_TYPE:
