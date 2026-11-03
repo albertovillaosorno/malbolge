@@ -512,6 +512,17 @@ perfect-behavior/unrelated-source
 clone and prove it is rejected. The generic evaluator consumes normalized
 observations only; executing application-specific probes remains consumer work.
 
+Internal `combine_admission()` now creates its `TransformAdmissionEvidence`
+report through captured native allocation and the original validating
+initializer instead of replaceable class `__new__`/`__init__` hooks
+(`7b8038188`). Four red-first tests prove accepted reports remain accepted
+and rejected source lineage cannot be promoted by forged constructors.
+All 43 focused gate tests passed after commit; 2,668 integrated diff tests,
+scoped Ruff, and strict source BasedPyright passed before publication.
+Direct instance-storage mutation and trusted module internals remain outside
+this guard. `jig doctor` reports degraded and the global `jig check` timed
+out after 120 seconds in native validation, so no green Jig verdict is claimed.
+
 ### Portable Behavior Programs
 
 The generic execution layer now has a process-program representation designed to
@@ -759,6 +770,15 @@ share coordinates and source-anchor identities are unique, paths are canonical,
 and digest/share lengths are exact. Malformed metadata cannot lower a threshold
 (for example via a negative or boolean value) or be ignored merely because
 enough other shares survive.
+
+Internal source-binding key evidence now constructs `_AnchorMaterial`,
+`BoundShare`, `ThresholdBinding`, and `_RecoveredShare` through captured
+native allocation and original initializers (`b6d41a9ea`). Eight red-first
+`__new__`/`__init__` tests show later class substitutions cannot rewrite
+anchor windows, masked shares, binding envelopes, or recovered share data.
+The exact pair passed 147 focused tests, with 2,668 integrated diff tests
+passing before publication. This prevents late class-hook substitution,
+not deliberate stored-instance mutation or external source races.
 
 The authenticated-encryption primitive itself is now implemented separately
 using

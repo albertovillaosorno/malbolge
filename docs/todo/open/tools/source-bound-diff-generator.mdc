@@ -135,6 +135,13 @@ format.
 - A conjunctive gate proves behavior-only clones cannot replace structural
   lineage
   and source lineage cannot replace failed compatibility behavior.
+- Gate report creation now uses original native allocation and validating
+  initialization (`7b8038188`) rather than late class `__new__`/`__init__`.
+  Four red-first cases preserve accepted and rejected conjunctive reports.
+  All 43 gate tests passed after commit, 2,668 integrated diff tests passed
+  before it, and scoped Ruff and source BasedPyright had no errors. Jig doctor
+  was degraded, and global Jig check timed out at 120 seconds. Direct stored
+  instance mutation and arbitrary trusted module edits remain outside scope.
 - Positive timeout integers too large for a host monotonic deadline now
   reject with a typed probe error before process spawn, rather than leaking
   an integer-to-float overflow outside the execution boundary.
@@ -235,6 +242,12 @@ format.
   recovery are implemented; compatible in-memory placement now exists while
   protected
   compatible serialization/runtime emission remains unfinished.
+- Internal source-binding key-material, share, binding, and recovered-share
+  record construction now bypasses late class initializers and allocators
+  (`b6d41a9ea`). Eight red-first regressions cover `__init__`/`__new__`
+  spoofing, including isolated allocation tests; 147 focused and 2,668
+  integrated diff tests passed. These guards do not isolate direct instance
+  edits or concurrent external source mutation.
 - Source-binding recovery validates its entire threshold/share envelope before
   candidate inspection, including positive counts, canonical paths, exact digest
   and share lengths, and unique coordinates/source anchors; malformed metadata
