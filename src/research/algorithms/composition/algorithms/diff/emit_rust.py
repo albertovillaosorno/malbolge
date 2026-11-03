@@ -65,6 +65,8 @@ _SURROGATE_END = 0xDFFF
 _PRINTABLE_ASCII_START = 0x20
 _PRINTABLE_ASCII_END = 0x7E
 _NATIVE_STAT_RESULT = os.stat_result
+# Guard the runtime template with host resolution held before callbacks.
+_NATIVE_RESOLVE = type(Path()).resolve
 
 
 class RustEmissionError(ValueError):
@@ -458,8 +460,8 @@ def _require_output_not_runtime_template(output_path: Path) -> None:
     """
     _validate_output_path(output_path)
     try:
-        output = output_path.resolve()
-        template = _RUNTIME_TEMPLATE.resolve()
+        output = _NATIVE_RESOLVE(output_path)
+        template = _NATIVE_RESOLVE(_RUNTIME_TEMPLATE)
     except (OSError, ValueError, RuntimeError) as error:
         message = "Rust output path resolution failed"
         raise RustEmissionError(message) from error

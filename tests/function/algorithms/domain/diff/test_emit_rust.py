@@ -670,6 +670,37 @@ def test_writer_never_overwrites_its_runtime_template(
     assert not list(tmp_path.glob(".rust_runtime.rs.*.tmp"))
 
 
+def test_writer_rejects_forged_native_template_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing the host resolver cannot authorize template self-overwrite."""
+    _, _, _, protected = _fixture(tmp_path)
+    actual = cast("Path", vars(emit_rust_module)["_RUNTIME_TEMPLATE"])
+    template = tmp_path / "rust_runtime.rs"
+    original = actual.read_bytes()
+    _ = template.write_bytes(original)
+    native_resolve = Path.resolve
+    checked = 0
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal checked
+        if path == template:
+            checked += 1
+            if checked == 1:
+                return tmp_path / "not-the-template.rs"
+        return native_resolve(path, strict=strict)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_RUNTIME_TEMPLATE", template)
+        patch.setattr(Path, "resolve", forged_resolve)
+        with pytest.raises(RustEmissionError, match="runtime template"):
+            write_rust_transform(protected, _PROFILE, template)
+    assert checked == 0
+    assert template.read_bytes() == original
+    assert not list(tmp_path.glob(".rust_runtime.rs.*.tmp"))
+
+
 def test_writer_rejects_linked_output_file_when_supported(
     tmp_path: Path,
 ) -> None:
@@ -814,10 +845,13 @@ def test_writer_rejects_foreign_template_resolution_receipt(
     """A foreign resolved path cannot control runtime-template protection."""
     _, _, _, protected = _fixture(tmp_path)
     output = tmp_path / "generated.rs"
-    original_resolve = Path.resolve
+    original_resolve = cast(
+        "Callable[[Path], Path]",
+        vars(emit_rust_module)["_NATIVE_RESOLVE"],
+    )
     observed = False
 
-    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+    def forged_resolve(path: Path) -> Path:
         nonlocal observed
         selected = (
             path == output
@@ -827,9 +861,9 @@ def test_writer_rejects_foreign_template_resolution_receipt(
         if selected:
             observed = True
             return _ForeignOutputPath(path)
-        return original_resolve(path, strict=strict)
+        return original_resolve(path)
 
-    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(emit_rust_module, "_NATIVE_RESOLVE", forged_resolve)
     with pytest.raises(RustEmissionError, match="native Path"):
         write_rust_transform(protected, _PROFILE, output)
     _expect(observed, "foreign resolved path was not observed")
