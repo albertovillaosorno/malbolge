@@ -42,6 +42,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from stat import S_ISLNK
 from typing import TYPE_CHECKING, cast
 
 # jig-ignore-next-line: canonical Ruff import grouping requires one statement
@@ -86,7 +87,21 @@ _SHA256_BYTES = _SHA256_FACTORY().digest_size
 _NATIVE_PATH_TYPE = type(Path())
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 _NATIVE_IS_RELATIVE_TO = _NATIVE_PATH_TYPE.is_relative_to
+_NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
+_NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
+_NATIVE_OS_LSTAT = os.lstat
+_NATIVE_PATH_STRING = Path.__str__
+_NATIVE_STAT_RESULT = os.stat_result
+_NATIVE_IS_SYMLINK = S_ISLNK
 _NATIVE_ISRESERVED = ntpath.isreserved
+
+
+def _native_path_lstat(path: Path) -> os.stat_result:
+    # Avoid mutable pathlib and os delegation after policy callbacks run.
+    return _NATIVE_OS_LSTAT(_NATIVE_PATH_STRING(path))
+
+
+_NATIVE_PATH_LSTAT = _native_path_lstat
 
 Mapper = Callable[[str, bytes], MappedView | None]
 Postcondition = Callable[[Path], bool]
@@ -683,19 +698,27 @@ def _validate_relative_path(relative_path: str) -> str:
     return relative_path
 
 
+def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
+    try:
+        if _NATIVE_IS_SYMLINK(status.st_mode):
+            return True
+        junction = _NATIVE_IS_JUNCTION(path)
+    except (OSError, ValueError, RuntimeError) as error:
+        detail = _safe_compatible_error_detail(error)
+        message = f"ancestor inspection failed: {path}: {detail}"
+        raise CompatiblePlanError(message) from error
+    if type(junction) is not bool:
+        message = "ancestor inspection requires native boolean"
+        raise CompatiblePlanError(message)
+    return junction
+
+
 def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
     current = root
     for component in PurePosixPath(relative_path).parts[:-1]:
         current /= component
-        if not _path_present(current, "compatible path ancestor"):
-            continue
-        try:
-            linked = current.is_symlink() or current.is_junction()
-        except (OSError, ValueError, RuntimeError) as error:
-            detail = _safe_compatible_error_detail(error)
-            message = f"ancestor inspection failed: {current}: {detail}"
-            raise CompatiblePlanError(message) from error
-        if linked:
+        status = _path_status(current, "compatible path ancestor")
+        if status is not None and _is_linked_ancestor(current, status):
             message = (
                 f"compatible linked path component is unsupported: {current}"
             )
@@ -706,8 +729,8 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        resolved_path = path.resolve()
-        resolved_root = root.resolve()
+        resolved_path = _NATIVE_RESOLVE(path)
+        resolved_root = _NATIVE_RESOLVE(root)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_compatible_error_detail(error)
         message = (
@@ -715,7 +738,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
         )
         raise CompatiblePlanError(message) from error
     try:
-        _ = resolved_path.relative_to(resolved_root)
+        _ = _NATIVE_RELATIVE_TO(resolved_path, resolved_root)
     except ValueError as error:
         message = f"compatible path escapes tree root: {relative_path!r}"
         raise CompatiblePlanError(message) from error
@@ -723,16 +746,23 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     return path
 
 
-def _path_present(path: Path, context: str) -> bool:
+def _path_status(path: Path, context: str) -> os.stat_result | None:
     try:
-        _ = path.lstat()
+        status = _NATIVE_PATH_LSTAT(path)
     except FileNotFoundError:
-        return False
+        return None
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} status failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
-    return True
+    if type(status) is not _NATIVE_STAT_RESULT:
+        message = f"{context} requires native filesystem status: {path}"
+        raise CompatiblePlanError(message)
+    return status
+
+
+def _path_present(path: Path, context: str) -> bool:
+    return _path_status(path, context) is not None
 
 
 def _read_compatible_bytes(path: Path, context: str) -> bytes:

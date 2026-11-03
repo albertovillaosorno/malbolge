@@ -280,6 +280,103 @@ def test_compatible_authoring_rejects_linked_source_after_exact_plan(
     _expect(changed, "post-plan link injection did not execute")
 
 
+def _linked_compatible_paths(
+    tmp_path: Path, *, escape: bool
+) -> tuple[Path, Path, Path]:
+    root = tmp_path / "source"
+    root.mkdir()
+    real = tmp_path / "external" if escape else root / "real"
+    real.mkdir()
+    linked = root / "linked"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except OSError, NotImplementedError:
+        pytest.skip("directory symlinks unavailable")
+    return root, real, linked
+
+
+def _compatible_safe_path(root: Path, relative: str) -> Path:
+    safe_path = cast(
+        "Callable[[Path, str], Path]", vars(compatible_module)["_safe_path"]
+    )
+    return safe_path(root, relative)
+
+
+def _forged_unlinked(path: Path) -> bool:
+    del path
+    return False
+
+
+def test_compatible_path_rejects_post_import_resolver_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late resolver cannot pretend a link escapes nowhere."""
+    root, _, linked = _linked_compatible_paths(tmp_path, escape=True)
+    native_resolve = Path.resolve
+    calls = 0
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        if path == linked / "payload":
+            calls += 1
+            return root / "payload"
+        return native_resolve(path, strict=strict)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "resolve", forged_resolve)
+        patched.setattr(Path, "is_symlink", _forged_unlinked)
+        patched.setattr(Path, "is_junction", _forged_unlinked)
+        with pytest.raises(CompatiblePlanError, match="escapes tree root"):
+            _ = _compatible_safe_path(root, "linked/payload")
+    assert calls == 0
+
+
+def test_compatible_path_rejects_post_import_relative_to_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late containment hook cannot make an external link look internal."""
+    root, external, _ = _linked_compatible_paths(tmp_path, escape=True)
+    native_relative_to = Path.relative_to
+    calls = 0
+
+    def forged_relative_to(path: Path, *other: Path) -> Path:
+        nonlocal calls
+        if path == external / "payload" and other == (root,):
+            calls += 1
+            return Path("payload")
+        return native_relative_to(path, *other)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "relative_to", forged_relative_to)
+        patched.setattr(Path, "is_symlink", _forged_unlinked)
+        patched.setattr(Path, "is_junction", _forged_unlinked)
+        with pytest.raises(CompatiblePlanError, match="escapes tree root"):
+            _ = _compatible_safe_path(root, "linked/payload")
+    assert calls == 0
+
+
+def test_compatible_path_rejects_post_import_missing_ancestor_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged missing lstat cannot hide an in-tree directory symlink."""
+    root, _, linked = _linked_compatible_paths(tmp_path, escape=False)
+    native_lstat = Path.lstat
+    calls = 0
+
+    def forged_missing(path: Path) -> object:
+        nonlocal calls
+        if path == linked:
+            calls += 1
+            raise FileNotFoundError
+        return native_lstat(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "lstat", forged_missing)
+        with pytest.raises(CompatiblePlanError, match="linked path component"):
+            _ = _compatible_safe_path(root, "linked/payload")
+    assert calls == 0
+
+
 def test_compatible_authoring_rejects_linked_directory_ancestor(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -500,29 +597,35 @@ def _break_compatible_ancestor_inspection(
     failure: type[Exception],
 ) -> None:
     armed = False
-    original_present = cast(
-        "Callable[[Path, str], bool]",
-        vars(compatible_module)["_path_present"],
+    original_status = cast(
+        "Callable[[Path, str], object]", vars(compatible_module)["_path_status"]
     )
-    original_inspection = (
-        Path.is_symlink if method == _SYMLINK_METHOD else Path.is_junction
+    hook = (
+        "_NATIVE_IS_SYMLINK"
+        if method == _SYMLINK_METHOD
+        else "_NATIVE_IS_JUNCTION"
+    )
+    original_inspection = cast(
+        "Callable[[Path | int], bool]", vars(compatible_module)[hook]
     )
 
-    def arm_after_admission(path: Path, context: str) -> bool:
+    def arm_after_admission_status(path: Path, context: str) -> object:
         nonlocal armed
-        present = original_present(path, context)
+        status = original_status(path, context)
         if path == ancestor and context == _ANCESTOR_PATH_CONTEXT:
             armed = True
-        return present
+        return status
 
-    def fail_after_admission(path: Path) -> bool:
-        if armed and path == ancestor:
+    def fail_after_admission(value: Path | int) -> bool:
+        if armed and (method == _SYMLINK_METHOD or value == ancestor):
             message = "host inspection failed"
             raise failure(message)
-        return original_inspection(path)
+        return original_inspection(value)
 
-    monkeypatch.setattr(compatible_module, "_path_present", arm_after_admission)
-    monkeypatch.setattr(Path, method, fail_after_admission)
+    monkeypatch.setattr(
+        compatible_module, "_path_status", arm_after_admission_status
+    )
+    monkeypatch.setattr(compatible_module, hook, fail_after_admission)
 
 
 @pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
@@ -1435,7 +1538,9 @@ def test_compatible_host_faults_do_not_format_foreign_errors(
                 raise _HostileFormattingError("host status")
             return original(path)
 
-        monkeypatch.setattr(Path, "lstat", fail_status)
+        monkeypatch.setattr(
+            compatible_module, "_NATIVE_PATH_LSTAT", fail_status
+        )
     elif operation == "staging_create":
         original = Path.mkdir
 
@@ -1530,7 +1635,7 @@ def test_compatible_nested_host_faults_keep_typed_errors(
                 raise _HostileFormattingError("nested source resolution")
             return native_resolve(path, strict=strict)
 
-        monkeypatch.setattr(Path, "resolve", fail_resolve)
+        monkeypatch.setattr(compatible_module, "_NATIVE_RESOLVE", fail_resolve)
     elif operation == "linked_ancestor":
         _write(candidate, "nested/candidate.bin", b"candidate only")
         native_junction = Path.is_junction
@@ -1540,7 +1645,9 @@ def test_compatible_nested_host_faults_keep_typed_errors(
                 raise _HostileFormattingError("nested junction")
             return native_junction(path)
 
-        monkeypatch.setattr(Path, "is_junction", fail_junction)
+        monkeypatch.setattr(
+            compatible_module, "_NATIVE_IS_JUNCTION", fail_junction
+        )
     else:
         native_snapshot = cast(
             "Callable[[Path], TreeSnapshot]",
@@ -1583,7 +1690,7 @@ def test_compatible_materialization_wraps_path_resolution_error(
             raise error_type()
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(compatible_module, "_NATIVE_RESOLVE", fail_resolve)
     output = tmp_path / "out"
     with pytest.raises(CompatiblePlanError, match="path resolution failed"):
         _ = materialize_compatible_plan(_request(candidate, plan, output))
@@ -1709,7 +1816,7 @@ def test_compatible_staging_status_error_fails_closed(
             raise failure_type(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    monkeypatch.setattr(compatible_module, "_NATIVE_PATH_LSTAT", fail_lstat)
     with pytest.raises(CompatiblePlanError, match="staging root status failed"):
         _ = materialize_compatible_plan(_request(candidate, plan, output))
     _expect(not output.exists(), "status failure published compatible output")
