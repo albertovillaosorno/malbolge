@@ -961,11 +961,15 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
     except AttributeError as error:
         message = "source-binding policy requires all stored fields"
         raise SourceBindingPolicyError(message) from error
-    drives = (
-        _has_windows_drive(_identity_path(item))
-        for item in _identity_files(reference)
-    )
-    if _NATIVE_ANY(drives):
+    try:
+        has_drive = _NATIVE_ANY(
+            _has_windows_drive(_identity_path(item))
+            for item in _identity_files(reference)
+        )
+    except AttributeError as error:
+        message = "source-binding reference has incomplete identity fields"
+        raise SourceBindingPolicyError(message) from error
+    if has_drive:
         message = "source-binding reference path cannot have a Windows drive"
         raise SourceBindingPolicyError(message)
 
@@ -1010,7 +1014,11 @@ def bind_secret(
 
     """
     _validate_bind_inputs(reference, secret, policy=policy, context=context)
-    materials = _select_anchor_materials(reference, policy)
+    try:
+        materials = _select_anchor_materials(reference, policy)
+    except AttributeError as error:
+        message = "source-binding reference has incomplete identity fields"
+        raise SourceBindingPolicyError(message) from error
     fraction, _, minimum_files, anchor_policy = _policy_fields(policy)
     # Interpret the configured float's canonical decimal as the policy value.
     # A float product can round a fraction just above k/N back to k and admit
@@ -1240,7 +1248,11 @@ def validate_threshold_binding(
         The admitted binding unchanged.
 
     """
-    return _validate_binding(binding)
+    try:
+        return _validate_binding(binding)
+    except AttributeError as error:
+        message = "source binding has incomplete envelope or share fields"
+        raise SourceBindingError(message) from error
 
 
 def _candidate_materials(
@@ -1345,7 +1357,11 @@ def recover_secret(
     if _NATIVE_TYPE(candidate) is not IdentityTree:
         message = "source-binding candidate must use the exact IdentityTree type"
         raise SourceBindingError(message)
-    available = _recover_available_shares(admitted, candidate)
+    try:
+        available = _recover_available_shares(admitted, candidate)
+    except AttributeError as error:
+        message = "source-binding candidate has incomplete identity fields"
+        raise SourceBindingError(message) from error
     if _NATIVE_LEN(available) < _binding_threshold(admitted):
         message = (
             "insufficient source-bound anchors: "

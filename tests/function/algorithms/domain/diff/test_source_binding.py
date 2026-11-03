@@ -1294,6 +1294,57 @@ def test_binding_nested_anchor_validation_ignores_late_getters(
     assert observed == baseline
 
 
+@pytest.mark.parametrize(
+    ("record", "missing"),
+    [("binding", "context"), ("binding", "shares"),
+     ("share", "source_path"), ("share", "masked_share")],
+)
+def test_incomplete_source_binding_records_fail_with_typed_error(
+    record: str, missing: str
+) -> None:
+    """Uninitialized envelope/share slots must not expose AttributeError."""
+    valid = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
+    if record == "binding":
+        raw = object.__new__(type(valid))
+        for field in (
+            "context", "threshold", "minimum_anchor_files", "secret_length",
+            "secret_commitment", "anchor_policy", "shares",
+        ):
+            if field != missing:
+                object.__setattr__(raw, field, getattr(valid, field))
+        malformed = raw
+    else:
+        first = valid.shares[0]
+        raw_share = object.__new__(type(first))
+        for field in ("source_path", "anchor_digest", "x", "masked_share"):
+            if field != missing:
+                object.__setattr__(raw_share, field, getattr(first, field))
+        malformed = replace(valid, shares=(raw_share, *valid.shares[1:]))
+    with pytest.raises(SourceBindingError, match="source binding"):
+        _ = validate_threshold_binding(malformed)
+    with pytest.raises(SourceBindingError, match="source binding"):
+        _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
+@pytest.mark.parametrize("role", ["reference", "candidate"])
+def test_incomplete_source_identity_fails_with_typed_binding_error(
+    role: str
+) -> None:
+    """Uninitialized identity-tree slots cannot escape public error classes."""
+    raw_identity = object.__new__(IdentityTree)
+    if role == "reference":
+        with pytest.raises(SourceBindingPolicyError):
+            _ = bind_secret(
+                raw_identity, _SECRET, policy=_policy(), context=_CONTEXT
+            )
+    else:
+        valid = bind_secret(
+            _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+        )
+        with pytest.raises(SourceBindingError):
+            _ = recover_secret(valid, raw_identity)
+
+
 def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
     """Distributable binding metadata is admitted before source inspection."""
     reference = _reference()
