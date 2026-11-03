@@ -47,9 +47,11 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 from typing import Protocol
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 from algorithms.diff import probe_exec as probe_exec_module
 from algorithms.diff.probe_exec import PathArgument
@@ -2235,6 +2237,65 @@ def test_probe_context_rejects_foreign_path_subclasses_before_conversion(
         ProbeProgramError, match=f"{path_context} must use exact pathlib Path"
     ):
         _ = build_context(foreign)
+
+
+def test_probe_executable_rejects_foreign_status_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Tool execution cannot be authorized by duck-typed file status."""
+    tool = tmp_path / "tool.bin"
+    _ = tool.write_bytes(b"synthetic tool")
+    original_stat = Path.stat
+    native = original_stat(tool)
+    foreign = SimpleNamespace(st_mode=native.st_mode)
+
+    def forged_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if path == tool:
+            return cast("os.stat_result", cast("object", foreign))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", forged_stat)
+    require_executable = cast(
+        "Callable[[Path], None]",
+        vars(probe_exec_module)["_require_executable"],
+    )
+    with pytest.raises(ProbeExecutionError, match="native filesystem status"):
+        require_executable(tool)
+
+
+def test_probe_executable_status_error_does_not_format_foreign_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hostile host fault cannot escape through its string formatter."""
+    tool = tmp_path / "tool.bin"
+    _ = tool.write_bytes(b"synthetic tool")
+    original_stat = Path.stat
+
+    class HostileStatusError(OSError):
+        @override
+        def __str__(self) -> str:
+            message = "hostile status formatter executed"
+            raise AssertionError(message)
+
+    failure = HostileStatusError("untrusted filesystem fault")
+
+    def fail_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if path == tool:
+            raise failure
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", fail_stat)
+    require_executable = cast(
+        "Callable[[Path], None]",
+        vars(probe_exec_module)["_require_executable"],
+    )
+    with pytest.raises(ProbeExecutionError, match="status failed") as caught:
+        require_executable(tool)
+    assert caught.value.__cause__ is failure
 
 
 def test_probe_executable_launch_failure_is_wrapped(tmp_path: Path) -> None:

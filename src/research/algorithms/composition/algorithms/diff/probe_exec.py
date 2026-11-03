@@ -79,6 +79,7 @@ _POLL_SECONDS = 0.005
 _CHILD_REAP_SECONDS = 2.0
 _POSIX_OS_NAME = "posix"
 _MIN_HARDLINK_COUNT = 2
+_NATIVE_STAT_RESULT = os.stat_result
 # Native stream adapters can raise non-I/O ordinary exceptions as well.
 _PIPE_DEPENDENCY_ERRORS = (
     OSError,
@@ -496,16 +497,33 @@ def _tool_map(context: ProbeRunContext) -> dict[str, Path]:
     }
 
 
+def _native_executable_status(receipt: object) -> os.stat_result:
+    """Validate a host tool status before admitting executable file mode.
+
+    Returns:
+        An exact native status record.
+
+    Raises:
+        ProbeExecutionError: The status is foreign metadata.
+
+    """
+    if type(receipt) is not _NATIVE_STAT_RESULT:
+        message = "probe executable requires native filesystem status"
+        raise ProbeExecutionError(message)
+    return receipt
+
+
 def _require_executable(path: Path) -> None:
     try:
-        mode = path.stat().st_mode
+        receipt = path.stat()
     except FileNotFoundError as error:
         message = "probe executable is unavailable"
         raise ProbeExecutionError(message) from error
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"probe executable status failed: {path}: {error}"
+        reason = _safe_probe_error_detail(error)
+        message = f"probe executable status failed: {path}: {reason}"
         raise ProbeExecutionError(message) from error
-    if not S_ISREG(mode):
+    if not S_ISREG(_native_executable_status(receipt).st_mode):
         message = "probe executable is unavailable"
         raise ProbeExecutionError(message)
 

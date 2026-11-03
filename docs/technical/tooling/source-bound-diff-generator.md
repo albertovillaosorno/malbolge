@@ -297,7 +297,10 @@ structured beneath authorized source, repository, or scratch roots. Before
 mirroring, the executor rejects structured repository-relative arguments and
 executables that resolve within the original source tree, including symlink
 aliases, as well as existing regular-file hardlinks sharing source device/inode
-identity. Unrelated hardlinks remain admitted. This prevents a repository-rooted
+identity. Unrelated hardlinks remain admitted. Executable admission
+also requires an exact host-native `os.stat_result` before trusting regular-file
+mode; foreign status receipts reject execution, and status errors never invoke
+foreign exception string hooks. This prevents a repository-rooted
 path from bypassing the source mirror, including when post-run source checks are
 disabled. It is not an OS sandbox: arbitrary raw string argv and
 consumer-selected
