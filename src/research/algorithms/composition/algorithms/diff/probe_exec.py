@@ -78,6 +78,10 @@ _NATIVE_PATH_RESOLVE = Path.resolve
 # Inode disjointness and executable admission cannot trust late host hooks.
 _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
+# Keep mirror creation independent of late consumer library hooks.
+_NATIVE_GETTEMPDIR = tempfile.gettempdir
+_NATIVE_TEMPORARY_DIRECTORY = tempfile.TemporaryDirectory
+_NATIVE_COPYTREE = shutil.copytree
 _NATIVE_ANY = builtins.any
 _NATIVE_SET = builtins.set
 _NATIVE_FROZENSET = builtins.frozenset
@@ -1219,7 +1223,7 @@ def _temporary_probe_root(
     prefix: str, *, parent: Path
 ) -> tempfile.TemporaryDirectory[str]:
     try:
-        return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
+        return _NATIVE_TEMPORARY_DIRECTORY(prefix=prefix, dir=parent)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe temporary root failed: {detail}"
@@ -1434,7 +1438,7 @@ def _run_isolated_batch(
     # A host TMPDIR inside the source would copy the new batch directory into
     # itself recursively. Reject before creating any temporary directories.
     try:
-        temporary_parent = _NATIVE_PATH_RESOLVE(Path(tempfile.gettempdir()))
+        temporary_parent = _NATIVE_PATH_RESOLVE(Path(_NATIVE_GETTEMPDIR()))
     except (OSError, ValueError, RuntimeError) as error:
         message = "probe temporary parent resolution failed"
         raise ProbeExecutionError(message) from error
@@ -1451,7 +1455,7 @@ def _run_isolated_batch(
         batch_root = Path(batch)
         try:
             mirror_root = Path(
-                shutil.copytree(
+                _NATIVE_COPYTREE(
                     context.source_root,
                     batch_root / "source",
                     symlinks=True,

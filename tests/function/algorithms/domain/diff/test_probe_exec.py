@@ -1898,6 +1898,37 @@ def test_probe_created_symlink_is_rejected_inside_execution_boundary(
     _expect(outside.read_bytes() == _OUTSIDE_BYTES, "external file changed")
 
 
+@pytest.mark.parametrize(
+    "hook", ["gettempdir", "TemporaryDirectory", "copytree"]
+)
+def test_probe_mirror_ignores_post_import_workspace_provider_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A consumer must not redirect native probe roots or source mirroring."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "input.txt").write_bytes(_ADMITTED_INPUT)
+    calls = 0
+
+    def forged_provider(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        _ = args, kwargs
+        calls += 1
+        message = "late workspace provider was invoked"
+        raise AssertionError(message)
+
+    module = shutil if hook == "copytree" else tempfile
+    with monkeypatch.context() as patched:
+        patched.setattr(module, hook, forged_provider)
+        result = run_probe_program(
+            _program("native-workspace", "print('trusted')"),
+            _context(source, tmp_path),
+        )
+    assert result.digested_commands == 1
+    assert calls == 0
+    assert (source / "input.txt").read_bytes() == _ADMITTED_INPUT
+
+
 @pytest.mark.parametrize("location", ["direct", "nested", "symlink"])
 def test_probe_rejects_temporary_parent_inside_source_before_copy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, location: str
@@ -1926,7 +1957,7 @@ def test_probe_rejects_temporary_parent_inside_source_before_copy(
 
     with monkeypatch.context() as patch:
         patch.setattr(tempfile, "tempdir", str(temporary_parent))
-        patch.setattr(probe_exec_module.shutil, "copytree", reject_copy)
+        patch.setattr(probe_exec_module, "_NATIVE_COPYTREE", reject_copy)
         with pytest.raises(ProbeExecutionError, match="temporary.*source"):
             _ = run_probe_program(
                 _program("source-tempdir", "print('unreachable')"), context
@@ -1960,8 +1991,10 @@ def test_probe_temporary_parent_resolution_errors_are_typed(
         raise AssertionError(message)
 
     with monkeypatch.context() as patch:
-        patch.setattr(tempfile, "gettempdir", fail_temporary_parent)
-        patch.setattr(shutil, "copytree", reject_copy)
+        patch.setattr(
+            probe_exec_module, "_NATIVE_GETTEMPDIR", fail_temporary_parent
+        )
+        patch.setattr(probe_exec_module, "_NATIVE_COPYTREE", reject_copy)
         with pytest.raises(
             ProbeExecutionError, match="temporary parent resolution failed"
         ):
@@ -2002,8 +2035,14 @@ def test_probe_pins_temporary_parent_for_nested_scratch(
 
     with monkeypatch.context() as patch:
         patch.setattr(tempfile, "tempdir", str(safe_parent))
-        patch.setattr(shutil, "copytree", change_tempdir_after_copy)
-        patch.setattr(tempfile, "TemporaryDirectory", record_temporary_root)
+        patch.setattr(
+            probe_exec_module, "_NATIVE_COPYTREE", change_tempdir_after_copy
+        )
+        patch.setattr(
+            probe_exec_module,
+            "_NATIVE_TEMPORARY_DIRECTORY",
+            record_temporary_root,
+        )
         result = run_probe_program(
             _program("tempdir-stable", "print('stable')"),
             replace(_context(source, tmp_path), enforce_source_immutable=False),
@@ -2037,7 +2076,9 @@ def test_mirror_snapshot_catches_copy_time_source_drift(
         _ = (copied / "input.txt").write_bytes(b"injected")
         return copied
 
-    monkeypatch.setattr(shutil, "copytree", mutate_mirror_after_copy)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_COPYTREE", mutate_mirror_after_copy
+    )
     context = replace(_context(source, tmp_path), enforce_source_immutable=False)
     program = ProbeProgram(
         "copy-time-drift",
@@ -2075,7 +2116,7 @@ def test_probe_mirror_copy_errors_are_typed(
         message = "copytree host failure"
         raise failure_type(message)
 
-    monkeypatch.setattr(shutil, "copytree", denied_copy)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_COPYTREE", denied_copy)
     with pytest.raises(ProbeExecutionError, match="source mirror creation failed"):
         _ = run_probe_program(
             _program("mirror-failure", "print('unreachable')"),
@@ -2110,7 +2151,9 @@ def test_probe_temporary_workspace_errors_are_typed(
             raise failure_type(message)
         return original_temporary_root(prefix=prefix, dir=dir)
 
-    monkeypatch.setattr(tempfile, "TemporaryDirectory", denied_temporary_root)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_TEMPORARY_DIRECTORY", denied_temporary_root
+    )
     with pytest.raises(ProbeExecutionError, match="temporary root failed"):
         _ = run_probe_program(
             _program("temporary-failure", "print('unreachable')"),
@@ -2682,7 +2725,9 @@ def test_probe_host_boundaries_reject_foreign_formatters(
             _ = prefix, dir
             raise failure
 
-        monkeypatch.setattr(tempfile, "TemporaryDirectory", fail_temp)
+        monkeypatch.setattr(
+            probe_exec_module, "_NATIVE_TEMPORARY_DIRECTORY", fail_temp
+        )
         temp_root = cast(
             "Callable[..., tempfile.TemporaryDirectory[str]]",
             vars(probe_exec_module)["_temporary_probe_root"],
@@ -2743,7 +2788,7 @@ def test_probe_mirror_host_failure_does_not_format_foreign_exception(
         _ = source_root, destination, symlinks
         raise failure
 
-    monkeypatch.setattr(shutil, "copytree", fail_copy)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_COPYTREE", fail_copy)
     with pytest.raises(
         ProbeExecutionError, match="source mirror creation failed"
     ) as caught:
