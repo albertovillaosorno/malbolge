@@ -117,6 +117,11 @@ _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
 _NATIVE_IO_OPEN = io.open
 _NATIVE_OS_MKDIR = os.mkdir
+# Descriptor acquisition and reads must not consult post-import OS callbacks.
+_NATIVE_OS_OPEN = os.open
+_NATIVE_OS_FSTAT = os.fstat
+_NATIVE_OS_READ = os.read
+_NATIVE_OS_CLOSE = os.close
 # Encode native Path strings without mutable late pathlib/os conversion hooks.
 _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
@@ -729,7 +734,7 @@ def _file_identity(status: os.stat_result) -> tuple[int, ...]:
 def _admit_opened_file(
     descriptor: int, path: Path, context: str
 ) -> os.stat_result:
-    opened = _require_native_status(os.fstat(descriptor), context)
+    opened = _require_native_status(_NATIVE_OS_FSTAT(descriptor), context)
     named = _require_native_status(_NATIVE_PATH_LSTAT(path), context)
     regular_identity = (
         S_ISREG(opened.st_mode)
@@ -752,7 +757,7 @@ def _read_native_chunk(descriptor: int, count: int, context: str) -> bytes:
         ExactTreeError: The reader provided a foreign result.
 
     """
-    chunk = os.read(descriptor, count)
+    chunk = _NATIVE_OS_READ(descriptor, count)
     if _NATIVE_TYPE(chunk) is not _NATIVE_BYTES:
         message = f"{context} requires native read bytes"
         raise ExactTreeError(message)
@@ -841,7 +846,7 @@ def _read_bound_file(path: Path, context: str) -> bytes:
     # does not resolve a directory or path segment with os.fspath. Preserve
     # generator source replays when a domain replaces only that global hook.
     _require_native_path_hooks(direct_file_read=True)
-    descriptor = os.open(path, _FILE_READ_FLAGS)
+    descriptor = _NATIVE_OS_OPEN(path, _FILE_READ_FLAGS)
     try:
         before = _admit_opened_file(descriptor, path, context)
         payload = _read_admitted_descriptor(descriptor, before.st_size, context)
@@ -852,7 +857,7 @@ def _read_bound_file(path: Path, context: str) -> bytes:
     finally:
         primary = sys.exception()
         try:
-            os.close(descriptor)
+            _NATIVE_OS_CLOSE(descriptor)
         except BaseException as error:
             if primary is None:
                 raise

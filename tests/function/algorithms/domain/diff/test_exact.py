@@ -832,7 +832,7 @@ def _deny_file_open(
                 raise PermissionError(message)
         return original_open(file, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(os, "open", deny_open)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_OPEN", deny_open)
 
 
 def test_exact_planning_wraps_oracle_read_failure(
@@ -2443,8 +2443,8 @@ def test_snapshot_read_error_remains_primary_after_close_failure(
         message = "injected close denial"
         raise OSError(message)
 
-    monkeypatch.setattr(os, "read", fail_read)
-    monkeypatch.setattr(os, "close", fail_close)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_READ", fail_read)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_CLOSE", fail_close)
     with pytest.raises(ExactTreeError, match="tree entry read failed") as error:
         _ = snapshot_tree(root)
     _expect(
@@ -2515,8 +2515,8 @@ def test_exact_descriptor_close_cannot_override_original_read_failure(
         raise secondary
 
     with monkeypatch.context() as patch:
-        patch.setattr(os, "read", fail_read)
-        patch.setattr(os, "close", fail_close)
+        patch.setattr(exact_module, "_NATIVE_OS_READ", fail_read)
+        patch.setattr(exact_module, "_NATIVE_OS_CLOSE", fail_close)
         with pytest.raises(
             ExactTreeError, match="rejected original descriptor read"
         ) as caught:
@@ -2558,7 +2558,7 @@ def test_exact_regular_reader_cannot_dispatch_foreign_host_error_hooks(
         raise fault
 
     with monkeypatch.context() as patch:
-        patch.setattr(os, "read", fail_read)
+        patch.setattr(exact_module, "_NATIVE_OS_READ", fail_read)
         with pytest.raises(ExactTreeError, match="tree entry read failed") as caught:
             _ = exact_module.read_exact_regular_file(leaf, "tree entry")
 
@@ -2645,7 +2645,7 @@ def test_exact_regular_reader_preserves_native_host_error_detail(
         del descriptor, count
         raise primary
 
-    monkeypatch.setattr(os, "read", fail_read)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_READ", fail_read)
     with pytest.raises(ExactTreeError, match="native read denied") as caught:
         _ = exact_module.read_exact_regular_file(leaf, "tree entry")
     _expect(caught.value.__cause__ is primary, "native read cause lost")
@@ -2687,7 +2687,7 @@ def test_exact_reader_rejects_foreign_read_bytes(
             return cast("bytes", cast("object", bytearray(observed)))
         return observed
 
-    monkeypatch.setattr(os, "read", foreign_read)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_READ", foreign_read)
     with pytest.raises(ExactTreeError, match="native read bytes"):
         _ = exact_module.read_exact_regular_file(leaf, "tree entry")
 
@@ -2754,8 +2754,8 @@ def test_exact_reader_rejects_forged_descriptor_status(
             st_ctime_ns=trusted_status.st_ctime_ns,
         )
 
-    monkeypatch.setattr(os, "open", redirect_open)
-    monkeypatch.setattr(os, "fstat", forge_fstat)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_OPEN", redirect_open)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_FSTAT", forge_fstat)
     with pytest.raises(ExactTreeError, match="native filesystem status"):
         _ = exact_module.read_exact_regular_file(leaf, "tree entry")
     _expect(redirected, "redirected host descriptor was not opened")
@@ -2870,7 +2870,7 @@ def test_snapshot_rejects_leaf_replacement_during_descriptor_read(
             changed = True
         return fragment
 
-    monkeypatch.setattr(os, "read", replace_after_open)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_READ", replace_after_open)
     with pytest.raises(ExactTreeError, match="regular file identity"):
         _ = snapshot_tree(root)
     _expect(changed, "post-open pathname replacement did not execute")
@@ -2895,7 +2895,7 @@ def test_snapshot_rejects_same_inode_rewrite_during_descriptor_read(
             changed = True
         return fragment
 
-    monkeypatch.setattr(os, "read", rewrite_after_open)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_READ", rewrite_after_open)
     with pytest.raises(ExactTreeError, match="inode changed"):
         _ = snapshot_tree(root)
     _expect(changed, "in-place rewrite did not execute")
@@ -2925,7 +2925,7 @@ def test_exact_reader_rejects_postclose_source_mutation(
         changed = True
 
     with monkeypatch.context() as patch:
-        patch.setattr(os, "close", mutate_after_close)
+        patch.setattr(exact_module, "_NATIVE_OS_CLOSE", mutate_after_close)
         with pytest.raises(ExactTreeError, match="changed after descriptor close"):
             _ = exact_module.read_exact_regular_file(leaf, "tree entry")
     _expect(changed, "the descriptor close mutation did not execute")
@@ -3098,7 +3098,7 @@ def test_exact_read_rejects_late_type_spoofed_receipt(
         return foreign
 
     with monkeypatch.context() as patched:
-        patched.setattr(os, "read", forged_read)
+        patched.setattr(exact_module, "_NATIVE_OS_READ", forged_read)
         patched.setattr(builtins, "type", forged_type)
         try:
             _ = read_chunk(7, 4, "test receipt")
@@ -4603,3 +4603,51 @@ def test_exact_direct_file_reader_ignores_late_path_factory(
         patched.setattr(PurePath, "with_segments", forbidden_factory)
         assert exact_module.read_exact_regular_file(path, "source") == b"admitted source"
     assert calls == 0
+
+
+@pytest.mark.parametrize("operation", ["open", "fstat", "read", "close"])
+def test_exact_reader_ignores_late_descriptor_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """Consumer-replaced OS entrypoints cannot run during native file reads."""
+    path = tmp_path / "source.bin"
+    content = b"source-bound evidence"
+    _ = path.write_bytes(content)
+    original_close = os.close
+    callbacks = 0
+
+    def foreign_dispatch(*args: object, **_kwargs: object) -> None:
+        nonlocal callbacks
+        callbacks += 1
+        if operation == "close":
+            original_close(cast("int", args[0]))
+        message = "late descriptor dispatch executed"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, operation, foreign_dispatch)
+        observed = exact_module.read_exact_regular_file(path, "source")
+    assert observed == content
+    assert callbacks == 0, "untrusted descriptor callback was invoked"
+
+
+def test_exact_reader_ignores_late_equal_length_read_forgery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Inode metadata cannot certify bytes returned by a mutable OS hook."""
+    path = tmp_path / "source.bin"
+    _ = path.write_bytes(b"original")
+    original_read = os.read
+    calls = 0
+
+    def forge_read(descriptor: int, count: int) -> bytes:
+        nonlocal calls
+        calls += 1
+        observed = original_read(descriptor, count)
+        return b"altered!" if observed == b"original" else observed
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "read", forge_read)
+        observed = exact_module.read_exact_regular_file(path, "source")
+    assert observed == b"original", "untrusted read changed source evidence"
+    assert calls == 0, "late read dispatch was consulted"

@@ -48,6 +48,7 @@ from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
+from algorithms.diff import exact as exact_module
 from algorithms.diff import generate as generate_module
 from algorithms.diff.domain import DomainContractError
 from algorithms.diff.exact import ExactTreeError, build_exact_plan
@@ -1546,7 +1547,7 @@ def test_exact_identity_second_read_failure_stays_in_exact_boundary(
                 raise PermissionError(message)
         return original_open(file, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(os, "open", fail_identity_open)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_OPEN", fail_identity_open)
     with pytest.raises(ExactTreeError, match="source identity read failed"):
         write_algorithm(recipe)
     _expect(
