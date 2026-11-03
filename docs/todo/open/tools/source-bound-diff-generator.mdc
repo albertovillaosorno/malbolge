@@ -1134,6 +1134,13 @@ format.
   provenance and 3,386 integrated diff tests pass, plus scoped Ruff, strict
   source typing, and diff checks. Existing unrelated test typing issues,
   global Jig, and external filesystem races remain open.
+- Source-pin relative file labels now verify the original native parent and
+  equality dispatch, `_PathParents` class and methods, `pathlib.chain`, and
+  builtin guards (`87cac5fb1`). Eight red-first callback interceptions now
+  fail before untrusted hooks execute; 185 provenance and 484 cross-module
+  provenance/compatible tests pass postcommit. Scoped Ruff, strict source
+  typing, and diff checks pass. The older 51 provenance-test typing errors,
+  global Jig gate, and external filesystem races remain unresolved.
 
 - Source-binding policies now verify original stored `AnchorPolicy`
   dimensions, and bind/recover preflight rejects incomplete native binding,

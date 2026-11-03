@@ -522,6 +522,19 @@ integrated diff tests pass, as do scoped Ruff, strict source BasedPyright,
 and diff checks. Existing test-file typing errors, external
 filesystem races, and the incomplete global Jig gate remain limitations.
 
+Provenance relative-label derivation now also pins dependencies of the
+import-original `Path.relative_to` (`87cac5fb1`): `PurePath.parents` and
+equality methods, inherited `_PathParents` membership/iteration, its class
+alias, `pathlib.chain`, and the original builtin `hasattr`, `enumerate`,
+`isinstance`, `len`, and `str` functions. Eight red-first hook substitutions
+previously executed late callbacks before source snapshot admission. The
+source-label guard rejects those changes before and after relative derivation;
+all 185 provenance and 484 combined provenance/compatible tests pass
+postcommit. Scoped Ruff, source strict BasedPyright, and diff checks are
+clean, while 51 previously existing provenance-test typing errors remain.
+External filesystem races, direct trusted-state mutation, and global Jig
+verification are not closed by this in-process guard.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from
