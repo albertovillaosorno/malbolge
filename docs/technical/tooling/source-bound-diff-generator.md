@@ -1012,6 +1012,22 @@ pre-existing type errors outside the new tests. Repository-wide Jig check
 reported unrelated hard failures and remains unverified. The resolver identity
 guard is not atomic against concurrent host mutation or filesystem writers.
 
+Probe execution now also verifies the original native `pathlib` cache and
+conversion hooks before trusting a path (`ff5391d09`). Captured
+`Path.__str__` still read replaceable `_str` descriptors and
+`__getattribute__` hooks; a forged getter could launder a NUL-bearing root
+or substitute another executable for host status. Runtime preflight additionally
+rejects late `Path.__str__` and `os.fspath` substitutions before resolutions
+or executable admission. Exceptions raised by these guards retain their owned
+probe type rather than triggering a later unsafe path formatter.
+
+Four cache/getter cases and two late string-method cases failed red-first and
+now pass without executing the substituted hooks. All 377 focused probe tests
+and 3,324 integrated diff tests passed. Scoped Ruff and strict source typing
+were clean; the six inherited test typing errors and broader Jig failures
+remain outside the patch. Hook identity checks do not make external filesystem
+or concurrent host-code mutations atomic.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record

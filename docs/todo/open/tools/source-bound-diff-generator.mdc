@@ -331,6 +331,13 @@ format.
   file still has six inherited typing errors, and the broader Jig check
   reported unrelated hard failures. Host mutation races and concurrent
   filesystem writers remain outside this hook-identity guarantee.
+- Probe native path cache/formatter guards (`ff5391d09`) now reject late
+  `__getattribute__`, `_str`, `__fspath__`, and execution-time `Path.__str__`
+  substitutions before trusting roots, tools, or file status. Six red-first
+  cache/getter/formatter regressions, 377 focused probe tests, and 3,324
+  integrated diff tests passed. Scoped Ruff and strict source typing passed;
+  six inherited test typing errors and global Jig failures remain. The check
+  excludes concurrent mutation races and external filesystem writers.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.
