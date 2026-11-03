@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 from builtins import AttributeError as _native_attribute_error
+from builtins import UnicodeError as _native_unicode_error
 from builtins import any as _native_any
 from builtins import bytes as _native_bytes
 from builtins import enumerate as _native_enumerate
@@ -124,7 +125,7 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
         raise TreeModelError(message)
     try:
         _ = value.encode("utf-8")
-    except UnicodeError as error:
+    except _native_unicode_error as error:
         message = f"{context} must be a canonical relative path"
         raise TreeModelError(message) from error
 

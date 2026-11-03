@@ -1154,3 +1154,39 @@ def test_model_valid_constructor_writes_all_original_slots(
             )
     assert type(value) is record_type
     assert calls == 0, f"valid {record_type.__name__}.{field} used foreign setter"
+
+
+@pytest.mark.parametrize("route", ["file", "instruction", "passthrough"])
+def test_model_unencodable_path_rejection_survives_unicode_exception_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """A late UnicodeError alias must not leak a raw path codec exception."""
+    invalid = "broken\ud800"
+    original = builtins.UnicodeError
+    caught: TreeModelError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeError", LookupError)
+        try:
+            if route == "file":
+                _ = FileRecord(invalid, _HASH, 1)
+            elif route == "instruction":
+                _ = ExactInstruction(
+                    output_path=invalid,
+                    kind=ExactInstructionKind.COPY_SOURCE,
+                    expected_sha256=_HASH,
+                    source_path="safe",
+                )
+            else:
+                _ = ExactAuthoringPlan(
+                    source=TreeSnapshot(()),
+                    target=TreeSnapshot(()),
+                    instructions=(),
+                    passthrough_roots=(invalid,),
+                )
+        except TreeModelError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeError"] = original
+    assert caught is not None, route
+    assert "canonical relative path" in str(caught)
+    assert type(caught.__cause__) is UnicodeEncodeError
