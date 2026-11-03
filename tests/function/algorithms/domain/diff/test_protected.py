@@ -40,14 +40,14 @@ import ntpath
 import shutil
 from dataclasses import replace
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, SupportsIndex, cast, override
 
 import pytest
 from algorithms.diff import protected as protected_module
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.exact import build_exact_plan, snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
-from algorithms.diff.model import OracleLiteral, TreeSnapshot
+from algorithms.diff.model import OracleLiteral, SourceSlice, TreeSnapshot
 from algorithms.diff.payload import AuthenticatedPayload, PayloadCryptoError
 from algorithms.diff.protected import (
     PayloadSlice,
@@ -60,9 +60,13 @@ from algorithms.diff.protected import (
     protected_plan_aad,
     recover_exact_plan,
 )
-from algorithms.diff.source_binding import SourceBindingError, SourceBindingPolicy
+from algorithms.diff.source_binding import (
+    SourceBindingError,
+    SourceBindingPolicy,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterable
     from pathlib import Path
 
     from algorithms.diff.admission import IdentityTree
@@ -132,7 +136,9 @@ def _policy() -> SourceBindingPolicy:
 
 def _protected(
     tmp_path: Path,
-) -> tuple[Path, Path, dict[str, bytes], ExactAuthoringPlan, ProtectedExactPlan]:
+) -> tuple[
+    Path, Path, dict[str, bytes], ExactAuthoringPlan, ProtectedExactPlan
+]:
     source, oracle, source_files = _fixture(tmp_path)
     exact = build_exact_plan(source, oracle)
     protected = protect_exact_plan(
@@ -334,7 +340,9 @@ def test_protected_authoring_rejects_foreign_inputs(tmp_path: Path) -> None:
             binding_policy=policy,
             context=_CONTEXT,
         )
-    with pytest.raises(ProtectedPlanError, match=r"authoring context.*exact bytes"):
+    with pytest.raises(
+        ProtectedPlanError, match=r"authoring context.*exact bytes"
+    ):
         _ = protect_exact_plan(
             exact,
             identity,
@@ -343,9 +351,12 @@ def test_protected_authoring_rejects_foreign_inputs(tmp_path: Path) -> None:
         )
 
 
-@pytest.mark.parametrize("invalid", ["nested/../escape.bin", "nested//unsafe.bin"])
+@pytest.mark.parametrize(
+    "invalid", ["nested/../escape.bin", "nested//unsafe.bin"]
+)
 def test_protected_path_admission_ignores_late_any_hook(
-    monkeypatch: pytest.MonkeyPatch, invalid: str,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: str,
 ) -> None:
     """An untrusted callback cannot suppress path-component validation."""
     rejected = False
@@ -380,11 +391,14 @@ def test_protected_roots_ignore_late_sorted_set_hooks(
             )
         except ProtectedPlanError:
             rejected = True
-    assert rejected, "late sort and set hooks admitted unsorted passthrough roots"
+    assert rejected, (
+        "late sort and set hooks admitted unsorted passthrough roots"
+    )
 
 
 def test_protected_static_passthrough_overlap_ignores_late_any_hook(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     """Static target bytes cannot be published from a dynamic root."""
     _, _, _, _, plan = _protected(tmp_path)
@@ -403,7 +417,9 @@ def test_protected_static_passthrough_overlap_ignores_late_any_hook(
     assert rejected, "late any hook admitted static/dynamic target overlap"
 
 
-@pytest.mark.parametrize("invalid", ["unencodable" + chr(0xD800), "nul\x00path"])
+@pytest.mark.parametrize(
+    "invalid", ["unencodable" + chr(0xD800), "nul\x00path"]
+)
 def test_protected_path_metadata_rejects_unserializable_text(
     invalid: str,
 ) -> None:
@@ -608,7 +624,9 @@ def test_protected_metadata_rejects_duplicate_output_instructions(
         _ = replace(protected, instructions=duplicate)
 
 
-@pytest.mark.parametrize("mutation", [_MISSING, _REORDERED, _WRONG_DIGEST, _EXTRA])
+@pytest.mark.parametrize(
+    "mutation", [_MISSING, _REORDERED, _WRONG_DIGEST, _EXTRA]
+)
 def test_protected_metadata_rejects_target_instruction_mismatch(
     tmp_path: Path, mutation: str
 ) -> None:
@@ -622,7 +640,9 @@ def test_protected_metadata_rejects_target_instruction_mismatch(
     elif mutation == _WRONG_DIGEST:
         instructions[0] = replace(instructions[0], expected_sha256="0" * 64)
     else:
-        instructions.append(replace(instructions[0], output_path="extra-target.bin"))
+        instructions.append(
+            replace(instructions[0], output_path="extra-target.bin")
+        )
     mismatched = tuple(instructions)
 
     with pytest.raises(ProtectedPlanError, match="match the target snapshot"):
@@ -703,12 +723,16 @@ def test_protected_plan_envelope_requires_exact_runtime_types(
             protected,
             nonce=cast("bytes", cast("object", bytearray(protected.nonce))),
         )
-    with pytest.raises(ProtectedPlanError, match=r"payload.*exact authenticated"):
+    with pytest.raises(
+        ProtectedPlanError, match=r"payload.*exact authenticated"
+    ):
         _ = replace(
             protected,
             payload=cast("AuthenticatedPayload", object()),
         )
-    with pytest.raises(ProtectedPlanError, match=r"binding.*exact ThresholdBinding"):
+    with pytest.raises(
+        ProtectedPlanError, match=r"binding.*exact ThresholdBinding"
+    ):
         _ = replace(
             protected,
             binding=cast("ThresholdBinding", object()),
@@ -747,7 +771,9 @@ def test_protected_plan_does_not_format_foreign_binding_exceptions(
         message = "foreign binding validator"
         raise _HostileBindingError(message)
 
-    monkeypatch.setattr(protected_module, "validate_threshold_binding", reject_binding)
+    monkeypatch.setattr(
+        protected_module, "validate_threshold_binding", reject_binding
+    )
     with pytest.raises(
         ProtectedPlanError, match="binding is invalid: _HostileBindingError"
     ) as caught:
@@ -764,7 +790,9 @@ def test_protected_plan_rejects_malformed_binding_metadata(
     """Validate the complete source binding before a plan becomes emit-ready."""
     _, _, _, _, protected = _protected(tmp_path)
     malformed_count = replace(protected.binding, threshold=True)
-    with pytest.raises(ProtectedPlanError, match=r"binding is invalid.*threshold"):
+    with pytest.raises(
+        ProtectedPlanError, match=r"binding is invalid.*threshold"
+    ):
         _ = replace(protected, binding=malformed_count)
 
     first = protected.binding.shares[0]
@@ -874,6 +902,172 @@ def test_protected_passthrough_can_change_after_authoring(
     )
 
     _expect(
-        (output / "external/game.bin").read_bytes() == _PASSTHROUGH_RUNTIME_DATA,
+        (output / "external/game.bin").read_bytes()
+        == _PASSTHROUGH_RUNTIME_DATA,
         "protected passthrough pinned external bytes",
+    )
+
+
+def test_payload_slice_rejects_late_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign fractional payload offset cannot pass native int admission."""
+    foreign = 1.5
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return int if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = PayloadSlice(cast("int", cast("object", foreign)), 1)
+        except ProtectedPlanError:
+            rejected = True
+    assert rejected, "late type hook admitted a fractional payload offset"
+
+
+def test_protected_context_rejects_late_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Mutable context cannot bypass AAD exact-bytes admission."""
+    _, _, _, _, plan = _protected(tmp_path)
+    metadata = ProtectedMetadata(
+        source=plan.source,
+        target=plan.target,
+        instructions=plan.instructions,
+        passthrough_roots=plan.passthrough_roots,
+    )
+    foreign = bytearray(_CONTEXT)
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = protected_plan_aad(
+                metadata, context=cast("bytes", cast("object", foreign))
+            )
+        except ProtectedPlanError:
+            rejected = True
+    assert rejected, "late type hook admitted mutable AAD context"
+
+
+def test_protected_aad_ignores_late_len_framing_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """External length hooks cannot rewrite authenticated frame lengths."""
+    _, _, _, _, plan = _protected(tmp_path)
+    metadata = ProtectedMetadata(
+        source=plan.source,
+        target=plan.target,
+        instructions=plan.instructions,
+        passthrough_roots=plan.passthrough_roots,
+    )
+    baseline = protected_plan_aad(metadata, context=_CONTEXT)
+    native_len = len
+
+    def forged_len(value: object) -> int:
+        if value is _CONTEXT:
+            return native_len(_CONTEXT) + 1
+        return native_len(cast("bytes", value))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        observed = protected_plan_aad(metadata, context=_CONTEXT)
+    assert observed == baseline, "late len hook rewrote authenticated AAD"
+
+
+def test_payload_slice_ignores_late_len_extent_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An out-of-range authenticated payload slice must fail closed."""
+    plaintext = b"ABC"
+    reference = PayloadSlice(2, 2)
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        if value is plaintext:
+            return 100
+        return native_len(cast("bytes", value))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        try:
+            # This internal extent guard is unreachable via tampered AAD.
+            internal_name = "_payload_slice"
+            read_slice = cast(
+                "Callable[[bytes, PayloadSlice], bytes]",
+                getattr(protected_module, internal_name),
+            )
+            _ = read_slice(plaintext, reference)
+        except ProtectedPlanError:
+            rejected = True
+    assert rejected, "late len hook allowed truncated payload slice"
+
+
+def test_protected_authoring_ignores_late_payload_buffer_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced bytearray collector cannot erase authenticated literals."""
+    _, _, source_files, exact, baseline = _protected(tmp_path)
+    identity = _identity(source_files)
+
+    class _DiscardingBytearray(bytearray):
+        """A hostile accumulator that silently drops appended literals."""
+
+        @override
+        def extend(self, content: Iterable[SupportsIndex]) -> None:
+            del content
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytearray", _DiscardingBytearray)
+        observed = protect_exact_plan(
+            exact,
+            identity,
+            binding_policy=_policy(),
+            context=_CONTEXT,
+        )
+    assert observed.payload == baseline.payload
+    assert observed.binding == baseline.binding
+
+
+def test_protected_aad_ignores_late_isinstance_segment_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A late builtin hook cannot relabel payload segments as source spans."""
+    _, _, _, _, plan = _protected(tmp_path)
+    metadata = ProtectedMetadata(
+        source=plan.source,
+        target=plan.target,
+        instructions=plan.instructions,
+        passthrough_roots=plan.passthrough_roots,
+    )
+    assert any(
+        type(segment) is PayloadSlice
+        for instruction in plan.instructions
+        for segment in instruction.segments
+    )
+    baseline = protected_plan_aad(metadata, context=_CONTEXT)
+    native_isinstance = isinstance
+
+    def forged_isinstance(value: object, classinfo: type[object]) -> bool:
+        if native_isinstance(value, PayloadSlice) and classinfo is SourceSlice:
+            return True
+        return native_isinstance(value, classinfo)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "isinstance", forged_isinstance)
+        observed = protected_plan_aad(metadata, context=_CONTEXT)
+    assert observed == baseline, (
+        "late isinstance hook altered authenticated tags"
     )
