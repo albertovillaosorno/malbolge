@@ -1613,3 +1613,66 @@ def test_require_source_pin_ignores_late_evidence_getter(
         with pytest.raises(SourcePinError):
             _ = require_source_pin(tmp_path, forged)
     assert fake_calls == 0, "late evidence getter forged a matching snapshot"
+
+
+@pytest.mark.parametrize(
+    ("record_type", "field"),
+    [(SourcePin, "file_count"), (SourcePinEvidence, "file_count")],
+)
+def test_pin_constructor_does_not_trust_repairing_property_setter(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type,
+    field: str,
+) -> None:
+    """A modified class setter must not sanitize invalid provenance counts."""
+    slot = record_type.__dict__[field]
+    calls = 0
+
+    def forged_setter(value: object, _raw: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(value, 1)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, field, property(fset=forged_setter))
+        with pytest.raises(SourcePinError):
+            if record_type is SourcePin:
+                _ = SourcePin("repo", _COMMIT, ("src",), 0, "0" * 64)
+            else:
+                _ = SourcePinEvidence(0, "0" * 64)
+    assert calls == 0, "constructor dispatched forged provenance setter"
+
+
+@pytest.mark.parametrize(
+    ("record_type", "field"),
+    [
+        (SourcePin, "repository"),
+        (SourcePin, "commit"),
+        (SourcePin, "roots"),
+        (SourcePin, "file_count"),
+        (SourcePin, "snapshot_sha256"),
+        (SourcePinEvidence, "file_count"),
+        (SourcePinEvidence, "snapshot_sha256"),
+    ],
+)
+def test_pin_valid_constructor_writes_original_field_slots(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type,
+    field: str,
+) -> None:
+    """Every admitted provenance field bypasses a foreign class setter."""
+    calls = 0
+
+    def forbidden_setter(_value: object, _raw: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("foreign provenance property setter executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, field, property(fset=forbidden_setter))
+        if record_type is SourcePin:
+            result = SourcePin("repo", _COMMIT, ("src",), 1, "0" * 64)
+        else:
+            result = SourcePinEvidence(1, "0" * 64)
+    assert type(result) is record_type
+    assert calls == 0, f"valid {record_type.__name__}.{field} used setter"

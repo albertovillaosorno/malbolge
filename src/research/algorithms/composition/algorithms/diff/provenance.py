@@ -61,7 +61,6 @@ _SHA256_HEX_LENGTH = 64
 _LOWER_HEX = frozenset("0123456789abcdef")
 # Snapshot acceptance must not depend on later consumer-global hooks.
 _NATIVE_ALL = builtins.all
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_ANY = builtins.any
 _NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
@@ -122,11 +121,11 @@ class SourcePin:
         snapshot_sha256: str,
     ) -> None:
         """Bind raw fields and execute the original metadata validator."""
-        _NATIVE_OBJECT_SETATTR(self, "repository", repository)
-        _NATIVE_OBJECT_SETATTR(self, "commit", commit)
-        _NATIVE_OBJECT_SETATTR(self, "roots", roots)
-        _NATIVE_OBJECT_SETATTR(self, "file_count", file_count)
-        _NATIVE_OBJECT_SETATTR(self, "snapshot_sha256", snapshot_sha256)
+        _PIN_REPOSITORY_SLOT.__set__(self, repository)
+        _PIN_COMMIT_SLOT.__set__(self, commit)
+        _PIN_ROOTS_SLOT.__set__(self, roots)
+        _PIN_COUNT_SLOT.__set__(self, file_count)
+        _PIN_DIGEST_SLOT.__set__(self, snapshot_sha256)
         _SOURCE_PIN_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -247,8 +246,8 @@ class SourcePinEvidence:
 
     def __init__(self, file_count: int, snapshot_sha256: str) -> None:
         """Bind observed fields and execute the original evidence validator."""
-        _NATIVE_OBJECT_SETATTR(self, "file_count", file_count)
-        _NATIVE_OBJECT_SETATTR(self, "snapshot_sha256", snapshot_sha256)
+        _EVIDENCE_COUNT_SLOT.__set__(self, file_count)
+        _EVIDENCE_DIGEST_SLOT.__set__(self, snapshot_sha256)
         _SOURCE_EVIDENCE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
