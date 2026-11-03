@@ -285,6 +285,8 @@ format.
   edit sequences so late class getters cannot substitute a copy for a patch,
   suppress routed edits, or admit a short correction vector. The protections
   address late class hooks, not direct mutation of stored object fields.
+  Their constructors also call pinned original validators rather than late
+  `__post_init__` class methods, with nine more red-first regressions.
 - Generic mapped semantic placement now hashes canonical units, uniquely locates
   them
   in candidate source, maps them back to raw spans, preserves unrelated raw

@@ -739,9 +739,12 @@ coordinate readers, and semantic placement now use captured original slot
 descriptors rather than class attributes replaceable after consumer code runs.
 Semantic locator, edit, and plan construction and application likewise read
 stored source/context digests, replacement bytes/digests, and edit sequences
-through the original slots. Compatible authoring and correction routing consume
-the same pinned semantic edit sequence when selecting copy versus patch,
-checking correction cardinality, and replaying required edits. Red-first
+through the original slots. Their explicit frozen-record constructors also
+invoke validators captured before domain hooks, rather than dispatching through
+replaceable class `__post_init__` methods. Compatible authoring and correction
+routing consume the same pinned semantic edit sequence when selecting copy
+versus patch, checking correction cardinality, and replaying required edits.
+Red-first
 regressions show late getter and descriptor replacements cannot certify mutable
 record fields, authorize changed candidate units, move replacements to a forged
 raw span, skip valid edits, or accept incomplete correction vectors. This is a
