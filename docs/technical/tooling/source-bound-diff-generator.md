@@ -2310,6 +2310,15 @@ all three source files, and diff checks were clean. The exact test file has
 one inherited typing diagnostic outside the added cases. These guards do not
 prevent external filesystem races or direct trusted data mutation.
 
+Compatible instruction, build, authoring-plan, and materialization-request
+constructors now select original slot writers through the import-pinned
+`_NATIVE_TYPE` rather than the mutable global `builtins.type` (`0988d291c`).
+Four red-first hook-interception variants reproduce the prior class callback;
+all 307 compatible tests passed postcommit, with Ruff, strict source typing,
+and diff checks clean. Seventeen older compatible test typing diagnostics
+remain outside changed lines. This preserves record construction authority,
+not isolation from trusted storage edits or filesystem races.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:
