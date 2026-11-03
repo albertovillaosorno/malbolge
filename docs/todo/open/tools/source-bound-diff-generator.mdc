@@ -245,6 +245,13 @@ format.
   3,829 integrated diff tests, and scoped Ruff pass. One inherited
   exact-test typing error persists; repository-wide Jig previously timed
   out at 100 seconds. These guards do not prevent host/filesystem races.
+- Native `Path.walk` also consults late `builtins.str` for filesystem
+  conversion, and `os.walk` uses late `builtins.tuple` to classify pending
+  directory work. Exact tree admission now pins both originals
+  (`36209011f`): two red-first alias cases fail as typed path errors
+  before recursive host failures. All 809 adjacent exact/generator/
+  source-binding and 334 postcommit exact tests pass; scoped Ruff is clean.
+  The previously noted global Jig timeout and host race limits remain.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused
@@ -677,6 +684,12 @@ format.
   3,827 precommit integrated diff tests. Pinned Ruff and strict typing
   report zero added-line findings. Direct trusted state mutation,
   external process races, and global Jig acceptance remain unverified.
+- Probe subprocess launch now rejects late `subprocess.Popen` or `PIPE`
+  module substitutions before execution (`2e3d95d43`), then uses the
+  captured native class and pipe sentinel. Two red-first alias tests
+  reject without invoking foreign hooks; 3,831 integrated diff tests
+  passed. Existing spawn-failure tests use the explicit internal seam.
+  External child behavior and process races remain outside this guard.
 - Portable process probes now execute without shell interpolation, with
   structured
   roots, bounded time/output, isolated source mirrors, and deterministic

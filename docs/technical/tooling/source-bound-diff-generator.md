@@ -322,6 +322,17 @@ remains. These checks prevent late Python hook substitution, not concurrent
 host mutation, direct trusted module-state edits, or external filesystem
 writers. The global Jig check previously timed out during evidence capture.
 
+Native `Path.walk` additionally resolves `builtins.str` while formatting
+source paths, and `os.walk` consults `builtins.tuple` while classifying pending
+directory work. Exact tree admission now rejects late replacements of either
+type alias before invoking host traversal (`36209011f`). Two red-first
+substitutions previously produced recursive host failures or invalid walk
+semantics; both now fail as typed path-hook errors. All 809 adjacent exact,
+generator, and source-binding tests passed before commit and 334 focused
+exact tests passed afterward, with scoped Ruff and diff checks clean.
+The inherited exact-test typing diagnostic, non-atomic filesystem races,
+and unverified repository-wide Jig check remain unchanged.
+
 This local plan is verification evidence, not a distributable transform. Raw
 `OracleLiteral` bytes must never cross the public emission boundary. A later
 source-binding stage must convert them to recovery material that cannot be
@@ -1352,6 +1363,13 @@ host module. The owning agent verified 933 focused tests after commit and
 3,811 integrated diff tests before commit. This protects the native pipe
 read boundary against late dispatcher swaps, not concurrent host mutation,
 direct trusted state edits, or external process interference.
+
+Probe launch also captures the original `subprocess.Popen` constructor and
+`subprocess.PIPE` sentinel, rejecting late module replacements before
+executing a child (`2e3d95d43`). Two red-first alias regressions reject
+before any foreign spawn hook runs; 3,831 integrated diff tests passed.
+Existing launch-failure injections use an explicit internal seam. This guard
+does not make child execution or external process state atomic.
 
 Unrepresentably large timeout integers reject through the probe execution
 boundary before spawning, rather than leaking host float-conversion overflow.
