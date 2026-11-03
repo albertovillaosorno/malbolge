@@ -783,6 +783,13 @@ format.
   live integrated diff suite passed 3,172 tests; scoped Ruff, strict source/test
   BasedPyright, and diff checks were clean. Jig doctor remains degraded because
   its graph is absent.
+- Direct `MappedView.canonical` and `.keys` now reject foreign subclass and
+  unbound getter receivers (`ce6bd5f0c`). Four red-first cases now fail with
+  typed `MappedViewError`; 69 focused mapped, 484 postcommit cross-module, and
+  3,304 precommit integrated diff tests passed, with scoped Ruff/strict typing
+  and diff checks clean. Existing formatting drift remains; Jig doctor is
+  degraded and a 105-second global check timed out without a verdict. This
+  guard does not isolate direct storage edits or external filesystem races.
 - Compatible entrypoints now rerun pinned native validators for build and
   materialization requests and plan/instruction records before callbacks or
   output publication (`9418fc2eb`). Correction binding validates raw native

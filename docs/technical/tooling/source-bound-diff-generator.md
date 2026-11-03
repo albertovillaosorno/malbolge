@@ -1541,6 +1541,16 @@ strict source/test BasedPyright, and diff checks had zero errors. The global Jig
 doctor remains degraded because its graph is absent; no clean global verdict
 was established.
 
+Direct `MappedView.canonical` and `.keys` now also require exact native view
+types (`ce6bd5f0c`), rather than accepting subclass storage or leaking a raw
+`TypeError` for unbound foreign receivers. Four red-first regressions now raise
+`MappedViewError`; 69 mapped, 484 postcommit mapped/semantic/compatible, and
+3,304 precommit integrated diff tests passed. Scoped Ruff and strict source/test
+BasedPyright had zero errors, and diff checks passed. Existing format drift
+remains outside this change. Jig doctor was degraded (graph absent) and a
+bounded 105-second global check timed out without a green verdict. Direct
+storage mutation and external filesystem races remain outside this guard.
+
 Slotted mapped and semantic records do not make their class getters immutable.
 The mapped unit/view constructor validators, canonical-key extraction, raw
 coordinate readers, and semantic placement now use captured original slot
