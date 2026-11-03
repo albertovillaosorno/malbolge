@@ -785,6 +785,11 @@ capacity/Pareto analysis. The CLI prints the local study path, not a
 performance verdict. Unexpected ordinary producer and output-publisher errors
 exit with status two, never invoking foreign exception formatters; any prior
 retained evidence or partially emitted stdout cannot be rolled back.
+The final `study.json` JSON writer is checked against an import-bound native
+encoder both before and after public serialization; replacing a public writer
+or mutating the in-memory measured study cannot silently alter the retained
+record. This supplements, but does not replace, the read-only source audit.
+
 An independent caller can inspect the resulting file:
 
 ```sh

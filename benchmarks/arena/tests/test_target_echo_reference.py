@@ -295,6 +295,140 @@ def _synthetic_target_context(
     )
 
 
+def _synthetic_study_producer(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> target_echo_reference._Context:
+    """Isolate the final study receipt from subprocess and audit dependencies."""
+    context = _synthetic_target_context(tmp_path, site=TARGET_STUDY)
+    monkeypatch.setattr(target_echo_reference, "_prepare_context", lambda *_: context)
+    monkeypatch.setattr(
+        target_echo_reference,
+        "_write_attempt",
+        lambda _ctx, pairs, trial, *, algorithm: {
+            "algorithm": algorithm,
+            "case": {"difficulty": pairs},
+            "trial": trial,
+            "metrics": {"elapsed_ns": 19},
+        },
+    )
+    monkeypatch.setattr(
+        target_echo_reference,
+        "_audit_retained_study",
+        lambda path: json.loads(path.read_text(encoding="utf-8")),
+    )
+    monkeypatch.setattr(
+        target_echo_reference, "_tool_identity", lambda *_: context.toolchain
+    )
+    return context
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+def test_target_final_study_rejects_forged_json_before_retention(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    provider: str,
+) -> None:
+    """Public JSON replacement cannot forge a matched target study report."""
+    context = _synthetic_study_producer(monkeypatch, tmp_path)
+    native_dumps = json.dumps
+    native_encoder = json.JSONEncoder
+    forged = '{"study":{"id":"forged"},"observations":[]}'
+
+    class ForgedEncoder(native_encoder):
+        def encode(self, o: Any) -> str:
+            if type(o) is dict and "study" in o and "observations" in o:
+                return forged
+            return super().encode(o)
+
+    def forged_writer(payload: object, **options: Any) -> str:
+        if type(payload) is dict and "study" in payload:
+            return forged
+        return native_dumps(payload, **options)
+
+    with monkeypatch.context() as patch:
+        if provider in ("encoder", "joint"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if provider in ("writer", "joint"):
+            patch.setattr(json, "dumps", forged_writer)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="study JSON serializer disagrees with source",
+        ):
+            target_echo_reference.run_study(target_echo_reference.StudyPlan((1,), 1))
+    assert not (context.directory / "study.json").exists()
+
+
+def test_target_final_study_rejects_mutating_writer_even_with_matching_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public writer cannot modify verified VM costs after serializing."""
+    report = {"study": {"id": "real"}, "observations": [{"elapsed_ns": 19}]}
+    native_dumps = json.dumps
+
+    def mutating_writer(payload: object, **options: Any) -> str:
+        original = native_dumps(payload, **options)
+        report["observations"][0]["elapsed_ns"] = 1
+        return original
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", mutating_writer)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="study JSON serializer disagrees with source",
+        ):
+            target_echo_reference._study_json_text(report)
+
+
+@pytest.mark.parametrize("receipt", (None, b"{}", 0))
+def test_target_final_study_rejects_foreign_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Nontext JSON writer receipts cannot be retained as a verified study."""
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda *_a, **_k: receipt)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="study JSON serializer disagrees with source",
+        ):
+            target_echo_reference._study_json_text({"study": {"id": "real"}})
+
+
+def test_target_final_study_json_writer_failure_preserves_cause(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Writer errors cannot create a successful source report."""
+    fault = OSError("synthetic study serializer error")
+
+    def failing_writer(*_args: object, **_kwargs: object) -> str:
+        raise fault
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", failing_writer)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="study JSON serializer failed: OSError",
+        ) as caught:
+            target_echo_reference._study_json_text({"study": {"id": "real"}})
+        assert caught.value.__cause__ is fault
+
+
+def test_target_final_study_accepts_equivalent_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native-equivalent serializers preserve original study byte identity."""
+    report = {"study": {"id": "real"}, "observations": [{"elapsed_ns": 19}]}
+    expected = json.dumps(report, sort_keys=True, indent=2) + "\n"
+    native_encoder = json.JSONEncoder
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert target_echo_reference._study_json_text(report) == expected
+
+
 def _invoke_target_rss(context: target_echo_reference._Context) -> object:
     """Write a single synthetic verified RSS receipt.
 

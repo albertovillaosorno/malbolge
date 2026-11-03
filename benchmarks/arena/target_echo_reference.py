@@ -1214,6 +1214,27 @@ def _write_retained_text(path: Path, content: str) -> None:
     _confirm_retained_bytes(path, encoded)
 
 
+def _study_json_text(document: dict[str, Any]) -> str:
+    """Reject altered study JSON or public writers that mutate source data."""
+    try:
+        encoder = _SOURCE_JSON_ENCODER(sort_keys=True, indent=2)
+        source = encoder.encode(document)
+        observed = json.dumps(document, sort_keys=True, indent=2)
+        after = encoder.encode(document)
+    except Exception as error:
+        message = f"target echo study JSON serializer failed: {type(error).__name__}"
+        raise TargetEchoStudyError(message) from error
+    if (
+        type(source) is not str
+        or type(observed) is not str
+        or type(after) is not str
+        or observed != source
+        or after != source
+    ):
+        _fail("target echo study JSON serializer disagrees with source")
+    return source + "\n"
+
+
 def _rss_json_bytes(receipt: dict[str, object]) -> bytes:
     """Corroborate exact RSS evidence before hashing or retaining any bytes."""
     try:
@@ -1590,7 +1611,7 @@ def run_study(
     ]
     document = _make_document(context, observations)
     path = context.directory / "study.json"
-    _write_retained_text(path, json.dumps(document, sort_keys=True, indent=2) + "\n")
+    _write_retained_text(path, _study_json_text(document))
     admitted = _audit_retained_study(path)
     if _tool_identity(context.emitter, context.runner) != context.toolchain:
         _fail("target echo executables changed during the measured study")
