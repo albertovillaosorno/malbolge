@@ -68,7 +68,6 @@ if TYPE_CHECKING:
 _NUL = "\x00"
 # Domain validation must not trust builtins replaced by imported consumers.
 _NATIVE_CALLABLE = builtins.callable
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_GETATTR = builtins.getattr
 _NATIVE_TYPE = builtins.type
 _NATIVE_BOOL_TYPE = builtins.bool
@@ -147,24 +146,18 @@ class DiffDomain:
         build_behavior_probe_context: Callable[[Path, Path], ProbeRunContext],
     ) -> None:
         """Validate native hook slots through the original constructor guard."""
-        _NATIVE_OBJECT_SETATTR(
-            self, "validate_source_provenance", validate_source_provenance
+        # Write through captured descriptors; object.__setattr__ dispatches
+        # substituted class-property setters, which can launder invalid hooks.
+        _DOMAIN_PROVENANCE_SLOT.__set__(self, validate_source_provenance)
+        _DOMAIN_ORACLE_SLOT.__set__(self, validate_authoring_oracle)
+        _DOMAIN_IDENTITY_SLOT.__set__(self, build_identity_tree)
+        _DOMAIN_MAPPING_SLOT.__set__(self, map_compatible_file)
+        _DOMAIN_CORRECTIONS_SLOT.__set__(
+            self, build_compatible_correction_bindings
         )
-        _NATIVE_OBJECT_SETATTR(
-            self, "validate_authoring_oracle", validate_authoring_oracle
-        )
-        _NATIVE_OBJECT_SETATTR(self, "build_identity_tree", build_identity_tree)
-        _NATIVE_OBJECT_SETATTR(self, "map_compatible_file", map_compatible_file)
-        _NATIVE_OBJECT_SETATTR(
-            self,
-            "build_compatible_correction_bindings",
-            build_compatible_correction_bindings,
-        )
-        _NATIVE_OBJECT_SETATTR(
-            self, "build_behavior_programs", build_behavior_programs
-        )
-        _NATIVE_OBJECT_SETATTR(
-            self, "build_behavior_probe_context", build_behavior_probe_context
+        _DOMAIN_PROGRAMS_SLOT.__set__(self, build_behavior_programs)
+        _DOMAIN_CONTEXT_SLOT.__set__(
+            self, build_behavior_probe_context
         )
         _DIFF_DOMAIN_VALIDATOR(self)
 
@@ -187,41 +180,35 @@ class DiffDomain:
 _DIFF_DOMAIN_VALIDATOR = cast(
     "Callable[[DiffDomain], None]", DiffDomain.__dict__["__post_init__"]
 )
+_DOMAIN_PROVENANCE_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["validate_source_provenance"]
+)
+_DOMAIN_ORACLE_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["validate_authoring_oracle"]
+)
+_DOMAIN_IDENTITY_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["build_identity_tree"]
+)
+_DOMAIN_MAPPING_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["map_compatible_file"]
+)
+_DOMAIN_CORRECTIONS_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["build_compatible_correction_bindings"]
+)
+_DOMAIN_PROGRAMS_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["build_behavior_programs"]
+)
+_DOMAIN_CONTEXT_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["build_behavior_probe_context"]
+)
 _DIFF_DOMAIN_HOOK_SLOTS: tuple[tuple[str, MemberDescriptorType], ...] = (
-    (
-        "validate_source_provenance",
-        cast("MemberDescriptorType", DiffDomain.__dict__["validate_source_provenance"]),
-    ),
-    (
-        "validate_authoring_oracle",
-        cast("MemberDescriptorType", DiffDomain.__dict__["validate_authoring_oracle"]),
-    ),
-    (
-        "build_identity_tree",
-        cast("MemberDescriptorType", DiffDomain.__dict__["build_identity_tree"]),
-    ),
-    (
-        "map_compatible_file",
-        cast("MemberDescriptorType", DiffDomain.__dict__["map_compatible_file"]),
-    ),
-    (
-        "build_compatible_correction_bindings",
-        cast(
-            "MemberDescriptorType",
-            DiffDomain.__dict__["build_compatible_correction_bindings"],
-        ),
-    ),
-    (
-        "build_behavior_programs",
-        cast("MemberDescriptorType", DiffDomain.__dict__["build_behavior_programs"]),
-    ),
-    (
-        "build_behavior_probe_context",
-        cast(
-            "MemberDescriptorType",
-            DiffDomain.__dict__["build_behavior_probe_context"],
-        ),
-    ),
+    ("validate_source_provenance", _DOMAIN_PROVENANCE_SLOT),
+    ("validate_authoring_oracle", _DOMAIN_ORACLE_SLOT),
+    ("build_identity_tree", _DOMAIN_IDENTITY_SLOT),
+    ("map_compatible_file", _DOMAIN_MAPPING_SLOT),
+    ("build_compatible_correction_bindings", _DOMAIN_CORRECTIONS_SLOT),
+    ("build_behavior_programs", _DOMAIN_PROGRAMS_SLOT),
+    ("build_behavior_probe_context", _DOMAIN_CONTEXT_SLOT),
 )
 
 

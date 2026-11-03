@@ -1347,3 +1347,63 @@ def test_domain_validator_reads_original_hook_storage(
         with pytest.raises(DomainContractError, match="map_compatible_file"):
             domain_module.DiffDomain.__post_init__(valid)
     assert calls == 0, "late class getter hid the original hook"
+
+
+_DOMAIN_HOOK_NAMES = (
+    "validate_source_provenance",
+    "validate_authoring_oracle",
+    "build_identity_tree",
+    "map_compatible_file",
+    "build_compatible_correction_bindings",
+    "build_behavior_programs",
+    "build_behavior_probe_context",
+)
+
+
+@pytest.mark.parametrize("field", _DOMAIN_HOOK_NAMES)
+def test_domain_constructor_rejects_forged_hook_setter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A substituted class setter cannot launder a non-callable hook."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    original = load_diff_domain(module)
+    slot = domain_module.DiffDomain.__dict__[field]
+    original_hook = getattr(original, field)
+    calls = 0
+
+    def sanitize(self: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(self, original_hook)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(domain_module.DiffDomain, field, property(fset=sanitize))
+        with pytest.raises(DomainContractError, match=field):
+            _ = replace(original, **{field: object()})
+    assert calls == 0, "constructor consulted late hook setter"
+
+
+@pytest.mark.parametrize("field", _DOMAIN_HOOK_NAMES)
+def test_domain_constructor_writes_original_hook_slots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Valid bundles must not invoke late field setters either."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    original = load_diff_domain(module)
+    hook = getattr(original, field)
+    calls = 0
+
+    def forbidden_setter(_self: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("constructor dispatched late hook setter")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            domain_module.DiffDomain, field, property(fset=forbidden_setter)
+        )
+        constructed = replace(original, **{field: hook})
+    assert type(constructed) is domain_module.DiffDomain
+    assert calls == 0, "valid constructor consulted late hook setter"
