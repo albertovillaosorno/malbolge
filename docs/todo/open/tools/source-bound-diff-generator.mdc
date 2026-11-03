@@ -964,6 +964,15 @@ format.
   checks clean. Existing unrelated test typing errors persist; Jig doctor is
   degraded and global Jig validation has no green verdict. Host/filesystem
   races and direct mutation of trusted state remain out of scope.
+- Discovered source-pin labels now receive portable canonical-path checks
+  (`c883eb6cc`). A POSIX literal-backslash file plus an empty parent could
+  previously match an unrelated slash-path revision pin. Nested reserved
+  names now reject, while native Windows separators remain normalized. The
+  original strict realpath directory classifier `stat.S_ISDIR` is also pinned
+  against late host substitution. Nine red-first cases, 177 postcommit
+  provenance and 3,386 integrated diff tests pass, plus scoped Ruff, strict
+  source typing, and diff checks. Existing unrelated test typing issues,
+  global Jig, and external filesystem races remain open.
 
 - Source-binding policies now verify original stored `AnchorPolicy`
   dimensions, and bind/recover preflight rejects incomplete native binding,

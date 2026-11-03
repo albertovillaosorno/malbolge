@@ -464,6 +464,21 @@ These checks cannot make filesystem snapshots atomic, isolate external writers,
 or prevent direct mutations of trusted module state. Jig doctor remained
 degraded (cached graph absent), and the repository-wide check was not green.
 
+A follow-up source-pin identity audit (`c883eb6cc`) identified a distinct
+lexical alias on POSIX: a literal `subdir\file.c` entry and an otherwise
+empty `subdir/` could previously certify the same path digest and revision
+pin as a genuine `subdir/file.c` from another tree. Discovered file and
+directory labels now undergo the same portable canonical-path admission as
+pinned roots. Host-native Windows separators are normalized only on Windows;
+literal POSIX backslashes, reserved device names, alternate streams, and
+trailing-dot entries reject before any snapshot can be certified. The same
+change pins `stat.S_ISDIR`, which original strict `os.path.realpath` also calls,
+against late false-directory and false-denial substitutions. Nine red-first
+cases cover both surfaces; all 177 postcommit provenance and 3,386
+integrated diff tests pass, as do scoped Ruff, strict source BasedPyright,
+and diff checks. Existing test-file typing errors, external
+filesystem races, and the incomplete global Jig gate remain limitations.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from
