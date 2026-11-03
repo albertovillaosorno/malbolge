@@ -55,6 +55,14 @@ _OURS = b"ours"
 _FOREIGN = b"foreign"
 
 
+def _simulate_host(
+    monkeypatch: pytest.MonkeyPatch, *, os_name: str, platform: str
+) -> None:
+    """Inject an internal test host without changing public runtime policy."""
+    monkeypatch.setattr(publication, "_HOST_OS_NAME", os_name)
+    monkeypatch.setattr(publication, "_HOST_PLATFORM", platform)
+
+
 class _ForeignPath(type(Path())):
     """A path subclass cannot supply independent filesystem evidence."""
 
@@ -109,11 +117,38 @@ def test_publication_rejects_native_status_spoofed_after_import(
 
     with monkeypatch.context() as patched:
         patched.setattr(Path, "lstat", forged_lstat)
-        with pytest.raises(
-            OSError, match="staging must be an existing directory"
-        ):
+        with pytest.raises(OSError, match="staging must be"):
             publication.publish_directory_no_replace(staging, destination)
     assert status_calls == 0
+    assert staging.read_bytes() == _OURS
+    assert not destination.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux directory publication",
+)
+def test_publication_ignores_post_import_directory_classifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mutated status classifier cannot authorize publication of a file."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    _ = staging.write_bytes(_OURS)
+    calls = 0
+
+    def forged_is_dir(mode: int) -> bool:
+        nonlocal calls
+        _ = mode
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(stat, "S_ISDIR", forged_is_dir)
+        with pytest.raises(OSError, match="staging must be") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.ENOTDIR
+    assert calls == 0
     assert staging.read_bytes() == _OURS
     assert not destination.exists()
 
@@ -239,6 +274,7 @@ def test_windows_route_uses_path_rename(
         SimpleNamespace(name=_WINDOWS_OS_NAME, fsencode=os.fsencode),
     )
     monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+    _simulate_host(monkeypatch, os_name="nt", platform="win32")
     publication.publish_directory_no_replace(
         staging, destination, os_name=_WINDOWS_OS_NAME, platform="win32"
     )
@@ -269,6 +305,8 @@ def test_windows_publication_ignores_post_import_rename_redirection(
             publication, "os", SimpleNamespace(name="nt", fsencode=os.fsencode)
         )
         patched.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+        patched.setattr(publication, "_HOST_OS_NAME", "nt")
+        patched.setattr(publication, "_HOST_PLATFORM", "win32")
         publication.publish_directory_no_replace(
             staging, destination, os_name="nt", platform="win32"
         )
@@ -300,6 +338,7 @@ def test_windows_publication_wraps_unexpected_rename_failure(
         SimpleNamespace(name="nt", fsencode=os.fsencode),
     )
     monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+    _simulate_host(monkeypatch, os_name="nt", platform="win32")
     with pytest.raises(OSError, match="Windows directory rename failed") as caught:
         publication.publish_directory_no_replace(
             staging, destination, os_name="nt", platform="win32"
@@ -329,6 +368,7 @@ def test_windows_publication_preserves_native_collision_error(
         SimpleNamespace(name="nt", fsencode=os.fsencode),
     )
     monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+    _simulate_host(monkeypatch, os_name="nt", platform="win32")
     with pytest.raises(FileExistsError) as caught:
         publication.publish_directory_no_replace(
             staging, destination, os_name="nt", platform="win32"
@@ -422,6 +462,7 @@ def test_unsupported_host_fails_closed(
         publication, "os", SimpleNamespace(name="posix", fsencode=os.fsencode)
     )
     monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="unsupported"))
+    _simulate_host(monkeypatch, os_name="posix", platform="unsupported")
     with pytest.raises(OSError, match="unsupported") as caught:
         publication.publish_directory_no_replace(
             staging,
@@ -457,6 +498,35 @@ def test_publication_cannot_force_unsafe_foreign_host_rename(
     assert (staging / "ours.txt").read_bytes() == _OURS
     assert destination.is_dir()
     assert not (destination / "ours.txt").exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires POSIX overwrite behavior when the host is forged",
+)
+def test_publication_rejects_post_import_host_selector_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fake Windows host cannot bypass Linux no-replace publication."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            publication, "os", SimpleNamespace(name="nt", fsencode=os.fsencode)
+        )
+        patched.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+        with pytest.raises(OSError, match="host selectors") as rejected:
+            publication.publish_directory_no_replace(
+                staging, destination, os_name="nt", platform="win32"
+            )
+    assert rejected.value.errno == errno.EINVAL
+    assert (staging / "payload").read_bytes() == _OURS
+    assert destination.is_dir()
+    assert not (destination / "payload").exists()
 
 
 def test_host_collision_preserves_both_directories(tmp_path: Path) -> None:
@@ -603,7 +673,9 @@ def test_publication_rejects_foreign_destination_attestation(
         return native
 
     monkeypatch.setattr(
-        publication, "_NATIVE_PATH_LSTAT", forged_destination_stat
+        publication,
+        "_NATIVE_PATH_LSTAT",
+        forged_destination_stat,
     )
     with pytest.raises(OSError, match=r"publication.*not completed") as rejected:
         publication.publish_directory_no_replace(staging, destination)
@@ -811,6 +883,7 @@ def test_publication_rejects_foreign_success_without_rename(
             SimpleNamespace(name="nt", fsencode=os.fsencode),
         )
         monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+        _simulate_host(monkeypatch, os_name="nt", platform="win32")
         os_name, host_platform = "nt", "win32"
 
     with pytest.raises(OSError, match="publication.*not completed"):

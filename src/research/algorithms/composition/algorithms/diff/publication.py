@@ -45,10 +45,13 @@ from typing import Final, Protocol, cast
 
 _WINDOWS_OS_NAME: Final = "nt"
 _LINUX_PLATFORM: Final = "linux"
+_HOST_OS_NAME: Final = os.name
+_HOST_PLATFORM: Final = sys.platform
 _AT_FDCWD: Final = -100
 _RENAME_NOREPLACE: Final = 1
 _NUL: Final = "\x00"
 _NATIVE_STAT_RESULT: Final = os.stat_result
+_NATIVE_IS_DIR: Final = stat.S_ISDIR
 # Keep syscall path encoding outside mutable process-global os path hooks.
 _NATIVE_PATH_STRING: Final = Path.__str__
 _NATIVE_PATH_LSTAT: Final = Path.lstat
@@ -178,7 +181,7 @@ def _require_staging_directory(staging: Path) -> tuple[int, int]:
             "staging directory requires native filesystem status",
             staging,
         )
-    if not stat.S_ISDIR(receipt.st_mode):
+    if not _NATIVE_IS_DIR(receipt.st_mode):
         raise OSError(
             errno.ENOTDIR,
             "staging must be an existing directory, not a file or symlink",
@@ -188,7 +191,7 @@ def _require_staging_directory(staging: Path) -> tuple[int, int]:
 
 
 def _require_host_match(os_name: str, platform: str, destination: Path) -> None:
-    if os_name != os.name or platform != sys.platform:
+    if os_name != _HOST_OS_NAME or platform != _HOST_PLATFORM:
         raise OSError(
             errno.EINVAL,
             "directory publication host selectors must match the running host",
@@ -250,7 +253,7 @@ def _require_completed_publication(
         raise OSError(errno.EIO, message, destination) from error
     if (
         type(result) is not _NATIVE_STAT_RESULT
-        or not stat.S_ISDIR(result.st_mode)
+        or not _NATIVE_IS_DIR(result.st_mode)
         or (result.st_dev, result.st_ino) != identity
     ):
         raise OSError(errno.EIO, message, destination)
