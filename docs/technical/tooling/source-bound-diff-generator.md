@@ -2998,9 +2998,9 @@ were clean. This DCO was pushed SHA-exact to `main`.
 
 These guards do not isolate concurrent external filesystem writers or
 direct trusted-instance state mutation. The repository graph remains absent
-under `jig doctor`. A fresh bounded 100-second `jig check --root .`
-reached native-validator scheduling but timed out (exit 124); no green
-repository-wide Jig verdict is claimed.
+under `jig doctor`. Fresh bounded global `jig check` (100 seconds) and
+`jig validate` (60 seconds) both reached native-validator scheduling, then
+timed out (exit 124). No green repository-wide Jig verdict is claimed.
 
 ## Verification
 

@@ -1723,9 +1723,9 @@ format.
   foreign-byte, and non-boolean policy routes passed. All 23 postcommit
   focused tests and 4,062 integrated diff tests passed; scoped Ruff,
   formatting, strict source/test typing, and diff checks were clean.
-  The DCO was pushed SHA-exact. A bounded 100-second global
-  `jig check --root .` reached native scheduling, then timed out (exit 124)
-  without a repository-wide verdict. Full Jig acceptance remains open.
+  The DCO was pushed SHA-exact. Bounded global `jig check` (100 seconds)
+  and `jig validate` (60 seconds) both reached native scheduling but timed
+  out (exit 124) without a verdict. Full Jig acceptance remains open.
 
 ## Acceptance
 
