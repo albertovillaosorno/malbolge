@@ -328,6 +328,16 @@ all 120 focused domain tests pass postcommit; scoped Ruff, strict source/test
 BasedPyright and diff checks are clean. Later shared validation passed 3,616
 diff tests.
 
+The native domain-module resolver also rejects late replacements of
+`stat.S_ISLNK`, `stat.S_ISDIR`, `builtins.bytes`, `builtins.isinstance`, and
+`builtins.len` (`dadb8e0f4`). The captured `realpath` implementation still
+looks up these mutable helpers. A fresh guard at resolution and the public
+import boundary prevents their substituted callbacks from participating in
+module selection. Five parameterized/alias cases and all 125 postcommit
+domain tests pass, with scoped Ruff, strict source/test BasedPyright, and
+diff checks clean. Host mutation and filesystem races remain outside this
+process-level guarantee.
+
 This hook guard is not an atomic external path snapshot.
 
 The guard does not sandbox authorized consumer code, prevent direct trusted

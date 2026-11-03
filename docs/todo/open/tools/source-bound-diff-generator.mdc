@@ -210,6 +210,12 @@ format.
   source-swap regressions and 120 postcommit domain tests pass, with Ruff,
   strict source/test BasedPyright, and diff checks clean. The later shared diff
   run passed 3,616 tests. External path races remain out of scope.
+- Domain-module realpath dependencies now also check native
+  `stat.S_ISLNK`, `stat.S_ISDIR`, `builtins.bytes`, `builtins.isinstance`,
+  and `builtins.len` (`dadb8e0f4`) at module admission and resolution.
+  Five late-hook/alias regressions and 125 postcommit domain tests pass;
+  strict source/test typing, Ruff, and diff checks are clean. Concurrent
+  host mutation and external filesystem writers remain out of scope.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode
