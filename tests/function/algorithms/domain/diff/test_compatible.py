@@ -3522,3 +3522,146 @@ def test_compatible_authoring_cannot_forge_tree_equality(
                 )
             )
     assert mutated, "authoring fixture did not change a source file"
+
+
+@pytest.mark.parametrize(
+    ("kind", "field", "invalid"),
+    [
+        ("correction", "output_path", "../unsafe"),
+        ("instruction", "output_path", "../unsafe"),
+        ("build", "preserve_candidate_only", 1),
+        ("plan", "instructions", ()),
+        ("materialize", "postcondition", object()),
+    ],
+)
+def test_compatible_constructor_rejects_repairing_property_setter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    field: str,
+    invalid: object,
+) -> None:
+    """A replaced field setter must not sanitize invalid plan envelopes."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    records = {
+        "correction": CompatibleCorrectionBinding("code.src", 0, "fix"),
+        "instruction": CompatibleInstruction(
+            output_path="created.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        ),
+        "build": build,
+        "plan": plan,
+        "materialize": _request(candidate, plan, tmp_path / "output"),
+    }
+    baseline = records[kind]
+    owner = type(baseline)
+    slot = owner.__dict__[field]
+    repaired = getattr(baseline, field)
+    calls = 0
+
+    def original_getter(value: object) -> object:
+        return slot.__get__(value, owner)
+
+    def repairing_setter(value: object, _ignored: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(value, repaired)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(original_getter, repairing_setter))
+        with pytest.raises(CompatiblePlanError):
+            _ = replace(baseline, **{field: invalid})
+    assert calls == 0, f"forged {kind}.{field} setter reached validation"
+
+
+@pytest.mark.parametrize(
+    ("kind", "field"),
+    [
+        ("correction", "output_path"),
+        ("correction", "edit_index"),
+        ("correction", "correction_id"),
+        ("instruction", "output_path"),
+        ("instruction", "kind"),
+        ("instruction", "source_path"),
+        ("instruction", "source_sha256"),
+        ("instruction", "semantic"),
+        ("instruction", "exact"),
+        ("instruction", "literal"),
+        ("instruction", "correction_ids"),
+        ("build", "source_root"),
+        ("build", "oracle_root"),
+        ("build", "reference_identity"),
+        ("build", "admission_policy"),
+        ("build", "mapper"),
+        ("build", "preserve_candidate_only"),
+        ("plan", "source"),
+        ("plan", "target"),
+        ("plan", "reference_identity"),
+        ("plan", "admission_policy"),
+        ("plan", "instructions"),
+        ("plan", "preserve_candidate_only"),
+        ("materialize", "candidate_root"),
+        ("materialize", "candidate_identity"),
+        ("materialize", "behavior"),
+        ("materialize", "plan"),
+        ("materialize", "mapper"),
+        ("materialize", "output_root"),
+        ("materialize", "postcondition"),
+    ],
+)
+def test_compatible_valid_constructor_uses_original_field_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    field: str,
+) -> None:
+    """Every admitted compatible field bypasses a late property setter."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    records = {
+        "correction": CompatibleCorrectionBinding("code.src", 0, "fix"),
+        "instruction": CompatibleInstruction(
+            output_path="created.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        ),
+        "build": build,
+        "plan": plan,
+        "materialize": _request(candidate, plan, tmp_path / "output"),
+    }
+    baseline = records[kind]
+    owner = type(baseline)
+    slot = owner.__dict__[field]
+    calls = 0
+
+    def original_getter(value: object) -> object:
+        return slot.__get__(value, owner)
+
+    def forbidden_setter(_value: object, _ignored: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("foreign compatible field setter executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(original_getter, forbidden_setter))
+        observed = replace(baseline)
+    assert observed == baseline
+    assert calls == 0, f"valid {kind}.{field} dispatched forged setter"

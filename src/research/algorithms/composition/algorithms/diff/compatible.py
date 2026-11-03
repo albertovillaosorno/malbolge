@@ -105,7 +105,6 @@ _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_ZIP = builtins.zip
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -161,9 +160,9 @@ class CompatibleCorrectionBinding:
         self, output_path: str, edit_index: int, correction_id: str
     ) -> None:
         """Validate correction routing with the captured original guard."""
-        _NATIVE_OBJECT_SETATTR(self, "output_path", output_path)
-        _NATIVE_OBJECT_SETATTR(self, "edit_index", edit_index)
-        _NATIVE_OBJECT_SETATTR(self, "correction_id", correction_id)
+        _CORRECTION_PATH_SLOT.__set__(self, output_path)
+        _CORRECTION_INDEX_SLOT.__set__(self, edit_index)
+        _CORRECTION_ID_SLOT.__set__(self, correction_id)
         _CORRECTION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -247,7 +246,7 @@ class CompatibleInstruction:
             ("literal", literal),
             ("correction_ids", correction_ids),
         ):
-            _NATIVE_OBJECT_SETATTR(self, name, value)
+            _COMPATIBLE_RECORD_SLOT_MAP[type(self)][name].__set__(self, value)
         _INSTRUCTION_VALIDATOR(
             cast(
                 "CompatibleInstruction",
@@ -289,7 +288,7 @@ class CompatibleBuildRequest:
             ("mapper", mapper),
             ("preserve_candidate_only", preserve_candidate_only),
         ):
-            _NATIVE_OBJECT_SETATTR(self, name, value)
+            _COMPATIBLE_RECORD_SLOT_MAP[type(self)][name].__set__(self, value)
         _BUILD_REQUEST_VALIDATOR(
             cast(
                 "CompatibleBuildRequest",
@@ -331,7 +330,7 @@ class CompatibleAuthoringPlan:
             ("instructions", instructions),
             ("preserve_candidate_only", preserve_candidate_only),
         ):
-            _NATIVE_OBJECT_SETATTR(self, name, value)
+            _COMPATIBLE_RECORD_SLOT_MAP[type(self)][name].__set__(self, value)
         _AUTHORING_PLAN_VALIDATOR(
             cast(
                 "CompatibleAuthoringPlan",
@@ -376,7 +375,7 @@ class CompatibleMaterializeRequest:
             ("output_root", output_root),
             ("postcondition", postcondition),
         ):
-            _NATIVE_OBJECT_SETATTR(self, name, value)
+            _COMPATIBLE_RECORD_SLOT_MAP[type(self)][name].__set__(self, value)
         _MATERIALIZE_REQUEST_VALIDATOR(
             cast(
                 "CompatibleMaterializeRequest",
@@ -424,6 +423,15 @@ _COMPATIBLE_RECORD_SLOTS = {
         CompatibleAuthoringPlan,
         CompatibleMaterializeRequest,
     )
+}
+
+
+# Original slot writers avoid property-setter dispatch when consumers modify
+# a record class before construction. The tuple readers above remain pinned
+# for validation and later public provenance checks.
+_COMPATIBLE_RECORD_SLOT_MAP = {
+    record_type: dict(fields)
+    for record_type, fields in _COMPATIBLE_RECORD_SLOTS.items()
 }
 
 
