@@ -89,6 +89,11 @@ _NATIVE_STR = builtins.str
 _NATIVE_BOOL = builtins.bool
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_UNICODE_ERROR = builtins.UnicodeError
+_NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_PATH_RAW_SLOT = cast(
@@ -331,7 +336,7 @@ def _require_native_recipe_snapshot_hooks() -> None:
         for name, original in _NATIVE_RECIPE_SNAPSHOT_HOOKS
     ):
         message = "recipe snapshot hooks changed after validation"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _snapshot_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
@@ -382,14 +387,14 @@ def _validate_fraction(name: str, value: object) -> None:
         # integers before float conversion, which can raise OverflowError.
         if value not in {0, 1}:
             message = f"{name} must be a finite fraction in [0, 1]"
-            raise ValueError(message)
+            raise _NATIVE_VALUE_ERROR(message)
         return
     if _NATIVE_TYPE(value) is not _NATIVE_FLOAT:
         message = f"{name} must be a finite numeric fraction in [0, 1]"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     if not _NATIVE_ISFINITE(value) or value < 0.0 or value > 1.0:
         message = f"{name} must be a finite fraction in [0, 1], got {value}"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _validate_binding_count(
@@ -397,18 +402,18 @@ def _validate_binding_count(
 ) -> int:
     if _NATIVE_TYPE(value) is not _NATIVE_INT:
         message = f"{name} must use the exact integer type"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     if value < 1 or (maximum is not None and value > maximum):
         limit = "positive" if maximum is None else f"in [1, {maximum}]"
         message = f"{name} must be {limit}"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     return value
 
 
 def _validate_binding_policy(recipe: _RecipeLike) -> None:
     if recipe.source_binding_threshold <= 0.0:
         message = "source_binding_threshold must be greater than zero"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     maximum = _validate_binding_count(
         "source_binding_maximum_anchors",
         recipe.source_binding_maximum_anchors,
@@ -424,7 +429,7 @@ def _validate_binding_policy(recipe: _RecipeLike) -> None:
             "source_binding_minimum_files cannot exceed "
             "source_binding_maximum_anchors"
         )
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _validate_path(value: object, name: str) -> None:
@@ -432,7 +437,7 @@ def _validate_path(value: object, name: str) -> None:
     # either override can redirect authoring reads and output publication.
     if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{name} must use exact pathlib Path"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     # Python 3.14 Path may format its stored raw strings lazily through
     # os.fspath. Check the native raw components directly: a later module
     # hook cannot turn an unsafe path into benign preflight evidence.
@@ -441,21 +446,21 @@ def _validate_path(value: object, name: str) -> None:
     )
     if _NATIVE_TYPE(components) is not _NATIVE_LIST:
         message = f"{name} must use a native path component list"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     for component in components:
         if _NATIVE_TYPE(component) is not _NATIVE_STR:
             message = f"{name} must use native string path components"
-            raise TypeError(message)
+            raise _NATIVE_TYPE_ERROR(message)
         if _NUL in component:
             message = f"{name} must be a usable path without NUL"
-            raise ValueError(message)
+            raise _NATIVE_VALUE_ERROR(message)
         try:
             _ = component.encode(
                 _FILESYSTEM_ENCODING, errors=_FILESYSTEM_ERRORS
             )
-        except UnicodeError as error:
+        except _NATIVE_UNICODE_ERROR as error:
             message = f"{name} must be a usable path on this host"
-            raise ValueError(message) from error
+            raise _NATIVE_VALUE_ERROR(message) from error
 
 
 def _require_native_host_realpath(name: str) -> None:
@@ -467,7 +472,7 @@ def _require_native_host_realpath(name: str) -> None:
     """
     if os.path.realpath is not _NATIVE_REALPATH:
         message = f"{name} could not be resolved safely: host realpath changed"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     # Path.resolve calls realpath with a Path value. The original resolver
     # still delegates to these mutable conversion hooks before containment.
     if (
@@ -506,20 +511,20 @@ def _require_native_host_realpath(name: str) -> None:
         or builtins.type is not _NATIVE_TYPE
     ):
         message = f"{name} could not be resolved safely: host path hooks changed"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _resolve_recipe_path(path: Path, name: str) -> Path:
     _require_native_host_realpath(name)
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"{name} could not be resolved safely"
-        raise ValueError(message) from error
+        raise _NATIVE_VALUE_ERROR(message) from error
     _require_native_host_realpath(name)
     if _NATIVE_TYPE(resolved) is not _NATIVE_TYPE(path):
         message = f"{name} could not be resolved safely"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     return resolved
 
 
@@ -543,12 +548,12 @@ def _validate_output_location(recipe: _RecipeLike) -> None:
     ):
         if _native_path_contained(output, _resolve_recipe_path(root, name)):
             message = f"output_algorithm must be outside {name}"
-            raise ValueError(message)
+            raise _NATIVE_VALUE_ERROR(message)
     if recipe.domain_module is not None and _NATIVE_PATH_EQ(
         output, _resolve_recipe_path(recipe.domain_module, "domain_module")
     ):
         message = "output_algorithm must not overwrite domain_module"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _validate_recipe_paths(recipe: _RecipeLike) -> None:
@@ -566,25 +571,25 @@ def _validate_recipe_paths(recipe: _RecipeLike) -> None:
 def _validate_profile_text(value: object) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_STR:
         message = "profile must use the exact string type"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     if not value:
         message = "profile must be non-empty"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     try:
         _ = value.encode("utf-8")
-    except UnicodeEncodeError as error:
+    except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = "profile must be portable UTF-8 text"
-        raise ValueError(message) from error
+        raise _NATIVE_VALUE_ERROR(message) from error
     if _NUL in value:
         message = "profile must be portable UTF-8 text without NUL"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _validate_recipe_identity(recipe: _RecipeLike) -> None:
     _validate_profile_text(recipe.profile)
     if _NATIVE_TYPE(recipe.mode) is not TransformMode:
         message = "mode must use the exact TransformMode type"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
 
 
 def _canonical_passthrough_component(component: str) -> bool:
@@ -599,7 +604,7 @@ def _canonical_passthrough_root(root: str) -> bool:
     # Admit path labels lexically without executing those dependencies.
     try:
         _ = root.encode("utf-8")
-    except UnicodeEncodeError:
+    except _NATIVE_UNICODE_ENCODE_ERROR:
         return False
     return _NATIVE_ALL(
         _canonical_passthrough_component(part) for part in root.split("/")
@@ -609,30 +614,30 @@ def _canonical_passthrough_root(root: str) -> bool:
 def _validate_passthrough_topology(roots: tuple[str, ...]) -> None:
     if roots != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(roots))):
         message = "passthrough_roots must be canonical, sorted and disjoint"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     for index, root in _NATIVE_ENUMERATE(roots):
         if _NATIVE_ANY(
             other.startswith(root + "/") for other in roots[index + 1 :]
         ):
             message = "passthrough_roots must be canonical, sorted and disjoint"
-            raise ValueError(message)
+            raise _NATIVE_VALUE_ERROR(message)
 
 
 def _validate_passthrough_roots(value: object) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "passthrough_roots must use the exact immutable tuple type"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(_NATIVE_TYPE(root) is not _NATIVE_STR for root in items):
         message = "passthrough_roots entries must use the exact string type"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     roots = cast("tuple[str, ...]", value)
     if _NATIVE_ANY(not root for root in roots):
         message = "passthrough_roots entries must be non-empty"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     if _NATIVE_ANY(not _canonical_passthrough_root(root) for root in roots):
         message = "passthrough_roots must be canonical, sorted and disjoint"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     _validate_passthrough_topology(roots)
 
 
@@ -646,14 +651,14 @@ def _validate_identity_flags(recipe: _RecipeLike) -> None:
     ):
         if _NATIVE_TYPE(value) is not _NATIVE_BOOL:
             message = f"{name} must be an exact boolean"
-            raise TypeError(message)
+            raise _NATIVE_TYPE_ERROR(message)
 
 
 def _validate_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
     _require_native_recipe_snapshot_hooks()
     if _NATIVE_TYPE(recipe) is not DiffRecipe:
         message = "diff recipe must use the exact DiffRecipe type"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     snapshot = _snapshot_recipe(recipe)
     _validate_recipe_paths(snapshot)
     _validate_recipe_identity(snapshot)

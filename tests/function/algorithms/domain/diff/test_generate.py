@@ -3230,3 +3230,135 @@ def test_generator_identity_replay_ignores_late_plan_field_getter(
         write_algorithm(recipe)
     assert getter_calls == 0, "late plan getter gained source authority"
     assert emitted == ["admitted"], "valid stored plan did not reach emission"
+
+
+# Scope the private validation entrypoints as precisely typed test boundaries.
+_NATIVE_RECIPE_RESOLVE = cast(
+    "Callable[[Path, str], Path]", vars(generate_module)["_resolve_recipe_path"]
+)
+_NATIVE_RECIPE_VALIDATE_PATH = cast(
+    "Callable[[object, str], None]", vars(generate_module)["_validate_path"]
+)
+_NATIVE_RECIPE_VALIDATE_PROFILE = cast(
+    "Callable[[object], None]", vars(generate_module)["_validate_profile_text"]
+)
+_NATIVE_RECIPE_PASSTHROUGH_ROOT = cast(
+    "Callable[[str], bool]", vars(generate_module)["_canonical_passthrough_root"]
+)
+_NATIVE_RECIPE_VALIDATE_FRACTION = cast(
+    "Callable[[str, object], None]", vars(generate_module)["_validate_fraction"]
+)
+
+
+@pytest.mark.parametrize(
+    ("error_name", "failure_type"),
+    [
+        ("OSError", PermissionError),
+        ("ValueError", ValueError),
+        ("RuntimeError", RuntimeError),
+    ],
+)
+def test_generator_resolution_retains_native_error_catch_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+    error_name: str,
+    failure_type: type[Exception],
+) -> None:
+    """Late exception aliases cannot bypass native path resolution wrapping."""
+    native_value_error = builtins.ValueError
+    native_alias = cast("type[Exception]", vars(builtins)[error_name])
+    failure = failure_type("native resolution denied")
+    caught: Exception | None = None
+
+    def blocked_resolve(_path: Path, *, strict: bool = False) -> Path:
+        del strict
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "_NATIVE_PATH_RESOLVE", blocked_resolve)
+        patched.setattr(builtins, error_name, LookupError)
+        try:
+            _ = _NATIVE_RECIPE_RESOLVE(Path("source"), "source_root")
+        except (failure_type, native_value_error, LookupError) as error:
+            caught = error
+        finally:
+            setattr(builtins, error_name, native_alias)
+    assert type(caught) is native_value_error
+    assert "could not be resolved safely" in str(caught)
+    assert caught.__cause__ is failure
+
+
+def test_generator_path_encoding_retains_native_unicode_error_catch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed UnicodeError alias cannot leak raw path encoding failures."""
+    native_unicode_error = builtins.UnicodeError
+    caught: Exception | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeError", LookupError)
+        try:
+            _NATIVE_RECIPE_VALIDATE_PATH(Path("bad\ud800path"), "source_root")
+        except (UnicodeEncodeError, ValueError, LookupError) as error:
+            caught = error
+        finally:
+            builtins.UnicodeError = native_unicode_error
+    assert type(caught) is ValueError
+    assert "source_root must be a usable path" in str(caught)
+    assert type(caught.__cause__) is UnicodeEncodeError
+
+
+@pytest.mark.parametrize("validator", ["profile", "passthrough"])
+def test_generator_utf8_rejection_retains_native_encode_error_catch(
+    monkeypatch: pytest.MonkeyPatch,
+    validator: str,
+) -> None:
+    """UTF-8 validation does not trust late UnicodeEncodeError aliases."""
+    native_encode_error = builtins.UnicodeEncodeError
+    caught: Exception | None = None
+    result: bool | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeEncodeError", LookupError)
+        try:
+            if validator == "profile":
+                _NATIVE_RECIPE_VALIDATE_PROFILE("bad\ud800profile")
+            else:
+                result = _NATIVE_RECIPE_PASSTHROUGH_ROOT("bad\ud800root")
+        except (native_encode_error, ValueError, LookupError) as error:
+            caught = error
+        finally:
+            builtins.UnicodeEncodeError = native_encode_error
+    if validator == "profile":
+        assert type(caught) is ValueError
+        assert "portable UTF-8 text" in str(caught)
+        assert type(caught.__cause__) is native_encode_error
+    else:
+        assert caught is None
+        assert result is False
+
+
+@pytest.mark.parametrize(
+    ("error_name", "invoke"),
+    [
+        ("ValueError", "fraction"),
+        ("TypeError", "path"),
+    ],
+)
+def test_generator_rejections_keep_native_exception_classes(
+    monkeypatch: pytest.MonkeyPatch,
+    error_name: str,
+    invoke: str,
+) -> None:
+    """Invalid recipe metadata raises its original typed validation error."""
+    native_alias = cast("type[Exception]", vars(builtins)[error_name])
+    caught: Exception | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, error_name, LookupError)
+        try:
+            if invoke == "fraction":
+                _NATIVE_RECIPE_VALIDATE_FRACTION("threshold", 3)
+            else:
+                _NATIVE_RECIPE_VALIDATE_PATH("foreign", "source_root")
+        except (native_alias, LookupError) as error:
+            caught = error
+        finally:
+            setattr(builtins, error_name, native_alias)
+    assert type(caught) is native_alias
