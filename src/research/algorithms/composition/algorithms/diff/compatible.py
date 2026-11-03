@@ -1371,7 +1371,7 @@ def _read_compatible_bytes(path: Path, context: str) -> bytes:
                 )
             except AttributeError:
                 notes = None
-            if _NATIVE_TYPE(notes) is list:
+            if _NATIVE_TYPE(notes) is _NATIVE_LIST:
                 for note in cast("list[object]", notes):
                     if _NATIVE_TYPE(note) is _NATIVE_STR:
                         BaseException.add_note(failure, note)

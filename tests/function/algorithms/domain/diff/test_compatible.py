@@ -2138,6 +2138,26 @@ def test_compatible_native_error_fields_ignore_late_class_getter(
     )
 
 
+@pytest.mark.parametrize("replacement", [tuple, dict])
+def test_compatible_read_preserves_notes_after_builtin_list_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: type[object]
+) -> None:
+    """A late builtin list alias must not discard native exact-reader notes."""
+    native_error = ExactTreeError("native read blocked")
+    BaseException.add_note(native_error, "trusted reader note")
+
+    def fail_read(path: Path, context: str) -> bytes:
+        del path, context
+        raise native_error
+
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "read_exact_regular_file", fail_read)
+        patched.setattr(builtins, "list", replacement)
+        with pytest.raises(CompatiblePlanError, match="read failed") as caught:
+            compatible_module._read_compatible_bytes(tmp_path / "missing", "source")
+    assert getattr(caught.value, "__notes__", []) == ["trusted reader note"]
+
+
 class _HostileExactCompatibleError(ExactTreeError):
     """Exact byte callbacks must not execute foreign diagnostic hooks."""
 
