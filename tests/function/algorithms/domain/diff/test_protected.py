@@ -2590,3 +2590,65 @@ with tempfile.TemporaryDirectory() as directory:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("route", "detail"),
+    [
+        ("segment", "invalid native segment"),
+        ("payload-slice", "incomplete native payload slice"),
+        ("metadata-child", "invalid or incomplete native evidence"),
+        ("metadata-aad", "incomplete native evidence"),
+        ("exact-plan", "invalid native exact evidence"),
+        ("identity", "invalid native identity evidence"),
+        ("envelope", "incomplete native envelope evidence"),
+    ],
+)
+def test_protected_native_receipts_reject_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str, detail: str
+) -> None:
+    """Protected receipts must reject missing native slots after alias swaps."""
+    native_attribute_error = builtins.AttributeError
+    rejected: ProtectedPlanError | None = None
+    snapshot = TreeSnapshot(())
+    exact = ExactAuthoringPlan(snapshot, snapshot, ())
+    identity = identity_tree({})
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if route == "segment":
+                _ = ProtectedInstruction(
+                    "out.bin", ProtectedInstructionKind.PATCH_SOURCE,
+                    "0" * 64, source_path="src.bin",
+                    segments=(object.__new__(SourceSlice),),
+                )
+            elif route == "payload-slice":
+                _ = ProtectedInstruction(
+                    "out.bin", ProtectedInstructionKind.PAYLOAD,
+                    "0" * 64, payload_slice=object.__new__(PayloadSlice),
+                )
+            elif route == "metadata-child":
+                _ = ProtectedMetadata(object.__new__(TreeSnapshot), snapshot, ())
+            elif route == "metadata-aad":
+                _ = protected_plan_aad(
+                    object.__new__(ProtectedMetadata), context=_CONTEXT
+                )
+            elif route == "exact-plan":
+                _ = protected_module._validate_protect_inputs(
+                    object.__new__(ExactAuthoringPlan), identity, _CONTEXT
+                )
+            elif route == "identity":
+                _ = protected_module._validate_protect_inputs(
+                    exact, object.__new__(IdentityTree), _CONTEXT
+                )
+            else:
+                _ = recover_exact_plan(
+                    object.__new__(ProtectedExactPlan), identity
+                )
+        except ProtectedPlanError as error:
+            rejected = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(rejected) is ProtectedPlanError, (route, rejected)
+    assert detail in str(rejected)

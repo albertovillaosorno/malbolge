@@ -119,6 +119,8 @@ _NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_BOOL = builtins.bool
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_BYTEARRAY = builtins.bytearray
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
 # The authoring key schedule must hash the admitted identity's original
 # storage, not mutable dataclass field getters installed after import.
 _IDENTITY_FILES_SLOT = cast("MemberDescriptorType", IdentityTree.__dict__["files"])
@@ -241,7 +243,7 @@ def _validate_protected_segments(value: object) -> None:
                 _SOURCE_SLICE_VALIDATOR(item)
             else:
                 _PAYLOAD_SLICE_VALIDATOR(cast("PayloadSlice", item))
-        except (AttributeError, TreeModelError) as error:
+        except (_NATIVE_ATTRIBUTE_ERROR, TreeModelError) as error:
             message = "protected instruction contains an invalid native segment"
             raise ProtectedPlanError(message) from error
 
@@ -389,7 +391,7 @@ class ProtectedInstruction:
                 raise ProtectedPlanError(message)
             try:
                 _PAYLOAD_SLICE_VALIDATOR(payload_slice)
-            except AttributeError as error:
+            except _NATIVE_ATTRIBUTE_ERROR as error:
                 message = "protected instruction contains an incomplete native payload slice"
                 raise ProtectedPlanError(message) from error
         _validate_protected_segments(segments)
@@ -560,7 +562,7 @@ class ProtectedMetadata:
                 _TREE_SNAPSHOT_VALIDATOR(snapshot)
             for instruction in instructions:
                 _PROTECTED_INSTRUCTION_VALIDATOR(instruction)
-        except (AttributeError, TreeModelError) as error:
+        except (_NATIVE_ATTRIBUTE_ERROR, TreeModelError) as error:
             message = "protected metadata contains invalid or incomplete native evidence"
             raise ProtectedPlanError(message) from error
         _require_unique_instruction_outputs(instructions)
@@ -1001,7 +1003,7 @@ def protected_plan_aad(
         raise ProtectedPlanError(message)
     try:
         _PROTECTED_METADATA_VALIDATOR(metadata)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "protected metadata has incomplete native evidence"
         raise ProtectedPlanError(message) from error
     if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
@@ -1144,7 +1146,7 @@ def _validate_protect_inputs(
         raise ProtectedPlanError(message)
     try:
         _EXACT_AUTHORING_PLAN_VALIDATOR(plan)
-    except (AttributeError, TreeModelError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, TreeModelError) as error:
         message = "protected authoring plan contains invalid native exact evidence"
         raise ProtectedPlanError(message) from error
     if _NATIVE_TYPE(reference_identity) is not IdentityTree:
@@ -1152,7 +1154,7 @@ def _validate_protect_inputs(
         raise ProtectedPlanError(message)
     try:
         _IDENTITY_TREE_VALIDATOR(reference_identity)
-    except (AdmissionPolicyError, AttributeError, TypeError) as error:
+    except (AdmissionPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = (
             "protected reference contains invalid native identity evidence"
         )
@@ -1290,7 +1292,7 @@ def _require_protected_exact_plan(value: object) -> ProtectedExactPlan:
         raise ProtectedPlanError(message)
     try:
         _PROTECTED_EXACT_PLAN_VALIDATOR(value)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "protected plan has incomplete native envelope evidence"
         raise ProtectedPlanError(message) from error
     return value
