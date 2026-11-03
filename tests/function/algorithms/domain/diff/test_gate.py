@@ -181,6 +181,60 @@ def test_gate_rejects_foreign_and_forged_evidence_records() -> None:
         )
 
 
+@pytest.mark.parametrize("family", ["source", "behavior"])
+@pytest.mark.parametrize("entry", ["combine", "require", "constructor"])
+def test_gate_rejects_uninitialized_exact_evidence(
+    family: str, entry: str
+) -> None:
+    """An exact receipt with only an empty reasons slot proves no admission."""
+    source = _source_evidence("reference")
+    behavior = _behavior_evidence()
+    owner = type(source) if family == "source" else type(behavior)
+    forged = object.__new__(owner)
+    slot = cast("MemberDescriptorType", owner.__dict__["reasons"])
+    slot.__set__(forged, ())
+    if family == "source":
+        source = cast("TreeAdmissionEvidence", forged)
+    else:
+        behavior = cast("BehaviorEvidence", forged)
+
+    with pytest.raises(AdmissionError, match="evidence"):
+        if entry == "combine":
+            _ = combine_admission(source, behavior)
+        elif entry == "require":
+            _ = require_transform_admission(source, behavior)
+        else:
+            _ = TransformAdmissionEvidence(source, behavior, ())
+
+
+@pytest.mark.parametrize("family", ["source", "behavior"])
+@pytest.mark.parametrize("hook", ["none", "validator", "reason_getter"])
+def test_gate_revalidates_forged_exact_evidence(
+    monkeypatch: pytest.MonkeyPatch, family: str, hook: str
+) -> None:
+    """Reason-slot forgery cannot hide rejected lineage or compatibility."""
+    source = _source_evidence("unrelated" if family == "source" else "reference")
+    behavior = _behavior_evidence(compatible=family != "behavior")
+    owner = type(source) if family == "source" else type(behavior)
+    victim = source if family == "source" else behavior
+    forged = object.__new__(owner)
+    for name in owner.__slots__:
+        slot = cast("MemberDescriptorType", owner.__dict__[name])
+        slot.__set__(forged, () if name == "reasons" else slot.__get__(victim, owner))
+    if family == "source":
+        source = cast("TreeAdmissionEvidence", forged)
+    else:
+        behavior = cast("BehaviorEvidence", forged)
+
+    with monkeypatch.context() as patched:
+        if hook == "validator":
+            patched.setattr(owner, "__post_init__", lambda _: None)
+        elif hook == "reason_getter":
+            patched.setattr(owner, "reasons", property(lambda _: ()))
+        with pytest.raises(AdmissionError, match="evidence"):
+            _ = require_transform_admission(source, behavior)
+
+
 def test_gate_rejects_failed_source_after_late_tuple_subclass_swap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

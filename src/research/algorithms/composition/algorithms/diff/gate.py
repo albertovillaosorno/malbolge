@@ -40,8 +40,12 @@ from dataclasses import dataclass
 from types import MemberDescriptorType
 from typing import cast
 
-from algorithms.diff.admission import AdmissionError, TreeAdmissionEvidence
-from algorithms.diff.behavior import BehaviorEvidence
+from algorithms.diff.admission import (
+    AdmissionError,
+    AdmissionPolicyError,
+    TreeAdmissionEvidence,
+)
+from algorithms.diff.behavior import BehaviorEvidence, BehaviorPolicyError
 
 # Conjunctive gate validation must not trust late global builtins hooks.
 _NATIVE_ANY = builtins.any
@@ -56,6 +60,16 @@ _SOURCE_REASONS_SLOT = cast(
 )
 _BEHAVIOR_REASONS_SLOT = cast(
     "MemberDescriptorType", BehaviorEvidence.__dict__["reasons"]
+)
+# Exact receipt classes are public and can be allocated without their
+# constructors. Re-run their original validators at the gate boundary.
+_SOURCE_VALIDATOR = cast(
+    "Callable[[TreeAdmissionEvidence], None]",
+    TreeAdmissionEvidence.__dict__["__post_init__"],
+)
+_BEHAVIOR_VALIDATOR = cast(
+    "Callable[[BehaviorEvidence], None]",
+    BehaviorEvidence.__dict__["__post_init__"],
 )
 
 
@@ -161,6 +175,11 @@ def _require_source_evidence(value: object) -> TreeAdmissionEvidence:
     if _NATIVE_TYPE(value) is not TreeAdmissionEvidence:
         message = "transform gate requires exact TreeAdmissionEvidence"
         raise AdmissionError(message)
+    try:
+        _SOURCE_VALIDATOR(value)
+    except (AdmissionPolicyError, AttributeError, TypeError) as error:
+        message = "transform gate source evidence is invalid"
+        raise AdmissionError(message) from error
     return value
 
 
@@ -168,6 +187,11 @@ def _require_behavior_evidence(value: object) -> BehaviorEvidence:
     if _NATIVE_TYPE(value) is not BehaviorEvidence:
         message = "transform gate requires exact BehaviorEvidence"
         raise AdmissionError(message)
+    try:
+        _BEHAVIOR_VALIDATOR(value)
+    except (BehaviorPolicyError, AttributeError, TypeError) as error:
+        message = "transform gate behavior evidence is invalid"
+        raise AdmissionError(message) from error
     return value
 
 
