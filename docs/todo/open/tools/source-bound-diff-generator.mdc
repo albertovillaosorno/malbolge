@@ -1694,6 +1694,17 @@ format.
   source/test typing errors remain outside changed lines. The DCO was
   pushed SHA-exact to `main`.
 
+
+- Protected-plan native evidence now catches original `TreeModelError`,
+  `AdmissionPolicyError`, and `SourceBindingError` classes (`326458f90`).
+  Five red-first segment/snapshot/authoring/identity/binding failure routes,
+  235 postcommit protected and 4,025 integrated tests passed. Scoped Ruff,
+  strict source/test BasedPyright, and diff checks were clean; DCO pushed.
+- Behavior delegated-validator catches now pin original policy failures
+  (`e9e1f64c4`): two red-first cases, 283 postcommit focused and 4,020
+  integrated tests passed. Scoped Ruff/diff passed, with 74 inherited
+  type findings outside changed lines. The DCO was pushed on `main`.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle

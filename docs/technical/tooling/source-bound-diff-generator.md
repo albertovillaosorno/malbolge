@@ -2945,6 +2945,21 @@ focused and 4,018 integrated diff tests passed. Scoped Ruff and diff checks
 were clean, with 74 older source/test strict typing errors outside changed
 lines. The DCO was pushed SHA-exact to `main`.
 
+
+Protected-plan native evidence validation now also pins imported
+`TreeModelError`, `AdmissionPolicyError`, and `SourceBindingError` classes
+(`326458f90`). Late module aliases previously leaked source segment,
+metadata snapshot, exact authoring, identity, or binding validator errors.
+Five red-first cases, 235 postcommit focused tests, and 4,025 integrated
+diff tests passed; Ruff, strict source/test BasedPyright, and diff checks
+were clean. The DCO was pushed SHA-exact to `main`.
+
+Behavior-program delegated validation similarly captures its original
+error identities (`e9e1f64c4`), with two red-first cases, 283 postcommit
+focused and 4,020 integrated passing tests. Ruff and diff checks were clean;
+74 inherited source/test typing findings remain outside changed lines.
+The DCO was pushed to `main`.
+
 This work does not isolate direct trusted-instance mutation or concurrent
 external filesystem writers. The repository's `jig doctor` still reports a
 degraded graph state, and a fresh 45-second bounded `jig check` timed out
