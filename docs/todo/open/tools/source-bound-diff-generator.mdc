@@ -75,6 +75,12 @@ format.
   run. Six model, four protected, and two provenance red-first rejection cases
   plus forty-four valid-field cases cover the boundaries. These changes cannot
   prevent direct stored-instance mutation or external concurrent writers.
+- Portable probe records now pin twenty-three native slot writes across seven
+  constructors, with seven red-first setter-bypass tests and twenty-three
+  valid-field cases. Five compatible correction and plan-envelope constructors
+  also pin thirty original slot writers, with five red-first rejection and
+  thirty valid-field cases. This blocks late class property setter laundering
+  at construction; it is not complete downstream getter or instance isolation.
 - The exact authoring planner/materializer reconstructs deterministic byte
   trees,
   reuses whole source files and source spans, and publishes only after full

@@ -215,6 +215,18 @@ forged setters from changing source revision commitments. All remain process
 class-hook guards, not protection from direct instance-storage mutation or
 external concurrent filesystem changes.
 
+The seven portable probe record constructors likewise write their twenty-three
+fields through captured native descriptors. Seven red-first malformed-input
+cases and twenty-three valid-field cases stop class property setters from
+rewriting path, executable, timeout, output-limit, or transcript metadata before
+the existing constructor guards. The five compatible correction, instruction,
+build, authoring-plan, and materialization request records similarly pin thirty
+field writes: five red-first and thirty valid-field regressions cover unsafe
+paths, plan shape, and publication requests. Compatible envelopes continue to
+validate through their existing captured slot-reading views. These setter
+fixes do not claim to shield all later consumer getters, direct record mutation,
+or concurrent filesystem writers.
+
 Pinned-source snapshots also require native `os.stat_result` receipts for the
 source root, selected paths and parent components, and file-identity rechecks.
 Foreign mode and inode records cannot certify pinned provenance. Filesystem
