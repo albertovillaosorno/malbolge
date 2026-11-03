@@ -61,6 +61,8 @@ from algorithms.diff.source_binding import SourceBindingPolicy
 
 # Source replay identity must not trust a mutable process-global hash hook.
 _SHA256_FACTORY = hashlib.sha256
+# Recipe admission must not trust a late-replaced host finite checker.
+_NATIVE_ISFINITE = math.isfinite
 # Domain callbacks cannot redefine the host path containment verdict.
 _NATIVE_IS_RELATIVE_TO = Path.is_relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
@@ -119,7 +121,7 @@ def _validate_fraction(name: str, value: object) -> None:
     if type(value) is not float:
         message = f"{name} must be a finite numeric fraction in [0, 1]"
         raise TypeError(message)
-    if not math.isfinite(value) or value < 0.0 or value > 1.0:
+    if not _NATIVE_ISFINITE(value) or value < 0.0 or value > 1.0:
         message = f"{name} must be a finite fraction in [0, 1], got {value}"
         raise ValueError(message)
 

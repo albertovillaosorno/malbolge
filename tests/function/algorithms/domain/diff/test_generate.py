@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import math
 import ntpath
 import os
 from pathlib import Path
@@ -196,6 +197,44 @@ def test_generator_rejects_huge_integer_fractions_before_output(
                 not recipe.output_algorithm.exists(),
                 "unrepresentable fraction wrote a generated transform",
             )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [(float("nan"), True, False), (0.5, False, True)],
+)
+def test_generator_fraction_policy_resists_post_import_math_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[float, bool, bool],
+) -> None:
+    """A late finite-check swap cannot admit NaN or reject valid policy."""
+    fraction, forged_finite, admitted = case
+    recipe = replace(
+        _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE),
+        minimum_source_similarity=fraction,
+    )
+    reached_writer: list[bool] = []
+
+    def record_writer(_: DiffRecipe) -> None:
+        reached_writer.append(True)
+
+    def forged_isfinite(_: float) -> bool:
+        return forged_finite
+
+    with monkeypatch.context() as patch:
+        patch.setattr(math, "isfinite", forged_isfinite)
+        patch.setattr(generate_module, "_write_exact_algorithm", record_writer)
+        if not admitted:
+            with pytest.raises(ValueError, match="minimum_source_similarity"):
+                write_algorithm(recipe)
+        else:
+            write_algorithm(recipe)
+
+    _expect(
+        reached_writer == ([True] if admitted else []),
+        "hostile finite checker changed recipe admission or side effects",
+    )
 
 
 def test_generator_rejects_invalid_fraction_before_output(
