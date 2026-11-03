@@ -257,6 +257,25 @@ def _require_probe_tuple(
     if _NATIVE_ANY(_NATIVE_TYPE(item) is not item_type for item in items):
         message = f"{context} contains a foreign probe record"
         raise BehaviorPolicyError(message)
+    # Exact native type does not imply the child constructor ran. Nested
+    # records control the source-bound behavior decision, so validate their
+    # stored fields using their original, captured constructors' guards.
+    validator = cast(
+        "Callable[[object], None]",
+        _IDENTITY_PROBE_VALIDATOR
+        if item_type is IdentityProbe
+        else (
+            _COMPATIBILITY_PROBE_VALIDATOR
+            if item_type is CompatibilityProbe
+            else _BUG_PROBE_VALIDATOR
+        ),
+    )
+    try:
+        for item in items:
+            validator(item)
+    except (AttributeError, TypeError) as error:
+        message = f"{context} contains incomplete native probe metadata"
+        raise BehaviorPolicyError(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -573,6 +592,22 @@ def _require_observation_tuple(
     if _NATIVE_ANY(_NATIVE_TYPE(item) is not item_type for item in items):
         message = f"{context} contains a foreign observation record"
         raise BehaviorPolicyError(message)
+    validator = cast(
+        "Callable[[object], None]",
+        _IDENTITY_OBSERVATION_VALIDATOR
+        if item_type is IdentityObservation
+        else (
+            _COMPATIBILITY_OBSERVATION_VALIDATOR
+            if item_type is CompatibilityObservation
+            else _BUG_OBSERVATION_VALIDATOR
+        ),
+    )
+    try:
+        for item in items:
+            validator(item)
+    except (AttributeError, TypeError) as error:
+        message = f"{context} contains incomplete native observation metadata"
+        raise BehaviorPolicyError(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -774,6 +809,13 @@ class BehaviorEvidence:
             True exactly when no deterministic rejection reason exists.
 
         """
+        # Exact native receipts can be allocated without this constructor.
+        # Re-check the original binding before exposing a public verdict.
+        try:
+            _BEHAVIOR_EVIDENCE_VALIDATOR(self)
+        except (AttributeError, TypeError) as error:
+            message = "behavior evidence has incomplete native metadata"
+            raise BehaviorPolicyError(message) from error
         return not _BEHAVIOR_REASONS_SLOT.__get__(self, BehaviorEvidence)
 
 
@@ -1050,6 +1092,14 @@ def _require_behavior_evidence_sources(
     if _NATIVE_TYPE(observations) is not BehaviorObservations:
         message = "behavior evidence requires exact BehaviorObservations"
         raise BehaviorPolicyError(message)
+    # Revalidate original, nested records even when a caller supplied a raw
+    # exact outer profile/observation object that skipped its initializer.
+    try:
+        _BEHAVIOR_PROFILE_VALIDATOR(profile)
+        _BEHAVIOR_OBSERVATIONS_VALIDATOR(observations)
+    except (AttributeError, TypeError) as error:
+        message = "behavior evidence has incomplete native source metadata"
+        raise BehaviorPolicyError(message) from error
 
 
 def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
@@ -1113,6 +1163,7 @@ def evaluate_behavior(
             "behavior observations must use the exact BehaviorObservations type"
         )
         raise BehaviorPolicyError(message)
+    _require_behavior_evidence_sources(profile, observations)
     validated_minimum = _validate_fraction(
         "minimum_similarity", minimum_similarity
     )

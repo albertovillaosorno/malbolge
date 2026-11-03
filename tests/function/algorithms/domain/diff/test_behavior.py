@@ -586,6 +586,137 @@ def test_behavior_containers_require_exact_records() -> None:
         )
 
 
+def _forge_native_behavior_record(
+    valid: (
+        IdentityProbe | CompatibilityProbe | BugProbe | BehaviorProfile
+        | IdentityObservation | CompatibilityObservation | BugObservation
+        | BehaviorObservations
+    ),
+    changes: dict[str, object],
+) -> object:
+    """Bypass public constructors while retaining actual frozen native slots."""
+    owner = type(valid)
+    forged = object.__new__(owner)
+    for field in fields(valid):
+        slot = cast("MemberDescriptorType", owner.__dict__[field.name])
+        slot.__set__(
+            forged,
+            changes[field.name]
+            if field.name in changes
+            else slot.__get__(valid, owner),
+        )
+    return forged
+
+
+@pytest.mark.parametrize(
+    ("family", "kind", "field", "invalid"),
+    [
+        ("profile", "identity", "expected_digest", bytearray(b"\x00")),
+        ("profile", "compatibility", "probe_id", "can-transform\x00"),
+        ("profile", "bugs", "correction_id", "fix-bug\x00"),
+        ("observations", "identity", "digest", bytearray(b"\x00")),
+        ("observations", "compatibility", "compatible", 1),
+        ("observations", "bugs", "state", "present"),
+    ],
+)
+def test_behavior_containers_revalidate_exact_nested_records(
+    family: str, kind: str, field: str, invalid: object
+) -> None:
+    """Exact forged child slots cannot bypass parent container validation."""
+    valid = _profile() if family == "profile" else _observations()
+    children = getattr(valid, kind)
+    forged = _forge_native_behavior_record(children[0], {field: invalid})
+    values = {datum.name: getattr(valid, datum.name) for datum in fields(valid)}
+    values[kind] = (forged, *children[1:])
+    constructor = cast("Callable[..., object]", type(valid))
+    with pytest.raises(BehaviorPolicyError):
+        _ = constructor(**values)
+
+
+@pytest.mark.parametrize("family", ["profile", "observations"])
+@pytest.mark.parametrize("entry", ["evaluate", "require", "evidence"])
+def test_behavior_revalidates_forged_native_nested_sources(
+    family: str, entry: str
+) -> None:
+    """A raw exact outer record cannot launder an invalid nested digest."""
+    profile = _profile()
+    observations = _observations()
+    valid = profile if family == "profile" else observations
+    child = valid.identity[0]
+    field = "expected_digest" if family == "profile" else "digest"
+    forged_child = _forge_native_behavior_record(
+        child, {field: bytearray(b"\x00")}
+    )
+    forged_outer = _forge_native_behavior_record(
+        valid, {"identity": (forged_child, *valid.identity[1:])}
+    )
+    if family == "profile":
+        profile = cast("BehaviorProfile", forged_outer)
+    else:
+        observations = cast("BehaviorObservations", forged_outer)
+    with pytest.raises(BehaviorPolicyError):
+        if entry == "require":
+            _ = require_behavior(profile, observations, 1.0)
+        elif entry == "evaluate":
+            _ = evaluate_behavior(profile, observations, 1.0)
+        else:
+            accepted = evaluate_behavior(_profile(), _observations(), 1.0)
+            _ = replace(
+                accepted,
+                **{family: profile if family == "profile" else observations},
+            )
+
+
+def test_behavior_profile_rejects_incomplete_exact_nested_probe() -> None:
+    """Missing native child slots fail with policy errors, not AttributeError."""
+    profile = _profile()
+    forged = object.__new__(IdentityProbe)
+    slot = cast("MemberDescriptorType", IdentityProbe.__dict__["probe_id"])
+    slot.__set__(forged, "identity-0")
+    with pytest.raises(BehaviorPolicyError, match="probe"):
+        _ = BehaviorProfile(
+            identity=(forged, *profile.identity[1:]),
+            compatibility=profile.compatibility,
+            bugs=profile.bugs,
+        )
+
+
+def test_behavior_admitted_rejects_uninitialized_exact_receipt() -> None:
+    """A raw exact receipt with empty reasons is not behavior evidence."""
+    forged = object.__new__(BehaviorEvidence)
+    slot = cast("MemberDescriptorType", BehaviorEvidence.__dict__["reasons"])
+    slot.__set__(forged, ())
+    with pytest.raises(BehaviorPolicyError, match="evidence"):
+        _ = forged.admitted
+
+
+@pytest.mark.parametrize("compatible", [True, False])
+@pytest.mark.parametrize("late_validator", [False, True])
+def test_behavior_admitted_revalidates_fabricated_reasons(
+    monkeypatch: pytest.MonkeyPatch, compatible: bool, late_validator: bool
+) -> None:
+    """Stored unvalidated reasons cannot certify a fabricated behavior verdict."""
+    valid = evaluate_behavior(
+        _profile(), _observations(compatible=compatible), 1.0
+    )
+    forged = object.__new__(BehaviorEvidence)
+    for field in fields(valid):
+        slot = cast(
+            "MemberDescriptorType", BehaviorEvidence.__dict__[field.name]
+        )
+        slot.__set__(
+            forged,
+            () if field.name == "reasons" and not compatible
+            else ("forged",) if field.name == "reasons"
+            else slot.__get__(valid, BehaviorEvidence),
+        )
+    with monkeypatch.context() as patched:
+        if late_validator:
+            patched.setattr(BehaviorEvidence, "__post_init__", lambda _: None)
+        with pytest.raises(BehaviorPolicyError, match="evidence"):
+            _ = forged.admitted
+
+
 def test_behavior_threshold_rejects_huge_integer_fractions() -> None:
     """Oversized integer thresholds fail through typed behavior policy."""
     huge_values: tuple[int, int] = (10**400, 10**5000)
