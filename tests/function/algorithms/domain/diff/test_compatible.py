@@ -80,7 +80,7 @@ from algorithms.diff.mapped import MappedUnit, MappedView
 from algorithms.diff.model import ExactInstruction, ExactInstructionKind
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Sized
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior import BehaviorEvidence
@@ -968,6 +968,226 @@ def test_compatible_binding_unknown_path_rejects_late_set_override(
         except CompatiblePlanError:
             rejected = True
     assert rejected, "late set hook ignored an unknown correction target"
+
+
+
+@pytest.mark.parametrize(
+    ("foreign", "pretend", "failure"),
+    [
+        (bytearray(b"target"), bytes, "literal evidence"),
+        (True, int, "edit index"),
+    ],
+)
+def test_compatible_instruction_rejects_late_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+    pretend: type,
+    failure: str,
+) -> None:
+    """Mutable literal data and bool indexes cannot pass exact admission."""
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return pretend if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            if failure == "literal evidence":
+                _ = CompatibleInstruction(
+                    output_path="new.bin",
+                    kind=CompatibleFileKind.CREATE_LITERAL,
+                    literal=cast("bytes", foreign),
+                )
+            else:
+                _ = CompatibleCorrectionBinding(
+                    "code.src", cast("int", foreign), "fix"
+                )
+        except CompatiblePlanError as error:
+            rejected = failure in str(error)
+    assert rejected, f"late type hook admitted {failure}"
+
+
+def test_compatible_request_rejects_late_type_spoofed_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged native path cannot invoke overridden string conversion."""
+    foreign = _ForeignCompatibleRoot(tmp_path / "foreign")
+    native_type = type
+    path_type = type(Path())
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return path_type if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            compatible_module._validate_request_path(
+                foreign, "compatible source root"
+            )
+        except CompatiblePlanError as error:
+            rejected = "exact pathlib Path" in str(error)
+    assert rejected, "foreign source root passed exact-path preflight"
+
+
+def test_compatible_bindings_reject_late_type_spoofed_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Typed correction records must not admit shape-compatible impostors."""
+    foreign = SimpleNamespace(
+        output_path="code.src", edit_index=0, correction_id="fix"
+    )
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        if value is foreign:
+            return CompatibleCorrectionBinding
+        return native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            _ = compatible_module._validate_correction_bindings((foreign,))
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late type hook admitted forged correction binding"
+
+
+def test_compatible_topology_rejects_late_tuple_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tuple hook cannot erase missing target instructions."""
+    foreign_plan = SimpleNamespace(
+        target=SimpleNamespace(files=(SimpleNamespace(path="target.bin"),)),
+        instructions=(),
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", lambda _: ())
+        try:
+            compatible_module._validate_plan_topology(
+                cast("CompatibleAuthoringPlan", cast("object", foreign_plan))
+            )
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late tuple hook hid a missing target instruction"
+
+
+def test_compatible_bindings_reject_late_len_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged cardinality cannot admit duplicate correction locations."""
+    binding = CompatibleCorrectionBinding("code.src", 0, "fix")
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        if isinstance(value, tuple) and native_len(value) == 2:
+            return 1
+        return native_len(cast("Sized", value))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "len", forged_len)
+        try:
+            _ = compatible_module._validate_correction_bindings(
+                (binding, binding)
+            )
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late len hook admitted duplicate correction bindings"
+
+
+def test_compatible_routing_ignores_late_zip_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A consumer hook cannot erase mandatory semantic edits during routing."""
+    plan = _plan(tmp_path)
+    semantic = next(
+        item for item in plan.instructions
+        if item.kind is CompatibleFileKind.SEMANTIC_PATCH
+    )
+    assert semantic.semantic is not None
+    context = compatible_module._MaterializeContext(
+        candidate_root=tmp_path,
+        mapper=_mapper,
+        corrections_to_apply=frozenset(),
+        corrections_to_skip=frozenset(),
+    )
+    routed = None
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "zip", lambda *args, **kwargs: ())
+        routed = compatible_module._routed_semantic_plan(context, semantic)
+    assert len(routed.edits) == len(semantic.semantic.edits)
+
+
+def test_compatible_request_rejects_late_str_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false path conversion cannot erase a forbidden NUL byte."""
+    malformed = Path("bad\x00root")
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", lambda _: "apparently-safe")
+        try:
+            compatible_module._validate_request_path(
+                malformed, "compatible root"
+            )
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late str hook hid a forbidden path byte"
+
+
+def test_compatible_relative_path_rejects_late_bool_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Hostile truth conversion cannot admit Windows drive prefixes."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bool", lambda _: False)
+        try:
+            _ = compatible_module._validate_relative_path("C:/escape")
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late bool hook admitted Windows drive prefix"
+
+
+def test_compatible_mapper_rejects_late_callable_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer callback cannot mislabel an object as a mapper."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "callable", lambda _: True)
+        try:
+            compatible_module._validate_mapper(object())
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late callable hook admitted a non-callable mapper"
+
+
+def test_compatible_postcondition_rejects_late_type_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only a real boolean may approve staging after a callback."""
+    result = 1
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bool if value is result else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            compatible_module._require_postcondition(
+                cast("Postcondition", lambda _: result), Path("staging")
+            )
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late type hook admitted an integer postcondition"
 
 
 def test_compatible_request_envelopes_reject_foreign_fields(

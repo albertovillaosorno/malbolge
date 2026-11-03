@@ -83,13 +83,22 @@ _NUL = "\x00"
 _HEX_DIGITS = frozenset("0123456789abcdef")
 # Preserve metadata admission against late process-global builtin replacements.
 _NATIVE_ANY = builtins.any
+_NATIVE_BOOL = builtins.bool
+_NATIVE_CALLABLE = builtins.callable
+_NATIVE_FROZENSET = builtins.frozenset
+_NATIVE_ISINSTANCE = builtins.isinstance
+_NATIVE_LEN = builtins.len
+_NATIVE_LIST = builtins.list
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
+_NATIVE_TUPLE = builtins.tuple
+_NATIVE_TYPE = builtins.type
+_NATIVE_ZIP = builtins.zip
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
 # Domain callbacks cannot replace host path preflight after module load.
-_NATIVE_PATH_TYPE = type(Path())
+_NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 _NATIVE_IS_RELATIVE_TO = _NATIVE_PATH_TYPE.is_relative_to
 _NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
@@ -140,16 +149,19 @@ class CompatibleCorrectionBinding:
             CompatiblePlanError: Correction metadata is malformed.
 
         """
-        if type(self.output_path) is not str:
+        if _NATIVE_TYPE(self.output_path) is not str:
             message = (
                 "compatible correction path must use the exact string type"
             )
             raise CompatiblePlanError(message)
         _ = _validate_relative_path(self.output_path)
-        if type(self.edit_index) is not int or self.edit_index < 0:
+        if _NATIVE_TYPE(self.edit_index) is not int or self.edit_index < 0:
             message = "compatible correction edit index must be non-negative"
             raise CompatiblePlanError(message)
-        if type(self.correction_id) is not str or not self.correction_id:
+        if (
+            _NATIVE_TYPE(self.correction_id) is not str
+            or not self.correction_id
+        ):
             message = "compatible correction ID must be a non-empty string"
             raise CompatiblePlanError(message)
 
@@ -239,17 +251,17 @@ class _MaterializeContext:
 def _validate_request_path(value: object, context: str) -> None:
     # Request paths authorize both source reads and output publication.
     # Reject user-defined Path overrides before any conversion or resolution.
-    if type(value) is not type(Path()):
+    if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
         message = f"{context} must use exact pathlib Path"
         raise CompatiblePlanError(message)
-    raw = str(value)
+    raw = _NATIVE_PATH_STRING(value)
     if _NUL in raw:
         message = f"{context} path cannot contain NUL"
         raise CompatiblePlanError(message)
     try:
         _ = raw.encode("utf-8")
         _ = os.fsencode(value)
-    except UnicodeError as error:
+    except (UnicodeError, TypeError) as error:
         message = f"{context} path cannot be encoded"
         raise CompatiblePlanError(message) from error
 
@@ -261,7 +273,7 @@ def _resolve_request_root(path: Path, context: str) -> Path:
         detail = _safe_compatible_error_detail(error)
         message = f"compatible {context} root resolution failed: {detail}"
         raise CompatiblePlanError(message) from error
-    if type(resolved) is not _NATIVE_PATH_TYPE:
+    if _NATIVE_TYPE(resolved) is not _NATIVE_PATH_TYPE:
         message = f"compatible {context} root requires native resolved Path"
         raise CompatiblePlanError(message)
     return resolved
@@ -278,7 +290,7 @@ def _require_output_outside_candidate(
 
 
 def _validate_mapper(value: object) -> None:
-    if not callable(value):
+    if not _NATIVE_CALLABLE(value):
         message = "compatible mapper must be callable"
         raise CompatiblePlanError(message)
 
@@ -286,14 +298,14 @@ def _validate_mapper(value: object) -> None:
 def _validate_build_request(request: CompatibleBuildRequest) -> None:
     _validate_request_path(request.source_root, "compatible source root")
     _validate_request_path(request.oracle_root, "compatible oracle root")
-    if type(request.reference_identity) is not IdentityTree:
+    if _NATIVE_TYPE(request.reference_identity) is not IdentityTree:
         message = "compatible reference identity must use exact IdentityTree"
         raise CompatiblePlanError(message)
-    if type(request.admission_policy) is not AdmissionPolicy:
+    if _NATIVE_TYPE(request.admission_policy) is not AdmissionPolicy:
         message = "compatible admission policy must use exact AdmissionPolicy"
         raise CompatiblePlanError(message)
     _validate_mapper(request.mapper)
-    if type(request.preserve_candidate_only) is not bool:
+    if _NATIVE_TYPE(request.preserve_candidate_only) is not bool:
         message = "compatible candidate-only policy must use an exact boolean"
         raise CompatiblePlanError(message)
 
@@ -303,17 +315,17 @@ def _validate_materialize_request(
 ) -> None:
     _validate_request_path(request.candidate_root, "compatible candidate root")
     _validate_request_path(request.output_root, "compatible output root")
-    if type(request.candidate_identity) is not IdentityTree:
+    if _NATIVE_TYPE(request.candidate_identity) is not IdentityTree:
         message = "compatible candidate identity must use exact IdentityTree"
         raise CompatiblePlanError(message)
-    if type(request.behavior) is not BehaviorEvidence:
+    if _NATIVE_TYPE(request.behavior) is not BehaviorEvidence:
         message = "compatible behavior evidence must use exact BehaviorEvidence"
         raise CompatiblePlanError(message)
-    if type(request.plan) is not CompatibleAuthoringPlan:
+    if _NATIVE_TYPE(request.plan) is not CompatibleAuthoringPlan:
         message = "compatible plan must use exact CompatibleAuthoringPlan"
         raise CompatiblePlanError(message)
     _validate_mapper(request.mapper)
-    if request.postcondition is not None and not callable(
+    if request.postcondition is not None and not _NATIVE_CALLABLE(
         request.postcondition
     ):
         message = "compatible postcondition must be callable or None"
@@ -347,8 +359,10 @@ def _validate_semantic(instruction: CompatibleInstruction) -> None:
     if instruction.semantic is None:
         message = "compatible semantic patch lost its semantic plan"
         raise CompatiblePlanError(message)
-    if instruction.correction_ids and len(instruction.correction_ids) != len(
-        instruction.semantic.edits
+    if (
+        instruction.correction_ids
+        and _NATIVE_LEN(instruction.correction_ids)
+        != _NATIVE_LEN(instruction.semantic.edits)
     ):
         message = "compatible correction IDs must align with semantic edits"
         raise CompatiblePlanError(message)
@@ -405,36 +419,36 @@ _INSTRUCTION_VALIDATORS = {
 
 # jig-ignore-next-line: exact Ruff suppression is indivisible
 def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements] -- independent metadata invariants.
-    if type(instruction.output_path) is not str:
+    if _NATIVE_TYPE(instruction.output_path) is not str:
         message = "compatible output path must use the exact string type"
         raise CompatiblePlanError(message)
     _ = _validate_relative_path(instruction.output_path)
-    if type(instruction.kind) is not CompatibleFileKind:
+    if _NATIVE_TYPE(instruction.kind) is not CompatibleFileKind:
         message = "compatible instruction kind must use the exact enum type"
         raise CompatiblePlanError(message)
     if instruction.source_path is not None:
-        if type(instruction.source_path) is not str:
+        if _NATIVE_TYPE(instruction.source_path) is not str:
             message = "compatible source path must use the exact string type"
             raise CompatiblePlanError(message)
         _ = _validate_relative_path(instruction.source_path)
     if instruction.source_sha256 is not None:
         value = instruction.source_sha256
         if (
-            type(value) is not str
-            or len(value) != _SHA256_BYTES * 2
+            _NATIVE_TYPE(value) is not str
+            or _NATIVE_LEN(value) != _SHA256_BYTES * 2
             or _NATIVE_ANY(char not in _HEX_DIGITS for char in value)
         ):
             message = "compatible source sha256 must be 64 lowercase hex digits"
             raise CompatiblePlanError(message)
     if (
         instruction.semantic is not None
-        and type(instruction.semantic) is not SemanticAuthoringPlan
+        and _NATIVE_TYPE(instruction.semantic) is not SemanticAuthoringPlan
     ):
         message = "compatible semantic evidence must use the exact plan type"
         raise CompatiblePlanError(message)
     if (
         instruction.exact is not None
-        and type(instruction.exact) is not ExactInstruction
+        and _NATIVE_TYPE(instruction.exact) is not ExactInstruction
     ):
         message = (
             "compatible exact evidence must use the exact instruction type"
@@ -442,15 +456,15 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None: 
         raise CompatiblePlanError(message)
     if (
         instruction.literal is not None
-        and type(instruction.literal) is not bytes
+        and _NATIVE_TYPE(instruction.literal) is not bytes
     ):
         message = "compatible literal evidence must use exact bytes"
         raise CompatiblePlanError(message)
-    if type(instruction.correction_ids) is not tuple:
+    if _NATIVE_TYPE(instruction.correction_ids) is not tuple:
         message = "compatible correction IDs must use an immutable tuple"
         raise CompatiblePlanError(message)
     if _NATIVE_ANY(
-        value is not None and (type(value) is not str or not value)
+        value is not None and (_NATIVE_TYPE(value) is not str or not value)
         for value in instruction.correction_ids
     ):
         message = "compatible correction IDs must be non-empty strings or None"
@@ -469,36 +483,39 @@ def _validate_instruction(instruction: CompatibleInstruction) -> None:
 # jig-ignore-next-line: exact Ruff suppression is indivisible
 def _validate_plan_records(plan: CompatibleAuthoringPlan) -> None:  # ruff: ignore[complex-structure] -- independent plan record invariants.
     if (
-        type(plan.source) is not TreeSnapshot
-        or type(plan.target) is not TreeSnapshot
+        _NATIVE_TYPE(plan.source) is not TreeSnapshot
+        or _NATIVE_TYPE(plan.target) is not TreeSnapshot
     ):
         message = (
             "compatible plan snapshots must use exact TreeSnapshot records"
         )
         raise CompatiblePlanError(message)
-    if type(plan.reference_identity) is not IdentityTree:
+    if _NATIVE_TYPE(plan.reference_identity) is not IdentityTree:
         message = (
             "compatible plan identity must use the exact IdentityTree type"
         )
         raise CompatiblePlanError(message)
-    if type(plan.admission_policy) is not AdmissionPolicy:
+    if _NATIVE_TYPE(plan.admission_policy) is not AdmissionPolicy:
         message = (
             "compatible plan policy must use the exact AdmissionPolicy type"
         )
         raise CompatiblePlanError(message)
-    if type(plan.instructions) is not tuple or _NATIVE_ANY(
-        type(item) is not CompatibleInstruction for item in plan.instructions
+    if _NATIVE_TYPE(plan.instructions) is not tuple or _NATIVE_ANY(
+        _NATIVE_TYPE(item) is not CompatibleInstruction
+        for item in plan.instructions
     ):
         message = "compatible plan instructions must be exact immutable records"
         raise CompatiblePlanError(message)
-    if type(plan.preserve_candidate_only) is not bool:
+    if _NATIVE_TYPE(plan.preserve_candidate_only) is not bool:
         message = "compatible candidate-only policy must use an exact boolean"
         raise CompatiblePlanError(message)
 
 
 def _validate_plan_topology(plan: CompatibleAuthoringPlan) -> None:
-    target_paths = tuple(record.path for record in plan.target.files)
-    instruction_paths = tuple(item.output_path for item in plan.instructions)
+    target_paths = _NATIVE_TUPLE(record.path for record in plan.target.files)
+    instruction_paths = _NATIVE_TUPLE(
+        item.output_path for item in plan.instructions
+    )
     if instruction_paths != target_paths:
         message = "compatible plan instructions must exactly cover target paths"
         raise CompatiblePlanError(message)
@@ -583,27 +600,31 @@ def _normalized_correction_ids(
         return ()
     if instruction.correction_ids:
         return instruction.correction_ids
-    return (None,) * len(instruction.semantic.edits)
+    return (None,) * _NATIVE_LEN(instruction.semantic.edits)
 
 
 def _validate_correction_bindings(
     bindings: object,
 ) -> tuple[CompatibleCorrectionBinding, ...]:
-    if type(bindings) is not tuple:
+    if _NATIVE_TYPE(bindings) is not tuple:
         message = "compatible correction bindings must use an immutable tuple"
         raise CompatiblePlanError(message)
     items = cast("tuple[object, ...]", bindings)
-    if _NATIVE_ANY(type(item) is not CompatibleCorrectionBinding for item in items):
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(item) is not CompatibleCorrectionBinding for item in items
+    ):
         message = "compatible correction bindings contain a foreign record"
         raise CompatiblePlanError(message)
     admitted = cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
-    locations = tuple((item.output_path, item.edit_index) for item in admitted)
-    if locations != tuple(_NATIVE_SORTED(locations)):
+    locations = _NATIVE_TUPLE(
+        (item.output_path, item.edit_index) for item in admitted
+    )
+    if locations != _NATIVE_TUPLE(_NATIVE_SORTED(locations)):
         message = (
             "compatible correction bindings must be sorted by edit location"
         )
         raise CompatiblePlanError(message)
-    if len(locations) != len(_NATIVE_SET(locations)):
+    if _NATIVE_LEN(locations) != _NATIVE_LEN(_NATIVE_SET(locations)):
         message = (
             "compatible correction bindings must use unique edit locations"
         )
@@ -614,7 +635,7 @@ def _validate_correction_bindings(
 def _apply_correction_binding(
     correction_ids: list[str | None], binding: CompatibleCorrectionBinding
 ) -> None:
-    if binding.edit_index >= len(correction_ids):
+    if binding.edit_index >= _NATIVE_LEN(correction_ids):
         message = "compatible correction edit index exceeds semantic plan"
         raise CompatiblePlanError(message)
     existing = correction_ids[binding.edit_index]
@@ -635,10 +656,10 @@ def _bind_instruction_corrections(
             "compatible correction binding requires a semantic instruction"
         )
         raise CompatiblePlanError(message)
-    correction_ids = list(_normalized_correction_ids(instruction))
+    correction_ids = _NATIVE_LIST(_normalized_correction_ids(instruction))
     for binding in bindings:
         _apply_correction_binding(correction_ids, binding)
-    return replace(instruction, correction_ids=tuple(correction_ids))
+    return replace(instruction, correction_ids=_NATIVE_TUPLE(correction_ids))
 
 
 def bind_compatible_corrections(
@@ -654,7 +675,7 @@ def bind_compatible_corrections(
         CompatiblePlanError: Plan or correction metadata is invalid.
 
     """
-    if type(plan) is not CompatibleAuthoringPlan:
+    if _NATIVE_TYPE(plan) is not CompatibleAuthoringPlan:
         message = "compatible correction binding requires the exact plan type"
         raise CompatiblePlanError(message)
     admitted = _validate_correction_bindings(bindings)
@@ -665,10 +686,10 @@ def bind_compatible_corrections(
     if _NATIVE_SET(by_path) - known_paths:
         message = "compatible correction binding targets an unknown output path"
         raise CompatiblePlanError(message)
-    instructions = tuple(
+    instructions = _NATIVE_TUPLE(
         _bind_instruction_corrections(
             instruction,
-            tuple(by_path.get(instruction.output_path, ())),
+            _NATIVE_TUPLE(by_path.get(instruction.output_path, ())),
         )
         for instruction in plan.instructions
     )
@@ -687,7 +708,7 @@ def _validate_relative_path(relative_path: str) -> str:
         or _NUL in relative_path
         or relative_path == _DOT
         or candidate.is_absolute()
-        or bool(PureWindowsPath(relative_path).drive)
+        or _NATIVE_BOOL(PureWindowsPath(relative_path).drive)
         or _NATIVE_ISRESERVED(relative_path)
         or _PARENT in candidate.parts
         or candidate.as_posix() != relative_path
@@ -712,7 +733,7 @@ def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
         detail = _safe_compatible_error_detail(error)
         message = f"ancestor inspection failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
-    if type(junction) is not bool:
+    if _NATIVE_TYPE(junction) is not bool:
         message = "ancestor inspection requires native boolean"
         raise CompatiblePlanError(message)
     return junction
@@ -760,7 +781,7 @@ def _path_status(path: Path, context: str) -> os.stat_result | None:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} status failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
-    if type(status) is not _NATIVE_STAT_RESULT:
+    if _NATIVE_TYPE(status) is not _NATIVE_STAT_RESULT:
         message = f"{context} requires native filesystem status: {path}"
         raise CompatiblePlanError(message)
     return status
@@ -777,7 +798,7 @@ def _read_compatible_bytes(path: Path, context: str) -> bytes:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} read failed: {path}: {detail}"
         failure = CompatiblePlanError(message)
-        if type(error) is ExactTreeError:
+        if _NATIVE_TYPE(error) is ExactTreeError:
             for note in cast("list[str]", getattr(error, "__notes__", [])):
                 failure.add_note(note)
         raise failure from error
@@ -791,7 +812,7 @@ def _write_compatible_bytes(path: Path, data: bytes, context: str) -> None:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} write failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
-    if type(written) is not int or written != len(data):
+    if _NATIVE_TYPE(written) is not int or written != _NATIVE_LEN(data):
         message = f"{context} short or invalid byte count: {path}"
         raise CompatiblePlanError(message)
 
@@ -827,7 +848,7 @@ def _map_compatible_file(
         # Preserve the callback cause without evaluating a foreign __str__.
         message = f"compatible mapper failed for {path!r}"
         raise CompatiblePlanError(message) from error
-    if view is not None and type(view) is not MappedView:
+    if view is not None and _NATIVE_TYPE(view) is not MappedView:
         message = "compatible mapper must return exact MappedView or None"
         raise CompatiblePlanError(message)
     return view
@@ -931,7 +952,7 @@ def _compatible_instruction(
 
 
 def _require_build_request(value: object) -> CompatibleBuildRequest:
-    if type(value) is not CompatibleBuildRequest:
+    if _NATIVE_TYPE(value) is not CompatibleBuildRequest:
         message = "compatible authoring requires exact CompatibleBuildRequest"
         raise CompatiblePlanError(message)
     return value
@@ -940,7 +961,7 @@ def _require_build_request(value: object) -> CompatibleBuildRequest:
 def _require_materialize_request(
     value: object,
 ) -> CompatibleMaterializeRequest:
-    if type(value) is not CompatibleMaterializeRequest:
+    if _NATIVE_TYPE(value) is not CompatibleMaterializeRequest:
         message = (
             "compatible materialization requires exact "
             "CompatibleMaterializeRequest"
@@ -966,7 +987,7 @@ def build_compatible_plan(
         exact=exact,
         source_records=_record_map(exact.source),
     )
-    instructions = tuple(
+    instructions = _NATIVE_TUPLE(
         _compatible_instruction(context, instruction)
         for instruction in exact.instructions
     )
@@ -1000,11 +1021,11 @@ def _exact_literal(instruction: ExactInstruction) -> bytes:
 def _exact_patch(candidate: bytes, instruction: ExactInstruction) -> bytes:
     parts: list[bytes] = []
     for segment in instruction.segments:
-        if isinstance(segment, OracleLiteral):
+        if _NATIVE_ISINSTANCE(segment, OracleLiteral):
             parts.append(segment.data)
             continue
         end = segment.offset + segment.length
-        if end > len(candidate):
+        if end > _NATIVE_LEN(candidate):
             message = "exact-gated source slice exceeds candidate file"
             raise CompatiblePlanError(message)
         parts.append(candidate[segment.offset : end])
@@ -1051,9 +1072,9 @@ def _routed_semantic_plan(
     if instruction.semantic is None:
         message = "compatible semantic instruction lost its authoring plan"
         raise CompatiblePlanError(message)
-    edits = tuple(
+    edits = _NATIVE_TUPLE(
         edit
-        for edit, correction_id in zip(
+        for edit, correction_id in _NATIVE_ZIP(
             instruction.semantic.edits,
             _normalized_correction_ids(instruction),
             strict=True,
@@ -1150,11 +1171,11 @@ def _prepare_staging(output_root: Path) -> Path:
 
 
 def _target_paths(plan: CompatibleAuthoringPlan) -> frozenset[str]:
-    return frozenset(item.output_path for item in plan.instructions)
+    return _NATIVE_FROZENSET(item.output_path for item in plan.instructions)
 
 
 def _source_paths(plan: CompatibleAuthoringPlan) -> frozenset[str]:
-    return frozenset(item.path for item in plan.source.files)
+    return _NATIVE_FROZENSET(item.path for item in plan.source.files)
 
 
 def _candidate_only_paths(
@@ -1165,7 +1186,7 @@ def _candidate_only_paths(
         return ()
     source_paths = _source_paths(plan)
     target_paths = _target_paths(plan)
-    return tuple(
+    return _NATIVE_TUPLE(
         record.path
         for record in candidate.files
         if record.path not in source_paths and record.path not in target_paths
@@ -1217,7 +1238,7 @@ def _require_literal_conflicts_absent(
 def _plan_correction_ids(
     plan: CompatibleAuthoringPlan,
 ) -> frozenset[str]:
-    return frozenset(
+    return _NATIVE_FROZENSET(
         correction_id
         for instruction in plan.instructions
         for correction_id in _normalized_correction_ids(instruction)
@@ -1230,7 +1251,7 @@ def _require_correction_routes(
     behavior: BehaviorEvidence,
 ) -> None:
     attached = _plan_correction_ids(plan)
-    routed = frozenset((
+    routed = _NATIVE_FROZENSET((
         *behavior.corrections_to_apply,
         *behavior.corrections_to_skip,
     ))
@@ -1250,8 +1271,12 @@ def _populate_staging(
     context = _MaterializeContext(
         candidate_root=request.candidate_root,
         mapper=request.mapper,
-        corrections_to_apply=frozenset(request.behavior.corrections_to_apply),
-        corrections_to_skip=frozenset(request.behavior.corrections_to_skip),
+        corrections_to_apply=_NATIVE_FROZENSET(
+            request.behavior.corrections_to_apply
+        ),
+        corrections_to_skip=_NATIVE_FROZENSET(
+            request.behavior.corrections_to_skip
+        ),
     )
     for instruction in request.plan.instructions:
         data = _instruction_bytes(context, instruction)
@@ -1276,7 +1301,7 @@ def _require_postcondition(
         # A consumer callback may supply a hostile exception formatter.
         message = "compatible output postcondition failed"
         raise CompatiblePlanError(message) from error
-    if type(accepted) is not bool:
+    if _NATIVE_TYPE(accepted) is not bool:
         message = "compatible output postcondition must return an exact boolean"
         raise CompatiblePlanError(message)
     if not accepted:
@@ -1346,7 +1371,7 @@ def _safe_compatible_error_detail(error: Exception) -> str:
         An exact native single-string reason or an exception class name.
 
     """
-    if type(error) in {
+    if _NATIVE_TYPE(error) in {
         CompatiblePlanError,
         ExactTreeError,
         OSError,
@@ -1355,11 +1380,11 @@ def _safe_compatible_error_detail(error: Exception) -> str:
         ValueError,
     }:
         arguments = cast("tuple[object, ...]", error.args)
-        if len(arguments) == 1:
+        if _NATIVE_LEN(arguments) == 1:
             reason = arguments[0]
-            if type(reason) is str:
+            if _NATIVE_TYPE(reason) is str:
                 return reason
-    return type(error).__name__
+    return _NATIVE_TYPE(error).__name__
 
 
 def _cleanup_compatible_staging(path: Path) -> str | None:
@@ -1407,7 +1432,7 @@ def materialize_compatible_plan(
     admitted = _admit(request)
     _require_correction_routes(request.plan, request.behavior)
     candidate = _snapshot_compatible_tree(request.candidate_root, "candidate")
-    candidate_paths = frozenset(item.path for item in candidate.files)
+    candidate_paths = _NATIVE_FROZENSET(item.path for item in candidate.files)
     _require_literal_conflicts_absent(request, candidate_paths)
     staging = _prepare_staging(request.output_root)
     try:
