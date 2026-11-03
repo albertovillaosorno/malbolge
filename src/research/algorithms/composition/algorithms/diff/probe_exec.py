@@ -98,6 +98,7 @@ _NATIVE_TUPLE = builtins.tuple
 _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_BOOL = builtins.bool
+_NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_INT = builtins.int
 _NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_ZIP = builtins.zip
@@ -629,6 +630,17 @@ _PROBE_RECORD_SLOTS: dict[type, dict[str, MemberDescriptorType]] = {
 }
 
 
+_PROBE_TRANSCRIPT_INIT = ProbeTranscript.__init__
+
+
+def _new_probe_transcript(
+    probe_id: str, digest: bytes, digested_commands: int
+) -> ProbeTranscript:
+    receipt = _NATIVE_OBJECT_NEW(ProbeTranscript)
+    _PROBE_TRANSCRIPT_INIT(receipt, probe_id, digest, digested_commands)
+    return receipt
+
+
 def _probe_field(record: object, owner: type, field: str) -> object:
     """Read original native storage instead of post-import class getters."""
     return cast("object", _PROBE_RECORD_SLOTS[owner][field].__get__(record, owner))
@@ -662,6 +674,15 @@ _COMMAND_RESULT_STDOUT_SLOT = cast(
 _COMMAND_RESULT_RETURN_CODE_SLOT = cast(
     "MemberDescriptorType", _CommandResult.__dict__["returncode"]
 )
+
+
+_COMMAND_RESULT_INIT = _CommandResult.__init__
+
+
+def _new_command_result(stdout: bytes, returncode: int) -> _CommandResult:
+    result = _NATIVE_OBJECT_NEW(_CommandResult)
+    _COMMAND_RESULT_INIT(result, stdout, returncode)
+    return result
 
 
 def _command_result_stdout(result: _CommandResult) -> bytes:
@@ -952,6 +973,32 @@ _TRANSIENT_SLOTS: dict[type, dict[str, MemberDescriptorType]] = {
     }
     for owner in (_PipeCapture, _RunningProbe)
 }
+
+
+_PIPE_CAPTURE_INIT = _PipeCapture.__init__
+_RUNNING_PROBE_INIT = _RunningProbe.__init__
+
+
+def _new_pipe_capture(limit: int) -> _PipeCapture:
+    capture = _NATIVE_OBJECT_NEW(_PipeCapture)
+    _PIPE_CAPTURE_INIT(capture, limit)
+    return capture
+
+
+def _new_running_probe(
+    process: subprocess.Popen[bytes],
+    stdout: _PipeCapture,
+    stderr: _PipeCapture,
+    readers: tuple[threading.Thread, threading.Thread],
+    writer: threading.Thread | None,
+    stdin_errors: list[Exception],
+    stdin_complete: threading.Event,
+) -> _RunningProbe:
+    running = _NATIVE_OBJECT_NEW(_RunningProbe)
+    _RUNNING_PROBE_INIT(
+        running, process, stdout, stderr, readers, writer, stdin_errors, stdin_complete
+    )
+    return running
 
 
 def _capture_read(capture: _PipeCapture, name: str) -> object:
@@ -1293,10 +1340,10 @@ def _start_capture(
 
     """
     stdout_pipe, stderr_pipe = _capture_pipes(process)
-    stdout = _PipeCapture(
+    stdout = _new_pipe_capture(
         cast("int", _probe_field(command, ProbeCommand, "max_stdout_bytes"))
     )
-    stderr = _PipeCapture(
+    stderr = _new_pipe_capture(
         cast("int", _probe_field(command, ProbeCommand, "max_stderr_bytes"))
     )
     readers = (
@@ -1326,7 +1373,7 @@ def _start_capture(
             _close_unowned_pipe(pipe, reader, error)
         _close_unowned_pipe(process.stdin, None, error)
         raise
-    return _RunningProbe(
+    return _new_running_probe(
         process, stdout, stderr, readers, writer, stdin_errors, stdin_complete
     )
 
@@ -1560,7 +1607,7 @@ def _run_command(
     ):
         message = "probe command returned an unexpected exit code"
         raise ProbeExecutionError(message)
-    return _CommandResult(
+    return _new_command_result(
         stdout=completed.stdout,
         returncode=completed.returncode,
     )
@@ -1640,7 +1687,7 @@ def _run_program(
                 selected = True
             if selected:
                 digested_commands += 1
-    return ProbeTranscript(
+    return _new_probe_transcript(
         probe_id=cast("str", _probe_field(program, ProbeProgram, "probe_id")),
         digest=hasher.digest(),
         digested_commands=digested_commands,

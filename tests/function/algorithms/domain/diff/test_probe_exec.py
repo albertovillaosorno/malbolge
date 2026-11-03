@@ -3858,3 +3858,69 @@ def test_probe_capture_quota_ignores_late_limit_getter(
     assert original_value("exceeded") is True
     assert original_value("size") == 0
     assert original_value("fragments") == []
+
+
+@pytest.mark.parametrize("hook", ("__init__", "__new__"))
+@pytest.mark.parametrize(
+    ("record", "callback"),
+    (
+        ("_CommandResult", "_launch_command"),
+        ("_PipeCapture", "_capture_pipes"),
+        ("_RunningProbe", "_start_writer"),
+        ("ProbeTranscript", "_run_command"),
+    ),
+)
+def test_probe_execution_ignores_late_receipt_constructors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    record: str,
+    callback: str,
+    hook: str,
+) -> None:
+    """Completed process callbacks cannot replace authenticated receipts."""
+    child_marker = "MALBOLGE_PROBE_CONSTRUCTOR_CHILD"
+    if hook == "__new__" and os.environ.get(child_marker) != "1":
+        # Rebinding a dataclass's native tp_new can outlive Python restoration.
+        environment = os.environ.copy()
+        environment[child_marker] = "1"
+        completed = subprocess.run(
+            [sys.executable, "-B", "-m", "pytest", "-q", request.node.nodeid],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=90,
+            env=environment,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        return
+
+    source = tmp_path / "source"
+    source.mkdir()
+    program = _program("constructor", "print('real observation')")
+    context = _context(source, tmp_path)
+    expected = run_probe_program(program, context)
+    owner = cast("type[object]", vars(probe_exec_module)[record])
+    original = cast("Callable[..., object]", getattr(probe_exec_module, callback))
+    calls = 0
+    installed = False
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late probe receipt constructor executed")
+
+    with monkeypatch.context() as patched:
+
+        def install_after_callback(*args: object, **kwargs: object) -> object:
+            nonlocal installed
+            result = original(*args, **kwargs)
+            if not installed:
+                patched.setattr(owner, hook, forbidden)
+                installed = True
+            return result
+
+        patched.setattr(probe_exec_module, callback, install_after_callback)
+        observed = run_probe_program(program, context)
+        assert observed == expected
+    assert installed and calls == 0
