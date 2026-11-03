@@ -73,6 +73,13 @@ format.
   the repository-wide `jig check` exceeded 120 seconds and remains unverified.
   A post-push integrated rerun after peer fixes passed all 3,340 diff tests.
   External host/filesystem races are still outside this guarantee.
+- Generator containment now pins import-original host path parser
+  dependencies (`splitroot`, `splitdrive`, `join`, `sep`, `altsep`) before
+  native resolution (`8b1740a8a`). An uncached exact `Path` was otherwise
+  redirected by a late `os.path.splitroot` replacement despite the pinned
+  realpath entrypoint. Five red-first checks and 268 focused generator tests
+  pass, with strict source/test typing, Ruff, and diff checks clean; races
+  and external filesystem writers remain outside this guard.
 - Generator domain preflight now invokes the original native
   `SourcePinEvidence` validator after the consumer callback (`a27f430de`),
   rather than accepting an exact-type object whose initializer never ran.

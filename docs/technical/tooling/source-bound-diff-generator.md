@@ -114,6 +114,16 @@ After concurrent probe and admission fixes landed, an independent post-push
 full diff-suite rerun passed all 3,340 tests. Hook identity checks are not
 atomic under concurrent host or filesystem writes.
 
+Generator path containment also pins the host parser dependencies that
+`Path.resolve` uses when formatting uncached native paths (`8b1740a8a`).
+A late `os.path.splitroot` replacement could previously redirect a requested
+source root to an unrelated path while the original realpath hook remained
+unchanged. Import-original `splitroot`, `splitdrive`, `join`, `sep`, and `altsep`
+identities now fail closed before resolution. Five red-first cases and all
+268 focused generator tests pass, with strict source/test BasedPyright, Ruff,
+and diff checks clean. These checks cannot isolate direct process mutation
+races or concurrent filesystem writers.
+
 The Rust source emitter protects its own runtime template from output overwrite
 with the same import-original `os.path.realpath` identity requirement before
 and after resolving the template and destination (`f15620ff7`). Two red-first
