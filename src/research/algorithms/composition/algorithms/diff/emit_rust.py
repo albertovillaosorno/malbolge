@@ -38,22 +38,28 @@ import io
 import os
 from pathlib import Path
 from secrets import token_hex
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
-from typing import TYPE_CHECKING
-from typing import cast
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from types import MemberDescriptorType
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import read_exact_regular_file
-from algorithms.diff.protected import ProtectedExactPlan
-from algorithms.diff.protected import ProtectedMetadata
-from algorithms.diff.protected import protected_plan_aad
+from algorithms.diff.exact import (
+    ExactTreeError,
+    TreeSnapshot,
+    read_exact_regular_file,
+)
+from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.payload import AuthenticatedPayload
+from algorithms.diff.protected import (
+    ProtectedExactPlan,
+    ProtectedInstruction,
+    ProtectedMetadata,
+    protected_plan_aad,
+)
+from algorithms.diff.source_binding import BoundShare, ThresholdBinding
 
 if TYPE_CHECKING:
     from typing import IO
 
-    from algorithms.diff.source_binding import ThresholdBinding
 
 _RUNTIME_TEMPLATE = Path(__file__).with_name("rust_runtime.rs")
 _DEFAULT_OUTPUT_PATH = Path("generated/main.rs")
@@ -72,6 +78,7 @@ _NATIVE_STR_TYPE = str
 _NATIVE_INT_TYPE = int
 _NATIVE_BOOL_TYPE = bool
 _NATIVE_LEN = len
+_NATIVE_TUPLE = tuple
 _NATIVE_RANGE = range
 _NATIVE_ORD = ord
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
@@ -82,6 +89,44 @@ _NATIVE_OS_FSENCODE = os.fsencode
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
+
+
+# Capture the native slots while importing the emitter. Late consumer hooks on
+# frozen dataclass classes must not rewrite source-bound Rust constants.
+def _record_slots(
+    record_type: type[object], names: tuple[str, ...]
+) -> tuple[MemberDescriptorType, ...]:
+    return _NATIVE_TUPLE(
+        cast("MemberDescriptorType", record_type.__dict__[name])
+        for name in names
+    )
+
+
+def _stored_fields(
+    record: object,
+    record_type: type[object],
+    slots: tuple[MemberDescriptorType, ...],
+) -> tuple[object, ...]:
+    return _NATIVE_TUPLE(
+        cast("object", slot.__get__(record, record_type)) for slot in slots
+    )
+
+
+_PLAN_SLOTS = _record_slots(ProtectedExactPlan, (
+    "source", "target", "instructions", "passthrough_roots",
+    "context", "nonce", "payload", "binding",
+))
+_PAYLOAD_SLOTS = _record_slots(AuthenticatedPayload, ("ciphertext", "tag"))
+_BINDING_SLOTS = _record_slots(ThresholdBinding, (
+    "context", "threshold", "minimum_anchor_files", "secret_length",
+    "secret_commitment", "anchor_policy", "shares",
+))
+_ANCHOR_SLOTS = _record_slots(AnchorPolicy, (
+    "window_bytes", "selection_modulus",
+))
+_SHARE_SLOTS = _record_slots(BoundShare, (
+    "source_path", "anchor_digest", "x", "masked_share",
+))
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -118,22 +163,38 @@ def _frame(value: bytes) -> bytes:
 
 
 def _binding_bytes(binding: ThresholdBinding) -> bytes:
+    (
+        context, threshold, minimum_files, secret_length,
+        commitment, policy, shares,
+    ) = cast(
+        tuple[
+            bytes, int, int, int, bytes, AnchorPolicy, tuple[BoundShare, ...]
+        ],
+        _stored_fields(binding, ThresholdBinding, _BINDING_SLOTS),
+    )
+    window, modulus = cast(
+        "tuple[int, int]", _stored_fields(policy, AnchorPolicy, _ANCHOR_SLOTS)
+    )
     parts = [
-        _frame(binding.context),
-        _u64(binding.threshold),
-        _u64(binding.minimum_anchor_files),
-        _u64(binding.secret_length),
-        _frame(binding.secret_commitment),
-        _u64(binding.anchor_policy.window_bytes),
-        _u64(binding.anchor_policy.selection_modulus),
-        _u64(_NATIVE_LEN(binding.shares)),
+        _frame(context),
+        _u64(threshold),
+        _u64(minimum_files),
+        _u64(secret_length),
+        _frame(commitment),
+        _u64(window),
+        _u64(modulus),
+        _u64(_NATIVE_LEN(shares)),
     ]
-    for share in binding.shares:
+    for share in shares:
+        path, digest, x, masked = cast(
+            "tuple[str, bytes, int, bytes]",
+            _stored_fields(share, BoundShare, _SHARE_SLOTS),
+        )
         parts.extend((
-            _frame(share.source_path.encode("utf-8")),
-            _frame(share.anchor_digest),
-            _u64(share.x),
-            _frame(share.masked_share),
+            _frame(path.encode("utf-8")),
+            _frame(digest),
+            _u64(x),
+            _frame(masked),
         ))
     return b"".join(parts)
 
@@ -178,21 +239,40 @@ def _hex_constant(name: str, data: bytes) -> str:
 
 
 def _constants(plan: ProtectedExactPlan, profile: str) -> str:
-    metadata = ProtectedMetadata(
-        source=plan.source,
-        target=plan.target,
-        instructions=plan.instructions,
-        passthrough_roots=plan.passthrough_roots,
+    (
+        source, target, instructions, roots, context, nonce, payload, binding
+    ) = cast(
+        tuple[
+            TreeSnapshot,
+            TreeSnapshot,
+            tuple[ProtectedInstruction, ...],
+            tuple[str, ...],
+            bytes,
+            bytes,
+            AuthenticatedPayload,
+            ThresholdBinding,
+        ],
+        _stored_fields(plan, ProtectedExactPlan, _PLAN_SLOTS),
     )
-    aad = protected_plan_aad(metadata, context=plan.context)
+    metadata = ProtectedMetadata(
+        source=source,
+        target=target,
+        instructions=instructions,
+        passthrough_roots=roots,
+    )
+    aad = protected_plan_aad(metadata, context=context)
+    ciphertext, tag = cast(
+        "tuple[bytes, bytes]",
+        _stored_fields(payload, AuthenticatedPayload, _PAYLOAD_SLOTS),
+    )
     return "\n".join((
         _BEGIN,
         f"const PROFILE: &str = {_rust_string(profile)};",
         _hex_constant("AAD_HEX", aad),
-        _hex_constant("BINDING_HEX", _binding_bytes(plan.binding)),
-        _hex_constant("NONCE_HEX", plan.nonce),
-        _hex_constant("CIPHERTEXT_HEX", plan.payload.ciphertext),
-        _hex_constant("TAG_HEX", plan.payload.tag),
+        _hex_constant("BINDING_HEX", _binding_bytes(binding)),
+        _hex_constant("NONCE_HEX", nonce),
+        _hex_constant("CIPHERTEXT_HEX", ciphertext),
+        _hex_constant("TAG_HEX", tag),
         _END,
     ))
 
@@ -401,7 +481,7 @@ def _validate_output_parent_chain(parent: Path) -> None:
     while True:
         _validate_output_parent(candidate, _output_mode(candidate, "parent"))
         ancestor = candidate.parent
-        if ancestor == candidate:
+        if _NATIVE_PATH_STRING(ancestor) == _NATIVE_PATH_STRING(candidate):
             return
         candidate = ancestor
 
@@ -508,7 +588,7 @@ def _require_output_not_runtime_template(output_path: Path) -> None:
     ):
         message = "Rust output path resolution requires native Path"
         raise RustEmissionError(message)
-    if output == template:
+    if _NATIVE_PATH_STRING(output) == _NATIVE_PATH_STRING(template):
         message = "Rust output must not overwrite its runtime template"
         raise RustEmissionError(message)
 
@@ -541,7 +621,9 @@ def write_rust_transform(
         published = temporary.replace(prepared_output)
         if (
             _NATIVE_TYPE(published) is not _NATIVE_PATH_TYPE
-            or published != prepared_output
+            or _NATIVE_PATH_STRING(published) != (
+                _NATIVE_PATH_STRING(prepared_output)
+            )
         ):
             message = "published Rust source returned an invalid rename receipt"
             raise RustEmissionError(message)

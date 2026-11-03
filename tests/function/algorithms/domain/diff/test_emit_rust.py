@@ -35,39 +35,39 @@
 from __future__ import annotations
 
 import builtins
-from collections.abc import Sized
-from contextlib import contextmanager
-from dataclasses import replace
 import hashlib
 import os
-from pathlib import Path
 import shutil
 
 # Used only with fixed local argv and shell=False.
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+from collections.abc import Sized
+from contextlib import contextmanager
+from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from typing import TYPE_CHECKING, cast, override
 
+import pytest
 from algorithms.diff import emit_rust as emit_rust_module
 from algorithms.diff.admission import identity_tree
-from algorithms.diff.emit_rust import RustEmissionError
-from algorithms.diff.emit_rust import emit_rust_transform
-from algorithms.diff.emit_rust import write_rust_transform
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.exact import snapshot_tree
+from algorithms.diff.emit_rust import (
+    RustEmissionError,
+    emit_rust_transform,
+    write_rust_transform,
+)
+from algorithms.diff.exact import build_exact_plan, snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
-from algorithms.diff.source_binding import SourceBindingError
-from algorithms.diff.source_binding import SourceBindingPolicy
-from algorithms.diff.source_binding import recover_secret
-from algorithms.diff.source_binding import validate_threshold_binding
-import pytest
+from algorithms.diff.source_binding import (
+    SourceBindingError,
+    SourceBindingPolicy,
+    recover_secret,
+    validate_threshold_binding,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Generator
+    from collections.abc import Callable, Generator
     from typing import IO
 
     from algorithms.diff.protected import ProtectedExactPlan
@@ -235,6 +235,103 @@ def _fixture(
         context=_CONTEXT,
     )
     return source, oracle, source_files, protected
+
+
+def _refuse_late_metadata_read(_record: object) -> object:
+    message = "emitter consulted a late metadata class getter"
+    raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "source",
+        "target",
+        "instructions",
+        "passthrough_roots",
+        "context",
+        "nonce",
+        "payload",
+        "binding",
+    ],
+)
+def test_emitter_pins_original_protected_plan_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Late plan getters must not rewrite authenticated emitted constants."""
+    _, _, _, protected = _fixture(tmp_path)
+    baseline = emit_rust_transform(protected, _PROFILE)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            type(protected), field, property(_refuse_late_metadata_read)
+        )
+        emitted = emit_rust_transform(protected, _PROFILE)
+    _expect(emitted == baseline, "late plan getter changed Rust emission")
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "context",
+        "threshold",
+        "minimum_anchor_files",
+        "secret_length",
+        "secret_commitment",
+        "anchor_policy",
+        "shares",
+    ],
+)
+def test_emitter_pins_original_threshold_binding_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Serialization must use validated binding storage, not new getters."""
+    _, _, _, protected = _fixture(tmp_path)
+    binding = protected.binding
+    baseline = emit_rust_transform(protected, _PROFILE)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            type(binding), field, property(_refuse_late_metadata_read)
+        )
+        emitted = emit_rust_transform(protected, _PROFILE)
+    _expect(emitted == baseline, "late binding getter changed Rust emission")
+
+
+@pytest.mark.parametrize(
+    "field", ["source_path", "anchor_digest", "x", "masked_share"]
+)
+def test_emitter_pins_original_bound_share_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Share coordinates and masks cannot be forged after validation."""
+    _, _, _, protected = _fixture(tmp_path)
+    share = protected.binding.shares[0]
+    baseline = emit_rust_transform(protected, _PROFILE)
+    with monkeypatch.context() as patch:
+        patch.setattr(type(share), field, property(_refuse_late_metadata_read))
+        emitted = emit_rust_transform(protected, _PROFILE)
+    _expect(emitted == baseline, "late share getter changed Rust emission")
+
+
+@pytest.mark.parametrize("field", ["window_bytes", "selection_modulus"])
+def test_emitter_pins_original_anchor_policy_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """A late anchor-policy getter cannot change runtime recovery rules."""
+    _, _, _, protected = _fixture(tmp_path)
+    policy = protected.binding.anchor_policy
+    baseline = emit_rust_transform(protected, _PROFILE)
+    with monkeypatch.context() as patch:
+        patch.setattr(type(policy), field, property(_refuse_late_metadata_read))
+        emitted = emit_rust_transform(protected, _PROFILE)
+    _expect(emitted == baseline, "late anchor policy changed Rust emission")
 
 
 def _rustc() -> Path:
@@ -1339,6 +1436,83 @@ def test_writer_never_overwrites_its_runtime_template(
             write_rust_transform(protected, _PROFILE, output)
     assert template.read_bytes() == original
     assert not list(tmp_path.glob(".rust_runtime.rs.*.tmp"))
+
+
+@pytest.mark.parametrize("same_path", [True, False])
+def test_writer_template_identity_ignores_late_path_equality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    same_path: bool,
+) -> None:
+    """A late Path equality override cannot rewrite template identity."""
+    template = tmp_path / "rust_runtime.rs"
+    destination = template if same_path else tmp_path / "other.rs"
+    guard = cast(
+        "Callable[[Path], None]",
+        vars(emit_rust_module)["_require_output_not_runtime_template"],
+    )
+
+    def forged_equality(_left: Path, _right: object) -> bool:
+        return not same_path
+
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_RUNTIME_TEMPLATE", template)
+        patch.setattr(type(template), "__eq__", forged_equality)
+        if same_path:
+            with pytest.raises(RustEmissionError, match="runtime template"):
+                guard(destination)
+        else:
+            guard(destination)
+
+
+def test_writer_parent_walk_ignores_late_path_equality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A root ancestor still terminates the walk with a lying class hook."""
+    walk = cast(
+        "Callable[[Path], None]",
+        vars(emit_rust_module)["_validate_output_parent_chain"],
+    )
+    calls = 0
+
+    def false_equality(_left: Path, _right: object) -> bool:
+        nonlocal calls
+        calls += 1
+        if calls > 20:
+            message = "parent traversal consulted mutable Path equality"
+            raise AssertionError(message)
+        return False
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(tmp_path), "__eq__", false_equality)
+        walk(tmp_path)
+    _expect(calls == 0, "parent walk relied on late Path equality")
+
+
+@pytest.mark.parametrize("forged_equal", [True, False])
+def test_writer_publishes_without_late_path_equality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    forged_equal: bool,
+) -> None:
+    """The writer and receipt check do not trust patched Path comparisons."""
+    _, _, _, protected = _fixture(tmp_path)
+    expected = emit_rust_transform(protected, _PROFILE)
+    output = tmp_path / "generated" / "transform.rs"
+
+    def forged_equality(_left: Path, _right: object) -> bool:
+        return forged_equal
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(output), "__eq__", forged_equality)
+        write_rust_transform(protected, _PROFILE, output)
+    _expect(
+        output.read_text(encoding="utf-8") == expected,
+        "path equality hook altered generated publication",
+    )
 
 
 def test_writer_rejects_forged_native_template_resolution(
