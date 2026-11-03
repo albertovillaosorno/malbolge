@@ -3130,12 +3130,12 @@ def test_exact_root_admission_ignores_late_fsencode(
 
 
 @pytest.mark.parametrize("invalid", [False, True])
-def test_exact_root_admission_ignores_late_path_string_spoof(
+def test_exact_root_admission_rejects_late_path_string_spoof(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     invalid: bool,
 ) -> None:
-    """A late Path formatter cannot authorize or deny a native root."""
+    """Fail closed when Path formatting changes, before trusting root bytes."""
     require_root = cast(
         "Callable[[object, str], None]",
         vars(exact_module)["_require_filesystem_root"],
@@ -3148,10 +3148,7 @@ def test_exact_root_admission_ignores_late_path_string_spoof(
 
     with monkeypatch.context() as patch:
         patch.setattr(Path, "__str__", forged_path_string)
-        if invalid:
-            with pytest.raises(ExactTreeError, match="representable"):
-                require_root(source, "tree root")
-        else:
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
             require_root(source, "tree root")
 
 
@@ -3711,3 +3708,141 @@ with TemporaryDirectory() as directory:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("hook", ["cached-slot", "formatter"])
+def test_exact_snapshot_rejects_late_root_path_redirection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """A replaced path formatter cannot acquire a foreign source tree."""
+    root = tmp_path / "original"
+    foreign = tmp_path / "foreign"
+    _write(root, "data.bin", b"original source")
+    _write(foreign, "data.bin", b"unrelated source")
+    original_snapshot = snapshot_tree(root)
+    assert snapshot_tree(foreign) != original_snapshot
+    foreign_spelling = str(foreign)
+    original_getattr = Path.__getattribute__
+    original_str = Path.__str__
+    redirects = 0
+
+    def forged_getattr(path: Path, name: str) -> object:
+        nonlocal redirects
+        if path is root and name == "_str":
+            redirects += 1
+            return foreign_spelling
+        return original_getattr(path, name)
+
+    def forged_str(path: Path) -> str:
+        nonlocal redirects
+        if path is root:
+            redirects += 1
+            return foreign_spelling
+        return original_str(path)
+
+    with monkeypatch.context() as patched:
+        if hook == "cached-slot":
+            patched.setattr(Path, "__getattribute__", forged_getattr)
+        else:
+            patched.setattr(Path, "__str__", forged_str)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            _ = snapshot_tree(root)
+    assert redirects == 0, "late source root path formatter was evaluated"
+    assert snapshot_tree(root) == original_snapshot
+
+
+def test_exact_descriptor_read_rejects_late_path_cache_redirection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native regular-file reader cannot follow a substituted path cache."""
+    trusted = tmp_path / "trusted.bin"
+    foreign = tmp_path / "foreign.bin"
+    _ = trusted.write_bytes(b"trusted")
+    _ = foreign.write_bytes(b"foreign")
+    foreign_spelling = str(foreign)
+    original_getattr = Path.__getattribute__
+    redirects = 0
+
+    def forged_getattr(path: Path, name: str) -> object:
+        nonlocal redirects
+        if path is trusted and name == "_str":
+            redirects += 1
+            return foreign_spelling
+        return original_getattr(path, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__getattribute__", forged_getattr)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            _ = exact_module.read_exact_regular_file(trusted, "source")
+    assert redirects == 0, "late source file path formatter was evaluated"
+    assert trusted.read_bytes() == b"trusted"
+
+
+@pytest.mark.parametrize("hook", ["path-fspath", "os-fspath", "cached-descriptor"])
+def test_exact_snapshot_rejects_late_native_formatter_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """Mutable native path formatting dependencies cannot select source bytes."""
+    original = tmp_path / "source"
+    foreign = tmp_path / "unrelated"
+    _write(original, "file.bin", b"expected")
+    _write(foreign, "file.bin", b"unrelated")
+    baseline = snapshot_tree(original)
+    forged_spelling = str(foreign)
+    native_fspath = os.fspath
+    native_getattr = PurePosixPath.__getattribute__
+    calls = 0
+
+    def forged_fspath(path: object) -> str:
+        nonlocal calls
+        if path is original:
+            calls += 1
+            return forged_spelling
+        return native_fspath(cast("Path", path))
+
+    def forged_cached(path: PurePosixPath) -> str:
+        nonlocal calls
+        if cast("object", path) is original:
+            calls += 1
+            return forged_spelling
+        return cast("str", native_getattr(path, "_str"))
+
+    with monkeypatch.context() as patched:
+        if hook == "path-fspath":
+            patched.setattr(Path, "__fspath__", forged_fspath)
+        elif hook == "os-fspath":
+            patched.setattr(os, "fspath", forged_fspath)
+        else:
+            patched.setattr(PurePosixPath, "_str", property(forged_cached))
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            _ = snapshot_tree(original)
+    assert calls == 0, "late native path formatter was consulted"
+    assert snapshot_tree(original) == baseline
+
+
+def test_exact_direct_file_reader_ignores_late_os_fspath_redirection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Descriptor reads remain bound to the actual file, not an os.fspath hook."""
+    source = tmp_path / "source.bin"
+    foreign = tmp_path / "foreign.bin"
+    _ = source.write_bytes(b"admitted")
+    _ = foreign.write_bytes(b"unrelated")
+    redirected = str(foreign)
+    native_fspath = os.fspath
+
+    def forged_fspath(path: object) -> str:
+        if path is source:
+            return redirected
+        return native_fspath(cast("Path", path))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "fspath", forged_fspath)
+        observed = exact_module.read_exact_regular_file(source, "source")
+    assert observed == b"admitted"

@@ -42,7 +42,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
-from pathlib import Path
+from pathlib import Path, PurePath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
@@ -118,6 +118,51 @@ _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 # Owned staging deletion must ignore consumer changes to shutil hooks.
 _NATIVE_RMTREE = shutil.rmtree
+_NATIVE_OS_FSPATH = os.fspath
+_NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
+# Capturing Path.__str__ is insufficient: it reads a mutable cached slot,
+# and original filesystem operations call late Path.__fspath__ dispatch.
+_PATH_HOOK_NAMES = (
+    "__getattribute__",
+    "__getattr__",
+    "__setattr__",
+    "__str__",
+    "__fspath__",
+    "_str",
+    "_raw_paths",
+    "_drv",
+    "_root",
+    "_tail_cached",
+    "_raw_path",
+    "_tail",
+    "drive",
+    "root",
+    "_parse_path",
+    "_format_parsed_parts",
+    "parser",
+)
+_NATIVE_PATH_HOOKS = _NATIVE_TUPLE(
+    (
+        cls,
+        _NATIVE_TUPLE((name, cls.__dict__.get(name)) for name in _PATH_HOOK_NAMES),
+    )
+    for cls in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(cls, PurePath)
+)
+
+
+def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
+    """Guard path resolution; direct descriptor reads ignore late os.fspath."""
+    if (
+        (not direct_file_read and os.fspath is not _NATIVE_OS_FSPATH)
+        or _NATIVE_ANY(
+            cls.__dict__.get(name) is not original
+            for cls, hooks in _NATIVE_PATH_HOOKS
+            for name, original in hooks
+        )
+    ):
+        message = "exact filesystem path hooks changed"
+        raise ExactTreeError(message)
 
 
 class ExactTreeError(RuntimeError):
@@ -500,6 +545,7 @@ def _raise_tree_walk_error(error: OSError | ValueError | RuntimeError) -> None:
 def _walk_tree(
     root: Path,
 ) -> Iterator[tuple[Path, list[str], list[str]]]:
+    _require_native_path_hooks()
     try:
         yield from _NATIVE_PATH_WALK(root, on_error=_raise_tree_walk_error)
     except ExactTreeError:
@@ -569,6 +615,7 @@ def _tree_paths_excluding(
 
 
 def _entry_mode(path: Path, context: str) -> int | None:
+    _require_native_path_hooks()
     try:
         receipt = _NATIVE_PATH_LSTAT(path)
     except FileNotFoundError:
@@ -725,6 +772,10 @@ def _verify_closed_source(
 
 
 def _read_bound_file(path: Path, context: str) -> bytes:
+    # Opening a directly supplied regular file via the native descriptor API
+    # does not resolve a directory or path segment with os.fspath. Preserve
+    # generator source replays when a domain replaces only that global hook.
+    _require_native_path_hooks(direct_file_read=True)
     descriptor = os.open(path, _FILE_READ_FLAGS)
     try:
         before = _admit_opened_file(descriptor, path, context)
@@ -817,9 +868,10 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
 def _require_filesystem_root(value: object, context: str) -> None:
     # Subclasses may override conversion, status or resolution to redirect I/O.
     # Admit only the native host path before calling any such method.
-    if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
+    if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{context} must use an exact pathlib Path filesystem path"
         raise ExactTreeError(message)
+    _require_native_path_hooks()
     raw = _NATIVE_PATH_STRING(value)
     if _NUL in raw:
         message = f"{context} must use a representable filesystem path"
@@ -1176,6 +1228,7 @@ def _reject_linked_tree_ancestors(root: Path, relative_path: str) -> None:
 
 
 def _safe_tree_path(root: Path, relative_path: str) -> Path:
+    _require_native_path_hooks()
     normalized = _validate_relative_path(relative_path)
     path = _NATIVE_PATH_JOINPATH(root, *normalized.split("/"))
     try:
@@ -1238,6 +1291,7 @@ def _instruction_bytes(
 
 def _native_write_output_bytes(path: Path, data: bytes) -> int:
     """Create one staged file through the import-pinned native file writer."""
+    _require_native_path_hooks()
     with _NATIVE_IO_OPEN(_NATIVE_PATH_STRING(path), "xb") as stream:
         return stream.write(data)
 
@@ -1247,6 +1301,7 @@ _NATIVE_WRITE_OUTPUT_BYTES = _native_write_output_bytes
 
 def _native_make_output_directory(path: Path, *, parents: bool, exist_ok: bool) -> None:
     """Create output directories without later class or os.mkdir hooks."""
+    _require_native_path_hooks()
     try:
         _NATIVE_OS_MKDIR(_NATIVE_PATH_STRING(path))
     except FileNotFoundError:
