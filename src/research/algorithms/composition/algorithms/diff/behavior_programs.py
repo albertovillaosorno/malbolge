@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import builtins
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass, replace
@@ -69,8 +70,8 @@ if TYPE_CHECKING:
 
 
 # Bind native path operations before domain hooks can replace them.
-_NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_PATH_STR = Path.__str__
+_NATIVE_OS_REALPATH = os.path.realpath
 _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = builtins.type
 _NATIVE_TUPLE = builtins.tuple
@@ -82,6 +83,15 @@ _NATIVE_SET = builtins.set
 _NATIVE_COPYTREE = shutil.copytree
 _NATIVE_TEMPORARY_DIRECTORY = tempfile.TemporaryDirectory
 _NUL = "\x00"
+_NATIVE_WINDOWS_HOST = os.name == "nt"
+
+
+def _native_path_resolve(path: Path, *, strict: bool = False) -> Path:
+    """Resolve trusted native paths without late process-global path hooks."""
+    return Path(_NATIVE_OS_REALPATH(_NATIVE_PATH_STR(path), strict=strict))
+
+
+_NATIVE_PATH_RESOLVE = _native_path_resolve
 
 
 class BehaviorProgramError(ValueError):
@@ -426,14 +436,25 @@ def _resolved_context_path(path: Path, description: str) -> Path:
     return resolved
 
 
+def _native_context_path_key(path: Path) -> str:
+    """Compare canonical paths without mutable Path equality hooks."""
+    spelling = _NATIVE_PATH_STR(path)
+    return spelling.lower() if _NATIVE_WINDOWS_HOST else spelling
+
+
 def _context_signature(
     context: ProbeRunContext,
-) -> tuple[Path, tuple[tuple[str, Path], ...]]:
+) -> tuple[str, tuple[tuple[str, str], ...]]:
     tools = _NATIVE_TUPLE(
-        (tool_id, _resolved_context_path(path, "tool"))
+        (
+            tool_id,
+            _native_context_path_key(_resolved_context_path(path, "tool")),
+        )
         for tool_id, path in context.tools
     )
-    repository = _resolved_context_path(context.repository_root, "repository")
+    repository = _native_context_path_key(
+        _resolved_context_path(context.repository_root, "repository")
+    )
     return repository, tools
 
 
@@ -441,6 +462,8 @@ def _require_matching_contexts(
     source_context: ProbeRunContext,
     oracle_context: ProbeRunContext,
 ) -> None:
+    # Comparing path objects would delegate to mutable Path.__eq__ and str.
+    # Canonical host spellings retain Windows's case-insensitive comparison.
     if _context_signature(source_context) != _context_signature(oracle_context):
         message = "source and oracle behavior runs must use the same tool bindings"
         raise BehaviorProgramError(message)

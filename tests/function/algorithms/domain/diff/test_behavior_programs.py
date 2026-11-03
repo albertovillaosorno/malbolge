@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import math
+import os
 import shutil
 import sys
 import tempfile
@@ -444,6 +445,103 @@ def test_behavior_authoring_rejects_foreign_resolved_context_receipt(
     monkeypatch.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", return_foreign_path)
     with pytest.raises(BehaviorProgramError, match="native resolved Path"):
         _ = author_behavior_programs(programs, source_context, oracle_context)
+
+
+@pytest.mark.parametrize("role", [_REPOSITORY_ROLE, _TOOL_ROLE])
+def test_behavior_authoring_ignores_late_path_equality_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """A late Path equality hook cannot unify distinct probe bindings."""
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    other = tmp_path / "unrelated-binding"
+    oracle_context = ProbeRunContext(
+        source_root=oracle,
+        repository_root=other if role == _REPOSITORY_ROLE else tmp_path,
+        tools=(
+            ((_PYTHON_TOOL, other),)
+            if role == _TOOL_ROLE
+            else source_context.tools
+        ),
+    )
+    original_equal = Path.__eq__
+    base = tmp_path if role == _REPOSITORY_ROLE else Path(sys.executable)
+    calls = 0
+
+    def forged_equal(left: Path, right: object) -> bool:
+        nonlocal calls
+        if isinstance(right, Path) and (
+            original_equal(left, base)
+            and original_equal(right, other)
+            or original_equal(left, other)
+            and original_equal(right, base)
+        ):
+            calls += 1
+            return True
+        return original_equal(left, right)
+
+    def unexpected_execution(*_args: object) -> tuple[ProbeTranscript, ...]:
+        del _args
+        raise AssertionError("mismatched context reached probe execution")
+
+    monkeypatch.setattr(
+        behavior_module, "run_probe_programs", unexpected_execution
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__eq__", forged_equal)
+        with pytest.raises(BehaviorProgramError, match="same tool bindings"):
+            _ = author_behavior_programs(
+                _programs(), source_context, oracle_context
+            )
+    assert calls == 0, "mutable Path equality influenced context admission"
+
+
+@pytest.mark.parametrize("role", [_REPOSITORY_ROLE, _TOOL_ROLE])
+def test_behavior_authoring_ignores_late_realpath_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """Late host path hooks must not hide different authoring bindings."""
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    other = tmp_path / "different-binding"
+    oracle_context = ProbeRunContext(
+        source_root=oracle,
+        repository_root=other if role == _REPOSITORY_ROLE else tmp_path,
+        tools=(
+            ((_PYTHON_TOOL, other),)
+            if role == _TOOL_ROLE
+            else source_context.tools
+        ),
+    )
+    disguised = tmp_path if role == _REPOSITORY_ROLE else Path(sys.executable)
+    native_realpath = os.path.realpath
+    calls = 0
+
+    def forged_realpath(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        *,
+        strict: bool = False,
+    ) -> str:
+        nonlocal calls
+        if os.fspath(path) == os.fspath(other):
+            calls += 1
+            return str(disguised)
+        return native_realpath(path, strict=strict)
+
+    def unexpected_execution(*_args: object) -> tuple[ProbeTranscript, ...]:
+        del _args
+        raise AssertionError("mismatched context reached probe execution")
+
+    monkeypatch.setattr(
+        behavior_module, "run_probe_programs", unexpected_execution
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(BehaviorProgramError, match="same tool bindings"):
+            _ = author_behavior_programs(
+                _programs(), source_context, oracle_context
+            )
+    assert calls == 0, "context resolution consulted late realpath hook"
 
 
 @pytest.mark.parametrize("role", [_REPOSITORY_ROLE, _TOOL_ROLE])
