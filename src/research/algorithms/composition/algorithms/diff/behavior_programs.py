@@ -190,7 +190,7 @@ class BugProgram:
         _ = _require_correction_identifier(correction, "bug behavior program")
 
 
-_BUG_PROGRAM_VALIDATOR = BugProgram.__dict__["__post_init__"]
+_BUG_PROGRAM_VALIDATOR = cast("Callable[[BugProgram], None]", BugProgram.__dict__["__post_init__"])
 _BUG_PROGRAM_SLOT = cast("MemberDescriptorType", BugProgram.__dict__["program"])
 _BUG_CORRECTION_SLOT = cast(
     "MemberDescriptorType", BugProgram.__dict__["correction_id"]
@@ -198,11 +198,25 @@ _BUG_CORRECTION_SLOT = cast(
 
 
 def read_bug_program(program: BugProgram) -> tuple[ProbeProgram, str]:
-    """Read the native bug program fields, unaffected by later class hooks."""
-    return (
-        cast("ProbeProgram", _BUG_PROGRAM_SLOT.__get__(program, BugProgram)),
-        cast("str", _BUG_CORRECTION_SLOT.__get__(program, BugProgram)),
-    )
+    """Read native bug fields through original slots.
+
+    Returns:
+        The portable probe program and named correction.
+
+    Raises:
+        BehaviorProgramError: Required native slots are missing.
+
+    """
+    try:
+        return (
+            cast(
+                "ProbeProgram", _BUG_PROGRAM_SLOT.__get__(program, BugProgram)
+            ),
+            cast("str", _BUG_CORRECTION_SLOT.__get__(program, BugProgram)),
+        )
+    except AttributeError as error:
+        message = "bug behavior program is missing native fields"
+        raise BehaviorProgramError(message) from error
 
 
 def _require_program_tuple(value: object, context: str) -> None:
@@ -230,6 +244,8 @@ def _require_bug_program_tuple(value: object) -> None:
     if _NATIVE_ANY(_NATIVE_TYPE(item) is not BugProgram for item in items):
         message = "bug behavior programs contain a foreign bug record"
         raise BehaviorProgramError(message)
+    for item in items:
+        _BUG_PROGRAM_VALIDATOR(cast("BugProgram", item))
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -283,7 +299,10 @@ class BehaviorPrograms:
             raise BehaviorProgramError(message)
 
 
-_BEHAVIOR_PROGRAMS_VALIDATOR = BehaviorPrograms.__dict__["__post_init__"]
+_BEHAVIOR_PROGRAMS_VALIDATOR = cast(
+    "Callable[[BehaviorPrograms], None]",
+    BehaviorPrograms.__dict__["__post_init__"],
+)
 _BEHAVIOR_IDENTITY_SLOT = cast(
     "MemberDescriptorType", BehaviorPrograms.__dict__["identity"]
 )
@@ -298,21 +317,33 @@ _BEHAVIOR_BUGS_SLOT = cast(
 def read_behavior_programs(
     programs: BehaviorPrograms,
 ) -> tuple[tuple[ProbeProgram, ...], tuple[ProbeProgram, ...], tuple[BugProgram, ...]]:
-    """Read native identity, compatibility and bug program groups."""
-    return (
-        cast(
-            "tuple[ProbeProgram, ...]",
-            _BEHAVIOR_IDENTITY_SLOT.__get__(programs, BehaviorPrograms),
-        ),
-        cast(
-            "tuple[ProbeProgram, ...]",
-            _BEHAVIOR_COMPATIBILITY_SLOT.__get__(programs, BehaviorPrograms),
-        ),
-        cast(
-            "tuple[BugProgram, ...]",
-            _BEHAVIOR_BUGS_SLOT.__get__(programs, BehaviorPrograms),
-        ),
-    )
+    """Read native identity, compatibility and bug program groups.
+
+    Returns:
+        Original stored program groups.
+
+    Raises:
+        BehaviorProgramError: Required native slots are missing.
+
+    """
+    try:
+        return (
+            cast(
+                "tuple[ProbeProgram, ...]",
+                _BEHAVIOR_IDENTITY_SLOT.__get__(programs, BehaviorPrograms),
+            ),
+            cast(
+                "tuple[ProbeProgram, ...]",
+                _BEHAVIOR_COMPATIBILITY_SLOT.__get__(programs, BehaviorPrograms),
+            ),
+            cast(
+                "tuple[BugProgram, ...]",
+                _BEHAVIOR_BUGS_SLOT.__get__(programs, BehaviorPrograms),
+            ),
+        )
+    except AttributeError as error:
+        message = "behavior programs are missing native fields"
+        raise BehaviorProgramError(message) from error
 
 
 def _require_exact_probe_program(value: object, context: str) -> ProbeProgram:
@@ -389,7 +420,7 @@ class AuthoredBugProgram:
             raise BehaviorProgramError(message)
 
 
-_AUTHORED_BUG_VALIDATOR = AuthoredBugProgram.__dict__["__post_init__"]
+_AUTHORED_BUG_VALIDATOR = cast("Callable[[AuthoredBugProgram], None]", AuthoredBugProgram.__dict__["__post_init__"])
 _AUTHORED_BUG_PROGRAM_SLOT = cast(
     "MemberDescriptorType", AuthoredBugProgram.__dict__["program"]
 )
@@ -407,16 +438,34 @@ _AUTHORED_BUG_FIXED_SLOT = cast(
 def read_authored_bug(
     bug: AuthoredBugProgram,
 ) -> tuple[ProbeProgram, str, bytes, bytes]:
-    """Read original authored bug program and digest evidence."""
-    return (
-        cast(
-            "ProbeProgram",
-            _AUTHORED_BUG_PROGRAM_SLOT.__get__(bug, AuthoredBugProgram),
-        ),
-        cast("str", _AUTHORED_BUG_CORRECTION_SLOT.__get__(bug, AuthoredBugProgram)),
-        cast("bytes", _AUTHORED_BUG_PRESENT_SLOT.__get__(bug, AuthoredBugProgram)),
-        cast("bytes", _AUTHORED_BUG_FIXED_SLOT.__get__(bug, AuthoredBugProgram)),
-    )
+    """Read original authored bug program and digest evidence.
+
+    Returns:
+        Original program, correction, and present/fixed digests.
+
+    Raises:
+        BehaviorProgramError: Required native slots are missing.
+
+    """
+    try:
+        return (
+            cast(
+                "ProbeProgram",
+                _AUTHORED_BUG_PROGRAM_SLOT.__get__(bug, AuthoredBugProgram),
+            ),
+            cast(
+                "str", _AUTHORED_BUG_CORRECTION_SLOT.__get__(bug, AuthoredBugProgram)
+            ),
+            cast(
+                "bytes", _AUTHORED_BUG_PRESENT_SLOT.__get__(bug, AuthoredBugProgram)
+            ),
+            cast(
+                "bytes", _AUTHORED_BUG_FIXED_SLOT.__get__(bug, AuthoredBugProgram)
+            ),
+        )
+    except AttributeError as error:
+        message = "authored bug record is missing native fields"
+        raise BehaviorProgramError(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -459,7 +508,10 @@ class AuthoredBehaviorPrograms:
         _require_authored_profile_alignment(self)
 
 
-_AUTHORED_BEHAVIOR_VALIDATOR = AuthoredBehaviorPrograms.__dict__["__post_init__"]
+_AUTHORED_BEHAVIOR_VALIDATOR = cast(
+    "Callable[[AuthoredBehaviorPrograms], None]",
+    AuthoredBehaviorPrograms.__dict__["__post_init__"],
+)
 _AUTHORED_PROFILE_SLOT = cast(
     "MemberDescriptorType", AuthoredBehaviorPrograms.__dict__["profile"]
 )
@@ -482,25 +534,37 @@ def read_authored_behavior(
     tuple[ProbeProgram, ...],
     tuple[AuthoredBugProgram, ...],
 ]:
-    """Read stored profile, identity, compatibility, and correction programs."""
-    return (
-        cast(
-            "BehaviorProfile",
-            _AUTHORED_PROFILE_SLOT.__get__(authored, AuthoredBehaviorPrograms),
-        ),
-        cast(
-            "tuple[ProbeProgram, ...]",
-            _AUTHORED_IDENTITY_SLOT.__get__(authored, AuthoredBehaviorPrograms),
-        ),
-        cast(
-            "tuple[ProbeProgram, ...]",
-            _AUTHORED_COMPATIBILITY_SLOT.__get__(authored, AuthoredBehaviorPrograms),
-        ),
-        cast(
-            "tuple[AuthoredBugProgram, ...]",
-            _AUTHORED_BUGS_SLOT.__get__(authored, AuthoredBehaviorPrograms),
-        ),
-    )
+    """Read stored profile, identity, compatibility, and correction programs.
+
+    Returns:
+        Original stored profile and program groups.
+
+    Raises:
+        BehaviorProgramError: Required native slots are missing.
+
+    """
+    try:
+        return (
+            cast(
+                "BehaviorProfile",
+                _AUTHORED_PROFILE_SLOT.__get__(authored, AuthoredBehaviorPrograms),
+            ),
+            cast(
+                "tuple[ProbeProgram, ...]",
+                _AUTHORED_IDENTITY_SLOT.__get__(authored, AuthoredBehaviorPrograms),
+            ),
+            cast(
+                "tuple[ProbeProgram, ...]",
+                _AUTHORED_COMPATIBILITY_SLOT.__get__(authored, AuthoredBehaviorPrograms),
+            ),
+            cast(
+                "tuple[AuthoredBugProgram, ...]",
+                _AUTHORED_BUGS_SLOT.__get__(authored, AuthoredBehaviorPrograms),
+            ),
+        )
+    except AttributeError as error:
+        message = "authored programs are missing native fields"
+        raise BehaviorProgramError(message) from error
 
 
 # A probe runner can replace process-global class hooks before its transcript
@@ -563,6 +627,8 @@ def _require_authored_bug_tuple(value: object) -> None:
     ):
         message = "authored bugs contain a foreign authored bug record"
         raise BehaviorProgramError(message)
+    for item in items:
+        _AUTHORED_BUG_VALIDATOR(cast("AuthoredBugProgram", item))
 
 
 def _require_authored_profile_alignment(
@@ -812,6 +878,8 @@ def author_behavior_programs(
     if _NATIVE_TYPE(programs) is not BehaviorPrograms:
         message = "behavior authoring requires exact BehaviorPrograms"
         raise BehaviorProgramError(message)
+    # Native allocation can bypass the captured constructor validators.
+    _BEHAVIOR_PROGRAMS_VALIDATOR(programs)
     source_context = _require_run_context(source_context, "source behavior context")
     oracle_context = _require_run_context(oracle_context, "oracle behavior context")
     _require_matching_contexts(source_context, oracle_context)
@@ -1059,6 +1127,7 @@ def observe_behavior_programs(
     if _NATIVE_TYPE(authored) is not AuthoredBehaviorPrograms:
         message = "behavior observation requires exact AuthoredBehaviorPrograms"
         raise BehaviorProgramError(message)
+    _AUTHORED_BEHAVIOR_VALIDATOR(authored)
     context = _require_run_context(context, "behavior observation context")
     _, identity_programs, compatibility_programs, bug_programs = read_authored_behavior(
         authored

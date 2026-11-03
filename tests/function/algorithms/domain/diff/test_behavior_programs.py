@@ -87,6 +87,7 @@ from algorithms.diff.probe_exec import (
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Sized
+    from types import MemberDescriptorType
 
     from algorithms.diff.model import TreeSnapshot
 
@@ -2155,3 +2156,122 @@ def test_behavior_observation_rejects_original_drift_under_late_root_getter(
         with pytest.raises(ProbeExecutionError, match="changed between probes"):
             _ = observe_behavior_programs(authored, _context(source, tmp_path))
     assert calls == 0, "late source getter concealed original-tree drift"
+
+
+@pytest.mark.parametrize("forgery", ["missing", "foreign", "unselected"])
+def test_behavior_bundle_revalidates_exact_native_bug(forgery: str) -> None:
+    """Exact native bug records must still satisfy their original validator."""
+    baseline = _programs()
+    authentic = baseline.bugs[0]
+    bug = object.__new__(BugProgram)
+    fields: dict[str, object] = {
+        "program": authentic.program,
+        "correction_id": authentic.correction_id,
+    }
+    match forgery:
+        case "missing":
+            del fields["correction_id"]
+        case "foreign":
+            fields["correction_id"] = 8
+        case _:
+            fields["program"] = _compatibility_program()
+    for name, value in fields.items():
+        slot = cast("MemberDescriptorType", BugProgram.__dict__[name])
+        slot.__set__(bug, value)
+    with pytest.raises(BehaviorProgramError, match="bug"):
+        _ = BehaviorPrograms(baseline.identity, baseline.compatibility, (bug,))
+
+
+@pytest.mark.parametrize("forgery", ["missing", "empty", "equal", "mutable"])
+def test_authored_bundle_revalidates_exact_native_bug(
+    tmp_path: Path, forgery: str
+) -> None:
+    """Native bug transcripts cannot bypass digest or missing-slot guards."""
+    baseline, _, _ = _authored(tmp_path)
+    authentic = baseline.bugs[0]
+    bug = object.__new__(AuthoredBugProgram)
+    fields: dict[str, object] = {
+        "program": authentic.program,
+        "correction_id": authentic.correction_id,
+        "present_digest": authentic.present_digest,
+        "fixed_digest": authentic.fixed_digest,
+    }
+    match forgery:
+        case "missing":
+            del fields["fixed_digest"]
+        case "empty":
+            fields["present_digest"] = b""
+        case "equal":
+            fields["present_digest"] = fields["fixed_digest"]
+        case _:
+            fields["present_digest"] = bytearray(b"foreign")
+    for name, value in fields.items():
+        slot = cast("MemberDescriptorType", AuthoredBugProgram.__dict__[name])
+        slot.__set__(bug, value)
+    with pytest.raises(BehaviorProgramError, match="authored"):
+        _ = AuthoredBehaviorPrograms(
+            baseline.profile, baseline.identity, baseline.compatibility, (bug,)
+        )
+
+
+def test_authoring_rejects_empty_native_program_bundle_before_probes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Native program groups are revalidated before running source probes."""
+    source, oracle = _trees(tmp_path)
+    baseline = _programs()
+    forged = object.__new__(BehaviorPrograms)
+    for name, value in (
+        ("identity", ()),
+        ("compatibility", baseline.compatibility),
+        ("bugs", baseline.bugs),
+    ):
+        slot = cast("MemberDescriptorType", BehaviorPrograms.__dict__[name])
+        slot.__set__(forged, value)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        del _args, _kwargs
+        message = "invalid behavior bundle executed untrusted probes"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(behavior_module, "_run_authored_baselines", forbidden)
+    with pytest.raises(BehaviorProgramError, match="identity"):
+        _ = author_behavior_programs(
+            forged, _context(source, tmp_path), _context(oracle, tmp_path)
+        )
+
+
+@pytest.mark.parametrize("forgery", ["missing", "empty"])
+def test_observation_rejects_native_authored_bundle_before_source_access(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Uninitialized authored metadata must not trigger source observation."""
+    baseline, source, _ = _authored(tmp_path)
+    forged = object.__new__(AuthoredBehaviorPrograms)
+    fields: dict[str, object] = {
+        "profile": baseline.profile,
+        "identity": baseline.identity,
+        "compatibility": baseline.compatibility,
+        "bugs": baseline.bugs,
+    }
+    match forgery:
+        case "missing":
+            del fields["profile"]
+        case _:
+            fields["identity"] = ()
+    for name, value in fields.items():
+        slot = cast(
+            "MemberDescriptorType", AuthoredBehaviorPrograms.__dict__[name]
+        )
+        slot.__set__(forged, value)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        del _args, _kwargs
+        message = "invalid authored bundle entered source observation"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(behavior_module, "_snapshot_observed_source", forbidden)
+    with pytest.raises(
+        BehaviorProgramError, match=r"authored|identity|profile"
+    ):
+        _ = observe_behavior_programs(forged, _context(source, tmp_path))
