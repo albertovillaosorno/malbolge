@@ -111,6 +111,7 @@ _NATIVE_ZIP = builtins.zip
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
+_NATIVE_ADMISSION_POLICY_ERROR = AdmissionPolicyError
 _NATIVE_TYPE_ERROR = builtins.TypeError
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
@@ -996,7 +997,7 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
         raise SourceBindingPolicyError(message)
     try:
         _require_native_identity_tree(reference)
-    except (AdmissionPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
+    except (_NATIVE_ADMISSION_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source-binding reference contains invalid identity metadata"
         raise SourceBindingPolicyError(message) from error
 
@@ -1386,7 +1387,7 @@ def recover_secret(
         raise SourceBindingError(message)
     try:
         _require_native_identity_tree(candidate)
-    except (AdmissionPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
+    except (_NATIVE_ADMISSION_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source-binding candidate contains invalid identity metadata"
         raise SourceBindingError(message) from error
     try:

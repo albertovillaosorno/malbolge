@@ -2412,3 +2412,30 @@ def test_source_binding_share_path_unicode_error_alias_fails_closed(
     assert rejected is not None, route
     assert "UTF-8 encodable" in str(rejected)
     assert type(rejected.__cause__) is native_unicode_encode_error
+
+
+@pytest.mark.parametrize("route", ["reference", "candidate"])
+def test_source_binding_identity_validator_ignores_late_error_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """Mutable imported policy error alias must not leak native admission errors."""
+    reference = _reference()
+    invalid = object.__new__(IdentityTree)
+    object.__setattr__(invalid, "files", tuple(reversed(reference.files)))
+    valid_binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
+    rejected: SourceBindingPolicyError | SourceBindingError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(binding_module, "AdmissionPolicyError", LookupError)
+        try:
+            if route == "reference":
+                _ = bind_secret(invalid, _SECRET, policy=_policy(), context=_CONTEXT)
+            else:
+                _ = recover_secret(valid_binding, invalid)
+        except (SourceBindingPolicyError, SourceBindingError) as error:
+            rejected = error
+    assert rejected is not None, route
+    assert type(rejected) is (
+        SourceBindingPolicyError if route == "reference" else SourceBindingError
+    )
+    assert type(rejected.__cause__) is AdmissionPolicyError
+    assert "invalid identity metadata" in str(rejected)
