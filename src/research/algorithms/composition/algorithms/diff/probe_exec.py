@@ -102,6 +102,8 @@ _NATIVE_HOST_ISLINK = stat.S_ISLNK
 _NATIVE_OS_STAT = os.stat
 # Probe output evidence must be read through the original host descriptor API.
 _NATIVE_OS_READ = os.read
+# Process-group cleanup must not trust a late host signal dispatcher.
+_NATIVE_OS_KILL = os.kill
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
 _NATIVE_PATH_JOINPATH = Path.joinpath
@@ -1367,7 +1369,7 @@ def _signal_probe_group(process: subprocess.Popen[bytes]) -> OSError | None:
 
     """
     try:
-        os.kill(-process.pid, _NATIVE_INT(signal.Signals["SIGKILL"]))
+        _NATIVE_OS_KILL(-process.pid, _NATIVE_INT(signal.Signals["SIGKILL"]))
     except ProcessLookupError:
         return None
     except OSError as error:

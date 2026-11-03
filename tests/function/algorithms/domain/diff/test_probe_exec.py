@@ -700,6 +700,46 @@ def test_successful_probe_reaps_remaining_posix_descendants(
     _expect(not late.exists(), "successful probe left descendant running")
 
 
+def _cleanup_intercepted_group_signals(
+    intercepted: list[int], native_kill: Callable[[int, int], None]
+) -> None:
+    for pid in intercepted:
+        if pid < 0:
+            with suppress(ProcessLookupError):
+                native_kill(pid, int(signal.Signals["SIGKILL"]))
+
+
+@pytest.mark.skipif(os.name != _POSIX_OS_NAME, reason="POSIX group cleanup")
+@pytest.mark.parametrize("deny", [False, True], ids=["no-op", "denied"])
+def test_successful_probe_ignores_late_os_kill_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, deny: bool
+) -> None:
+    """A late host kill replacement cannot skip or deny group cleanup."""
+    source = tmp_path / "source"
+    source.mkdir()
+    native_kill = os.kill
+    intercepted: list[int] = []
+
+    def forged_kill(pid: int, signum: int) -> None:
+        del signum
+        intercepted.append(pid)
+        if deny:
+            message = "late host process-group cleanup hook"
+            raise PermissionError(message)
+
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(os, "kill", forged_kill)
+            observed = run_probe_program(
+                _program("native-group-cleanup", "print('complete')"),
+                _context(source, tmp_path),
+            )
+    finally:
+        _cleanup_intercepted_group_signals(intercepted, native_kill)
+    assert isinstance(observed, ProbeTranscript)
+    assert not intercepted, "untrusted host kill controlled group cleanup"
+
+
 def _reject_group_kill_for_test(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[list[int], Callable[[int, int], None]]:
@@ -713,7 +753,7 @@ def _reject_group_kill_for_test(
             raise PermissionError(message)
         real_kill(pid, signum)
 
-    monkeypatch.setattr(os, "kill", reject_group_kill)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_OS_KILL", reject_group_kill)
     return blocked_groups, real_kill
 
 
