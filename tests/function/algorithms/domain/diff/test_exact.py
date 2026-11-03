@@ -3846,3 +3846,45 @@ def test_exact_direct_file_reader_ignores_late_os_fspath_redirection(
         patched.setattr(os, "fspath", forged_fspath)
         observed = exact_module.read_exact_regular_file(source, "source")
     assert observed == b"admitted"
+
+
+@pytest.mark.parametrize("hook", ["as-posix", "truediv"])
+def test_exact_snapshot_rejects_late_path_label_or_child_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """Late path methods cannot hide a file or forge its identity label."""
+    root = tmp_path / "source"
+    _write(root, "admitted.bin", b"source")
+    _write(root, "excluded/secret.bin", b"not admitted")
+    original = snapshot_tree_excluding(root, ("excluded",))
+    assert len(original.files) == 1
+    native_as_posix = PurePosixPath.as_posix
+    native_div = Path.__truediv__
+    late_calls = 0
+
+    def forged_as_posix(path: PurePosixPath) -> str:
+        nonlocal late_calls
+        spelling = native_as_posix(path)
+        if spelling == "admitted.bin":
+            late_calls += 1
+            return "forged.bin"
+        return spelling
+
+    def forged_div(path: Path, child: object) -> Path:
+        nonlocal late_calls
+        if path == root and child == "admitted.bin":
+            late_calls += 1
+            return native_div(native_div(root, "excluded"), "secret.bin")
+        return native_div(path, cast("str", child))
+
+    with monkeypatch.context() as patched:
+        if hook == "as-posix":
+            patched.setattr(PurePosixPath, "as_posix", forged_as_posix)
+        else:
+            patched.setattr(Path, "__truediv__", forged_div)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            _ = snapshot_tree_excluding(root, ("excluded",))
+    assert late_calls == 0, "late path hook rewrote source identity"
+    assert snapshot_tree_excluding(root, ("excluded",)) == original

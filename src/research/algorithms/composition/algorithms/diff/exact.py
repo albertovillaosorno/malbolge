@@ -128,6 +128,8 @@ _PATH_HOOK_NAMES = (
     "__setattr__",
     "__str__",
     "__fspath__",
+    "__truediv__",
+    "as_posix",
     "_str",
     "_raw_paths",
     "_drv",
@@ -159,6 +161,7 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
             cls.__dict__.get(name) is not original
             for cls, hooks in _NATIVE_PATH_HOOKS
             for name, original in hooks
+            if not direct_file_read or name not in {"__truediv__", "as_posix"}
         )
     ):
         message = "exact filesystem path hooks changed"
