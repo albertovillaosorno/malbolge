@@ -50,6 +50,76 @@ def _expect(condition: object, message: str) -> None:
         raise AssertionError(message)
 
 
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("canonical", b""),
+        ("canonical", bytearray(b"A")),
+        ("raw_start", -1),
+        ("raw_start", True),
+        ("raw_end", -1),
+        ("raw_end", True),
+    ],
+)
+def test_mapped_view_revalidates_fabricated_native_unit(
+    field: str, invalid: object
+) -> None:
+    """Exact native units must retain their own coordinate/content contract."""
+    unit = object.__new__(MappedUnit)
+    values: dict[str, object] = {
+        "canonical": b"A", "raw_start": 0, "raw_end": 1
+    }
+    values[field] = invalid
+    for name, value in values.items():
+        slot = cast("MemberDescriptorType", MappedUnit.__dict__[name])
+        slot.__set__(unit, value)
+    with pytest.raises(MappedViewError):
+        _ = MappedView(b"raw", (unit,))
+
+
+@pytest.mark.parametrize("missing", ["canonical", "raw_start", "raw_end"])
+def test_mapped_view_rejects_incomplete_native_unit(missing: str) -> None:
+    """Uninitialized native unit slots must fail with typed errors."""
+    unit = object.__new__(MappedUnit)
+    values: dict[str, object] = {
+        "canonical": b"A", "raw_start": 0, "raw_end": 1
+    }
+    for name, value in values.items():
+        if name == missing:
+            continue
+        slot = cast("MemberDescriptorType", MappedUnit.__dict__[name])
+        slot.__set__(unit, value)
+    with pytest.raises(MappedViewError, match="incomplete native unit"):
+        _ = MappedView(b"raw", (unit,))
+
+
+@pytest.mark.parametrize("property_name", ["canonical", "keys"])
+@pytest.mark.parametrize("invalid", ["empty-unit", "mutable-raw", "missing-units"])
+def test_mapped_properties_revalidate_fabricated_view(
+    property_name: str, invalid: str
+) -> None:
+    """Direct native allocation cannot promote malformed canonical identity."""
+    view = object.__new__(MappedView)
+    values: dict[str, object] = {
+        "raw": b"raw", "units": (MappedUnit(b"A", 0, 1),)
+    }
+    if invalid == "empty-unit":
+        unit = object.__new__(MappedUnit)
+        for name, value in {"canonical": b"", "raw_start": 0, "raw_end": 0}.items():
+            slot = cast("MemberDescriptorType", MappedUnit.__dict__[name])
+            slot.__set__(unit, value)
+        values["units"] = (unit,)
+    elif invalid == "mutable-raw":
+        values["raw"] = bytearray(b"raw")
+    else:
+        del values["units"]
+    for name, value in values.items():
+        slot = cast("MemberDescriptorType", MappedView.__dict__[name])
+        slot.__set__(view, value)
+    with pytest.raises(MappedViewError):
+        _ = view.canonical if property_name == "canonical" else view.keys
+
+
 def test_mapped_view_concatenates_canonical_units() -> None:
     """Keep canonical identity independent from raw presentation gaps."""
     view = MappedView(
@@ -103,8 +173,12 @@ def test_mapped_view_rejects_overlap_after_late_builtin_max_override(
     """Consumer hooks cannot rewrite the raw span ordering check."""
     first = MappedUnit(canonical=b"A", raw_start=0, raw_end=2)
     overlapping = MappedUnit(canonical=b"B", raw_start=1, raw_end=3)
+
+    def forged_max(*_values: object) -> int:
+        return 0
+
     with monkeypatch.context() as patched:
-        patched.setattr(builtins, "max", lambda *_values: 0)
+        patched.setattr(builtins, "max", forged_max)
         with pytest.raises(MappedViewError, match="overlap"):
             _ = MappedView(raw=b"abc", units=(first, overlapping))
 
@@ -118,8 +192,12 @@ def test_mapped_view_rejects_foreign_unit_after_late_any_override(
         cast("object", SimpleNamespace(canonical=b"A", raw_start=0, raw_end=1)),
     )
     rejected = False
+
+    def forged_any(_values: object) -> bool:
+        return False
+
     with monkeypatch.context() as patched:
-        patched.setattr(builtins, "any", lambda values: False)
+        patched.setattr(builtins, "any", forged_any)
         try:
             _ = MappedView(raw=b"a", units=(foreign,))
         except MappedViewError:
@@ -534,7 +612,7 @@ def test_mapped_constructors_ignore_late_class_field_setters(
     owner = type(valid)
     factory = cast("Callable[..., object]", owner)
     values = {datum.name: getattr(valid, datum.name) for datum in fields(valid)}
-    original = values[field]
+    original = cast("object", values[field])
     values[field] = invalid
     slot = cast("MemberDescriptorType", owner.__dict__[field])
     calls = 0

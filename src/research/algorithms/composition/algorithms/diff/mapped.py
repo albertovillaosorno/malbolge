@@ -120,6 +120,12 @@ def read_mapped_unit(unit: MappedUnit) -> tuple[bytes, int, int]:
 def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
     previous_end = _ZERO
     for unit in units:
+        # Exact unit type does not prove its native constructor was invoked.
+        try:
+            _MAPPED_UNIT_VALIDATOR(unit)
+        except AttributeError as error:
+            message = "mapped view contains an incomplete native unit"
+            raise MappedViewError(message) from error
         _, start, end = read_mapped_unit(unit)
         if end > _NATIVE_LEN(raw):
             message = "mapped unit escapes raw source bytes"
@@ -167,6 +173,7 @@ class MappedView:
     @property
     def canonical(self) -> bytes:
         """Concatenated canonical identity stream."""
+        _revalidate_view(self)
         return b"".join(
             read_mapped_unit(unit)[0] for unit in read_mapped_view(self)[1]
         )
@@ -174,6 +181,7 @@ class MappedView:
     @property
     def keys(self) -> tuple[bytes, ...]:
         """Canonical unit sequence for placement matching."""
+        _revalidate_view(self)
         return _NATIVE_TUPLE(
             read_mapped_unit(unit)[0] for unit in read_mapped_view(self)[1]
         )
@@ -184,6 +192,15 @@ _MAPPED_VIEW_VALIDATOR = cast(
 )
 _VIEW_RAW_SLOT = cast("MemberDescriptorType", MappedView.__dict__["raw"])
 _VIEW_UNITS_SLOT = cast("MemberDescriptorType", MappedView.__dict__["units"])
+
+
+def _revalidate_view(view: MappedView) -> None:
+    """Verify native view storage before serving canonical identity."""
+    try:
+        _MAPPED_VIEW_VALIDATOR(view)
+    except AttributeError as error:
+        message = "mapped view has incomplete native metadata"
+        raise MappedViewError(message) from error
 
 
 def read_mapped_view(view: MappedView) -> tuple[bytes, tuple[MappedUnit, ...]]:
