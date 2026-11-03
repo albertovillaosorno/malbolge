@@ -142,6 +142,16 @@ format.
   exact/model and 2,799 integrated diff tests. Scoped Ruff and source
   BasedPyright had zero errors (three existing warnings). This guards late
   class hooks, not direct instance mutation or external filesystem races.
+- Exact-tree root, snapshot, source-read, and output-staging admission now
+  rejects late `Path` cache/getter/formatter substitution (`6b230250e`). A
+  real red-first snapshot read another source tree after `_str` getter
+  replacement. Seven new regressions also cover direct descriptor reads:
+  a late `os.fspath` hook cannot redirect such reads, while tree resolution
+  rejects it. All 254 exact and 2,916 integrated diff tests passed, with
+  scoped Ruff and strict BasedPyright at zero errors. Jig doctor remained
+  degraded (graph absent); `jig check` timed out after 110 seconds, without
+  a global green verdict. Direct storage edits and external writer races
+  remain out of scope.
 - Synthetic tests cover exact reconstruction, deterministic planning, binary
   data,
   moves, modifications, creations, deletions, source mutation, and symlink
@@ -599,6 +609,12 @@ format.
   those bindings exactly, so an upstream-fixed edit can be skipped without
   suppressing unrelated edits. Consumer-domain binding authoring and DOOM bug
   probes remain open.
+- Compatible authoring now captures original exact-plan source, target, and
+  instruction slots before running consumer mappers (`c720565eb`) and retains
+  them for output drift checks. Eight red-first forged/valid-getter cases,
+  241 selected compatible tests, and 2,916 integrated diff tests passed;
+  scoped Ruff, compatible source BasedPyright, and diff checks were clean.
+  Direct stored-record mutation and external filesystem races remain open.
 - Four compatible record constructors now call pinned original validators,
   and authoring/materialization consume original stored fields rather than late
   class getters. Correction binding retains real plan/edit locations without
@@ -648,6 +664,13 @@ format.
   Scoped Ruff and source BasedPyright were error-free. Direct private record
   edits and external concurrent filesystem writes remain outside this guard.
 
+- Source-binding policies now verify original stored `AnchorPolicy`
+  dimensions, and bind/recover preflight rejects incomplete native binding,
+  share, and source identity records with typed errors (`04d9a6a3c`,
+  `555aac9bf`). Twelve anchor-policy and six missing-slot red-first tests
+  passed; 180 source-binding tests passed postcommit with scoped Ruff and
+  strict BasedPyright at zero errors. Instance-storage edits and external
+  source-tree races remain out of scope.
 - `passthrough_roots` are authenticated plan metadata. Source/oracle must match
   there
   during authoring, but later runtime bytes and candidate-only files under those

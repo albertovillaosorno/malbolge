@@ -116,6 +116,19 @@ source BasedPyright reported zero errors (three older warnings). As with the
 other guards, direct instance mutation and external writer races remain
 outside this protection.
 
+Exact tree roots, snapshot traversal, source reads, and staged writes now reject
+late native `pathlib` formatter/cache substitution (`6b230250e`). Previously a
+replaced `Path.__getattribute__` for the `_str` cache could turn a requested
+source tree into a different directory while still returning a valid snapshot.
+Original class-hook identities are checked before path resolution and tree
+publication; direct descriptor-bound file reads continue to ignore a replaced
+`os.fspath` when the native file identity remains valid. Seven new test cases
+cover late cache, formatter, descriptor, and filesystem-path hooks; 254 exact
+and 2,916 integrated diff tests passed. Scoped Ruff and BasedPyright had zero
+errors. The check is not atomic against external writers or direct instance
+storage changes; repository-wide Jig doctor was degraded (graph absent), and
+a 110-second Jig check timed out during native validation.
+
 This local plan is verification evidence, not a distributable transform. Raw
 `OracleLiteral` bytes must never cross the public emission boundary. A later
 source-binding stage must convert them to recovery material that cannot be
@@ -962,6 +975,17 @@ The exact pair passed 147 focused tests, with 2,668 integrated diff tests
 passing before publication. This prevents late class-hook substitution,
 not deliberate stored-instance mutation or external source races.
 
+Source-binding policy and envelope admission now authenticate the original
+stored `AnchorPolicy` window and selection dimensions, rather than accepting
+late class getters or incompletely initialized native records
+(`04d9a6a3c`, `555aac9bf`). Malformed nested policies are rejected before
+binding or recovery; missing binding, share, or source-identity slots fail
+through typed domain errors rather than `AttributeError`. Twelve initial
+anchor-policy and six incomplete-record red-first cases cover these changes.
+All 180 postcommit source-binding tests passed, along with scoped Ruff and
+strict BasedPyright at zero errors. Direct instance mutation and external
+source writers remain outside this guard.
+
 The authenticated-encryption primitive itself is now implemented separately
 using
 RFC 8439 ChaCha20-Poly1305. Its Section 2.8.2 test vector matches exactly,
@@ -1271,6 +1295,15 @@ BasedPyright reported zero errors, with 24 older type warnings. Allocation
 hooks are isolated in child interpreters to avoid contaminating unrelated
 tests. Direct modification of retained record storage and external writers
 remain outside this class-hook boundary.
+
+Compatible authoring also reads original exact-plan source, target, and
+instruction slots before invoking consumer mappers (`c720565eb`). It retains
+those stored snapshots through final tree drift checks and plan construction,
+so late exact-plan class getters cannot exchange or conceal source/target
+identity. Eight red-first forged and valid-plan cases passed, with 241 selected
+compatible tests and 2,916 integrated diff tests. Scoped Ruff, compatible
+source BasedPyright, and diff checks were clean. Direct trusted storage edits
+and external filesystem races are outside this process-hook boundary.
 
 Named bug corrections can now be bound to deterministic semantic edit indexes.
 Materialization requires every bound correction to receive exactly one
