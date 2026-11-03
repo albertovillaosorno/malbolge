@@ -372,14 +372,8 @@ def _regular_module_path(path: Path) -> Path:
     return _resolved_native_module_path(path, receipt)
 
 
-def _restore_domain_registration(
-    name: str,
-    attempted: ModuleType,
-    previous: ModuleType | None,
-) -> None:
-    """Restore the last accepted module when a replacement load fails."""
-    if sys.modules.get(name) is not attempted:
-        return
+def _restore_domain_registration(name: str, previous: ModuleType | None) -> None:
+    """Restore the last accepted module even after consumer key rebinding."""
     if previous is None:
         _ = sys.modules.pop(name, None)
     else:
@@ -456,18 +450,22 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None, str]:
     try:
         completion = exec_module(module)
     except Exception as error:
-        _restore_domain_registration(name, module, previous)
+        _restore_domain_registration(name, previous)
         message = (
             "diff domain module execution failed: "
             f"{_NATIVE_PATH_STRING(resolved)}"
         )
         raise DomainContractError(message) from error
     if completion is not None:
-        _restore_domain_registration(name, module, previous)
+        _restore_domain_registration(name, previous)
         message = (
             "diff domain module execution reported non-native completion: "
             f"{_NATIVE_PATH_STRING(resolved)}"
         )
+        raise DomainContractError(message)
+    if sys.modules.get(name) is not module:
+        _restore_domain_registration(name, previous)
+        message = "diff domain module registration changed during execution"
         raise DomainContractError(message)
     return module, previous, name
 
@@ -500,9 +498,13 @@ def load_diff_domain(path: object) -> DiffDomain:
         raise DomainContractError(message)
     module, previous, name = _load_module(path)
     try:
-        return _validated_domain(module)
+        domain = _validated_domain(module)
+        if sys.modules.get(name) is not module:
+            message = "diff domain module registration changed during validation"
+            raise DomainContractError(message)
+        return domain
     except Exception:
-        _restore_domain_registration(name, module, previous)
+        _restore_domain_registration(name, previous)
         raise
 
 

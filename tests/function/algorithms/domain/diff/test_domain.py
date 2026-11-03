@@ -769,6 +769,83 @@ def test_domain_hook_lookup_does_not_format_foreign_exception(
     )
 
 
+@pytest.mark.parametrize("stage", ["execution", "hooks", "successful"])
+@pytest.mark.parametrize("mutation", ["replace", "delete"])
+@pytest.mark.parametrize("reload_existing", [False, True])
+def test_rejected_domain_restores_registration_after_self_rebinding(
+    tmp_path: Path, stage: str, mutation: str, reload_existing: bool
+) -> None:
+    """A rejected consumer cannot squat on its original import registry key."""
+    module = tmp_path / "self_rebinding.py"
+    name = domain_module._module_name(module.resolve())
+    assert name not in sys.modules
+    previous = None
+    try:
+        if reload_existing:
+            _write(module, _COMPLETE)
+            _ = load_diff_domain(module)
+            previous = sys.modules[name]
+
+        replacement = (
+            "import sys\n"
+            "from types import ModuleType\n"
+            "sys.modules[__name__] = ModuleType(__name__)\n"
+            if mutation == "replace"
+            else "import sys\ndel sys.modules[__name__]\n"
+        )
+        if stage == "execution":
+            rejected = replacement + "raise RuntimeError('rejected')\n"
+            failure = "module execution failed"
+        elif stage == "hooks":
+            rejected = _COMPLETE.replace(
+                "def build_behavior_programs():", "def invalid_hook():"
+            ) + replacement
+            failure = "registration changed"
+        else:
+            rejected = _COMPLETE + replacement
+            failure = "registration changed"
+        _write(module, rejected)
+        with pytest.raises(DomainContractError, match=failure):
+            _ = load_diff_domain(module)
+        assert sys.modules.get(name) is previous
+    finally:
+        _ = sys.modules.pop(name, None)
+
+
+@pytest.mark.parametrize("reload_existing", [False, True])
+def test_domain_rejects_registration_swap_during_hook_lookup(
+    tmp_path: Path, reload_existing: bool
+) -> None:
+    """Late hook lookup cannot silently replace an admitted module registration."""
+    module = tmp_path / "late_registration.py"
+    name = domain_module._module_name(module.resolve())
+    assert name not in sys.modules
+    previous = None
+    try:
+        if reload_existing:
+            _write(module, _COMPLETE)
+            _ = load_diff_domain(module)
+            previous = sys.modules[name]
+
+        module_source = _COMPLETE.replace(
+            "def build_behavior_programs():\n    return None\n\n", ""
+        ) + (
+            "def __getattr__(name):\n"
+            "    if name == 'build_behavior_programs':\n"
+            "        import sys\n"
+            "        from types import ModuleType\n"
+            "        sys.modules[__name__] = ModuleType(__name__)\n"
+            "        return lambda: None\n"
+            "    raise AttributeError(name)\n"
+        )
+        _write(module, module_source)
+        with pytest.raises(DomainContractError, match="registration changed"):
+            _ = load_diff_domain(module)
+        assert sys.modules.get(name) is previous
+    finally:
+        _ = sys.modules.pop(name, None)
+
+
 def test_rejected_domain_reload_preserves_previous_registration(
     tmp_path: Path,
 ) -> None:
