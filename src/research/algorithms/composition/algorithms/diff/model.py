@@ -508,8 +508,8 @@ def _exact_segment_length(segment: ExactSegment) -> int:
 
     """
     if _native_isinstance(segment, SourceSlice):
-        return segment.length
-    return _native_len(segment.data)
+        return _source_slice_fields(segment)[1]
+    return _native_len(_oracle_literal_data(segment))
 
 
 def _require_literal_output_consistency(

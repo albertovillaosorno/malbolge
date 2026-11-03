@@ -464,3 +464,40 @@ def test_model_oracle_literal_constructor_ignores_late_getter(
             foreign = cast("bytes", cast("object", bytearray(b"unsafe")))
             _ = OracleLiteral(foreign)
     assert calls == 0, "late literal getter concealed mutable oracle bytes"
+
+
+@pytest.mark.parametrize("segment_type", ["source", "literal"])
+def test_model_exact_output_length_ignores_late_segment_getters(
+    monkeypatch: pytest.MonkeyPatch, segment_type: str
+) -> None:
+    """An exact plan must count stored source and literal byte lengths."""
+    if segment_type == "source":
+        segment = SourceSlice(0, 2)
+        original_getattribute = cast(
+            "Callable[[object, str], object]", SourceSlice.__getattribute__
+        )
+        intercepted = "length"
+        altered: object = 4
+        record_type: type = SourceSlice
+    else:
+        segment = OracleLiteral(b"ab")
+        original_getattribute = cast(
+            "Callable[[object, str], object]", OracleLiteral.__getattribute__
+        )
+        intercepted = "data"
+        altered = b"abcd"
+        record_type = OracleLiteral
+    calls = 0
+
+    def forged_attribute(value: object, name: str) -> object:
+        nonlocal calls
+        if name == intercepted:
+            calls += 1
+            return altered
+        return original_getattribute(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(record_type, "__getattribute__", forged_attribute)
+        observed = model_module._exact_segment_length(segment)
+    assert observed == 2, "late segment getter inflated planned output length"
+    assert calls == 0, "late segment getter influenced output-size admission"
