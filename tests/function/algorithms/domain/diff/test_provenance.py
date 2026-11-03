@@ -1399,6 +1399,32 @@ def test_pinned_snapshot_ignores_late_sorted_file_drop(
     assert observed == baseline, "mutable sorting hook omitted source bytes"
 
 
+@pytest.mark.parametrize("hook", ["reversed", "raised"])
+def test_pinned_snapshot_ignores_late_path_sort_comparator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Source snapshot order must not execute mutable Path comparisons."""
+    _write(tmp_path, "src/a.c", b"one")
+    _write(tmp_path, "src/b.c", b"two")
+    original = source_snapshot_evidence(tmp_path, ("src",))
+    native_less_than = Path.__lt__
+    calls = 0
+
+    def hijacked_less_than(left: Path, right: Path) -> bool:
+        nonlocal calls
+        calls += 1
+        if hook == "raised":
+            message = "late Path comparison executed during source pin"
+            raise AssertionError(message)
+        return native_less_than(right, left)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__lt__", hijacked_less_than)
+        observed = source_snapshot_evidence(tmp_path, ("src",))
+    assert observed == original
+    assert calls == 0, "late comparator ran inside pinned source discovery"
+
+
 def test_pinned_snapshot_ignores_late_zip_receipt_drop(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

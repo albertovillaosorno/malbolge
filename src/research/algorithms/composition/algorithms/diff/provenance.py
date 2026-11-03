@@ -561,7 +561,12 @@ def _directory_paths(selected: Path) -> tuple[Path, ...]:
             raise
         except (OSError, ValueError, RuntimeError) as error:
             _raise_source_walk_error(error)
-    return _NATIVE_TUPLE(_NATIVE_SORTED(paths))
+    # Sort by guarded portable labels, never mutable Path.__lt__ dispatch.
+    return _NATIVE_TUPLE(
+        _NATIVE_SORTED(
+            paths, key=lambda path: _native_relative_label(path, selected)
+        )
+    )
 
 
 def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
