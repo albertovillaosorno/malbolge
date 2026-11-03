@@ -502,6 +502,12 @@ format.
   checks are clean. Global Jig check exits 1 on wider repository
   violations. Direct record storage mutation and external source-tree
   races remain outside this fix.
+- Fingerprint admission now pins the original `AttributeError` handler
+  (`a46872ebf`) so late builtin aliases cannot leak raw exceptions from
+  missing policy or reference/candidate anchor slots. Three red-first cases,
+  81 postcommit fingerprint tests, 451 adjacent tests, and 3,860 integrated
+  diff tests passed, with Ruff, strict typing, and diff checks clean. Direct
+  trusted-storage edits and concurrent writers remain outside scope.
 - Source-binding anchor materials, masked shares, binding envelopes, and
   recovered shares now use pinned native allocation/original initializers
   (`b6d41a9ea`): eight red-first hook regressions, 147 focused tests, and
@@ -868,6 +874,11 @@ format.
   BasedPyright reports zero errors, and pinned Ruff added no diagnostics
   relative to the existing 55 across the source/test pair. Direct mutation of
   stored fields remains out of scope.
+- AEAD receipt missing-slot handling now retains the original native
+  `AttributeError` (`f55608c09`) after late global exception substitution.
+  Six red-first decrypt/direct-validator cases, 47 postcommit payload tests,
+  and 449 related protected/emitter tests passed; Ruff, strict typing, and
+  diff checks were clean. Direct trusted-storage mutation remains out of scope.
 - Protected-plan metadata and recovery now revalidate exact native nested
   evidence (`fbbbe62ac`): 18 new cases, ten red-first, 184 postcommit focused
   tests and 3,136 integrated tests before final validator-hook cases.
@@ -1355,6 +1366,11 @@ format.
   and diff checks clean. Existing formatting drift remains; Jig doctor is
   degraded and a 105-second global check timed out without a verdict. This
   guard does not isolate direct storage edits or external filesystem races.
+- Mapped unit/view admission and canonical identity accessors now catch
+  the original missing-slot `AttributeError` (`6f7164447`), even after a late
+  global alias replacement. Five red-first cases, 687 postcommit adjacent,
+  and 3,872 integrated diff tests passed; Ruff, strict typing, and diff
+  checks were clean. External writers and direct storage mutation remain open.
 - Compatible entrypoints now rerun pinned native validators for build and
   materialization requests and plan/instruction records before callbacks or
   output publication (`9418fc2eb`). Correction binding validates raw native

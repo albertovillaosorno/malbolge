@@ -1153,6 +1153,14 @@ checks are clean. Global `jig check` exits 1 on broader repository
 violations and still has no green verdict. Direct instance-storage
 tampering and concurrent external writers remain outside scope.
 
+Fingerprint policy and anchor ingress now catch the import-original
+`AttributeError` (`a46872ebf`) when original slotted metadata is missing,
+independent of late process-global builtin aliases. Three red-first policy,
+reference-anchor, and candidate-anchor cases pass, with 81 postcommit
+fingerprint tests, 451 adjacent tests, and 3,860 integrated diff tests green.
+Scoped Ruff, strict typing, and diff checks passed; direct trusted-state
+mutation and external filesystem writers remain outside this boundary.
+
 ### Implemented Tree-Level Admission
 
 Source identity and source-binding share-envelope Windows filename checks now
@@ -2017,6 +2025,13 @@ and pinned Ruff retains its 55 pre-existing diagnostics across the source and
 test pair with no new findings. This does not isolate direct changes to valid
 stored fields or process-global trusted internals.
 
+AEAD payload missing-slot translation also pins the import-original
+`AttributeError` (`f55608c09`); late builtin substitutions no longer expose
+raw exceptions from decrypt or direct validation of incomplete native
+`AuthenticatedPayload` receipts. Six red-first cases, 47 postcommit payload
+and 449 adjacent protection/emitter tests passed, with scoped Ruff, strict
+typing, and diff checks clean. Direct storage mutation remains out of scope.
+
 Native protected-plan admission now reruns the original nested validators
 at authenticated metadata and recovery boundaries (`fbbbe62ac`). Eighteen
 new tests include ten red-first constructor-bypass cases; all 184 focused
@@ -2402,6 +2417,14 @@ BasedPyright had zero errors, and diff checks passed. Existing format drift
 remains outside this change. Jig doctor was degraded (graph absent) and a
 bounded 105-second global check timed out without a green verdict. Direct
 storage mutation and external filesystem races remain outside this guard.
+
+Mapped unit readers, nested view admission, view readers, and the
+`canonical`/`keys` accessors now catch the import-original `AttributeError`
+(`6f7164447`), even when a consumer substitutes the global exception type.
+Five red-first missing-slot regressions and 687 postcommit adjacent tests
+passed; a 3,872-test integrated diff run and scoped Ruff, strict typing,
+and diff checks were clean. This does not isolate direct stored-data edits
+or external filesystem writers.
 
 Slotted mapped and semantic records do not make their class getters immutable.
 The mapped unit/view constructor validators, canonical-key extraction, raw
