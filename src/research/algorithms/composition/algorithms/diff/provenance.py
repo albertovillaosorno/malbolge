@@ -60,6 +60,8 @@ _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_SCANDIR = os.scandir
+_NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
 
@@ -279,15 +281,32 @@ def _raise_source_walk_error(
 
 
 def _directory_paths(selected: Path) -> tuple[Path, ...]:
+    """Enumerate a source tree without late mutable pathlib/os walk hooks."""
     paths: list[Path] = []
-    try:
-        for directory, directories, filenames in selected.walk(
-            on_error=_raise_source_walk_error
-        ):
-            paths.extend(directory / name for name in directories)
-            paths.extend(directory / name for name in filenames)
-    except (OSError, ValueError, RuntimeError) as error:
-        _raise_source_walk_error(error)
+    pending = [selected]
+    while pending:
+        directory = pending.pop()
+        try:
+            with _NATIVE_OS_SCANDIR(_NATIVE_PATH_STRING(directory)) as entries:
+                for entry in entries:
+                    child = _NATIVE_PATH_JOINPATH(directory, entry.name)
+                    relative = _NATIVE_RELATIVE_TO(child, selected).as_posix()
+                    mode = _source_mode(child, relative)
+                    if mode is None:
+                        message = f"pinned source entry disappeared: {relative}"
+                        raise SourcePinError(message)
+                    if not (S_ISDIR(mode) or S_ISREG(mode)):
+                        message = (
+                            f"special entry is not accepted in pinned source: {relative}"
+                        )
+                        raise SourcePinError(message)
+                    paths.append(child)
+                    if S_ISDIR(mode):
+                        pending.append(child)
+        except SourcePinError:
+            raise
+        except (OSError, ValueError, RuntimeError) as error:
+            _raise_source_walk_error(error)
     return tuple(sorted(paths))
 
 

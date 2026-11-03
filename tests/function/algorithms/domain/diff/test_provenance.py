@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import ntpath
 import os
+from contextlib import contextmanager
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from stat import S_IFDIR
 from types import SimpleNamespace
@@ -54,7 +55,7 @@ from algorithms.diff.provenance import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable, Generator, Iterator
 
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _EXPECTED_FILE_COUNT = 3
@@ -473,7 +474,7 @@ def test_source_pin_errors_do_not_invoke_foreign_formatters(
     )
     original_junction = Path.is_junction
     original_resolve = Path.resolve
-    original_walk = Path.walk
+    original_scandir = os.scandir
 
     def fail_lstat(path: Path) -> object:
         if path == tmp_path:
@@ -490,21 +491,10 @@ def test_source_pin_errors_do_not_invoke_foreign_formatters(
             raise _HostileHostError("do not stringify")
         return original_resolve(path, strict=strict)
 
-    def fail_walk(
-        path: Path,
-        *,
-        top_down: bool = True,
-        on_error: Callable[[OSError], object] | None = None,
-        follow_symlinks: bool = False,
-    ) -> Iterator[tuple[Path, list[str], list[str]]]:
-        if path == tmp_path / "src":
+    def fail_scandir(path: str) -> object:
+        if Path(path) == tmp_path / "src":
             raise _HostileHostError("do not stringify")
-        yield from original_walk(
-            path,
-            top_down=top_down,
-            on_error=on_error,
-            follow_symlinks=follow_symlinks,
-        )
+        return original_scandir(path)
 
     selected = {
         "status": (
@@ -520,7 +510,10 @@ def test_source_pin_errors_do_not_invoke_foreign_formatters(
             fail_resolve,
             "resolution failed",
         ),
-        "walk": (Path, "walk", fail_walk, "traversal failed"),
+        "walk": (
+            provenance_module, "_NATIVE_OS_SCANDIR", fail_scandir,
+            "traversal failed",
+        ),
     }[operation]
     owner, method_name, replacement, expected = selected
     monkeypatch.setattr(owner, method_name, replacement)
@@ -690,6 +683,62 @@ def test_pinned_source_rejects_linked_intermediate_root_component(
         _ = source_snapshot_evidence(root, ("link/nested",))
 
 
+@pytest.mark.parametrize("walk_hook", ["path", "os"])
+def test_source_pin_rejects_mutation_hidden_by_late_walk_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    walk_hook: str,
+) -> None:
+    """A domain hook cannot hide an extra source file from pin identity."""
+    _write(tmp_path, "src/original.c", b"original")
+    baseline = source_snapshot_evidence(tmp_path, ("src",))
+    pin = SourcePin("repo", _COMMIT, ("src",), 1, baseline.snapshot_sha256)
+    _write(tmp_path, "src/extra.c", b"new source")
+    selected = tmp_path / "src"
+    native_scandir = os.scandir
+    calls = 0
+
+    def forged_walk(
+        path: Path,
+        *,
+        top_down: bool = True,
+        on_error: Callable[[OSError], object] | None = None,
+        follow_symlinks: bool = False,
+    ) -> Iterator[tuple[Path, list[str], list[str]]]:
+        nonlocal calls
+        if path == selected:
+            calls += 1
+            yield path, [], ["original.c"]
+        else:
+            yield from Path.walk(
+                path,
+                top_down=top_down,
+                on_error=on_error,
+                follow_symlinks=follow_symlinks,
+            )
+
+    @contextmanager
+    def filtered_scan() -> Generator[Iterator[os.DirEntry[str]]]:
+        with native_scandir(selected) as entries:
+            yield (item for item in entries if item.name != "extra.c")
+
+    def forged_scandir(path: Path | str | bytes) -> object:
+        nonlocal calls
+        if os.fspath(path) == os.fspath(selected):
+            calls += 1
+            return filtered_scan()
+        return native_scandir(path)
+
+    with monkeypatch.context() as patched:
+        if walk_hook == "path":
+            patched.setattr(Path, "walk", forged_walk)
+        else:
+            patched.setattr(os, "scandir", forged_scandir)
+        with pytest.raises(SourcePinError, match="file count mismatch"):
+            _ = require_source_pin(tmp_path, pin)
+    assert calls == 0, "late host traversal hook received source identity authority"
+
+
 def test_pinned_snapshot_walk_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -698,19 +747,11 @@ def test_pinned_snapshot_walk_errors_fail_closed(
     selected = tmp_path / "src"
     selected.mkdir()
 
-    def fail_walk(
-        path: Path,
-        *,
-        top_down: bool = True,
-        on_error: Callable[[OSError], object] | None = None,
-        follow_symlinks: bool = False,
-    ) -> object:
-        _ = path, top_down, follow_symlinks
-        assert on_error is not None
-        _ = on_error(PermissionError("blocked pinned source"))
-        return iter(())
+    def fail_scandir(path: str) -> object:
+        del path
+        raise PermissionError("blocked pinned source")
 
-    monkeypatch.setattr(Path, "walk", fail_walk)
+    monkeypatch.setattr(provenance_module, "_NATIVE_OS_SCANDIR", fail_scandir)
     with pytest.raises(SourcePinError, match="pinned source traversal failed"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
@@ -749,19 +790,21 @@ def test_pinned_source_walk_iterator_errors_fail_typed(
     """Errors from a source walk iterator remain typed pin failures."""
     _write(tmp_path, "src/leaf.c", b"int leaf;\n")
 
-    def fail_walk(
-        path: Path,
-        *,
-        top_down: bool = True,
-        on_error: Callable[[OSError], object] | None = None,
-        follow_symlinks: bool = False,
-    ) -> Iterator[tuple[Path, list[str], list[str]]]:
-        _ = top_down, on_error, follow_symlinks
-        yield path, [], []
-        message = "blocked pinned traversal"
-        raise failure_type(message)
+    original_scandir = os.scandir
 
-    monkeypatch.setattr(Path, "walk", fail_walk)
+    @contextmanager
+    def fail_scandir(path: str) -> Generator[Iterator[os.DirEntry[str]]]:
+        with original_scandir(path) as entries:
+            def interrupted() -> Iterator[os.DirEntry[str]]:
+                for item in entries:
+                    yield item
+                    break
+                message = "blocked pinned traversal"
+                raise failure_type(message)
+
+            yield interrupted()
+
+    monkeypatch.setattr(provenance_module, "_NATIVE_OS_SCANDIR", fail_scandir)
     with pytest.raises(SourcePinError, match="pinned source traversal failed"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
