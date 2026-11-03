@@ -351,6 +351,11 @@ format.
   stdout/exit-code observation at authoring and direct-authored construction;
   selector-free compatibility preconditions remain allowed. This prevents
   premature side-effectful authoring and empty-transcript identity evidence.
+- Selector admission now uses import-original `ProbeProgram.commands` and
+  `ProbeCommand` stdout/exit selector slots (`b87d42a9c`). Twenty-three
+  new red-first/expanded getter and malformed-slot tests, 182 focused
+  behavior tests, Ruff, and strict source/test BasedPyright pass. This
+  closes late class-hook spoofing, not direct stored-state changes.
 - Candidate behavior observation now admits one byte-exact, symlink-safe source
   mirror before running probes. All identity/compatibility/bug classes observe
   the same mirror, preventing live flip-and-restore source changes from yielding

@@ -1043,6 +1043,16 @@ present/fixed routing. Six red-first getter-spoof regressions are fixed by
 2,637 integrated diff tests passed before it. This is a late class-hook guard,
 not a defense against direct mutable process state or external writers.
 
+Identity and bug-program selector admission now reads original slotted
+`ProbeProgram.commands` and `ProbeCommand.digest_stdout` /
+`digest_exit_code` fields (`b87d42a9c`). Late class getters could
+previously admit an unselected probe or falsely reject a selected one.
+Twelve red-first getter cases and eleven expanded selector/invalid-slot
+regressions now pass. All 182 focused behavior tests, scoped Ruff and
+strict source/test BasedPyright pass. This validates selected-probe
+metadata at the local authoring boundary; it does not isolate direct
+mutable-state changes or concurrent process/filesystem interference.
+
 Portable behavior authoring and observation now build ten authoritative
 record types through original validator-backed initializers and native
 allocation (`375e65304`): identity/compatibility/bug profile probes,
