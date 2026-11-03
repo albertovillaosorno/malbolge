@@ -55,6 +55,11 @@ from algorithms.diff.admission import (
     identity_tree,
     require_admission,
 )
+from algorithms.diff.fingerprints import (
+    AnchorCoverage,
+    AnchorPolicy,
+    StableAnchor,
+)
 
 _FILE_COUNT = 4
 _BLOCKS_PER_FILE = 128
@@ -1170,3 +1175,132 @@ def test_tree_evidence_rejects_post_import_mutable_collections(
         except AdmissionPolicyError:
             rejected = True
     assert rejected, "mutable file and rejection evidence passed a late alias"
+
+
+def test_structural_admission_ignores_late_anchor_digest_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late anchor getters cannot forge structural similarity of sources."""
+    reference = identity_tree({"main.c": _content("reference", 0)})
+    candidate = identity_tree({"main.c": _content("unrelated", 0)})
+    policy = _policy(source_similarity=0.8)
+    expected = evaluate_admission(reference, candidate, policy)
+    assert expected.source_similarity < 0.8
+    original = StableAnchor.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: StableAnchor, name: str) -> object:
+        nonlocal calls
+        if name == "digest":
+            calls += 1
+            return b"z" * 32
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(StableAnchor, "__getattribute__", forged_attribute)
+        observed = evaluate_admission(reference, candidate, policy)
+    assert observed == expected
+    assert calls == 0, "mutable digest reader forged structural evidence"
+
+
+def test_file_admission_ignores_late_coverage_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """File lineage counts must use raw cryptographic overlap metadata."""
+    reference = identity_tree({"main.c": _content("reference", 0)})
+    candidate = identity_tree({"main.c": _content("unrelated", 0)})
+    policy = _policy(source_similarity=0.0)
+    expected = evaluate_admission(reference, candidate, policy)
+    assert expected.files[0].matched_anchor_count == 0
+    original = AnchorCoverage.__getattribute__
+    calls = 0
+    forged = {"total": 1, "matched": 1, "ratio": 1.0}
+
+    def forged_attribute(value: AnchorCoverage, name: str) -> object:
+        nonlocal calls
+        if name in forged:
+            calls += 1
+            return forged[name]
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(AnchorCoverage, "__getattribute__", forged_attribute)
+        observed = evaluate_admission(reference, candidate, policy)
+    assert observed == expected
+    assert calls == 0, "mutable coverage reader forged file lineage"
+
+
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [
+        ("minimum_source_similarity", 0.99),
+        ("minimum_anchor_coverage", 0.99),
+        ("minimum_anchor_files", 4),
+        ("minimum_anchors_per_file", 40),
+        (
+            "structural_policy",
+            AnchorPolicy(window_bytes=4, selection_modulus=1),
+        ),
+        ("anchor_policy", AnchorPolicy(window_bytes=4, selection_modulus=1)),
+    ],
+)
+def test_admission_ignores_late_policy_getter_forgery(
+    monkeypatch: pytest.MonkeyPatch, hook: str, field: str, forged: object
+) -> None:
+    """Class-level hooks cannot revise the source-admission policy in place."""
+    reference, candidate = _candidate_with_first_insertion()
+    policy = _policy()
+    expected = evaluate_admission(reference, candidate, policy)
+    original = AdmissionPolicy.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: AdmissionPolicy, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original(value, name))
+
+    def forged_property(_value: AdmissionPolicy) -> object:
+        nonlocal calls
+        calls += 1
+        return forged
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            patch.setattr(AdmissionPolicy, field, property(forged_property))
+        else:
+            patch.setattr(AdmissionPolicy, "__getattribute__", forged_attribute)
+        observed = evaluate_admission(reference, candidate, policy)
+    assert observed == expected
+    assert calls == 0, "mutable policy getter influenced admission"
+
+
+@pytest.mark.parametrize(
+    "field", ["minimum_anchor_files", "minimum_anchors_per_file"]
+)
+def test_admission_policy_constructor_rejects_late_getter_forgery(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Direct policy construction checks the stored counts, not class hooks."""
+    original = AdmissionPolicy.__getattribute__
+
+    def forged_attribute(value: AdmissionPolicy, name: str) -> object:
+        if name == field:
+            return 1
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(AdmissionPolicy, "__getattribute__", forged_attribute)
+        with pytest.raises(AdmissionPolicyError, match="positive integer"):
+            _ = AdmissionPolicy(
+                minimum_source_similarity=0.5,
+                minimum_anchor_coverage=0.5,
+                minimum_anchor_files=(
+                    True if field == "minimum_anchor_files" else 1
+                ),
+                minimum_anchors_per_file=(
+                    True if field == "minimum_anchors_per_file" else 1
+                ),
+            )

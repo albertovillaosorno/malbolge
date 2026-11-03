@@ -38,16 +38,15 @@ import builtins
 import math
 from dataclasses import dataclass
 from types import MemberDescriptorType
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from algorithms.diff.fingerprints import (
+    AnchorCoverage,
     AnchorPolicy,
+    StableAnchor,
     anchor_coverage,
     stable_anchors,
 )
-
-if TYPE_CHECKING:
-    from algorithms.diff.fingerprints import StableAnchor
 
 _BACKSLASH = "\\"
 _NUL = "\x00"
@@ -85,6 +84,19 @@ _NATIVE_ANY = builtins.any
 _NATIVE_ALL = builtins.all
 _NATIVE_LEN = builtins.len
 _NATIVE_FROZENSET = builtins.frozenset
+# Fingerprint receipt classes retain mutable class-level attribute hooks.
+_ANCHOR_DIGEST_SLOT = cast(
+    "MemberDescriptorType", StableAnchor.__dict__["digest"]
+)
+_COVERAGE_TOTAL_SLOT = cast(
+    "MemberDescriptorType", AnchorCoverage.__dict__["total"]
+)
+_COVERAGE_MATCHED_SLOT = cast(
+    "MemberDescriptorType", AnchorCoverage.__dict__["matched"]
+)
+_COVERAGE_RATIO_SLOT = cast(
+    "MemberDescriptorType", AnchorCoverage.__dict__["ratio"]
+)
 
 
 class AdmissionPolicyError(ValueError):
@@ -231,30 +243,64 @@ class AdmissionPolicy:
             AdmissionPolicyError: A threshold or evidence count is invalid.
 
         """
-        _validate_fraction(
-            "minimum_source_similarity", self.minimum_source_similarity
+        source, coverage, files, per_file, structural, anchors = (
+            _policy_fields(self)
         )
-        _validate_fraction(
-            "minimum_anchor_coverage", self.minimum_anchor_coverage
-        )
-        if (
-            _NATIVE_TYPE(self.minimum_anchor_files) is not _NATIVE_INT
-            or self.minimum_anchor_files < _ONE
-        ):
+        _validate_fraction("minimum_source_similarity", source)
+        _validate_fraction("minimum_anchor_coverage", coverage)
+        if _NATIVE_TYPE(files) is not _NATIVE_INT or files < _ONE:
             message = "minimum_anchor_files must be a positive integer"
             raise AdmissionPolicyError(message)
-        if (
-            _NATIVE_TYPE(self.minimum_anchors_per_file) is not _NATIVE_INT
-            or self.minimum_anchors_per_file < _ONE
-        ):
+        if _NATIVE_TYPE(per_file) is not _NATIVE_INT or per_file < _ONE:
             message = "minimum_anchors_per_file must be a positive integer"
             raise AdmissionPolicyError(message)
-        if _NATIVE_TYPE(self.structural_policy) is not AnchorPolicy:
+        if _NATIVE_TYPE(structural) is not AnchorPolicy:
             message = "structural_policy must use the exact AnchorPolicy type"
             raise AdmissionPolicyError(message)
-        if _NATIVE_TYPE(self.anchor_policy) is not AnchorPolicy:
+        if _NATIVE_TYPE(anchors) is not AnchorPolicy:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise AdmissionPolicyError(message)
+
+
+# A frozen policy's class descriptors can still be replaced by consumers.
+_POLICY_SOURCE_SLOT = cast(
+    "MemberDescriptorType",
+    AdmissionPolicy.__dict__["minimum_source_similarity"],
+)
+_POLICY_COVERAGE_SLOT = cast(
+    "MemberDescriptorType", AdmissionPolicy.__dict__["minimum_anchor_coverage"]
+)
+_POLICY_FILES_SLOT = cast(
+    "MemberDescriptorType", AdmissionPolicy.__dict__["minimum_anchor_files"]
+)
+_POLICY_PER_FILE_SLOT = cast(
+    "MemberDescriptorType", AdmissionPolicy.__dict__["minimum_anchors_per_file"]
+)
+_POLICY_STRUCTURAL_SLOT = cast(
+    "MemberDescriptorType", AdmissionPolicy.__dict__["structural_policy"]
+)
+_POLICY_ANCHORS_SLOT = cast(
+    "MemberDescriptorType", AdmissionPolicy.__dict__["anchor_policy"]
+)
+
+
+def _policy_fields(
+    policy: AdmissionPolicy,
+) -> tuple[float, float, int, int, AnchorPolicy, AnchorPolicy]:
+    return (
+        cast("float", _POLICY_SOURCE_SLOT.__get__(policy, AdmissionPolicy)),
+        cast("float", _POLICY_COVERAGE_SLOT.__get__(policy, AdmissionPolicy)),
+        cast("int", _POLICY_FILES_SLOT.__get__(policy, AdmissionPolicy)),
+        cast("int", _POLICY_PER_FILE_SLOT.__get__(policy, AdmissionPolicy)),
+        cast(
+            "AnchorPolicy",
+            _POLICY_STRUCTURAL_SLOT.__get__(policy, AdmissionPolicy),
+        ),
+        cast(
+            "AnchorPolicy",
+            _POLICY_ANCHORS_SLOT.__get__(policy, AdmissionPolicy),
+        ),
+    )
 
 
 def _require_evidence_fraction(value: object, context: str) -> float:
@@ -441,9 +487,10 @@ def _validate_policy_bound_evidence(
         message = "tree admission evidence requires exact AdmissionPolicy"
         raise AdmissionPolicyError(message)
     policy = evidence.policy
+    _, minimum_coverage, _, minimum_per_file, _, _ = _policy_fields(policy)
     if _NATIVE_ANY(
         (item.anchor_coverage is not None)
-        != (item.reference_anchor_count >= policy.minimum_anchors_per_file)
+        != (item.reference_anchor_count >= minimum_per_file)
         for item in files
     ):
         message = "file anchor eligibility does not match admission policy"
@@ -451,7 +498,7 @@ def _validate_policy_bound_evidence(
     expected_satisfied = _NATIVE_SUM(
         item.matched_anchor_count > _ZERO
         and item.anchor_coverage is not None
-        and item.anchor_coverage >= policy.minimum_anchor_coverage
+        and item.anchor_coverage >= minimum_coverage
         for item in files
     )
     if evidence.satisfied_anchor_files != expected_satisfied:
@@ -561,7 +608,10 @@ def _validate_fraction(name: str, value: object) -> None:
 
 
 def _digest_set(anchors: tuple[StableAnchor, ...]) -> frozenset[bytes]:
-    return _NATIVE_FROZENSET(anchor.digest for anchor in anchors)
+    return _NATIVE_FROZENSET(
+        cast("bytes", _ANCHOR_DIGEST_SLOT.__get__(anchor, StableAnchor))
+        for anchor in anchors
+    )
 
 
 def _structural_similarity(
@@ -586,27 +636,37 @@ def _file_evidence(
     policy: AdmissionPolicy,
 ) -> FileAdmissionEvidence:
     candidate_bytes = b"" if candidate is None else candidate.canonical
+    _, _, _, minimum_per_file, structural_policy, anchor_policy = (
+        _policy_fields(policy)
+    )
     structural = (
         _structural_similarity(
             reference.canonical,
             candidate_bytes,
-            policy.structural_policy,
+            structural_policy,
         )
         if candidate is not None
         else 0.0
     )
-    reference_anchors = stable_anchors(
-        reference.canonical, policy.anchor_policy
-    )
-    candidate_anchors = stable_anchors(candidate_bytes, policy.anchor_policy)
+    reference_anchors = stable_anchors(reference.canonical, anchor_policy)
+    candidate_anchors = stable_anchors(candidate_bytes, anchor_policy)
     coverage = anchor_coverage(reference_anchors, candidate_anchors)
-    eligible = coverage.total >= policy.minimum_anchors_per_file
+    total = cast(
+        "int", _COVERAGE_TOTAL_SLOT.__get__(coverage, AnchorCoverage)
+    )
+    matched = cast(
+        "int", _COVERAGE_MATCHED_SLOT.__get__(coverage, AnchorCoverage)
+    )
+    ratio = cast(
+        "float", _COVERAGE_RATIO_SLOT.__get__(coverage, AnchorCoverage)
+    )
+    eligible = total >= minimum_per_file
     return FileAdmissionEvidence(
         path=reference.path,
         structural_similarity=structural,
-        anchor_coverage=coverage.ratio if eligible else None,
-        reference_anchor_count=coverage.total,
-        matched_anchor_count=coverage.matched,
+        anchor_coverage=ratio if eligible else None,
+        reference_anchor_count=total,
+        matched_anchor_count=matched,
     )
 
 
@@ -629,13 +689,14 @@ def _reason_tuple(
     policy: AdmissionPolicy,
 ) -> tuple[str, ...]:
     reasons: list[str] = []
-    if aggregate.source_similarity < policy.minimum_source_similarity:
+    source, coverage, minimum_files, _, _, _ = _policy_fields(policy)
+    if aggregate.source_similarity < source:
         reasons.append("insufficient structural source similarity")
-    if aggregate.anchor_average < policy.minimum_anchor_coverage:
+    if aggregate.anchor_average < coverage:
         reasons.append("insufficient stable-anchor coverage")
-    if aggregate.eligible_files < policy.minimum_anchor_files:
+    if aggregate.eligible_files < minimum_files:
         reasons.append("insufficient files with anchor evidence")
-    if aggregate.satisfied_files < policy.minimum_anchor_files:
+    if aggregate.satisfied_files < minimum_files:
         reasons.append("stable-anchor evidence is not sufficiently distributed")
     return _NATIVE_TUPLE(reasons)
 
@@ -687,9 +748,10 @@ def evaluate_admission(
     anchor_average = _mean(
         _NATIVE_TUPLE(item.anchor_coverage or 0.0 for item in eligible)
     )
+    _, minimum_coverage, _, _, _, _ = _policy_fields(policy)
     satisfied = _NATIVE_SUM(
         item.matched_anchor_count > _ZERO
-        and (item.anchor_coverage or 0.0) >= policy.minimum_anchor_coverage
+        and (item.anchor_coverage or 0.0) >= minimum_coverage
         for item in eligible
     )
     aggregate = _AggregateEvidence(
