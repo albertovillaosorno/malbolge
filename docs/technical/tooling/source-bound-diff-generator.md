@@ -358,6 +358,16 @@ excluding a concurrently edited probe suite passed. These measures cannot
 make path checks atomic against external filesystem races or isolate arbitrary
 trusted consumer code that directly mutates module bindings.
 
+The Python Rust emitter also refuses late changes to the native `pathlib`
+string/attribute dependency chain and `os.fspath` before checking output
+identity or opening staging files (`85914b0a5`). Three red-first regressions
+covered a substituted path getter, redirected file-status evidence, and a
+multi-part `os.fspath` rewrite. The emitter's postcommit suite passed 140
+tests; the integrated diff suite passed 2,853 tests before that commit, with
+scoped Ruff and strict BasedPyright clean. This rejects tested in-process hook
+substitution, not concurrent filesystem replacement or arbitrary trusted
+module-state mutation.
+
 The standalone Rust exact runtime now checks source-root metadata without
 following links before attempting a candidate snapshot (`e894ca859`). A
 compile-and-run regression first reproduced a linked source root passing
@@ -369,6 +379,16 @@ zero diagnostics. Standalone `rustfmt --check` still reports broad preexisting
 template-format differences, while Jig doctor reports an absent graph; neither
 is a clean repository-wide verdict. The fix does not prevent parent-directory
 races or source-tree changes by concurrent writers.
+
+Follow-up `0f31ab19f` closes two further compiled-runtime admission bypasses:
+a symlinked source root spelled with a trailing slash or `/.` previously made
+`symlink_metadata` follow the link. The runtime now normalizes lexical path
+components before its no-follow status query. Both variants failed red-first;
+three linked-root rejection cases and two real-directory positive variants
+passed, including their source/output integrity checks. All 137 emitter tests
+passed postcommit; 2,850 integrated diff tests passed before commit. Scoped
+Ruff, emitter-source BasedPyright, and diff checks passed. Parent-link aliases
+and concurrent filesystem mutation remain outside this narrow root check.
 
 The exact Python materializer now opens staging files through an
 import-pinned native `io.open` in exclusive `xb` mode; a pre-existing staging

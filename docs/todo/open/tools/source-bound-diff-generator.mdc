@@ -363,6 +363,20 @@ format.
   `rustfmt --check` reports older template-wide layout drift and Jig doctor
   lacks a graph, so repository-wide validation remains unverified. External
   concurrent filesystem writers remain outside this narrow root-link check.
+- Rust runtime follow-up `0f31ab19f` also rejects linked roots supplied with
+  trailing `/` or `/.` suffixes. Both bypasses failed red-first; the compiled
+  runtime now strips lexical suffixes before its no-follow status check.
+  Three linked-root rejects and two real-root acceptance cases passed; all
+  137 emitter tests passed postcommit and 2,850 integrated diff tests passed
+  before commit. Scoped Ruff and emitter-source BasedPyright were clean;
+  parent-link aliases and external filesystem races remain out of scope.
+- Python Rust emitter DCO `85914b0a5` rejects late `pathlib` class getter
+  changes and `os.fspath` redirection before output status or staging.
+  Three red-first regressions passed, alongside 140 postcommit emitter tests
+  and 2,853 integrated diff tests before commit. Scoped Ruff and strict
+  BasedPyright were clean; mutable trusted module state and external writers
+  still require separate isolation. Jig doctor remains degraded and a bounded
+  `jig check` did not produce a repository-wide green result.
 - Current stable-toolchain revalidation compiles both checked-in DOOM Rust
   transforms with Rust 1.98.1 and `-D warnings`; the synthetic emitted-Rust
   compile/run suite passes 14/14 under the same repository-local rustc.
