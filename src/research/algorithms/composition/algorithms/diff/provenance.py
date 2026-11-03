@@ -293,7 +293,7 @@ def _require_unlinked_parent_components(root: Path, relative: str) -> None:
 
 def _selected_root(root: Path, relative_root: str) -> tuple[Path, int]:
     _require_unlinked_parent_components(root, relative_root)
-    selected = root.joinpath(*relative_root.split("/"))
+    selected = _NATIVE_PATH_JOINPATH(root, *relative_root.split("/"))
     mode = _source_mode(selected, relative_root)
     if mode is None:
         message = f"missing pinned source root: {relative_root}"

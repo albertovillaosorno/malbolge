@@ -1423,3 +1423,29 @@ def test_source_pin_rejects_late_string_alias_for_foreign_root_entry(
         except SourcePinError as error:
             rejected = _ROOT_ENTRY_ERROR in error.args[0]
     assert rejected, "foreign root path passed late string alias"
+
+
+@pytest.mark.parametrize("selected", ["src", "src/a.c"])
+def test_source_pin_selected_root_ignores_late_joinpath(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    selected: str,
+) -> None:
+    """Post-import pathlib hooks must not redirect pinned source selection."""
+    _write(tmp_path, "src/a.c", b"trusted revision bytes")
+    baseline = source_snapshot_evidence(tmp_path, (selected,))
+    native_joinpath = Path.joinpath
+    calls = 0
+
+    def forged_joinpath(path: Path, *segments: str) -> Path:
+        nonlocal calls
+        calls += 1
+        if path == tmp_path:
+            raise AssertionError("consumer-selected root redirect executed")
+        return native_joinpath(path, *segments)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "joinpath", forged_joinpath)
+        observed = source_snapshot_evidence(tmp_path, (selected,))
+    assert observed == baseline
+    assert calls == 0, "consumer selected-root resolver was consulted"
