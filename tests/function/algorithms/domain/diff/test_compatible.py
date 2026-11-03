@@ -79,6 +79,7 @@ from algorithms.diff.compatible import (
 from algorithms.diff.exact import ExactTreeError, build_exact_plan, snapshot_tree
 from algorithms.diff.mapped import MappedUnit, MappedView
 from algorithms.diff.model import ExactInstruction, ExactInstructionKind
+from algorithms.diff.semantic import SemanticAuthoringPlan
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Sized
@@ -2916,3 +2917,103 @@ def test_compatible_request_path_ignores_late_fsencode(
         patch.setattr(os, "fsencode", forged_fsencode)
         compatible_module._validate_request_path(tmp_path, "compatible root")
     assert calls == 0, "consumer filesystem codec was consulted"
+
+
+def test_compatible_authoring_ignores_late_semantic_edits_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late class getter cannot disguise a semantic patch as a copy."""
+    original = SemanticAuthoringPlan.__getattribute__
+    calls = 0
+
+    def getter(value: SemanticAuthoringPlan, name: str) -> object:
+        nonlocal calls
+        if name == "edits":
+            calls += 1
+            return ()
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticAuthoringPlan, "__getattribute__", getter)
+        plan = _plan(tmp_path)
+    code = next(
+        item for item in plan.instructions if item.output_path == "code.src"
+    )
+    assert code.kind is CompatibleFileKind.SEMANTIC_PATCH
+    assert calls == 0, "late semantic plan getter erased a target change"
+
+
+def test_compatible_routing_ignores_late_semantic_edits_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mandatory corrections cannot disappear when a plan class is altered."""
+    plan = _plan(tmp_path)
+    semantic = next(
+        item for item in plan.instructions
+        if item.kind is CompatibleFileKind.SEMANTIC_PATCH
+    )
+    assert semantic.semantic is not None
+    original_count = len(semantic.semantic.edits)
+    context_factory = cast(
+        "Callable[..., object]", vars(compatible_module)["_MaterializeContext"]
+    )
+    context = context_factory(
+        candidate_root=tmp_path,
+        mapper=_mapper,
+        corrections_to_apply=frozenset(),
+        corrections_to_skip=frozenset(),
+    )
+    routed_plan = cast(
+        "Callable[[object, CompatibleInstruction], SemanticAuthoringPlan]",
+        vars(compatible_module)["_routed_semantic_plan"],
+    )
+    original = SemanticAuthoringPlan.__getattribute__
+    calls = 0
+
+    def getter(value: SemanticAuthoringPlan, name: str) -> object:
+        nonlocal calls
+        if name == "edits":
+            calls += 1
+            return ()
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticAuthoringPlan, "__getattribute__", getter)
+        routed = routed_plan(context, semantic)
+    assert len(routed.edits) == original_count
+    assert calls == 0, "late semantic getter skipped required correction edits"
+
+
+def test_compatible_correction_cardinality_ignores_late_semantic_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged semantic edit count cannot admit a short correction vector."""
+    plan = _plan_with_code(
+        tmp_path,
+        b"alpha = old ; stable1 ; stable2 ; beta = old ; omega",
+        b"alpha = new ; stable1 ; stable2 ; beta = new ; omega",
+    )
+    instruction = next(
+        item for item in plan.instructions
+        if item.kind is CompatibleFileKind.SEMANTIC_PATCH
+    )
+    semantic = instruction.semantic
+    assert semantic is not None
+    assert len(semantic.edits) == _EXPECTED_MIXED_EDITS
+    original = SemanticAuthoringPlan.__getattribute__
+    calls = 0
+
+    def getter(value: SemanticAuthoringPlan, name: str) -> object:
+        nonlocal calls
+        if name == "edits":
+            calls += 1
+            return cast("tuple[object, ...]", original(value, name))[:1]
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticAuthoringPlan, "__getattribute__", getter)
+        with pytest.raises(
+            CompatiblePlanError, match="align with semantic edits"
+        ):
+            _ = replace(instruction, correction_ids=("fix",))
+    assert calls == 0, "late semantic getter hid correction-count mismatch"

@@ -69,6 +69,7 @@ from algorithms.diff.semantic import (
     SemanticAuthoringPlan,
     apply_semantic_plan,
     build_semantic_plan,
+    read_semantic_plan,
 )
 
 if TYPE_CHECKING:
@@ -369,7 +370,7 @@ def _validate_semantic(instruction: CompatibleInstruction) -> None:
     if (
         instruction.correction_ids
         and _NATIVE_LEN(instruction.correction_ids)
-        != _NATIVE_LEN(instruction.semantic.edits)
+        != _NATIVE_LEN(read_semantic_plan(instruction.semantic))
     ):
         message = "compatible correction IDs must align with semantic edits"
         raise CompatiblePlanError(message)
@@ -608,7 +609,7 @@ def _normalized_correction_ids(
         return ()
     if instruction.correction_ids:
         return instruction.correction_ids
-    return (None,) * _NATIVE_LEN(instruction.semantic.edits)
+    return (None,) * _NATIVE_LEN(read_semantic_plan(instruction.semantic))
 
 
 def _validate_correction_bindings(
@@ -916,7 +917,7 @@ def _mapped_instruction(
     mapped: tuple[MappedView, MappedView],
 ) -> CompatibleInstruction:
     semantic = build_semantic_plan(*mapped)
-    if not semantic.edits:
+    if not read_semantic_plan(semantic):
         return CompatibleInstruction(
             output_path=instruction.output_path,
             kind=CompatibleFileKind.COPY_CANDIDATE,
@@ -1082,7 +1083,7 @@ def _routed_semantic_plan(
     edits = _NATIVE_TUPLE(
         edit
         for edit, correction_id in _NATIVE_ZIP(
-            instruction.semantic.edits,
+            read_semantic_plan(instruction.semantic),
             _normalized_correction_ids(instruction),
             strict=True,
         )
