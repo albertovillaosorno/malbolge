@@ -819,6 +819,24 @@ placement, conservative opaque-file gates, candidate-only preservation,
 target-only
 conflict checks, and transactional postconditions into an in-memory compatible
 plan.
+Four compatible authoring and replay envelopes capture their original frozen
+constructor validators. At construction, captured field descriptors prevent
+late
+class getters from concealing invalid instruction, request, or plan values. The
+public build/materialize entrypoints and nested replay instructions also use
+those stored slots before calling consumer hooks; late getters cannot redirect
+the output root, erase intended target files, or replace target literals.
+Correction binding reads original correction and instruction locations and
+rebuilds the plan without dataclass getters. Exact-gated replay additionally
+uses original exact-instruction, source-slice, oracle-literal, and file digest
+slots for byte reconstruction and target-hash checks, rejecting unknown patch
+segment types. Twenty-seven red-first constructor, getter, replay, and binding
+regressions plus three source-span/literal guard cases cover this scope. The
+full compatible unit passes 188 tests; one integration run passed 2,067 diff
+tests excluding admission tests then being edited independently. These guards
+isolate late class hooks, not direct writes to instance storage, malicious
+consumer callbacks, or concurrent source/output writers.
+
 Named bug corrections can now be bound to deterministic semantic edit indexes.
 Materialization requires every bound correction to receive exactly one
 behavior `apply` or `skip` route and rejects routes for unbound corrections.

@@ -337,6 +337,17 @@ format.
   those bindings exactly, so an upstream-fixed edit can be skipped without
   suppressing unrelated edits. Consumer-domain binding authoring and DOOM bug
   probes remain open.
+- Four compatible record constructors now call pinned original validators,
+  and authoring/materialization consume original stored fields rather than late
+  class getters. Correction binding retains real plan/edit locations without
+  dataclass replacement getter dispatch; exact-gated replay pins instruction
+  kinds, digests, source spans, and literal segments. Twenty-seven red-first
+  regressions plus three patch-span guards cover these bypasses; all 188
+  compatible tests and 2,067 integrated diff tests (excluding concurrently
+  edited admission tests) passed. This does not prevent direct object mutation
+  or concurrent filesystem races. Jig doctor is degraded and Jig check still
+  timed out after 60 seconds at global native-validator scheduling, so the
+  repository-wide validation gate remains unverified.
 - Replacing generic sequence matching with unique 8/4/2/1-unit k-gram anchors +
   LIS
   reduced the full read-only DOOM compatible-plan smoke from runner timeout to
