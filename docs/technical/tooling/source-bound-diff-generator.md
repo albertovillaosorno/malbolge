@@ -1196,6 +1196,30 @@ one. Context resolution, source snapshot and baseline recheck, mirror creation,
 and temporary observation root failures retain typed causes without executing
 foreign exception formatting callbacks. The copy is not atomic; external source
 writers can race the snapshot/copy boundary and still require coordination.
+
+Behavior context resolution now checks the import-original host
+`os.fspath`, `os.lstat`, `os.readlink`, `os.getcwd`, and `stat.S_ISLNK`
+helpers that are dynamically consulted by the captured `os.path.realpath`.
+It also verifies the original `Path` and concrete-platform path allocation,
+initialization, and attribute hooks before and after resolving each binding
+(`8a506210b`). Ten red-first cases cover symlink target spoofing, forged
+source/oracle equivalence, constructor redirects, and a resolver callback
+replacing a helper mid-call. All 192 postcommit behavior tests and 3,414
+precommit integrated diff tests passed; scoped Ruff and strict BasedPyright
+reported zero errors. The guard cannot atomically pin external filesystem
+state or block direct mutation of already trusted objects.
+
+Source/oracle behavior authoring also compares repository and tool bindings
+using the import-original stored `ProbeRunContext` slots rather than late
+class descriptors or `__getattribute__`. Its initial source and corrected
+oracle snapshots use the same native source-root storage (`eccf37e3d`).
+Six red-first tests reject forged context equivalence and record a source
+or oracle tree before an untrusted getter can redirect it. All 198 postcommit
+behavior tests and 3,432 precommit integrated diff tests passed; scoped Ruff,
+strict source/test BasedPyright, and diff checks were clean. These checks
+address late class-hook substitution, not direct stored-object edits or
+concurrent external writers. Repository-wide Jig validation is not yet green.
+
 Compatibility programs contribute success/failure rather than an identity
 digest. Application-specific harnesses and logical tool resolution
 remain

@@ -830,6 +830,19 @@ format.
   red-first regressions cover both host hooks and both binding roles. Two more
   show that mirror copy-completion receipts cannot be forged or denied by a
   late `Path.__eq__` override.
+- Behavior authoring now pins the dynamically consulted native host realpath
+  helpers and `Path` constructor/attribute dependencies before and after
+  source/oracle repository and tool resolution (`8a506210b`). Ten red-first
+  tests cover forged symlink links, path factories, and mid-call hook swaps.
+  The postcommit focused behavior suite passed 192 cases and the precommit
+  integrated diff suite passed 3,414; scoped Ruff and strict typing are clean.
+- Behavior source/oracle comparison now reads import-original
+  `ProbeRunContext` repository and tool slots and snapshots the original
+  source/oracle root slots (`eccf37e3d`), rather than trusting late getters.
+  Six red-first getter cases passed; 198 postcommit focused and 3,432
+  precommit integrated diff tests passed, as did scoped Ruff, strict typing,
+  and diff checks. These guards do not isolate direct record mutation,
+  external filesystem races, or an unresolved global Jig gate.
 - Mapped-unit/view metadata and semantic locator/edit/plan records now read
   their original frozen slot descriptors at construction and during placement.
   Red-first regressions cover forged canonical identities, mutable evidence,
