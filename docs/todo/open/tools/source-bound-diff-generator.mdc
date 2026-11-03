@@ -68,6 +68,15 @@ format.
   view through domain preflight and exact output. Twenty-eight red-first
   regressions reject forged getters, masked invalid storage, and post-preflight
   mode/path/policy redirection without claiming arbitrary instance isolation.
+- Exact generation now reads original stored `ExactAuthoringPlan` source and
+  target snapshots during identity replay and after payload protection
+  (`8bc123dd2`), rejecting changes a late class getter previously concealed.
+  Four initial red-first cases and eight completed descriptor/getattribute
+  regressions cover rejected source/oracle drift and valid plan continuity.
+  All 213 generator and 2,874 integrated diff tests passed before concurrent
+  exact-reader edits; scoped Ruff, strict BasedPyright, and diff checks passed.
+  Jig doctor remained degraded and a bounded 100-second check timed out.
+  Direct instance mutation and external filesystem races remain outside scope.
 - Private `_RecipeSnapshot` creation now invokes the import-captured
   NamedTuple constructor instead of late class `__new__`/`__init__` hooks
   (`7bab64eb0`), preserving exact and compatible recipe admission policy.

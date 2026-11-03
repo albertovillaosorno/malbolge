@@ -214,6 +214,19 @@ chosen source, oracle, mode, or output after preflight. Twenty-eight red-first
 regressions cover stored invalid fields and post-validation class edits. This
 does not protect against deliberate direct mutation of stored instance values.
 
+Exact generation also binds source identity replay and post-protection drift
+checks to the original stored `ExactAuthoringPlan` source and target snapshots
+(`8bc123dd2`). Late class properties or `__getattribute__` hooks could
+previously substitute a changed source or oracle snapshot for the planned
+evidence, allowing stale material to reach Rust emission. Eight
+descriptor/getter regressions now prove rejection of changed trees and continued
+use of valid stored plans. All 213 generator and 2,874 integrated diff tests
+passed before concurrent exact-reader changes. Scoped Ruff, strict
+BasedPyright, and diff checks were clean. Jig doctor was degraded with its
+graph absent, and a 100-second Jig check timed out during native validation.
+This guard does not isolate direct stored-instance mutation or external
+filesystem races.
+
 The internal `_RecipeSnapshot` now uses its captured original NamedTuple
 allocator (`7bab64eb0`) instead of consulting later class `__new__` or
 `__init__` hooks during recipe policy checks. Four red-first regressions
