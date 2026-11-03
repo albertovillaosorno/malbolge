@@ -40,9 +40,11 @@ import math
 import ntpath
 from dataclasses import replace
 from pathlib import PurePosixPath, PureWindowsPath
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from algorithms.diff import source_binding as binding_module
 from algorithms.diff.admission import AdmissionPolicyError, IdentityTree, identity_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.source_binding import (
@@ -57,7 +59,9 @@ from algorithms.diff.source_binding import (
 )
 
 if TYPE_CHECKING:
-    from algorithms.diff.source_binding import BoundShare
+    from collections.abc import Callable
+
+    from algorithms.diff.source_binding import BoundShare, ThresholdBinding
 
 _SECRET = hashlib.sha256(b"synthetic high-entropy payload key").digest()
 _CONTEXT = b"synthetic-source-binding-v1"
@@ -99,6 +103,155 @@ def _reference() -> IdentityTree:
 def _candidate_paths(reference: IdentityTree, paths: tuple[str, ...]) -> IdentityTree:
     by_path = {item.path: item.canonical for item in reference.files}
     return identity_tree({path: by_path[path] for path in paths})
+
+
+@pytest.mark.parametrize("foreign_role", ["envelope", "share"])
+def test_binding_rejects_late_type_foreign_records(
+    monkeypatch: pytest.MonkeyPatch, foreign_role: str
+) -> None:
+    """Late type replacement cannot admit structural imitations of records."""
+    valid = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    native_type = builtins.type
+    first = valid.shares[0]
+    shape = SimpleNamespace(
+        source_path=first.source_path,
+        anchor_digest=first.anchor_digest,
+        x=first.x,
+        masked_share=first.masked_share,
+    )
+    if foreign_role == "share":
+        foreign_share = cast("BoundShare", cast("object", shape))
+        foreign = replace(
+            valid, shares=(foreign_share, *valid.shares[1:])
+        )
+    else:
+        foreign = cast(
+            "ThresholdBinding",
+            cast(
+                "object",
+                SimpleNamespace(
+                    context=valid.context,
+                    threshold=valid.threshold,
+                    minimum_anchor_files=valid.minimum_anchor_files,
+                    secret_length=valid.secret_length,
+                    secret_commitment=valid.secret_commitment,
+                    anchor_policy=valid.anchor_policy,
+                    shares=valid.shares,
+                ),
+            ),
+        )
+
+    def forged_type(value: object) -> type[object]:
+        if native_type(value) is SimpleNamespace:
+            if foreign_role == "envelope":
+                return native_type(valid)
+            return native_type(first)
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = validate_threshold_binding(foreign)
+        except SourceBindingError:
+            rejected = True
+    assert rejected, f"late type hook admitted a foreign {foreign_role} record"
+
+
+def test_binding_share_path_rejects_late_any_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late any hook cannot admit a source share path with traversal."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    forged = replace(
+        binding,
+        shares=(
+            replace(binding.shares[0], source_path="src/../escape.c"),
+            *binding.shares[1:],
+        ),
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        try:
+            _ = validate_threshold_binding(forged)
+        except SourceBindingError:
+            rejected = True
+    assert rejected, "late any hook admitted a traversing share path"
+
+
+def test_recovery_coordinates_reject_late_set_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged set cannot certify duplicate Shamir share coordinates."""
+    validate = cast(
+        "Callable[[tuple[tuple[int, bytes], ...]], object]",
+        vars(binding_module)["_validate_recovery_shares"],
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "set", lambda values: list(values))
+        try:
+            _ = validate(((1, b"a"), (1, b"b")))
+        except SourceBindingError:
+            rejected = True
+    assert rejected, "late set hook admitted duplicate share coordinates"
+
+
+def test_binding_mask_xor_resists_late_zip_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged zipper cannot erase bytes from a source-bound key mask."""
+    xor_bytes = cast(
+        "Callable[[bytes, bytes], bytes]", vars(binding_module)["_xor_bytes"]
+    )
+    expected = xor_bytes(b"alpha", b"omega")
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "zip", lambda *args, **kwargs: ())
+        observed = xor_bytes(b"alpha", b"omega")
+    assert observed == expected, "late zip hook truncated key-mask output"
+
+
+def test_hkdf_resists_late_bytearray_collector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign collector cannot replace key-schedule bytes."""
+    native_buffer = builtins.bytearray
+
+    class _ZeroCollector:
+        def __init__(self) -> None:
+            self.data = native_buffer()
+
+        def extend(self, data: bytes) -> None:
+            self.data.extend(b"\0" * len(data))
+
+        def __getitem__(self, index: slice) -> bytearray:
+            return self.data[index]
+
+    expected = hkdf_expand_sha256(b"k" * 32, b"source mask", 32)
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytearray", _ZeroCollector)
+        observed = hkdf_expand_sha256(b"k" * 32, b"source mask", 32)
+    assert observed == expected, "late collector changed HKDF key schedule"
+
+
+def test_hkdf_ignores_late_bytes_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late bytes binding cannot override an imported KDF constructor."""
+    expected = hkdf_expand_sha256(b"k" * 32, b"source mask", 32)
+    observed: bytes | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", lambda value: b"x" * 32)
+        try:
+            observed = hkdf_expand_sha256(b"k" * 32, b"source mask", 32)
+        except SourceBindingPolicyError:
+            pass
+    assert observed == expected, "late bytes hook changed HKDF admission"
 
 
 def test_hkdf_sha256_matches_rfc5869_test_case_1() -> None:

@@ -80,6 +80,13 @@ _NATIVE_IS_RESERVED = ntpath.isreserved
 # Preserve threshold and selection semantics across domain callback hooks.
 _NATIVE_MAX = builtins.max
 _NATIVE_SORTED = builtins.sorted
+# Keep share admission and key derivation independent of late host hooks.
+_NATIVE_ANY = builtins.any
+_NATIVE_BYTEARRAY = builtins.bytearray
+_NATIVE_BYTES = builtins.bytes
+_NATIVE_SET = builtins.set
+_NATIVE_TYPE = builtins.type
+_NATIVE_ZIP = builtins.zip
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
     selection_modulus=64,
@@ -96,13 +103,13 @@ class SourceBindingError(RuntimeError):
 
 def _binding_fraction(value: object) -> float:
     message = "threshold_fraction must be a finite value in (0, 1]"
-    if type(value) is int:
+    if _NATIVE_TYPE(value) is int:
         # The only integral fraction in (0, 1] is one. Reject large integers
         # before float conversion, which can otherwise raise OverflowError.
         if value != _ONE:
             raise SourceBindingPolicyError(message)
         return 1.0
-    if type(value) is not float:
+    if _NATIVE_TYPE(value) is not float:
         raise SourceBindingPolicyError(message)
     if not math.isfinite(value) or value <= _ZERO or value > _ONE:
         raise SourceBindingPolicyError(message)
@@ -110,7 +117,7 @@ def _binding_fraction(value: object) -> float:
 
 
 def _binding_positive_int(value: object, context: str, maximum: int | None) -> int:
-    if type(value) is not int or value < _ONE:
+    if _NATIVE_TYPE(value) is not int or value < _ONE:
         message = f"{context} must be a positive integer"
         raise SourceBindingPolicyError(message)
     if maximum is not None and value > maximum:
@@ -145,7 +152,7 @@ class SourceBindingPolicy:
         if minimum > maximum:
             message = "minimum_anchor_files cannot exceed maximum_anchors"
             raise SourceBindingPolicyError(message)
-        if type(self.anchor_policy) is not AnchorPolicy:
+        if _NATIVE_TYPE(self.anchor_policy) is not AnchorPolicy:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise SourceBindingPolicyError(message)
 
@@ -193,8 +200,8 @@ def _hmac_sha256(key: bytes, message: bytes) -> bytes:
     if len(key) > _SHA256_BLOCK_BYTES:
         key = _native_sha256(key).digest()
     padded_key = key.ljust(_SHA256_BLOCK_BYTES, b"\0")
-    inner = bytes(byte ^ _HMAC_INNER_PAD for byte in padded_key)
-    outer = bytes(byte ^ _HMAC_OUTER_PAD for byte in padded_key)
+    inner = _NATIVE_BYTES(byte ^ _HMAC_INNER_PAD for byte in padded_key)
+    outer = _NATIVE_BYTES(byte ^ _HMAC_OUTER_PAD for byte in padded_key)
     inner_digest = _native_sha256(inner + message).digest()
     return _native_sha256(outer + inner_digest).digest()
 
@@ -209,10 +216,13 @@ def hkdf_extract_sha256(salt: bytes, input_key_material: bytes) -> bytes:
         SourceBindingPolicyError: Salt or key material is not exact bytes.
 
     """
-    if type(salt) is not bytes or type(input_key_material) is not bytes:
+    if (
+        _NATIVE_TYPE(salt) is not _NATIVE_BYTES
+        or _NATIVE_TYPE(input_key_material) is not _NATIVE_BYTES
+    ):
         message = "HKDF-SHA-256 extract inputs must use exact bytes"
         raise SourceBindingPolicyError(message)
-    effective_salt = salt or bytes(_SHA256_BYTES)
+    effective_salt = salt or _NATIVE_BYTES(_SHA256_BYTES)
     return _hmac_sha256(effective_salt, input_key_material)
 
 
@@ -230,25 +240,28 @@ def hkdf_expand_sha256(
         SourceBindingPolicyError: The output length exceeds RFC 5869 limits.
 
     """
-    if type(pseudorandom_key) is not bytes or type(info) is not bytes:
+    if (
+        _NATIVE_TYPE(pseudorandom_key) is not _NATIVE_BYTES
+        or _NATIVE_TYPE(info) is not _NATIVE_BYTES
+    ):
         message = "HKDF-SHA-256 expand inputs must use exact bytes"
         raise SourceBindingPolicyError(message)
     if (
-        type(length) is not int
+        _NATIVE_TYPE(length) is not int
         or length < _ZERO
         or length > _HKDF_MAX_BLOCKS * _SHA256_BYTES
     ):
         message = "HKDF-SHA-256 output length must be an integer within RFC 5869 limits"
         raise SourceBindingPolicyError(message)
-    output = bytearray()
+    output = _NATIVE_BYTEARRAY()
     previous = b""
     block_count = math.ceil(length / _SHA256_BYTES)
     for block_index in range(_ONE, block_count + _ONE):
         previous = _hmac_sha256(
-            pseudorandom_key, previous + info + bytes([block_index])
+            pseudorandom_key, previous + info + _NATIVE_BYTES([block_index])
         )
         output.extend(previous)
-    return bytes(output[:length])
+    return _NATIVE_BYTES(output[:length])
 
 
 def _frame(value: bytes) -> bytes:
@@ -336,7 +349,7 @@ def _split_secret(
     threshold: int,
     share_count: int,
 ) -> tuple[tuple[int, bytes], ...]:
-    shares = [bytearray(len(secret)) for _ in range(share_count)]
+    shares = [_NATIVE_BYTEARRAY(len(secret)) for _ in range(share_count)]
     degree = threshold - _ONE
     for byte_index, secret_byte in enumerate(secret):
         coefficients = _coefficient_bytes(
@@ -353,7 +366,8 @@ def _split_secret(
                 x,
             )
     return tuple(
-        (share_index + _ONE, bytes(share)) for share_index, share in enumerate(shares)
+        (share_index + _ONE, _NATIVE_BYTES(share))
+        for share_index, share in enumerate(shares)
     )
 
 
@@ -375,10 +389,10 @@ def _validate_recovery_shares(
         message = "cannot recover a secret from zero shares"
         raise SourceBindingError(message)
     x_values = tuple(x for x, _ in shares)
-    if any(x <= _ZERO or x >= _GF_SIZE for x in x_values):
+    if _NATIVE_ANY(x <= _ZERO or x >= _GF_SIZE for x in x_values):
         message = "share coordinate is outside GF(256)"
         raise SourceBindingError(message)
-    if len(x_values) != len(set(x_values)):
+    if len(x_values) != len(_NATIVE_SET(x_values)):
         message = "share coordinates must be unique"
         raise SourceBindingError(message)
     lengths = {len(share) for _, share in shares}
@@ -402,7 +416,7 @@ def _interpolate_secret_byte(
 def _recover_shares(shares: tuple[tuple[int, bytes], ...]) -> bytes:
     x_values, secret_length = _validate_recovery_shares(shares)
     weights = {x: _lagrange_weight_at_zero(x, x_values) for x in x_values}
-    return bytes(
+    return _NATIVE_BYTES(
         _interpolate_secret_byte(shares, weights, byte_index)
         for byte_index in range(secret_length)
     )
@@ -510,29 +524,31 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
     if len(left) != len(right):
         message = "source-binding byte strings have inconsistent lengths"
         raise SourceBindingError(message)
-    return bytes(a ^ b for a, b in zip(left, right, strict=True))
+    pairs = _NATIVE_ZIP(left, right, strict=True)
+    return _NATIVE_BYTES(a ^ b for a, b in pairs)
 
 
 def _validate_bind_identity(reference: object, policy: object) -> None:
-    if type(reference) is not IdentityTree:
+    if _NATIVE_TYPE(reference) is not IdentityTree:
         message = "source-binding reference must use the exact IdentityTree type"
         raise SourceBindingPolicyError(message)
-    if type(policy) is not SourceBindingPolicy:
+    if _NATIVE_TYPE(policy) is not SourceBindingPolicy:
         message = "source-binding policy must use the exact SourceBindingPolicy type"
         raise SourceBindingPolicyError(message)
-    if any(_native_splitdrive(item.path)[0] for item in reference.files):
+    drives = (_native_splitdrive(item.path)[0] for item in reference.files)
+    if _NATIVE_ANY(drives):
         message = "source-binding reference path cannot have a Windows drive"
         raise SourceBindingPolicyError(message)
 
 
 def _validate_bind_secret(secret: object, context: object) -> None:
-    if type(secret) is not bytes or not secret:
+    if _NATIVE_TYPE(secret) is not _NATIVE_BYTES or not secret:
         message = "source-bound secret must be non-empty exact bytes"
         raise SourceBindingPolicyError(message)
     if len(secret) > _HKDF_MAX_BLOCKS * _SHA256_BYTES:
         message = "source-bound secret exceeds HKDF-SHA-256 output limits"
         raise SourceBindingPolicyError(message)
-    if type(context) is not bytes or not context:
+    if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "source-binding context must be non-empty exact bytes"
         raise SourceBindingPolicyError(message)
 
@@ -584,6 +600,7 @@ def bind_secret(
         threshold=threshold,
         share_count=len(materials),
     )
+    paired = _NATIVE_ZIP(materials, raw_shares, strict=True)
     bound_shares = tuple(
         BoundShare(
             source_path=material.source_path,
@@ -599,7 +616,7 @@ def bind_secret(
                 ),
             ),
         )
-        for material, (x, share) in zip(materials, raw_shares, strict=True)
+        for material, (x, share) in paired
     )
     return ThresholdBinding(
         context=context,
@@ -619,7 +636,7 @@ def _require_no_windows_drive(value: str) -> None:
 
 
 def _validate_share_path(value: object) -> None:
-    if type(value) is not str or not value:
+    if _NATIVE_TYPE(value) is not str or not value:
         message = "source-binding share path must be a non-empty string"
         raise SourceBindingError(message)
     if _NUL in value:
@@ -635,7 +652,7 @@ def _validate_share_path(value: object) -> None:
         message = "source-binding share path uses a Windows reserved name"
         raise SourceBindingError(message)
     # Lexical admission cannot trust late mutations of pathlib class methods.
-    unsafe = _BACKSLASH in value or any(
+    unsafe = _BACKSLASH in value or _NATIVE_ANY(
         part in _UNSAFE_PATH_COMPONENTS for part in value.split("/")
     )
     if unsafe:
@@ -645,16 +662,21 @@ def _validate_share_path(value: object) -> None:
 
 def _validate_share_payload(share: BoundShare, secret_length: int) -> None:
     if (
-        type(share.anchor_digest) is not bytes
+        _NATIVE_TYPE(share.anchor_digest) is not _NATIVE_BYTES
         or len(share.anchor_digest) != _SHA256_BYTES
     ):
         message = "source-binding anchor digest must be 32 bytes"
         raise SourceBindingError(message)
-    if type(share.x) is not int or share.x <= _ZERO or share.x >= _GF_SIZE:
+    coordinate = share.x
+    if (
+        _NATIVE_TYPE(coordinate) is not int
+        or coordinate <= _ZERO
+        or coordinate >= _GF_SIZE
+    ):
         message = "source-binding share coordinate is outside GF(256)"
         raise SourceBindingError(message)
     if (
-        type(share.masked_share) is not bytes
+        _NATIVE_TYPE(share.masked_share) is not _NATIVE_BYTES
         or len(share.masked_share) != secret_length
     ):
         message = "source-binding masked share length is invalid"
@@ -662,7 +684,7 @@ def _validate_share_payload(share: BoundShare, secret_length: int) -> None:
 
 
 def _validate_bound_share(share: BoundShare, *, secret_length: int) -> None:
-    if type(share) is not BoundShare:
+    if _NATIVE_TYPE(share) is not BoundShare:
         message = "source-binding share must use the exact BoundShare type"
         raise SourceBindingError(message)
     _validate_share_path(share.source_path)
@@ -670,11 +692,11 @@ def _validate_bound_share(share: BoundShare, *, secret_length: int) -> None:
 
 
 def _validate_binding_counts(binding: ThresholdBinding) -> None:
-    if type(binding.threshold) is not int or binding.threshold <= _ZERO:
+    if _NATIVE_TYPE(binding.threshold) is not int or binding.threshold <= _ZERO:
         message = "source-binding threshold must be a positive integer"
         raise SourceBindingError(message)
     if (
-        type(binding.minimum_anchor_files) is not int
+        _NATIVE_TYPE(binding.minimum_anchor_files) is not int
         or binding.minimum_anchor_files <= _ZERO
     ):
         message = "source-binding minimum anchor files must be a positive integer"
@@ -685,18 +707,19 @@ def _validate_binding_counts(binding: ThresholdBinding) -> None:
 
 
 def _validate_binding_secret(binding: ThresholdBinding) -> None:
-    if type(binding.context) is not bytes or not binding.context:
+    context = binding.context
+    if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "source-binding context must be non-empty bytes"
         raise SourceBindingError(message)
     if (
-        type(binding.secret_length) is not int
+        _NATIVE_TYPE(binding.secret_length) is not int
         or binding.secret_length <= _ZERO
         or binding.secret_length > _HKDF_MAX_BLOCKS * _SHA256_BYTES
     ):
         message = "source-binding secret length is invalid"
         raise SourceBindingError(message)
     if (
-        type(binding.secret_commitment) is not bytes
+        _NATIVE_TYPE(binding.secret_commitment) is not _NATIVE_BYTES
         or len(binding.secret_commitment) != _SHA256_BYTES
     ):
         message = "source-binding secret commitment must be 32 bytes"
@@ -706,13 +729,13 @@ def _validate_binding_secret(binding: ThresholdBinding) -> None:
 def _validate_binding_header(binding: ThresholdBinding) -> None:
     _validate_binding_counts(binding)
     _validate_binding_secret(binding)
-    if type(binding.anchor_policy) is not AnchorPolicy:
+    if _NATIVE_TYPE(binding.anchor_policy) is not AnchorPolicy:
         message = "source-binding anchor policy must use the exact AnchorPolicy type"
         raise SourceBindingError(message)
 
 
 def _validate_binding_extent(binding: ThresholdBinding) -> None:
-    if type(binding.shares) is not tuple or not binding.shares:
+    if _NATIVE_TYPE(binding.shares) is not tuple or not binding.shares:
         message = "source binding must contain an immutable non-empty share set"
         raise SourceBindingError(message)
     if len(binding.shares) > _MAX_SHARES:
@@ -727,7 +750,7 @@ def _validate_binding_extent(binding: ThresholdBinding) -> None:
 
 
 def _require_possible_share_paths(source_paths: set[str]) -> None:
-    if any(
+    if _NATIVE_ANY(
         "/".join(parts[:index]) in source_paths
         for path in source_paths
         for parts in (path.split("/"),)
@@ -738,9 +761,9 @@ def _require_possible_share_paths(source_paths: set[str]) -> None:
 
 
 def _validate_binding_shares(binding: ThresholdBinding) -> None:
-    x_values: set[int] = set()
-    anchor_keys: set[tuple[str, bytes]] = set()
-    source_paths: set[str] = set()
+    x_values: set[int] = _NATIVE_SET()
+    anchor_keys: set[tuple[str, bytes]] = _NATIVE_SET()
+    source_paths: set[str] = _NATIVE_SET()
     for share in binding.shares:
         _validate_bound_share(share, secret_length=binding.secret_length)
         if share.x in x_values:
@@ -760,7 +783,7 @@ def _validate_binding_shares(binding: ThresholdBinding) -> None:
 
 
 def _validate_binding(binding: ThresholdBinding) -> ThresholdBinding:
-    if type(binding) is not ThresholdBinding:
+    if _NATIVE_TYPE(binding) is not ThresholdBinding:
         message = "source binding must use the exact ThresholdBinding type"
         raise SourceBindingError(message)
     _validate_binding_header(binding)
@@ -871,7 +894,7 @@ def recover_secret(
 
     """
     admitted = validate_threshold_binding(binding)
-    if type(candidate) is not IdentityTree:
+    if _NATIVE_TYPE(candidate) is not IdentityTree:
         message = "source-binding candidate must use the exact IdentityTree type"
         raise SourceBindingError(message)
     available = _recover_available_shares(admitted, candidate)
