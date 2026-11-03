@@ -945,6 +945,71 @@ def test_tampered_masked_share_fails_secret_commitment() -> None:
         _ = recover_secret(tampered, reference)
 
 
+def test_recovery_uses_constant_time_commitment_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Genuine and forged commitments use one pinned comparison primitive."""
+    reference = _reference()
+    binding = bind_secret(
+        reference, _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    forged = replace(
+        binding,
+        secret_commitment=bytes([binding.secret_commitment[0] ^ 1])
+        + binding.secret_commitment[1:],
+    )
+    native_compare = hmac.compare_digest
+    compared: list[tuple[bytes, bytes]] = []
+
+    def record_compare(expected: bytes, received: bytes) -> bool:
+        compared.append((expected, received))
+        return native_compare(expected, received)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            binding_module, "_native_compare_digest", record_compare
+        )
+        assert recover_secret(binding, reference) == _SECRET
+        with pytest.raises(SourceBindingError, match="failed commitment"):
+            _ = recover_secret(forged, reference)
+    assert compared == [
+        (binding.secret_commitment, binding.secret_commitment),
+        (binding.secret_commitment, forged.secret_commitment),
+    ]
+
+
+@pytest.mark.parametrize("approve", [True, False])
+def test_recovery_ignores_late_host_commitment_comparison(
+    monkeypatch: pytest.MonkeyPatch, *, approve: bool
+) -> None:
+    """A late host comparison cannot permit or deny recovered keys."""
+    reference = _reference()
+    binding = bind_secret(
+        reference, _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    forged = replace(
+        binding,
+        secret_commitment=bytes([binding.secret_commitment[0] ^ 1])
+        + binding.secret_commitment[1:],
+    )
+    calls = 0
+
+    def swapped_compare(_expected: bytes, _received: bytes) -> bool:
+        nonlocal calls
+        del _expected, _received
+        calls += 1
+        return approve
+
+    with monkeypatch.context() as patched:
+        patched.setattr(hmac, "compare_digest", swapped_compare)
+        if approve:
+            with pytest.raises(SourceBindingError, match="failed commitment"):
+                _ = recover_secret(forged, reference)
+        else:
+            assert recover_secret(binding, reference) == _SECRET
+    assert calls == 0, "late host comparison was consulted during recovery"
+
+
 def test_binding_rejects_threshold_below_required_file_count() -> None:
     """A source-distribution gate cannot exceed cryptographic quorum size."""
     policy = SourceBindingPolicy(

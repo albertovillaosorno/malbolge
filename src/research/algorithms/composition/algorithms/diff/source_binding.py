@@ -51,6 +51,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256 as _native_sha256
+from hmac import compare_digest as _native_compare_digest
 from types import MemberDescriptorType
 from typing import cast
 
@@ -1403,9 +1404,12 @@ def recover_secret(
         for share in _select_distributed_quorum(admitted, available)
     )
     secret = _recover_shares(raw_shares)
-    if _secret_commitment(
-        _binding_context(admitted), secret
-    ) != _binding_commitment(admitted):
+    # Use the import-pinned constant-time comparator for commitment bytes.
+    # Ordinary bytes inequality can disclose a matching digest prefix.
+    if not _native_compare_digest(
+        _secret_commitment(_binding_context(admitted), secret),
+        _binding_commitment(admitted),
+    ):
         message = "recovered source-bound secret failed commitment"
         raise SourceBindingError(message)
     return secret
