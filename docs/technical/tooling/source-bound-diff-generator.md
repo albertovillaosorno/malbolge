@@ -1030,6 +1030,9 @@ or substitute another executable for host status. Runtime preflight additionally
 rejects late `Path.__str__` and `os.fspath` substitutions before resolutions
 or executable admission. Exceptions raised by these guards retain their owned
 probe type rather than triggering a later unsafe path formatter.
+The original `Path.resolve` also delegates to replaceable `Path.with_segments`;
+that dependency is now pinned (`17b56bba3`). Two red-first source-root/tool
+redirections fail closed, with 379 focused and 3,340 integrated tests passing.
 
 Four cache/getter cases and two late string-method cases failed red-first and
 now pass without executing the substituted hooks. All 377 focused probe tests

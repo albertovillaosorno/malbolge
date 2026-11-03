@@ -345,6 +345,9 @@ format.
   integrated diff tests passed. Scoped Ruff and strict source typing passed;
   six inherited test typing errors and global Jig failures remain. The check
   excludes concurrent mutation races and external filesystem writers.
+- Probe resolution now pins `Path.with_segments` (`17b56bba3`) before and
+  after native `Path.resolve`, blocking two red-first native source/tool
+  redirections. All 379 focused and 3,340 integrated diff tests passed.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.
