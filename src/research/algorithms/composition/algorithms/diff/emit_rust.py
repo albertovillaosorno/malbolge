@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import io
 import os
+import stat
 from pathlib import Path, PurePath
 from secrets import token_hex
 from stat import S_ISDIR, S_ISLNK, S_ISREG
@@ -144,6 +145,23 @@ _NATIVE_PATH_WITH_NAME = Path.with_name
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 _NATIVE_OS_REALPATH = os.path.realpath
+_NATIVE_OS_READLINK = os.readlink
+_NATIVE_OS_GETCWD = os.getcwd
+_NATIVE_STAT_ISLNK = stat.S_ISLNK
+# Path.resolve delegates to with_segments and native class construction, even
+# when the resolver function and string formatter have not been replaced.
+_PATH_RESOLUTION_DEPENDENCIES = ("with_segments", "__new__", "__init__")
+_NATIVE_PATH_RESOLUTION_HOOKS = tuple(
+    (
+        path_class,
+        tuple(
+            (name, path_class.__dict__.get(name))
+            for name in _PATH_RESOLUTION_DEPENDENCIES
+        ),
+    )
+    for path_class in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(path_class, PurePath)
+)
 
 
 # Capture the native slots while importing the emitter. Late consumer hooks on
@@ -701,13 +719,24 @@ def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
 
 
 def _require_native_host_realpath() -> None:
-    """Reject a host resolver replaced after emitter import.
+    """Pin the resolver's host and pathlib dependencies before resolution.
 
     Raises:
         RustEmissionError: Native path resolution dependencies changed.
 
     """
-    if os.path.realpath is not _NATIVE_OS_REALPATH:
+    if (
+        os.path.realpath is not _NATIVE_OS_REALPATH
+        or os.lstat is not _NATIVE_OS_LSTAT
+        or os.readlink is not _NATIVE_OS_READLINK
+        or os.getcwd is not _NATIVE_OS_GETCWD
+        or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or any(
+            path_class.__dict__.get(name) is not original
+            for path_class, hooks in _NATIVE_PATH_RESOLUTION_HOOKS
+            for name, original in hooks
+        )
+    ):
         message = "Rust output path resolution hooks changed"
         raise RustEmissionError(message)
 

@@ -38,6 +38,7 @@ import builtins
 import hashlib
 import os
 import shutil
+import stat
 
 # Used only with fixed local argv and shell=False.
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
@@ -1499,6 +1500,98 @@ def test_writer_template_resolve_rejects_replaced_host_realpath(
     assert calls == 0
 
 
+@pytest.mark.parametrize("dependency", ["lstat", "readlink", "getcwd", "islink"])
+def test_writer_template_resolution_rejects_late_host_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """Original realpath still delegates to mutable host path dependencies."""
+    template = tmp_path / "rust_runtime.rs"
+    guard = cast(
+        "Callable[[Path], None]",
+        vars(emit_rust_module)["_require_output_not_runtime_template"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted native path hook invoked")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_RUNTIME_TEMPLATE", template)
+        if dependency == "islink":
+            patch.setattr(stat, "S_ISLNK", forbidden)
+        else:
+            patch.setattr(os, dependency, forbidden)
+        with pytest.raises(RustEmissionError, match="path resolution hooks changed"):
+            guard(template)
+    assert calls == 0
+
+
+@pytest.mark.parametrize("hook", ["with_segments", "__new__", "__init__"])
+def test_writer_template_resolution_rejects_late_path_factories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A captured Path.resolve must not invoke mutable path constructors."""
+    template = tmp_path / "rust_runtime.rs"
+    guard = cast(
+        "Callable[[Path], None]",
+        vars(emit_rust_module)["_require_output_not_runtime_template"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted pathlib factory invoked")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, hook, forbidden)
+        patch.setattr(emit_rust_module, "_RUNTIME_TEMPLATE", template)
+        with pytest.raises(RustEmissionError, match="path resolution hooks changed"):
+            guard(template)
+    assert calls == 0
+
+
+def test_writer_template_symlink_alias_rejects_late_readlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Host readlink substitution cannot disguise the runtime template alias."""
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    template = runtime / "rust_runtime.rs"
+    template.write_text("keep", encoding="utf-8")
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(runtime, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    output = alias / template.name
+    guard = cast(
+        "Callable[[Path], None]",
+        vars(emit_rust_module)["_require_output_not_runtime_template"],
+    )
+    native_readlink = os.readlink
+    calls = 0
+
+    def misdirected_readlink(
+        path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> str:
+        nonlocal calls
+        if os.fspath(path) == str(alias):
+            calls += 1
+            return str(tmp_path / "different-directory")
+        return native_readlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_RUNTIME_TEMPLATE", template)
+        patch.setattr(os, "readlink", misdirected_readlink)
+        with pytest.raises(RustEmissionError, match="path resolution hooks changed"):
+            guard(output)
+    assert calls == 0
+    assert template.read_text(encoding="utf-8") == "keep"
+
+
 def test_writer_parent_walk_ignores_late_path_equality(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1701,7 +1794,7 @@ def test_writer_rejects_post_import_os_lstat_spoof(
         patched.setattr(os, "lstat", forged_lstat)
         with pytest.raises(
             RustEmissionError,
-            match=r"parent must not be linked|regular non-linked file",
+            match=r"path resolution hooks changed|parent must not be linked|regular non-linked file",
         ):
             write_rust_transform(protected, _PROFILE, output)
     # Other pathlib operations may consult os.lstat; output classification
