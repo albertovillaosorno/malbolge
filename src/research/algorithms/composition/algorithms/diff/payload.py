@@ -48,6 +48,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hmac import compare_digest as _native_compare_digest
+from types import MemberDescriptorType
+from typing import cast
 
 # Keep AEAD input identity and byte operations independent of late
 # consumer hooks that change process-global Python builtins.
@@ -99,11 +101,30 @@ class AuthenticatedPayload:
             PayloadCryptoError: The authentication tag has the wrong width.
 
         """
-        _ = _require_bytes(self.ciphertext, "ChaCha20-Poly1305 ciphertext")
-        tag = _require_bytes(self.tag, "ChaCha20-Poly1305 tag")
+        ciphertext, raw_tag = _payload_fields(self)
+        _ = _require_bytes(ciphertext, "ChaCha20-Poly1305 ciphertext")
+        tag = _require_bytes(raw_tag, "ChaCha20-Poly1305 tag")
         if _NATIVE_LEN(tag) != _TAG_BYTES:
             message = "ChaCha20-Poly1305 tag must be 16 bytes"
             raise PayloadCryptoError(message)
+
+
+# Preserve the dataclass's original stored slots before consumers can replace
+# class descriptors or getters during source evaluation. Decryption takes one
+# snapshot so authenticated bytes are the ones passed to the stream cipher.
+_PAYLOAD_CIPHERTEXT_SLOT = cast(
+    "MemberDescriptorType", AuthenticatedPayload.__dict__["ciphertext"]
+)
+_PAYLOAD_TAG_SLOT = cast(
+    "MemberDescriptorType", AuthenticatedPayload.__dict__["tag"]
+)
+
+
+def _payload_fields(payload: AuthenticatedPayload) -> tuple[bytes, bytes]:
+    return (
+        _PAYLOAD_CIPHERTEXT_SLOT.__get__(payload, AuthenticatedPayload),
+        _PAYLOAD_TAG_SLOT.__get__(payload, AuthenticatedPayload),
+    )
 
 
 def _require_key_nonce(key: object, nonce: object) -> None:
@@ -289,22 +310,23 @@ def chacha20_poly1305_decrypt(
     if _NATIVE_TYPE(payload) is not AuthenticatedPayload:
         message = "ChaCha20-Poly1305 payload must use the exact authenticated type"
         raise PayloadCryptoError(message)
-    _ = _require_bytes(payload.ciphertext, "ChaCha20-Poly1305 ciphertext")
-    _ = _require_bytes(payload.tag, "ChaCha20-Poly1305 tag")
+    ciphertext, tag = _payload_fields(payload)
+    _ = _require_bytes(ciphertext, "ChaCha20-Poly1305 ciphertext")
+    _ = _require_bytes(tag, "ChaCha20-Poly1305 tag")
+    if _NATIVE_LEN(tag) != _TAG_BYTES:
+        message = "ChaCha20-Poly1305 tag must be 16 bytes"
+        raise PayloadCryptoError(message)
     _ = _require_bytes(aad, "ChaCha20-Poly1305 associated data")
     one_time_key = _chacha20_block(key, nonce, _ZERO)[:_KEY_BYTES]
-    expected = _poly1305_mac(
-        _mac_data(aad, payload.ciphertext),
-        one_time_key,
-    )
+    expected = _poly1305_mac(_mac_data(aad, ciphertext), one_time_key)
     # Keep the authenticated verifier independent of later domain hooks that
     # replace the process-global hmac function during source evaluation.
-    if not _native_compare_digest(expected, payload.tag):
+    if not _native_compare_digest(expected, tag):
         message = "ChaCha20-Poly1305 authentication failed"
         raise PayloadCryptoError(message)
     return _chacha20_xor(
         key,
         nonce,
-        payload.ciphertext,
+        ciphertext,
         initial_counter=_ONE,
     )

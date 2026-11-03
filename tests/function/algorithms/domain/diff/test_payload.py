@@ -548,3 +548,88 @@ def test_decrypt_rejects_late_type_foreign_payload(
         except PayloadCryptoError:
             rejected = True
     assert rejected, "late type hook admitted foreign authenticated payload"
+
+
+def test_payload_constructor_ignores_late_field_getattribute_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late class hook cannot hide a malformed detached tag at creation."""
+    original_getattribute = AuthenticatedPayload.__getattribute__
+    calls = 0
+
+    def forged_tag(value: AuthenticatedPayload, name: str) -> object:
+        nonlocal calls
+        if name == "tag":
+            calls += 1
+            return bytes(16)
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(AuthenticatedPayload, "__getattribute__", forged_tag)
+        with pytest.raises(PayloadCryptoError, match="tag must be 16 bytes"):
+            _ = AuthenticatedPayload(b"payload", b"short")
+    assert calls == 0, "late class hook concealed a malformed raw tag"
+
+
+def test_decrypt_ignores_late_ciphertext_read_switch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Authentication and plaintext release must use the same raw bytes."""
+    key = bytes(range(32))
+    nonce = bytes(range(12))
+    plaintext = b"authenticated secret"
+    payload = chacha20_poly1305_encrypt(key, nonce, plaintext)
+    original_getattribute = AuthenticatedPayload.__getattribute__
+    calls = 0
+
+    def switch_ciphertext(value: AuthenticatedPayload, name: str) -> object:
+        nonlocal calls
+        if name == "ciphertext":
+            calls += 1
+            if calls >= 3:
+                raw = cast("bytes", original_getattribute(value, name))
+                return b"x" * len(raw)
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            AuthenticatedPayload, "__getattribute__", switch_ciphertext
+        )
+        recovered = chacha20_poly1305_decrypt(key, nonce, payload)
+    assert recovered == plaintext, "decrypted bytes differed from authenticated"
+    assert calls == 0, "late class hook changed authenticated bytes"
+
+
+@pytest.mark.parametrize("field", ["ciphertext", "tag"])
+def test_decrypt_ignores_late_payload_descriptor_forgery(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Only raw detached payload fields can carry crypto authority."""
+    key = bytes(range(32))
+    nonce = bytes(range(12))
+    plaintext = b"safe payload"
+    authentic = chacha20_poly1305_encrypt(key, nonce, plaintext)
+    invalid = AuthenticatedPayload(authentic.ciphertext, bytes(16))
+    forged_value = (
+        b"x" * len(authentic.ciphertext)
+        if field == "ciphertext"
+        else authentic.tag
+    )
+    calls = 0
+
+    def forged_field(_value: AuthenticatedPayload) -> bytes:
+        nonlocal calls
+        calls += 1
+        return forged_value
+
+    with monkeypatch.context() as patched:
+        patched.setattr(AuthenticatedPayload, field, property(forged_field))
+        if field == "tag":
+            with pytest.raises(
+                PayloadCryptoError, match="authentication failed"
+            ):
+                _ = chacha20_poly1305_decrypt(key, nonce, invalid)
+        else:
+            recovered = chacha20_poly1305_decrypt(key, nonce, authentic)
+            assert recovered == plaintext
+    assert calls == 0, "late descriptor changed authenticated payload metadata"
