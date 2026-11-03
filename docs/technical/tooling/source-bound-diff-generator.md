@@ -2300,6 +2300,16 @@ alias replaced passed; all 109 publication tests passed postcommit. Scoped
 Ruff, strict source/test BasedPyright, and diff checks were clean. Host
 filesystem races and global Jig governance remain outside this evidence.
 
+Exact-tree, relocatable, and source-pin native error-note bridges now pin
+import-original `builtins.list` when admitting `BaseException.__notes__`
+(`0e5898d4c`). A late consumer `builtins.list` substitution previously erased
+trusted notes even while the error type and cause remained intact. Six red-first
+tuple/dict alias cases now retain those notes. All 763 combined exact,
+relocatable, and provenance tests passed postcommit; Ruff, strict typing on
+all three source files, and diff checks were clean. The exact test file has
+one inherited typing diagnostic outside the added cases. These guards do not
+prevent external filesystem races or direct trusted data mutation.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

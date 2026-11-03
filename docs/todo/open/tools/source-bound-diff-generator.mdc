@@ -1219,6 +1219,13 @@ format.
   tests passed, with scoped Ruff, strict BasedPyright, and diff checks clean.
   Jig doctor remains degraded (graph absent), and its global check timed out;
   external writers and direct instance mutation are still out of scope.
+- Native error-note propagation in exact-tree reads, relocatable byte reads,
+  and pinned-source reads now uses the import-original builtin `list` type
+  (`0e5898d4c`). Six red-first late tuple/dict alias cases previously lost
+  trusted notes and now preserve them. All 763 combined postcommit focused
+  tests passed; Ruff, three source-file strict type checks, and diff checks
+  were clean. One inherited exact test typing diagnostic remains outside
+  changed lines. External writers and direct storage mutation remain open.
 - Protected exact plans now retrieve exact native `SourceBindingError`
   argument storage without invoking late class getters (`eaaf7545b`).
   Two red-first raised/forged diagnostic cases retain the true threshold
