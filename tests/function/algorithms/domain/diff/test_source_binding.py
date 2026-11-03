@@ -36,6 +36,7 @@ import hashlib
 import hmac
 import itertools
 import math
+import ntpath
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
@@ -603,6 +604,36 @@ def test_recovery_rejects_windows_reserved_share_paths(
             *binding.shares[1:],
         ),
     )
+    with pytest.raises(SourceBindingError, match="reserved"):
+        _ = validate_threshold_binding(malformed)
+    with pytest.raises(SourceBindingError, match="reserved"):
+        _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
+@pytest.mark.parametrize(
+    "reserved_path", ["NUL", "src/CON.txt", "src/COM1/child.txt"]
+)
+def test_recovery_reserved_share_paths_resist_host_hook_swap(
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_path: str,
+) -> None:
+    """Post-load host hooks cannot permit invalid distributable paths."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    malformed = replace(
+        binding,
+        shares=(
+            replace(binding.shares[0], source_path=reserved_path),
+            *binding.shares[1:],
+        ),
+    )
+
+    def forged_isreserved(path: str) -> bool:
+        del path
+        return False
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
     with pytest.raises(SourceBindingError, match="reserved"):
         _ = validate_threshold_binding(malformed)
     with pytest.raises(SourceBindingError, match="reserved"):

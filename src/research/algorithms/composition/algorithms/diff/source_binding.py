@@ -73,6 +73,8 @@ _BACKSLASH = "\\"
 _DOT = "."
 _PARENT = ".."
 _NUL = "\x00"
+# Domain hooks must not redefine the Windows reserved-name verdict.
+_NATIVE_IS_RESERVED = ntpath.isreserved
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
     selection_modulus=64,
@@ -612,7 +614,7 @@ def _validate_share_path(value: object) -> None:
         message = "source-binding share path must be UTF-8 encodable"
         raise SourceBindingError(message) from error
     _require_no_windows_drive(value)
-    if ntpath.isreserved(value):
+    if _NATIVE_IS_RESERVED(value):
         message = "source-binding share path uses a Windows reserved name"
         raise SourceBindingError(message)
     path = PurePosixPath(value)
