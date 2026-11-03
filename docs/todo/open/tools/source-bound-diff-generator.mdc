@@ -384,6 +384,13 @@ format.
   payload-focused tests and 2,671 integrated diff tests; scoped Ruff and
   BasedPyright had zero errors, with four older type warnings. Direct stored
   object or trusted module mutation remains outside this guard.
+- AEAD record validation and decryption now reject native payload instances
+  with missing ciphertext/tag storage through `PayloadCryptoError`
+  (`521941869`). Four red-first cases and all 41 postcommit payload tests
+  passed; the integrated diff suite passed 3,102 tests. Strict source
+  BasedPyright reports zero errors, and pinned Ruff added no diagnostics
+  relative to the existing 55 across the source/test pair. Direct mutation of
+  stored fields remains out of scope.
 - A historical read-only DOOM smoke protected 2,116,232 literal bytes across 152
   instructions and materialized the then-current 152-file oracle snapshot. That
   snapshot is now known to include one accidental PowerShell root entry. The
@@ -651,6 +658,15 @@ format.
   address late class hooks, not direct mutation of stored object fields.
   Their constructors also call pinned original validators rather than late
   `__post_init__` class methods, with nine more red-first regressions.
+- Semantic plan admission now revalidates constructor-bypassed exact nested
+  `SemanticLocator` and `SemanticEdit` records through pinned validators,
+  and public application validates the complete native plan before accepting
+  an empty edit sequence (`07adc8f42`). Missing native fields raise the owned
+  `SemanticPlacementError`. Fifteen red-first cases passed, with 142
+  postcommit focused tests and 3,145 precommit integrated diff tests. Strict
+  semantic source typing had zero errors and pinned Ruff introduced no new
+  findings (84 versus 87 baseline). Direct stored-instance mutation and
+  external writers still require separate controls.
 - Generic mapped semantic placement now hashes canonical units, uniquely locates
   them
   in candidate source, maps them back to raw spans, preserves unrelated raw

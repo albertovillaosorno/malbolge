@@ -1127,6 +1127,15 @@ All 37 payload tests and 2,671 integrated diff tests passed, with scoped Ruff
 and BasedPyright reporting zero errors (four existing type warnings). The
 change does not isolate direct trusted module or instance-storage edits.
 
+Public AEAD decryption and direct record validation now translate absent raw
+`AuthenticatedPayload` ciphertext/tag slots into the owned
+`PayloadCryptoError` boundary (`521941869`). Four red-first
+constructor-bypassed native-record cases pass along with 41 payload tests and
+3,102 integrated diff tests. Strict payload source typing reports zero errors,
+and pinned Ruff retains its 55 pre-existing diagnostics across the source and
+test pair with no new findings. This does not isolate direct changes to valid
+stored fields or process-global trusted internals.
+
 `protected.py` now combines key binding and authenticated encryption for exact
 authoring plans. Every `OracleLiteral` is moved into one deterministic plaintext
 stream. Protected instructions retain only source slices or offsets into that
@@ -1387,6 +1396,18 @@ without altering mapped-source edits. All 127 focused tests passed after
 commit and 2,724 integrated diff tests passed before publication; scoped Ruff
 had no findings, and no new strict type diagnostics appeared. These are
 class-hook guards, not isolation from trusted direct object mutation.
+
+Semantic edit and plan admission now rerun the captured original nested
+locator/edit validators and translate missing native slots to
+`SemanticPlacementError` before public application (`07adc8f42`). Fifteen
+red-first cases show that exact-class but constructor-bypassed records can
+otherwise skip malformed digest checks, accept incomplete edit fields, or let
+an empty forged plan return source unchanged. All 142 semantic tests passed
+after commit, and 3,145 integrated diff tests passed before commit. Strict
+semantic source BasedPyright is clean; pinned Ruff reports 84 existing
+source/test findings versus 87 at baseline, with no new diagnostics. These
+checks validate stored evidence on entry, not protection against direct
+storage mutation during concurrent execution.
 
 Semantic placement and compatible tree authoring/materialization wrap
 consumer mapper and postcondition failures without evaluating foreign exception
