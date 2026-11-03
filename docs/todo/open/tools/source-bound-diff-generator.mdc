@@ -511,6 +511,13 @@ format.
   integrated diff tests passed, with scoped Ruff/diff checks clean. Existing
   strict typing errors and degraded/unverified global Jig remain. Hook
   mutation races and external filesystem writers are still out of scope.
+- Probe root/tool resolution now guards the import-original host path
+  parser (`splitroot`, `splitdrive`, separators), native inherited `PurePath`
+  parser hooks, and transitive `realpath` builtin dependencies (`ee9071fca`,
+  `f5dd4a62a`). Four red-first length, bytes-alias, and uncached-path cases
+  now fail closed; all 422 postcommit probe tests pass. Scoped Ruff, strict
+  source typing, and diff checks were clean; six inherited test typing errors
+  and host/filesystem races remain outside this guard.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.

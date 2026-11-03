@@ -1361,6 +1361,18 @@ remains degraded and the global Jig check has no passing verdict. Hook
 identity is not an atomic defense against concurrent host changes or external
 filesystem writers, nor a replacement for sandboxing consumer executables.
 
+Native probe root/tool resolution also now rejects late `os.path.splitroot`,
+`splitdrive`, separator, inherited `PurePath` parser, and `builtins.len` or
+`isinstance` changes (`ee9071fca`), plus a replaced `builtins.bytes` type
+(`f5dd4a62a`). Captured host `realpath` still consulted late builtins, while
+an uncached `Path` could parse its raw source through replaceable class or host
+parser hooks. Four red-first cases for length, byte-type, and path-parser
+redirects now fail closed before the foreign hook runs. All 422 postcommit
+probe tests passed; scoped Ruff, strict source BasedPyright, and diff checks
+were clean. Six pre-existing test typing errors remain outside this patch.
+These identity checks are not atomic against
+concurrent host-code mutation or external filesystem writers.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record
