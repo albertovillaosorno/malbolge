@@ -2265,6 +2265,56 @@ def test_probe_executable_rejects_foreign_status_receipt(
         require_executable(tool)
 
 
+@pytest.mark.parametrize("role", ["source", "repository"])
+def test_probe_inode_status_rejects_forged_foreign_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """A forgeable status cannot attest the inode-disjointness boundary."""
+    source = tmp_path / "source"
+    source.mkdir()
+    leaf = source / "input.bin"
+    _ = leaf.write_bytes(b"trusted original source")
+    repository_path = tmp_path / "external.bin"
+    _ = repository_path.write_bytes(b"external data")
+    target = leaf if role == "source" else repository_path
+    original_stat = Path.stat
+    forged = SimpleNamespace(
+        st_dev=12345,
+        st_ino=56789,
+        st_mode=0o100644,
+        st_nlink=1,
+    )
+    consumed = False
+
+    def fake_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        nonlocal consumed
+        if path == target:
+            consumed = True
+            return cast("os.stat_result", cast("object", forged))
+        return original_stat(path, follow_symlinks=follow_symlinks)
+
+    monkeypatch.setattr(Path, "stat", fake_stat)
+    if role == "source":
+        source_inodes = cast(
+            "Callable[[Path], frozenset[tuple[int, int]]]",
+            vars(probe_exec_module)["_source_file_inode_keys"],
+        )
+        verify: Callable[[], object] = lambda: source_inodes(source)
+    else:
+        repository_status = cast(
+            "Callable[[Path], os.stat_result | None]",
+            vars(probe_exec_module)["_repository_inode_status"],
+        )
+        verify = lambda: repository_status(repository_path)
+    with pytest.raises(
+        ProbeExecutionError, match="native.*inode|inode.*native"
+    ):
+        _ = verify()
+    _expect(consumed, "forged inode status was not tested")
+
+
 class _HostileProbeFilesystemError(OSError):
     """Host callback errors must not execute their display hooks."""
 

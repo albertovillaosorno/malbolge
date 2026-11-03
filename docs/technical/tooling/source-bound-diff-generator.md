@@ -306,7 +306,9 @@ structured beneath authorized source, repository, or scratch roots. Before
 mirroring, the executor rejects structured repository-relative arguments and
 executables that resolve within the original source tree, including symlink
 aliases, as well as existing regular-file hardlinks sharing source device/inode
-identity. Unrelated hardlinks remain admitted. Executable admission
+identity. Source and repository inode checks require native `os.stat_result`
+receipts, so foreign identity records cannot certify hardlink disjointness.
+Unrelated hardlinks remain admitted. Executable admission
 also requires an exact host-native `os.stat_result` before trusting regular-file
 mode; foreign status receipts reject execution, and status errors never invoke
 foreign exception string hooks. Other host faults in root/path/tool resolution,

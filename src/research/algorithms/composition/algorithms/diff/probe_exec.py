@@ -1218,6 +1218,14 @@ def _snapshot_probe_tree(root: Path, context: str) -> TreeSnapshot:
         raise ProbeExecutionError(message) from error
 
 
+def _native_inode_status(receipt: object, context: str) -> os.stat_result:
+    """Require an OS-provided identity receipt before trusting inode fields."""
+    if type(receipt) is not _NATIVE_STAT_RESULT:
+        message = f"probe {context} inode status must be native"
+        raise ProbeExecutionError(message)
+    return receipt
+
+
 def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
     """Read the stat identities of admitted regular source files.
 
@@ -1233,7 +1241,9 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
         return frozenset(
             (status.st_dev, status.st_ino)
             for record in files
-            for status in ((source / record.path).stat(),)
+            for status in (
+                _native_inode_status((source / record.path).stat(), "source"),
+            )
         )
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
@@ -1252,7 +1262,7 @@ def _repository_inode_status(path: Path) -> os.stat_result | None:
 
     """
     try:
-        return path.stat()
+        return _native_inode_status(path.stat(), "repository")
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
