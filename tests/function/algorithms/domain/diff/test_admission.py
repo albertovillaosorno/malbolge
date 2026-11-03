@@ -35,6 +35,7 @@
 from dataclasses import replace
 import hashlib
 import math
+import ntpath
 from typing import cast
 
 from algorithms.diff.admission import AdmissionError
@@ -433,6 +434,30 @@ def test_identity_records_reject_foreign_runtime_types() -> None:
 )
 def test_identity_paths_reject_nonportable_names(unsafe_path: str) -> None:
     """Malformed path metadata must fail before source binding and encoding."""
+    with pytest.raises(AdmissionPolicyError, match="invalid identity path"):
+        _ = IdentityFile(path=unsafe_path, canonical=b"source")
+    with pytest.raises(AdmissionPolicyError, match="invalid identity path"):
+        _ = identity_tree({unsafe_path: b"source"})
+    with pytest.raises(
+        AdmissionPolicyError, match="invalid file admission path"
+    ):
+        _ = FileAdmissionEvidence(unsafe_path, 1.0, 1.0, 1, 1)
+
+
+@pytest.mark.parametrize(
+    "unsafe_path", ["CON", "safe/COM1/child.txt", "NUL/child.txt"]
+)
+def test_identity_reserved_paths_ignore_mutable_host_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_path: str,
+) -> None:
+    """Domain code cannot reclassify Windows device names as portable paths."""
+
+    def forged_isreserved(path: str) -> bool:
+        del path
+        return False
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
     with pytest.raises(AdmissionPolicyError, match="invalid identity path"):
         _ = IdentityFile(path=unsafe_path, canonical=b"source")
     with pytest.raises(AdmissionPolicyError, match="invalid identity path"):

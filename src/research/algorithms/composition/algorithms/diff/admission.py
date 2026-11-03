@@ -57,6 +57,8 @@ _ZERO = 0
 _ONE = 1
 _STRUCTURAL_POLICY = AnchorPolicy(window_bytes=16, selection_modulus=8)
 _ANCHOR_POLICY = AnchorPolicy(window_bytes=32, selection_modulus=64)
+# Domain-loaded hooks cannot redefine Windows reserved-path admission.
+_NATIVE_IS_RESERVED = ntpath.isreserved
 
 
 class AdmissionPolicyError(ValueError):
@@ -82,7 +84,7 @@ def _is_portable_relative_path(path: str) -> bool:
     return (
         not candidate.is_absolute()
         and not PureWindowsPath(path).drive
-        and not ntpath.isreserved(path)
+        and not _NATIVE_IS_RESERVED(path)
         and _PARENT not in candidate.parts
         and candidate.as_posix() == path
     )
