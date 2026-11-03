@@ -2326,3 +2326,56 @@ else:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    ("route", "detail"),
+    [
+        ("anchor-policy", "invalid nested anchor"),
+        ("policy", "stored fields"),
+        ("reference", "invalid identity fields"),
+        ("envelope", "incomplete envelope"),
+        ("candidate", "invalid identity metadata"),
+    ],
+)
+def test_source_binding_native_guards_reject_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str, detail: str
+) -> None:
+    """Incomplete exact records must fail closed after builtin alias swaps."""
+    reference = _reference()
+    policy = _policy()
+    valid = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    native_attribute_error = builtins.AttributeError
+    rejected: SourceBindingPolicyError | SourceBindingError | None = None
+    anchor_result: bool | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if route == "anchor-policy":
+                anchor_result = binding_module._valid_anchor_policy_fields(
+                    object.__new__(AnchorPolicy)
+                )
+            elif route == "policy":
+                _ = bind_secret(
+                    reference, _SECRET,
+                    policy=object.__new__(SourceBindingPolicy),
+                    context=_CONTEXT,
+                )
+            elif route == "reference":
+                _ = bind_secret(
+                    object.__new__(IdentityTree), _SECRET,
+                    policy=policy, context=_CONTEXT,
+                )
+            elif route == "envelope":
+                _ = validate_threshold_binding(object.__new__(type(valid)))
+            else:
+                _ = recover_secret(valid, object.__new__(IdentityTree))
+        except (SourceBindingPolicyError, SourceBindingError) as error:
+            rejected = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    if route == "anchor-policy":
+        assert anchor_result is False
+    else:
+        assert rejected is not None, route
+        assert detail in str(rejected)

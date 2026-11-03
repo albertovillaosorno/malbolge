@@ -109,6 +109,8 @@ _NATIVE_ISFINITE = math.isfinite
 _NATIVE_CEIL = math.ceil
 _NATIVE_ZIP = builtins.zip
 _NATIVE_OBJECT_NEW = object.__new__
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
     selection_modulus=64,
@@ -337,7 +339,7 @@ def _valid_anchor_policy_fields(value: AnchorPolicy) -> bool:
     try:
         window = _ANCHOR_POLICY_WINDOW_SLOT.__get__(value, AnchorPolicy)
         modulus = _ANCHOR_POLICY_MODULUS_SLOT.__get__(value, AnchorPolicy)
-    except AttributeError:
+    except _NATIVE_ATTRIBUTE_ERROR:
         return False
     return (
         _NATIVE_TYPE(window) is _NATIVE_INT
@@ -977,7 +979,7 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
     # Revalidate all native policy slots before interpreting source material.
     try:
         _SOURCE_BINDING_POLICY_VALIDATOR(policy)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "source-binding policy requires all stored fields"
         raise SourceBindingPolicyError(message) from error
     try:
@@ -985,7 +987,7 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
             _has_windows_drive(_identity_path(item))
             for item in _identity_files(reference)
         )
-    except (AttributeError, TypeError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source-binding reference has invalid identity fields"
         raise SourceBindingPolicyError(message) from error
     if has_drive:
@@ -993,7 +995,7 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
         raise SourceBindingPolicyError(message)
     try:
         _require_native_identity_tree(reference)
-    except (AdmissionPolicyError, AttributeError, TypeError) as error:
+    except (AdmissionPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source-binding reference contains invalid identity metadata"
         raise SourceBindingPolicyError(message) from error
 
@@ -1040,7 +1042,7 @@ def bind_secret(
     _validate_bind_inputs(reference, secret, policy=policy, context=context)
     try:
         materials = _select_anchor_materials(reference, policy)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "source-binding reference has incomplete identity fields"
         raise SourceBindingPolicyError(message) from error
     fraction, _, minimum_files, anchor_policy = _policy_fields(policy)
@@ -1274,7 +1276,7 @@ def validate_threshold_binding(
     """
     try:
         return _validate_binding(binding)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "source binding has incomplete envelope or share fields"
         raise SourceBindingError(message) from error
 
@@ -1383,12 +1385,12 @@ def recover_secret(
         raise SourceBindingError(message)
     try:
         _require_native_identity_tree(candidate)
-    except (AdmissionPolicyError, AttributeError, TypeError) as error:
+    except (AdmissionPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source-binding candidate contains invalid identity metadata"
         raise SourceBindingError(message) from error
     try:
         available = _recover_available_shares(admitted, candidate)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "source-binding candidate has incomplete identity fields"
         raise SourceBindingError(message) from error
     if _NATIVE_LEN(available) < _binding_threshold(admitted):
