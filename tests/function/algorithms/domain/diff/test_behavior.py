@@ -327,6 +327,44 @@ def test_compatibility_probe_failure_rejects_perfect_identity() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("identity_matches", "compatible", "bug_state", "reason"),
+    [
+        (3, True, BugState.PRESENT, "insufficient behavior identity"),
+        (5, False, BugState.PRESENT, "compatibility probe failed"),
+        (5, True, BugState.UNKNOWN, "bug probe unresolved"),
+    ],
+)
+def test_behavior_rejection_ignores_late_admitted_property_swap(
+    monkeypatch: pytest.MonkeyPatch,
+    identity_matches: int,
+    compatible: bool,
+    bug_state: BugState,
+    reason: str,
+) -> None:
+    """A replaced evidence descriptor cannot authorize rejected behavior."""
+    called = 0
+
+    def forged_admitted(_evidence: BehaviorEvidence) -> bool:
+        nonlocal called
+        called += 1
+        return True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(BehaviorEvidence, "admitted", property(forged_admitted))
+        with pytest.raises(BehaviorAdmissionError, match=reason):
+            _ = require_behavior(
+                _profile(),
+                _observations(
+                    identity_matches=identity_matches,
+                    compatible=compatible,
+                    bug_state=bug_state,
+                ),
+                _MINIMUM_BEHAVIOR_SIMILARITY,
+            )
+    assert called == 0, "hostile admission descriptor was consulted"
+
+
 def test_unknown_bug_state_fails_closed() -> None:
     """Do not guess whether a source correction should be applied."""
     with pytest.raises(BehaviorAdmissionError, match="bug probe unresolved"):

@@ -609,7 +609,7 @@ def require_behavior(
 
     """
     evidence = evaluate_behavior(profile, observations, minimum_similarity)
-    if not evidence.admitted:
+    if evidence.reasons:
         message = "; ".join(evidence.reasons)
         raise BehaviorAdmissionError(message)
     return evidence
