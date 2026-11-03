@@ -292,6 +292,13 @@ format.
   C
   placement milestone rather than pretending byte relocation solves
   reformatting.
+- Relocatable staging now pins `io.open` for exclusive file creation, native
+  `os.mkdir`, and original output parent/name/with-name operations. Four
+  red-first Path hook regressions (`65c7738a8`) reproduced staging/file
+  redirection and are now green. Error-injection tests use the pinned writer
+  and mkdir seams; 193 focused tests passed post-commit and 2,619 integrated
+  tests passed before it. Direct mutation of trusted module bindings and
+  concurrent filesystem writers remain outside this process-level guard.
 
 - Source pin snapshot/verification, relocatable tree authoring/materialization
   and domain module loading now admit only exact native `Path` types before

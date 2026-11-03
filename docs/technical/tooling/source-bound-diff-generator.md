@@ -827,6 +827,19 @@ formatting or notes. Secondary cleanup failures preserve the original error
 as their cause; unchecked host exception hooks cannot authorize publication.
 Concurrent filesystem writers can still race a non-atomic input snapshot or
 path check and require coordination.
+
+Relocatable output staging now uses import-pinned `io.open` with exclusive `xb`
+mode, native `os.mkdir` for parent creation, and original `Path.parent`,
+`Path.name`, and `Path.with_name` readers. Late consumer replacements of these
+filesystem methods cannot send a staged file or directory to a different
+location after admission. Four red-first tests reproduced redirected bytes,
+intercepted staging creation, changed staging names, and altered output parents;
+all pass after `65c7738a8`. Existing injected write, creation, and short-byte
+receipt failures test the captured host seams rather than mutable class hooks.
+All 193 relocatable tests passed post-commit; 2,619 integrated diff tests passed
+before the commit. Trusted in-process module-binding mutation and external
+filesystem races remain separate, unresolved isolation boundaries.
+
 Direct relocatable plan construction rejects output file paths that also name
 ancestor directories of other output files. Source and output instruction
 labels reject Windows drive-absolute and drive-relative forms before placement.
