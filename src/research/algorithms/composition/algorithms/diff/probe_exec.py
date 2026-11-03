@@ -45,7 +45,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
 from pathlib import Path
@@ -718,9 +718,15 @@ def _root_path(
     scratch_root: Path,
 ) -> Path:
     if root is ProbeRoot.SOURCE:
-        return _resolved_root(context.source_root, "source")
+        return _resolved_root(
+            cast("Path", _probe_field(context, ProbeRunContext, "source_root")),
+            "source",
+        )
     if root is ProbeRoot.REPOSITORY:
-        return _resolved_root(context.repository_root, "repository")
+        return _resolved_root(
+            cast("Path", _probe_field(context, ProbeRunContext, "repository_root")),
+            "repository",
+        )
     return _resolved_root(scratch_root, "scratch")
 
 
@@ -729,8 +735,11 @@ def _rooted_path(
     context: ProbeRunContext,
     scratch_root: Path,
 ) -> Path:
-    root = _root_path(argument.root, context, scratch_root)
-    candidate = root.joinpath(*argument.relative_path.split("/"))
+    root_kind, relative_path = cast(
+        "tuple[ProbeRoot, str]", _probe_path_fields(argument, _NATIVE_TYPE(argument))
+    )
+    root = _root_path(root_kind, context, scratch_root)
+    candidate = root.joinpath(*relative_path.split("/"))
     try:
         resolved = _NATIVE_PATH_RESOLVE(candidate)
     except (OSError, ValueError, RuntimeError) as error:
@@ -741,9 +750,7 @@ def _rooted_path(
     try:
         _ = _NATIVE_RELATIVE_TO(resolved, root)
     except ValueError as error:
-        message = (
-            f"probe path escapes authorized root: {argument.relative_path!r}"
-        )
+        message = f"probe path escapes authorized root: {relative_path!r}"
         raise ProbeExecutionError(message) from error
     return candidate
 
@@ -760,7 +767,11 @@ def _resolved_tool_path(path: Path) -> Path:
 
 def _tool_map(context: ProbeRunContext) -> dict[str, Path]:
     return {
-        tool_id: _resolved_tool_path(path) for tool_id, path in context.tools
+        tool_id: _resolved_tool_path(path)
+        for tool_id, path in cast(
+            "tuple[tuple[str, Path], ...]",
+            _probe_field(context, ProbeRunContext, "tools"),
+        )
     }
 
 
@@ -801,9 +812,10 @@ def _resolve_executable(
     scratch_root: Path,
 ) -> Path:
     if _NATIVE_ISINSTANCE(executable, ToolExecutable):
-        path = _tool_map(context).get(executable.tool_id)
+        tool_id = cast("str", _probe_field(executable, ToolExecutable, "tool_id"))
+        path = _tool_map(context).get(tool_id)
         if path is None:
-            message = f"unresolved probe tool: {executable.tool_id}"
+            message = f"unresolved probe tool: {tool_id}"
             raise ProbeExecutionError(message)
     else:
         path = _rooted_path(executable, context, scratch_root)
@@ -826,10 +838,17 @@ def _command_argv(
     context: ProbeRunContext,
     scratch_root: Path,
 ) -> list[str]:
-    executable = _resolve_executable(command.executable, context, scratch_root)
+    executable = _resolve_executable(
+        cast("ProbeExecutable", _probe_field(command, ProbeCommand, "executable")),
+        context,
+        scratch_root,
+    )
     arguments = (
         _resolve_argument(argument, context, scratch_root)
-        for argument in command.arguments
+        for argument in cast(
+            "tuple[ProbeArgument, ...]",
+            _probe_field(command, ProbeCommand, "arguments"),
+        )
     )
     return [_NATIVE_STR(executable), *arguments]
 
@@ -1175,8 +1194,12 @@ def _start_capture(
 
     """
     stdout_pipe, stderr_pipe = _capture_pipes(process)
-    stdout = _PipeCapture(command.max_stdout_bytes)
-    stderr = _PipeCapture(command.max_stderr_bytes)
+    stdout = _PipeCapture(
+        cast("int", _probe_field(command, ProbeCommand, "max_stdout_bytes"))
+    )
+    stderr = _PipeCapture(
+        cast("int", _probe_field(command, ProbeCommand, "max_stderr_bytes"))
+    )
     readers = (
         threading.Thread(
             target=_drain_pipe, args=(stdout_pipe, stdout), daemon=True
@@ -1191,7 +1214,10 @@ def _start_capture(
         stdin_errors: list[Exception] = []
         stdin_complete = threading.Event()
         writer = _start_writer(
-            process, command.stdin, stdin_errors, completed=stdin_complete
+            process,
+            cast("bytes", _probe_field(command, ProbeCommand, "stdin")),
+            stdin_errors,
+            completed=stdin_complete,
         )
     except _PIPE_DEPENDENCY_ERRORS as error:
         # Never close a stream underneath a reader still draining it.
@@ -1339,7 +1365,9 @@ def _launch_command(
         Completed process with quota-admitted captured observations.
 
     """
-    deadline = _probe_wall_deadline(command.timeout_ms)
+    deadline = _probe_wall_deadline(
+        cast("int", _probe_field(command, ProbeCommand, "timeout_ms"))
+    )
     process = _spawn_probe(argv, scratch_root)
     running: _RunningProbe | None = None
     try:
@@ -1377,15 +1405,20 @@ def _run_command(
 ) -> _CommandResult:
     argv = _command_argv(command, context, scratch_root)
     completed = _launch_command(argv, command, scratch_root)
-    if _NATIVE_LEN(completed.stdout) > command.max_stdout_bytes:
+    if _NATIVE_LEN(completed.stdout) > cast(
+        "int", _probe_field(command, ProbeCommand, "max_stdout_bytes")
+    ):
         message = "probe command exceeded stdout limit"
         raise ProbeExecutionError(message)
-    if _NATIVE_LEN(completed.stderr) > command.max_stderr_bytes:
+    if _NATIVE_LEN(completed.stderr) > cast(
+        "int", _probe_field(command, ProbeCommand, "max_stderr_bytes")
+    ):
         message = "probe command exceeded stderr limit"
         raise ProbeExecutionError(message)
-    if (
-        command.expected_exit_code is not None
-        and completed.returncode != command.expected_exit_code
+    if cast(
+        "int | None", _probe_field(command, ProbeCommand, "expected_exit_code")
+    ) is not None and completed.returncode != cast(
+        "int | None", _probe_field(command, ProbeCommand, "expected_exit_code")
     ):
         message = "probe command returned an unexpected exit code"
         raise ProbeExecutionError(message)
@@ -1447,22 +1480,30 @@ def _run_program(
         "diff-probe-", parent=temporary_parent
     ) as scratch:
         scratch_root = Path(scratch)
-        for command_index, command in _NATIVE_ENUMERATE(program.commands):
+        for command_index, command in _NATIVE_ENUMERATE(
+            cast(
+                "tuple[ProbeCommand, ...]",
+                _probe_field(program, ProbeProgram, "commands"),
+            )
+        ):
             try:
                 result = _run_command(command, context, scratch_root)
             finally:
-                _require_mirror_unchanged(context.source_root, baseline)
+                _require_mirror_unchanged(
+                    cast("Path", _probe_field(context, ProbeRunContext, "source_root")),
+                    baseline,
+                )
             selected = False
-            if command.digest_stdout:
+            if cast("bool", _probe_field(command, ProbeCommand, "digest_stdout")):
                 _update_stdout_digest(hasher, command_index, result.stdout)
                 selected = True
-            if command.digest_exit_code:
+            if cast("bool", _probe_field(command, ProbeCommand, "digest_exit_code")):
                 _update_exit_digest(hasher, command_index, result.returncode)
                 selected = True
             if selected:
                 digested_commands += 1
     return ProbeTranscript(
-        probe_id=program.probe_id,
+        probe_id=cast("str", _probe_field(program, ProbeProgram, "probe_id")),
         digest=hasher.digest(),
         digested_commands=digested_commands,
     )
@@ -1484,7 +1525,10 @@ def _validate_probe_batch(
     if _NATIVE_TYPE(context) is not ProbeRunContext:
         message = "probe run context must use the exact ProbeRunContext type"
         raise ProbeProgramError(message)
-    identifiers = _NATIVE_TUPLE(program.probe_id for program in admitted)
+    identifiers = _NATIVE_TUPLE(
+        cast("str", _probe_field(program, ProbeProgram, "probe_id"))
+        for program in admitted
+    )
     if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = "probe programs must have unique sorted identifiers"
         raise ProbeProgramError(message)
@@ -1594,7 +1638,10 @@ def _require_repository_argument_disjoint(
     """
     if not _NATIVE_ISINSTANCE(argument, (PathArgument, RootedExecutable)):
         return
-    if argument.root is not ProbeRoot.REPOSITORY:
+    if (
+        cast("ProbeRoot", _probe_field(argument, _NATIVE_TYPE(argument), "root"))
+        is not ProbeRoot.REPOSITORY
+    ):
         return
     path = _rooted_path(argument, context, original_source)
     try:
@@ -1614,13 +1661,24 @@ def _require_repository_paths_disjoint(
     programs: tuple[ProbeProgram, ...], context: ProbeRunContext
 ) -> None:
     """Check structured repo paths before mirroring the admitted source."""
-    source = _resolved_root(context.source_root, "source")
+    source = _resolved_root(
+        cast("Path", _probe_field(context, ProbeRunContext, "source_root")), "source"
+    )
     for program in programs:
-        for command in program.commands:
+        for command in cast(
+            "tuple[ProbeCommand, ...]", _probe_field(program, ProbeProgram, "commands")
+        ):
             _require_repository_argument_disjoint(
-                command.executable, context, source
+                cast(
+                    "ProbeExecutable", _probe_field(command, ProbeCommand, "executable")
+                ),
+                context,
+                source,
             )
-            for argument in command.arguments:
+            for argument in cast(
+                "tuple[ProbeArgument, ...]",
+                _probe_field(command, ProbeCommand, "arguments"),
+            ):
                 _require_repository_argument_disjoint(argument, context, source)
 
 
@@ -1639,7 +1697,9 @@ def _require_mirror_unchanged(root: Path, baseline: TreeSnapshot) -> None:
 def _run_isolated_batch(
     programs: tuple[ProbeProgram, ...], context: ProbeRunContext
 ) -> tuple[ProbeTranscript, ...]:
-    source = _snapshot_probe_tree(context.source_root, "source")
+    source = _snapshot_probe_tree(
+        cast("Path", _probe_field(context, ProbeRunContext, "source_root")), "source"
+    )
     # A host TMPDIR inside the source would copy the new batch directory into
     # itself recursively. Reject before creating any temporary directories.
     try:
@@ -1650,7 +1710,9 @@ def _run_isolated_batch(
     temporary_parent = _native_resolved_path(
         temporary_parent, "temporary parent"
     )
-    original_source = _resolved_root(context.source_root, "source")
+    original_source = _resolved_root(
+        cast("Path", _probe_field(context, ProbeRunContext, "source_root")), "source"
+    )
     if _native_path_inside(temporary_parent, original_source):
         message = "probe temporary parent overlaps original source tree"
         raise ProbeExecutionError(message)
@@ -1661,7 +1723,7 @@ def _run_isolated_batch(
         try:
             mirror_root = Path(
                 _NATIVE_COPYTREE(
-                    context.source_root,
+                    cast("Path", _probe_field(context, ProbeRunContext, "source_root")),
                     batch_root / "source",
                     symlinks=True,
                 )
@@ -1670,8 +1732,16 @@ def _run_isolated_batch(
             detail = _safe_probe_error_detail(error)
             message = f"probe source mirror creation failed: {detail}"
             raise ProbeExecutionError(message) from error
-        isolated = replace(
-            context, source_root=mirror_root, enforce_source_immutable=False
+        isolated = ProbeRunContext(
+            source_root=mirror_root,
+            repository_root=cast(
+                "Path", _probe_field(context, ProbeRunContext, "repository_root")
+            ),
+            tools=cast(
+                "tuple[tuple[str, Path], ...]",
+                _probe_field(context, ProbeRunContext, "tools"),
+            ),
+            enforce_source_immutable=False,
         )
         baseline = _snapshot_probe_tree(mirror_root, "isolated source mirror")
         if baseline != source:
@@ -1697,7 +1767,11 @@ def _require_original_source_unchanged(
     """
     if (
         baseline is not None
-        and _snapshot_probe_tree(context.source_root, "source") != baseline
+        and _snapshot_probe_tree(
+            cast("Path", _probe_field(context, ProbeRunContext, "source_root")),
+            "source",
+        )
+        != baseline
     ):
         message = "behavior probe modified candidate source tree"
         raise ProbeExecutionError(message)
@@ -1716,8 +1790,13 @@ def run_probe_programs(
     admitted = _validate_probe_batch(programs, context)
     _require_repository_paths_disjoint(admitted, context)
     before = (
-        _snapshot_probe_tree(context.source_root, "source")
-        if context.enforce_source_immutable
+        _snapshot_probe_tree(
+            cast("Path", _probe_field(context, ProbeRunContext, "source_root")),
+            "source",
+        )
+        if cast(
+            "bool", _probe_field(context, ProbeRunContext, "enforce_source_immutable")
+        )
         else None
     )
     try:

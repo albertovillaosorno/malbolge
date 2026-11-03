@@ -3602,3 +3602,102 @@ def test_probe_record_validation_uses_original_fields_not_late_getters(
         with pytest.raises(ProbeProgramError):
             _ = replace(baseline, **{field: invalid})
     assert calls == 0, f"late {record}.{field} getter affected record admission"
+
+
+@pytest.mark.parametrize(
+    ("record", "field", "forged"),
+    [
+        ("command", "digest_stdout", False),
+        ("command", "digest_exit_code", True),
+        ("program", "commands", ()),
+        ("program", "probe_id", "redirected"),
+        ("context", "enforce_source_immutable", False),
+    ],
+)
+def test_probe_execution_ignores_late_metadata_getters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+    field: str,
+    forged: object,
+) -> None:
+    """Admitted probe commands and source checks must use stored metadata."""
+    source = tmp_path / "source"
+    source.mkdir()
+    command = ProbeCommand(
+        ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "print('trusted')"),
+        digest_stdout=True,
+    )
+    program = ProbeProgram("identity", (command,))
+    context = _context(source, tmp_path)
+    baseline = run_probe_program(program, context)
+    target = {"command": command, "program": program, "context": context}[record]
+    calls = 0
+
+    def spoof(_record: object) -> object:
+        nonlocal calls
+        calls += 1
+        return forged
+
+    owner = type(target)
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, field, property(spoof))
+        observed = run_probe_program(program, context)
+    assert observed == baseline
+    assert calls == 0, f"late {record}.{field} getter controlled probe runtime"
+
+
+@pytest.mark.parametrize(
+    ("record", "field"),
+    [
+        ("command", "executable"),
+        ("command", "arguments"),
+        ("command", "stdin"),
+        ("command", "expected_exit_code"),
+        ("command", "timeout_ms"),
+        ("command", "max_stdout_bytes"),
+        ("command", "max_stderr_bytes"),
+        ("tool", "tool_id"),
+        ("path", "root"),
+        ("path", "relative_path"),
+        ("context", "source_root"),
+        ("context", "repository_root"),
+        ("context", "tools"),
+    ],
+)
+def test_probe_runtime_ignores_late_executable_and_path_getters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+    field: str,
+) -> None:
+    """Runtime preflight, spawning, and source resolution use native storage."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "trusted.txt").write_bytes(b"trusted bytes")
+    tool = ToolExecutable(_PYTHON_TOOL)
+    path = PathArgument(ProbeRoot.SOURCE, "trusted.txt")
+    command = ProbeCommand(
+        executable=tool,
+        arguments=("-c", _READ_BYTES_CODE, path),
+        digest_stdout=True,
+    )
+    program = ProbeProgram("identity", (command,))
+    context = _context(source, tmp_path)
+    baseline = run_probe_program(program, context)
+    target = {"command": command, "tool": tool, "path": path, "context": context}[
+        record
+    ]
+    calls = 0
+
+    def forbidden_getter(_record: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late probe getter changed admitted runtime evidence")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(type(target), field, property(forbidden_getter))
+        observed = run_probe_program(program, context)
+    assert observed == baseline
+    assert calls == 0, f"probe runtime consulted late {record}.{field} getter"
