@@ -1954,3 +1954,82 @@ def test_relocation_path_preflight_preserves_native_text_under_string_spoof(
     with monkeypatch.context() as patch:
         patch.setattr(builtins, "str", forge_unsafe_text)
         validate_path(tmp_path, "authoring root")
+
+
+def test_relocation_range_locator_ignores_late_min(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumer hooks cannot shrink authenticated relocation windows."""
+    source = b"0123456789" * 4
+    native_min = min
+    calls = 0
+
+    def forged_min(*values: int) -> int:
+        nonlocal calls
+        if values == (32, 40):
+            calls += 1
+            return 1
+        return native_min(*values)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "min", forged_min)
+        locator = relocatable_module._range_locator(source, SourceSlice(0, 40))
+    assert locator.window_bytes == 32
+    assert locator.start_digest == hashlib.sha256(source[:32]).digest()
+    assert calls == 0, "consumer min replaced the authenticated window"
+
+
+def test_relocation_window_index_ignores_late_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Duplicate anchors must remain ambiguous despite consumer hooks."""
+    locator = RangeLocator(2, 2, hashlib.sha256(b"AB").digest())
+    native_range = range
+    calls = 0
+
+    def forged_range(*args: int) -> range:
+        nonlocal calls
+        if args == (3,):
+            calls += 1
+            return native_range(1)
+        return native_range(*args)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "range", forged_range)
+        try:
+            _ = relocatable_module._locate_range(b"ABAB", locator)
+        except RelocationError as error:
+            rejected = "ambiguous" in error.args[0]
+    assert rejected, "consumer range hid a duplicate boundary"
+    assert calls == 0, "consumer range was consulted for anchor enumeration"
+
+
+@pytest.mark.parametrize("operation", ["author", "materialize"])
+def test_relocation_literal_dispatch_ignores_late_isinstance(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """Exact literal segments must not consult consumer classification hooks."""
+    literal = OracleLiteral(b"target")
+    native_isinstance = isinstance
+    calls = 0
+
+    def forged_isinstance(value: object, expected: type[object]) -> bool:
+        nonlocal calls
+        if expected is OracleLiteral:
+            calls += 1
+            return False
+        return native_isinstance(value, expected)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "isinstance", forged_isinstance)
+        if operation == "author":
+            result = relocatable_module._relocatable_segment(b"AB", literal)
+        else:
+            result = relocatable_module._patch_bytes(b"AB", (literal,))
+    if operation == "author":
+        assert result is literal
+    else:
+        assert result == b"target"
+    assert calls == 0, "consumer classification hook received a literal"

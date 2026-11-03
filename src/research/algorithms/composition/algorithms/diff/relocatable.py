@@ -101,6 +101,8 @@ _NATIVE_IS_SYMLINK = S_ISLNK
 _NATIVE_ANY = builtins.any
 _NATIVE_SET = builtins.set
 _NATIVE_SUM = builtins.sum
+_NATIVE_MIN = builtins.min
+_NATIVE_RANGE = builtins.range
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -330,7 +332,7 @@ def _range_locator(source: bytes, segment: SourceSlice) -> RangeLocator:
         message = "exact source slice exceeds authoring source file"
         raise RelocationError(message)
     data = source[segment.offset : end]
-    window_bytes = min(_BOUNDARY_BYTES, _NATIVE_LEN(data))
+    window_bytes = _NATIVE_MIN(_BOUNDARY_BYTES, _NATIVE_LEN(data))
     start_digest = _sha256(data[:window_bytes])
     end_digest = None
     if _NATIVE_LEN(data) > window_bytes:
@@ -346,9 +348,10 @@ def _range_locator(source: bytes, segment: SourceSlice) -> RangeLocator:
 def _relocatable_segment(
     source: bytes, segment: ExactSegment
 ) -> RelocatableSegment:
-    if isinstance(segment, OracleLiteral):
+    if _NATIVE_TYPE(segment) is OracleLiteral:
         return segment
-    return RelocatableSourceRange(_range_locator(source, segment))
+    source_slice = cast("SourceSlice", segment)
+    return RelocatableSourceRange(_range_locator(source, source_slice))
 
 
 def _instruction(
@@ -603,7 +606,7 @@ def _window_index(
         return {}
     mutable: dict[bytes, list[int]] = {}
     last = _NATIVE_LEN(data) - window_bytes
-    for offset in range(last + _ONE):
+    for offset in _NATIVE_RANGE(last + _ONE):
         digest = _sha256(data[offset : offset + window_bytes])
         mutable.setdefault(digest, []).append(offset)
     return {
@@ -644,10 +647,11 @@ def _patch_bytes(
     parts: list[bytes] = []
     previous_end = _ZERO
     for segment in segments:
-        if isinstance(segment, OracleLiteral):
+        if _NATIVE_TYPE(segment) is OracleLiteral:
             parts.append(segment.data)
             continue
-        start, end = _locate_range(candidate, segment.locator)
+        relocated = cast("RelocatableSourceRange", segment)
+        start, end = _locate_range(candidate, relocated.locator)
         if start < previous_end:
             message = "relocatable source ranges overlap or reorder"
             raise RelocationError(message)
