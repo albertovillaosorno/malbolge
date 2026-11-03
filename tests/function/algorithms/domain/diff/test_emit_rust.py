@@ -2744,3 +2744,92 @@ def test_writer_ignores_late_output_parent_redirect(
     assert output.read_text(encoding="utf-8") == emit_rust_transform(
         protected, _PROFILE
     )
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "binding-threshold", "missing-target", "missing-payload",
+        "invalid-context", "invalid-nonce", "foreign-source",
+    ],
+)
+@pytest.mark.parametrize("write_to_disk", [False, True])
+def test_rust_emitter_revalidates_exact_native_plan_before_template_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: str,
+    write_to_disk: bool,
+) -> None:
+    """A constructor-bypassing native plan cannot emit unadmitted Rust bytes."""
+    _, _, _, protected = _fixture(tmp_path)
+    forged = object.__new__(type(protected))
+    for name in (
+        "source", "target", "instructions", "passthrough_roots",
+        "context", "nonce", "payload", "binding",
+    ):
+        if invalid == "missing-target" and name == "target":
+            continue
+        if invalid == "missing-payload" and name == "payload":
+            continue
+        value = cast("object", getattr(protected, name))
+        if invalid == "invalid-context" and name == "context":
+            value = b""
+        if invalid == "invalid-nonce" and name == "nonce":
+            value = b""
+        if invalid == "foreign-source" and name == "source":
+            value = object()
+        object.__setattr__(forged, name, value)
+    if invalid == "binding-threshold":
+        binding = protected.binding
+        forged_binding = object.__new__(type(binding))
+        for name in (
+            "context", "threshold", "minimum_anchor_files", "secret_length",
+            "secret_commitment", "anchor_policy", "shares",
+        ):
+            value = 0 if name == "threshold" else getattr(binding, name)
+            object.__setattr__(forged_binding, name, value)
+        object.__setattr__(forged, "binding", forged_binding)
+    output = tmp_path / "untrusted.rs"
+    called = 0
+
+    def forbidden_template_read(_path: Path) -> str:
+        nonlocal called
+        called += 1
+        raise AssertionError("unadmitted plan reached the runtime template")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "_NATIVE_TEMPLATE_READ", forbidden_template_read)
+        with pytest.raises(RustEmissionError, match="plan"):
+            if write_to_disk:
+                write_rust_transform(forged, _PROFILE, output)
+            else:
+                _ = emit_rust_transform(forged, _PROFILE, output)
+    assert called == 0
+    assert not output.exists()
+
+
+def test_rust_emitter_ignores_late_protected_plan_validator_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A patched class validator cannot hide malformed protected metadata."""
+    _, _, _, protected = _fixture(tmp_path)
+    forged = object.__new__(type(protected))
+    for name in (
+        "source", "target", "instructions", "passthrough_roots",
+        "context", "nonce", "payload", "binding",
+    ):
+        object.__setattr__(forged, name, getattr(protected, name))
+    object.__setattr__(forged, "nonce", b"too-short")
+    calls = 0
+
+    def accept_everything(_plan: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(type(protected), "__post_init__", accept_everything)
+        with pytest.raises(RustEmissionError, match="protected plan"):
+            _ = emit_rust_transform(forged, _PROFILE)
+        expected = emit_rust_transform(protected, _PROFILE)
+    assert calls == 0
+    assert "const NONCE_HEX" in expected

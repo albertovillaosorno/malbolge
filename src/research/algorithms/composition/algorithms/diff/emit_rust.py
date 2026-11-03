@@ -53,6 +53,7 @@ from algorithms.diff.protected import (
     ProtectedExactPlan,
     ProtectedInstruction,
     ProtectedMetadata,
+    ProtectedPlanError,
     protected_plan_aad,
 )
 from algorithms.diff.source_binding import BoundShare, ThresholdBinding
@@ -177,6 +178,9 @@ _PLAN_SLOTS = _record_slots(
         "binding",
     ),
 )
+# Reuse the original protected-envelope validator, not a replaceable late
+# __post_init__ attribute. Exact native records can bypass their constructor.
+_NATIVE_PROTECTED_PLAN_VALIDATOR = ProtectedExactPlan.__dict__["__post_init__"]
 _PAYLOAD_SLOTS = _record_slots(AuthenticatedPayload, ("ciphertext", "tag"))
 _BINDING_SLOTS = _record_slots(
     ThresholdBinding,
@@ -453,6 +457,13 @@ def _validate_emission_inputs(
         message = "Rust transform profile must use a non-empty exact string"
         raise RustEmissionError(message)
     _validate_output_path(output_path)
+    # A slotted native plan can be allocated without running __init__. Check
+    # nested binding, metadata and required slots before reading the template.
+    try:
+        _NATIVE_PROTECTED_PLAN_VALIDATOR(cast("ProtectedExactPlan", plan))
+    except (ProtectedPlanError, AttributeError) as error:
+        message = "Rust emission requires a valid native protected plan"
+        raise RustEmissionError(message) from error
 
 
 def _validate_output_path(output_path: object) -> None:
