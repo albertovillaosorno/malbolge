@@ -35,9 +35,10 @@
 from __future__ import annotations
 
 import builtins
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import MemberDescriptorType
-from typing import Callable, cast
+from typing import cast
 
 from algorithms.diff.admission import AdmissionError, TreeAdmissionEvidence
 from algorithms.diff.behavior import BehaviorEvidence
@@ -47,6 +48,7 @@ _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = type
 _NATIVE_STR = builtins.str
 _NATIVE_TUPLE = tuple
+_NATIVE_OBJECT_NEW = object.__new__
 # Slotted frozen dataclass fields still have mutable *class* descriptors.
 # Retain the original slot readers before loading any consumer hooks.
 _SOURCE_REASONS_SLOT = cast(
@@ -130,6 +132,30 @@ _GATE_BEHAVIOR_SLOT = cast(
     "MemberDescriptorType", TransformAdmissionEvidence.__dict__["behavior"]
 )
 
+_GATE_INIT = cast(
+    Callable[
+        [
+            TransformAdmissionEvidence,
+            TreeAdmissionEvidence,
+            BehaviorEvidence,
+            tuple[str, ...],
+        ],
+        None,
+    ],
+    TransformAdmissionEvidence.__dict__["__init__"],
+)
+
+
+def _new_transform_admission(
+    source: TreeAdmissionEvidence,
+    behavior: BehaviorEvidence,
+    reasons: tuple[str, ...],
+) -> TransformAdmissionEvidence:
+    """Construct trusted gate evidence without late class allocation hooks."""
+    evidence = _NATIVE_OBJECT_NEW(TransformAdmissionEvidence)
+    _GATE_INIT(evidence, source, behavior, reasons)
+    return evidence
+
 
 def _require_source_evidence(value: object) -> TreeAdmissionEvidence:
     if _NATIVE_TYPE(value) is not TreeAdmissionEvidence:
@@ -171,7 +197,7 @@ def combine_admission(
     """
     source = _require_source_evidence(source)
     behavior = _require_behavior_evidence(behavior)
-    return TransformAdmissionEvidence(
+    return _new_transform_admission(
         source=source,
         behavior=behavior,
         reasons=_canonical_reasons(source, behavior),
@@ -193,7 +219,10 @@ def require_transform_admission(
 
     """
     evidence = combine_admission(source, behavior)
-    reasons = _GATE_REASONS_SLOT.__get__(evidence, TransformAdmissionEvidence)
+    reasons = cast(
+        "tuple[str, ...]",
+        _GATE_REASONS_SLOT.__get__(evidence, TransformAdmissionEvidence),
+    )
     if reasons:
         message = "; ".join(reasons)
         raise AdmissionError(message)

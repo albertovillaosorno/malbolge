@@ -36,6 +36,9 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+import os
+import subprocess
+import sys
 from collections.abc import Iterable
 from dataclasses import replace
 from types import MemberDescriptorType
@@ -584,3 +587,87 @@ def test_gate_constructor_writes_original_slots(
         reconstructed = replace(admitted, **{field: original_value})
     assert type(reconstructed) is TransformAdmissionEvidence
     assert calls == 0, "gate constructor dispatched late setter"
+
+
+@pytest.mark.parametrize("candidate", ["reference", "unrelated"])
+def test_combined_gate_ignores_late_init_hook(
+    monkeypatch: pytest.MonkeyPatch, candidate: str
+) -> None:
+    """Late initializer cannot launder a rejected conjunctive verdict."""
+    source = _source_evidence(candidate)
+    behavior = _behavior_evidence()
+    baseline = combine_admission(source, behavior)
+    calls = 0
+    source_slot = cast(
+        "MemberDescriptorType", TransformAdmissionEvidence.__dict__["source"]
+    )
+    behavior_slot = cast(
+        "MemberDescriptorType", TransformAdmissionEvidence.__dict__["behavior"]
+    )
+    reasons_slot = cast(
+        "MemberDescriptorType", TransformAdmissionEvidence.__dict__["reasons"]
+    )
+
+    def forged_init(
+        self: TransformAdmissionEvidence,
+        source: TreeAdmissionEvidence,
+        behavior: BehaviorEvidence,
+        reasons: tuple[str, ...],
+    ) -> None:
+        nonlocal calls
+        del reasons
+        calls += 1
+        source_slot.__set__(self, source)
+        behavior_slot.__set__(self, behavior)
+        reasons_slot.__set__(self, ())
+
+    with monkeypatch.context() as patched:
+        patched.setattr(TransformAdmissionEvidence, "__init__", forged_init)
+        assert combine_admission(source, behavior) == baseline
+        if candidate == "unrelated":
+            with pytest.raises(AdmissionError, match="source lineage"):
+                _ = require_transform_admission(source, behavior)
+        else:
+            assert require_transform_admission(source, behavior).admitted
+    assert calls == 0, "late gate initializer was consulted"
+
+
+@pytest.mark.parametrize("candidate", ["reference", "unrelated"])
+def test_combined_gate_ignores_late_new_hook(candidate: str) -> None:
+    """Isolate unsafe __new__ replacement from the parent test interpreter."""
+    script = f"""
+from algorithms.diff.gate import (
+    TransformAdmissionEvidence, combine_admission, require_transform_admission,
+)
+from algorithms.diff.admission import AdmissionError
+from test_gate import _source_evidence, _behavior_evidence
+source = _source_evidence({candidate!r})
+behavior = _behavior_evidence()
+expected = combine_admission(source, behavior)
+def forbidden_new(*args, **kwargs):
+    raise AssertionError("late gate allocation hook was consulted")
+TransformAdmissionEvidence.__new__ = staticmethod(forbidden_new)
+assert combine_admission(source, behavior) == expected
+if {candidate!r} == "unrelated":
+    try:
+        require_transform_admission(source, behavior)
+    except AdmissionError:
+        pass
+    else:
+        raise AssertionError("late allocation admitted rejected source")
+else:
+    assert require_transform_admission(source, behavior).admitted
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
