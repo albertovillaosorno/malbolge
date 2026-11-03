@@ -59,6 +59,17 @@ _LOWER_HEX = frozenset("0123456789abcdef")
 _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_OS_LSTAT = os.lstat
+_NATIVE_PATH_STRING = Path.__str__
+_NATIVE_PATH_IS_JUNCTION = Path.is_junction
+
+
+def _native_path_lstat(path: Path) -> os.stat_result:
+    # Native input status cannot be redefined by subsequent domain callbacks.
+    return _NATIVE_OS_LSTAT(_NATIVE_PATH_STRING(path))
+
+
+_NATIVE_PATH_LSTAT = _native_path_lstat
 
 
 class SourcePinError(RuntimeError):
@@ -213,7 +224,7 @@ def _host_error_detail(error: BaseException) -> str:
 
 def _source_mode(path: Path, relative: str) -> int | None:
     try:
-        receipt = path.lstat()
+        receipt = _NATIVE_PATH_LSTAT(path)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
@@ -225,7 +236,7 @@ def _source_mode(path: Path, relative: str) -> int | None:
         raise SourcePinError(message)
     mode = receipt.st_mode
     try:
-        is_link = S_ISLNK(mode) or path.is_junction()
+        is_link = S_ISLNK(mode) or _NATIVE_PATH_IS_JUNCTION(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"pinned source status failed for {relative}: {detail}"
@@ -360,7 +371,7 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
 def _pinned_file_receipt(path: Path, relative: str) -> tuple[int, ...]:
     """Capture a physical file identity that survives mtime restoration."""
     try:
-        status = path.lstat()
+        status = _NATIVE_PATH_LSTAT(path)
     except (OSError, ValueError, RuntimeError, TypeError) as error:
         message = f"pinned source file changed during snapshot: {relative}"
         raise SourcePinError(message) from error

@@ -394,7 +394,10 @@ def test_source_pin_rejects_foreign_directory_status_receipt(
         "selected": tmp_path / "src/nested",
         "parent": tmp_path / "src",
     }[target]
-    original_lstat = Path.lstat
+    original_lstat = cast(
+        "Callable[[Path], os.stat_result]",
+        vars(provenance_module)["_NATIVE_PATH_LSTAT"],
+    )
     forged = False
 
     def forge_status(path: Path) -> object:
@@ -404,7 +407,7 @@ def test_source_pin_rejects_foreign_directory_status_receipt(
             return SimpleNamespace(st_mode=S_IFDIR | 0o755)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", forge_status)
+    monkeypatch.setattr(provenance_module, "_NATIVE_PATH_LSTAT", forge_status)
     with pytest.raises(SourcePinError, match="status must be native"):
         _ = source_snapshot_evidence(tmp_path, ("src/nested",))
     _expect(forged, "fabricated directory status was not consumed")
@@ -417,7 +420,10 @@ def test_source_pin_rejects_foreign_file_receipt(
     _write(tmp_path, "src/a.c", b"trusted source")
     leaf = tmp_path / "src/a.c"
     native_status = leaf.lstat()
-    original_lstat = Path.lstat
+    original_lstat = cast(
+        "Callable[[Path], os.stat_result]",
+        vars(provenance_module)["_NATIVE_PATH_LSTAT"],
+    )
     forged = SimpleNamespace(
         st_mode=native_status.st_mode,
         st_dev=native_status.st_dev,
@@ -432,7 +438,7 @@ def test_source_pin_rejects_foreign_file_receipt(
             return forged
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", forge_receipt)
+    monkeypatch.setattr(provenance_module, "_NATIVE_PATH_LSTAT", forge_receipt)
     receipt = cast(
         "Callable[[Path, str], tuple[int, ...]]",
         vars(provenance_module)["_pinned_file_receipt"],
@@ -461,7 +467,10 @@ def test_source_pin_errors_do_not_invoke_foreign_formatters(
 ) -> None:
     """Filesystem failures must remain typed without invoking foreign hooks."""
     _write(tmp_path, "src/a.c", b"trusted source")
-    original_lstat = Path.lstat
+    original_lstat = cast(
+        "Callable[[Path], os.stat_result]",
+        vars(provenance_module)["_NATIVE_PATH_LSTAT"],
+    )
     original_junction = Path.is_junction
     original_resolve = Path.resolve
     original_walk = Path.walk
@@ -498,8 +507,13 @@ def test_source_pin_errors_do_not_invoke_foreign_formatters(
         )
 
     selected = {
-        "status": (Path, "lstat", fail_lstat, "status failed"),
-        "junction": (Path, "is_junction", fail_junction, "status failed"),
+        "status": (
+            provenance_module, "_NATIVE_PATH_LSTAT", fail_lstat, "status failed"
+        ),
+        "junction": (
+            provenance_module, "_NATIVE_PATH_IS_JUNCTION", fail_junction,
+            "status failed",
+        ),
         "resolve": (
             provenance_module,
             "_NATIVE_PATH_RESOLVE",
@@ -545,7 +559,10 @@ def test_pinned_source_root_status_error_fails_closed(
     failure_type: type[Exception],
 ) -> None:
     """An inaccessible pin root cannot be normalized into a weaker error."""
-    original_lstat = Path.lstat
+    original_lstat = cast(
+        "Callable[[Path], os.stat_result]",
+        vars(provenance_module)["_NATIVE_PATH_LSTAT"],
+    )
 
     def fail_status(path: Path) -> object:
         if path == tmp_path:
@@ -553,7 +570,7 @@ def test_pinned_source_root_status_error_fails_closed(
             raise failure_type(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_status)
+    monkeypatch.setattr(provenance_module, "_NATIVE_PATH_LSTAT", fail_status)
     with pytest.raises(SourcePinError, match="pinned source status failed"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
@@ -622,6 +639,30 @@ def test_pinned_source_rejects_linked_root_when_supported(
         _ = source_snapshot_evidence(linked, ("README", "src"))
 
 
+@pytest.mark.parametrize("status_hook", ["path", "os"])
+def test_source_pin_rejects_linked_selection_after_status_hook_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status_hook: str,
+) -> None:
+    """Native-looking follow-link stat must not certify an out-of-tree pin."""
+    root = tmp_path / "source"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    _write(outside, "private.c", b"outside the pinned source")
+    try:
+        (root / "linked").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    with monkeypatch.context() as patched:
+        if status_hook == "path":
+            patched.setattr(Path, "lstat", Path.stat)
+        else:
+            patched.setattr(os, "lstat", os.stat)
+        with pytest.raises(SourcePinError, match="symlink is not accepted"):
+            _ = source_snapshot_evidence(root, ("linked",))
+
+
 def test_pinned_source_accepts_regular_nested_root(tmp_path: Path) -> None:
     """A valid multi-component source root remains eligible for hashing."""
     _write(tmp_path, "src/nested/leaf.c", b"valid source")
@@ -683,7 +724,10 @@ def test_pinned_source_junction_status_errors_fail_typed(
     """A failed host junction query cannot escape the source-pin boundary."""
     _write(tmp_path, "src/leaf.c", b"int leaf;\n")
     selected = tmp_path / "src" / "leaf.c"
-    original_is_junction = Path.is_junction
+    original_is_junction = cast(
+        "Callable[[Path], bool]",
+        vars(provenance_module)["_NATIVE_PATH_IS_JUNCTION"],
+    )
 
     def fail_junction(path: Path) -> bool:
         if path == selected:
@@ -691,7 +735,7 @@ def test_pinned_source_junction_status_errors_fail_typed(
             raise failure_type(message)
         return original_is_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", fail_junction)
+    monkeypatch.setattr(provenance_module, "_NATIVE_PATH_IS_JUNCTION", fail_junction)
     with pytest.raises(SourcePinError, match="pinned source status failed"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
@@ -731,7 +775,10 @@ def test_pinned_entry_status_errors_fail_closed(
     """An inaccessible pinned entry cannot disappear from source evidence."""
     blocked = tmp_path / "src" / "blocked.c"
     _write(tmp_path, "src/blocked.c", b"int blocked;\n")
-    original_lstat = Path.lstat
+    original_lstat = cast(
+        "Callable[[Path], os.stat_result]",
+        vars(provenance_module)["_NATIVE_PATH_LSTAT"],
+    )
 
     def fail_status(path: Path) -> object:
         if path == blocked:
@@ -739,7 +786,7 @@ def test_pinned_entry_status_errors_fail_closed(
             raise failure_type(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_status)
+    monkeypatch.setattr(provenance_module, "_NATIVE_PATH_LSTAT", fail_status)
     with pytest.raises(SourcePinError, match="pinned source status failed"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
@@ -779,7 +826,10 @@ def test_pinned_source_rejects_symlink_swapped_after_status(
     _ = leaf.write_bytes(b"same byte content")
     foreign = tmp_path / "foreign"
     _ = foreign.write_bytes(b"same byte content")
-    original_status = Path.lstat
+    original_status = cast(
+        "Callable[[Path], os.stat_result]",
+        vars(provenance_module)["_NATIVE_PATH_LSTAT"],
+    )
     swapped = False
 
     def swap_after_status(path: Path) -> object:
@@ -794,7 +844,7 @@ def test_pinned_source_rejects_symlink_swapped_after_status(
             swapped = True
         return status
 
-    monkeypatch.setattr(Path, "lstat", swap_after_status)
+    monkeypatch.setattr(provenance_module, "_NATIVE_PATH_LSTAT", swap_after_status)
     with pytest.raises(
         SourcePinError, match=r"pinned source (read failed|file changed)"
     ):
