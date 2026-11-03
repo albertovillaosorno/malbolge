@@ -39,6 +39,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
+from ntpath import isreserved as _native_isreserved
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING, cast
@@ -150,7 +151,10 @@ def _validate_relative_path(relative_path: str) -> str:
     admitted = _require_portable_path_label(relative_path)
     candidate = PurePosixPath(admitted)
     unsafe_part = any(part in _UNSAFE_PATH_PARTS for part in candidate.parts)
-    if candidate.is_absolute() or PureWindowsPath(admitted).drive or unsafe_part:
+    unsafe_root = (
+        candidate.is_absolute() or bool(PureWindowsPath(admitted).drive)
+    )
+    if unsafe_root or _native_isreserved(admitted) or unsafe_part:
         message = f"unsafe relative path: {admitted!r}"
         raise TreeModelError(message)
     normalized = candidate.as_posix()

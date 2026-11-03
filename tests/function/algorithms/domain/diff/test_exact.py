@@ -237,7 +237,16 @@ def test_exact_model_paths_resist_mutable_reserved_name_policy(
 
 
 @pytest.mark.parametrize(
-    "invalid_root", ["dynamic\x00tail", "dynamic\ud800tail", "C:/escape"]
+    "invalid_root",
+    [
+        "dynamic\x00tail",
+        "dynamic\ud800tail",
+        "C:/escape",
+        "CON",
+        "src/COM1/child.c",
+        "src/trailing.",
+        "src/stream:fork",
+    ],
 )
 def test_exact_passthrough_roots_fail_before_source_reads(
     tmp_path: Path,
@@ -256,6 +265,28 @@ def test_exact_passthrough_roots_fail_before_source_reads(
     monkeypatch.setattr(exact_module, "snapshot_tree", deny_snapshot)
     with pytest.raises(TreeModelError, match="relative path"):
         _ = build_exact_plan(source, oracle, passthrough_roots=(invalid_root,))
+
+
+@pytest.mark.parametrize(
+    "reserved_root", ["CON", "src/COM1/child.c", "src/trailing."]
+)
+def test_exact_passthrough_roots_ignore_host_reserved_policy_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_root: str,
+) -> None:
+    """Mutable host hooks cannot authorize a nonportable dynamic root."""
+    source, oracle = _synthetic_pair(tmp_path)
+
+    def forged_isreserved(path: str) -> bool:
+        del path
+        return False
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
+    with pytest.raises(TreeModelError, match="relative path"):
+        _ = snapshot_tree_excluding(source, (reserved_root,))
+    with pytest.raises(TreeModelError, match="relative path"):
+        _ = build_exact_plan(source, oracle, passthrough_roots=(reserved_root,))
 
 
 def test_direct_tree_snapshot_rejects_file_ancestor_collisions() -> None:
