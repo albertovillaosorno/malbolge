@@ -82,6 +82,7 @@ _NATIVE_HOST_REALPATH = os.path.realpath
 # Inode disjointness and executable admission cannot trust late host hooks.
 _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
 _NATIVE_OS_FSPATH = os.fspath
 # Freeze the host filesystem codec before any consumer module can mutate os.
 _FILESYSTEM_ENCODING = _get_filesystem_encoding()
@@ -831,6 +832,7 @@ def _require_native_host_resolver() -> None:
         _native_path_hooks_changed()
         or os.fspath is not _NATIVE_OS_FSPATH
         or Path.__str__ is not _NATIVE_PATH_STRING
+        or Path.with_segments is not _NATIVE_PATH_WITH_SEGMENTS
     ):
         message = "probe native path hooks changed"
         raise ProbeExecutionError(message)

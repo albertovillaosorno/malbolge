@@ -3318,6 +3318,43 @@ def test_probe_execution_rejects_late_path_str_redirection(
     assert calls == 0, "late host path-string callback was consulted"
 
 
+@pytest.mark.parametrize("role", ["root", "tool"])
+def test_probe_rejects_late_path_with_segments_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """Captured Path.resolve must not invoke a late path-constructor hook."""
+    selected = tmp_path / "admitted"
+    foreign = tmp_path / "foreign"
+    selected.mkdir()
+    foreign.mkdir()
+    original_with_segments = Path.with_segments
+    called = 0
+
+    def forged_segments(path: Path, *segments: str | os.PathLike[str]) -> Path:
+        nonlocal called
+        if path is selected:
+            called += 1
+            return foreign
+        return original_with_segments(path, *segments)
+
+    if role == "root":
+        require_root = cast(
+            "Callable[[Path, str], Path]", vars(probe_exec_module)["_resolved_root"]
+        )
+        invoke: Callable[[], object] = lambda: require_root(selected, "source")
+    else:
+        require_tool = cast(
+            "Callable[[Path], Path]", vars(probe_exec_module)["_resolved_tool_path"]
+        )
+        invoke = lambda: require_tool(selected)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "with_segments", forged_segments)
+        with pytest.raises(ProbeExecutionError, match="native path hooks changed"):
+            _ = invoke()
+    assert called == 0, "late path-constructor hook was consulted"
+
+
 def test_probe_program_and_context_require_immutable_exact_records(
     tmp_path: Path,
 ) -> None:
