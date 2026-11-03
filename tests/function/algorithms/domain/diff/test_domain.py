@@ -39,11 +39,12 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import os
+import subprocess
 import stat
 import sys
 from dataclasses import replace
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import MemberDescriptorType, ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -1407,3 +1408,61 @@ def test_domain_constructor_writes_original_hook_slots(
         constructed = replace(original, **{field: hook})
     assert type(constructed) is domain_module.DiffDomain
     assert calls == 0, "valid constructor consulted late hook setter"
+
+
+def test_loaded_domain_ignores_late_initializer_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Loaded consumer hooks cannot be rewritten by class constructor hooks."""
+    module = tmp_path / "verified_domain.py"
+    _write(module, _COMPLETE)
+    identity_slot = cast(
+        "MemberDescriptorType", domain_module.DiffDomain.__dict__["build_identity_tree"]
+    )
+    calls = 0
+
+    def forged_init(self: domain_module.DiffDomain, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        def replaced_identity(_root: Path) -> str:
+            return "forged identity"
+        identity_slot.__set__(self, replaced_identity)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(domain_module.DiffDomain, "__init__", forged_init)
+        observed = load_diff_domain(module)
+    assert observed.build_identity_tree(tmp_path) is None
+    assert calls == 0, "late class initializer modified loaded hook bundle"
+
+
+def test_loaded_domain_ignores_late_allocator_in_isolated_process() -> None:
+    """Changing DiffDomain.__new__ cannot redirect validated consumer hooks."""
+    script = """
+from types import ModuleType
+from algorithms.diff.domain import DiffDomain, _validated_domain
+module = ModuleType("verified_domain")
+names = (
+    "validate_source_provenance", "validate_authoring_oracle",
+    "build_identity_tree", "map_compatible_file",
+    "build_compatible_correction_bindings", "build_behavior_programs",
+    "build_behavior_probe_context",
+)
+for name in names:
+    setattr(module, name, lambda *args: None)
+def forbidden_new(cls, *args, **kwargs):
+    raise AssertionError("late domain __new__ was consulted")
+DiffDomain.__new__ = staticmethod(forbidden_new)
+observed = _validated_domain(module)
+assert observed.build_identity_tree is module.build_identity_tree
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr

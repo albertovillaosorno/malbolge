@@ -85,6 +85,7 @@ _NATIVE_OS_IS_JUNCTION = os.path.isjunction
 _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 _SHA256_FACTORY = hashlib.sha256
+_NATIVE_OBJECT_NEW = object.__new__
 
 
 def _native_path_parent(path: Path) -> Path:
@@ -180,6 +181,7 @@ class DiffDomain:
 _DIFF_DOMAIN_VALIDATOR = cast(
     "Callable[[DiffDomain], None]", DiffDomain.__dict__["__post_init__"]
 )
+_DIFF_DOMAIN_INIT = DiffDomain.__init__
 _DOMAIN_PROVENANCE_SLOT = cast(
     "MemberDescriptorType", DiffDomain.__dict__["validate_source_provenance"]
 )
@@ -473,7 +475,9 @@ def _validated_domain(module: ModuleType) -> DiffDomain:
         Validated domain hooks ready for use.
 
     """
-    return DiffDomain(
+    domain = _NATIVE_OBJECT_NEW(DiffDomain)
+    _DIFF_DOMAIN_INIT(
+        domain,
         validate_source_provenance=cast(
             "Callable[[Path], SourcePinEvidence]",
             _callable(module, "validate_source_provenance"),
@@ -503,3 +507,4 @@ def _validated_domain(module: ModuleType) -> DiffDomain:
             _callable(module, "build_behavior_probe_context"),
         ),
     )
+    return domain
