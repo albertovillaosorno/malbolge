@@ -829,17 +829,23 @@ def _native_context_path_key(path: Path) -> str:
 def _context_signature(
     context: ProbeRunContext,
 ) -> tuple[str, tuple[tuple[str, str], ...]]:
+    # The source and oracle must agree on original stored bindings. A late
+    # ProbeRunContext property or __getattribute__ hook is not evidence.
+    native_tools = cast(
+        "tuple[tuple[str, Path], ...]",
+        _PROBE_RUN_CONTEXT_TOOLS_SLOT.__get__(context, ProbeRunContext),
+    )
     tools = _NATIVE_TUPLE(
         (
             tool_id,
             _native_context_path_key(_resolved_context_path(path, "tool")),
         )
-        for tool_id, path in context.tools
+        for tool_id, path in native_tools
     )
-    repository = _native_context_path_key(
-        _resolved_context_path(context.repository_root, "repository")
+    repository = cast(
+        "Path", _PROBE_RUN_CONTEXT_REPOSITORY_SLOT.__get__(context, ProbeRunContext)
     )
-    return repository, tools
+    return _native_context_path_key(_resolved_context_path(repository, "repository")), tools
 
 
 def _require_matching_contexts(
@@ -913,9 +919,14 @@ def _run_authored_baselines(
 
     """
     _, _, bugs = read_behavior_programs(programs)
-    roots = (source_context.source_root,)
+    roots = (
+        cast("Path", _PROBE_RUN_CONTEXT_SOURCE_SLOT.__get__(source_context, ProbeRunContext)),
+    )
     if bugs:
-        roots = (*roots, oracle_context.source_root)
+        roots = (
+            *roots,
+            cast("Path", _PROBE_RUN_CONTEXT_SOURCE_SLOT.__get__(oracle_context, ProbeRunContext)),
+        )
     admitted = _NATIVE_TUPLE(
         (root, _snapshot_observed_source(root)) for root in roots
     )

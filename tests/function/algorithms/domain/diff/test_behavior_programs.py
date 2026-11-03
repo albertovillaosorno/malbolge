@@ -2546,3 +2546,95 @@ def test_behavior_context_rejects_resolver_hook_swap_during_resolution(
             _ = behavior_module._resolved_context_path(root, "repository")  # pyright: ignore[reportPrivateUsage]
     assert changed, "captured resolver was not exercised"
     assert os.readlink is native_readlink
+
+
+@pytest.mark.parametrize("field", ["repository_root", "tools"])
+@pytest.mark.parametrize("hook", ["descriptor", "getattribute"])
+def test_behavior_context_matching_rejects_late_context_getters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, hook: str
+) -> None:
+    """Source/oracle binding equality must read original context storage."""
+    source, oracle = _trees(tmp_path)
+    different = tmp_path / "different-binding"
+    source_context = _context(source, tmp_path)
+    oracle_context = ProbeRunContext(
+        source_root=oracle,
+        repository_root=different if field == "repository_root" else tmp_path,
+        tools=(
+            ((_PYTHON_TOOL, different),)
+            if field == "tools"
+            else source_context.tools
+        ),
+    )
+    slot = ProbeRunContext.__dict__[field]
+    trusted_value = slot.__get__(source_context, ProbeRunContext)
+    native_getattribute = ProbeRunContext.__getattribute__
+    calls = 0
+
+    def forged_descriptor(_context: object) -> object:
+        nonlocal calls
+        calls += 1
+        return trusted_value
+
+    def forged_getattribute(context: ProbeRunContext, name: str) -> object:
+        if name == field:
+            return forged_descriptor(context)
+        return native_getattribute(context, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "descriptor":
+            patched.setattr(ProbeRunContext, field, property(forged_descriptor))
+        else:
+            patched.setattr(ProbeRunContext, "__getattribute__", forged_getattribute)
+        with pytest.raises(BehaviorProgramError, match="same tool bindings"):
+            _ = behavior_module._require_matching_contexts(  # pyright: ignore[reportPrivateUsage]
+                source_context, oracle_context
+            )
+    assert calls == 0, "late getter replaced the original context evidence"
+
+
+@pytest.mark.parametrize("field", ["source", "oracle"])
+def test_behavior_authoring_snapshot_uses_native_context_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """The trees bound to an authoring job cannot be swapped by a getter."""
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    oracle_context = _context(oracle, tmp_path)
+    selected = source_context if field == "source" else oracle_context
+    different = tmp_path / "different-source"
+    calls = 0
+    observed: list[Path] = []
+    native_slot = ProbeRunContext.__dict__["source_root"]
+    native_getattribute = ProbeRunContext.__getattribute__
+
+    class FinishedObservation(Exception):
+        """Stop at tree selection without executing an external probe."""
+
+    def forged_getattribute(context: ProbeRunContext, name: str) -> object:
+        nonlocal calls
+        if context is selected and name == "source_root":
+            calls += 1
+            return different
+        return native_getattribute(context, name)
+
+    def snapshot(root: Path) -> TreeSnapshot:
+        observed.append(root)
+        if len(observed) == 2:
+            raise FinishedObservation
+        return cast("TreeSnapshot", object())
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            ProbeRunContext, "__getattribute__", forged_getattribute
+        )
+        patched.setattr(behavior_module, "_snapshot_observed_source", snapshot)
+        with pytest.raises(FinishedObservation):
+            _ = behavior_module._run_authored_baselines(  # pyright: ignore[reportPrivateUsage]
+                _programs(), source_context, oracle_context
+            )
+    assert observed == [
+        native_slot.__get__(source_context, ProbeRunContext),
+        native_slot.__get__(oracle_context, ProbeRunContext),
+    ]
+    assert calls == 0, "source getter changed an authorized snapshot root"
