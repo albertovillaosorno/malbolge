@@ -49,7 +49,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hmac import compare_digest as _native_compare_digest
 from types import MemberDescriptorType
-from typing import cast
+from typing import Callable, cast
 
 # Keep AEAD input identity and byte operations independent of late
 # consumer hooks that change process-global Python builtins.
@@ -62,6 +62,7 @@ _NATIVE_ZIP = zip
 _NATIVE_RANGE = range
 _NATIVE_LEN = len
 _NATIVE_FROM_BYTES = int.from_bytes
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 _KEY_BYTES = 32
 _NONCE_BYTES = 12
@@ -87,12 +88,18 @@ def _require_bytes(value: object, context: str) -> bytes:
     return value
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class AuthenticatedPayload:
     """ChaCha20-Poly1305 ciphertext and detached 128-bit authentication tag."""
 
     ciphertext: bytes
     tag: bytes
+
+    def __init__(self, ciphertext: bytes, tag: bytes) -> None:
+        """Validate detached authenticated bytes with the original guard."""
+        _NATIVE_OBJECT_SETATTR(self, "ciphertext", ciphertext)
+        _NATIVE_OBJECT_SETATTR(self, "tag", tag)
+        _AUTHENTICATED_PAYLOAD_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require the RFC 8439 tag width.
@@ -108,6 +115,13 @@ class AuthenticatedPayload:
             message = "ChaCha20-Poly1305 tag must be 16 bytes"
             raise PayloadCryptoError(message)
 
+
+# Generated dataclass initializers resolve __post_init__ through mutable class
+# attributes. Keep its original guard even after consumer class-hook changes.
+_AUTHENTICATED_PAYLOAD_VALIDATOR = cast(
+    "Callable[[AuthenticatedPayload], None]",
+    AuthenticatedPayload.__dict__["__post_init__"],
+)
 
 # Preserve the dataclass's original stored slots before consumers can replace
 # class descriptors or getters during source evaluation. Decryption takes one

@@ -550,6 +550,53 @@ def test_decrypt_rejects_late_type_foreign_payload(
     assert rejected, "late type hook admitted foreign authenticated payload"
 
 
+@pytest.mark.parametrize(
+    ("ciphertext", "tag", "message"),
+    [
+        (b"payload", b"short", "tag must be 16 bytes"),
+        (bytearray(b"payload"), bytes(16), "ciphertext must use exact bytes"),
+        (b"payload", bytearray(16), "tag must use exact bytes"),
+    ],
+)
+def test_payload_constructor_ignores_replaced_validator(
+    monkeypatch: pytest.MonkeyPatch,
+    ciphertext: bytes,
+    tag: bytes,
+    message: str,
+) -> None:
+    """A late class validator cannot admit malformed authenticated metadata."""
+    calls = 0
+
+    def skip_validation(_payload: AuthenticatedPayload) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(AuthenticatedPayload, "__post_init__", skip_validation)
+        with pytest.raises(PayloadCryptoError, match=message):
+            _ = AuthenticatedPayload(ciphertext, tag)
+    assert calls == 0, "replaced class validator bypassed authenticated metadata"
+
+
+def test_payload_constructor_preserves_valid_metadata_after_validator_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late class validator cannot reject otherwise valid detached payloads."""
+    calls = 0
+
+    def reject_every_payload(_payload: AuthenticatedPayload) -> None:
+        nonlocal calls
+        calls += 1
+        raise PayloadCryptoError("forged rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(AuthenticatedPayload, "__post_init__", reject_every_payload)
+        payload = AuthenticatedPayload(_RFC_CIPHERTEXT, _RFC_TAG)
+    assert payload.ciphertext == _RFC_CIPHERTEXT
+    assert payload.tag == _RFC_TAG
+    assert calls == 0, "replaced class validator rejected genuine metadata"
+
+
 def test_payload_constructor_ignores_late_field_getattribute_forgery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
