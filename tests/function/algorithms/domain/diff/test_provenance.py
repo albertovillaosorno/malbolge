@@ -36,10 +36,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from stat import S_IFDIR
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast, override
 
 import pytest
 from algorithms.diff import provenance as provenance_module
+from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.provenance import (
     SourcePin,
     SourcePinError,
@@ -81,6 +84,7 @@ def _pin(root: Path) -> SourcePin:
 class _ForeignPinnedRoot(type(Path())):
     """Source-pin identity must never invoke untrusted path methods."""
 
+    @override
     def __str__(self) -> str:
         message = "foreign source pin root path conversion executed"
         raise AssertionError(message)
@@ -225,6 +229,156 @@ def test_pinned_snapshot_rejects_byte_or_path_change(tmp_path: Path) -> None:
     _write(tmp_path, "src/new.c", b"int new_file;\n")
     with pytest.raises(SourcePinError, match="file count mismatch"):
         _ = require_source_pin(tmp_path, pin)
+
+
+@pytest.mark.parametrize("target", ["root", "selected", "parent"])
+def test_source_pin_rejects_foreign_directory_status_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    """A fabricated stat mode cannot authorize selected source traversal."""
+    _write(tmp_path, "src/nested/source.c", b"trusted source")
+    selected = {
+        "root": tmp_path,
+        "selected": tmp_path / "src/nested",
+        "parent": tmp_path / "src",
+    }[target]
+    original_lstat = Path.lstat
+    forged = False
+
+    def forge_status(path: Path) -> object:
+        nonlocal forged
+        if path == selected:
+            forged = True
+            return SimpleNamespace(st_mode=S_IFDIR | 0o755)
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forge_status)
+    with pytest.raises(SourcePinError, match="status must be native"):
+        _ = source_snapshot_evidence(tmp_path, ("src/nested",))
+    _expect(forged, "fabricated directory status was not consumed")
+
+
+def test_source_pin_rejects_foreign_file_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A fabricated complete file identity cannot certify snapshot stability."""
+    _write(tmp_path, "src/a.c", b"trusted source")
+    leaf = tmp_path / "src/a.c"
+    native_status = leaf.lstat()
+    original_lstat = Path.lstat
+    forged = SimpleNamespace(
+        st_mode=native_status.st_mode,
+        st_dev=native_status.st_dev,
+        st_ino=native_status.st_ino,
+        st_size=native_status.st_size,
+        st_mtime_ns=native_status.st_mtime_ns,
+        st_ctime_ns=native_status.st_ctime_ns,
+    )
+
+    def forge_receipt(path: Path) -> object:
+        if path == leaf:
+            return forged
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forge_receipt)
+    receipt = cast(
+        "Callable[[Path, str], tuple[int, ...]]",
+        vars(provenance_module)["_pinned_file_receipt"],
+    )
+    with pytest.raises(SourcePinError, match="status must be native"):
+        _ = receipt(leaf, "src/a.c")
+
+
+class _HostileHostError(OSError):
+    """An external filesystem hook must not control exception formatting."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile status error formatter executed"
+        raise AssertionError(message)
+
+    @override
+    def __repr__(self) -> str:
+        message = "hostile status error representation executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("operation", ["status", "junction", "resolve", "walk"])
+def test_source_pin_errors_do_not_invoke_foreign_formatters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """Filesystem failures must remain typed without invoking foreign hooks."""
+    _write(tmp_path, "src/a.c", b"trusted source")
+    original_lstat = Path.lstat
+    original_junction = Path.is_junction
+    original_resolve = Path.resolve
+    original_walk = Path.walk
+
+    def fail_lstat(path: Path) -> object:
+        if path == tmp_path:
+            raise _HostileHostError("do not stringify")
+        return original_lstat(path)
+
+    def fail_junction(path: Path) -> bool:
+        if path == tmp_path:
+            raise _HostileHostError("do not stringify")
+        return original_junction(path)
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == tmp_path:
+            raise _HostileHostError("do not stringify")
+        return original_resolve(path, strict=strict)
+
+    def fail_walk(
+        path: Path,
+        *,
+        top_down: bool = True,
+        on_error: Callable[[OSError], object] | None = None,
+        follow_symlinks: bool = False,
+    ) -> Iterator[tuple[Path, list[str], list[str]]]:
+        if path == tmp_path / "src":
+            raise _HostileHostError("do not stringify")
+        yield from original_walk(
+            path,
+            top_down=top_down,
+            on_error=on_error,
+            follow_symlinks=follow_symlinks,
+        )
+
+    selected = {
+        "status": ("lstat", fail_lstat, "status failed"),
+        "junction": ("is_junction", fail_junction, "status failed"),
+        "resolve": ("resolve", fail_resolve, "resolution failed"),
+        "walk": ("walk", fail_walk, "traversal failed"),
+    }[operation]
+    method_name, replacement, expected = selected
+    monkeypatch.setattr(Path, method_name, replacement)
+    with pytest.raises(SourcePinError, match=expected):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+class _HostileExactError(ExactTreeError):
+    """A delegated byte reader must not control failure formatting."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile source read formatter executed"
+        raise AssertionError(message)
+
+
+def test_source_pin_read_failure_does_not_invoke_foreign_formatter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed read stays typed even if its error cannot be stringified."""
+    _write(tmp_path, "README", b"trusted source")
+
+    def fail_read(path: Path, context: str) -> bytes:
+        _ = path, context
+        raise _HostileExactError("do not stringify")
+
+    monkeypatch.setattr(provenance_module, "read_exact_regular_file", fail_read)
+    with pytest.raises(SourcePinError, match="pinned source read failed"):
+        _ = source_snapshot_evidence(tmp_path, ("README",))
 
 
 @pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
@@ -562,7 +716,10 @@ def test_source_pin_rejects_file_set_mutation_during_snapshot(
         file_count=original.file_count,
         snapshot_sha256=original.snapshot_sha256,
     )
-    actual_read = provenance_module._read_pinned_source
+    actual_read = cast(
+        "Callable[[Path, Path, str], bytes]",
+        vars(provenance_module)["_read_pinned_source"],
+    )
     changed = False
 
     def mutate_after_last_read(root: Path, path: Path, relative: str) -> bytes:
@@ -598,7 +755,10 @@ def test_source_pin_rejects_file_mutation_after_earlier_read(
         "repo", _COMMIT, roots, baseline.file_count, baseline.snapshot_sha256
     )
     timestamp = original_file.stat()
-    read_original = provenance_module._read_pinned_source
+    read_original = cast(
+        "Callable[[Path, Path, str], bytes]",
+        vars(provenance_module)["_read_pinned_source"],
+    )
     changed = False
 
     def mutate_after_last_read(root: Path, path: Path, relative: str) -> bytes:
@@ -610,7 +770,7 @@ def test_source_pin_rejects_file_mutation_after_earlier_read(
             else:
                 replacement = tmp_path / "replacement"
                 _ = replacement.write_bytes(b"original")
-                replacement.replace(original_file)
+                _ = replacement.replace(original_file)
             os.utime(
                 original_file,
                 ns=(timestamp.st_atime_ns, timestamp.st_mtime_ns),

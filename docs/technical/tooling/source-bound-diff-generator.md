@@ -132,6 +132,12 @@ module and ancestor status receipts must also be native `os.stat_result`
 objects before the domain module executes. Invalid receipts cannot authorize
 import, and errors from import, hook lookup, status, or resolution retain their
 typed causes without invoking foreign exception string/representation hooks.
+Pinned-source snapshots also require native `os.stat_result` receipts for the
+source root, selected paths and parent components, and file-identity rechecks.
+Foreign mode and inode records cannot certify pinned provenance. Filesystem
+status, junction, traversal, resolution, and delegated-read failures retain
+typed causes without running foreign exception string or representation hooks.
+These checks are not atomic against concurrent external source writers.
 Exact tree snapshot, authoring and materialization root admission and compatible
 build/materialize request admission independently require exact host-native
 `Path` objects. Foreign path subclasses cannot redirect source/oracle reads,

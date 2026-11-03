@@ -39,7 +39,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
-from typing import cast
+from typing import Final, cast
 
 from algorithms.diff.exact import ExactTreeError, read_exact_regular_file
 
@@ -54,6 +54,7 @@ _NUL = "\x00"
 _COMMIT_HEX_LENGTH = 40
 _SHA256_HEX_LENGTH = 64
 _LOWER_HEX = frozenset("0123456789abcdef")
+_NATIVE_STAT_RESULT: Final = os.stat_result
 
 
 class SourcePinError(RuntimeError):
@@ -194,18 +195,33 @@ def _validate_relative_path(relative_path: object) -> str:
     return relative_path
 
 
+def _host_error_detail(error: BaseException) -> str:
+    """Keep foreign exception formatters outside provenance diagnostics."""
+    if type(error) in (OSError, ValueError, RuntimeError, ExactTreeError):
+        arguments = cast("tuple[object, ...]", error.args)
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+    return type(error).__name__
+
+
 def _source_mode(path: Path, relative: str) -> int | None:
     try:
-        mode = path.lstat().st_mode
+        receipt = path.lstat()
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"pinned source status failed for {relative}: {error}"
+        detail = _host_error_detail(error)
+        message = f"pinned source status failed for {relative}: {detail}"
         raise SourcePinError(message) from error
+    if type(receipt) is not _NATIVE_STAT_RESULT:
+        message = f"pinned source status must be native for {relative}"
+        raise SourcePinError(message)
+    mode = receipt.st_mode
     try:
         is_link = S_ISLNK(mode) or path.is_junction()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"pinned source status failed for {relative}: {error}"
+        detail = _host_error_detail(error)
+        message = f"pinned source status failed for {relative}: {detail}"
         raise SourcePinError(message) from error
     if is_link:
         message = f"symlink is not accepted in pinned source: {relative}"
@@ -240,7 +256,7 @@ def _selected_root(root: Path, relative_root: str) -> tuple[Path, int]:
 def _raise_source_walk_error(
     error: OSError | ValueError | RuntimeError,
 ) -> None:
-    message = f"pinned source traversal failed: {error}"
+    message = f"pinned source traversal failed: {_host_error_detail(error)}"
     raise SourcePinError(message) from error
 
 
@@ -315,7 +331,8 @@ def _resolved_source_root(root: Path) -> Path:
     try:
         return root.resolve(strict=True)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"pinned source root resolution failed: {root}: {error}"
+        detail = _host_error_detail(error)
+        message = f"pinned source root resolution failed: {root}: {detail}"
         raise SourcePinError(message) from error
 
 
@@ -324,10 +341,12 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
     try:
         return read_exact_regular_file(path, "pinned source")
     except ExactTreeError as error:
-        message = f"pinned source read failed for {relative}: {error}"
+        detail = _host_error_detail(error)
+        message = f"pinned source read failed for {relative}: {detail}"
         failure = SourcePinError(message)
-        for note in cast("list[str]", getattr(error, "__notes__", [])):
-            failure.add_note(note)
+        if type(error) is ExactTreeError:
+            for note in cast("list[str]", getattr(error, "__notes__", [])):
+                failure.add_note(note)
         raise failure from error
 
 
@@ -338,6 +357,9 @@ def _pinned_file_receipt(path: Path, relative: str) -> tuple[int, ...]:
     except (OSError, ValueError, RuntimeError, TypeError) as error:
         message = f"pinned source file changed during snapshot: {relative}"
         raise SourcePinError(message) from error
+    if type(status) is not _NATIVE_STAT_RESULT:
+        message = f"pinned source status must be native for {relative}"
+        raise SourcePinError(message)
     if not S_ISREG(status.st_mode):
         message = f"pinned source file changed during snapshot: {relative}"
         raise SourcePinError(message)
