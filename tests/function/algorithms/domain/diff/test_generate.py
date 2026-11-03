@@ -40,6 +40,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 from algorithms.diff import generate as generate_module
 from algorithms.diff.domain import DomainContractError
@@ -49,10 +50,13 @@ from algorithms.diff.generate import DiffGeneratorUnavailableError
 from algorithms.diff.generate import DiffRecipe
 from algorithms.diff.generate import TransformMode
 from algorithms.diff.generate import write_algorithm
+from algorithms.diff.model import FileRecord
 from algorithms.diff.protected import protect_exact_plan
 import pytest
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.protected import ProtectedExactPlan
@@ -210,6 +214,7 @@ def test_generator_rejects_invalid_fraction_before_output(
 class _ForeignRecipePath(type(Path())):
     """An override may redirect a transform input before admission."""
 
+    @override
     def __fspath__(self) -> str:
         message = "foreign recipe path conversion executed"
         raise AssertionError(message)
@@ -497,6 +502,52 @@ def test_exact_identity_second_read_failure_stays_in_exact_boundary(
         not recipe.output_algorithm.exists(),
         "failed identity wrote output",
     )
+
+
+class _SpoofedGeneratorDigest:
+    """A replaced constructor always certifies a stale source digest."""
+
+    def __init__(self, result: str) -> None:
+        self.result: str = result
+
+    def hexdigest(self) -> str:
+        """Return a false source identity digest.
+
+        Returns:
+            An attacker-selected stale digest.
+
+        """
+        return self.result
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_generator_identity_ignores_hostile_sha256_constructor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, changed: bool
+) -> None:
+    """Hostile hash callbacks must not approve changed source replay bytes."""
+    original = b"first"
+    tampered = b"other"
+    file = tmp_path / "source.bin"
+    _ = file.write_bytes(tampered if changed else original)
+    expected = hashlib.sha256(original).hexdigest()
+    record = FileRecord(path="source.bin", sha256=expected, size=len(original))
+    read_identity = cast(
+        "Callable[[Path, FileRecord], bytes]",
+        vars(generate_module)["_read_exact_identity_file"],
+    )
+
+    def forged_constructor(data: bytes = b"") -> _SpoofedGeneratorDigest:
+        del data
+        return _SpoofedGeneratorDigest(expected)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(hashlib, "sha256", forged_constructor)
+        if changed:
+            with pytest.raises(ExactTreeError, match="source identity changed"):
+                _ = read_identity(file, record)
+        else:
+            observed = read_identity(file, record)
+            _expect(observed == original, "genuine source replay was rejected")
 
 
 def test_exact_generator_rejects_source_rewrite_after_plan(

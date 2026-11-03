@@ -58,6 +58,8 @@ from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
 from algorithms.diff.source_binding import SourceBindingPolicy
 
+# Source replay identity must not trust a mutable process-global hash hook.
+_SHA256_FACTORY = hashlib.sha256
 _MAX_SHARES = 255
 _NUL = "\x00"
 _BACKSLASH = "\\"
@@ -310,7 +312,7 @@ def _validate_recipe(recipe: DiffRecipe) -> None:
 
 def _read_exact_identity_file(path: Path, record: FileRecord) -> bytes:
     replay = read_exact_regular_file(path, "exact source identity")
-    if len(replay) != record.size or hashlib.sha256(replay).hexdigest() != (
+    if len(replay) != record.size or _SHA256_FACTORY(replay).hexdigest() != (
         record.sha256
     ):
         message = f"exact source identity changed after planning: {record.path}"
