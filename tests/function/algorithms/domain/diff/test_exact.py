@@ -861,6 +861,58 @@ def test_exact_materialization_rejects_output_inside_source_tree(
     )
 
 
+def test_exact_snapshot_ignores_post_import_root_resolution_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host resolver swap cannot replace the admitted source byte identity."""
+    source = tmp_path / "source"
+    redirected = tmp_path / "redirected"
+    _write(source, "payload", b"source")
+    _write(redirected, "payload", b"foreign")
+    baseline = snapshot_tree(source)
+    native_resolve = Path.resolve
+    calls = 0
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        if path == source and strict:
+            calls += 1
+            return native_resolve(redirected, strict=True)
+        return native_resolve(path, strict=strict)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "resolve", forged_resolve)
+        observed = snapshot_tree(source)
+    assert calls == 0
+    assert observed == baseline
+
+
+def test_exact_materialization_ignores_post_import_output_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host resolver swap cannot publish verified bytes to another root."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "intended-output"
+    redirected = tmp_path / "redirected-output"
+    native_resolve = Path.resolve
+    calls = 0
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        if path == output:
+            calls += 1
+            return native_resolve(redirected, strict=strict)
+        return native_resolve(path, strict=strict)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "resolve", forged_resolve)
+        materialize_exact_plan(source, plan, output)
+    assert calls == 0
+    assert not redirected.exists()
+    assert snapshot_tree(output) == plan.target
+
+
 def test_exact_output_containment_ignores_mutated_path_is_relative_to(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -953,7 +1005,7 @@ def test_exact_materialization_wraps_output_root_resolution_error(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(ExactTreeError, match="output root resolution failed"):
         materialize_exact_plan(source, plan, output)
     _expect(not output.exists(), "output resolution failure published output")
@@ -977,7 +1029,7 @@ def test_exact_materialization_wraps_tree_path_resolution_error(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     output = tmp_path / "result"
     with pytest.raises(ExactTreeError, match="tree path resolution failed"):
         materialize_exact_plan(source, plan, output)
@@ -1147,7 +1199,7 @@ def test_exact_tree_root_resolution_failure_stays_typed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(ExactTreeError, match="tree root resolution failed"):
         _ = snapshot_tree(root)
 
@@ -1253,7 +1305,7 @@ def test_exact_rejects_foreign_resolved_path_before_hooks(
             return foreign
         return native_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_RESOLVE", forged_resolve)
     action = {
         "root": lambda: snapshot_tree(source),
         "output": lambda: materialize_exact_plan(source, plan, output),
@@ -1286,18 +1338,20 @@ def test_exact_snapshot_rejects_hostile_host_errors_without_formatting(
     _ = (root / "leaf").write_bytes(b"trusted")
     fault = _HostileExactHostError("host refused")
     methods = {
-        "status": ("lstat", "tree root status failed"),
-        "junction": ("is_junction", "tree redirect status failed"),
-        "walk": ("walk", "tree traversal failed"),
-        "resolve": ("resolve", "tree root resolution failed"),
+        "status": (Path, "lstat", "tree root status failed"),
+        "junction": (Path, "is_junction", "tree redirect status failed"),
+        "walk": (Path, "walk", "tree traversal failed"),
+        "resolve": (
+            exact_module, "_NATIVE_PATH_RESOLVE", "tree root resolution failed"
+        ),
     }
-    method, expected = methods[operation]
+    owner, method, expected = methods[operation]
 
     def fail_host(*args: object, **kwargs: object) -> None:
         del args, kwargs
         raise fault
 
-    monkeypatch.setattr(Path, method, fail_host)
+    monkeypatch.setattr(owner, method, fail_host)
     with pytest.raises(ExactTreeError, match=expected) as caught:
         _ = snapshot_tree(root)
     _expect(caught.value.__cause__ is fault, "foreign host cause was lost")

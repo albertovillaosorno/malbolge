@@ -76,6 +76,7 @@ _ZERO = 0
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
+_NATIVE_PATH_RESOLVE = Path.resolve
 
 
 class ExactTreeError(RuntimeError):
@@ -540,7 +541,7 @@ def _resolved_tree_root(root: Path) -> Path:
         message = f"tree root is not a directory: {root}"
         raise ExactTreeError(message)
     try:
-        resolved = root.resolve(strict=True)
+        resolved = _NATIVE_PATH_RESOLVE(root, strict=True)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_host_error_detail(error)
         message = f"tree root resolution failed: {root}: {detail}"
@@ -847,8 +848,12 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        resolved_path = _require_native_resolved_path(path.resolve(), "tree path")
-        resolved_root = _require_native_resolved_path(root.resolve(), "tree root")
+        resolved_path = _require_native_resolved_path(
+            _NATIVE_PATH_RESOLVE(path), "tree path"
+        )
+        resolved_root = _require_native_resolved_path(
+            _NATIVE_PATH_RESOLVE(root), "tree root"
+        )
     except (OSError, ValueError, RuntimeError) as error:
         message = (
             "tree path resolution failed: "
@@ -1077,7 +1082,7 @@ def _resolved_output_root(output_root: Path) -> Path:
         message = f"output root must not be linked: {output_root}"
         raise ExactTreeError(message)
     try:
-        resolved = output_root.resolve()
+        resolved = _NATIVE_PATH_RESOLVE(output_root)
     except (OSError, ValueError, RuntimeError) as error:
         message = (
             "output root resolution failed: "

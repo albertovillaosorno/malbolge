@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, cast, override
 
 import pytest
 from algorithms.diff import compatible as compatible_module
+from algorithms.diff import exact as exact_module
 
 # jig-ignore-next-line: canonical Ruff import grouping requires one statement
 from algorithms.diff.admission import AdmissionError, AdmissionPolicy, identity_tree
@@ -1425,7 +1426,7 @@ def test_compatible_host_faults_do_not_format_foreign_errors(
                 raise _HostileFormattingError("host root resolution")
             return original(path, strict=strict)
 
-        monkeypatch.setattr(Path, "resolve", fail_resolve)
+        monkeypatch.setattr(exact_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     elif operation == "staging_status":
         original = Path.lstat
 
