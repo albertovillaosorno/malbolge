@@ -1181,6 +1181,35 @@ observed. Jig doctor remains degraded and the global check has no passing
 verdict. Process-global changes during a check and external filesystem races
 remain outside this in-process identity guard.
 
+Native probe resolution now snapshots the exact host platform `Path` type
+at import time, rather than constructing a fresh `Path()` while validating
+later untrusted root records (`08e6926e4`). A changed constructor previously
+executed before the path-class check. The probe execution boundary separately
+pins concrete-platform `__str__`, `with_segments`, and `joinpath` hooks before
+resolving tools and roots without changing the original record-admission
+semantics. Four constructor-before-admission and four concrete resolver-hook
+cases reproduced the vulnerabilities. All 406 postcommit probe tests and
+3,491 fresh integrated diff tests passed; scoped Ruff and diff checks were
+clean. External races and in-process mutations of already trusted storage
+remain outside this guarantee.
+
+Probe rooted containment also now pins the original `parents` and equality
+hooks of native `PurePath` classes and the alias and method-resolution chain
+of the internal `_PathParents` sequence (`694a82678`). The original native
+`relative_to` consulted those replaceable hooks even when the resolver and
+`Path.relative_to` entry points were unchanged; late substitutions wrongly
+admitted structured source paths escaping through directory symlinks. Four
+base/concrete ancestry/equality and three parent-sequence/alias cases failed
+red-first, while two additional tests exercise changes during containment.
+Checks now also run after containment and around internal source overlap
+checks. All 415 focused probe and 3,519 fresh integrated diff tests passed.
+Scoped Ruff and diff checks were clean and no newly added test typing
+errors were reported. Strict source typing still reports three unrelated
+existing casts and the test file retains inherited diagnostics; Jig doctor
+remains degraded and the global Jig check has no passing verdict. Hook
+identity is not an atomic defense against concurrent host changes or external
+filesystem writers, nor a replacement for sandboxing consumer executables.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record

@@ -431,6 +431,18 @@ format.
   398 postcommit focused probe and 3,468 precommit shared diff tests passed.
   Ruff and diff checks are clean; strict typing has unchanged file findings,
   Jig has no global passing verdict, and external races remain out of scope.
+- Probe resolution now captures the native `Path` type before later
+  constructor replacement and guards concrete `__str__`, `with_segments`,
+  and `joinpath` hooks (`08e6926e4`). Eight red-first admission/resolver
+  cases, 406 postcommit probe and 3,491 integrated diff tests pass.
+- Probe rooted containment now checks original native path `parents` and
+  equality hooks and the `_PathParents` class alias and sequence dispatch
+  before and after `relative_to` (`694a82678`). Seven red-first bypasses
+  across base/concrete paths and parent sequences plus two mid-comparison
+  regressions now reject source symlink escapes. All 415 focused and 3,519
+  integrated diff tests passed, with scoped Ruff/diff checks clean. Existing
+  strict typing errors and degraded/unverified global Jig remain. Hook
+  mutation races and external filesystem writers are still out of scope.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.
