@@ -61,6 +61,7 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_LEN = len
 _NATIVE_RANGE = range
 _NATIVE_TUPLE = tuple
+_NATIVE_OBJECT_NEW = object.__new__
 
 
 class FingerprintPolicyError(ValueError):
@@ -170,6 +171,9 @@ _ANCHOR_DIGEST_SLOT = cast(
 _ANCHOR_OFFSET_SLOT = cast(
     "MemberDescriptorType", StableAnchor.__dict__["offset"]
 )
+_ANCHOR_INIT = cast(
+    "Callable[[StableAnchor, bytes, int], None]", StableAnchor.__dict__["__init__"]
+)
 
 
 def _anchor_fields(anchor: StableAnchor) -> tuple[bytes, int]:
@@ -246,6 +250,10 @@ _COVERAGE_TOTAL_SLOT = cast(
 _COVERAGE_RATIO_SLOT = cast(
     "MemberDescriptorType", AnchorCoverage.__dict__["ratio"]
 )
+_COVERAGE_INIT = cast(
+    "Callable[[AnchorCoverage, int, int, float], None]",
+    AnchorCoverage.__dict__["__init__"],
+)
 
 
 def _coverage_fields(coverage: AnchorCoverage) -> tuple[int, int, float]:
@@ -256,6 +264,20 @@ def _coverage_fields(coverage: AnchorCoverage) -> tuple[int, int, float]:
     )
 
 
+def _new_anchor(digest: bytes, offset: int) -> StableAnchor:
+    """Construct internal evidence without late class allocation/init hooks."""
+    anchor = _NATIVE_OBJECT_NEW(StableAnchor)
+    _ANCHOR_INIT(anchor, digest, offset)
+    return anchor
+
+
+def _new_coverage(matched: int, total: int, ratio: float) -> AnchorCoverage:
+    """Keep computed lineage coverage independent of late class constructors."""
+    coverage = _NATIVE_OBJECT_NEW(AnchorCoverage)
+    _COVERAGE_INIT(coverage, matched, total, ratio)
+    return coverage
+
+
 def _digest_window(window: bytes) -> bytes:
     return _SHA256_FACTORY(window).digest()
 
@@ -263,7 +285,7 @@ def _digest_window(window: bytes) -> bytes:
 def _small_input_anchor(data: bytes) -> tuple[StableAnchor, ...]:
     if not data:
         return ()
-    return (StableAnchor(digest=_digest_window(data), offset=_ZERO),)
+    return (_new_anchor(digest=_digest_window(data), offset=_ZERO),)
 
 
 def _initial_rolling_hash(data: bytes, window_bytes: int) -> int:
@@ -292,7 +314,7 @@ def _selected_anchor(
     data: bytes, offset: int, window_bytes: int
 ) -> StableAnchor:
     window = data[offset : offset + window_bytes]
-    return StableAnchor(digest=_digest_window(window), offset=offset)
+    return _new_anchor(digest=_digest_window(window), offset=offset)
 
 
 def _scan_anchor_windows(
@@ -393,9 +415,9 @@ def anchor_coverage(
     candidate_digests = {_anchor_fields(anchor)[0] for anchor in candidate}
     total = _NATIVE_LEN(reference_digests)
     if total == _ZERO:
-        return AnchorCoverage(matched=_ZERO, total=_ZERO, ratio=1.0)
+        return _new_coverage(matched=_ZERO, total=_ZERO, ratio=1.0)
     matched = _NATIVE_LEN(reference_digests & candidate_digests)
-    return AnchorCoverage(
+    return _new_coverage(
         matched=matched,
         total=total,
         ratio=matched / total,

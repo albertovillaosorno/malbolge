@@ -34,6 +34,9 @@
 
 import builtins
 import hashlib
+import os
+import subprocess
+import sys
 from collections.abc import Callable, Iterable, Sized
 from dataclasses import fields, replace
 from types import MemberDescriptorType
@@ -799,3 +802,100 @@ def test_fingerprint_construction_ignores_late_class_setters(
         with pytest.raises(FingerprintPolicyError):
             _ = factory(**values)
     assert calls == 0, "late class setter rewrote fingerprint admission storage"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(b"short input", id="short"),
+        pytest.param(b"long source " * 128, id="long"),
+    ],
+)
+def test_stable_anchor_selection_ignores_late_init_hook(
+    monkeypatch: pytest.MonkeyPatch, source: bytes
+) -> None:
+    """A class initializer cannot replace source-derived anchor evidence."""
+    expected = stable_anchors(source)
+    assert expected
+    digest_slot = cast("MemberDescriptorType", StableAnchor.__dict__["digest"])
+    offset_slot = cast("MemberDescriptorType", StableAnchor.__dict__["offset"])
+    calls = 0
+
+    def forged_init(self: StableAnchor, digest: bytes, offset: int) -> None:
+        nonlocal calls
+        del digest, offset
+        calls += 1
+        digest_slot.__set__(self, b"f" * 32)
+        offset_slot.__set__(self, 999)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(StableAnchor, "__init__", forged_init)
+        observed = stable_anchors(source)
+    assert observed == expected, "late initializer rewrote selected source anchors"
+    assert calls == 0, "late anchor initializer was consulted"
+
+
+def test_anchor_coverage_ignores_late_init_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A class initializer cannot promote unrelated lineage evidence."""
+    reference = (StableAnchor(b"r" * 32, 0),)
+    candidate = (StableAnchor(b"c" * 32, 0),)
+    expected = AnchorCoverage(matched=0, total=1, ratio=0.0)
+    matched_slot = cast("MemberDescriptorType", AnchorCoverage.__dict__["matched"])
+    total_slot = cast("MemberDescriptorType", AnchorCoverage.__dict__["total"])
+    ratio_slot = cast("MemberDescriptorType", AnchorCoverage.__dict__["ratio"])
+    calls = 0
+
+    def forged_init(
+        self: AnchorCoverage, matched: int, total: int, ratio: float
+    ) -> None:
+        nonlocal calls
+        del matched, total, ratio
+        calls += 1
+        matched_slot.__set__(self, 1)
+        total_slot.__set__(self, 1)
+        ratio_slot.__set__(self, 1.0)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(AnchorCoverage, "__init__", forged_init)
+        observed = anchor_coverage(reference, candidate)
+    assert observed == expected, "late initializer promoted unrelated lineage"
+    assert calls == 0, "late coverage initializer was consulted"
+
+
+@pytest.mark.parametrize("record", ["anchor", "coverage"])
+def test_internal_fingerprint_allocation_ignores_late_new_hook(
+    record: str,
+) -> None:
+    """Run unsafe class __new__ replacement in an isolated interpreter."""
+    script = """
+from algorithms.diff.fingerprints import (
+    AnchorCoverage, StableAnchor, anchor_coverage, stable_anchors,
+)
+if RECORD == "anchor":
+    baseline = stable_anchors(b"a short source")
+    owner = StableAnchor
+    replay = lambda: stable_anchors(b"a short source")
+else:
+    reference = (StableAnchor(b"r" * 32, 0),)
+    candidate = (StableAnchor(b"c" * 32, 0),)
+    baseline = AnchorCoverage(0, 1, 0.0)
+    owner = AnchorCoverage
+    replay = lambda: anchor_coverage(reference, candidate)
+def forbidden_new(cls, *args, **kwargs):
+    raise AssertionError("late class __new__ hook was consulted")
+owner.__new__ = staticmethod(forbidden_new)
+assert replay() == baseline
+""".replace("RECORD", repr(record))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
