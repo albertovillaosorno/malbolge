@@ -155,6 +155,11 @@ format.
   red-first forged-message case and 178 postcommit emitter tests passed;
   Ruff, strict typing, and diff checks are clean. Direct state mutation and
   concurrent host changes are outside this guard.
+- Emitter native error-class admission now rejects late foreign exception
+  class aliases (`6e0ad19fe`) instead of trusting a changed builtin
+  during its error boundary. Four red-first class-alias regressions,
+  182 postcommit emitter tests, Ruff, strict BasedPyright, and diff
+  checks pass. Concurrent host changes remain outside this check.
 - Rust emitter parent-directory staging now uses import-original
   `reversed()` (`e7ec05dca`). A forged post-import iterator previously
   silently skipped nested directory creation; one red-first regression and
@@ -578,6 +583,13 @@ format.
   and diff checks clean. Jig remains without a green global verdict; direct
   stored-instance edits, trusted module mutation, and external writers are
   not isolated.
+- Conjunctive gate exception wrapping now uses import-original
+  `AttributeError` and `TypeError` (`e6bf71595`). A consumer could
+  otherwise change a global exception alias and leak a raw missing-slot
+  error from malformed source, behavior, or combined gate evidence.
+  Three red-first cases and 408 postcommit adjacent checks pass, with
+  scoped Ruff, strict BasedPyright, and diff checks clean. Global Jig
+  timed out in native validation; no green verdict is claimed.
 - Positive timeout integers too large for a host monotonic deadline now
   reject with a typed probe error before process spawn, rather than leaking
   an integer-to-float overflow outside the execution boundary.

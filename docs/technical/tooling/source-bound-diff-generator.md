@@ -868,6 +868,12 @@ accessor. The red-first forged-message test and all 178 postcommit emitter
 tests pass; scoped Ruff, strict typing, and diff checks remain clean. This
 is not isolation against direct trusted instance mutation or host races.
 
+The emitter now also rejects late replacement of its trusted exception
+classes (`6e0ad19fe`), before a foreign class can alter error handling.
+Four red-first class-alias cases and all 182 postcommit emitter tests
+pass, with scoped Ruff, strict BasedPyright, and diff checks clean.
+This does not prevent host races or direct trusted-state mutation.
+
 Emitter parent-directory staging now also pins the import-original
 `reversed()` (`e7ec05dca`). A late replacement previously erased the parent
 walk, silently leaving a nested output stage uncreated. One red-first
@@ -1346,6 +1352,16 @@ formatting drift is untouched. `jig doctor` remained degraded with its graph
 absent and a 105-second global check timed out, so there is no repository-wide
 passing verdict. Trusted direct storage edits and external writers remain
 outside these getter protections.
+
+Conjunctive gate failure handling now uses the import-captured native
+`AttributeError` and `TypeError` classes (`e6bf71595`). Previously, a
+late `builtins.AttributeError` substitution could make incomplete exact
+source, behavior, or combined records leak a raw missing-slot exception
+rather than a typed `AdmissionError`. Three red-first cases and all 408
+postcommit adjacent gate/admission/behavior tests pass; scoped Ruff,
+strict BasedPyright, and diff checks are clean. A bounded global Jig
+check timed out during native validation without a green verdict.
+Direct trusted record mutation and external writers remain out of scope.
 
 ### Portable Behavior Programs
 
