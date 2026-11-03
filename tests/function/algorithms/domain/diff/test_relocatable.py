@@ -2940,3 +2940,175 @@ with TemporaryDirectory() as directory:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+def _raw_relocatable_record(
+    owner: type[object], fields: dict[str, object]
+) -> object:
+    """Create one native record without its constructor checks.
+
+    Returns:
+        Exact-class stored slots with their authoring checks bypassed.
+
+    """
+    record = object.__new__(owner)
+    for name, value in fields.items():
+        slot = cast("MemberDescriptorType", owner.__dict__[name])
+        slot.__set__(record, value)
+    return record
+
+
+_RAW_RANGE_MODE = "range"
+_RAW_MISSING_MODE = "missing"
+
+
+@pytest.mark.parametrize(
+    ("fields", "reason"),
+    [
+        (
+            {
+                "source_length": 0,
+                "window_bytes": 1,
+                "start_digest": b"x" * 32,
+                "end_digest": None,
+            },
+            "length",
+        ),
+        (
+            {
+                "source_length": 1,
+                "window_bytes": 1,
+                "start_digest": b"bad",
+                "end_digest": None,
+            },
+            "digest",
+        ),
+        (
+            {
+                "source_length": 1,
+                "window_bytes": 0,
+                "start_digest": b"x" * 32,
+                "end_digest": None,
+            },
+            "width",
+        ),
+        (
+            {"source_length": 1, "window_bytes": 1, "start_digest": b"x" * 32},
+            "metadata",
+        ),
+    ],
+)
+def test_relocation_source_range_revalidates_raw_native_locator(
+    fields: dict[str, object], reason: str
+) -> None:
+    """An exact-class raw locator cannot bypass range authoring guards."""
+    locator = cast(
+        "RangeLocator", _raw_relocatable_record(RangeLocator, fields)
+    )
+    with pytest.raises(RelocationError, match=reason):
+        _ = RelocatableSourceRange(locator)
+
+
+@pytest.mark.parametrize("segment", ["range", "literal"])
+def test_relocation_instruction_revalidates_nested_raw_segments(
+    segment: str,
+) -> None:
+    """Constructed instructions cannot retain invalid exact segment bytes."""
+    if segment == _RAW_RANGE_MODE:
+        locator = cast(
+            "RangeLocator",
+            _raw_relocatable_record(
+                RangeLocator,
+                {
+                    "source_length": 1,
+                    "window_bytes": 1,
+                    "start_digest": b"bad",
+                    "end_digest": None,
+                },
+            ),
+        )
+        malformed = cast(
+            "RelocatableSourceRange",
+            _raw_relocatable_record(
+                RelocatableSourceRange, {"locator": locator}
+            ),
+        )
+    else:
+        malformed = cast(
+            "OracleLiteral",
+            _raw_relocatable_record(OracleLiteral, {"data": bytearray(b"bad")}),
+        )
+    with pytest.raises(RelocationError, match="segment"):
+        _ = RelocatableInstruction(
+            "output.bin",
+            "source.bin",
+            copy_candidate_file=False,
+            segments=(malformed,),
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "reason"),
+    [
+        ("output_path", "../unsafe", "path"),
+        ("copy_candidate_file", True, "payload form"),
+        ("literal", bytearray(b"bad"), "literal"),
+        ("segments", [], "tuple"),
+    ],
+)
+def test_relocation_plan_revalidates_raw_native_instruction(
+    field: str, invalid: object, reason: str
+) -> None:
+    """A native instruction's constructor cannot be bypassed by a plan."""
+    slots: dict[str, object] = {
+        "output_path": "output.bin",
+        "source_path": None,
+        "copy_candidate_file": False,
+        "literal": b"good",
+        "segments": (),
+    }
+    slots[field] = invalid
+    forged = cast(
+        "RelocatableInstruction",
+        _raw_relocatable_record(RelocatableInstruction, slots),
+    )
+    with pytest.raises(RelocationError, match=reason):
+        _ = relocatable_module.RelocatableAuthoringPlan((forged,))
+
+
+@pytest.mark.parametrize("fabrication", ["missing", "invalid"])
+def test_relocation_materialize_revalidates_raw_native_plan_before_staging(
+    tmp_path: Path, fabrication: str
+) -> None:
+    """Staging must not begin from incomplete or forged exact native plans."""
+    if fabrication == _RAW_MISSING_MODE:
+        slots: dict[str, object] = {}
+    else:
+        slots = {
+            "instructions": (
+                cast(
+                    "RelocatableInstruction",
+                    _raw_relocatable_record(
+                        RelocatableInstruction,
+                        {
+                            "output_path": "../unsafe",
+                            "source_path": None,
+                            "copy_candidate_file": False,
+                            "literal": b"unsafe",
+                            "segments": (),
+                        },
+                    ),
+                ),
+            )
+        }
+    plan = cast(
+        "RelocatableAuthoringPlan",
+        _raw_relocatable_record(
+            relocatable_module.RelocatableAuthoringPlan, slots
+        ),
+    )
+    destination = tmp_path / "output"
+    with pytest.raises(RelocationError, match=r"(plan|path|metadata)"):
+        materialize_relocatable_plan(tmp_path / "candidate", plan, destination)
+    assert not destination.exists()
+    assert not (tmp_path / "output.relocatable-staging").exists()

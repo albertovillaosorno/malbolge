@@ -66,6 +66,7 @@ from algorithms.diff.model import (
     FileRecord,
     OracleLiteral,
     SourceSlice,
+    TreeModelError,
     TreeSnapshot,
     reserved_windows_component,
 )
@@ -113,6 +114,9 @@ _NATIVE_SUM = builtins.sum
 _NATIVE_MIN = builtins.min
 _NATIVE_RANGE = builtins.range
 _NATIVE_OBJECT_NEW = object.__new__
+_ORACLE_LITERAL_VALIDATOR = cast(
+    "Callable[[OracleLiteral], None]", OracleLiteral.__dict__["__post_init__"]
+)
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -263,9 +267,15 @@ class RelocatableSourceRange:
             RelocationError: Locator metadata is foreign.
 
         """
-        if _NATIVE_TYPE(_range_locator_field(self)) is not RangeLocator:
+        locator = _range_locator_field(self)
+        if _NATIVE_TYPE(locator) is not RangeLocator:
             message = "relocatable source range must use the exact locator type"
             raise RelocationError(message)
+        try:
+            _LOCATOR_VALIDATOR(locator)
+        except AttributeError as error:
+            message = "relocatable source range has incomplete locator metadata"
+            raise RelocationError(message) from error
 
 
 _SOURCE_RANGE_VALIDATOR = cast(
@@ -318,6 +328,25 @@ def _validate_relocatable_payload(instruction: RelocatableInstruction) -> None:
     ):
         message = "relocatable instruction contains a foreign segment"
         raise RelocationError(message)
+    _require_valid_segments(segments)
+
+
+def _require_valid_segments(segments: tuple[RelocatableSegment, ...]) -> None:
+    """Check captured constructor guards on native nested segments.
+
+    Raises:
+        RelocationError: A segment is malformed or incomplete.
+
+    """
+    try:
+        for segment in segments:
+            if _NATIVE_TYPE(segment) is RelocatableSourceRange:
+                _SOURCE_RANGE_VALIDATOR(segment)
+            else:
+                _ORACLE_LITERAL_VALIDATOR(cast("OracleLiteral", segment))
+    except (AttributeError, RelocationError, TreeModelError) as error:
+        message = "relocatable instruction contains invalid native segment"
+        raise RelocationError(message) from error
 
 
 def _validate_relocatable_shape(instruction: RelocatableInstruction) -> None:
@@ -446,6 +475,7 @@ class RelocatableAuthoringPlan:
         ):
             message = "relocatable plan contains a foreign instruction record"
             raise RelocationError(message)
+        _require_valid_relocatable_instructions(instructions)
         paths = _NATIVE_TUPLE(
             _instruction_fields(item)[0] for item in instructions
         )
@@ -460,6 +490,23 @@ class RelocatableAuthoringPlan:
         ):
             message = "relocatable output files have ancestor path overlap"
             raise RelocationError(message)
+
+
+def _require_valid_relocatable_instructions(
+    instructions: tuple[RelocatableInstruction, ...],
+) -> None:
+    """Revalidate nested instructions even after raw slot fabrication.
+
+    Raises:
+        RelocationError: An instruction is malformed or incomplete.
+
+    """
+    try:
+        for instruction in instructions:
+            _INSTRUCTION_VALIDATOR(instruction)
+    except AttributeError as error:
+        message = "relocatable plan has incomplete native instruction metadata"
+        raise RelocationError(message) from error
 
 
 _PLAN_VALIDATOR = cast(
@@ -1136,6 +1183,22 @@ def _require_external_output_root(
         raise RelocationError(message)
 
 
+def _require_valid_native_relocatable_plan(
+    plan: RelocatableAuthoringPlan,
+) -> None:
+    """Require exact native plan storage before materialization starts.
+
+    Raises:
+        RelocationError: The native plan has foreign or incomplete metadata.
+
+    """
+    try:
+        _PLAN_VALIDATOR(plan)
+    except AttributeError as error:
+        message = "relocatable plan has incomplete native metadata"
+        raise RelocationError(message) from error
+
+
 def materialize_relocatable_plan(
     candidate_root: Path,
     plan: RelocatableAuthoringPlan,
@@ -1156,6 +1219,7 @@ def materialize_relocatable_plan(
     if _NATIVE_TYPE(plan) is not RelocatableAuthoringPlan:
         message = "relocatable materialization requires the exact plan type"
         raise RelocationError(message)
+    _require_valid_native_relocatable_plan(plan)
     _require_external_output_root(candidate_root, output_root)
     staging = _prepare_staging(output_root)
     try:
