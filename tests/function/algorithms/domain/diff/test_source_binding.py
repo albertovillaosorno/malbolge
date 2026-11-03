@@ -1008,6 +1008,88 @@ def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
             _ = recover_secret(candidate, cast("IdentityTree", object()))
 
 
+@pytest.mark.parametrize("record", ["binding", "share"])
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_binding_validation_ignores_late_metadata_forgery(
+    monkeypatch: pytest.MonkeyPatch, record: str, hook: str
+) -> None:
+    """Stored invalid binding metadata cannot be validated by class hooks."""
+    valid = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    first = valid.shares[0]
+    if record == "binding":
+        malformed = replace(valid, threshold=len(valid.shares) + 1)
+        owner = type(valid)
+        field = "threshold"
+        forged: object = valid.threshold
+        target = malformed
+    else:
+        malformed_share = replace(first, source_path="src/../escape.c")
+        malformed = replace(
+            valid, shares=(malformed_share, *valid.shares[1:])
+        )
+        owner = type(first)
+        field = "source_path"
+        forged = first.source_path
+        target = malformed_share
+
+    original_slot = owner.__dict__[field]
+
+    def forged_getattr(value: object, name: str) -> object:
+        if name == field and value is target:
+            return forged
+        return object.__getattribute__(value, name)
+
+    def forged_slot(value: object) -> object:
+        if value is target:
+            return forged
+        return original_slot.__get__(value, owner)
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(owner, field, property(forged_slot))
+        else:
+            patched.setattr(owner, "__getattribute__", forged_getattr)
+        with pytest.raises(SourceBindingError):
+            _ = validate_threshold_binding(malformed)
+
+
+@pytest.mark.parametrize(
+    ("record", "field", "forged"),
+    [
+        ("binding", "threshold", 99),
+        ("binding", "minimum_anchor_files", 99),
+        ("binding", "context", b"wrong-context"),
+        ("binding", "shares", ()),
+        ("share", "source_path", "src/missing.c"),
+        ("share", "masked_share", b"short"),
+    ],
+)
+def test_binding_recovery_ignores_late_metadata_hooks(
+    monkeypatch: pytest.MonkeyPatch, record: str, field: str, forged: object
+) -> None:
+    """A valid binding recovers from stored metadata, not class getters."""
+    reference = _reference()
+    binding = bind_secret(
+        reference, _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    owner = type(binding) if record == "binding" else type(binding.shares[0])
+    calls = 0
+
+    def forged_getattr(value: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__getattribute__", forged_getattr)
+        assert recover_secret(binding, reference) == _SECRET
+    assert calls == 0, "late metadata getter participated in key recovery"
+
+
 def test_recovery_rejects_impossible_share_file_topology() -> None:
     """A file cannot also be the ancestor directory of another bound file."""
     binding = bind_secret(

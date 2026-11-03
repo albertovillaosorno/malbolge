@@ -242,6 +242,87 @@ class _RecoveredShare:
     value: bytes
 
 
+# Validate and recover from stored metadata, not late class attribute hooks.
+_BINDING_CONTEXT_SLOT = cast(
+    "MemberDescriptorType", ThresholdBinding.__dict__["context"]
+)
+_BINDING_THRESHOLD_SLOT = cast(
+    "MemberDescriptorType", ThresholdBinding.__dict__["threshold"]
+)
+_BINDING_MINIMUM_FILES_SLOT = cast(
+    "MemberDescriptorType", ThresholdBinding.__dict__["minimum_anchor_files"]
+)
+_BINDING_SECRET_LENGTH_SLOT = cast(
+    "MemberDescriptorType", ThresholdBinding.__dict__["secret_length"]
+)
+_BINDING_COMMITMENT_SLOT = cast(
+    "MemberDescriptorType", ThresholdBinding.__dict__["secret_commitment"]
+)
+_BINDING_ANCHOR_POLICY_SLOT = cast(
+    "MemberDescriptorType", ThresholdBinding.__dict__["anchor_policy"]
+)
+_BINDING_SHARES_SLOT = cast(
+    "MemberDescriptorType", ThresholdBinding.__dict__["shares"]
+)
+
+_SHARE_PATH_SLOT = cast(
+    "MemberDescriptorType", BoundShare.__dict__["source_path"]
+)
+_SHARE_DIGEST_SLOT = cast(
+    "MemberDescriptorType", BoundShare.__dict__["anchor_digest"]
+)
+_SHARE_X_SLOT = cast(
+    "MemberDescriptorType", BoundShare.__dict__["x"]
+)
+_SHARE_MASKED_SLOT = cast(
+    "MemberDescriptorType", BoundShare.__dict__["masked_share"]
+)
+
+
+def _binding_context(value: ThresholdBinding) -> bytes:
+    return _BINDING_CONTEXT_SLOT.__get__(value, ThresholdBinding)
+
+
+def _binding_threshold(value: ThresholdBinding) -> int:
+    return _BINDING_THRESHOLD_SLOT.__get__(value, ThresholdBinding)
+
+
+def _binding_minimum_files(value: ThresholdBinding) -> int:
+    return _BINDING_MINIMUM_FILES_SLOT.__get__(value, ThresholdBinding)
+
+
+def _binding_secret_length(value: ThresholdBinding) -> int:
+    return _BINDING_SECRET_LENGTH_SLOT.__get__(value, ThresholdBinding)
+
+
+def _binding_commitment(value: ThresholdBinding) -> bytes:
+    return _BINDING_COMMITMENT_SLOT.__get__(value, ThresholdBinding)
+
+
+def _binding_anchor_policy(value: ThresholdBinding) -> AnchorPolicy:
+    return _BINDING_ANCHOR_POLICY_SLOT.__get__(value, ThresholdBinding)
+
+
+def _binding_shares(value: ThresholdBinding) -> tuple[BoundShare, ...]:
+    return _BINDING_SHARES_SLOT.__get__(value, ThresholdBinding)
+
+
+def _share_path(value: BoundShare) -> str:
+    return _SHARE_PATH_SLOT.__get__(value, BoundShare)
+
+
+def _share_digest(value: BoundShare) -> bytes:
+    return _SHARE_DIGEST_SLOT.__get__(value, BoundShare)
+
+
+def _share_x(value: BoundShare) -> int:
+    return _SHARE_X_SLOT.__get__(value, BoundShare)
+
+
+def _share_masked(value: BoundShare) -> bytes:
+    return _SHARE_MASKED_SLOT.__get__(value, BoundShare)
+
+
 def _hmac_sha256(key: bytes, message: bytes) -> bytes:
     # Use the import-pinned SHA-256 factory rather than mutable HMAC class
     # methods, which callbacks could replace after this module is imported.
@@ -739,12 +820,12 @@ def _validate_share_path(value: object) -> None:
 
 def _validate_share_payload(share: BoundShare, secret_length: int) -> None:
     if (
-        _NATIVE_TYPE(share.anchor_digest) is not _NATIVE_BYTES
-        or _NATIVE_LEN(share.anchor_digest) != _SHA256_BYTES
+        _NATIVE_TYPE(_share_digest(share)) is not _NATIVE_BYTES
+        or _NATIVE_LEN(_share_digest(share)) != _SHA256_BYTES
     ):
         message = "source-binding anchor digest must be 32 bytes"
         raise SourceBindingError(message)
-    coordinate = share.x
+    coordinate = _share_x(share)
     if (
         _NATIVE_TYPE(coordinate) is not _NATIVE_INT
         or coordinate <= _ZERO
@@ -753,8 +834,8 @@ def _validate_share_payload(share: BoundShare, secret_length: int) -> None:
         message = "source-binding share coordinate is outside GF(256)"
         raise SourceBindingError(message)
     if (
-        _NATIVE_TYPE(share.masked_share) is not _NATIVE_BYTES
-        or _NATIVE_LEN(share.masked_share) != secret_length
+        _NATIVE_TYPE(_share_masked(share)) is not _NATIVE_BYTES
+        or _NATIVE_LEN(_share_masked(share)) != secret_length
     ):
         message = "source-binding masked share length is invalid"
         raise SourceBindingError(message)
@@ -764,41 +845,41 @@ def _validate_bound_share(share: BoundShare, *, secret_length: int) -> None:
     if _NATIVE_TYPE(share) is not BoundShare:
         message = "source-binding share must use the exact BoundShare type"
         raise SourceBindingError(message)
-    _validate_share_path(share.source_path)
+    _validate_share_path(_share_path(share))
     _validate_share_payload(share, secret_length)
 
 
 def _validate_binding_counts(binding: ThresholdBinding) -> None:
-    threshold = binding.threshold
+    threshold = _binding_threshold(binding)
     if _NATIVE_TYPE(threshold) is not _NATIVE_INT or threshold <= _ZERO:
         message = "source-binding threshold must be a positive integer"
         raise SourceBindingError(message)
     if (
-        _NATIVE_TYPE(binding.minimum_anchor_files) is not _NATIVE_INT
-        or binding.minimum_anchor_files <= _ZERO
+        _NATIVE_TYPE(_binding_minimum_files(binding)) is not _NATIVE_INT
+        or _binding_minimum_files(binding) <= _ZERO
     ):
         message = "source-binding minimum anchor files must be a positive integer"
         raise SourceBindingError(message)
-    if binding.threshold < binding.minimum_anchor_files:
+    if _binding_threshold(binding) < _binding_minimum_files(binding):
         message = "source-binding threshold must reach minimum anchor files"
         raise SourceBindingError(message)
 
 
 def _validate_binding_secret(binding: ThresholdBinding) -> None:
-    context = binding.context
+    context = _binding_context(binding)
     if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "source-binding context must be non-empty bytes"
         raise SourceBindingError(message)
     if (
-        _NATIVE_TYPE(binding.secret_length) is not _NATIVE_INT
-        or binding.secret_length <= _ZERO
-        or binding.secret_length > _HKDF_MAX_BLOCKS * _SHA256_BYTES
+        _NATIVE_TYPE(_binding_secret_length(binding)) is not _NATIVE_INT
+        or _binding_secret_length(binding) <= _ZERO
+        or _binding_secret_length(binding) > _HKDF_MAX_BLOCKS * _SHA256_BYTES
     ):
         message = "source-binding secret length is invalid"
         raise SourceBindingError(message)
     if (
-        _NATIVE_TYPE(binding.secret_commitment) is not _NATIVE_BYTES
-        or _NATIVE_LEN(binding.secret_commitment) != _SHA256_BYTES
+        _NATIVE_TYPE(_binding_commitment(binding)) is not _NATIVE_BYTES
+        or _NATIVE_LEN(_binding_commitment(binding)) != _SHA256_BYTES
     ):
         message = "source-binding secret commitment must be 32 bytes"
         raise SourceBindingError(message)
@@ -807,22 +888,23 @@ def _validate_binding_secret(binding: ThresholdBinding) -> None:
 def _validate_binding_header(binding: ThresholdBinding) -> None:
     _validate_binding_counts(binding)
     _validate_binding_secret(binding)
-    if _NATIVE_TYPE(binding.anchor_policy) is not AnchorPolicy:
+    if _NATIVE_TYPE(_binding_anchor_policy(binding)) is not AnchorPolicy:
         message = "source-binding anchor policy must use the exact AnchorPolicy type"
         raise SourceBindingError(message)
 
 
 def _validate_binding_extent(binding: ThresholdBinding) -> None:
-    if _NATIVE_TYPE(binding.shares) is not _NATIVE_TUPLE or not binding.shares:
+    shares = _binding_shares(binding)
+    if _NATIVE_TYPE(shares) is not _NATIVE_TUPLE or not shares:
         message = "source binding must contain an immutable non-empty share set"
         raise SourceBindingError(message)
-    if _NATIVE_LEN(binding.shares) > _MAX_SHARES:
+    if _NATIVE_LEN(_binding_shares(binding)) > _MAX_SHARES:
         message = "source-binding share set exceeds the supported maximum"
         raise SourceBindingError(message)
-    if binding.threshold > _NATIVE_LEN(binding.shares):
+    if _binding_threshold(binding) > _NATIVE_LEN(_binding_shares(binding)):
         message = "source-binding threshold exceeds the available share set"
         raise SourceBindingError(message)
-    if binding.minimum_anchor_files > _NATIVE_LEN(binding.shares):
+    if _binding_minimum_files(binding) > _NATIVE_LEN(_binding_shares(binding)):
         message = "source-binding minimum anchor files exceeds the share set"
         raise SourceBindingError(message)
 
@@ -842,20 +924,22 @@ def _validate_binding_shares(binding: ThresholdBinding) -> None:
     x_values: set[int] = _NATIVE_SET()
     anchor_keys: set[tuple[str, bytes]] = _NATIVE_SET()
     source_paths: set[str] = _NATIVE_SET()
-    for share in binding.shares:
-        _validate_bound_share(share, secret_length=binding.secret_length)
-        if share.x in x_values:
+    for share in _binding_shares(binding):
+        _validate_bound_share(
+            share, secret_length=_binding_secret_length(binding)
+        )
+        if _share_x(share) in x_values:
             message = "source-binding share coordinates must be unique"
             raise SourceBindingError(message)
-        anchor_key = (share.source_path, share.anchor_digest)
+        anchor_key = (_share_path(share), _share_digest(share))
         if anchor_key in anchor_keys:
             message = "source-binding share anchors must be unique"
             raise SourceBindingError(message)
-        x_values.add(share.x)
+        x_values.add(_share_x(share))
         anchor_keys.add(anchor_key)
-        source_paths.add(share.source_path)
+        source_paths.add(_share_path(share))
     _require_possible_share_paths(source_paths)
-    if binding.minimum_anchor_files > _NATIVE_LEN(source_paths):
+    if _binding_minimum_files(binding) > _NATIVE_LEN(source_paths):
         message = "source-binding minimum anchor files exceeds represented files"
         raise SourceBindingError(message)
 
@@ -897,28 +981,30 @@ def _recover_available_shares(
     binding: ThresholdBinding,
     candidate: IdentityTree,
 ) -> tuple[_RecoveredShare, ...]:
-    candidate_materials = _candidate_materials(candidate, binding.anchor_policy)
+    candidate_materials = _candidate_materials(
+        candidate, _binding_anchor_policy(binding)
+    )
     available: list[_RecoveredShare] = []
-    for bound in binding.shares:
+    for bound in _binding_shares(binding):
         material = candidate_materials.get(
             (
-                bound.source_path,
-                bound.anchor_digest,
+                _share_path(bound),
+                _share_digest(bound),
             )
         )
         if material is None:
             continue
         mask = _share_mask(
             material,
-            binding.context,
-            x=bound.x,
-            length=binding.secret_length,
+            _binding_context(binding),
+            x=_share_x(bound),
+            length=_binding_secret_length(binding),
         )
         available.append(
             _RecoveredShare(
-                source_path=bound.source_path,
-                x=bound.x,
-                value=_xor_bytes(bound.masked_share, mask),
+                source_path=_share_path(bound),
+                x=_share_x(bound),
+                value=_xor_bytes(_share_masked(bound), mask),
             )
         )
     return _NATIVE_TUPLE(available)
@@ -929,10 +1015,10 @@ def _require_recovery_distribution(
     available: tuple[_RecoveredShare, ...],
 ) -> None:
     available_files = {share.source_path for share in available}
-    if _NATIVE_LEN(available_files) < binding.minimum_anchor_files:
+    if _NATIVE_LEN(available_files) < _binding_minimum_files(binding):
         message = (
             "insufficient distributed source-bound files: "
-            f"need {binding.minimum_anchor_files}, "
+            f"need {_binding_minimum_files(binding)}, "
             f"found {_NATIVE_LEN(available_files)}"
         )
         raise SourceBindingError(message)
@@ -952,11 +1038,11 @@ def _select_distributed_quorum(
     for share in available:
         if share.source_path not in first_by_file:
             first_by_file[share.source_path] = share
-    required_files = binding.minimum_anchor_files
+    required_files = _binding_minimum_files(binding)
     distributed = _NATIVE_TUPLE(first_by_file.values())[:required_files]
     chosen_x = {share.x for share in distributed}
     remaining = _NATIVE_TUPLE(s for s in available if s.x not in chosen_x)
-    remaining_count = binding.threshold - _NATIVE_LEN(distributed)
+    remaining_count = _binding_threshold(binding) - _NATIVE_LEN(distributed)
     return (*distributed, *remaining[:remaining_count])
 
 
@@ -979,10 +1065,11 @@ def recover_secret(
         message = "source-binding candidate must use the exact IdentityTree type"
         raise SourceBindingError(message)
     available = _recover_available_shares(admitted, candidate)
-    if _NATIVE_LEN(available) < admitted.threshold:
+    if _NATIVE_LEN(available) < _binding_threshold(admitted):
         message = (
             "insufficient source-bound anchors: "
-            f"need {admitted.threshold}, found {_NATIVE_LEN(available)}"
+            f"need {_binding_threshold(admitted)}, "
+            f"found {_NATIVE_LEN(available)}"
         )
         raise SourceBindingError(message)
     _require_recovery_distribution(admitted, available)
@@ -991,7 +1078,9 @@ def recover_secret(
         for share in _select_distributed_quorum(admitted, available)
     )
     secret = _recover_shares(raw_shares)
-    if _secret_commitment(admitted.context, secret) != admitted.secret_commitment:
+    if _secret_commitment(
+        _binding_context(admitted), secret
+    ) != _binding_commitment(admitted):
         message = "recovered source-bound secret failed commitment"
         raise SourceBindingError(message)
     return secret
