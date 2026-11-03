@@ -197,6 +197,13 @@ format.
 - Behavior authoring derives identity transcripts from source and distinct bug
   `present`/`fixed` transcripts from source versus corrected oracle; a third
   candidate transcript becomes `unknown` and fails closed.
+- Behavior transcript matching and classification now pin the original
+  `ProbeTranscript` ID, selected digest, and command-count slots, as well as
+  `ProbeProgram` identities. Six red-first getter-spoof cases (`68324e4e5`)
+  reproduced forged batch admission, empty selections, and wrong bug routing.
+  All 124 focused tests passed after commit and 2,637 integrated diff tests
+  before it. Direct process-state mutation and external source races still
+  require trusted-host isolation and coordination.
 - The first DOOM executable identity probe compiles real candidate `m_fixed.c`
   against an MIT freestanding harness on an isolated mirror and digests its
   no-CRT

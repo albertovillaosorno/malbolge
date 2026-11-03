@@ -638,6 +638,17 @@ remain
 consumer policy; the generic engine only owns execution and transcript
 semantics.
 
+Behavior transcript batch matching, selected-digest admission, identity
+observation, and present/fixed bug classification now read the original
+`ProbeTranscript` ID, digest, and selected-command slots. Program enumeration,
+profile assembly, and observation labels likewise use the original
+`ProbeProgram` ID slot. This prevents post-authoring class getters from
+relabelling a foreign transcript, inventing selected output, or changing
+present/fixed routing. Six red-first getter-spoof regressions are fixed by
+`68324e4e5`: all 124 focused behavior tests passed after the commit, and
+2,637 integrated diff tests passed before it. This is a late class-hook guard,
+not a defense against direct mutable process state or external writers.
+
 ### First DOOM Executable Identity Probe
 
 The first consumer program is
