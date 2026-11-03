@@ -37,6 +37,7 @@ from __future__ import annotations
 import builtins
 from dataclasses import dataclass
 from enum import StrEnum
+from types import MemberDescriptorType
 import math
 from typing import cast
 
@@ -377,7 +378,10 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
     if _NATIVE_SET(apply) & _NATIVE_SET(skip):
         message = "behavior correction routes must be disjoint"
         raise BehaviorPolicyError(message)
-    _ = _require_string_tuple(evidence.reasons, "behavior evidence reasons")
+    _ = _require_string_tuple(
+        _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence),
+        "behavior evidence reasons",
+    )
     _validate_behavior_evidence_binding(evidence)
 
 
@@ -407,7 +411,14 @@ class BehaviorEvidence:
             True exactly when no deterministic rejection reason exists.
 
         """
-        return not self.reasons
+        return not _BEHAVIOR_REASONS_SLOT.__get__(self, BehaviorEvidence)
+
+
+# The class descriptor can change after domain callbacks; trust the saved
+# original frozen slot reader for evidence binding and admission decisions.
+_BEHAVIOR_REASONS_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["reasons"]
+)
 
 
 def _validate_fraction(name: str, value: object) -> float:
@@ -570,7 +581,7 @@ def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
             "behavior evidence correction routes do not match observations"
         )
         raise BehaviorPolicyError(message)
-    if reasons != evidence.reasons:
+    if reasons != _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence):
         message = "behavior evidence reasons do not match observations"
         raise BehaviorPolicyError(message)
 
@@ -638,7 +649,8 @@ def require_behavior(
 
     """
     evidence = evaluate_behavior(profile, observations, minimum_similarity)
-    if evidence.reasons:
-        message = "; ".join(evidence.reasons)
+    reasons = _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence)
+    if reasons:
+        message = "; ".join(reasons)
         raise BehaviorAdmissionError(message)
     return evidence

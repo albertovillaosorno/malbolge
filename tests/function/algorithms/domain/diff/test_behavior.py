@@ -172,6 +172,82 @@ def test_behavior_evidence_rejects_incoherent_direct_construction() -> None:
         )
 
 
+def test_behavior_evidence_rejects_late_reason_getattribute_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumer class hooks cannot approve erased compatibility failures."""
+    rejected = evaluate_behavior(
+        _profile(), _observations(compatible=False),
+        _MINIMUM_BEHAVIOR_SIMILARITY,
+    )
+    original_reasons = rejected.reasons
+    calls = 0
+
+    def forged_attribute(value: object, name: str) -> object:
+        nonlocal calls
+        if name == "reasons":
+            calls += 1
+            return original_reasons
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            BehaviorEvidence, "__getattribute__", forged_attribute
+        )
+        with pytest.raises(BehaviorPolicyError, match="reasons do not match"):
+            _ = replace(rejected, reasons=())
+    assert calls == 0, "late reason getter participated in evidence binding"
+
+
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_behavior_evidence_admitted_ignores_late_reason_hook(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """An existing failed behavior receipt cannot be promoted by a hook."""
+    rejected = evaluate_behavior(
+        _profile(), _observations(compatible=False),
+        _MINIMUM_BEHAVIOR_SIMILARITY,
+    )
+    assert not rejected.admitted
+
+    def forged_attribute(value: object, name: str) -> object:
+        if name == "reasons":
+            return ()
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(
+                BehaviorEvidence, "reasons", property(lambda _: ())
+            )
+        else:
+            patched.setattr(
+                BehaviorEvidence, "__getattribute__", forged_attribute
+            )
+        assert not rejected.admitted
+
+
+def test_require_behavior_ignores_late_reason_getattribute_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Compatibility failure retains its typed admission error under hooks."""
+
+    def forged_attribute(value: object, name: str) -> object:
+        if name == "reasons":
+            return ()
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            BehaviorEvidence, "__getattribute__", forged_attribute
+        )
+        with pytest.raises(BehaviorAdmissionError, match="compatibility"):
+            _ = require_behavior(
+                _profile(), _observations(compatible=False),
+                _MINIMUM_BEHAVIOR_SIMILARITY,
+            )
+
+
 def test_direct_behavior_evidence_cannot_erase_compatibility_failure() -> None:
     """Reconstructing evidence cannot turn failed preconditions into success."""
     rejected = evaluate_behavior(
