@@ -4990,3 +4990,93 @@ def test_compatible_rejects_forged_semantic_after_late_validator_swap(
                 semantic=forged,
             )
     assert calls == 0, "a late semantic validator admitted invalid evidence"
+
+
+@pytest.mark.parametrize("hook", ["joinpath", "__truediv__", "__itruediv__"])
+def test_compatible_safe_path_rejects_late_native_join_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Changed native joins cannot redirect reads or hide linked ancestors."""
+    if hook == "joinpath":
+        root = tmp_path / "source"
+        root.mkdir()
+        relative = "original.bin"
+        false_path = root / "forged.bin"
+    else:
+        root, _, _ = _linked_compatible_paths(tmp_path, escape=False)
+        relative = "linked/payload.bin"
+        false_path = root / "real"
+    original = getattr(Path, hook, None)
+    called = 0
+
+    def forged_join(path: Path, *parts: str) -> Path:
+        nonlocal called
+        expected_parts = (
+            ("original.bin",) if hook == "joinpath" else ("linked",)
+        )
+        if path == root and parts == expected_parts:
+            called += 1
+            return false_path
+        if original is not None:
+            return cast("Path", original(path, *parts))
+        return Path.__truediv__(path, *parts)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, hook, forged_join, raising=False)
+        with pytest.raises(
+            CompatiblePlanError, match="resolution hooks changed"
+        ):
+            _ = _compatible_safe_path(root, relative)
+    assert called == 0, "late native join hook was invoked before admission"
+
+
+@pytest.mark.parametrize("hook", ["__truediv__", "__itruediv__"])
+def test_compatible_ancestor_rechecks_native_join_after_status_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A preceding filesystem-status callback cannot retarget a later join."""
+    root = tmp_path / "source"
+    first = root / "first"
+    first.mkdir(parents=True)
+    real = first / "real"
+    real.mkdir()
+    linked = first / "linked"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except OSError, NotImplementedError:
+        pytest.skip("directory symlinks unavailable")
+    native_status = cast(
+        "Callable[[Path, str], os.stat_result | None]",
+        vars(compatible_module)["_path_status"],
+    )
+    native_join = getattr(Path, hook, None)
+    native_divide = Path.__truediv__
+    replaced = False
+    called = 0
+
+    def forged_join(path: Path, *parts: str) -> Path:
+        nonlocal called
+        if path == first and parts == ("linked",):
+            called += 1
+            return real
+        if native_join is not None:
+            return cast("Path", native_join(path, *parts))
+        return cast("Path", native_divide(path, *parts))
+
+    with monkeypatch.context() as patched:
+
+        def mutate_status(path: Path, context: str) -> os.stat_result | None:
+            nonlocal replaced
+            observed = native_status(path, context)
+            if path == first and not replaced:
+                replaced = True
+                patched.setattr(Path, hook, forged_join, raising=False)
+            return observed
+
+        patched.setattr(compatible_module, "_path_status", mutate_status)
+        with pytest.raises(
+            CompatiblePlanError, match="resolution hooks changed"
+        ):
+            _ = _compatible_safe_path(root, "first/linked/payload.bin")
+    assert replaced, "the status callback did not reach the mid-call swap"
+    assert called == 0, "a late join executed before native hook revalidation"

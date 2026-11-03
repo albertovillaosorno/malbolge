@@ -138,6 +138,11 @@ _NATIVE_STAT_ISDIR = stat.S_ISDIR
 # Capturing Path.resolve does not capture its dynamic host and class hooks.
 _RESOLVER_HOOK_NAMES = (
     "with_segments",
+    # Native path joining happens after root resolution and during linked
+    # ancestor checks; forged joins may still resolve inside the root.
+    "joinpath",
+    "__truediv__",
+    "__itruediv__",
     "__new__",
     "__init__",
     "__getattribute__",
@@ -1319,13 +1324,17 @@ def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
 def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
     current = root
     for component in relative_path.split("/")[:-1]:
+        # A previous status call may have mutated class hooks between steps.
+        _require_native_resolution()
         current /= component
+        _require_native_resolution()
         status = _path_status(current, "compatible path ancestor")
         if status is not None and _is_linked_ancestor(current, status):
             message = (
                 f"compatible linked path component is unsupported: {current}"
             )
             raise CompatiblePlanError(message)
+    _require_native_resolution()
 
 
 def _safe_path(root: Path, relative_path: str) -> Path:
