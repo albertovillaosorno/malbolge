@@ -205,6 +205,39 @@ class _HostileBehaviorProbeError(ProbeExecutionError):
         raise AssertionError(message)
 
 
+def test_context_resolution_error_ignores_late_path_string_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Path diagnostic formatting must not invoke post-import host hooks."""
+    failure = PermissionError("blocked context root")
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        del path, strict
+        raise failure
+
+    def hostile_path_string(path: Path) -> str:
+        del path
+        message = "hostile path formatter executed"
+        raise AssertionError(message)
+
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    oracle_context = _context(oracle, tmp_path)
+    caught: BehaviorProgramError | None = None
+    with monkeypatch.context() as patch:
+        patch.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
+        patch.setattr(Path, "__str__", hostile_path_string)
+        try:
+            _ = author_behavior_programs(
+                _programs(), source_context, oracle_context
+            )
+        except BehaviorProgramError as error:
+            caught = error
+
+    assert caught is not None, "context failure lost its typed boundary"
+    _expect(caught.__cause__ is failure, "context failure lost original cause")
+
+
 def test_behavior_context_error_does_not_format_foreign_exception(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

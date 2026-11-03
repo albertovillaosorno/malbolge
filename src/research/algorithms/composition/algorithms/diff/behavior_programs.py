@@ -67,8 +67,9 @@ if TYPE_CHECKING:
     from algorithms.diff.model import TreeSnapshot
 
 
-# Bind the host resolver before executable domain hooks can replace it.
+# Bind native path operations before domain hooks can replace them.
 _NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_PATH_STR = Path.__str__
 _NUL = "\x00"
 
 
@@ -383,7 +384,11 @@ def _resolved_context_path(path: Path, description: str) -> Path:
         resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _behavior_error_detail(error)
-        message = f"behavior {description} resolution failed: {path}: {detail}"
+        native_path = _NATIVE_PATH_STR(path)
+        message = (
+            f"behavior {description} resolution failed: "
+            f"{native_path}: {detail}"
+        )
         raise BehaviorProgramError(message) from error
     if type(resolved) is not type(Path()):
         message = (
