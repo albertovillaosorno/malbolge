@@ -35,7 +35,6 @@
 from __future__ import annotations
 
 from builtins import any as _native_any
-from builtins import bool as _native_bool
 from builtins import bytes as _native_bytes
 from builtins import enumerate as _native_enumerate
 from builtins import int as _native_int
@@ -51,8 +50,6 @@ from builtins import type as _native_type
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
-from ntpath import isreserved as _native_isreserved
-from ntpath import splitdrive as _native_splitdrive
 from typing import cast
 
 _ZERO = 0
@@ -61,6 +58,22 @@ _HEX_DIGITS = frozenset("0123456789abcdef")
 _BACKSLASH = "\\"
 _NUL = "\x00"
 _UNSAFE_COMPONENTS = frozenset(("", ".", ".."))
+# Freeze Windows path-policy literals instead of calling ntpath helpers that
+# resolve late, mutable os.fspath, splitroot, and builtin hooks.
+_WINDOWS_RESERVED_CHARACTERS = frozenset(
+    '*?"<>/\\:|' + "".join(chr(code) for code in range(32))
+)
+_WINDOWS_DEVICE_NAMES = frozenset(
+    (
+        "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$",
+        "COM¹", "COM²", "COM³", "LPT¹", "LPT²", "LPT³",
+    )
+    + tuple(
+        f"{prefix}{index}"
+        for prefix in ("COM", "LPT")
+        for index in range(1, 10)
+    )
+)
 
 
 class TreeModelError(ValueError):
@@ -79,6 +92,15 @@ def _validate_sha256_hex(value: object, context: str) -> None:
         raise TreeModelError(message)
 
 
+def _reserved_windows_component(component: str) -> bool:
+    if component[-1:] in (".", " ") and component not in (".", ".."):
+        return True
+    if _native_any(char in _WINDOWS_RESERVED_CHARACTERS for char in component):
+        return True
+    stem = component.partition(".")[0].rstrip(" ").upper()
+    return stem in _WINDOWS_DEVICE_NAMES
+
+
 def _require_canonical_relative_path(value: object, context: str) -> None:
     if _native_type(value) is not _native_str or not value:
         message = f"{context} must be a canonical relative path"
@@ -87,8 +109,10 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
     unsafe = (
         _BACKSLASH in value
         or _NUL in value
-        or _native_bool(_native_splitdrive(value)[0])
-        or _native_isreserved(value)
+        or _native_any(
+            _reserved_windows_component(component)
+            for component in value.split("/")
+        )
         or _native_any(part in _UNSAFE_COMPONENTS for part in value.split("/"))
     )
     if unsafe:

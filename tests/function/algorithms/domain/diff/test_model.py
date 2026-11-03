@@ -35,8 +35,11 @@
 from __future__ import annotations
 
 import builtins
-from typing import TYPE_CHECKING
-from typing import cast
+import ntpath
+import os
+from typing import TYPE_CHECKING, cast
+
+import pytest
 
 from algorithms.diff import model as model_module
 from algorithms.diff.model import ExactAuthoringPlan
@@ -51,7 +54,6 @@ from algorithms.diff.model import TreeSnapshot
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    import pytest
 
 _HASH = "0" * 64
 
@@ -276,3 +278,55 @@ def test_model_native_passthrough_topology_survives_late_enumerate_alias(
         except TreeModelError:
             rejected = True
     assert rejected, "overlapping native roots were accepted"
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    ["C:relative", "CON", "src/COM1", "src/stream:fork", "src/trailing."],
+)
+def test_model_rejects_late_ntpath_splitroot_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe: str,
+) -> None:
+    """Imported path helpers cannot trust mutable ntpath dependencies."""
+
+    def hide_windows_path(value: object) -> tuple[str, str, str]:
+        del value
+        return "", "", "safe"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ntpath, "splitroot", hide_windows_path)
+        with pytest.raises(TreeModelError, match="canonical relative path"):
+            _ = FileRecord(unsafe, _HASH, 1)
+
+
+@pytest.mark.parametrize("unsafe", ["D:relative", "NUL"])
+def test_model_rejects_late_os_fspath_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe: str,
+) -> None:
+    """A post-import filesystem conversion hook cannot relabel paths."""
+
+    def hide_windows_path(value: object) -> str:
+        del value
+        return "safe"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "fspath", hide_windows_path)
+        with pytest.raises(TreeModelError, match="canonical relative path"):
+            _ = FileRecord(unsafe, _HASH, 1)
+
+
+def test_model_rejects_late_builtin_any_in_ntpath(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows device-name rejection cannot use mutable ntpath any()."""
+
+    def omit_reserved_names(values: object) -> bool:
+        del values
+        return False
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "any", omit_reserved_names)
+        with pytest.raises(TreeModelError, match="canonical relative path"):
+            _ = FileRecord("CON", _HASH, 1)
