@@ -454,26 +454,23 @@ def _require_equal_evidence_value(
 
 
 def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
-    files = _require_file_evidence_tuple(evidence.files)
+    source, coverage, eligible_count, satisfied_count, records, policy = (
+        _tree_evidence_fields(evidence)
+    )
+    files = _require_file_evidence_tuple(records)
     aggregates = _tree_file_aggregates(files)
     _require_equal_evidence_value(
-        _require_evidence_fraction(
-            evidence.source_similarity,
-            "tree source similarity",
-        ),
+        _require_evidence_fraction(source, "tree source similarity"),
         aggregates[0],
         "tree source similarity does not match file evidence",
     )
     _require_equal_evidence_value(
-        _require_evidence_fraction(
-            evidence.anchor_coverage,
-            "tree anchor coverage",
-        ),
+        _require_evidence_fraction(coverage, "tree anchor coverage"),
         aggregates[1],
         "tree anchor coverage does not match file evidence",
     )
     eligible = _require_evidence_count(
-        evidence.eligible_anchor_files,
+        eligible_count,
         "eligible anchor file count",
     )
     _require_equal_evidence_value(
@@ -482,7 +479,7 @@ def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
         "eligible anchor file count does not match file evidence",
     )
     satisfied = _require_evidence_count(
-        evidence.satisfied_anchor_files,
+        satisfied_count,
         "satisfied anchor file count",
     )
     if satisfied > eligible:
@@ -496,21 +493,24 @@ def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
     if satisfied > matched_eligible:
         message = "satisfied anchor file count exceeds matched eligible files"
         raise AdmissionPolicyError(message)
-    _validate_policy_bound_evidence(evidence, files, aggregates)
+    _validate_policy_bound_evidence(
+        evidence, files, aggregates, satisfied, policy
+    )
 
 
 def _validate_policy_bound_evidence(
     evidence: TreeAdmissionEvidence,
     files: tuple[FileAdmissionEvidence, ...],
     aggregates: tuple[float, float, int],
+    satisfied: int,
+    policy: AdmissionPolicy,
 ) -> None:
     reasons = _require_reason_tuple(
         _TREE_REASONS_SLOT.__get__(evidence, TreeAdmissionEvidence)
     )
-    if _NATIVE_TYPE(evidence.policy) is not AdmissionPolicy:
+    if _NATIVE_TYPE(policy) is not AdmissionPolicy:
         message = "tree admission evidence requires exact AdmissionPolicy"
         raise AdmissionPolicyError(message)
-    policy = evidence.policy
     _, minimum_coverage, _, minimum_per_file, _, _ = _policy_fields(policy)
     if _NATIVE_ANY(
         (_file_evidence_fields(item)[2] is not None)
@@ -525,7 +525,7 @@ def _validate_policy_bound_evidence(
         and cast("float", _file_evidence_fields(item)[2]) >= minimum_coverage
         for item in files
     )
-    if evidence.satisfied_anchor_files != expected_satisfied:
+    if satisfied != expected_satisfied:
         message = "satisfied anchor file count does not match admission policy"
         raise AdmissionPolicyError(message)
     aggregate = _AggregateEvidence(
@@ -640,6 +640,45 @@ class TreeAdmissionEvidence:
 _TREE_REASONS_SLOT = cast(
     "MemberDescriptorType", TreeAdmissionEvidence.__dict__["reasons"]
 )
+_TREE_SOURCE_SLOT = cast(
+    "MemberDescriptorType", TreeAdmissionEvidence.__dict__["source_similarity"]
+)
+_TREE_ANCHOR_SLOT = cast(
+    "MemberDescriptorType", TreeAdmissionEvidence.__dict__["anchor_coverage"]
+)
+_TREE_ELIGIBLE_SLOT = cast(
+    "MemberDescriptorType",
+    TreeAdmissionEvidence.__dict__["eligible_anchor_files"],
+)
+_TREE_SATISFIED_SLOT = cast(
+    "MemberDescriptorType",
+    TreeAdmissionEvidence.__dict__["satisfied_anchor_files"],
+)
+_TREE_FILES_SLOT = cast(
+    "MemberDescriptorType", TreeAdmissionEvidence.__dict__["files"]
+)
+_TREE_POLICY_SLOT = cast(
+    "MemberDescriptorType", TreeAdmissionEvidence.__dict__["policy"]
+)
+
+
+def _tree_evidence_fields(
+    evidence: TreeAdmissionEvidence,
+) -> tuple[
+    float, float, int, int, tuple[FileAdmissionEvidence, ...], AdmissionPolicy
+]:
+    owner = TreeAdmissionEvidence
+    return (
+        cast("float", _TREE_SOURCE_SLOT.__get__(evidence, owner)),
+        cast("float", _TREE_ANCHOR_SLOT.__get__(evidence, owner)),
+        cast("int", _TREE_ELIGIBLE_SLOT.__get__(evidence, owner)),
+        cast("int", _TREE_SATISFIED_SLOT.__get__(evidence, owner)),
+        cast(
+            "tuple[FileAdmissionEvidence, ...]",
+            _TREE_FILES_SLOT.__get__(evidence, owner),
+        ),
+        cast("AdmissionPolicy", _TREE_POLICY_SLOT.__get__(evidence, owner)),
+    )
 
 
 def identity_tree(files: dict[str, bytes]) -> IdentityTree:

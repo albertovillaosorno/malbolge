@@ -1518,3 +1518,88 @@ def test_admission_ignores_late_file_score_forgery(
         observed = evaluate_admission(reference, candidate, policy)
     assert observed == expected
     assert calls == 0, "mutable file score hook influenced source admission"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "source_similarity",
+        "anchor_coverage",
+        "eligible_anchor_files",
+        "satisfied_anchor_files",
+        "files",
+        "policy",
+    ],
+)
+def test_tree_evidence_constructor_rejects_late_field_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    hook: str,
+) -> None:
+    """A source receipt must validate stored scores and policy, not getters."""
+    file = FileAdmissionEvidence("source.c", 1.0, 1.0, 1, 1)
+    valid: dict[str, object] = {
+        "source_similarity": 1.0,
+        "anchor_coverage": 1.0,
+        "eligible_anchor_files": 1,
+        "satisfied_anchor_files": 1,
+        "files": (file,),
+        "policy": AdmissionPolicy(0.5, 0.5, 1, 1),
+    }
+    invalid: dict[str, object] = {
+        "source_similarity": 0.0,
+        "anchor_coverage": 0.0,
+        "eligible_anchor_files": 0,
+        "satisfied_anchor_files": 0,
+        "files": (),
+        "policy": object(),
+    }
+    values = valid | {field: invalid[field]}
+    calls = 0
+
+    def forged_attribute(value: TreeAdmissionEvidence, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return valid[field]
+        return cast("object", object.__getattribute__(value, name))
+
+    def forged_property(value: TreeAdmissionEvidence) -> object:
+        return forged_attribute(value, field)
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            original_slot = cast(
+                "MemberDescriptorType", TreeAdmissionEvidence.__dict__[field]
+            )
+
+            def store(value: TreeAdmissionEvidence, stored: object) -> None:
+                original_slot.__set__(value, stored)
+
+            patch.setattr(
+                TreeAdmissionEvidence,
+                field,
+                property(forged_property, store),
+            )
+        else:
+            patch.setattr(
+                TreeAdmissionEvidence, "__getattribute__", forged_attribute
+            )
+        with pytest.raises(AdmissionPolicyError):
+            _ = TreeAdmissionEvidence(
+                source_similarity=cast("float", values["source_similarity"]),
+                anchor_coverage=cast("float", values["anchor_coverage"]),
+                eligible_anchor_files=cast(
+                    "int", values["eligible_anchor_files"]
+                ),
+                satisfied_anchor_files=cast(
+                    "int", values["satisfied_anchor_files"]
+                ),
+                files=cast(
+                    "tuple[FileAdmissionEvidence, ...]", values["files"]
+                ),
+                reasons=(),
+                policy=cast("AdmissionPolicy", values["policy"]),
+            )
+    assert calls == 0, "late tree getter participated in source admission"
