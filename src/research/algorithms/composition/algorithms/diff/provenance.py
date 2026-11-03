@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import os
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
@@ -56,6 +57,12 @@ _NUL = "\x00"
 _COMMIT_HEX_LENGTH = 40
 _SHA256_HEX_LENGTH = 64
 _LOWER_HEX = frozenset("0123456789abcdef")
+# Snapshot acceptance must not depend on later consumer-global hooks.
+_NATIVE_ALL = builtins.all
+_NATIVE_ANY = builtins.any
+_NATIVE_SET = builtins.set
+_NATIVE_SORTED = builtins.sorted
+_NATIVE_ZIP = builtins.zip
 _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
@@ -118,7 +125,7 @@ def _validate_repository(repository: object) -> None:
 
 
 def _is_lower_hex(value: str, length: int) -> bool:
-    return len(value) == length and all(char in _LOWER_HEX for char in value)
+    return len(value) == length and _NATIVE_ALL(char in _LOWER_HEX for char in value)
 
 
 def _validate_commit(commit: object) -> None:
@@ -146,18 +153,20 @@ def _validate_roots(roots: object) -> None:
         message = "source pin roots must use the exact immutable tuple type"
         raise SourcePinError(message)
     items = cast("tuple[object, ...]", roots)
-    if any(type(root) is not str for root in items):
+    if _NATIVE_ANY(type(root) is not str for root in items):
         message = "source pin roots must contain exact string paths"
         raise SourcePinError(message)
     string_roots = cast("tuple[str, ...]", roots)
-    if not string_roots or string_roots != tuple(sorted(set(string_roots))):
+    if not string_roots or string_roots != tuple(
+        _NATIVE_SORTED(_NATIVE_SET(string_roots))
+    ):
         message = "source pin roots must be unique and sorted"
         raise SourcePinError(message)
     _require_disjoint_roots(string_roots)
 
 
 def _require_disjoint_roots(roots: tuple[str, ...]) -> None:
-    selected: set[str] = set()
+    selected: set[str] = _NATIVE_SET()
     for root in roots:
         _ = _validate_relative_path(root)
         components = root.split("/")
@@ -212,7 +221,7 @@ def _validate_relative_path(relative_path: object) -> str:
         or relative_path.startswith("/")
         or bool(_native_splitdrive(relative_path)[0])
         or _native_isreserved(relative_path)
-        or any(part in {"", _DOT, _PARENT} for part in relative_path.split("/"))
+        or _NATIVE_ANY(part in {"", _DOT, _PARENT} for part in relative_path.split("/"))
     )
     if unsafe:
         message = f"unsafe pinned source path: {relative_path!r}"
@@ -313,7 +322,7 @@ def _directory_paths(selected: Path) -> tuple[Path, ...]:
             raise
         except (OSError, ValueError, RuntimeError) as error:
             _raise_source_walk_error(error)
-    return tuple(sorted(paths))
+    return tuple(_NATIVE_SORTED(paths))
 
 
 def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
@@ -346,7 +355,9 @@ def _pinned_files(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
     if len(unique) != len(files):
         message = "pinned source roots overlap"
         raise SourcePinError(message)
-    return tuple(sorted(files, key=lambda path: _native_relative_label(path, root)))
+    return tuple(
+        _NATIVE_SORTED(files, key=lambda path: _native_relative_label(path, root))
+    )
 
 
 def _validate_root_path(root: object) -> None:
@@ -443,7 +454,7 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
     if _pinned_files(resolved_root, roots) != files:
         message = "pinned source file set changed during snapshot"
         raise SourcePinError(message)
-    for path, before in zip(files, receipts, strict=True):
+    for path, before in _NATIVE_ZIP(files, receipts, strict=True):
         relative_text = _native_relative_label(path, resolved_root)
         if _pinned_file_receipt(path, relative_text) != before:
             message = f"pinned source file changed during snapshot: {relative_text}"

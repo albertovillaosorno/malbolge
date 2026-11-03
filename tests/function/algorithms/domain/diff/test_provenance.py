@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import ntpath
 import os
@@ -963,6 +964,58 @@ def test_source_pin_rejects_foreign_runtime_metadata() -> None:
         _ = SourcePin("repo", _COMMIT, ("src",), 1, cast("str", object()))
 
 
+@pytest.mark.parametrize(
+    "roots",
+    [
+        ("src/../escaped",),
+        (cast("str", cast("object", 11)),),
+    ],
+)
+def test_source_pin_root_admission_ignores_late_any_override(
+    monkeypatch: pytest.MonkeyPatch, roots: tuple[str, ...]
+) -> None:
+    """Late consumer hooks cannot admit unsafe or foreign selected roots."""
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        with pytest.raises(SourcePinError):
+            _ = SourcePin("repo", _COMMIT, roots, 1, "0" * 64)
+
+
+@pytest.mark.parametrize("record", ["commit", "snapshot"])
+def test_source_pin_digest_admission_ignores_late_all_override(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Mutable all cannot forge malformed SHA-256 or commit hex evidence."""
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "all", lambda values: True)
+        with pytest.raises(SourcePinError):
+            if record == "commit":
+                _ = SourcePin("repo", "g" * 40, ("src",), 1, "0" * 64)
+            else:
+                _ = SourcePinEvidence(1, "g" * 64)
+
+
+@pytest.mark.parametrize("roots", [("z", "a"), ("src", "src")])
+def test_source_pin_root_order_ignores_late_sorted_and_set_overrides(
+    monkeypatch: pytest.MonkeyPatch, roots: tuple[str, ...]
+) -> None:
+    """Consumer collections cannot replace unique, sorted source labels."""
+
+    class ForgedSet(list[str]):
+        def add(self, value: str) -> None:
+            self.append(value)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "sorted", lambda values, *, key=None: list(values))
+        patched.setattr(builtins, "set", lambda values=(): ForgedSet(values))
+        try:
+            _ = SourcePin("repo", _COMMIT, roots, 1, "0" * 64)
+        except SourcePinError:
+            rejected = True
+    assert rejected, "late collection hooks admitted malformed source-pin roots"
+
+
 def test_source_pin_rejects_nul_root_before_filesystem_access(
     tmp_path: Path,
 ) -> None:
@@ -1085,3 +1138,50 @@ def test_source_pin_rejects_file_mutation_after_earlier_read(
     with pytest.raises(SourcePinError, match="changed during snapshot"):
         _ = require_source_pin(tmp_path, pin)
     _expect(changed, "the during-snapshot content mutation did not execute")
+
+
+def test_pinned_snapshot_ignores_late_sorted_file_drop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late sorting hooks cannot silently omit file identities from a pin."""
+    _write(tmp_path, "src/a.c", b"one")
+    _write(tmp_path, "src/b.c", b"two")
+    baseline = source_snapshot_evidence(tmp_path, ("src",))
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            builtins, "sorted", lambda values, *, key=None: list(values)[:1]
+        )
+        observed = source_snapshot_evidence(tmp_path, ("src",))
+    assert observed == baseline, "mutable sorting hook omitted source bytes"
+
+
+def test_pinned_snapshot_ignores_late_zip_receipt_drop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late zip hooks cannot hide changes between file reads and validation."""
+    _write(tmp_path, "src/a.c", b"one")
+    _write(tmp_path, "src/b.c", b"two")
+    baseline = source_snapshot_evidence(tmp_path, ("src",))
+    pin = SourcePin(
+        "repo", _COMMIT, ("src",), baseline.file_count, baseline.snapshot_sha256
+    )
+    read_original = cast(
+        "Callable[[Path, Path, str], bytes]",
+        vars(provenance_module)["_read_pinned_source"],
+    )
+    changed = False
+
+    def change_after_read(root: Path, path: Path, relative: str) -> bytes:
+        nonlocal changed
+        data = read_original(root, path, relative)
+        if relative == "src/b.c" and not changed:
+            _write(tmp_path, "src/a.c", b"modified")
+            changed = True
+        return data
+
+    with monkeypatch.context() as patched:
+        patched.setattr(provenance_module, "_read_pinned_source", change_after_read)
+        patched.setattr(builtins, "zip", lambda left, right, *, strict=True: iter(()))
+        with pytest.raises(SourcePinError, match="changed during snapshot"):
+            _ = require_source_pin(tmp_path, pin)
+    assert changed, "the within-snapshot mutation did not execute"
