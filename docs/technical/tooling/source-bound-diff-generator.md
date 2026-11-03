@@ -681,6 +681,20 @@ passes but stopped after three relocatable publication failures while another
 agent's uncommitted `ctypes.CDLL.__new__` guard was in flight. This does not
 constitute an integrated clean verdict or exclude external filesystem races.
 
+Compatible output containment now pins import-original `builtins.any`,
+`isinstance`, and `hasattr` along with the `PurePath` parent/equality hooks,
+the `_PathParents` class alias, and its inherited membership/iteration
+dispatch (`e778b06f9`). Original `Path.is_relative_to` still reads those
+mutable dependencies. Seven red-first cases showed substituted path hooks
+executing before rejection or forged `any()` causing false admission/denial;
+two additional cases reject silently emptied parent ancestry. The materializer
+checks the hook identities before and after containment. All 299 compatible
+tests and 565 combined compatible/relocatable tests pass postcommit, with
+scoped Ruff and diff checks clean. Strict BasedPyright still reports 14
+older source and 106 older test diagnostics, none in the modified ranges;
+there is no clean global Jig verdict. Direct trusted-state mutation and
+concurrent host/filesystem races remain outside this guard.
+
 Generator exact replay separately reads stored native file and snapshot
 fields, and its output checks use original path-ancestry comparisons rather
 than late class equality or parent hooks. Signed generator commits

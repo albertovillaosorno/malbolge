@@ -100,6 +100,13 @@ format.
   checks pass. The shared integrated run reached 2,966 passes but stopped
   after three failures in concurrent, uncommitted publication changes, so no
   integrated clean verdict is claimed. External filesystem races remain.
+- Compatible containment now pins import-original `any()`, path-parent and
+  equality descriptors, and native `_PathParents` alias/methods around
+  `Path.is_relative_to` (`e778b06f9`). Seven red-first unsafe-hook and
+  false-denial cases plus two silent-ancestry cases pass. All 299 compatible
+  and 565 combined compatible/relocatable tests pass postcommit; scoped Ruff
+  and diff checks are clean. The existing 14 source and 106 test typing
+  diagnostics, degraded global Jig gate, and external races remain open.
 - Relocatable output and nested source path resolution now checks pinned
   host realpath, `os.fspath`/`os.lstat`/`os.readlink`/`os.getcwd`/`stat.S_ISLNK`,
   and native `Path` factories before and after trusted resolution (`57870f21c`).
