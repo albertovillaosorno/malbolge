@@ -143,6 +143,15 @@ inode before import. Five red-first regressions cover forged namespace
 names, redirected module files, same-inode hardlinks, and CWD/link hooks.
 Neither status check nor import is atomic against external filesystem writes;
 this is not a sandbox for trusted consumer-domain code.
+A frozen, slotted Python evidence record still permits its *class* slot
+reader or `__getattribute__` to be replaced after consumer code executes.
+Source-lineage, behavior, and conjunctive transform admission therefore read
+original captured reason-slot descriptors when validating direct evidence,
+returning `admitted`, or deciding whether to raise admission errors. Three
+source, four behavior, and five gate regressions cover forged direct receipts,
+failed evidence promoted to success, and incorrectly typed errors. Immutable
+record construction and process-hook isolation do not defend against arbitrary
+trusted code directly rewriting stored object state.
 Pinned-source snapshots also require native `os.stat_result` receipts for the
 source root, selected paths and parent components, and file-identity rechecks.
 Foreign mode and inode records cannot certify pinned provenance. Filesystem

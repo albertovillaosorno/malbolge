@@ -248,6 +248,15 @@ format.
   original and resolved regular-file identities before importing. Five red-first
   tests cover forged module names and redirected imports, including hardlinks.
   External filesystem mutation between checks still requires coordination.
+- Source-lineage and behavior evidence now validate, expose, and enforce
+  rejection reasons through original frozen-slot readers rather than late
+  class getters. Three source and four behavior red-first cases cover forged
+  direct construction, false `admitted` results, and typed rejection under
+  replaced descriptors and `__getattribute__` hooks.
+- The conjunctive transform gate also pins source/behavior/gate reason slots;
+  five regressions prevent late class getters from promoting failed evidence
+  or previously rejected combined verdicts. This is a process-hook boundary,
+  not a sandbox for intentionally mutated evidence or arbitrary consumer code.
 - Exact tree snapshot, planning, and materialization and compatible plan build
   and materialization envelopes now require exact native host `Path` roots;
   eight red-first cases cover snapshot/source/oracle/candidate/output roles
