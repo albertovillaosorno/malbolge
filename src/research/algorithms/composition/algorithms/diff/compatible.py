@@ -34,42 +34,42 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from dataclasses import dataclass
-from dataclasses import replace
-from enum import StrEnum
 import hashlib
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
 import shutil
-from typing import TYPE_CHECKING
-from typing import cast
+from collections.abc import Callable
+from dataclasses import dataclass, replace
+from enum import StrEnum
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.admission import AdmissionPolicy
-from algorithms.diff.admission import IdentityTree
-from algorithms.diff.admission import evaluate_admission
+# jig-ignore-next-line: canonical Ruff import grouping requires one statement
+from algorithms.diff.admission import AdmissionPolicy, IdentityTree, evaluate_admission
 from algorithms.diff.behavior import BehaviorEvidence
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.exact import read_exact_regular_file
-from algorithms.diff.exact import snapshot_tree
+from algorithms.diff.exact import (
+    ExactTreeError,
+    build_exact_plan,
+    read_exact_regular_file,
+    snapshot_tree,
+)
 from algorithms.diff.gate import require_transform_admission
 from algorithms.diff.mapped import MappedView
-from algorithms.diff.model import ExactInstruction
-from algorithms.diff.model import ExactInstructionKind
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import TreeSnapshot
+from algorithms.diff.model import (
+    ExactInstruction,
+    ExactInstructionKind,
+    OracleLiteral,
+    TreeSnapshot,
+)
 from algorithms.diff.publication import publish_directory_no_replace
-from algorithms.diff.semantic import SemanticAuthoringPlan
-from algorithms.diff.semantic import apply_semantic_plan
-from algorithms.diff.semantic import build_semantic_plan
+from algorithms.diff.semantic import (
+    SemanticAuthoringPlan,
+    apply_semantic_plan,
+    build_semantic_plan,
+)
 
 if TYPE_CHECKING:
     from algorithms.diff.gate import TransformAdmissionEvidence
-    from algorithms.diff.model import ExactAuthoringPlan
-    from algorithms.diff.model import FileRecord
+    from algorithms.diff.model import ExactAuthoringPlan, FileRecord
 
 _ONE = 1
 _STAGING_SUFFIX = ".compatible-staging"
@@ -229,7 +229,8 @@ def _resolve_request_root(path: Path, context: str) -> Path:
     try:
         return path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"compatible {context} root resolution failed: {error}"
+        detail = _safe_compatible_error_detail(error)
+        message = f"compatible {context} root resolution failed: {detail}"
         raise CompatiblePlanError(message) from error
 
 
@@ -677,7 +678,8 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
         try:
             linked = current.is_symlink() or current.is_junction()
         except (OSError, ValueError, RuntimeError) as error:
-            message = f"ancestor inspection failed: {current}: {error}"
+            detail = _safe_compatible_error_detail(error)
+            message = f"ancestor inspection failed: {current}: {detail}"
             raise CompatiblePlanError(message) from error
         if linked:
             message = (
@@ -693,8 +695,9 @@ def _safe_path(root: Path, relative_path: str) -> Path:
         resolved_path = path.resolve()
         resolved_root = root.resolve()
     except (OSError, ValueError, RuntimeError) as error:
+        detail = _safe_compatible_error_detail(error)
         message = (
-            f"compatible path resolution failed: {relative_path!r}: {error}"
+            f"compatible path resolution failed: {relative_path!r}: {detail}"
         )
         raise CompatiblePlanError(message) from error
     try:
@@ -712,7 +715,8 @@ def _path_present(path: Path, context: str) -> bool:
     except FileNotFoundError:
         return False
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} status failed: {path}: {error}"
+        detail = _safe_compatible_error_detail(error)
+        message = f"{context} status failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
     return True
 
@@ -721,10 +725,12 @@ def _read_compatible_bytes(path: Path, context: str) -> bytes:
     try:
         return read_exact_regular_file(path, context)
     except ExactTreeError as error:
-        message = f"{context} read failed: {path}: {error}"
+        detail = _safe_compatible_error_detail(error)
+        message = f"{context} read failed: {path}: {detail}"
         failure = CompatiblePlanError(message)
-        for note in cast("list[str]", getattr(error, "__notes__", [])):
-            failure.add_note(note)
+        if type(error) is ExactTreeError:
+            for note in cast("list[str]", getattr(error, "__notes__", [])):
+                failure.add_note(note)
         raise failure from error
 
 
@@ -733,7 +739,8 @@ def _write_compatible_bytes(path: Path, data: bytes, context: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         written = path.write_bytes(data)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} write failed: {path}: {error}"
+        detail = _safe_compatible_error_detail(error)
+        message = f"{context} write failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
     if type(written) is not int or written != len(data):
         message = f"{context} short or invalid byte count: {path}"
@@ -750,7 +757,8 @@ def _make_compatible_directory(
     try:
         path.mkdir(parents=parents, exist_ok=exist_ok)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} creation failed: {path}: {error}"
+        detail = _safe_compatible_error_detail(error)
+        message = f"{context} creation failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
 
 
@@ -1240,7 +1248,8 @@ def _snapshot_compatible_tree(root: Path, context: str) -> TreeSnapshot:
     try:
         return snapshot_tree(root)
     except ExactTreeError as error:
-        message = f"compatible {context} snapshot failed: {error}"
+        detail = _safe_compatible_error_detail(error)
+        message = f"compatible {context} snapshot failed: {detail}"
         raise CompatiblePlanError(message) from error
 
 
@@ -1260,7 +1269,8 @@ def _require_tree_unchanged(
     try:
         current = snapshot_tree(root)
     except ExactTreeError as error:
-        message = f"compatible {context} tree changed during {phase}: {error}"
+        detail = _safe_compatible_error_detail(error)
+        message = f"compatible {context} tree changed during {phase}: {detail}"
         raise CompatiblePlanError(message) from error
     if current != baseline:
         message = f"compatible {context} tree changed during {phase}"
@@ -1289,6 +1299,7 @@ def _safe_compatible_error_detail(error: Exception) -> str:
     """
     if type(error) in {
         CompatiblePlanError,
+        ExactTreeError,
         OSError,
         PermissionError,
         RuntimeError,
@@ -1324,7 +1335,8 @@ def _publish_compatible_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"compatible output publication failed: {error}"
+        detail = _safe_compatible_error_detail(error)
+        message = f"compatible output publication failed: {detail}"
         raise CompatiblePlanError(message) from error
 
 

@@ -702,6 +702,11 @@ formatters. Their typed failure keeps the original callback exception as its
 cause, and compatible staging still cleans up before publication. If cleanup
 also fails, both failure descriptions avoid foreign string hooks; the original
 materialization exception remains the cause of the typed cleanup failure.
+Compatible host adapters also contain root/path resolution, status,
+ancestor inspection, source reads, snapshots, staging writes, directory
+creation, and publication exceptions without calling foreign formatters or
+notes getters. They retain typed causes and clean owned staging where possible;
+path checks still require external writer coordination.
 
 `compatible.py` now composes admission, behavior evidence, file topology,
 semantic

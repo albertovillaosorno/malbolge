@@ -34,55 +34,57 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
-from pathlib import Path
 import re
 import shutil
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from dataclasses import replace
+from pathlib import Path
+from typing import TYPE_CHECKING, cast, override
 
-from algorithms.diff import compatible as compatible_module
-from algorithms.diff.admission import AdmissionError
-from algorithms.diff.admission import AdmissionPolicy
-from algorithms.diff.admission import identity_tree
-from algorithms.diff.behavior import BehaviorObservations
-from algorithms.diff.behavior import BehaviorProfile
-from algorithms.diff.behavior import BugObservation
-from algorithms.diff.behavior import BugProbe
-from algorithms.diff.behavior import BugState
-from algorithms.diff.behavior import CompatibilityObservation
-from algorithms.diff.behavior import CompatibilityProbe
-from algorithms.diff.behavior import IdentityObservation
-from algorithms.diff.behavior import IdentityProbe
-from algorithms.diff.behavior import evaluate_behavior
-from algorithms.diff.compatible import CompatibleBuildRequest
-from algorithms.diff.compatible import CompatibleCorrectionBinding
-from algorithms.diff.compatible import CompatibleFileKind
-from algorithms.diff.compatible import CompatibleInstruction
-from algorithms.diff.compatible import CompatibleMaterializeRequest
-from algorithms.diff.compatible import CompatiblePlanError
-from algorithms.diff.compatible import bind_compatible_corrections
-from algorithms.diff.compatible import build_compatible_plan
-from algorithms.diff.compatible import materialize_compatible_plan
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.exact import snapshot_tree
-from algorithms.diff.mapped import MappedUnit
-from algorithms.diff.mapped import MappedView
-from algorithms.diff.model import ExactInstruction
-from algorithms.diff.model import ExactInstructionKind
 import pytest
+from algorithms.diff import compatible as compatible_module
+
+# jig-ignore-next-line: canonical Ruff import grouping requires one statement
+from algorithms.diff.admission import AdmissionError, AdmissionPolicy, identity_tree
+from algorithms.diff.behavior import (
+    BehaviorObservations,
+    BehaviorProfile,
+    BugObservation,
+    BugProbe,
+    BugState,
+    CompatibilityObservation,
+    CompatibilityProbe,
+    IdentityObservation,
+    IdentityProbe,
+    evaluate_behavior,
+)
+from algorithms.diff.compatible import (
+    CompatibleBuildRequest,
+    CompatibleCorrectionBinding,
+    CompatibleFileKind,
+    CompatibleInstruction,
+    CompatibleMaterializeRequest,
+    CompatiblePlanError,
+    bind_compatible_corrections,
+    build_compatible_plan,
+    materialize_compatible_plan,
+)
+
+# jig-ignore-next-line: canonical Ruff import grouping requires one statement
+from algorithms.diff.exact import ExactTreeError, build_exact_plan, snapshot_tree
+from algorithms.diff.mapped import MappedUnit, MappedView
+from algorithms.diff.model import ExactInstruction, ExactInstructionKind
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior import BehaviorEvidence
-    from algorithms.diff.compatible import CompatibleAuthoringPlan
-    from algorithms.diff.compatible import Mapper
-    from algorithms.diff.compatible import Postcondition
-    from algorithms.diff.model import ExactAuthoringPlan
-    from algorithms.diff.model import TreeSnapshot
+    from algorithms.diff.compatible import (
+        CompatibleAuthoringPlan,
+        Mapper,
+        Postcondition,
+    )
+    from algorithms.diff.model import ExactAuthoringPlan, TreeSnapshot
 
 _TOKEN = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\s]")
 _SOURCE_CODE = b"alpha = old ; omega"
@@ -728,6 +730,7 @@ def test_compatible_request_envelopes_reject_foreign_fields(
 class _ForeignCompatibleRoot(type(Path())):
     """An overridden root must not redirect compatible tree operations."""
 
+    @override
     def __str__(self) -> str:
         message = "foreign compatible root conversion was evaluated"
         raise AssertionError(message)
@@ -1217,6 +1220,193 @@ def test_opaque_candidate_change_fails_exact_gate(tmp_path: Path) -> None:
     _expect(not output.exists(), "opaque-rejected output was published")
 
 
+class _HostileExactCompatibleError(ExactTreeError):
+    """Exact byte callbacks must not execute foreign diagnostic hooks."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile exact compatible formatter executed"
+        raise AssertionError(message)
+
+    @override
+    def __getattribute__(self, name: str) -> object:
+        if name == "__notes__":
+            message = "hostile exact compatible notes executed"
+            raise AssertionError(message)
+        return cast("object", super().__getattribute__(name))
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        ("root_resolve", "candidate root resolution failed"),
+        ("staging_status", "staging root status failed"),
+        ("staging_create", "staging root creation failed"),
+        ("write", "instruction output write failed"),
+        ("publish", "output publication failed"),
+        ("read", "read failed"),
+        ("snapshot", "candidate snapshot failed"),
+    ],
+)
+def test_compatible_host_faults_do_not_format_foreign_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    expected: str,
+) -> None:
+    """Host I/O failures stay typed without publishing unauthorized output."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    staging = tmp_path / ".out.compatible-staging"
+    request = _request(candidate, plan, output)
+
+    if operation == "root_resolve":
+        original = Path.resolve
+
+        def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+            if path == candidate:
+                raise _HostileFormattingError("host root resolution")
+            return original(path, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", fail_resolve)
+    elif operation == "staging_status":
+        original = Path.lstat
+
+        def fail_status(path: Path) -> object:
+            if path == staging:
+                raise _HostileFormattingError("host status")
+            return original(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_status)
+    elif operation == "staging_create":
+        original = Path.mkdir
+
+        def fail_mkdir(
+            path: Path,
+            mode: int = 0o777,
+            *,
+            parents: bool = False,
+            exist_ok: bool = False,
+        ) -> None:
+            if path == staging:
+                raise _HostileFormattingError("host directory creation")
+            original(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+        monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    elif operation == "write":
+        original = Path.write_bytes
+
+        def fail_write(path: Path, data: bytes) -> int:
+            if path == staging / "created.bin":
+                raise _HostileFormattingError("host output write")
+            return original(path, data)
+
+        monkeypatch.setattr(Path, "write_bytes", fail_write)
+    elif operation == "publish":
+
+        def fail_publish(staged: Path, destination: Path) -> None:
+            _ = staged, destination
+            raise _HostileFormattingError("host publication")
+
+        monkeypatch.setattr(
+            compatible_module, "publish_directory_no_replace", fail_publish
+        )
+    elif operation == "read":
+        original = cast(
+            "Callable[[Path, str], bytes]",
+            vars(compatible_module)["read_exact_regular_file"],
+        )
+
+        def fail_read(path: Path, context: str) -> bytes:
+            if path == candidate / "code.src":
+                raise _HostileExactCompatibleError("host read")
+            return original(path, context)
+
+        monkeypatch.setattr(
+            compatible_module, "read_exact_regular_file", fail_read
+        )
+    elif operation == "snapshot":
+        original = cast(
+            "Callable[[Path], TreeSnapshot]",
+            vars(compatible_module)["snapshot_tree"],
+        )
+
+        def fail_snapshot(root: Path) -> TreeSnapshot:
+            if root == candidate:
+                raise _HostileExactCompatibleError("host snapshot")
+            return original(root)
+
+        monkeypatch.setattr(compatible_module, "snapshot_tree", fail_snapshot)
+
+    with pytest.raises(CompatiblePlanError, match=expected):
+        _ = materialize_compatible_plan(request)
+    _expect(not output.exists(), "foreign host failure published output")
+    _expect(not staging.exists(), "foreign host failure left staging behind")
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        ("path_resolve", "path resolution failed"),
+        ("linked_ancestor", "candidate snapshot failed"),
+        ("tree_recheck", "staging tree changed during staging"),
+    ],
+)
+def test_compatible_nested_host_faults_keep_typed_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    expected: str,
+) -> None:
+    """Nested host hooks and post-staging checks cannot escape the API."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    staging = tmp_path / ".out.compatible-staging"
+
+    if operation == "path_resolve":
+        native_resolve = Path.resolve
+
+        def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+            if path == candidate / "code.src":
+                raise _HostileFormattingError("nested source resolution")
+            return native_resolve(path, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", fail_resolve)
+    elif operation == "linked_ancestor":
+        _write(candidate, "nested/candidate.bin", b"candidate only")
+        native_junction = Path.is_junction
+
+        def fail_junction(path: Path) -> bool:
+            if path == candidate / "nested":
+                raise _HostileFormattingError("nested junction")
+            return native_junction(path)
+
+        monkeypatch.setattr(Path, "is_junction", fail_junction)
+    else:
+        native_snapshot = cast(
+            "Callable[[Path], TreeSnapshot]",
+            vars(compatible_module)["snapshot_tree"],
+        )
+        staged_reads = 0
+
+        def fail_recheck(path: Path) -> TreeSnapshot:
+            nonlocal staged_reads
+            if path == staging:
+                staged_reads += 1
+                if staged_reads == 2:
+                    raise _HostileExactCompatibleError("host staging recheck")
+            return native_snapshot(path)
+
+        monkeypatch.setattr(compatible_module, "snapshot_tree", fail_recheck)
+
+    with pytest.raises(CompatiblePlanError, match=expected):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(not output.exists(), "unsafe nested output was published")
+    _expect(not staging.exists(), "unsafe nested staging was retained")
+
+
 @pytest.mark.parametrize(
     "error_type", [PermissionError, ValueError, RuntimeError]
 )
@@ -1699,7 +1889,10 @@ def test_compatible_publication_rejects_late_tree_mutation(
     plan = _plan(tmp_path)
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
-    original_publish = compatible_module.publish_directory_no_replace
+    original_publish = cast(
+        "Callable[[Path, Path], None]",
+        vars(compatible_module)["publish_directory_no_replace"],
+    )
     mutated = False
 
     def corrupt_during_publish(staging: Path, destination: Path) -> None:
