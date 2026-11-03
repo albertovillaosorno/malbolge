@@ -48,6 +48,7 @@ _LINUX_PLATFORM: Final = "linux"
 _AT_FDCWD: Final = -100
 _RENAME_NOREPLACE: Final = 1
 _NUL: Final = "\x00"
+_NATIVE_STAT_RESULT: Final = os.stat_result
 
 
 class _RenameAt2(Protocol):
@@ -140,6 +141,12 @@ def _require_staging_directory(staging: Path) -> tuple[int, int]:
             "staging directory status failed",
             staging,
         ) from error
+    if type(receipt) is not _NATIVE_STAT_RESULT:
+        raise OSError(
+            errno.EINVAL,
+            "staging directory requires native filesystem status",
+            staging,
+        )
     if not stat.S_ISDIR(receipt.st_mode):
         raise OSError(
             errno.ENOTDIR,
@@ -210,7 +217,11 @@ def _require_completed_publication(
         result = destination.lstat()
     except (OSError, ValueError, RuntimeError, TypeError) as error:
         raise OSError(errno.EIO, message, destination) from error
-    if not stat.S_ISDIR(result.st_mode) or (result.st_dev, result.st_ino) != identity:
+    if (
+        type(result) is not _NATIVE_STAT_RESULT
+        or not stat.S_ISDIR(result.st_mode)
+        or (result.st_dev, result.st_ino) != identity
+    ):
         raise OSError(errno.EIO, message, destination)
     try:
         _ = staging.lstat()

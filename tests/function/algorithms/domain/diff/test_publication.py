@@ -38,6 +38,7 @@ from __future__ import annotations
 import ctypes
 import errno
 import os
+import stat
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -358,6 +359,81 @@ def test_staging_status_errors_fail_closed_as_os_error(
     assert rejected.value.errno == errno.EINVAL
     assert not rename_calls
     assert not destination.exists()
+
+
+def test_publication_rejects_foreign_staging_stat_before_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged staging metadata cannot turn a file into a publishable tree."""
+    if sys.platform != _LINUX_PLATFORM:
+        pytest.skip("Linux no-replace publisher required")
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    _ = staging.write_bytes(_OURS)
+    original_lstat = Path.lstat
+    actual = original_lstat(staging)
+    foreign = SimpleNamespace(
+        st_mode=stat.S_IFDIR | 0o755,
+        st_dev=actual.st_dev,
+        st_ino=actual.st_ino,
+    )
+    calls: list[tuple[Path, Path]] = []
+
+    def forged_staging_stat(path: Path) -> os.stat_result:
+        if path == staging:
+            return cast("os.stat_result", cast("object", foreign))
+        return original_lstat(path)
+
+    def record_rename(source: Path, target: Path) -> None:
+        calls.append((source, target))
+
+    monkeypatch.setattr(Path, "lstat", forged_staging_stat)
+    monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
+    with pytest.raises(OSError, match="native filesystem status") as rejected:
+        publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EINVAL
+    assert not calls
+    assert original_lstat(staging).st_ino == actual.st_ino
+    assert not destination.exists()
+
+
+def test_publication_rejects_foreign_destination_attestation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged post-rename inode receipt cannot certify publication."""
+    if sys.platform != _LINUX_PLATFORM:
+        pytest.skip("Linux no-replace publisher required")
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    original_lstat = Path.lstat
+
+    def forged_destination_stat(path: Path) -> os.stat_result:
+        native = original_lstat(path)
+        if path == destination:
+            return cast(
+                "os.stat_result",
+                cast(
+                    "object",
+                    SimpleNamespace(
+                        st_mode=native.st_mode,
+                        st_dev=native.st_dev,
+                        st_ino=native.st_ino,
+                    ),
+                ),
+            )
+        return native
+
+    monkeypatch.setattr(Path, "lstat", forged_destination_stat)
+    with pytest.raises(
+        OSError, match=r"publication.*not completed"
+    ) as rejected:
+        publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EIO
+    assert not staging.exists()
+    assert (destination / "payload").read_bytes() == _OURS
 
 
 def _fake_linux_host(monkeypatch: pytest.MonkeyPatch) -> None:

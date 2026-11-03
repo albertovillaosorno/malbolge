@@ -142,6 +142,11 @@ Caller-defined `Path` subclasses may override path resolution, file status, or
 rename behavior and cannot establish publication authority. Two red-first
 regressions prove foreign path conversion does not run for either role, without
 relaxing the existing directory, host-selector, or no-replace admission rules.
+Directory publication also requires exact native `os.stat_result` receipts for
+the staged directory before rename and the published destination afterward.
+Foreign metadata claiming directory type or matching inode identity cannot
+trigger a rename or certify its completion. A post-rename attestation failure
+reports unsuccessful confirmation without deleting an already moved directory.
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.
