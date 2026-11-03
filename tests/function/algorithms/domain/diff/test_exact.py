@@ -5073,3 +5073,86 @@ def test_exact_unsafe_utf8_label_wraps_native_error_under_late_alias(
             builtins.UnicodeEncodeError = native_codec_error
     assert type(caught) is TreeModelError
     assert type(caught.__cause__) is native_codec_error
+
+
+@pytest.mark.parametrize(
+    "failure", [OSError("native open failed"), ValueError("native read failed")]
+)
+def test_exact_reader_wraps_native_failure_after_late_error_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: Exception
+) -> None:
+    """A late public error alias must not change the exact-reader boundary."""
+
+    def fail_read(_path: Path, _context: str) -> bytes:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "_read_bound_file", fail_read)
+        patched.setattr(exact_module, "ExactTreeError", LookupError)
+        with pytest.raises(ExactTreeError, match="native .* failed") as caught:
+            _ = exact_module.read_exact_regular_file(tmp_path / "source", "source")
+    assert caught.value.__cause__ is failure
+
+
+def test_exact_reader_preserves_original_exact_failure_after_late_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A native reader failure stays typed when its public class is replaced."""
+    failure = ExactTreeError("native source changed")
+
+    def fail_read(_path: Path, _context: str) -> bytes:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "_read_bound_file", fail_read)
+        patched.setattr(exact_module, "ExactTreeError", LookupError)
+        with pytest.raises(ExactTreeError, match="native source changed") as caught:
+            _ = exact_module.read_exact_regular_file(tmp_path / "source", "source")
+    assert caught.value is failure
+
+
+def test_exact_host_error_detail_keeps_native_exact_class_after_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A genuine exact exception retains its native diagnostic message."""
+    failure = ExactTreeError("native exact detail")
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "ExactTreeError", LookupError)
+        detail = cast(
+            "Callable[[BaseException], str]",
+            vars(exact_module)["_safe_host_error_detail"],
+        )
+        assert detail(failure) == "native exact detail"
+
+
+def test_exact_tree_rejection_never_calls_late_foreign_error_constructor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced public error alias cannot execute code on root rejection."""
+    calls = 0
+
+    class ForeignExactError(Exception):
+        def __init__(self, *args: object) -> None:
+            nonlocal calls
+            calls += 1
+            super().__init__(*args)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "ExactTreeError", ForeignExactError)
+        with pytest.raises(ExactTreeError, match="tree root is not a directory"):
+            _ = snapshot_tree(tmp_path / "missing")
+    assert calls == 0
+
+
+@pytest.mark.parametrize("invalid", ["", "../escape", "unsafe\\path"])
+def test_exact_path_model_error_keeps_native_identity_under_late_alias(
+    monkeypatch: pytest.MonkeyPatch, invalid: str
+) -> None:
+    """Invalid portable paths must reject with the imported model error."""
+    validate = cast(
+        "Callable[[str], str]", vars(exact_module)["_validate_relative_path"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "TreeModelError", LookupError)
+        with pytest.raises(TreeModelError):
+            _ = validate(invalid)

@@ -111,6 +111,8 @@ _NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
 _NATIVE_UNICODE_ERROR = builtins.UnicodeError
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_EXCEPTION = builtins.Exception
+# Model errors are imported from a consumer-visible mutable module namespace.
+_NATIVE_TREE_MODEL_ERROR = TreeModelError
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
@@ -248,12 +250,16 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
         )
     ):
         message = "exact filesystem path hooks changed"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
 
 
 class ExactTreeError(RuntimeError):
     """Raised when exact planning or materialization cannot proceed safely."""
 
+
+# A consumer may overwrite the exported class name after import. Internal
+# failures must retain their original type across the exact reader and walker.
+_NATIVE_EXACT_TREE_ERROR = ExactTreeError
 
 # Snapshot receipts are created after filesystem reads and selection callbacks.
 # Reuse the model validators without consulting mutable class allocation hooks.
@@ -546,15 +552,15 @@ def _require_portable_path_label(value: object) -> str:
     """
     if _NATIVE_TYPE(value) is not _NATIVE_STR or not value:
         message = f"invalid relative path: {value!r}"
-        raise TreeModelError(message)
+        raise _NATIVE_TREE_MODEL_ERROR(message)
     if _BACKSLASH in value or _NUL in value:
         message = f"invalid relative path: {value!r}"
-        raise TreeModelError(message)
+        raise _NATIVE_TREE_MODEL_ERROR(message)
     try:
         _ = value.encode("utf-8")
     except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"invalid relative path: {value!r}"
-        raise TreeModelError(message) from error
+        raise _NATIVE_TREE_MODEL_ERROR(message) from error
     return value
 
 
@@ -573,10 +579,10 @@ def _validate_relative_path(relative_path: str) -> str:
     parts = admitted.split("/")
     if _NATIVE_ANY(part in _UNSAFE_PATH_PARTS for part in parts):
         message = f"relative path is not canonically normalized: {admitted!r}"
-        raise TreeModelError(message)
+        raise _NATIVE_TREE_MODEL_ERROR(message)
     if _NATIVE_ANY(reserved_windows_component(part) for part in parts):
         message = f"unsafe relative path: {admitted!r}"
-        raise TreeModelError(message)
+        raise _NATIVE_TREE_MODEL_ERROR(message)
     return admitted
 
 
@@ -584,14 +590,14 @@ def _normalized_roots(roots: tuple[str, ...]) -> tuple[str, ...]:
     normalized = _NATIVE_TUPLE(_validate_relative_path(root) for root in roots)
     if normalized != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(normalized))):
         message = "passthrough roots must be unique and sorted"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     for index, root in _NATIVE_ENUMERATE(normalized):
         prefix = root + "/"
         if _NATIVE_ANY(
             other.startswith(prefix) for other in normalized[index + 1 :]
         ):
             message = "passthrough roots must not overlap"
-            raise ExactTreeError(message)
+            raise _NATIVE_EXACT_TREE_ERROR(message)
     return normalized
 
 
@@ -629,7 +635,7 @@ def _snapshots_match(left: TreeSnapshot, right: TreeSnapshot) -> bool:
 
 def _raise_tree_walk_error(error: OSError | ValueError | RuntimeError) -> None:
     message = f"tree traversal failed: {_safe_host_error_detail(error)}"
-    raise ExactTreeError(message) from error
+    raise _NATIVE_EXACT_TREE_ERROR(message) from error
 
 
 def _walk_tree(
@@ -640,10 +646,10 @@ def _walk_tree(
     # Neither may be replaced by an earlier consumer of this module.
     if os.walk is not _NATIVE_OS_WALK or os.scandir is not _NATIVE_OS_SCANDIR:
         message = "exact tree traversal hooks changed"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     try:
         yield from _NATIVE_PATH_WALK(root, on_error=_raise_tree_walk_error)
-    except ExactTreeError:
+    except _NATIVE_EXACT_TREE_ERROR:
         raise
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         _raise_tree_walk_error(error)
@@ -717,7 +723,7 @@ def _entry_mode(path: Path, context: str) -> int | None:
         return None
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"{context} status failed: {_safe_host_error_detail(error)}"
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
     _ = _require_native_status(receipt, context)
     return receipt.st_mode
 
@@ -730,10 +736,10 @@ def _is_redirect(path: Path, mode: int) -> bool:
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _safe_host_error_detail(error)
         message = f"tree redirect status failed: {path}: {detail}"
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
     if _NATIVE_TYPE(is_junction) is not _NATIVE_BOOL:
         message = "tree redirect status requires native boolean"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return is_junction
 
 
@@ -749,7 +755,7 @@ def _require_native_status(receipt: object, context: str) -> os.stat_result:
     """
     if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"{context} requires native filesystem status"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return receipt
 
 
@@ -775,7 +781,7 @@ def _admit_opened_file(
     )
     if not regular_identity or _is_redirect(path, named.st_mode):
         message = f"{context} read lost regular file identity: {path}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return opened
 
 
@@ -792,7 +798,7 @@ def _read_native_chunk(descriptor: int, count: int, context: str) -> bytes:
     chunk = _NATIVE_OS_READ(descriptor, count)
     if _NATIVE_TYPE(chunk) is not _NATIVE_BYTES:
         message = f"{context} requires native read bytes"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return chunk
 
 
@@ -807,11 +813,11 @@ def _read_admitted_descriptor(
         chunk = _read_native_chunk(descriptor, requested, context)
         if not chunk or _NATIVE_LEN(chunk) > requested:
             message = f"{context} read did not match admitted byte length"
-            raise ExactTreeError(message)
+            raise _NATIVE_EXACT_TREE_ERROR(message)
         payload.extend(chunk)
     if _read_native_chunk(descriptor, 1, context):
         message = f"{context} read exceeded admitted byte length"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return _NATIVE_BYTES(payload)
 
 
@@ -823,10 +829,10 @@ def _safe_host_error_detail(error: BaseException) -> str:
 
     """
     if _NATIVE_TYPE(error) in {
-        ExactTreeError,
-        OSError,
-        ValueError,
-        RuntimeError,
+        _NATIVE_EXACT_TREE_ERROR,
+        _NATIVE_OS_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
     }:
         # Exact native error classes still allow late class getter swaps.
         # Read the original exception storage without their dispatch hooks.
@@ -841,7 +847,7 @@ def _safe_host_error_detail(error: BaseException) -> str:
             and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR
         ):
             return arguments[0]
-        if _NATIVE_TYPE(error) is OSError and _NATIVE_LEN(arguments) > 1:
+        if _NATIVE_TYPE(error) is _NATIVE_OS_ERROR and _NATIVE_LEN(arguments) > 1:
             reason = arguments[1]
             if _NATIVE_TYPE(reason) is _NATIVE_STR:
                 return reason
@@ -862,7 +868,7 @@ def _verify_closed_source(
         final = _NATIVE_PATH_LSTAT(path)
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"{context} status failed after descriptor close: {path}"
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
     final = _require_native_status(final, context)
     if (
         not S_ISREG(final.st_mode)
@@ -870,7 +876,7 @@ def _verify_closed_source(
         or _file_identity(before_close) != _file_identity(final)
     ):
         message = f"{context} source changed after descriptor close: {path}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
 
 
 def _read_bound_file(path: Path, context: str) -> bytes:
@@ -885,7 +891,7 @@ def _read_bound_file(path: Path, context: str) -> bytes:
         after = _admit_opened_file(descriptor, path, context)
         if _file_identity(before) != _file_identity(after):
             message = f"{context} read inode changed during acquisition"
-            raise ExactTreeError(message)
+            raise _NATIVE_EXACT_TREE_ERROR(message)
     finally:
         primary = sys.exception()
         try:
@@ -936,12 +942,12 @@ def read_exact_regular_file(path: Path, context: str) -> bytes:
     """
     try:
         return _read_bound_file(path, context)
-    except ExactTreeError:
+    except _NATIVE_EXACT_TREE_ERROR:
         raise
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _safe_host_error_detail(error)
         message = f"{context} read failed: {path}: {detail}"
-        failure = ExactTreeError(message)
+        failure = _NATIVE_EXACT_TREE_ERROR(message)
         _copy_native_failure_notes(error, failure)
         raise failure from error
 
@@ -950,15 +956,15 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
     mode = _entry_mode(path, "tree entry")
     if mode is None:
         message = f"tree entry disappeared during traversal: {path}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     if _is_redirect(path, mode):
         message = f"symlinks are not supported: {path}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     if S_ISDIR(mode):
         return None
     if not S_ISREG(mode):
         message = f"special filesystem entry is not supported: {path}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     relative = _NATIVE_RELATIVE_TO(path, root).as_posix()
     relative_path = _validate_relative_path(relative)
     data = read_exact_regular_file(path, "tree entry")
@@ -972,17 +978,17 @@ def _require_filesystem_root(value: object, context: str) -> None:
     # Admit only the native host path before calling any such method.
     if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{context} must use an exact pathlib Path filesystem path"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     _require_native_path_hooks()
     raw = _NATIVE_PATH_STRING(value)
     if _NUL in raw:
         message = f"{context} must use a representable filesystem path"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     try:
         _ = raw.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
     except _NATIVE_UNICODE_ERROR as error:
         message = f"{context} must use a representable filesystem path"
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
 
 
 def _require_native_resolved_path(value: object, context: str) -> Path:
@@ -998,7 +1004,7 @@ def _require_native_resolved_path(value: object, context: str) -> Path:
     _require_native_path_hooks()
     if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{context} resolution must return native Path"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return value
 
 
@@ -1007,19 +1013,19 @@ def _resolved_tree_root(root: Path) -> Path:
     mode = _entry_mode(root, "tree root")
     if mode is None:
         message = f"tree root is not a directory: {root}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     if _is_redirect(root, mode):
         message = f"tree root must not be linked: {root}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     if not S_ISDIR(mode):
         message = f"tree root is not a directory: {root}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     try:
         resolved = _NATIVE_PATH_RESOLVE(root, strict=True)
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _safe_host_error_detail(error)
         message = f"tree root resolution failed: {root}: {detail}"
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
     return _require_native_resolved_path(resolved, "tree root")
 
 
@@ -1090,7 +1096,7 @@ def _oracle_bytes(oracle_root: Path, target_record: FileRecord) -> bytes:
     literal = _tree_bytes(oracle_root, path)
     if _sha256(literal) != digest:
         message = f"oracle file changed while planning: {path}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return literal
 
 
@@ -1295,7 +1301,7 @@ def build_exact_plan(
     target_passthrough = _filter_snapshot(target_full, roots, inside=True)
     if not _snapshots_match(source_passthrough, target_passthrough):
         message = "passthrough roots differ between source and authoring oracle"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     source = _filter_snapshot(source_full, roots, inside=False)
     target = _filter_snapshot(target_full, roots, inside=False)
     context = _new_planning_context(
@@ -1312,10 +1318,10 @@ def build_exact_plan(
     )
     if not _snapshots_match(snapshot_tree(source_root), source_full):
         message = "source tree changed while exact planning"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     if not _snapshots_match(snapshot_tree(oracle_root), target_full):
         message = "oracle tree changed while exact planning"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return _new_exact_plan(
         source=source,
         target=target,
@@ -1331,7 +1337,7 @@ def _reject_linked_tree_ancestors(root: Path, relative_path: str) -> None:
         mode = _entry_mode(current, "tree path component")
         if mode is not None and _is_redirect(current, mode):
             message = f"linked tree path component is not supported: {current}"
-            raise ExactTreeError(message)
+            raise _NATIVE_EXACT_TREE_ERROR(message)
 
 
 def _safe_tree_path(root: Path, relative_path: str) -> Path:
@@ -1350,12 +1356,12 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
             "tree path resolution failed: "
             f"{relative_path!r}: {_safe_host_error_detail(error)}"
         )
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
     try:
         _ = _NATIVE_RELATIVE_TO(resolved_path, resolved_root)
     except _NATIVE_VALUE_ERROR as error:
         message = f"path escapes tree root: {relative_path!r}"
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
     _reject_linked_tree_ancestors(root, normalized)
     return path
 
@@ -1370,7 +1376,7 @@ def _patch_bytes(source: bytes, segments: tuple[ExactSegment, ...]) -> bytes:
         end = offset + length
         if end > _NATIVE_LEN(source):
             message = "source slice exceeds source file"
-            raise ExactTreeError(message)
+            raise _NATIVE_EXACT_TREE_ERROR(message)
         parts.append(source[offset:end])
     return b"".join(parts)
 
@@ -1383,11 +1389,11 @@ def _instruction_bytes(
     if kind is ExactInstructionKind.LITERAL_ORACLE:
         if literal is None:
             message = "literal-oracle instruction lost its literal bytes"
-            raise ExactTreeError(message)
+            raise _NATIVE_EXACT_TREE_ERROR(message)
         return literal
     if source_path is None:
         message = "source-backed instruction lost its source path"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     source = read_exact_regular_file(
         _safe_tree_path(source_root, source_path), "instruction source"
     )
@@ -1435,10 +1441,10 @@ def _write_output_file(path: Path, data: bytes, context: str) -> None:
         message = f"{context} write failed: {path}: " + _safe_host_error_detail(
             error
         )
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
     if _NATIVE_TYPE(written) is not _NATIVE_INT or written != _NATIVE_LEN(data):
         message = f"{context} short or invalid byte count: {path}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
 
 
 def _make_output_directory(
@@ -1453,7 +1459,7 @@ def _make_output_directory(
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _safe_host_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
 
 
 def _write_instruction(
@@ -1468,7 +1474,7 @@ def _write_instruction(
             "instruction bytes do not match expected hash for "
             f"{output_label}"
         )
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     output_path = _safe_tree_path(staging_root, output_label)
     _write_output_file(output_path, data, "instruction output")
 
@@ -1478,18 +1484,18 @@ def _verify_source(source_root: Path, plan: ExactAuthoringPlan) -> None:
     current = snapshot_tree_excluding(source_root, roots)
     if not _snapshots_match(current, source):
         message = "source tree does not match exact authoring snapshot"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
 
 
 def _prepare_staging(output_root: Path) -> Path:
     if _entry_mode(output_root, "output root") is not None:
         message = f"output root already exists: {output_root}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     staging_name = f".{_NATIVE_PATH_NAME(output_root)}{_STAGING_SUFFIX}"
     staging_root = _NATIVE_PATH_JOINPATH(_NATIVE_PATH_PARENT(output_root), staging_name)
     if _entry_mode(staging_root, "staging root") is not None:
         message = f"staging root already exists: {staging_root}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     _make_output_directory(
         _NATIVE_PATH_PARENT(output_root),
         "output parent",
@@ -1516,10 +1522,10 @@ def _copy_passthrough_entry(
     mode = _entry_mode(path, "passthrough entry")
     if mode is None:
         message = f"passthrough entry disappeared: {relative}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     if _is_redirect(path, mode):
         message = f"symlink is not supported in passthrough root: {relative}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     output = _safe_tree_path(staging_root, relative)
     if S_ISDIR(mode):
         _make_output_directory(
@@ -1532,7 +1538,7 @@ def _copy_passthrough_entry(
         _copy_passthrough_file(path, output)
     else:
         message = f"special passthrough entry is not supported: {relative}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
 
 
 def _copy_passthrough_directory(
@@ -1555,12 +1561,12 @@ def _copy_passthrough_root(
     mode = _entry_mode(source, "passthrough root")
     if mode is None:
         message = f"missing passthrough root: {relative_root}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     if _is_redirect(source, mode):
         message = (
             f"symlink is not supported in passthrough root: {relative_root}"
         )
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     if S_ISREG(mode):
         _copy_passthrough_file(source, target)
         return
@@ -1574,7 +1580,7 @@ def _copy_passthrough_root(
         _copy_passthrough_directory(source_root, staging_root, source)
         return
     message = f"special passthrough entry is not supported: {relative_root}"
-    raise ExactTreeError(message)
+    raise _NATIVE_EXACT_TREE_ERROR(message)
 
 
 def _copy_passthrough_roots(
@@ -1600,7 +1606,7 @@ def _populate_staging(
     )
     if not _snapshots_match(static_output, target):
         message = "materialized tree does not match target snapshot"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
 
 
 def _resolved_output_root(output_root: Path) -> Path:
@@ -1608,7 +1614,7 @@ def _resolved_output_root(output_root: Path) -> Path:
     mode = _entry_mode(output_root, "output root")
     if mode is not None and _is_redirect(output_root, mode):
         message = f"output root must not be linked: {output_root}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     try:
         resolved = _NATIVE_PATH_RESOLVE(output_root)
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
@@ -1616,7 +1622,7 @@ def _resolved_output_root(output_root: Path) -> Path:
             "output root resolution failed: "
             f"{output_root}: {_safe_host_error_detail(error)}"
         )
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
     return _require_native_resolved_path(resolved, "output root")
 
 
@@ -1635,7 +1641,7 @@ def _raise_exact_cleanup_failure(error: Exception, cleanup_error: str) -> None:
         _safe_host_error_detail(error)
         + f"; staging cleanup failed: {cleanup_error}"
     )
-    raise ExactTreeError(message) from error
+    raise _NATIVE_EXACT_TREE_ERROR(message) from error
 
 
 def _publish_exact_output(staging: Path, destination: Path) -> None:
@@ -1645,7 +1651,7 @@ def _publish_exact_output(staging: Path, destination: Path) -> None:
         message = "exact output publication failed: " + _safe_host_error_detail(
             error
         )
-        raise ExactTreeError(message) from error
+        raise _NATIVE_EXACT_TREE_ERROR(message) from error
 
 
 def materialize_exact_plan(
@@ -1664,19 +1670,19 @@ def materialize_exact_plan(
     """
     if _NATIVE_TYPE(plan) is not ExactAuthoringPlan:
         message = "exact materialization requires an exact authoring plan"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     # Native slotted plans can be allocated without construction. Revalidate
     # their nested immutable evidence before any filesystem or staging access.
     try:
         _EXACT_PLAN_VALIDATOR(plan)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "exact materialization received an incomplete native authoring plan"
-        raise TreeModelError(message) from error
+        raise _NATIVE_TREE_MODEL_ERROR(message) from error
     resolved_source = _resolved_tree_root(source_root)
     resolved_output = _resolved_output_root(output_root)
     if _native_path_inside(resolved_output, resolved_source):
         message = "exact output root must not be inside the source tree"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     _verify_source(resolved_source, plan)
     staging_root = _prepare_staging(resolved_output)
     try:
