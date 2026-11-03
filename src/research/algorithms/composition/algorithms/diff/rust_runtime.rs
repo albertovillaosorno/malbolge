@@ -837,9 +837,20 @@ fn unlock_key(root: &Path, binding: &Binding) -> Result<Vec<u8>, String> {
     let mut available = Vec::new();
     for share in &binding.shares {
         let path = safe_join(root, &share.source_path)?;
-        let data = fs::read(&path).map_err(|e| {
-            format!("cannot read binding source {}: {e}", path.display())
-        })?;
+        let data = match fs::read(&path) {
+            Ok(data) => data,
+            // Source-bound quorum tolerates missing optional anchor files;
+            // hard I/O failures remain errors instead of absent evidence.
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                continue;
+            },
+            Err(error) => {
+                return Err(format!(
+                    "cannot read binding source {}: {error}",
+                    path.display()
+                ));
+            },
+        };
         if let Some(window) = find_anchor_window(
             &data,
             binding.window_bytes,

@@ -61,6 +61,7 @@ from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.source_binding import SourceBindingError
 from algorithms.diff.source_binding import SourceBindingPolicy
+from algorithms.diff.source_binding import recover_secret
 from algorithms.diff.source_binding import validate_threshold_binding
 import pytest
 
@@ -1029,6 +1030,71 @@ def test_emitted_rust_rejects_oversized_metadata_count_without_panic(
         "oversized metadata failed outside the bounded frame parser",
     )
     _expect(not output.exists(), "oversized metadata published output")
+
+
+def _optional_anchor_fixture(
+    tmp_path: Path,
+) -> tuple[Path, Path, ProtectedExactPlan]:
+    source, oracle, static_files, _ = _fixture(tmp_path)
+    optional_path = "external/optional-anchor.bin"
+    optional_bytes = _blocks("optional")
+    _write(source, optional_path, optional_bytes)
+    _write(oracle, optional_path, optional_bytes)
+    reference = identity_tree({**static_files, optional_path: optional_bytes})
+    exact = build_exact_plan(source, oracle, passthrough_roots=("external",))
+    protected = protect_exact_plan(
+        exact,
+        reference,
+        binding_policy=SourceBindingPolicy(
+            threshold_fraction=0.5,
+            maximum_anchors=9,
+            minimum_anchor_files=2,
+            anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
+        ),
+        context=_CONTEXT,
+    )
+    _expect(
+        any(
+            share.source_path == optional_path
+            for share in protected.binding.shares
+        ),
+        "fixture did not bind an optional runtime source",
+    )
+    (source / optional_path).unlink()
+    (oracle / optional_path).unlink()
+    _ = recover_secret(protected.binding, identity_tree(static_files))
+    return source, oracle, protected
+
+
+def test_emitted_rust_recovers_when_optional_anchor_file_disappears(
+    tmp_path: Path,
+) -> None:
+    """A missing passthrough anchor must not veto an adequate static quorum."""
+    source, oracle, protected = _optional_anchor_fixture(tmp_path)
+    rust_source = tmp_path / "optional-anchor.rs"
+    executable = tmp_path / "optional-anchor"
+    output = tmp_path / "out"
+    _ = rust_source.write_text(
+        emit_rust_transform(protected, _PROFILE),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "optional-anchor transform failed to compile: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+    completed = _run(executable, source, output)
+    _expect(
+        completed.returncode == 0,
+        "optional anchor blocked a valid threshold: "
+        + completed.stderr.decode(errors="replace"),
+    )
+    _expect(
+        snapshot_tree(output) == snapshot_tree(oracle),
+        "missing optional anchor changed the target projection",
+    )
 
 
 def test_emitted_rust_rejects_binding_threshold_under_file_minimum(
