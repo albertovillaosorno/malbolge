@@ -3766,3 +3766,83 @@ def test_relocation_authoring_pins_original_exact_plan_validator(
     assert build_relocatable_plan(source, exact) == baseline
     with pytest.raises(RelocationError, match="exact plan"):
         _ = build_relocatable_plan(source, forged)
+
+
+@pytest.mark.parametrize("owner", ("Path", "PurePath"))
+@pytest.mark.parametrize("role", ("candidate", "output"))
+def test_relocation_rejects_late_joinpath_redirect_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str,
+    role: str,
+) -> None:
+    """Late joinpath hooks cannot silently remap source or output labels."""
+    from pathlib import PurePath
+
+    candidate = tmp_path / "candidate"
+    _write(candidate, "trusted.bin", b"trusted")
+    _write(candidate, "forged.bin", b"forged")
+    output = tmp_path / "output"
+    if role == "candidate":
+        instruction = RelocatableInstruction(
+            "target.bin", "trusted.bin", copy_candidate_file=True
+        )
+        requested, redirected = "trusted.bin", "forged.bin"
+    else:
+        instruction = RelocatableInstruction(
+            "target.bin", None, copy_candidate_file=False, literal=b"trusted"
+        )
+        requested, redirected = "target.bin", "forged.bin"
+    plan = relocatable_module.RelocatableAuthoringPlan((instruction,))
+    original_joinpath = Path.joinpath
+    intercepted: list[str] = []
+
+    def redirect(path: Path, *parts: str) -> Path:
+        if parts == (requested,):
+            intercepted.append(requested)
+            return original_joinpath(path, redirected)
+        return original_joinpath(path, *parts)
+
+    path_class = Path if owner == "Path" else PurePath
+    with monkeypatch.context() as patched:
+        patched.setattr(path_class, "joinpath", redirect)
+        with pytest.raises(RelocationError, match="resolution hooks changed"):
+            materialize_relocatable_plan(candidate, plan, output)
+    assert not intercepted, "late joinpath callback ran before source admission"
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("owner", ("Path", "PurePath"))
+@pytest.mark.parametrize("operator", ("__truediv__", "__itruediv__"))
+def test_relocation_rejects_late_ancestor_division_redirect(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str,
+    operator: str,
+) -> None:
+    """An overridden path operator cannot hide linked source ancestors."""
+    from pathlib import PurePath
+
+    root = tmp_path / "candidate"
+    actual = root / "real"
+    actual.mkdir(parents=True)
+    linked = root / "link"
+    try:
+        linked.symlink_to(actual, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unsupported by this host")
+    original_divide = Path.__truediv__
+    intercepted: list[str] = []
+
+    def redirect(path: Path, component: str) -> Path:
+        if component == "link":
+            intercepted.append(component)
+            return original_divide(path, "real")
+        return original_divide(path, component)
+
+    path_class = Path if owner == "Path" else PurePath
+    with monkeypatch.context() as patched:
+        patched.setattr(path_class, operator, redirect, raising=False)
+        with pytest.raises(RelocationError, match="resolution hooks changed"):
+            _ = relocatable_module._safe_path(root, "link/file.bin")
+    assert not intercepted, "late path operator hid a linked ancestor"

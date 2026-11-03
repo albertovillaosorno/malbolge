@@ -118,6 +118,10 @@ _NATIVE_HOST_ALTSEP = os.path.altsep
 # The original __str__ also calls lazy PurePath parser and tail descriptors;
 # without these checks a late getter can redirect source/output containment.
 _PATH_RESOLUTION_HOOK_NAMES = (
+    # _safe_path builds paths via joinpath; linked ancestor walks divide.
+    "joinpath",
+    "__truediv__",
+    "__itruediv__",
     "with_segments",
     "__new__",
     "__init__",
