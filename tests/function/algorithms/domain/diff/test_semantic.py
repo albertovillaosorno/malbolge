@@ -953,3 +953,187 @@ def test_semantic_mapper_output_comparison_ignores_late_raw_getter(
         with pytest.raises(SemanticPlacementError, match="actual output bytes"):
             _ = apply_semantic_plan(source, plan, lambda _: forged)
     assert calls == 0, "late raw getter certified a foreign mapper response"
+
+
+@pytest.mark.parametrize(
+    "field", ["source_digests", "before_digests", "after_digests"]
+)
+def test_semantic_locator_constructor_ignores_late_getter(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A class hook cannot hide mutable digest evidence at admission."""
+    valid = (b"a" * 32,)
+    values: dict[str, object] = {
+        "source_digests": valid,
+        "before_digests": (),
+        "after_digests": (),
+    }
+    values[field] = [b"a" * 32]
+    original = SemanticLocator.__getattribute__
+    calls = 0
+
+    def getter(value: SemanticLocator, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return valid
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticLocator, "__getattribute__", getter)
+        constructor = cast("Callable[..., SemanticLocator]", SemanticLocator)
+        with pytest.raises(SemanticPlacementError, match="immutable tuples"):
+            _ = constructor(**values)
+    assert calls == 0, "mutable locator metadata was concealed by a getter"
+
+
+@pytest.mark.parametrize(
+    "field", ["locator", "replacement", "replacement_digests"]
+)
+def test_semantic_edit_constructor_ignores_late_getter(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A class hook cannot hide mutable replacement evidence."""
+    locator = SemanticLocator((b"a" * 32,), (), ())
+    valid: dict[str, object] = {
+        "locator": locator,
+        "replacement": b"new",
+        "replacement_digests": (b"b" * 32,),
+    }
+    invalid: dict[str, object] = {
+        "locator": object(),
+        "replacement": bytearray(b"new"),
+        "replacement_digests": [b"b" * 32],
+    }
+    values = valid | {field: invalid[field]}
+    original = SemanticEdit.__getattribute__
+    calls = 0
+
+    def getter(value: SemanticEdit, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return valid[field]
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticEdit, "__getattribute__", getter)
+        constructor = cast("Callable[..., SemanticEdit]", SemanticEdit)
+        with pytest.raises(SemanticPlacementError):
+            _ = constructor(**values)
+    assert calls == 0, "mutable edit metadata was concealed by a getter"
+
+
+def test_semantic_plan_constructor_ignores_late_edits_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late getters cannot turn a mutable edit list into a sealed plan."""
+    original = SemanticAuthoringPlan.__getattribute__
+    calls = 0
+
+    def getter(value: SemanticAuthoringPlan, name: str) -> object:
+        nonlocal calls
+        if name == "edits":
+            calls += 1
+            return ()
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticAuthoringPlan, "__getattribute__", getter)
+        constructor = cast(
+            "Callable[..., SemanticAuthoringPlan]", SemanticAuthoringPlan
+        )
+        with pytest.raises(SemanticPlacementError, match="immutable tuple"):
+            _ = constructor(edits=[])
+    assert calls == 0, "mutable plan metadata was concealed by a getter"
+
+
+@pytest.mark.parametrize("field", ["locator", "source_digests"])
+def test_semantic_locator_rejects_late_source_evidence_forgery(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Class hooks must not authenticate a candidate with different units."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    candidate = _map(b"alpha = bad ; omega")
+    plan = build_semantic_plan(source, target)
+    false_plan = build_semantic_plan(candidate, target)
+    asserted = plan.edits[0]
+    original_edit = SemanticEdit.__getattribute__
+    original_locator = SemanticLocator.__getattribute__
+    calls = 0
+
+    def edit_getter(value: SemanticEdit, name: str) -> object:
+        nonlocal calls
+        if value is asserted and name == "locator":
+            calls += 1
+            return false_plan.edits[0].locator
+        return cast("object", original_edit(value, name))
+
+    def locator_getter(value: SemanticLocator, name: str) -> object:
+        nonlocal calls
+        if value is asserted.locator and name == "source_digests":
+            calls += 1
+            return false_plan.edits[0].locator.source_digests
+        return cast("object", original_locator(value, name))
+
+    with monkeypatch.context() as patched:
+        if field == "locator":
+            patched.setattr(SemanticEdit, "__getattribute__", edit_getter)
+        else:
+            patched.setattr(SemanticLocator, "__getattribute__", locator_getter)
+        with pytest.raises(
+            SemanticPlacementError, match="missing or ambiguous"
+        ):
+            _ = apply_semantic_plan(candidate, plan, _map)
+    assert calls == 0, "late locator getter forged source authorization"
+
+
+@pytest.mark.parametrize("field", ["replacement", "replacement_digests"])
+def test_semantic_edit_ignores_late_payload_getter(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Accepted semantic output follows the sealed edit's original payload."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    plan = build_semantic_plan(source, target)
+    original = SemanticEdit.__getattribute__
+    calls = 0
+
+    def getter(value: SemanticEdit, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return b"bad" if field == "replacement" else (b"0" * 32,)
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticEdit, "__getattribute__", getter)
+        output = apply_semantic_plan(source, plan, _map)
+    assert output == target.raw
+    assert calls == 0, "late edit getter changed canonical replacement evidence"
+
+
+def test_semantic_plan_ignores_late_empty_edits_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late class getter cannot silently skip an authenticated edit plan."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    plan = build_semantic_plan(source, target)
+    assert plan.edits
+    original = SemanticAuthoringPlan.__getattribute__
+    calls = 0
+
+    def getter(value: SemanticAuthoringPlan, name: str) -> object:
+        nonlocal calls
+        if name == "edits":
+            calls += 1
+            return ()
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticAuthoringPlan, "__getattribute__", getter)
+        output = apply_semantic_plan(source, plan, _map)
+    assert output == target.raw
+    assert calls == 0, "late plan getter dropped accepted semantic edits"

@@ -38,6 +38,7 @@ import builtins
 import hashlib
 from bisect import bisect_left
 from dataclasses import dataclass
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.mapped import (
@@ -95,11 +96,7 @@ class SemanticLocator:
             SemanticPlacementError: Locator has no semantic evidence.
 
         """
-        groups = (
-            self.source_digests,
-            self.before_digests,
-            self.after_digests,
-        )
+        groups = read_semantic_locator(self)
         for group in groups:
             if _NATIVE_TYPE(group) is not _NATIVE_TUPLE:
                 message = "semantic locator digests must use immutable tuples"
@@ -117,6 +114,37 @@ class SemanticLocator:
             raise SemanticPlacementError(message)
 
 
+_LOCATOR_SOURCE_SLOT = cast(
+    "MemberDescriptorType", SemanticLocator.__dict__["source_digests"]
+)
+_LOCATOR_BEFORE_SLOT = cast(
+    "MemberDescriptorType", SemanticLocator.__dict__["before_digests"]
+)
+_LOCATOR_AFTER_SLOT = cast(
+    "MemberDescriptorType", SemanticLocator.__dict__["after_digests"]
+)
+
+
+def read_semantic_locator(
+    locator: SemanticLocator,
+) -> tuple[tuple[bytes, ...], tuple[bytes, ...], tuple[bytes, ...]]:
+    """Read immutable source/context hashes through original slot storage."""
+    return (
+        cast(
+            "tuple[bytes, ...]",
+            _LOCATOR_SOURCE_SLOT.__get__(locator, SemanticLocator),
+        ),
+        cast(
+            "tuple[bytes, ...]",
+            _LOCATOR_BEFORE_SLOT.__get__(locator, SemanticLocator),
+        ),
+        cast(
+            "tuple[bytes, ...]",
+            _LOCATOR_AFTER_SLOT.__get__(locator, SemanticLocator),
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class SemanticEdit:
     """Target replacement relative to hashed canonical source units."""
@@ -132,16 +160,17 @@ class SemanticEdit:
             SemanticPlacementError: Edit metadata is malformed.
 
         """
-        if _NATIVE_TYPE(self.locator) is not SemanticLocator:
+        locator, replacement, replacement_digests = read_semantic_edit(self)
+        if _NATIVE_TYPE(locator) is not SemanticLocator:
             message = "semantic edit locator must use the exact locator type"
             raise SemanticPlacementError(message)
-        if _NATIVE_TYPE(self.replacement) is not _NATIVE_BYTES:
+        if _NATIVE_TYPE(replacement) is not _NATIVE_BYTES:
             message = "semantic replacement must use exact bytes"
             raise SemanticPlacementError(message)
-        if _NATIVE_TYPE(self.replacement_digests) is not _NATIVE_TUPLE:
+        if _NATIVE_TYPE(replacement_digests) is not _NATIVE_TUPLE:
             message = "semantic replacement digests must use an immutable tuple"
             raise SemanticPlacementError(message)
-        items = cast("tuple[object, ...]", self.replacement_digests)
+        items = cast("tuple[object, ...]", replacement_digests)
         if _NATIVE_ANY(
             _NATIVE_TYPE(digest) is not _NATIVE_BYTES
             or _NATIVE_LEN(digest) != _SHA256_BYTES
@@ -149,6 +178,30 @@ class SemanticEdit:
         ):
             message = "semantic replacement digests must be exact SHA-256 bytes"
             raise SemanticPlacementError(message)
+
+
+_EDIT_LOCATOR_SLOT = cast(
+    "MemberDescriptorType", SemanticEdit.__dict__["locator"]
+)
+_EDIT_REPLACEMENT_SLOT = cast(
+    "MemberDescriptorType", SemanticEdit.__dict__["replacement"]
+)
+_EDIT_DIGESTS_SLOT = cast(
+    "MemberDescriptorType", SemanticEdit.__dict__["replacement_digests"]
+)
+
+
+def read_semantic_edit(
+    edit: SemanticEdit,
+) -> tuple[SemanticLocator, bytes, tuple[bytes, ...]]:
+    """Read the stored source locator and replacement evidence directly."""
+    return (
+        cast("SemanticLocator", _EDIT_LOCATOR_SLOT.__get__(edit, SemanticEdit)),
+        cast("bytes", _EDIT_REPLACEMENT_SLOT.__get__(edit, SemanticEdit)),
+        cast(
+            "tuple[bytes, ...]", _EDIT_DIGESTS_SLOT.__get__(edit, SemanticEdit)
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,14 +217,28 @@ class SemanticAuthoringPlan:
             SemanticPlacementError: Plan records are mutable or foreign.
 
         """
-        if _NATIVE_TYPE(self.edits) is not _NATIVE_TUPLE:
+        edits = read_semantic_plan(self)
+        if _NATIVE_TYPE(edits) is not _NATIVE_TUPLE:
             message = "semantic edits must use the exact immutable tuple type"
             raise SemanticPlacementError(message)
         if _NATIVE_ANY(
-            _NATIVE_TYPE(edit) is not SemanticEdit for edit in self.edits
+            _NATIVE_TYPE(edit) is not SemanticEdit for edit in edits
         ):
             message = "semantic plan contains a foreign edit record"
             raise SemanticPlacementError(message)
+
+
+_PLAN_EDITS_SLOT = cast(
+    "MemberDescriptorType", SemanticAuthoringPlan.__dict__["edits"]
+)
+
+
+def read_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ...]:
+    """Read the original immutable edit sequence, not late class getters."""
+    return cast(
+        "tuple[SemanticEdit, ...]",
+        _PLAN_EDITS_SLOT.__get__(plan, SemanticAuthoringPlan),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -630,24 +697,25 @@ def _context_matches(
     locator: SemanticLocator,
     start: int,
 ) -> bool:
-    source_end = start + _NATIVE_LEN(locator.source_digests)
-    before_count = _NATIVE_LEN(locator.before_digests)
-    after_count = _NATIVE_LEN(locator.after_digests)
+    source, before, after = read_semantic_locator(locator)
+    source_end = start + _NATIVE_LEN(source)
+    before_count = _NATIVE_LEN(before)
+    after_count = _NATIVE_LEN(after)
     fits = (
         start >= before_count
         and source_end + after_count <= _NATIVE_LEN(candidate)
     )
     source_matches = (
-        fits and candidate[start:source_end] == locator.source_digests
+        fits and candidate[start:source_end] == source
     )
     before_matches = (
         source_matches
-        and candidate[start - before_count : start] == locator.before_digests
+        and candidate[start - before_count : start] == before
     )
     return _NATIVE_BOOL(
         before_matches
         and candidate[source_end : source_end + after_count]
-        == locator.after_digests
+        == after
     )
 
 
@@ -655,21 +723,22 @@ def _position_seeds(
     candidate: tuple[bytes, ...],
     locator: SemanticLocator,
 ) -> tuple[int, ...]:
-    if locator.source_digests:
-        first = locator.source_digests[0]
+    source, before, after = read_semantic_locator(locator)
+    if source:
+        first = source[0]
         return _NATIVE_TUPLE(
             index
             for index, digest in _NATIVE_ENUMERATE(candidate)
             if digest == first
         )
-    if locator.before_digests:
-        final_before = locator.before_digests[-_ONE]
+    if before:
+        final_before = before[-_ONE]
         return _NATIVE_TUPLE(
             index + _ONE
             for index, digest in _NATIVE_ENUMERATE(candidate)
             if digest == final_before
         )
-    first_after = locator.after_digests[0]
+    first_after = after[0]
     return _NATIVE_TUPLE(
         index
         for index, digest in _NATIVE_ENUMERATE(candidate)
@@ -723,9 +792,10 @@ def _locate_edits(
 ) -> tuple[_LocatedEdit, ...]:
     digests = _view_digests(candidate)
     located: list[_LocatedEdit] = []
-    for edit in plan.edits:
-        unit_start = _unique_position(digests, edit.locator)
-        unit_end = unit_start + _NATIVE_LEN(edit.locator.source_digests)
+    for edit in read_semantic_plan(plan):
+        locator = read_semantic_edit(edit)[0]
+        unit_start = _unique_position(digests, locator)
+        unit_end = unit_start + _NATIVE_LEN(read_semantic_locator(locator)[0])
         raw_start, raw_end = _raw_span(candidate, unit_start, unit_end)
         located.append(
             _LocatedEdit(
@@ -768,7 +838,7 @@ def _apply_raw_edits(raw: bytes, edits: tuple[_LocatedEdit, ...]) -> bytes:
     for item in _NATIVE_REVERSED(edits):
         output = (
             output[: item.raw_start]
-            + item.edit.replacement
+            + read_semantic_edit(item.edit)[1]
             + output[item.raw_end :]
         )
     return output
@@ -781,7 +851,7 @@ def _expected_digests(
     expected = _NATIVE_LIST(_view_digests(candidate))
     for item in _NATIVE_REVERSED(edits):
         expected[item.unit_start : item.unit_end] = (
-            item.edit.replacement_digests
+            read_semantic_edit(item.edit)[2]
         )
     return _NATIVE_TUPLE(expected)
 
@@ -833,7 +903,7 @@ def apply_semantic_plan(
         message = "semantic plan must use the exact authoring-plan type"
         raise SemanticPlacementError(message)
     _validate_mapper(mapper)
-    if not plan.edits:
+    if not read_semantic_plan(plan):
         return read_mapped_view(candidate)[0]
     located = _locate_edits(candidate, plan)
     expected = _expected_digests(candidate, located)
