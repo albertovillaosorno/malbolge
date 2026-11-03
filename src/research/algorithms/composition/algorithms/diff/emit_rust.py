@@ -73,6 +73,7 @@ _NATIVE_INT_TYPE = int
 _NATIVE_BOOL_TYPE = bool
 _NATIVE_LEN = len
 _NATIVE_RANGE = range
+_NATIVE_ORD = ord
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Guard output classification as well as runtime-template resolution against
 # mutable process-global hooks installed after the emitter was imported.
@@ -147,7 +148,7 @@ def _rust_character(character: str) -> str:
     }
     if character in escapes:
         return escapes[character]
-    scalar = ord(character)
+    scalar = _NATIVE_ORD(character)
     if _SURROGATE_START <= scalar <= _SURROGATE_END:
         message = "Rust transform profile must contain Unicode scalar values"
         raise RustEmissionError(message)

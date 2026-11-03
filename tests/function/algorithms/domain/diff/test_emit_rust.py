@@ -650,6 +650,34 @@ def test_emitter_rejects_surrogate_profile_before_render(
         _ = emit_rust_transform(protected, "bad\ud800profile")
 
 
+def test_emitter_rejects_surrogate_profile_after_late_ord_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late Unicode hooks cannot turn invalid Rust scalars into source text."""
+    _, _, _, protected = _fixture(tmp_path)
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "ord", lambda _: 65)
+        try:
+            _ = emit_rust_transform(protected, "bad\ud800profile")
+        except RustEmissionError:
+            rejected = True
+    assert rejected, "late ord hook admitted a surrogate profile"
+
+
+def test_emitter_profile_escaping_ignores_late_ord_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late Unicode hooks cannot change deterministic Rust string escaping."""
+    _, _, _, protected = _fixture(tmp_path)
+    profile = "unicode-\u2603-\x08"
+    baseline = emit_rust_transform(protected, profile)
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "ord", lambda _: 65)
+        observed = emit_rust_transform(protected, profile)
+    assert observed == baseline, "late ord hook altered Rust profile escaping"
+
+
 def test_emitted_rust_is_deterministic_and_hides_plaintext_literals(
     tmp_path: Path,
 ) -> None:
