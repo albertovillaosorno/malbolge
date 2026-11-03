@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import os
 import shutil
 import sys
@@ -73,6 +74,12 @@ _FILE_READ_FLAGS = (
     | getattr(os, "O_NONBLOCK", 0)
 )
 _ZERO = 0
+# Keep path and passthrough admission independent of late host hooks.
+_NATIVE_ANY = builtins.any
+_NATIVE_BYTEARRAY = builtins.bytearray
+_NATIVE_MIN = builtins.min
+_NATIVE_SET = builtins.set
+_NATIVE_SORTED = builtins.sorted
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
@@ -154,7 +161,9 @@ def _validate_relative_path(relative_path: str) -> str:
     """
     admitted = _require_portable_path_label(relative_path)
     candidate = PurePosixPath(admitted)
-    unsafe_part = any(part in _UNSAFE_PATH_PARTS for part in candidate.parts)
+    unsafe_part = _NATIVE_ANY(
+        part in _UNSAFE_PATH_PARTS for part in candidate.parts
+    )
     unsafe_root = (
         candidate.is_absolute() or bool(PureWindowsPath(admitted).drive)
     )
@@ -170,19 +179,23 @@ def _validate_relative_path(relative_path: str) -> str:
 
 def _normalized_roots(roots: tuple[str, ...]) -> tuple[str, ...]:
     normalized = tuple(_validate_relative_path(root) for root in roots)
-    if normalized != tuple(sorted(set(normalized))):
+    if normalized != tuple(_NATIVE_SORTED(_NATIVE_SET(normalized))):
         message = "passthrough roots must be unique and sorted"
         raise ExactTreeError(message)
     for index, root in enumerate(normalized):
         prefix = root + "/"
-        if any(other.startswith(prefix) for other in normalized[index + 1 :]):
+        if _NATIVE_ANY(
+            other.startswith(prefix) for other in normalized[index + 1 :]
+        ):
             message = "passthrough roots must not overlap"
             raise ExactTreeError(message)
     return normalized
 
 
 def _path_in_roots(path: str, roots: tuple[str, ...]) -> bool:
-    return any(path == root or path.startswith(root + "/") for root in roots)
+    return _NATIVE_ANY(
+        path == root or path.startswith(root + "/") for root in roots
+    )
 
 
 def _filter_snapshot(
@@ -221,7 +234,7 @@ def _tree_paths(root: Path) -> tuple[Path, ...]:
     for directory, directories, filenames in _walk_tree(root):
         paths.extend(directory / name for name in directories)
         paths.extend(directory / name for name in filenames)
-    return tuple(sorted(paths))
+    return tuple(_NATIVE_SORTED(paths))
 
 
 def _walk_relative_path(root: Path, path: Path) -> str:
@@ -269,7 +282,7 @@ def _tree_paths_excluding(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...
             _prune_excluded_directories(root, directory, directories, roots=roots)
         )
         paths.extend(_admitted_files(root, directory, filenames, roots=roots))
-    return tuple(sorted(paths))
+    return tuple(_NATIVE_SORTED(paths))
 
 
 def _entry_mode(path: Path, context: str) -> int | None:
@@ -357,9 +370,9 @@ def _read_native_chunk(descriptor: int, count: int, context: str) -> bytes:
 
 
 def _read_admitted_descriptor(descriptor: int, length: int, context: str) -> bytes:
-    payload = bytearray()
+    payload = _NATIVE_BYTEARRAY()
     while len(payload) < length:
-        requested = min(_FILE_READ_CHUNK_BYTES, length - len(payload))
+        requested = _NATIVE_MIN(_FILE_READ_CHUNK_BYTES, length - len(payload))
         chunk = _read_native_chunk(descriptor, requested, context)
         if not chunk or len(chunk) > requested:
             message = f"{context} read did not match admitted byte length"
@@ -568,7 +581,7 @@ def snapshot_tree(root: Path) -> TreeSnapshot:
         for path in _tree_paths(resolved_root)
         if (record := _record_file(resolved_root, path)) is not None
     )
-    return TreeSnapshot(files=tuple(sorted(records)))
+    return TreeSnapshot(files=tuple(_NATIVE_SORTED(records)))
 
 
 def snapshot_tree_excluding(
@@ -588,7 +601,7 @@ def snapshot_tree_excluding(
         for path in _tree_paths_excluding(resolved_root, roots)
         if (record := _record_file(resolved_root, path)) is not None
     )
-    return TreeSnapshot(files=tuple(sorted(records)))
+    return TreeSnapshot(files=tuple(_NATIVE_SORTED(records)))
 
 
 def _source_paths_by_content(
@@ -598,7 +611,7 @@ def _source_paths_by_content(
     for record in source.files:
         key = (record.sha256, record.size)
         paths.setdefault(key, []).append(record.path)
-    return {key: tuple(sorted(value)) for key, value in paths.items()}
+    return {key: tuple(_NATIVE_SORTED(value)) for key, value in paths.items()}
 
 
 def _tree_bytes(root: Path, relative_path: str) -> bytes:
@@ -729,7 +742,7 @@ def _build_patch_segments(source: bytes, target: bytes) -> tuple[ExactSegment, .
 
 
 def _contains_source_slice(segments: tuple[ExactSegment, ...]) -> bool:
-    return any(isinstance(segment, SourceSlice) for segment in segments)
+    return _NATIVE_ANY(isinstance(segment, SourceSlice) for segment in segments)
 
 
 def _patch_instruction(

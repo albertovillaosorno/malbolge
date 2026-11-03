@@ -362,6 +362,116 @@ def test_exact_passthrough_roots_ignore_host_reserved_policy_mutation(
         _ = build_exact_plan(source, oracle, passthrough_roots=(reserved_root,))
 
 
+def test_exact_relative_path_rejects_late_any_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late builtins changes cannot authorize traversal-containing paths."""
+    validate = cast(
+        "Callable[[str], str]", vars(exact_module)["_validate_relative_path"]
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda items: False)
+        try:
+            _ = validate("src/../escape")
+        except TreeModelError:
+            rejected = True
+    assert rejected, "late any hook admitted a parent traversal"
+
+
+def test_exact_passthrough_roots_reject_late_builtin_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Root uniqueness, order, and nonoverlap survive hostile builtins."""
+    normalized_roots = cast(
+        "Callable[[tuple[str, ...]], tuple[str, ...]]",
+        vars(exact_module)["_normalized_roots"],
+    )
+    cases = (
+        ("any", lambda values: False, ("root", "root/sub")),
+        ("set", lambda values: list(values), ("root", "root")),
+        ("sorted", lambda values: ("z", "a"), ("z", "a")),
+    )
+    rejected: list[bool] = []
+    for name, forged, roots in cases:
+        with monkeypatch.context() as patched:
+            patched.setattr(builtins, name, forged)
+            try:
+                _ = normalized_roots(roots)
+            except ExactTreeError:
+                rejected.append(True)
+            else:
+                rejected.append(False)
+    assert rejected == [True, True, True], "late hook admitted unsafe roots"
+
+
+def test_exact_passthrough_snapshot_resists_late_any_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late any hook cannot smuggle dynamic files into static identity."""
+    source, _ = _synthetic_pair(tmp_path)
+    baseline = snapshot_tree_excluding(source, ("assets",))
+    assert "assets/blob.bin" not in {file.path for file in baseline.files}
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda items: False)
+        observed = snapshot_tree_excluding(source, ("assets",))
+    assert observed == baseline, "late any hook changed static source identity"
+
+
+def test_exact_file_reader_resists_late_bytearray_collector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged collector must not replace source bytes with equal-size data."""
+    leaf = tmp_path / "source.bin"
+    content = b"read-only-authentic-source-bytes"
+    _ = leaf.write_bytes(content)
+    native_bytearray = builtins.bytearray
+    native_bytes = builtins.bytes
+
+    class _SubstitutingCollector:
+        def __init__(self) -> None:
+            self.data = native_bytearray()
+
+        def __len__(self) -> int:
+            return len(self.data)
+
+        def extend(self, chunk: bytes) -> None:
+            self.data.extend(b"x" * len(chunk))
+
+        def __bytes__(self) -> bytes:
+            return native_bytes(self.data)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytearray", _SubstitutingCollector)
+        observed = exact_module.read_exact_regular_file(leaf, "tree entry")
+    assert observed == content, "late bytearray collector changed source bytes"
+
+
+def test_exact_file_reader_resists_late_min_chunk_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced min must not increase the bounded per-read file quota."""
+    leaf = tmp_path / "large.bin"
+    _ = leaf.write_bytes(b"a" * 70_000)
+    native_read = cast(
+        "Callable[[int, int, str], bytes]",
+        vars(exact_module)["_read_native_chunk"],
+    )
+    chunks: list[int] = []
+
+    def measured_read(descriptor: int, count: int, context: str) -> bytes:
+        chunks.append(count)
+        return native_read(descriptor, count, context)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "_read_native_chunk", measured_read)
+        patched.setattr(builtins, "min", lambda left, right: right)
+        observed = exact_module.read_exact_regular_file(leaf, "tree entry")
+    assert len(observed) == 70_000
+    assert max(chunks) <= 65_536, "late min hook increased native read quota"
+
+
 def test_tree_snapshot_order_resists_late_sorted_hook_swap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
