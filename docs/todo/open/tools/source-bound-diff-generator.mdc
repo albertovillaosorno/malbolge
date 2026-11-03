@@ -77,6 +77,12 @@ format.
   `os.path.realpath` before and after `Path.resolve` (`f15620ff7`). Two
   red-first laundering/denial cases and 152 focused emitter tests passed.
   External filesystem races remain outside this admission guarantee.
+- The emitter also checks native `os.lstat`, `os.readlink`, `os.getcwd`,
+  `stat.S_ISLNK`, and `Path` constructor/resolver hooks before and after
+  template/output resolution (`c6154acf4`). Eight red-first hook and
+  symlink-alias regressions pass, with 160 focused emitter and 3,348 integrated
+  diff tests green; scoped Ruff, strict BasedPyright, and diff checks pass.
+  Checks remain non-atomic against concurrent host/filesystem mutations.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused

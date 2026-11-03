@@ -121,6 +121,15 @@ cases prove that a forged host resolver can otherwise hide a collision or
 execute an untrusted denial callback. All 152 focused emitter tests pass;
 external writers still require coordination.
 
+Emitter template-identity preflight now additionally pins the import-original
+`os.lstat`, `os.readlink`, `os.getcwd`, and `stat.S_ISLNK` helpers used by
+`realpath`, and the native `Path` construction/resolution hooks
+(`c6154acf4`). Eight red-first host-hook, factory, and symlink-alias
+regressions now fail closed before invoking foreign callbacks. All 160 focused
+emitter and 3,348 integrated diff tests passed; scoped Ruff, strict
+BasedPyright, and diff checks were clean. These identity checks are not atomic
+against concurrent host or filesystem mutation.
+
 All implemented public metadata boundaries now admit exact runtime types before
 using them as evidence or touching output. Numeric thresholds and counts reject
 boolean aliases. Identity trees, anchors, behavior observations, probe programs,
