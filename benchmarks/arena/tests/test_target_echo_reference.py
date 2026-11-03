@@ -115,7 +115,7 @@ def test_target_run_manifest_rejects_forged_git_quote_provider(
     source_encoder = json.JSONEncoder(ensure_ascii=True)
     source_dumps = json.dumps
 
-    def altered(value: object, **kwargs: object) -> str:
+    def altered(value: object, **kwargs: Any) -> str:
         if value == context.commit:
             return source_encoder.encode(forged_commit)
         return source_dumps(value, **kwargs)
@@ -536,7 +536,7 @@ def test_target_rss_json_rejects_mutating_public_writer(
     context = _synthetic_target_context(tmp_path, site=TARGET_RSS)
     native_dumps = json.dumps
 
-    def mutate(value: dict[str, object], **kwargs: object) -> str:
+    def mutate(value: dict[str, object], **kwargs: Any) -> str:
         value["stages"] = {"emitter": 1, "primary_vm": 1, "verifier_vm": 1}
         return native_dumps(value, **kwargs)
 

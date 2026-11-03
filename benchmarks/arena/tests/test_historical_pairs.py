@@ -92,7 +92,7 @@ def test_historical_report_rejects_substituted_json_timing(
             return {**value, "observations": rows}
         return value
 
-    def altered(value: object, **kwargs: object) -> str:
+    def altered(value: object, **kwargs: Any) -> str:
         return native_dumps(changed(value), **kwargs)
 
     class ForgedCachedEncoder:
