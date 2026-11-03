@@ -600,6 +600,20 @@ external concurrent filesystem writers remain separate risks. Standalone
 BasedPyright still reports thirteen older compatible-model diagnostics outside
 these staging changes.
 
+Compatible materialization also pins `os.path.realpath`, `os.fspath`,
+`os.lstat`, `os.readlink`, `os.getcwd`, `stat.S_ISLNK`, and original
+`Path` construction/resolution hooks (`14d78e21b`). Checks occur before
+converting requested paths and both before and after resolving source or
+output roots and nested file paths. An import-late host realpath previously
+admitted a destination inside the candidate tree. Ten new regressions
+cover that containment forgery, four host helper substitutions, three path
+factories, a symlink-classifier substitution, and mutation during resolution.
+All 283 compatible tests passed postcommit; scoped Ruff, source-only strict
+BasedPyright and diff checks passed. The broader shared suite reached 2,966
+passes but stopped after three relocatable publication failures while another
+agent's uncommitted `ctypes.CDLL.__new__` guard was in flight. This does not
+constitute an integrated clean verdict or exclude external filesystem races.
+
 Generator exact replay separately reads stored native file and snapshot
 fields, and its output checks use original path-ancestry comparisons rather
 than late class equality or parent hooks. Signed generator commits

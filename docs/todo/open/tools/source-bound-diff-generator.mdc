@@ -83,6 +83,14 @@ format.
   symlink-alias regressions pass, with 160 focused emitter and 3,348 integrated
   diff tests green; scoped Ruff, strict BasedPyright, and diff checks pass.
   Checks remain non-atomic against concurrent host/filesystem mutations.
+- Compatible materialization now checks import-original host realpath,
+  `os.fspath`/`os.lstat`/`os.readlink`/`os.getcwd`/`stat.S_ISLNK`, and native
+  `Path` factories around source/output and nested-file resolution
+  (`14d78e21b`). Ten red-first host/factory/mid-call cases fail closed;
+  283 postcommit compatible tests, Ruff, strict source BasedPyright and diff
+  checks pass. The shared integrated run reached 2,966 passes but stopped
+  after three failures in concurrent, uncommitted publication changes, so no
+  integrated clean verdict is claimed. External filesystem races remain.
 - Relocatable output and nested source path resolution now checks pinned
   host realpath, `os.fspath`/`os.lstat`/`os.readlink`/`os.getcwd`/`stat.S_ISLNK`,
   and native `Path` factories before and after trusted resolution (`57870f21c`).
