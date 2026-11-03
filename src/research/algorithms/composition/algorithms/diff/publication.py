@@ -41,7 +41,8 @@ import errno
 import os
 import stat
 import sys
-from pathlib import Path
+from pathlib import Path, PurePath
+from types import MemberDescriptorType
 from typing import Final, Protocol, cast
 
 _WINDOWS_OS_NAME: Final = "nt"
@@ -59,7 +60,44 @@ _NATIVE_PATH_TYPE: Final = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_IS_DIR: Final = stat.S_ISDIR
 # Keep syscall path encoding outside mutable process-global os path hooks.
-_NATIVE_PATH_STRING: Final = Path.__str__
+_NATIVE_PATH_STR: Final = Path.__str__
+_NATIVE_PATH_STR_SLOT: Final = cast("MemberDescriptorType", PurePath.__dict__["_str"])
+_NATIVE_PATH_RAW_SLOT: Final = cast(
+    "MemberDescriptorType", PurePath.__dict__["_raw_paths"]
+)
+_NATIVE_OS_MODULE: Final = os
+_NATIVE_OS_FSPATH: Final = os.fspath
+# The cached-string read and lazy parser call several mutable pathlib class
+# descriptors. Reject late changes to this exact dependency chain; unrelated
+# Path hooks such as equality and rename are independently pinned below.
+_PATH_STRING_HOOK_NAMES: Final = (
+    "__getattribute__",
+    "_str",
+    "_raw_paths",
+    "_drv",
+    "_root",
+    "_tail_cached",
+    "_raw_path",
+    "_tail",
+    "drive",
+    "root",
+    "_parse_path",
+    "_format_parsed_parts",
+    "parser",
+    "__fspath__",
+    "__getattr__",
+    "__setattr__",
+)
+_NATIVE_PATH_CLASS_HOOKS: Final = tuple(
+    (
+        path_class,
+        tuple(
+            (name, path_class.__dict__.get(name)) for name in _PATH_STRING_HOOK_NAMES
+        ),
+    )
+    for path_class in _NATIVE_PATH_TYPE.__mro__
+    if path_class is not object
+)
 _NATIVE_OS_LSTAT: Final = os.lstat
 _NATIVE_OS_RENAME: Final = os.rename
 _FILESYSTEM_ENCODING: Final = sys.getfilesystemencoding()
@@ -86,6 +124,58 @@ class _RenameAt2(Protocol):
         ...
 
 
+def _native_posix_path_string(path: Path) -> str:
+    """Normalize original POSIX raw parts without mutable os.fspath hooks."""
+    parts = _NATIVE_PATH_RAW_SLOT.__get__(path, PurePath)
+    if _NATIVE_TYPE(parts) is not list:
+        raise OSError(errno.EINVAL, "directory publication requires native path parts")
+    joined = ""
+    for part in parts:
+        if _NATIVE_TYPE(part) is not _NATIVE_STR_TYPE:
+            raise OSError(
+                errno.EINVAL, "directory publication requires native path parts"
+            )
+        if part.startswith("/"):
+            joined = part
+        elif joined and not joined.endswith("/"):
+            joined += "/" + part
+        else:
+            joined += part
+    prefix = (
+        "//"
+        if joined.startswith("//") and not joined.startswith("///")
+        else "/"
+        if joined.startswith("/")
+        else ""
+    )
+    tail = "/".join(part for part in joined.split("/") if part and part != ".")
+    return prefix + tail or "."
+
+
+def _native_path_string(path: Path) -> str:
+    """Read a native Path spelling without late Python class or os path hooks."""
+    if any(
+        path_class.__dict__.get(name) is not original
+        for path_class, hooks in _NATIVE_PATH_CLASS_HOOKS
+        for name, original in hooks
+    ):
+        raise OSError(errno.EINVAL, "directory publication path hooks changed")
+    if _HOST_OS_NAME != _WINDOWS_OS_NAME:
+        return _native_posix_path_string(path)
+    try:
+        return cast("str", _NATIVE_PATH_STR_SLOT.__get__(path, PurePath))
+    except AttributeError:
+        if _NATIVE_OS_MODULE.fspath is not _NATIVE_OS_FSPATH:
+            raise OSError(
+                errno.EINVAL, "directory publication path hooks changed"
+            ) from None
+        _ = _NATIVE_PATH_STR(path)
+        return cast("str", _NATIVE_PATH_STR_SLOT.__get__(path, PurePath))
+
+
+_NATIVE_PATH_STRING: Final = _native_path_string
+
+
 def _native_fsencode_path(path: Path) -> bytes:
     """Encode a native Path without delegating to mutable os path hooks.
 
@@ -93,9 +183,7 @@ def _native_fsencode_path(path: Path) -> bytes:
         The host filesystem encoding of one exact pathlib Path.
 
     """
-    return _NATIVE_PATH_STRING(path).encode(
-        _FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS
-    )
+    return _NATIVE_PATH_STRING(path).encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:

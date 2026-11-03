@@ -1279,3 +1279,179 @@ def test_real_host_publication_attests_moved_directory(tmp_path: Path) -> None:
     publication.publish_directory_no_replace(staging, destination)
     assert not staging.exists()
     assert (destination / "payload").read_bytes() == _OURS
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME and sys.platform != _LINUX_PLATFORM,
+    reason="requires supported native directory publication",
+)
+@pytest.mark.parametrize("cached_destination", [False, True])
+def test_publication_rejects_late_path_attribute_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cached_destination: bool
+) -> None:
+    """A late Path getter cannot redirect the destination through __str__."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    redirected = tmp_path / "redirected"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    if cached_destination:
+        _ = str(destination)
+    original = Path.__getattribute__
+    spoofed = str(redirected)
+    calls = 0
+
+    def forged_getattribute(path: Path, name: str) -> object:
+        nonlocal calls
+        if path is destination and name == "_str":
+            calls += 1
+            return spoofed
+        return original(path, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__getattribute__", forged_getattribute)
+        with pytest.raises(OSError, match="path.*hook") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EINVAL
+    assert calls == 0
+    assert (staging / "payload").read_bytes() == _OURS
+    assert not destination.exists() and not redirected.exists()
+
+
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME and sys.platform != _LINUX_PLATFORM,
+    reason="requires supported native directory publication",
+)
+def test_publication_rejects_late_native_path_cache_descriptor_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replacing a PurePath storage descriptor cannot spoof a target path."""
+    from pathlib import PurePath
+
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    redirected = tmp_path / "redirected"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    _ = str(destination)
+    spoofed = str(redirected)
+    original_slot = PurePath.__dict__["_str"]
+    calls = 0
+
+    def forged_cached_path(path: PurePath) -> str:
+        nonlocal calls
+        if path is destination:
+            calls += 1
+            return spoofed
+        return cast("str", original_slot.__get__(path, PurePath))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_str", property(forged_cached_path))
+        with pytest.raises(OSError, match="path.*hook") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EINVAL
+    assert calls == 0
+    assert (staging / "payload").read_bytes() == _OURS
+    assert not destination.exists() and not redirected.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native POSIX path parsing",
+)
+def test_publication_ignores_late_raw_path_fspath_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fresh multi-part paths cannot let late os.fspath select another target."""
+    staging = tmp_path / "staging"
+    destination = Path(str(tmp_path), "destination")
+    redirected = tmp_path / "redirected"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    native_fspath = os.fspath
+    calls = 0
+
+    def forged_fspath(
+        value: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+    ) -> str | bytes:
+        nonlocal calls
+        if value == "destination":
+            calls += 1
+            return "redirected"
+        return native_fspath(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "fspath", forged_fspath)
+        publication.publish_directory_no_replace(staging, destination)
+    assert calls == 0
+    assert not staging.exists()
+    assert (destination / "payload").read_bytes() == _OURS
+    assert not redirected.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native POSIX path parsing",
+)
+@pytest.mark.parametrize(
+    "segments",
+    [
+        ("",),
+        (".",),
+        ("a", ".", "b"),
+        ("a/./b",),
+        ("a", "..", "b"),
+        ("a", "/b"),
+        ("a", "//b"),
+        ("///a", "b"),
+        ("//a", "b"),
+        ("a", "", "b"),
+        ("a//b/",),
+        ("/",),
+        ("//",),
+        ("///",),
+    ],
+)
+def test_native_posix_publication_spelling_preserves_pathlib_lexical_rules(
+    segments: tuple[str, ...],
+) -> None:
+    """Slot-based publication spelling must match the native POSIX Path ABI."""
+    path = Path(*segments)
+    expected = str(path)
+    assert publication._native_path_string(path) == expected
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native POSIX platform path hierarchy",
+)
+@pytest.mark.parametrize("class_index", [0, 2])
+def test_publication_rejects_platform_specific_path_getter_overrides(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, class_index: int
+) -> None:
+    """Native PosixPath and PurePosixPath hooks cannot bypass path admission."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    redirected = tmp_path / "redirected"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    path_class = type(destination).__mro__[class_index]
+    original = Path.__getattribute__
+    wrong = str(redirected)
+    calls = 0
+
+    def forged_getattribute(path: Path, name: str) -> object:
+        nonlocal calls
+        if path is destination and name == "_str":
+            calls += 1
+            return wrong
+        return original(path, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(path_class, "__getattribute__", forged_getattribute)
+        with pytest.raises(OSError, match="path.*hook") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EINVAL
+    assert calls == 0
+    assert (staging / "payload").read_bytes() == _OURS
+    assert not destination.exists() and not redirected.exists()
