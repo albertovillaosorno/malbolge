@@ -3449,3 +3449,180 @@ def test_exact_transient_contexts_preserve_fields_under_late_setters(
         created = cast("Callable[..., object]", owner)(**values[name])
     assert not intercepted, "late context field setter changed internal storage"
     assert slot.__get__(created, owner) is values[name][field]
+
+
+@pytest.mark.parametrize("test_case", ["matching", "changed"])
+def test_exact_plan_ignores_late_init_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, test_case: str
+) -> None:
+    """A late plan initializer cannot erase source-derived instructions."""
+    source, oracle = _synthetic_pair(tmp_path)
+    if test_case == "matching":
+        _write(oracle, "modify.txt", b"old\n")
+    expected = build_exact_plan(source, oracle)
+    original_init = cast("Callable[..., None]", ExactAuthoringPlan.__dict__["__init__"])
+    instruction_slot = cast(
+        "MemberDescriptorType", ExactAuthoringPlan.__dict__["instructions"]
+    )
+    calls = 0
+
+    def forged_init(self: ExactAuthoringPlan, *args: object, **kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        original_init(self, *args, **kwargs)
+        instruction_slot.__set__(self, ())
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ExactAuthoringPlan, "__init__", forged_init)
+        assert build_exact_plan(source, oracle) == expected
+    assert calls == 0, "late plan initializer replaced computed instructions"
+
+
+@pytest.mark.parametrize("test_case", ["matching", "changed"])
+def test_exact_plan_ignores_late_new_hook(test_case: str) -> None:
+    """Check unsafe post-import __new__ patch in an isolated interpreter."""
+    script = f"""
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from test_exact import _synthetic_pair, _write
+from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.model import ExactAuthoringPlan
+with TemporaryDirectory() as directory:
+    source, oracle = _synthetic_pair(Path(directory))
+    if {test_case!r} == "matching":
+        _write(oracle, "modify.txt", b"old\\n")
+    baseline = build_exact_plan(source, oracle)
+    def forbidden_new(*args, **kwargs):
+        raise AssertionError("late plan allocation was consulted")
+    ExactAuthoringPlan.__new__ = staticmethod(forbidden_new)
+    assert build_exact_plan(source, oracle) == baseline
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("record", ["instruction", "literal", "slice"])
+def test_exact_internal_records_ignore_late_init_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Plan creation cannot reenter a replaced instruction/segment initializer."""
+    source, oracle = _synthetic_pair(tmp_path)
+    expected = build_exact_plan(source, oracle)
+    owner: type[object] = {
+        "instruction": ExactInstruction,
+        "literal": OracleLiteral,
+        "slice": SourceSlice,
+    }[record]
+    calls = 0
+
+    def forbidden_init(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late instruction/segment initializer was consulted")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__init__", forbidden_init)
+        assert build_exact_plan(source, oracle) == expected
+    assert calls == 0, "late instruction/segment initializer was consulted"
+
+
+@pytest.mark.parametrize("record", ["instruction", "literal", "slice"])
+def test_exact_internal_records_ignore_late_new_hook(record: str) -> None:
+    """Isolate unsafe allocation replacement from other exact plan tests."""
+    script = f"""
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from test_exact import _synthetic_pair
+from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.model import ExactInstruction, OracleLiteral, SourceSlice
+with TemporaryDirectory() as directory:
+    source, oracle = _synthetic_pair(Path(directory))
+    expected = build_exact_plan(source, oracle)
+    owner = {{
+        "instruction": ExactInstruction,
+        "literal": OracleLiteral,
+        "slice": SourceSlice,
+    }}[{record!r}]
+    def forbidden_new(*args, **kwargs):
+        raise AssertionError("late instruction/segment allocation was consulted")
+    owner.__new__ = staticmethod(forbidden_new)
+    assert build_exact_plan(source, oracle) == expected
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("context", ["_MatchContext", "_PlanningContext"])
+def test_exact_internal_contexts_ignore_late_init_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, context: str
+) -> None:
+    """Admitted tree roots and patch bytes survive late context hook changes."""
+    source, oracle = _synthetic_pair(tmp_path)
+    baseline = build_exact_plan(source, oracle)
+    owner = cast("type[object]", vars(exact_module)[context])
+    calls = 0
+
+    def forged_init(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late matching/planning context initializer was called")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__init__", forged_init)
+        assert build_exact_plan(source, oracle) == baseline
+    assert calls == 0, "late matching/planning initializer participated in plan"
+
+
+@pytest.mark.parametrize("context", ["_MatchContext", "_PlanningContext"])
+def test_exact_internal_contexts_ignore_late_new_hook(context: str) -> None:
+    """Check context allocation hardening in an isolated interpreter."""
+    script = f"""
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from test_exact import _synthetic_pair
+from algorithms.diff.exact import build_exact_plan
+from algorithms.diff import exact as exact_module
+with TemporaryDirectory() as directory:
+    source, oracle = _synthetic_pair(Path(directory))
+    expected = build_exact_plan(source, oracle)
+    owner = vars(exact_module)[{context!r}]
+    def forbidden_new(*args, **kwargs):
+        raise AssertionError("late matching/planning allocation was consulted")
+    owner.__new__ = staticmethod(forbidden_new)
+    assert build_exact_plan(source, oracle) == expected
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr

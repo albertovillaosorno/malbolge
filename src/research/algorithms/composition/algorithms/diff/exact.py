@@ -39,6 +39,7 @@ import io
 import os
 import shutil
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
 from pathlib import Path
@@ -66,7 +67,7 @@ from algorithms.diff.model import (
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
     from algorithms.diff.model import ExactSegment
 
@@ -98,6 +99,7 @@ _NATIVE_STR = builtins.str
 _NATIVE_INT = builtins.int
 _NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_RANGE = builtins.range
+_NATIVE_OBJECT_NEW = object.__new__
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
@@ -120,6 +122,95 @@ _NATIVE_RMTREE = shutil.rmtree
 
 class ExactTreeError(RuntimeError):
     """Raised when exact planning or materialization cannot proceed safely."""
+
+
+# Reconstruct the exact plan only with its original validating initializer.
+# Class hooks remain mutable even on frozen slotted model records.
+_EXACT_PLAN_INIT = cast(
+    Callable[
+        [
+            ExactAuthoringPlan,
+            TreeSnapshot,
+            TreeSnapshot,
+            tuple[ExactInstruction, ...],
+            tuple[str, ...],
+        ],
+        None,
+    ],
+    ExactAuthoringPlan.__dict__["__init__"],
+)
+
+
+def _new_exact_plan(
+    source: TreeSnapshot,
+    target: TreeSnapshot,
+    instructions: tuple[ExactInstruction, ...],
+    passthrough_roots: tuple[str, ...],
+) -> ExactAuthoringPlan:
+    """Construct an internally authored plan without late class hooks."""
+    plan = _NATIVE_OBJECT_NEW(ExactAuthoringPlan)
+    _EXACT_PLAN_INIT(plan, source, target, instructions, passthrough_roots)
+    return plan
+
+
+# Patch segments and instructions are computed after tree reads; internal
+# creation must not reenter class hooks installed during consumer callbacks.
+_SOURCE_SLICE_INIT = cast(
+    "Callable[[SourceSlice, int, int], None]",
+    SourceSlice.__dict__["__init__"],
+)
+_ORACLE_LITERAL_INIT = cast(
+    "Callable[[OracleLiteral, bytes], None]",
+    OracleLiteral.__dict__["__init__"],
+)
+_EXACT_INSTRUCTION_INIT = cast(
+    Callable[
+        [
+            ExactInstruction,
+            str,
+            ExactInstructionKind,
+            str,
+            str | None,
+            bytes | None,
+            tuple[SourceSlice | OracleLiteral, ...],
+        ],
+        None,
+    ],
+    ExactInstruction.__dict__["__init__"],
+)
+
+
+def _new_source_slice(offset: int, length: int) -> SourceSlice:
+    segment = _NATIVE_OBJECT_NEW(SourceSlice)
+    _SOURCE_SLICE_INIT(segment, offset, length)
+    return segment
+
+
+def _new_oracle_literal(data: bytes) -> OracleLiteral:
+    segment = _NATIVE_OBJECT_NEW(OracleLiteral)
+    _ORACLE_LITERAL_INIT(segment, data)
+    return segment
+
+
+def _new_exact_instruction(
+    output_path: str,
+    kind: ExactInstructionKind,
+    expected_sha256: str,
+    source_path: str | None = None,
+    literal: bytes | None = None,
+    segments: tuple[ExactSegment, ...] = (),
+) -> ExactInstruction:
+    instruction = _NATIVE_OBJECT_NEW(ExactInstruction)
+    _EXACT_INSTRUCTION_INIT(
+        instruction,
+        output_path,
+        kind,
+        expected_sha256,
+        source_path,
+        literal,
+        segments,
+    )
+    return instruction
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -160,6 +251,47 @@ class _PlanningContext:
         _PLANNING_ORACLE_ROOT_SLOT.__set__(self, oracle_root)
         _PLANNING_BY_PATH_SLOT.__set__(self, source_by_path)
         _PLANNING_BY_CONTENT_SLOT.__set__(self, source_by_content)
+
+
+# Keep matching and authoring indexes opaque to late class allocation hooks.
+_MATCH_CONTEXT_INIT = cast(
+    "Callable[[_MatchContext, bytes, bytes, dict[bytes, int]], None]",
+    _MatchContext.__dict__["__init__"],
+)
+_PLANNING_CONTEXT_INIT = cast(
+    Callable[
+        [
+            _PlanningContext,
+            Path,
+            Path,
+            dict[str, FileRecord],
+            dict[tuple[str, int], tuple[str, ...]],
+        ],
+        None,
+    ],
+    _PlanningContext.__dict__["__init__"],
+)
+
+
+def _new_match_context(
+    source: bytes, target: bytes, index: dict[bytes, int]
+) -> _MatchContext:
+    context = _NATIVE_OBJECT_NEW(_MatchContext)
+    _MATCH_CONTEXT_INIT(context, source, target, index)
+    return context
+
+
+def _new_planning_context(
+    source_root: Path,
+    oracle_root: Path,
+    source_by_path: dict[str, FileRecord],
+    source_by_content: dict[tuple[str, int], tuple[str, ...]],
+) -> _PlanningContext:
+    context = _NATIVE_OBJECT_NEW(_PlanningContext)
+    _PLANNING_CONTEXT_INIT(
+        context, source_root, oracle_root, source_by_path, source_by_content
+    )
+    return context
 
 
 # Captured original descriptors prevent late getter or setter substitution.
@@ -855,19 +987,19 @@ def _append_literal(
     end: int,
 ) -> None:
     if end > start:
-        segments.append(OracleLiteral(target[start:end]))
+        segments.append(_new_oracle_literal(target[start:end]))
 
 
 def _build_patch_segments(
     source: bytes, target: bytes
 ) -> tuple[ExactSegment, ...]:
-    context = _MatchContext(
+    context = _new_match_context(
         source=source,
         target=target,
         index=_block_index(source),
     )
     if not _match_index(context):
-        return (OracleLiteral(target),)
+        return (_new_oracle_literal(target),)
     segments: list[ExactSegment] = []
     literal_start = _ZERO
     cursor = _ZERO
@@ -883,7 +1015,7 @@ def _build_patch_segments(
             start=literal_start,
             end=target_offset,
         )
-        segments.append(SourceSlice(offset=source_offset, length=length))
+        segments.append(_new_source_slice(offset=source_offset, length=length))
         cursor = target_offset + length
         literal_start = cursor
     _append_literal(
@@ -910,14 +1042,14 @@ def _patch_instruction(
     source_bytes = _tree_bytes(source_root, path)
     segments = _build_patch_segments(source_bytes, target_bytes)
     if _contains_source_slice(segments):
-        return ExactInstruction(
+        return _new_exact_instruction(
             output_path=path,
             kind=ExactInstructionKind.PATCH_SOURCE,
             source_path=path,
             segments=segments,
             expected_sha256=digest,
         )
-    return ExactInstruction(
+    return _new_exact_instruction(
         output_path=path,
         kind=ExactInstructionKind.LITERAL_ORACLE,
         literal=target_bytes,
@@ -934,7 +1066,7 @@ def _instruction_for_target(
     candidates = _planning_by_content(context).get(key, ())
     if candidates:
         source_path = path if path in candidates else candidates[0]
-        return ExactInstruction(
+        return _new_exact_instruction(
             output_path=path,
             kind=ExactInstructionKind.COPY_SOURCE,
             source_path=source_path,
@@ -947,7 +1079,7 @@ def _instruction_for_target(
             target_record,
             target_bytes,
         )
-    return ExactInstruction(
+    return _new_exact_instruction(
         output_path=path,
         kind=ExactInstructionKind.LITERAL_ORACLE,
         literal=target_bytes,
@@ -983,7 +1115,7 @@ def build_exact_plan(
         raise ExactTreeError(message)
     source = _filter_snapshot(source_full, roots, inside=False)
     target = _filter_snapshot(target_full, roots, inside=False)
-    context = _PlanningContext(
+    context = _new_planning_context(
         source_root=source_root,
         oracle_root=oracle_root,
         source_by_path={
@@ -1001,7 +1133,7 @@ def build_exact_plan(
     if not _snapshots_match(snapshot_tree(oracle_root), target_full):
         message = "oracle tree changed while exact planning"
         raise ExactTreeError(message)
-    return ExactAuthoringPlan(
+    return _new_exact_plan(
         source=source,
         target=target,
         instructions=instructions,
