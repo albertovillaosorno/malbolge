@@ -1408,6 +1408,36 @@ def test_exact_snapshot_rejects_linked_root_under_post_import_status_spoof(
     assert calls == 0
 
 
+def test_exact_snapshot_rejects_linked_root_under_post_import_os_lstat_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OS lstat replacement cannot turn a source-tree link into a directory."""
+    real = tmp_path / "real"
+    _write(real, "payload", b"oracle")
+    linked = tmp_path / "linked"
+    linked.symlink_to(real, target_is_directory=True)
+    native_lstat = os.lstat
+    native_status = real.stat()
+    calls = 0
+
+    def forged_lstat(
+        path: Path | str | bytes, *args: object, **kwargs: object
+    ) -> os.stat_result:
+        nonlocal calls
+        if path == linked:
+            calls += 1
+            return native_status
+        return native_lstat(path, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "lstat", forged_lstat)
+        with pytest.raises(
+            ExactTreeError, match="tree root must not be linked"
+        ):
+            _ = snapshot_tree(linked)
+    assert calls == 0
+
+
 def test_exact_snapshot_ignores_post_import_tree_walk_spoof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

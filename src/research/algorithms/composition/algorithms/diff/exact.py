@@ -77,7 +77,7 @@ _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
-_NATIVE_PATH_LSTAT = Path.lstat
+_NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
 
