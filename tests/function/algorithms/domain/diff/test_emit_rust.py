@@ -34,6 +34,8 @@
 
 from __future__ import annotations
 
+import builtins
+from collections.abc import Sized
 from contextlib import contextmanager
 import hashlib
 import os
@@ -310,6 +312,186 @@ def test_rust_emitter_rejects_foreign_output_paths_before_conversion(
     with pytest.raises(RustEmissionError, match="pathlib Path"):
         _ = action(protected, _PROFILE, foreign)
     assert not output.exists()
+
+
+@pytest.mark.parametrize("write_to_disk", [False, True])
+def test_emitter_rejects_foreign_path_after_late_type_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    write_to_disk: bool,
+) -> None:
+    """A late type alias cannot invoke a foreign path's filesystem hook."""
+    _, _, _, protected = _fixture(tmp_path)
+    destination = tmp_path / "spoofed-output.rs"
+    foreign = _ForeignOutputPath(destination)
+    native_type = type
+    native_path_type = native_type(Path())
+    calls = 0
+
+    def forge_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return native_path_type
+        return native_type(value)
+
+    action = write_rust_transform if write_to_disk else emit_rust_transform
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forge_type)
+        try:
+            _ = action(protected, _PROFILE, foreign)
+        except RustEmissionError:
+            rejected = True
+
+    _expect(rejected, "foreign output path was accepted under type spoof")
+    _expect(calls == 0, "mutable process-global type was consulted")
+    _expect(not destination.exists(), "spoofed output path was written")
+
+
+def test_emitter_rejects_foreign_plan_after_late_type_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late type hook cannot promote foreign plan metadata to evidence."""
+    _, _, _, protected = _fixture(tmp_path)
+    foreign = object()
+    native_type = type
+    native_plan_type = native_type(protected)
+    forged_plan = cast("ProtectedExactPlan", foreign)
+    calls = 0
+
+    def forge_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return native_plan_type
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forge_type)
+        try:
+            _ = emit_rust_transform(forged_plan, _PROFILE)
+        except RustEmissionError:
+            rejected = True
+
+    _expect(rejected, "foreign protected plan was accepted under type spoof")
+    _expect(calls == 0, "mutable process-global type was consulted")
+
+
+def test_emitter_rejects_foreign_profile_after_late_type_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late type hook cannot admit non-string profile identifiers."""
+    _, _, _, protected = _fixture(tmp_path)
+    foreign = bytearray(b"synthetic")
+    forged_profile = cast("str", cast("object", foreign))
+    native_type = type
+    calls = 0
+
+    def forge_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return str
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forge_type)
+        try:
+            _ = emit_rust_transform(protected, forged_profile)
+        except RustEmissionError:
+            rejected = True
+
+    _expect(rejected, "foreign profile was accepted under type spoof")
+    _expect(calls == 0, "mutable process-global type was consulted")
+
+
+@pytest.mark.parametrize("write_to_disk", [False, True])
+def test_emitter_rejects_nul_path_after_late_path_string_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    write_to_disk: bool,
+) -> None:
+    """Late string hooks must not hide an invalid native output path."""
+    _, _, _, protected = _fixture(tmp_path)
+    destination = tmp_path / "bad\x00rust.rs"
+    native_string = Path.__str__
+    calls = 0
+
+    def hide_nul(path: Path) -> str:
+        nonlocal calls
+        if path is destination:
+            calls += 1
+            return native_string(path).replace("\x00", "")
+        return native_string(path)
+
+    action = write_rust_transform if write_to_disk else emit_rust_transform
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "__str__", hide_nul)
+        try:
+            _ = action(protected, _PROFILE, destination)
+        except RustEmissionError:
+            rejected = True
+
+    _expect(rejected, "late string hook admitted a NUL-bearing output")
+    _expect(calls == 0, "mutable pathlib string hook was consulted")
+
+
+def test_emitter_hex_chunks_ignore_late_range_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing process-global range cannot omit protected Rust hex chunks."""
+    original_range = range
+    original = emit_rust_module._hex_constant("PAYLOAD", bytes(range(80)))
+    calls = 0
+
+    def hide_hex_chunks(*arguments: int) -> range:
+        nonlocal calls
+        if len(arguments) == 3 and arguments[2] == 64:
+            calls += 1
+            return original_range(0)
+        return original_range(*arguments)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "range", hide_hex_chunks)
+        generated = emit_rust_module._hex_constant(
+            "PAYLOAD", bytes(original_range(80))
+        )
+
+    _expect(generated == original, "hex chunks were omitted")
+    _expect(calls == 0, "mutable process-global range was consulted")
+
+
+def test_emitter_binding_frame_ignores_late_len_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A later length override cannot forge source-binding share counts."""
+    _, _, _, protected = _fixture(tmp_path)
+    original = emit_rust_module._binding_bytes(protected.binding)
+    original_len = len
+    calls = 0
+
+    def erase_share_count(value: Sized) -> int:
+        nonlocal calls
+        if value is protected.binding.shares:
+            calls += 1
+            return 0
+        return original_len(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "len", erase_share_count)
+        generated = emit_rust_module._binding_bytes(protected.binding)
+
+    _expect(generated == original, "source-binding share count was forged")
+    _expect(calls == 0, "mutable process-global len was consulted")
 
 
 @pytest.mark.parametrize("filename", ["bad\x00.rs", "bad\ud800.rs"])

@@ -66,12 +66,18 @@ _SURROGATE_END = 0xDFFF
 _PRINTABLE_ASCII_START = 0x20
 _PRINTABLE_ASCII_END = 0x7E
 _NATIVE_STAT_RESULT = os.stat_result
+# Keep emitter input admission independent of late consumer type hooks.
+_NATIVE_TYPE = type
+_NATIVE_LEN = len
+_NATIVE_RANGE = range
+_NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Guard output classification as well as runtime-template resolution against
 # mutable process-global hooks installed after the emitter was imported.
 _NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_FSENCODE = os.fsencode
 _NATIVE_PATH_STRING = Path.__str__
-_NATIVE_IS_JUNCTION = type(Path()).is_junction
-_NATIVE_RESOLVE = type(Path()).resolve
+_NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
+_NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -104,7 +110,7 @@ def _u64(value: int) -> bytes:
 
 
 def _frame(value: bytes) -> bytes:
-    return _u64(len(value)) + value
+    return _u64(_NATIVE_LEN(value)) + value
 
 
 def _binding_bytes(binding: ThresholdBinding) -> bytes:
@@ -116,7 +122,7 @@ def _binding_bytes(binding: ThresholdBinding) -> bytes:
         _frame(binding.secret_commitment),
         _u64(binding.anchor_policy.window_bytes),
         _u64(binding.anchor_policy.selection_modulus),
-        _u64(len(binding.shares)),
+        _u64(_NATIVE_LEN(binding.shares)),
     ]
     for share in binding.shares:
         parts.extend((
@@ -157,9 +163,9 @@ def _hex_constant(name: str, data: bytes) -> str:
         return f'const {name}: &str = "";'
     chunks = [
         encoded[offset : offset + _HEX_CHUNK]
-        for offset in range(0, len(encoded), _HEX_CHUNK)
+        for offset in _NATIVE_RANGE(0, _NATIVE_LEN(encoded), _HEX_CHUNK)
     ]
-    if len(chunks) == 1:
+    if _NATIVE_LEN(chunks) == 1:
         return f'const {name}: &str = concat!("{chunks[0]}",);'
     lines = [f"const {name}: &str = concat!("]
     lines.extend(f'    "{chunk}",' for chunk in chunks)
@@ -237,12 +243,12 @@ def _runtime_template_text() -> str:
 def _validate_emission_inputs(
     plan: object, profile: object, output_path: object
 ) -> None:
-    if type(plan) is not ProtectedExactPlan:
+    if _NATIVE_TYPE(plan) is not ProtectedExactPlan:
         message = (
             "Rust emission plan must use the exact ProtectedExactPlan type"
         )
         raise RustEmissionError(message)
-    if type(profile) is not str or not profile:
+    if _NATIVE_TYPE(profile) is not str or not profile:
         message = "Rust transform profile must use a non-empty exact string"
         raise RustEmissionError(message)
     _validate_output_path(output_path)
@@ -251,14 +257,14 @@ def _validate_emission_inputs(
 def _validate_output_path(output_path: object) -> None:
     # A subclass can override path conversion and publication operations.
     # Reject it before evaluating its string or filesystem representation.
-    if type(output_path) is not type(Path()):
+    if _NATIVE_TYPE(output_path) is not _NATIVE_PATH_TYPE:
         message = "Rust transform output path must use exact pathlib Path"
         raise RustEmissionError(message)
-    if _NUL in str(output_path):
+    if _NUL in _NATIVE_PATH_STRING(output_path):
         message = "Rust transform output path must not contain NUL"
         raise RustEmissionError(message)
     try:
-        _ = os.fsencode(output_path)
+        _ = _NATIVE_OS_FSENCODE(_NATIVE_PATH_STRING(output_path))
     except (UnicodeError, ValueError) as error:
         message = "Rust transform output path is not filesystem-encodable"
         raise RustEmissionError(message) from error
@@ -290,7 +296,7 @@ def emit_rust_transform(
     if start < 0 or end < start:
         message = "Rust runtime template lost generated-constant markers"
         raise RustEmissionError(message)
-    end += len(_END)
+    end += _NATIVE_LEN(_END)
     body = (
         body_template[:start] + _constants(plan, profile) + body_template[end:]
     )
@@ -305,7 +311,7 @@ def _safe_emission_error_detail(error: Exception) -> str:
         Exact native single-string reason or the exception class name.
 
     """
-    if type(error) in {
+    if _NATIVE_TYPE(error) in {
         RustEmissionError,
         OSError,
         PermissionError,
@@ -313,9 +319,9 @@ def _safe_emission_error_detail(error: Exception) -> str:
         ValueError,
     }:
         arguments = cast("tuple[object, ...]", error.args)
-        if len(arguments) == 1 and type(arguments[0]) is str:
+        if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is str:
             return arguments[0]
-    return type(error).__name__
+    return _NATIVE_TYPE(error).__name__
 
 
 def _require_native_output_status(
@@ -330,7 +336,7 @@ def _require_native_output_status(
         RustEmissionError: The status does not come from the host runtime.
 
     """
-    if type(receipt) is not _NATIVE_STAT_RESULT:
+    if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"Rust output {description} requires native filesystem status"
         raise RustEmissionError(message)
     return receipt
@@ -357,7 +363,7 @@ def _output_redirects(path: Path, mode: int) -> bool:
         detail = _safe_emission_error_detail(error)
         message = f"Rust output junction status failed: {path}: {detail}"
         raise RustEmissionError(message) from error
-    if type(junction) is not bool:
+    if _NATIVE_TYPE(junction) is not bool:
         message = "Rust output junction status requires native boolean"
         raise RustEmissionError(message)
     return junction
@@ -426,7 +432,7 @@ def _cleanup_owned_temporary(path: Path) -> str | None:
 
 def _write_complete_staged_source(stream: IO[str], source: str) -> None:
     written = stream.write(source)
-    if type(written) is not int or written != len(source):
+    if _NATIVE_TYPE(written) is not int or written != _NATIVE_LEN(source):
         message = "Rust staging write reported a short or invalid count"
         raise ValueError(message)
 
@@ -488,7 +494,10 @@ def _require_output_not_runtime_template(output_path: Path) -> None:
     except (OSError, ValueError, RuntimeError) as error:
         message = "Rust output path resolution failed"
         raise RustEmissionError(message) from error
-    if type(output) is not type(Path()) or type(template) is not type(Path()):
+    if (
+        _NATIVE_TYPE(output) is not _NATIVE_PATH_TYPE
+        or _NATIVE_TYPE(template) is not _NATIVE_PATH_TYPE
+    ):
         message = "Rust output path resolution requires native Path"
         raise RustEmissionError(message)
     if output == template:
@@ -522,7 +531,10 @@ def write_rust_transform(
         _validate_output_leaf(prepared_output)
         _validate_output_parent_chain(prepared_output.parent)
         published = temporary.replace(prepared_output)
-        if type(published) is not type(Path()) or published != prepared_output:
+        if (
+            _NATIVE_TYPE(published) is not _NATIVE_PATH_TYPE
+            or published != prepared_output
+        ):
             message = "published Rust source returned an invalid rename receipt"
             raise RustEmissionError(message)
         if _output_mode(temporary, "temporary") is not None:
