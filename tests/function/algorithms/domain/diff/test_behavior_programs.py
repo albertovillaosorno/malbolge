@@ -526,7 +526,7 @@ def test_behavior_authoring_ignores_late_realpath_hook(
         if os.fspath(path) == os.fspath(other):
             calls += 1
             return str(disguised)
-        return native_realpath(path, strict=strict)
+        return os.fsdecode(native_realpath(path, strict=strict))
 
     def unexpected_execution(*_args: object) -> tuple[ProbeTranscript, ...]:
         del _args
@@ -1542,3 +1542,162 @@ def test_behavior_observation_root_ignores_late_tempfile_constructor(
         with behavior_module._temporary_observation_root() as root:
             assert Path(root).is_dir()
     assert calls == 0, "consumer temporary root provider was invoked"
+
+
+@pytest.mark.parametrize(
+    "record_type",
+    [BugProgram, BehaviorPrograms, AuthoredBugProgram, AuthoredBehaviorPrograms],
+)
+def test_behavior_record_constructor_ignores_late_post_init_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_type: type[object]
+) -> None:
+    """Original validation cannot be skipped by a late dataclass hook."""
+    good_program = _read_program("identity-stable", "identity.txt")
+    cases: dict[type[object], tuple[dict[str, object], str]] = {
+        BugProgram: (
+            {"program": object(), "correction_id": "fix"},
+            "exact ProbeProgram",
+        ),
+        BehaviorPrograms: (
+            {"identity": [good_program], "compatibility": (), "bugs": ()},
+            "immutable tuple",
+        ),
+        AuthoredBugProgram: (
+            {
+                "program": object(),
+                "correction_id": "fix",
+                "present_digest": b"a",
+                "fixed_digest": b"b",
+            },
+            "exact ProbeProgram",
+        ),
+        AuthoredBehaviorPrograms: (
+            {"profile": object(), "identity": (), "compatibility": (), "bugs": ()},
+            "exact BehaviorProfile",
+        ),
+    }
+    arguments, diagnostic = cases[record_type]
+    calls = 0
+
+    def skip_validation(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(record_type, "__post_init__", skip_validation)
+        with pytest.raises(BehaviorProgramError, match=diagnostic):
+            _ = record_type(**arguments)
+    assert calls == 0, "late class hook replaced the original validator"
+
+
+@pytest.mark.parametrize(
+    "record_type",
+    [BugProgram, BehaviorPrograms, AuthoredBugProgram, AuthoredBehaviorPrograms],
+)
+def test_behavior_record_validator_reads_original_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_type: type[object]
+) -> None:
+    """A late class descriptor cannot forge a valid stored probe or profile."""
+    program = _read_program("identity-stable", "identity.txt")
+    valid: object
+    field: str
+    if record_type is BugProgram:
+        valid = BugProgram(program, "fix")
+        field = "program"
+    elif record_type is BehaviorPrograms:
+        valid = BehaviorPrograms((program,), (), ())
+        field = "identity"
+    elif record_type is AuthoredBugProgram:
+        valid = AuthoredBugProgram(program, "fix", b"a", b"b")
+        field = "present_digest"
+    else:
+        valid, _, _ = _authored(tmp_path)
+        field = "profile"
+    forged = {
+        "program": object(),
+        "identity": [program],
+        "present_digest": bytearray(b"a"),
+        "profile": object(),
+    }[field]
+    original = getattr(valid, field)
+    object.__setattr__(valid, field, forged)
+    calls = 0
+
+    def spoof(_self: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original
+
+    with monkeypatch.context() as patched:
+        patched.setattr(record_type, field, property(spoof))
+        with pytest.raises(BehaviorProgramError):
+            validator = cast(
+                "Callable[[object], None]", getattr(record_type, "__post_init__")
+            )
+            validator(valid)
+    assert calls == 0, "late class getter spoofed the stored field"
+
+
+@pytest.mark.parametrize("field", ["identity", "compatibility", "bugs"])
+def test_observation_uses_stored_authored_probe_groups(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A late class getter cannot omit mandatory observed program groups."""
+    authored, source, _oracle = _authored(tmp_path)
+    calls = 0
+
+    def hide_group(_value: object) -> tuple[()]:
+        nonlocal calls
+        calls += 1
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(AuthoredBehaviorPrograms, field, property(hide_group))
+        observed = observe_behavior_programs(authored, _context(source, tmp_path))
+    assert len(getattr(observed, field)) == 1
+    assert calls == 0, "late getter suppressed an authored probe group"
+
+
+def test_bug_state_uses_stored_authored_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late getter cannot rewrite known present/fixed classification."""
+    program = _read_program("historical-bug", "bug-state.txt")
+    present = bytes(range(32))
+    fixed = bytes(reversed(range(32)))
+    authored = AuthoredBugProgram(program, "fix", present, fixed)
+    transcript = ProbeTranscript(program.probe_id, present, 1)
+    calls = 0
+
+    def forge_present(_value: object) -> bytes:
+        nonlocal calls
+        calls += 1
+        return fixed
+
+    with monkeypatch.context() as patched:
+        patched.setattr(AuthoredBugProgram, "present_digest", property(forge_present))
+        assert behavior_module._bug_state(authored, transcript) is BugState.PRESENT
+    assert calls == 0, "late getter diverted bug state classification"
+
+
+def test_all_programs_uses_original_groups_and_bug_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumer getters cannot shrink requested source/oracle probes."""
+    programs = _programs()
+    calls = 0
+
+    def hide_group(_value: object) -> tuple[()]:
+        nonlocal calls
+        calls += 1
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(BehaviorPrograms, "identity", property(hide_group))
+        observed = behavior_module._all_programs(programs)
+    assert {item.probe_id for item in observed} == {
+        "historical-bug",
+        "identity-stable",
+        "runtime-capability",
+    }
+    assert calls == 0, "late getter removed a mandatory identity program"

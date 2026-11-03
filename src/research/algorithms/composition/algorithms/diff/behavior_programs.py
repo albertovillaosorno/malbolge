@@ -40,6 +40,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.behavior import (
@@ -73,6 +74,7 @@ if TYPE_CHECKING:
 _NATIVE_PATH_STR = Path.__str__
 _NATIVE_OS_REALPATH = os.path.realpath
 _NATIVE_ANY = builtins.any
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_TYPE = builtins.type
 _NATIVE_TUPLE = builtins.tuple
 _NATIVE_LEN = builtins.len
@@ -133,12 +135,18 @@ def _require_selected_program(program: ProbeProgram, context: str) -> None:
         raise BehaviorProgramError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class BugProgram:
     """Portable probe program plus the correction it conditionally controls."""
 
     program: ProbeProgram
     correction_id: str
+
+    def __init__(self, program: ProbeProgram, correction_id: str) -> None:
+        """Bind original fields and validate the bug program."""
+        _NATIVE_OBJECT_SETATTR(self, "program", program)
+        _NATIVE_OBJECT_SETATTR(self, "correction_id", correction_id)
+        _BUG_PROGRAM_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require a named correction for the bug probe.
@@ -147,11 +155,27 @@ class BugProgram:
             BehaviorProgramError: The correction identifier is empty.
 
         """
-        if _NATIVE_TYPE(self.program) is not ProbeProgram:
+        program, correction = read_bug_program(self)
+        if _NATIVE_TYPE(program) is not ProbeProgram:
             message = "bug behavior program requires an exact ProbeProgram"
             raise BehaviorProgramError(message)
-        _require_selected_program(self.program, "bug")
-        _ = _require_correction_identifier(self.correction_id, "bug behavior program")
+        _require_selected_program(program, "bug")
+        _ = _require_correction_identifier(correction, "bug behavior program")
+
+
+_BUG_PROGRAM_VALIDATOR = BugProgram.__dict__["__post_init__"]
+_BUG_PROGRAM_SLOT = cast("MemberDescriptorType", BugProgram.__dict__["program"])
+_BUG_CORRECTION_SLOT = cast(
+    "MemberDescriptorType", BugProgram.__dict__["correction_id"]
+)
+
+
+def read_bug_program(program: BugProgram) -> tuple[ProbeProgram, str]:
+    """Read the native bug program fields, unaffected by later class hooks."""
+    return (
+        cast("ProbeProgram", _BUG_PROGRAM_SLOT.__get__(program, BugProgram)),
+        cast("str", _BUG_CORRECTION_SLOT.__get__(program, BugProgram)),
+    )
 
 
 def _require_program_tuple(value: object, context: str) -> None:
@@ -181,13 +205,25 @@ def _require_bug_program_tuple(value: object) -> None:
         raise BehaviorProgramError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class BehaviorPrograms:
     """Consumer-supplied portable programs for all behavior probe classes."""
 
     identity: tuple[ProbeProgram, ...]
     compatibility: tuple[ProbeProgram, ...]
     bugs: tuple[BugProgram, ...]
+
+    def __init__(
+        self,
+        identity: tuple[ProbeProgram, ...],
+        compatibility: tuple[ProbeProgram, ...],
+        bugs: tuple[BugProgram, ...],
+    ) -> None:
+        """Bind original groups before validating program topology."""
+        _NATIVE_OBJECT_SETATTR(self, "identity", identity)
+        _NATIVE_OBJECT_SETATTR(self, "compatibility", compatibility)
+        _NATIVE_OBJECT_SETATTR(self, "bugs", bugs)
+        _BEHAVIOR_PROGRAMS_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require sorted unique identifiers and at least one identity program.
@@ -196,30 +232,60 @@ class BehaviorPrograms:
             BehaviorProgramError: Program identifiers violate profile policy.
 
         """
-        _require_identity_program_tuple(self.identity, "identity behavior programs")
-        _require_program_tuple(
-            self.compatibility,
-            "compatibility behavior programs",
-        )
-        _require_bug_program_tuple(self.bugs)
-        if not self.identity:
+        identity, compatibility, bugs = read_behavior_programs(self)
+        _require_identity_program_tuple(identity, "identity behavior programs")
+        _require_program_tuple(compatibility, "compatibility behavior programs")
+        _require_bug_program_tuple(bugs)
+        if not identity:
             message = "behavior programs require at least one identity program"
             raise BehaviorProgramError(message)
         groups = (
-            _program_ids(self.identity),
-            _bug_program_ids(self.bugs),
-            _program_ids(self.compatibility),
+            _program_ids(identity),
+            _bug_program_ids(bugs),
+            _program_ids(compatibility),
         )
         identifiers = _NATIVE_TUPLE(item for group in groups for item in group)
         if _NATIVE_LEN(identifiers) != _NATIVE_LEN(_NATIVE_SET(identifiers)):
             message = "behavior program identifiers must be globally unique"
             raise BehaviorProgramError(message)
-        correction_ids = _NATIVE_TUPLE(item.correction_id for item in self.bugs)
+        correction_ids = _NATIVE_TUPLE(read_bug_program(item)[1] for item in bugs)
         if _NATIVE_LEN(correction_ids) != _NATIVE_LEN(
             _NATIVE_SET(correction_ids)
         ):
             message = "bug behavior correction identifiers must be unique"
             raise BehaviorProgramError(message)
+
+
+_BEHAVIOR_PROGRAMS_VALIDATOR = BehaviorPrograms.__dict__["__post_init__"]
+_BEHAVIOR_IDENTITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorPrograms.__dict__["identity"]
+)
+_BEHAVIOR_COMPATIBILITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorPrograms.__dict__["compatibility"]
+)
+_BEHAVIOR_BUGS_SLOT = cast(
+    "MemberDescriptorType", BehaviorPrograms.__dict__["bugs"]
+)
+
+
+def read_behavior_programs(
+    programs: BehaviorPrograms,
+) -> tuple[tuple[ProbeProgram, ...], tuple[ProbeProgram, ...], tuple[BugProgram, ...]]:
+    """Read native identity, compatibility and bug program groups."""
+    return (
+        cast(
+            "tuple[ProbeProgram, ...]",
+            _BEHAVIOR_IDENTITY_SLOT.__get__(programs, BehaviorPrograms),
+        ),
+        cast(
+            "tuple[ProbeProgram, ...]",
+            _BEHAVIOR_COMPATIBILITY_SLOT.__get__(programs, BehaviorPrograms),
+        ),
+        cast(
+            "tuple[BugProgram, ...]",
+            _BEHAVIOR_BUGS_SLOT.__get__(programs, BehaviorPrograms),
+        ),
+    )
 
 
 def _require_exact_probe_program(value: object, context: str) -> ProbeProgram:
@@ -251,7 +317,7 @@ def _require_authored_digest(value: object, context: str) -> bytes:
     return value
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class AuthoredBugProgram:
     """Bug program with source-present and oracle-fixed transcript baselines."""
 
@@ -260,6 +326,20 @@ class AuthoredBugProgram:
     present_digest: bytes
     fixed_digest: bytes
 
+    def __init__(
+        self,
+        program: ProbeProgram,
+        correction_id: str,
+        present_digest: bytes,
+        fixed_digest: bytes,
+    ) -> None:
+        """Bind original fields before checking authored bug evidence."""
+        _NATIVE_OBJECT_SETATTR(self, "program", program)
+        _NATIVE_OBJECT_SETATTR(self, "correction_id", correction_id)
+        _NATIVE_OBJECT_SETATTR(self, "present_digest", present_digest)
+        _NATIVE_OBJECT_SETATTR(self, "fixed_digest", fixed_digest)
+        _AUTHORED_BUG_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require exact unambiguous authored bug evidence.
 
@@ -267,23 +347,52 @@ class AuthoredBugProgram:
             BehaviorProgramError: Present and fixed digests are identical.
 
         """
-        _ = _require_exact_probe_program(self.program, "authored bug")
-        _require_selected_program(self.program, "authored bug")
-        _ = _require_correction_identifier(self.correction_id, "authored bug")
+        program, correction, present_digest, fixed_digest = read_authored_bug(self)
+        _ = _require_exact_probe_program(program, "authored bug")
+        _require_selected_program(program, "authored bug")
+        _ = _require_correction_identifier(correction, "authored bug")
         present = _require_authored_digest(
-            self.present_digest,
-            "authored bug present digest",
+            present_digest, "authored bug present digest"
         )
         fixed = _require_authored_digest(
-            self.fixed_digest,
-            "authored bug fixed digest",
+            fixed_digest, "authored bug fixed digest"
         )
         if present == fixed:
             message = "authored bug digests must distinguish present from fixed"
             raise BehaviorProgramError(message)
 
 
-@dataclass(frozen=True, slots=True)
+_AUTHORED_BUG_VALIDATOR = AuthoredBugProgram.__dict__["__post_init__"]
+_AUTHORED_BUG_PROGRAM_SLOT = cast(
+    "MemberDescriptorType", AuthoredBugProgram.__dict__["program"]
+)
+_AUTHORED_BUG_CORRECTION_SLOT = cast(
+    "MemberDescriptorType", AuthoredBugProgram.__dict__["correction_id"]
+)
+_AUTHORED_BUG_PRESENT_SLOT = cast(
+    "MemberDescriptorType", AuthoredBugProgram.__dict__["present_digest"]
+)
+_AUTHORED_BUG_FIXED_SLOT = cast(
+    "MemberDescriptorType", AuthoredBugProgram.__dict__["fixed_digest"]
+)
+
+
+def read_authored_bug(
+    bug: AuthoredBugProgram,
+) -> tuple[ProbeProgram, str, bytes, bytes]:
+    """Read original authored bug program and digest evidence."""
+    return (
+        cast(
+            "ProbeProgram",
+            _AUTHORED_BUG_PROGRAM_SLOT.__get__(bug, AuthoredBugProgram),
+        ),
+        cast("str", _AUTHORED_BUG_CORRECTION_SLOT.__get__(bug, AuthoredBugProgram)),
+        cast("bytes", _AUTHORED_BUG_PRESENT_SLOT.__get__(bug, AuthoredBugProgram)),
+        cast("bytes", _AUTHORED_BUG_FIXED_SLOT.__get__(bug, AuthoredBugProgram)),
+    )
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class AuthoredBehaviorPrograms:
     """Distributable probe programs plus locally authored behavior baselines."""
 
@@ -292,6 +401,20 @@ class AuthoredBehaviorPrograms:
     compatibility: tuple[ProbeProgram, ...]
     bugs: tuple[AuthoredBugProgram, ...]
 
+    def __init__(
+        self,
+        profile: BehaviorProfile,
+        identity: tuple[ProbeProgram, ...],
+        compatibility: tuple[ProbeProgram, ...],
+        bugs: tuple[AuthoredBugProgram, ...],
+    ) -> None:
+        """Bind original fields before validating the authored profile."""
+        _NATIVE_OBJECT_SETATTR(self, "profile", profile)
+        _NATIVE_OBJECT_SETATTR(self, "identity", identity)
+        _NATIVE_OBJECT_SETATTR(self, "compatibility", compatibility)
+        _NATIVE_OBJECT_SETATTR(self, "bugs", bugs)
+        _AUTHORED_BEHAVIOR_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require exact programs aligned with the behavior profile.
 
@@ -299,16 +422,58 @@ class AuthoredBehaviorPrograms:
             BehaviorProgramError: Authored programs are invalid or misaligned.
 
         """
-        if _NATIVE_TYPE(self.profile) is not BehaviorProfile:
+        profile, identity, compatibility, bugs = read_authored_behavior(self)
+        if _NATIVE_TYPE(profile) is not BehaviorProfile:
             message = "authored behavior requires an exact BehaviorProfile"
             raise BehaviorProgramError(message)
-        _require_identity_program_tuple(self.identity, "authored identity programs")
-        _require_program_tuple(
-            self.compatibility,
-            "authored compatibility programs",
-        )
-        _require_authored_bug_tuple(self.bugs)
+        _require_identity_program_tuple(identity, "authored identity programs")
+        _require_program_tuple(compatibility, "authored compatibility programs")
+        _require_authored_bug_tuple(bugs)
         _require_authored_profile_alignment(self)
+
+
+_AUTHORED_BEHAVIOR_VALIDATOR = AuthoredBehaviorPrograms.__dict__["__post_init__"]
+_AUTHORED_PROFILE_SLOT = cast(
+    "MemberDescriptorType", AuthoredBehaviorPrograms.__dict__["profile"]
+)
+_AUTHORED_IDENTITY_SLOT = cast(
+    "MemberDescriptorType", AuthoredBehaviorPrograms.__dict__["identity"]
+)
+_AUTHORED_COMPATIBILITY_SLOT = cast(
+    "MemberDescriptorType", AuthoredBehaviorPrograms.__dict__["compatibility"]
+)
+_AUTHORED_BUGS_SLOT = cast(
+    "MemberDescriptorType", AuthoredBehaviorPrograms.__dict__["bugs"]
+)
+
+
+def read_authored_behavior(
+    authored: AuthoredBehaviorPrograms,
+) -> tuple[
+    BehaviorProfile,
+    tuple[ProbeProgram, ...],
+    tuple[ProbeProgram, ...],
+    tuple[AuthoredBugProgram, ...],
+]:
+    """Read stored profile, identity, compatibility, and correction programs."""
+    return (
+        cast(
+            "BehaviorProfile",
+            _AUTHORED_PROFILE_SLOT.__get__(authored, AuthoredBehaviorPrograms),
+        ),
+        cast(
+            "tuple[ProbeProgram, ...]",
+            _AUTHORED_IDENTITY_SLOT.__get__(authored, AuthoredBehaviorPrograms),
+        ),
+        cast(
+            "tuple[ProbeProgram, ...]",
+            _AUTHORED_COMPATIBILITY_SLOT.__get__(authored, AuthoredBehaviorPrograms),
+        ),
+        cast(
+            "tuple[AuthoredBugProgram, ...]",
+            _AUTHORED_BUGS_SLOT.__get__(authored, AuthoredBehaviorPrograms),
+        ),
+    )
 
 
 def _require_authored_bug_tuple(value: object) -> None:
@@ -326,21 +491,21 @@ def _require_authored_bug_tuple(value: object) -> None:
 def _require_authored_profile_alignment(
     authored: AuthoredBehaviorPrograms,
 ) -> None:
-    identity_ids = _NATIVE_TUPLE(item.probe_id for item in authored.identity)
-    profile_identity_ids = _NATIVE_TUPLE(
-        item.probe_id for item in authored.profile.identity
+    profile, identity, compatibility, authored_bugs = read_authored_behavior(
+        authored
     )
-    compatibility_ids = _NATIVE_TUPLE(
-        item.probe_id for item in authored.compatibility
-    )
+    identity_ids = _NATIVE_TUPLE(item.probe_id for item in identity)
+    profile_identity_ids = _NATIVE_TUPLE(item.probe_id for item in profile.identity)
+    compatibility_ids = _NATIVE_TUPLE(item.probe_id for item in compatibility)
     profile_compatibility_ids = _NATIVE_TUPLE(
-        item.probe_id for item in authored.profile.compatibility
+        item.probe_id for item in profile.compatibility
     )
     bugs = _NATIVE_TUPLE(
-        (item.program.probe_id, item.correction_id) for item in authored.bugs
+        (read_authored_bug(item)[0].probe_id, read_authored_bug(item)[1])
+        for item in authored_bugs
     )
     profile_bugs = _NATIVE_TUPLE(
-        (item.probe_id, item.correction_id) for item in authored.profile.bugs
+        (item.probe_id, item.correction_id) for item in profile.bugs
     )
     if identity_ids != profile_identity_ids:
         message = "authored identity programs do not match behavior profile"
@@ -374,16 +539,17 @@ def _program_ids(programs: tuple[ProbeProgram, ...]) -> tuple[str, ...]:
 
 def _bug_program_ids(programs: tuple[BugProgram, ...]) -> tuple[str, ...]:
     identifiers = _NATIVE_TUPLE(
-        program.program.probe_id for program in programs
+        read_bug_program(program)[0].probe_id for program in programs
     )
     return _sorted_unique(identifiers, "bug")
 
 
 def _all_programs(programs: BehaviorPrograms) -> tuple[ProbeProgram, ...]:
+    identity, compatibility, bugs = read_behavior_programs(programs)
     flattened = (
-        *programs.identity,
-        *programs.compatibility,
-        *(item.program for item in programs.bugs),
+        *identity,
+        *compatibility,
+        *(read_bug_program(item)[0] for item in bugs),
     )
     return _NATIVE_TUPLE(
         _NATIVE_SORTED(flattened, key=lambda item: item.probe_id)
@@ -476,7 +642,8 @@ def _author_bug_programs(
 ) -> tuple[AuthoredBugProgram, ...]:
     authored: list[AuthoredBugProgram] = []
     for item in programs:
-        probe_id = item.program.probe_id
+        program, correction = read_bug_program(item)
+        probe_id = program.probe_id
         present_digest = _require_digest(source_transcripts[probe_id])
         fixed_digest = _require_digest(oracle_transcripts[probe_id])
         if present_digest == fixed_digest:
@@ -484,8 +651,8 @@ def _author_bug_programs(
             raise BehaviorProgramError(message)
         authored.append(
             AuthoredBugProgram(
-                program=item.program,
-                correction_id=item.correction_id,
+                program=program,
+                correction_id=correction,
                 present_digest=present_digest,
                 fixed_digest=fixed_digest,
             )
@@ -525,8 +692,9 @@ def _run_authored_baselines(
         Source and oracle transcript maps by probe identifier.
 
     """
+    _, _, bugs = read_behavior_programs(programs)
     roots = (source_context.source_root,)
-    if programs.bugs:
+    if bugs:
         roots = (*roots, oracle_context.source_root)
     admitted = _NATIVE_TUPLE(
         (root, _snapshot_observed_source(root)) for root in roots
@@ -537,7 +705,7 @@ def _run_authored_baselines(
             run_probe_programs(source_programs, source_context), source_programs
         )
         _require_authoring_trees_unchanged(admitted)
-        bug_programs = _NATIVE_TUPLE(item.program for item in programs.bugs)
+        bug_programs = _NATIVE_TUPLE(read_bug_program(item)[0] for item in bugs)
         oracle_transcripts = _transcript_map(
             run_probe_programs(bug_programs, oracle_context) if bug_programs else (),
             bug_programs,
@@ -572,6 +740,9 @@ def author_behavior_programs(
     source_context = _require_run_context(source_context, "source behavior context")
     oracle_context = _require_run_context(oracle_context, "oracle behavior context")
     _require_matching_contexts(source_context, oracle_context)
+    identity_programs, compatibility_programs, bug_programs = (
+        read_behavior_programs(programs)
+    )
     source_transcripts, oracle_transcripts = _run_authored_baselines(
         programs, source_context, oracle_context
     )
@@ -580,19 +751,22 @@ def author_behavior_programs(
             probe_id=program.probe_id,
             expected_digest=_require_digest(source_transcripts[program.probe_id]),
         )
-        for program in programs.identity
+        for program in identity_programs
     )
     compatibility = _NATIVE_TUPLE(
         CompatibilityProbe(probe_id=program.probe_id)
-        for program in programs.compatibility
+        for program in compatibility_programs
     )
     authored_bugs = _author_bug_programs(
-        programs.bugs,
+        bug_programs,
         source_transcripts,
         oracle_transcripts,
     )
     bug_profile = _NATIVE_TUPLE(
-        BugProbe(probe_id=item.program.probe_id, correction_id=item.correction_id)
+        BugProbe(
+            probe_id=read_authored_bug(item)[0].probe_id,
+            correction_id=read_authored_bug(item)[1],
+        )
         for item in authored_bugs
     )
     return AuthoredBehaviorPrograms(
@@ -601,8 +775,8 @@ def author_behavior_programs(
             compatibility=compatibility,
             bugs=bug_profile,
         ),
-        identity=programs.identity,
-        compatibility=programs.compatibility,
+        identity=identity_programs,
+        compatibility=compatibility_programs,
         bugs=authored_bugs,
     )
 
@@ -648,9 +822,10 @@ def _bug_state(
 ) -> BugState:
     state = BugState.UNKNOWN
     if transcript is not None:
-        if transcript.digest == program.present_digest:
+        _, _, present, fixed = read_authored_bug(program)
+        if transcript.digest == present:
             state = BugState.PRESENT
-        elif transcript.digest == program.fixed_digest:
+        elif transcript.digest == fixed:
             state = BugState.FIXED
     return state
 
@@ -661,8 +836,10 @@ def _observe_bugs(
 ) -> tuple[BugObservation, ...]:
     return _NATIVE_TUPLE(
         BugObservation(
-            probe_id=item.program.probe_id,
-            state=_bug_state(item, _try_transcript(item.program, context)),
+            probe_id=read_authored_bug(item)[0].probe_id,
+            state=_bug_state(
+                item, _try_transcript(read_authored_bug(item)[0], context)
+            ),
         )
         for item in programs
     )
@@ -765,15 +942,18 @@ def observe_behavior_programs(
         message = "behavior observation requires exact AuthoredBehaviorPrograms"
         raise BehaviorProgramError(message)
     context = _require_run_context(context, "behavior observation context")
+    _, identity_programs, compatibility_programs, bug_programs = (
+        read_authored_behavior(authored)
+    )
     admitted = _snapshot_observed_source(context.source_root)
     with _temporary_observation_root() as temporary:
         mirror = Path(temporary) / "source"
         mirrored = _admit_observation_mirror(context, mirror, admitted)
-        identity = _observe_identity(authored.identity, mirrored)
+        identity = _observe_identity(identity_programs, mirrored)
         _require_observation_sources_unchanged(context.source_root, mirror, admitted)
-        compatibility = _observe_compatibility(authored.compatibility, mirrored)
+        compatibility = _observe_compatibility(compatibility_programs, mirrored)
         _require_observation_sources_unchanged(context.source_root, mirror, admitted)
-        bugs = _observe_bugs(authored.bugs, mirrored)
+        bugs = _observe_bugs(bug_programs, mirrored)
         _require_observation_sources_unchanged(context.source_root, mirror, admitted)
         return BehaviorObservations(
             identity=identity,
@@ -794,4 +974,5 @@ def evaluate_behavior_programs(
 
     """
     observations = observe_behavior_programs(authored, context)
-    return evaluate_behavior(authored.profile, observations, minimum_similarity)
+    profile = read_authored_behavior(authored)[0]
+    return evaluate_behavior(profile, observations, minimum_similarity)
