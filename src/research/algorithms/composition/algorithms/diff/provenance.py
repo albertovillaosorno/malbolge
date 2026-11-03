@@ -621,10 +621,25 @@ def require_source_pin(root: Path, pin: SourcePin) -> SourcePinEvidence:
     if _NATIVE_TYPE(pin) is not SourcePin:
         message = "source pin must use the exact SourcePin type"
         raise SourcePinError(message)
+    # A caller can allocate this exact frozen class without its constructor.
+    # Only the original validator can attest all stored revision metadata.
+    try:
+        _SOURCE_PIN_VALIDATOR(pin)
+    except (AttributeError, TypeError) as error:
+        message = "source pin has incomplete native metadata"
+        raise SourcePinError(message) from error
     repository, commit, roots, expected_count, expected_digest = (
         _source_pin_fields(pin)
     )
     observed = source_snapshot_evidence(root, roots)
+    if _NATIVE_TYPE(observed) is not SourcePinEvidence:
+        message = "source pin evidence requires exact native receipt"
+        raise SourcePinError(message)
+    try:
+        _SOURCE_EVIDENCE_VALIDATOR(observed)
+    except (AttributeError, TypeError) as error:
+        message = "source pin evidence has incomplete native metadata"
+        raise SourcePinError(message) from error
     count, digest = _source_evidence_fields(observed)
     if count != expected_count:
         message = (

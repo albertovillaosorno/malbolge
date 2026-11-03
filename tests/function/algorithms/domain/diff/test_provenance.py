@@ -1542,6 +1542,107 @@ def test_pin_constructor_ignores_late_validator_replacement(
     assert calls == 0, "late post-init replacement bypassed pin admission"
 
 
+class _ForeignPinCount(int):
+    """Equal to an integer but not an exact native count."""
+
+
+class _ForeignPinDigest(str):
+    """Equal to a digest but not an exact native string."""
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("repository", ""),
+        ("commit", ""),
+        ("file_count", 0),
+        ("snapshot_sha256", ""),
+    ],
+)
+@pytest.mark.parametrize("late_validator", [False, True])
+def test_require_source_pin_revalidates_forged_native_pin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+    late_validator: bool,
+) -> None:
+    """Exact pin types can skip constructors but not public pin admission."""
+    _write(tmp_path, "README", b"release")
+    _write(tmp_path, "src/main.c", b"int main(void) { return 0; }")
+    valid = _pin(tmp_path)
+    forged = object.__new__(SourcePin)
+    for name in (
+        "repository", "commit", "roots", "file_count", "snapshot_sha256"
+    ):
+        slot = cast("MemberDescriptorType", SourcePin.__dict__[name])
+        stored = slot.__get__(valid, SourcePin)
+        if name == field:
+            if field == "file_count":
+                stored = _ForeignPinCount(valid.file_count)
+            elif field == "snapshot_sha256":
+                stored = _ForeignPinDigest(valid.snapshot_sha256)
+            else:
+                stored = invalid
+        slot.__set__(forged, stored)
+    with monkeypatch.context() as patched:
+        if late_validator:
+            patched.setattr(SourcePin, "__post_init__", lambda _: None)
+        with pytest.raises(SourcePinError):
+            _ = require_source_pin(tmp_path, forged)
+
+
+@pytest.mark.parametrize("late_validator", [False, True])
+def test_require_source_pin_rejects_incomplete_exact_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, late_validator: bool
+) -> None:
+    """A missing native field must fail through SourcePinError."""
+    _write(tmp_path, "README", b"release")
+    _write(tmp_path, "src/main.c", b"int main(void) { return 0; }")
+    forged = object.__new__(SourcePin)
+    slot = cast("MemberDescriptorType", SourcePin.__dict__["repository"])
+    slot.__set__(forged, "repository")
+    with monkeypatch.context() as patched:
+        if late_validator:
+            patched.setattr(SourcePin, "__post_init__", lambda _: None)
+        with pytest.raises(SourcePinError, match="incomplete"):
+            _ = require_source_pin(tmp_path, forged)
+
+
+@pytest.mark.parametrize("field", ["file_count", "snapshot_sha256"])
+@pytest.mark.parametrize("late_validator", [False, True])
+def test_require_source_pin_revalidates_native_observed_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    late_validator: bool,
+) -> None:
+    """Forged native observation types cannot compare equal to valid pins."""
+    _write(tmp_path, "README", b"release")
+    _write(tmp_path, "src/main.c", b"int main(void) { return 0; }")
+    valid = _pin(tmp_path)
+    observed = source_snapshot_evidence(tmp_path, valid.roots)
+    forged = object.__new__(SourcePinEvidence)
+    for name in ("file_count", "snapshot_sha256"):
+        slot = cast("MemberDescriptorType", SourcePinEvidence.__dict__[name])
+        stored = slot.__get__(observed, SourcePinEvidence)
+        if name == field:
+            stored = (
+                _ForeignPinCount(observed.file_count)
+                if field == "file_count"
+                else _ForeignPinDigest(observed.snapshot_sha256)
+            )
+        slot.__set__(forged, stored)
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            provenance_module, "source_snapshot_evidence", lambda *_: forged
+        )
+        if late_validator:
+            patched.setattr(SourcePinEvidence, "__post_init__", lambda _: None)
+        with pytest.raises(SourcePinError):
+            _ = require_source_pin(tmp_path, valid)
+
+
 @pytest.mark.parametrize(
     "field", ["roots", "file_count", "snapshot_sha256"]
 )
