@@ -76,6 +76,7 @@ _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_OBJECT_NEW: Final = object.__new__
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_HOST_REALPATH = os.path.realpath
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_PATH_JOINPATH = Path.joinpath
@@ -521,16 +522,29 @@ def _validate_root_path(root: object) -> None:
 
 
 def _resolved_source_root(root: Path) -> Path:
+    # pathlib's original resolve implementation still delegates to mutable
+    # os.path.realpath. The host resolver must remain the import-original one
+    # before and after normalization, never a later consumer replacement.
+    if os.path.realpath is not _NATIVE_HOST_REALPATH:
+        message = "pinned source root native host resolver changed"
+        raise SourcePinError(message)
     mode = _source_mode(root, ".")
     if mode is None or not S_ISDIR(mode):
         message = f"pinned source root must be a directory: {root}"
         raise SourcePinError(message)
+    if os.path.realpath is not _NATIVE_HOST_REALPATH:
+        message = "pinned source root native host resolver changed"
+        raise SourcePinError(message)
     try:
-        return _NATIVE_PATH_RESOLVE(root, strict=True)
+        resolved = _NATIVE_PATH_RESOLVE(root, strict=True)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"pinned source root resolution failed: {root}: {detail}"
         raise SourcePinError(message) from error
+    if os.path.realpath is not _NATIVE_HOST_REALPATH:
+        message = "pinned source root native host resolver changed"
+        raise SourcePinError(message)
+    return resolved
 
 
 def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:

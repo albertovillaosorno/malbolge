@@ -626,6 +626,95 @@ def test_source_pin_rejects_post_import_root_resolution_redirect(
     assert observed == baseline
 
 
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+@pytest.mark.parametrize("mutation", ["redirect", "deny"])
+def test_source_pin_rejects_late_host_realpath_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    mutation: str,
+) -> None:
+    """Late host resolution cannot attest a different tree or deny valid pins."""
+    source = tmp_path / "source"
+    foreign = tmp_path / "foreign"
+    _write(source, "README", b"requested pinned source")
+    _write(foreign, "README", b"unselected foreign source")
+    baseline = source_snapshot_evidence(source, ("README",))
+    reference = SourcePin(
+        "source-repository",
+        _COMMIT,
+        ("README",),
+        baseline.file_count,
+        baseline.snapshot_sha256,
+    )
+    original_realpath = os.path.realpath
+    calls = 0
+
+    def forged_realpath(path: str | os.PathLike[str], *, strict: bool = False) -> str:
+        nonlocal calls
+        if os.fspath(path) == str(source):
+            calls += 1
+            if mutation == "redirect":
+                return original_realpath(foreign, strict=strict)
+            message = "forged host resolver denied valid pinned source"
+            raise OSError(message)
+        return original_realpath(path, strict=strict)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(SourcePinError, match="native|host.*resolver"):
+            if operation == "require":
+                _ = require_source_pin(source, reference)
+            else:
+                _ = source_snapshot_evidence(source, ("README",))
+    assert calls == 0, "mutable host resolver received the source path"
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_host_realpath_swap_during_root_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """A filesystem callback must not redirect resolution after the first guard."""
+    source = tmp_path / "source"
+    foreign = tmp_path / "foreign"
+    _write(source, "README", b"pinned source")
+    _write(foreign, "README", b"unselected source")
+    baseline = source_snapshot_evidence(source, ("README",))
+    reference = SourcePin(
+        "source-repository", _COMMIT, ("README",),
+        baseline.file_count, baseline.snapshot_sha256,
+    )
+    original_lstat = provenance_module._NATIVE_PATH_LSTAT  # pyright: ignore[reportPrivateUsage]
+    original_realpath = os.path.realpath
+    calls = 0
+    swapped = False
+
+    def forged_realpath(_path: str | os.PathLike[str], *, strict: bool = False) -> str:
+        nonlocal calls
+        calls += 1
+        return original_realpath(foreign, strict=strict)
+
+    with monkeypatch.context() as patched:
+        def switching_lstat(path: Path) -> os.stat_result:
+            nonlocal swapped
+            receipt = original_lstat(path)
+            if not swapped:
+                swapped = True
+                patched.setattr(os.path, "realpath", forged_realpath)
+            return receipt
+
+        patched.setattr(provenance_module, "_NATIVE_PATH_LSTAT", switching_lstat)
+        with pytest.raises(SourcePinError, match="native host resolver changed"):
+            if operation == "require":
+                _ = require_source_pin(source, reference)
+            else:
+                _ = source_snapshot_evidence(source, ("README",))
+    assert swapped
+    assert calls == 0, "root resolution called late host realpath substitution"
+
+
 @pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
 def test_pinned_source_root_resolution_errors_fail_typed(
     tmp_path: Path,
