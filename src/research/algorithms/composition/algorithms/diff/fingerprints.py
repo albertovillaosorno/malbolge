@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 import hashlib
 
@@ -48,6 +49,7 @@ _ONE = 1
 # A mutable module-level hashlib symbol must not redefine lineage evidence.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
+_NATIVE_POW = builtins.pow
 
 
 class FingerprintPolicyError(ValueError):
@@ -170,7 +172,7 @@ def _initial_rolling_hash(data: bytes, window_bytes: int) -> int:
 
 
 def _rolling_power(window_bytes: int) -> int:
-    return pow(_ROLLING_BASE, window_bytes - _ONE, _ROLLING_MODULUS)
+    return _NATIVE_POW(_ROLLING_BASE, window_bytes - _ONE, _ROLLING_MODULUS)
 
 
 def _roll_hash(

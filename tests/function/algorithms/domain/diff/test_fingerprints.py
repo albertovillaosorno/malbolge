@@ -32,6 +32,7 @@
 
 """Tests for deterministic content-defined stable anchors."""
 
+import builtins
 import hashlib
 from typing import cast
 
@@ -69,6 +70,31 @@ def test_stable_anchors_are_deterministic() -> None:
     second = stable_anchors(source)
     _expect(first == second, "repeated anchor extraction differs")
     _expect(bool(first), "synthetic source produced no anchors")
+
+
+def test_anchor_selection_resists_post_import_power_hook_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable process-global power must not redefine lineage windows."""
+    source = _synthetic_bytes("pow-lineage")
+    expected = stable_anchors(source)
+    original_pow = builtins.pow
+    calls = 0
+
+    def forged_pow(base: int, exponent: int, modulus: int | None = None) -> int:
+        nonlocal calls
+        if (base, exponent, modulus) == (257, 31, 1 << 64):
+            calls += 1
+            return 0
+        if modulus is None:
+            return cast("int", original_pow(base, exponent))
+        return original_pow(base, exponent, modulus)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "pow", forged_pow)
+        observed = stable_anchors(source)
+    assert observed == expected
+    assert calls == 0
 
 
 def test_content_defined_anchors_survive_insertion_shift() -> None:
