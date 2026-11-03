@@ -576,6 +576,37 @@ def test_authored_behavior_records_reject_foreign_incoherent_inputs(
         )
 
 
+@pytest.mark.parametrize("location", ["bug", "identity"])
+def test_behavior_programs_reject_late_type_spoofed_programs(
+    monkeypatch: pytest.MonkeyPatch, location: str
+) -> None:
+    """Reject a forged consumer program before accessing its commands."""
+    foreign = object()
+    program = cast("ProbeProgram", foreign)
+    native_type = type
+    calls = 0
+
+    def spoof_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return ProbeProgram
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", spoof_type)
+        try:
+            if location == "bug":
+                _ = BugProgram(program, "fix-forged-program")
+            else:
+                _ = BehaviorPrograms((program,), (), ())
+        except BehaviorProgramError:
+            rejected = True
+    assert rejected, "foreign behavior program was admitted"
+    assert calls == 0, "late type hook was consulted during admission"
+
+
 @pytest.mark.parametrize("authored", [False, True])
 def test_bug_program_selector_rejects_late_any_hook(
     monkeypatch: pytest.MonkeyPatch,

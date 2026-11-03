@@ -72,6 +72,7 @@ if TYPE_CHECKING:
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_PATH_STR = Path.__str__
 _NATIVE_ANY = builtins.any
+_NATIVE_TYPE = builtins.type
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
 _NUL = "\x00"
@@ -83,7 +84,7 @@ class BehaviorProgramError(ValueError):
 
 def _behavior_error_detail(error: BaseException) -> str:
     """Keep host and delegated error display hooks outside probe admission."""
-    if type(error) in (
+    if _NATIVE_TYPE(error) in (
         OSError,
         PermissionError,
         ValueError,
@@ -93,9 +94,9 @@ def _behavior_error_detail(error: BaseException) -> str:
         BehaviorProgramError,
     ):
         arguments = cast("tuple[object, ...]", error.args)
-        if len(arguments) == 1 and type(arguments[0]) is str:
+        if len(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is str:
             return arguments[0]
-    return type(error).__name__
+    return _NATIVE_TYPE(error).__name__
 
 
 def _require_selected_program(program: ProbeProgram, context: str) -> None:
@@ -127,7 +128,7 @@ class BugProgram:
             BehaviorProgramError: The correction identifier is empty.
 
         """
-        if type(self.program) is not ProbeProgram:
+        if _NATIVE_TYPE(self.program) is not ProbeProgram:
             message = "bug behavior program requires an exact ProbeProgram"
             raise BehaviorProgramError(message)
         _require_selected_program(self.program, "bug")
@@ -135,11 +136,11 @@ class BugProgram:
 
 
 def _require_program_tuple(value: object, context: str) -> None:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not tuple:
         message = f"{context} must use the exact immutable tuple type"
         raise BehaviorProgramError(message)
     items = cast("tuple[object, ...]", value)
-    if _NATIVE_ANY(type(item) is not ProbeProgram for item in items):
+    if _NATIVE_ANY(_NATIVE_TYPE(item) is not ProbeProgram for item in items):
         message = f"{context} contains a foreign probe program"
         raise BehaviorProgramError(message)
 
@@ -152,11 +153,11 @@ def _require_identity_program_tuple(value: object, context: str) -> None:
 
 
 def _require_bug_program_tuple(value: object) -> None:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not tuple:
         message = "bug behavior programs must use the exact immutable tuple type"
         raise BehaviorProgramError(message)
     items = cast("tuple[object, ...]", value)
-    if _NATIVE_ANY(type(item) is not BugProgram for item in items):
+    if _NATIVE_ANY(_NATIVE_TYPE(item) is not BugProgram for item in items):
         message = "bug behavior programs contain a foreign bug record"
         raise BehaviorProgramError(message)
 
@@ -201,14 +202,14 @@ class BehaviorPrograms:
 
 
 def _require_exact_probe_program(value: object, context: str) -> ProbeProgram:
-    if type(value) is not ProbeProgram:
+    if _NATIVE_TYPE(value) is not ProbeProgram:
         message = f"{context} requires an exact ProbeProgram"
         raise BehaviorProgramError(message)
     return value
 
 
 def _require_correction_identifier(value: object, context: str) -> str:
-    if type(value) is not str or not value:
+    if _NATIVE_TYPE(value) is not str or not value:
         message = f"{context} requires a correction identifier"
         raise BehaviorProgramError(message)
     if _NUL in value:
@@ -223,7 +224,7 @@ def _require_correction_identifier(value: object, context: str) -> str:
 
 
 def _require_authored_digest(value: object, context: str) -> bytes:
-    if type(value) is not bytes or not value:
+    if _NATIVE_TYPE(value) is not bytes or not value:
         message = f"{context} must use non-empty exact bytes"
         raise BehaviorProgramError(message)
     return value
@@ -277,7 +278,7 @@ class AuthoredBehaviorPrograms:
             BehaviorProgramError: Authored programs are invalid or misaligned.
 
         """
-        if type(self.profile) is not BehaviorProfile:
+        if _NATIVE_TYPE(self.profile) is not BehaviorProfile:
             message = "authored behavior requires an exact BehaviorProfile"
             raise BehaviorProgramError(message)
         _require_identity_program_tuple(self.identity, "authored identity programs")
@@ -290,11 +291,13 @@ class AuthoredBehaviorPrograms:
 
 
 def _require_authored_bug_tuple(value: object) -> None:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not tuple:
         message = "authored bugs must use the exact immutable tuple type"
         raise BehaviorProgramError(message)
     items = cast("tuple[object, ...]", value)
-    if _NATIVE_ANY(type(item) is not AuthoredBugProgram for item in items):
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(item) is not AuthoredBugProgram for item in items
+    ):
         message = "authored bugs contain a foreign authored bug record"
         raise BehaviorProgramError(message)
 
@@ -324,7 +327,7 @@ def _require_authored_profile_alignment(
 
 
 def _require_run_context(value: object, context: str) -> ProbeRunContext:
-    if type(value) is not ProbeRunContext:
+    if _NATIVE_TYPE(value) is not ProbeRunContext:
         message = f"{context} must use the exact ProbeRunContext type"
         raise BehaviorProgramError(message)
     return value
@@ -361,8 +364,8 @@ def _transcript_map(
     programs: tuple[ProbeProgram, ...],
 ) -> dict[str, ProbeTranscript]:
     """Require exactly one native receipt for every requested probe."""
-    if type(transcripts) is not tuple or _NATIVE_ANY(
-        type(item) is not ProbeTranscript for item in transcripts
+    if _NATIVE_TYPE(transcripts) is not tuple or _NATIVE_ANY(
+        _NATIVE_TYPE(item) is not ProbeTranscript for item in transcripts
     ):
         message = "behavior transcript batch must use exact immutable records"
         raise BehaviorProgramError(message)
@@ -394,7 +397,7 @@ def _resolved_context_path(path: Path, description: str) -> Path:
             f"{native_path}: {detail}"
         )
         raise BehaviorProgramError(message) from error
-    if type(resolved) is not type(Path()):
+    if _NATIVE_TYPE(resolved) is not _NATIVE_TYPE(Path()):
         message = (
             f"behavior {description} resolution requires native resolved Path"
         )
@@ -517,7 +520,7 @@ def author_behavior_programs(
         BehaviorProgramError: Program metadata or contexts are invalid.
 
     """
-    if type(programs) is not BehaviorPrograms:
+    if _NATIVE_TYPE(programs) is not BehaviorPrograms:
         message = "behavior authoring requires exact BehaviorPrograms"
         raise BehaviorProgramError(message)
     source_context = _require_run_context(source_context, "source behavior context")
@@ -667,7 +670,10 @@ def _admit_observation_mirror(
         detail = _behavior_error_detail(error)
         message = f"behavior candidate mirror failed: {detail}"
         raise ProbeExecutionError(message) from error
-    if type(completion) is not type(Path()) or completion != mirror:
+    if (
+        _NATIVE_TYPE(completion) is not _NATIVE_TYPE(Path())
+        or completion != mirror
+    ):
         message = "behavior candidate mirror copy reported non-native completion"
         raise ProbeExecutionError(message)
     if _snapshot_observed_source(mirror) != admitted:
@@ -707,7 +713,7 @@ def observe_behavior_programs(
         BehaviorProgramError: Authored metadata or execution context is invalid.
 
     """
-    if type(authored) is not AuthoredBehaviorPrograms:
+    if _NATIVE_TYPE(authored) is not AuthoredBehaviorPrograms:
         message = "behavior observation requires exact AuthoredBehaviorPrograms"
         raise BehaviorProgramError(message)
     context = _require_run_context(context, "behavior observation context")
