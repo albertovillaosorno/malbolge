@@ -480,6 +480,21 @@ format.
 - Two further red-first publication regressions show pinned native path-string
   equality rejects identical staging/output roots and admits distinct roots
   despite late `Path.__eq__` overrides.
+- Probe runtime `_CommandResult`, `_PipeCapture`, and `_RunningProbe`
+  receipts now use captured original initializers and native allocation
+  (`82e32113e`). Eight late `__init__`/`__new__` regression cases pass;
+  346 postcommit focused and 2,778 precommit integrated diff tests passed,
+  with scoped Ruff and source BasedPyright at zero errors. Direct record
+  mutation, untrusted host processes, and external writers remain outside
+  this class-hook boundary.
+- Portable behavior authoring/observation now construct ten record types
+  through original initializers and native allocation (`375e65304`).
+  Twenty red-first `__init__`/`__new__` cases pass; allocation overrides
+  run in child interpreters to avoid leaking CPython type slots. All 144
+  postcommit focused behavior tests and 2,778 precommit integrated diff
+  tests passed; scoped Ruff and source BasedPyright reported zero errors
+  (nine existing type warnings). Direct stored-record mutation and
+  concurrent filesystem writers are not isolated; Jig remains unverified.
 - Source/oracle behavior authoring uses pinned host realpath resolution and
   canonical native path text to compare repository/tool bindings, so late path
   equality or resolution overrides cannot start a mismatched probe. Four
@@ -534,6 +549,14 @@ format.
   is degraded and Jig check still
   timed out after 60 seconds at global native-validator scheduling, so the
   repository-wide validation gate remains unverified.
+- Compatible receipt construction now pins original initializers and native
+  allocation (`e0039b3fb`) for instructions, plans, transient build and
+  materialization contexts, and routed semantic plans. Fourteen red-first
+  `__init__`/`__new__` regressions pass with 257 focused and 2,778 integrated
+  diff tests; scoped Ruff/source BasedPyright reported zero errors, with 24
+  older type warnings. Child-process allocation-hook tests prevent leaked
+  CPython type slots. Direct stored-record mutation and external writers
+  remain outside this guard.
 - Replacing generic sequence matching with unique 8/4/2/1-unit k-gram anchors +
   LIS
   reduced the full read-only DOOM compatible-plan smoke from runner timeout to

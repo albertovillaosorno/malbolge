@@ -646,6 +646,17 @@ five bytes after a forged `limit` getter. All 338 focused probe tests passed
 after the commit, and 2,595 integrated diff tests passed before it. The repair
 prevents late class-property substitution, not direct mutation of live state,
 trusted host-process interference, or external filesystem races.
+
+Probe execution now also allocates `_CommandResult`, `_PipeCapture`, and
+`_RunningProbe` receipts through native object allocation and captured
+original initializers (`82e32113e`). Eight new `__init__`/`__new__`
+constructor-hook tests cover late substitutions after process callbacks,
+with allocation cases isolated from the shared Python test interpreter.
+All 346 focused probe-execution tests passed after the commit and 2,778
+integrated diff tests passed before it; scoped Ruff and source BasedPyright
+had no errors. This does not isolate arbitrary direct writes to live records
+or external process/filesystem interference.
+
 A probe batch validates the candidate source as a regular-file-only tree and
 rejects an OS temporary-directory parent resolving inside that source before
 creating scratch state, preventing recursive self-copying when `TMPDIR` points
@@ -733,6 +744,20 @@ present/fixed routing. Six red-first getter-spoof regressions are fixed by
 `68324e4e5`: all 124 focused behavior tests passed after the commit, and
 2,637 integrated diff tests passed before it. This is a late class-hook guard,
 not a defense against direct mutable process state or external writers.
+
+Portable behavior authoring and observation now build ten authoritative
+record types through original validator-backed initializers and native
+allocation (`375e65304`): identity/compatibility/bug profile probes,
+`BehaviorProfile`, authored bug and program receipts, three observation
+classes, and `BehaviorObservations`. Twenty red-first late `__init__`/
+`__new__` regressions prove that a completed source/oracle probe or
+candidate observation cannot replace those constructors. Allocation-hook
+cases run in separate interpreters to avoid CPython type-slot leakage.
+All 144 focused behavior-program tests passed after the commit and 2,778
+integrated diff tests passed beforehand. Scoped Ruff and source BasedPyright
+reported zero errors (nine existing type warnings). The boundary is late
+class-hook substitution, not directly rewritten record storage or races
+with external filesystem writers. Repository-wide Jig is not verified.
 
 ### First DOOM Executable Identity Probe
 
@@ -1129,6 +1154,18 @@ unit passes 190 tests; the full integrated diff suite passes 2,225 tests
 with no exclusions. These guards isolate late class
 hooks, not direct writes to instance storage, malicious consumer callbacks, or
 concurrent source/output writers.
+
+Compatible authoring, correction binding, and materialization now also
+construct internal `CompatibleInstruction`, `CompatibleAuthoringPlan`,
+`_BuildContext`, `_MaterializeContext`, and routed `SemanticAuthoringPlan`
+receipts through original initializers and native allocation (`e0039b3fb`).
+Fourteen red-first `__init__`/`__new__` cases cover late hooks after mapper,
+authoring, and admission callbacks. All 257 compatible tests and 2,778
+integrated diff tests passed before publication; scoped Ruff and source
+BasedPyright reported zero errors, with 24 older type warnings. Allocation
+hooks are isolated in child interpreters to avoid contaminating unrelated
+tests. Direct modification of retained record storage and external writers
+remain outside this class-hook boundary.
 
 Named bug corrections can now be bound to deterministic semantic edit indexes.
 Materialization requires every bound correction to receive exactly one
