@@ -114,8 +114,10 @@ format.
   outputs inside the source tree. Nineteen new red-first cases and 263 focused
   postcommit tests passed; Ruff, strict source typing, and diff checks passed.
   The integrated run had 3,510 passes and four concurrent probe WIP failures,
-  not a green verdict. The older 35 relocatable-test typing diagnostics, global
-  Jig graph absence, and external filesystem races remain outstanding.
+  not a green verdict. After probe stabilization, a separate fresh integrated
+  diff run passed all 3,519 tests; downstream DOOM generator checks also passed
+  65 tests with one skip. The older 35 relocatable-test typing diagnostics,
+  global Jig graph absence, and external filesystem races remain outstanding.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused

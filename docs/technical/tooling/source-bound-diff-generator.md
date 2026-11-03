@@ -1691,8 +1691,10 @@ postcommit focused relocatable tests passed; Ruff, strict source
 BasedPyright, and diff checks passed, with the existing 35 test-file typing
 diagnostics unchanged. The concurrent integrated diff run passed 3,510 tests
 but had four failures in another agent's still-uncommitted probe ancestry
-regressions, so that run is not claimed as green. The global Jig graph and
-external filesystem race limitations remain open.
+regressions, so that run is not claimed as green. After the probe work
+stabilized, a separate later integrated diff run passed all 3,519 tests;
+65 downstream DOOM generator tests also passed with one skip. The global
+Jig graph and external filesystem race limitations remain open.
 
 Relocatable authoring now creates internal `RangeLocator`,
 `RelocatableSourceRange`, `RelocatableInstruction`, and
