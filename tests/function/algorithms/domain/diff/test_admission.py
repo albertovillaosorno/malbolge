@@ -839,3 +839,197 @@ def test_admission_rejects_foreign_tree_and_policy_objects() -> None:
             reference,
             cast("AdmissionPolicy", object()),
         )
+
+
+def test_identity_file_rejects_post_import_bytes_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late bytes aliases cannot certify mutable canonical source content."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = IdentityFile(
+                "file.c",
+                cast("bytes", cast("object", bytearray(b"source"))),
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "mutable source content passed a late bytes alias"
+
+
+def test_identity_file_rejects_post_import_string_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late string aliases cannot dereference forged non-string paths."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "str", bytes)
+        try:
+            _ = IdentityFile(cast("str", cast("object", b"file.c")), b"source")
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "non-string path bypassed the exact string guard"
+
+
+def test_identity_tree_rejects_post_import_tuple_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late tuple aliases cannot certify mutable identity collections."""
+    entries = [IdentityFile("file.c", b"source")]
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "tuple", list)
+        try:
+            _ = IdentityTree(
+                cast("tuple[IdentityFile, ...]", cast("object", entries))
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "mutable identity collection passed a late tuple alias"
+
+
+def test_admission_policy_rejects_post_import_integer_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late int aliases cannot certify Boolean counts or thresholds."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", bool)
+        try:
+            _ = AdmissionPolicy(
+                minimum_source_similarity=0.5,
+                minimum_anchor_coverage=0.6,
+                minimum_anchor_files=True,
+                minimum_anchors_per_file=True,
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "Boolean minimum file count bypassed native int check"
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", bool)
+        try:
+            _ = AdmissionPolicy(
+                minimum_source_similarity=True,
+                minimum_anchor_coverage=0.6,
+                minimum_anchor_files=True,
+                minimum_anchors_per_file=True,
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "Boolean source threshold bypassed native fraction check"
+
+
+def test_admission_evidence_rejects_post_import_float_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late float aliases cannot certify Boolean similarity scores."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "float", bool)
+        try:
+            _ = FileAdmissionEvidence(
+                path="file.c",
+                structural_similarity=True,
+                anchor_coverage=None,
+                reference_anchor_count=0,
+                matched_anchor_count=0,
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "Boolean source score passed late float alias"
+
+
+def test_admission_evidence_rejects_post_import_integer_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late int aliases cannot certify Boolean reference anchor counts."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", bool)
+        try:
+            _ = FileAdmissionEvidence(
+                path="file.c",
+                structural_similarity=1.0,
+                anchor_coverage=1.0,
+                reference_anchor_count=True,
+                matched_anchor_count=True,
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "Boolean anchor counts passed late int alias"
+
+
+def test_identity_factory_rejects_post_import_dictionary_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late dict aliases cannot certify mutable non-mapping inputs."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "dict", list)
+        try:
+            _ = identity_tree(cast("dict[str, bytes]", cast("object", [])))
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "foreign mapping passed late dict alias"
+
+
+def test_valid_admission_records_resist_late_builtin_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Actual native evidence survives aliases of public builtin names."""
+    file = IdentityFile("file.c", b"source")
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "tuple", list)
+        result = identity_tree({"file.c": b"source"})
+        actual = IdentityTree((file,))
+    assert type(result.files) is tuple
+    assert result == actual
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "dict", list)
+        result = identity_tree({"file.c": b"source"})
+    assert result == IdentityTree((file,))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", bool)
+        policy = AdmissionPolicy(0, 1, 1, 1)
+        score = FileAdmissionEvidence("file.c", 1.0, None, 0, 0)
+    assert policy.minimum_source_similarity == 0
+    assert score.reference_anchor_count == 0
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "float", bool)
+        score = FileAdmissionEvidence("file.c", 1.0, None, 0, 0)
+    assert math.isclose(score.structural_similarity, 1.0)
+
+
+def test_tree_evidence_rejects_post_import_mutable_collections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late tuple aliases cannot replace immutable admission evidence lists."""
+    reference = identity_tree({"file.c": b"source"})
+    evidence = evaluate_admission(
+        reference,
+        reference,
+        AdmissionPolicy(0, 0, 1, 1),
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "tuple", list)
+        try:
+            _ = replace(
+                evidence,
+                files=cast(
+                    "tuple[FileAdmissionEvidence, ...]",
+                    cast("object", list(evidence.files)),
+                ),
+                reasons=cast(
+                    "tuple[str, ...]", cast("object", list(evidence.reasons))
+                ),
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "mutable file and rejection evidence passed a late alias"
