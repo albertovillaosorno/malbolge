@@ -143,7 +143,7 @@ class _HostileRelocatableReadError(ExactTreeError):
         ("creation", "staging root creation failed"),
         ("write", "relocatable output write failed"),
         ("publication", "output publication failed"),
-        ("root_resolve", "root resolution failed"),
+        ("root_resolve", "path resolution failed"),
         ("read", "candidate read failed"),
         ("snapshot", "source snapshot failed"),
     ],
@@ -392,7 +392,10 @@ def test_relocatable_rejects_foreign_resolved_output_receipt(
         ),
     ))
     output = candidate / "out"
-    native_resolve = Path.resolve
+    native_resolve = cast(
+        "Callable[[Path], Path]",
+        vars(relocatable_module)["_NATIVE_RESOLVE"],
+    )
 
     class ForgedResolvedPath(type(Path())):
         @override
@@ -400,13 +403,13 @@ def test_relocatable_rejects_foreign_resolved_output_receipt(
             _ = other
             return False
 
-    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
-        resolved = native_resolve(path, strict=strict)
+    def forged_resolve(path: Path) -> Path:
+        resolved = native_resolve(path)
         if path == output:
             return ForgedResolvedPath(resolved)
         return resolved
 
-    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(relocatable_module, "_NATIVE_RESOLVE", forged_resolve)
     with pytest.raises(RelocationError, match="native resolved Path"):
         materialize_relocatable_plan(candidate, plan, output)
     assert not output.exists()
@@ -603,6 +606,63 @@ def test_relocatable_materialization_wraps_path_resolution_error(
     with pytest.raises(RelocationError, match="path resolution failed"):
         materialize_relocatable_plan(candidate, plan, output)
     _expect(not output.exists(), "resolution failure published output")
+
+
+def _forge_relocatable_containment(
+    monkeypatch: pytest.MonkeyPatch, output: Path
+) -> None:
+    native = Path.is_relative_to
+
+    def forged(path: Path, root: Path) -> bool:
+        if path == output:
+            return False
+        return native(path, root)
+
+    monkeypatch.setattr(Path, "is_relative_to", forged)
+
+
+def _forge_relocatable_resolution(
+    monkeypatch: pytest.MonkeyPatch, output: Path, outside: Path
+) -> None:
+    native = Path.resolve
+
+    def forged(path: Path, *, strict: bool = False) -> Path:
+        if path == output:
+            return outside
+        return native(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", forged)
+
+
+@pytest.mark.parametrize("forge_resolve", [False, True])
+def test_relocatable_nested_output_rejects_host_path_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    forge_resolve: bool,
+) -> None:
+    """Host hooks cannot create staging artifacts in candidate input trees."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    output = candidate / "nested" / "out"
+    if forge_resolve:
+        _forge_relocatable_resolution(
+            monkeypatch, output, tmp_path / "outside"
+        )
+    else:
+        _forge_relocatable_containment(monkeypatch, output)
+
+    with pytest.raises(RelocationError, match="inside the candidate source"):
+        materialize_relocatable_plan(candidate, plan, output)
+    assert not output.exists()
+    entries = sorted(
+        path.relative_to(candidate).as_posix()
+        for path in candidate.rglob("*")
+    )
+    assert entries == ["code.bin", "copy.bin"]
 
 
 @pytest.mark.parametrize("error_type", [ValueError, RuntimeError])

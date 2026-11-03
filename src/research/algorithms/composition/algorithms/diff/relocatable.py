@@ -75,6 +75,10 @@ _BOUNDARY_BYTES = 32
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_DIGEST_BYTES = _SHA256_FACTORY().digest_size
 _NATIVE_ISRESERVED = ntpath.isreserved
+# Keep output containment independent of post-load pathlib hook swaps.
+_NATIVE_PATH_TYPE = type(Path())
+_NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
+_NATIVE_IS_RELATIVE_TO = _NATIVE_PATH_TYPE.is_relative_to
 _STAGING_SUFFIX = ".relocatable-staging"
 _BACKSLASH = "\\"
 _NUL = "\x00"
@@ -675,8 +679,8 @@ def _require_external_output_root(
 
     """
     try:
-        candidate = candidate_root.resolve()
-        output = output_root.resolve()
+        candidate = _NATIVE_RESOLVE(candidate_root)
+        output = _NATIVE_RESOLVE(output_root)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"relocatable root resolution failed: {detail}"
@@ -684,7 +688,7 @@ def _require_external_output_root(
     if type(candidate) is not type(Path()) or type(output) is not type(Path()):
         message = "relocatable root resolution requires native resolved Path"
         raise RelocationError(message)
-    if output.is_relative_to(candidate):
+    if _NATIVE_IS_RELATIVE_TO(output, candidate):
         message = "relocatable output must not be inside the candidate source"
         raise RelocationError(message)
 
