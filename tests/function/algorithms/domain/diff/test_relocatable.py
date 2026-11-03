@@ -1713,6 +1713,62 @@ def test_relocatable_plan_rejects_file_directory_overlap() -> None:
         _ = relocatable_module.RelocatableAuthoringPlan((second, first))
 
 
+@pytest.mark.parametrize(
+    ("unsafe", "hook"),
+    [
+        ("nested/../escape", "parts"),
+        ("nested//alias", "as_posix"),
+        ("/absolute", "is_absolute"),
+    ],
+)
+@pytest.mark.parametrize("role", ["output", "source"])
+def test_relocatable_rejects_late_posix_path_hooks(
+    unsafe: str,
+    hook: str,
+    role: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumer pathlib class hooks cannot redefine relative file labels."""
+    from pathlib import PurePosixPath
+
+    with monkeypatch.context() as patch:
+        if hook == "parts":
+            patch.setattr(
+                PurePosixPath, "parts", property(lambda _path: ("safe",))
+            )
+        elif hook == "as_posix":
+            patch.setattr(PurePosixPath, "as_posix", lambda _path: unsafe)
+        else:
+            patch.setattr(PurePosixPath, "is_absolute", lambda _path: False)
+        with pytest.raises(RelocationError, match="unsafe relocatable"):
+            _ = RelocatableInstruction(
+                output_path=unsafe if role == "output" else "out.bin",
+                source_path=unsafe if role == "source" else None,
+                copy_candidate_file=role == "source",
+                literal=b"content" if role == "output" else None,
+            )
+
+
+def test_relocatable_plan_overlap_ignores_late_posix_parents(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer must not hide a file/directory output collision."""
+    from pathlib import PurePosixPath
+
+    first = RelocatableInstruction(
+        output_path="out/item", source_path=None,
+        copy_candidate_file=False, literal=b"parent",
+    )
+    second = RelocatableInstruction(
+        output_path="out/item/child", source_path=None,
+        copy_candidate_file=False, literal=b"child",
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(PurePosixPath, "parents", property(lambda _path: ()))
+        with pytest.raises(RelocationError, match="ancestor"):
+            _ = relocatable_module.RelocatableAuthoringPlan((first, second))
+
+
 def test_existing_relocatable_staging_is_preserved(tmp_path: Path) -> None:
     """Never delete a staging tree that may belong to another writer."""
     source, oracle, base = _fixture(tmp_path)

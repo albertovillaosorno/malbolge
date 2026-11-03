@@ -47,7 +47,7 @@ import os
 import shutil
 import sys
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 from stat import S_ISLNK
 from typing import TYPE_CHECKING, cast
 
@@ -56,11 +56,11 @@ from algorithms.diff.exact import (
     read_exact_regular_file,
     snapshot_tree_excluding,
 )
-from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.model import (
     ExactAuthoringPlan,
     ExactInstructionKind,
     OracleLiteral,
+    reserved_windows_component,
 )
 from algorithms.diff.publication import publish_directory_no_replace
 
@@ -113,10 +113,7 @@ def _native_path_lstat(path: Path) -> os.stat_result:
 
 _NATIVE_PATH_LSTAT = _native_path_lstat
 _STAGING_SUFFIX = ".relocatable-staging"
-_BACKSLASH = "\\"
 _NUL = "\x00"
-_DOT = "."
-_PARENT = ".."
 
 
 class RelocationError(RuntimeError):
@@ -315,12 +312,21 @@ class RelocatableAuthoringPlan:
             raise RelocationError(message)
         known_paths = _NATIVE_SET(paths)
         if _NATIVE_ANY(
-            parent.as_posix() in known_paths
+            ancestor in known_paths
             for path in paths
-            for parent in PurePosixPath(path).parents
+            for ancestor in _lexical_ancestors(path)
         ):
             message = "relocatable output files have ancestor path overlap"
             raise RelocationError(message)
+
+
+def _lexical_ancestors(path: str) -> tuple[str, ...]:
+    """Find canonical file ancestors without mutable pathlib class hooks."""
+    parts = path.split("/")
+    return _NATIVE_TUPLE(
+        "/".join(parts[:end])
+        for end in _NATIVE_RANGE(_ONE, _NATIVE_LEN(parts))
+    )
 
 
 def _sha256(data: bytes) -> bytes:
@@ -526,20 +532,16 @@ def _validate_relative_path(relative_path: object) -> str:
     except UnicodeEncodeError as error:
         message = f"unsafe relocatable tree path: {relative_path!r}"
         raise RelocationError(message) from error
-    candidate = PurePosixPath(relative_path)
+    # Pathlib class methods and parsers remain mutable after import. Keep
+    # canonical relative-path admission independent of consumer callbacks.
     unsafe = (
         not relative_path
-        or _BACKSLASH in relative_path
         or _NUL in relative_path
-        or relative_path == _DOT
-        or candidate.is_absolute()
-        or _NATIVE_BOOL(PureWindowsPath(relative_path).drive)
         or _NATIVE_ANY(
-            reserved_windows_component(component)
+            component in ("", ".", "..")
+            or reserved_windows_component(component)
             for component in relative_path.split("/")
         )
-        or _PARENT in candidate.parts
-        or candidate.as_posix() != relative_path
     )
     if unsafe:
         message = f"unsafe relocatable tree path: {relative_path!r}"
@@ -566,7 +568,7 @@ def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
 
 def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
     current = root
-    for component in PurePosixPath(relative_path).parts[:-1]:
+    for component in relative_path.split("/")[:-1]:
         current /= component
         status = _path_status(current, "relocatable path ancestor")
         if status is not None and _is_linked_ancestor(current, status):
@@ -578,7 +580,7 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
 
 def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
-    path = root.joinpath(*PurePosixPath(normalized).parts)
+    path = root.joinpath(*normalized.split("/"))
     try:
         resolved_path = _NATIVE_RESOLVE(path)
         resolved_root = _NATIVE_RESOLVE(root)
