@@ -48,7 +48,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
-from pathlib import Path
+from pathlib import Path, PurePath
 from stat import S_ISREG
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from sys import getfilesystemencoding as _get_filesystem_encoding
@@ -82,6 +82,7 @@ _NATIVE_HOST_REALPATH = os.path.realpath
 # Inode disjointness and executable admission cannot trust late host hooks.
 _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_OS_FSPATH = os.fspath
 # Freeze the host filesystem codec before any consumer module can mutate os.
 _FILESYSTEM_ENCODING = _get_filesystem_encoding()
 _FILESYSTEM_ERRORS = _get_filesystem_encode_errors()
@@ -107,10 +108,44 @@ _NATIVE_ALL = builtins.all
 _NATIVE_MIN = builtins.min
 _NATIVE_MAX = builtins.max
 _NATIVE_ENUMERATE = builtins.enumerate
+# Path.__str__ still reads replaceable Python path metadata, even when its
+# method itself was captured at import time. Freeze only the dependencies
+# used to decode the native path or pass it to host APIs.
+_PATH_CACHE_HOOK_NAMES = (
+    "__getattribute__",
+    "__fspath__",
+    "_str",
+    "_format_parsed_parts",
+    "_raw_paths",
+    "_tail",
+)
+_NATIVE_PATH_CACHE_HOOKS = tuple(
+    (
+        cls,
+        tuple((name, cls.__dict__.get(name)) for name in _PATH_CACHE_HOOK_NAMES),
+    )
+    for cls in _NATIVE_TYPE(Path()).__mro__
+    if issubclass(cls, PurePath)
+)
+
+
+def _native_path_hooks_changed() -> bool:
+    return _NATIVE_ANY(
+        cls.__dict__.get(name) is not original
+        for cls, hooks in _NATIVE_PATH_CACHE_HOOKS
+        for name, original in hooks
+    )
 
 
 def _native_path_stat(path: Path) -> os.stat_result:
-    return _NATIVE_OS_STAT(_NATIVE_PATH_STRING(path))
+    if _native_path_hooks_changed() or Path.__str__ is not _NATIVE_PATH_STRING:
+        message = "probe native path hooks changed"
+        raise ProbeExecutionError(message)
+    result = _NATIVE_OS_STAT(_NATIVE_PATH_STRING(path))
+    if _native_path_hooks_changed() or Path.__str__ is not _NATIVE_PATH_STRING:
+        message = "probe native path hooks changed"
+        raise ProbeExecutionError(message)
+    return result
 
 
 _NATIVE_PATH_STAT = _native_path_stat
@@ -466,7 +501,13 @@ def _validate_path(value: object, context: str) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
         message = f"{context} must use exact pathlib Path"
         raise ProbeProgramError(message)
+    if _native_path_hooks_changed():
+        message = f"{context} native path hooks changed"
+        raise ProbeProgramError(message)
     raw = _NATIVE_PATH_STRING(value)
+    if _native_path_hooks_changed():
+        message = f"{context} native path hooks changed"
+        raise ProbeProgramError(message)
     if _NUL in raw:
         message = f"{context} must not contain NUL bytes"
         raise ProbeProgramError(message)
@@ -786,6 +827,13 @@ def _native_resolved_path(result: Path, description: str) -> Path:
 
 def _require_native_host_resolver() -> None:
     """Reject late host realpath hooks beneath the original Path.resolve."""
+    if (
+        _native_path_hooks_changed()
+        or os.fspath is not _NATIVE_OS_FSPATH
+        or Path.__str__ is not _NATIVE_PATH_STRING
+    ):
+        message = "probe native path hooks changed"
+        raise ProbeExecutionError(message)
     if os.path.realpath is not _NATIVE_HOST_REALPATH:
         message = "probe native host resolver changed"
         raise ProbeExecutionError(message)
@@ -891,6 +939,8 @@ def _native_executable_status(receipt: object) -> os.stat_result:
 def _require_executable(path: Path) -> None:
     try:
         receipt = _NATIVE_PATH_STAT(path)
+    except ProbeExecutionError:
+        raise
     except FileNotFoundError as error:
         message = "probe executable is unavailable"
         raise ProbeExecutionError(message) from error
@@ -1847,6 +1897,8 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
                 ),
             )
         )
+    except ProbeExecutionError:
+        raise
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe source inode status failed: {detail}"
@@ -1865,6 +1917,8 @@ def _repository_inode_status(path: Path) -> os.stat_result | None:
     """
     try:
         return _native_inode_status(_NATIVE_PATH_STAT(path), "repository")
+    except ProbeExecutionError:
+        raise
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:

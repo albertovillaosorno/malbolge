@@ -50,7 +50,7 @@ from collections import UserString
 from contextlib import suppress
 from dataclasses import fields as dataclass_fields
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePath
 from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, Protocol, cast, override
 
@@ -3203,6 +3203,119 @@ def test_probe_rejects_host_resolver_mutation_during_native_resolution(
             _ = require_root(source, "source")
     assert changed, "native resolution hook was not exercised"
     assert os.path.realpath is native_realpath
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "cached-descriptor"])
+def test_probe_context_rejects_late_path_cache_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Original Path.__str__ must not trust consumer-replaceable cache hooks."""
+    invalid = tmp_path / "bad\x00root"
+    forged_spelling = str(tmp_path / "valid-root")
+    original_getter = Path.__getattribute__
+    calls = 0
+
+    def forged_getter(path: Path, name: str) -> object:
+        nonlocal calls
+        if path is invalid and name == "_str":
+            calls += 1
+            return forged_spelling
+        return original_getter(path, name)
+
+    native_cached = cast("MemberDescriptorType", PurePath.__dict__["_str"])
+
+    def forged_cached(path: PurePath) -> str:
+        nonlocal calls
+        if path is invalid:
+            calls += 1
+            return forged_spelling
+        return cast("str", native_cached.__get__(path, PurePath))
+
+    with monkeypatch.context() as patch:
+        if hook == "getattribute":
+            patch.setattr(Path, "__getattribute__", forged_getter)
+        else:
+            patch.setattr(PurePath, "_str", property(forged_cached))
+        with pytest.raises(ProbeProgramError, match="path hooks changed|NUL"):
+            _ = ProbeRunContext(invalid, tmp_path, ())
+    assert calls == 0, "consumer path-cache hook was consulted"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "cached-descriptor"])
+def test_probe_executable_status_rejects_late_path_cache_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Executable status cannot be obtained from a forged native path cache."""
+    missing = tmp_path / "missing-executable"
+    admitted = Path(sys.executable)
+    admitted_spelling = str(admitted)
+    original_getter = Path.__getattribute__
+    calls = 0
+
+    def forged_getter(path: Path, name: str) -> object:
+        nonlocal calls
+        if path is missing and name == "_str":
+            calls += 1
+            return admitted_spelling
+        return original_getter(path, name)
+
+    native_cached = cast("MemberDescriptorType", PurePath.__dict__["_str"])
+
+    def forged_cached(path: PurePath) -> str:
+        nonlocal calls
+        if path is missing:
+            calls += 1
+            return admitted_spelling
+        return cast("str", native_cached.__get__(path, PurePath))
+
+    with monkeypatch.context() as patch:
+        if hook == "getattribute":
+            patch.setattr(Path, "__getattribute__", forged_getter)
+        else:
+            patch.setattr(PurePath, "_str", property(forged_cached))
+        require_executable = cast(
+            "Callable[[Path], None]", vars(probe_exec_module)["_require_executable"]
+        )
+        with pytest.raises(ProbeExecutionError, match="path hooks changed"):
+            require_executable(missing)
+    assert calls == 0, "consumer path-cache hook authorized a foreign tool"
+
+
+@pytest.mark.parametrize("operation", ["resolve-tool", "executable-status"])
+def test_probe_execution_rejects_late_path_str_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """Launch preflight must reject substituted host path string methods."""
+    tool = tmp_path / "selected-tool"
+    foreign = Path(sys.executable)
+    _ = tool.write_bytes(b"untrusted")
+    foreign_spelling = str(foreign)
+    original_str = Path.__str__
+    calls = 0
+
+    def forged_str(path: Path) -> str:
+        nonlocal calls
+        if path is tool:
+            calls += 1
+            return foreign_spelling
+        return original_str(path)
+
+    if operation == "resolve-tool":
+        require_path = cast(
+            "Callable[[Path], Path]", vars(probe_exec_module)["_resolved_tool_path"]
+        )
+        invoke: Callable[[], object] = lambda: require_path(tool)
+    else:
+        require_status = cast(
+            "Callable[[Path], None]", vars(probe_exec_module)["_require_executable"]
+        )
+        invoke = lambda: require_status(tool)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "__str__", forged_str)
+        with pytest.raises(ProbeExecutionError, match="native path hooks changed"):
+            _ = invoke()
+    assert calls == 0, "late host path-string callback was consulted"
 
 
 def test_probe_program_and_context_require_immutable_exact_records(
