@@ -76,6 +76,8 @@ if TYPE_CHECKING:
     from algorithms.diff.model import TreeSnapshot
 
 _PYTHON_TOOL = "python"
+_REPOSITORY_ROLE = "repository"
+_TOOL_ROLE = "tool"
 _IDENTITY_A = "identity-a"
 _IDENTITY_B = "identity-b"
 _CHANGED_SECOND_BYTES = b"different"
@@ -216,7 +218,7 @@ def test_behavior_context_error_does_not_format_foreign_exception(
             raise failure
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(
         BehaviorProgramError, match="repository resolution failed"
     ) as caught:
@@ -333,7 +335,7 @@ def test_context_repository_resolution_error_fails_closed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(BehaviorProgramError, match="repository resolution failed"):
         _ = author_behavior_programs(
             _programs(),
@@ -359,7 +361,7 @@ def test_context_tool_resolution_error_fails_closed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(BehaviorProgramError, match="tool resolution failed"):
         _ = author_behavior_programs(
             _programs(),
@@ -403,9 +405,49 @@ def test_behavior_authoring_rejects_foreign_resolved_context_receipt(
             return ForgedResolvedPath(path)
         return native_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", return_foreign_path)
+    monkeypatch.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", return_foreign_path)
     with pytest.raises(BehaviorProgramError, match="native resolved Path"):
         _ = author_behavior_programs(programs, source_context, oracle_context)
+
+
+@pytest.mark.parametrize("role", [_REPOSITORY_ROLE, _TOOL_ROLE])
+def test_behavior_authoring_rejects_forged_native_context_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """A post-import host hook cannot hide distinct baseline tool bindings."""
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    other = tmp_path / "unrelated-binding"
+    oracle_context = ProbeRunContext(
+        source_root=oracle,
+        repository_root=other if role == _REPOSITORY_ROLE else tmp_path,
+        tools=(
+            ((_PYTHON_TOOL, other),)
+            if role == _TOOL_ROLE
+            else source_context.tools
+        ),
+    )
+    original_resolve = Path.resolve
+    disguised = tmp_path if role == _REPOSITORY_ROLE else Path(sys.executable)
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == other:
+            return original_resolve(disguised, strict=strict)
+        return original_resolve(path, strict=strict)
+
+    def unexpected_execution(*_args: object) -> tuple[ProbeTranscript, ...]:
+        del _args
+        message = "mismatched context reached probe execution"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(
+        behavior_module, "run_probe_programs", unexpected_execution
+    )
+    with pytest.raises(BehaviorProgramError, match="same tool bindings"):
+        _ = author_behavior_programs(
+            _programs(), source_context, oracle_context
+        )
 
 
 def test_behavior_program_records_reject_foreign_mutable_inputs() -> None:
@@ -868,7 +910,9 @@ def test_observation_mirror_creation_errors_are_typed(
     )
 
 
-@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "failure_type", [PermissionError, ValueError, RuntimeError]
+)
 def test_observation_temporary_root_creation_errors_are_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

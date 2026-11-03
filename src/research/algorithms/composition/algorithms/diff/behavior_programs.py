@@ -67,6 +67,8 @@ if TYPE_CHECKING:
     from algorithms.diff.model import TreeSnapshot
 
 
+# Bind the host resolver before executable domain hooks can replace it.
+_NATIVE_PATH_RESOLVE = Path.resolve
 _NUL = "\x00"
 
 
@@ -378,7 +380,7 @@ def _require_digest(transcript: ProbeTranscript) -> bytes:
 
 def _resolved_context_path(path: Path, description: str) -> Path:
     try:
-        resolved = path.resolve()
+        resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _behavior_error_detail(error)
         message = f"behavior {description} resolution failed: {path}: {detail}"
