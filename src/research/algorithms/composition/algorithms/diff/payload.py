@@ -49,6 +49,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hmac import compare_digest as _native_compare_digest
 
+# Keep Poly1305 decoding independent of mutable global builtins.
+_NATIVE_FROM_BYTES = int.from_bytes
+
 _KEY_BYTES = 32
 _NONCE_BYTES = 12
 _TAG_BYTES = 16
@@ -128,7 +131,7 @@ def _quarter_round(state: list[int], indexes: tuple[int, int, int, int]) -> None
 
 def _words(data: bytes) -> tuple[int, ...]:
     return tuple(
-        int.from_bytes(data[offset : offset + 4], byteorder="little")
+        _NATIVE_FROM_BYTES(data[offset : offset + 4], byteorder="little")
         for offset in range(_ZERO, len(data), 4)
     )
 
@@ -195,12 +198,12 @@ def _poly1305_mac(message: bytes, one_time_key: bytes) -> bytes:
     if len(one_time_key) != _KEY_BYTES:
         error_message = "Poly1305 one-time key must be 32 bytes"
         raise PayloadCryptoError(error_message)
-    r = int.from_bytes(one_time_key[:16], byteorder="little") & _POLY_R_MASK
-    s = int.from_bytes(one_time_key[16:], byteorder="little")
+    r = _NATIVE_FROM_BYTES(one_time_key[:16], byteorder="little") & _POLY_R_MASK
+    s = _NATIVE_FROM_BYTES(one_time_key[16:], byteorder="little")
     accumulator = _ZERO
     for offset in range(_ZERO, len(message), 16):
         block = message[offset : offset + 16]
-        value = int.from_bytes(block + b"\x01", byteorder="little")
+        value = _NATIVE_FROM_BYTES(block + b"\x01", byteorder="little")
         accumulator = ((accumulator + value) * r) % _POLY_MODULUS
     tag = (accumulator + s) % _POLY_TAG_MODULUS
     return tag.to_bytes(_TAG_BYTES, byteorder="little")

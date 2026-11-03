@@ -32,6 +32,7 @@
 
 """RFC and synthetic tests for authenticated literal payload primitives."""
 
+import builtins
 import hmac
 from dataclasses import replace
 from typing import cast
@@ -159,6 +160,59 @@ def test_authentication_preserves_valid_tag_after_global_comparator_replacement(
     recovered = chacha20_poly1305_decrypt(_RFC_KEY, _RFC_NONCE, payload, aad=_RFC_AAD)
     _expect(recovered == _RFC_PLAINTEXT, "valid RFC payload was rejected")
     _expect(calls == 0, "mutable process-global comparison was consulted")
+
+
+class _ForgedInt:
+    """Simulate a domain callback replacing the ambient integer namespace."""
+
+    @staticmethod
+    def from_bytes(
+        data: bytes, byteorder: str = "big", *, signed: bool = False
+    ) -> int:
+        """Return a zero even for nonzero inputs.
+
+        Returns:
+            A forged zero integer.
+
+        """
+        del data, byteorder, signed
+        return 0
+
+
+def test_decrypt_never_accepts_zero_tag_after_integer_namespace_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late builtins replacement cannot authenticate untrusted bytes."""
+    key = bytes(range(32))
+    nonce = bytes(range(12))
+    unauthenticated = AuthenticatedPayload(b"forged ciphertext", bytes(16))
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", _ForgedInt)
+        try:
+            _ = chacha20_poly1305_decrypt(key, nonce, unauthenticated)
+        except PayloadCryptoError:
+            rejected = True
+
+    _expect(rejected, "forged integer decoder admitted a forged payload tag")
+
+
+def test_decrypt_preserves_rfc_vector_after_integer_namespace_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid authenticated ciphertext survives a late integer swap."""
+    payload = AuthenticatedPayload(_RFC_CIPHERTEXT, _RFC_TAG)
+    recovered: bytes | None = None
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", _ForgedInt)
+        try:
+            recovered = chacha20_poly1305_decrypt(
+                _RFC_KEY, _RFC_NONCE, payload, aad=_RFC_AAD
+            )
+        except PayloadCryptoError:
+            recovered = None
+
+    _expect(recovered == _RFC_PLAINTEXT, "genuine RFC payload was rejected")
 
 
 def test_tag_and_aad_tampering_fail_closed() -> None:
