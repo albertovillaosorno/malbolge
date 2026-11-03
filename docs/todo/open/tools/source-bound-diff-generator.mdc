@@ -344,8 +344,8 @@ format.
   kinds, digests, source spans, and literal segments. Compatible source
   and staging drift checks pin snapshot/file fields rather than dataclass
   equality. Twenty-nine red-first regressions and three patch-span guards
-  cover these bypasses; all 190 compatible tests and 2,083 integrated diff
-  tests (excluding concurrently edited generator tests) passed. This does not
+  cover these bypasses; all 190 compatible tests and 2,225 full integrated
+  diff tests (no exclusions) passed. This does not
   prevent direct object mutation or concurrent filesystem races. Jig doctor
   is degraded and Jig check still
   timed out after 60 seconds at global native-validator scheduling, so the

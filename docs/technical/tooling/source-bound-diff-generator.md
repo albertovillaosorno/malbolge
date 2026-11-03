@@ -835,8 +835,8 @@ rather than replaceable dataclass equality, preventing a late equality override
 from concealing post-plan source or postcondition candidate mutations. Twenty-
 nine red-first constructor, getter, replay, binding, and tree-equality cases
 plus three source-span/literal guard cases cover this scope. The full compatible
-unit passes 190 tests; an integrated diff run passed 2,083 tests excluding the
-generator suite undergoing independent edits. These guards isolate late class
+unit passes 190 tests; the full integrated diff suite passes 2,225 tests
+with no exclusions. These guards isolate late class
 hooks, not direct writes to instance storage, malicious consumer callbacks, or
 concurrent source/output writers.
 
