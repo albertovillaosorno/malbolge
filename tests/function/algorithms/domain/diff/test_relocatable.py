@@ -1376,6 +1376,117 @@ def test_relocatable_locator_requires_exact_boundary_shape() -> None:
         )
 
 
+def test_relocatable_locator_rejects_late_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late type hooks cannot admit mutable digests or boolean lengths."""
+    foreign = bytearray(b"x" * 32)
+    native_type = type
+    digest_rejected = False
+    count_rejected = False
+
+    def forged_type(value: object) -> type:
+        if value is foreign:
+            return bytes
+        if value is True:
+            return int
+        return native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = RangeLocator(
+                1, 1, cast("bytes", cast("object", foreign))
+            )
+        except RelocationError:
+            digest_rejected = True
+        try:
+            _ = RangeLocator(True, 1, b"x" * 32)
+        except RelocationError:
+            count_rejected = True
+    assert digest_rejected, "late type admitted a mutable locator digest"
+    assert count_rejected, "late type admitted a boolean locator length"
+
+
+def test_relocatable_locator_rejects_late_len_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Short digests cannot acquire a forged SHA-256 byte count."""
+    digest = b"x"
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        if value is digest:
+            return 32
+        return native_len(cast("bytes", value))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        try:
+            _ = RangeLocator(1, 1, digest)
+        except RelocationError:
+            rejected = True
+    assert rejected, "late len admitted a truncated locator digest"
+
+
+def test_relocatable_root_rejects_late_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public path admission must reject foreign objects before coercion."""
+    foreign = object()
+    native_type = type
+    native_path_type = type(Path())
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return native_path_type if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            relocatable_module._validate_path(foreign, "relocatable root")
+        except RelocationError:
+            rejected = True
+    assert rejected, "late type admitted a foreign relocatable root"
+
+
+def test_relocatable_instruction_rejects_late_bool_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replacement bool class cannot admit an integer copy flag."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", int)
+        try:
+            _ = RelocatableInstruction(
+                "out.bin", "source.bin", cast("bool", cast("object", 1))
+            )
+        except RelocationError:
+            rejected = True
+    assert rejected, "late bool admitted an integer relocation copy flag"
+
+
+def test_relocatable_plan_rejects_late_tuple_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed tuple class cannot admit mutable plan instructions."""
+    instruction = RelocatableInstruction(
+        "out.bin", None, copy_candidate_file=False, literal=b"target"
+    )
+    foreign = cast(
+        "tuple[RelocatableInstruction, ...]", cast("object", [instruction])
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "tuple", list)
+        try:
+            _ = relocatable_module.RelocatableAuthoringPlan(foreign)
+        except RelocationError:
+            rejected = True
+    assert rejected, "late tuple admitted mutable relocation instructions"
+
+
 def test_relocatable_metadata_rejects_boolean_and_foreign_records() -> None:
     """Range locators and instructions cannot rely on Python coercions."""
     digest = b"x" * 32
