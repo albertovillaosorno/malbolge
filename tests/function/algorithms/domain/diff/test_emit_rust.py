@@ -37,6 +37,7 @@ from __future__ import annotations
 import builtins
 from collections.abc import Sized
 from contextlib import contextmanager
+from dataclasses import replace
 import hashlib
 import os
 from pathlib import Path
@@ -58,7 +59,9 @@ from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
+from algorithms.diff.source_binding import SourceBindingError
 from algorithms.diff.source_binding import SourceBindingPolicy
+from algorithms.diff.source_binding import validate_threshold_binding
 import pytest
 
 if TYPE_CHECKING:
@@ -102,6 +105,8 @@ _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
 )
 _INVALID_BINDING_MARKER = b"invalid generated binding"
+_DUPLICATE_COORDINATE = "coordinate"
+_DUPLICATE_ANCHOR = "anchor"
 _LATE_SOURCE_DRIFT_MARKER = b"source tree changed during materialization"
 _LATE_SOURCE_MUTATION = b"late mutation"
 
@@ -766,6 +771,80 @@ def _lower_embedded_binding_threshold(
         ");",
     ))
     return generated.replace(declaration, replacement, 1)
+
+
+def _replace_embedded_binding(generated: str, data: bytes) -> str:
+    marker = "const BINDING_HEX: &str = concat!("
+    begin = generated.index(marker)
+    end = generated.index(");", begin) + 2
+    declaration = generated[begin:end]
+    encoded = data.hex()
+    replacement = "\n".join((
+        marker,
+        *(f'    "{encoded[i : i + 64]}",' for i in range(0, len(encoded), 64)),
+        ");",
+    ))
+    return generated.replace(declaration, replacement, 1)
+
+
+def _duplicate_binding_bytes(
+    protected: ProtectedExactPlan, duplicate: str
+) -> bytes:
+    binding = protected.binding
+    _expect(
+        len(binding.shares) > binding.threshold,
+        "fixture requires unused shares after its recovery quorum",
+    )
+    first = binding.shares[0]
+    last = binding.shares[-1]
+    if duplicate == _DUPLICATE_COORDINATE:
+        replacement = replace(last, x=first.x)
+    else:
+        replacement = replace(
+            last,
+            source_path=first.source_path,
+            anchor_digest=first.anchor_digest,
+        )
+    malformed = replace(binding, shares=(*binding.shares[:-1], replacement))
+    with pytest.raises(SourceBindingError, match="unique"):
+        _ = validate_threshold_binding(malformed)
+    return cast(
+        "Callable[[object], bytes]", vars(emit_rust_module)["_binding_bytes"]
+    )(malformed)
+
+
+@pytest.mark.parametrize(
+    "duplicate", [_DUPLICATE_COORDINATE, _DUPLICATE_ANCHOR]
+)
+def test_emitted_rust_rejects_duplicate_binding_shares_before_source_reads(
+    tmp_path: Path, *, duplicate: str
+) -> None:
+    """Reject malformed late shares even if a valid early quorum can unlock."""
+    source, _, _, protected = _fixture(tmp_path)
+    rust_source = tmp_path / f"duplicate-{duplicate}.rs"
+    executable = tmp_path / f"duplicate-{duplicate}"
+    output = tmp_path / "out"
+    _ = rust_source.write_text(
+        _replace_embedded_binding(
+            emit_rust_transform(protected, _PROFILE),
+            _duplicate_binding_bytes(protected, duplicate),
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "duplicate binding runtime failed to compile: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+    completed = _run(executable, source, output)
+    _expect(completed.returncode != 0, "duplicate binding was accepted")
+    _expect(
+        _INVALID_BINDING_MARKER in completed.stderr,
+        "runtime did not reject the malformed binding envelope",
+    )
+    _expect(not output.exists(), "malformed binding published output")
 
 
 def test_emitted_rust_rejects_binding_threshold_under_file_minimum(

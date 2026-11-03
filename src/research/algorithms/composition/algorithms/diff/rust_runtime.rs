@@ -333,6 +333,14 @@ fn parse_binding(data: &[u8]) -> Result<Binding, String> {
         });
     }
     c.finish()?;
+    // Validate the entire envelope, including shares beyond the recovery
+    // quorum. A malformed unused share must not become trusted metadata.
+    let unique_coordinates: BTreeSet<u8> =
+        shares.iter().map(|share| share.x).collect();
+    let unique_anchors: BTreeSet<(&str, &[u8; 32])> = shares
+        .iter()
+        .map(|share| (share.source_path.as_str(), &share.anchor_digest))
+        .collect();
     if context.is_empty()
         || threshold == 0
         || threshold > shares.len()
@@ -342,6 +350,8 @@ fn parse_binding(data: &[u8]) -> Result<Binding, String> {
         || secret_length == 0
         || window_bytes == 0
         || selection_modulus == 0
+        || unique_coordinates.len() != shares.len()
+        || unique_anchors.len() != shares.len()
         || shares
             .iter()
             .any(|s| s.x == 0 || s.masked_share.len() != secret_length)
