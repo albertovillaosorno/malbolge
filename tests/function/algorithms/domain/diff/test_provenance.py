@@ -583,7 +583,9 @@ def test_source_pin_native_error_fields_ignore_late_class_getter(
         patch.setattr(provenance_module, "read_exact_regular_file", fail_read)
         patch.setattr(ExactTreeError, "__getattribute__", forged_getattribute)
         with pytest.raises(SourcePinError, match="read failed") as caught:
-            provenance_module._read_pinned_source(tmp_path, tmp_path / "README", "README")
+            provenance_module._read_pinned_source(
+                tmp_path, tmp_path / "README", "README"
+            )
     assert calls == 0, "late class getter read native error metadata"
     assert getattr(caught.value, "__notes__", []) == (
         ["trusted reader note"] if with_note else []
@@ -607,7 +609,9 @@ def test_pinned_source_preserves_notes_after_builtin_list_swap(
         patched.setattr(provenance_module, "read_exact_regular_file", fail_read)
         patched.setattr(builtins, "list", replacement)
         with pytest.raises(SourcePinError, match="read failed") as caught:
-            provenance_module._read_pinned_source(tmp_path, tmp_path / "README", "README")
+            provenance_module._read_pinned_source(
+                tmp_path, tmp_path / "README", "README"
+            )
     assert getattr(caught.value, "__notes__", []) == ["trusted reader note"]
 
 

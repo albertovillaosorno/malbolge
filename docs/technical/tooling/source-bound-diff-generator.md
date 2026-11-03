@@ -2307,7 +2307,9 @@ trusted notes even while the error type and cause remained intact. Six red-first
 tuple/dict alias cases now retain those notes. All 763 combined exact,
 relocatable, and provenance tests passed postcommit; Ruff, strict typing on
 all three source files, and diff checks were clean. The exact test file has
-one inherited typing diagnostic outside the added cases. These guards do not
+one inherited typing diagnostic outside the added cases.
+
+These guards do not
 prevent external filesystem races or direct trusted data mutation.
 
 Compatible instruction, build, authoring-plan, and materialization-request
@@ -2324,6 +2326,7 @@ Compatible exact-reader failure notes now also use the import-captured native
 removed trusted notes after a valid exact read error; all 309 compatible
 tests passed postcommit. Ruff, strict source typing, and diff checks passed.
 Seventeen inherited compatible-test typing errors remain outside added lines.
+
 This preserves diagnostic evidence, not protection from external writers.
 
 Generator recipe path preflight also verifies original inherited `PurePath`

@@ -288,7 +288,9 @@ def test_relocatable_exact_reader_notes_ignore_late_class_getter(
         patch.setattr(relocatable_module, "read_exact_regular_file", fail_read)
         patch.setattr(ExactTreeError, "__getattribute__", forged_getattribute)
         with pytest.raises(RelocationError, match="read failed") as caught:
-            relocatable_module._read_relocatable_bytes(tmp_path / "missing.bin", "source")
+            relocatable_module._read_relocatable_bytes(
+                tmp_path / "missing.bin", "source"
+            )
     assert calls == 0, "late class getter observed native reader error fields"
     assert getattr(caught.value, "__notes__", []) == (
         ["trusted reader note"] if with_note else []
@@ -308,10 +310,14 @@ def test_relocatable_reader_preserves_notes_after_builtin_list_swap(
         raise native_error
 
     with monkeypatch.context() as patched:
-        patched.setattr(relocatable_module, "read_exact_regular_file", fail_read)
+        patched.setattr(
+            relocatable_module, "read_exact_regular_file", fail_read
+        )
         patched.setattr(builtins, "list", replacement)
         with pytest.raises(RelocationError, match="read failed") as caught:
-            relocatable_module._read_relocatable_bytes(tmp_path / "missing.bin", "source")
+            relocatable_module._read_relocatable_bytes(
+                tmp_path / "missing.bin", "source"
+            )
     assert getattr(caught.value, "__notes__", []) == ["trusted reader note"]
 
 

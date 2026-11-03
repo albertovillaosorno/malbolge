@@ -682,11 +682,9 @@ class ProtectedExactPlan:
             detail = _NATIVE_TYPE(error).__name__
             if _NATIVE_TYPE(error) is SourceBindingError:
                 # Read native exception storage, not a mutable class getter.
+                native_args_getter = BaseException.__getattribute__
                 arguments = cast(
-                    "tuple[object, ...]",
-                    BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
-                        error, "args"
-                    ),
+                    "tuple[object, ...]", native_args_getter(error, "args")
                 )
                 if (
                     _NATIVE_LEN(arguments) == _ONE

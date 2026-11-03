@@ -862,7 +862,9 @@ def test_protected_plan_binding_diagnostic_ignores_late_native_error_getter(
         return BaseException.__getattribute__(error, name)
 
     with monkeypatch.context() as patched:
-        patched.setattr(SourceBindingError, "__getattribute__", forged_getattribute)
+        patched.setattr(
+            SourceBindingError, "__getattribute__", forged_getattribute
+        )
         with pytest.raises(
             ProtectedPlanError, match=r"binding is invalid.*threshold"
         ) as caught:

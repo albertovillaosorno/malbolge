@@ -2131,7 +2131,9 @@ def test_compatible_native_error_fields_ignore_late_class_getter(
         patch.setattr(compatible_module, "read_exact_regular_file", fail_read)
         patch.setattr(ExactTreeError, "__getattribute__", forged_getattribute)
         with pytest.raises(CompatiblePlanError, match="read failed") as caught:
-            compatible_module._read_compatible_bytes(tmp_path / "missing", "source")
+            compatible_module._read_compatible_bytes(
+                tmp_path / "missing", "source"
+            )
     assert calls == 0, "late class getter read native error metadata"
     assert getattr(caught.value, "__notes__", []) == (
         ["trusted reader note"] if with_note else []
@@ -2154,7 +2156,9 @@ def test_compatible_read_preserves_notes_after_builtin_list_swap(
         patched.setattr(compatible_module, "read_exact_regular_file", fail_read)
         patched.setattr(builtins, "list", replacement)
         with pytest.raises(CompatiblePlanError, match="read failed") as caught:
-            compatible_module._read_compatible_bytes(tmp_path / "missing", "source")
+            compatible_module._read_compatible_bytes(
+                tmp_path / "missing", "source"
+            )
     assert getattr(caught.value, "__notes__", []) == ["trusted reader note"]
 
 
