@@ -50,6 +50,7 @@ _ONE = 1
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
 _NATIVE_POW = builtins.pow
+_NATIVE_SORTED = builtins.sorted
 
 
 class FingerprintPolicyError(ValueError):
@@ -253,7 +254,9 @@ def stable_anchors(
     if not selected:
         fallback = _selected_anchor(data, fallback_offset, policy.window_bytes)
         selected[fallback.digest] = fallback
-    return tuple(sorted(selected.values(), key=lambda anchor: anchor.offset))
+    return tuple(
+        _NATIVE_SORTED(selected.values(), key=lambda anchor: anchor.offset)
+    )
 
 
 def anchor_coverage(

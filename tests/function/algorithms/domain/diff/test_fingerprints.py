@@ -34,6 +34,7 @@
 
 import builtins
 import hashlib
+from typing import TYPE_CHECKING
 from typing import cast
 
 from algorithms.diff.fingerprints import AnchorCoverage
@@ -43,6 +44,9 @@ from algorithms.diff.fingerprints import StableAnchor
 from algorithms.diff.fingerprints import anchor_coverage
 from algorithms.diff.fingerprints import stable_anchors
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 _BLOCK_COUNT = 256
 _INSERTION = b"target-only insertion that shifts all later offsets"
@@ -95,6 +99,37 @@ def test_anchor_selection_resists_post_import_power_hook_swap(
         observed = stable_anchors(source)
     assert observed == expected
     assert calls == 0
+
+
+def test_anchor_offsets_resist_post_import_sorted_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late source hooks cannot reorder deterministic lineage evidence."""
+    source = _synthetic_bytes("sorted-lineage")
+    expected = stable_anchors(source)
+    assert len(expected) > 1, "fixture needs multiple stable anchors"
+    calls = 0
+
+    def forged_sorted(
+        values: Iterable[StableAnchor], *, key: object = None
+    ) -> list[StableAnchor]:
+        """Reverse selected anchors instead of sorting them.
+
+        Returns:
+            Illegitimately reordered source lineage anchors.
+
+        """
+        nonlocal calls
+        del key
+        calls += 1
+        return list(reversed(tuple(values)))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "sorted", forged_sorted)
+        observed = stable_anchors(source)
+
+    assert observed == expected, "mutable sorted hook reordered source evidence"
+    assert calls == 0, "mutable global sorting hook was consulted"
 
 
 def test_content_defined_anchors_survive_insertion_shift() -> None:
