@@ -37,6 +37,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 from bisect import bisect_left
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
@@ -69,6 +70,7 @@ _NATIVE_BOOL = builtins.bool
 _NATIVE_SET = builtins.set
 _NATIVE_REVERSED = builtins.reversed
 _NATIVE_LIST = builtins.list
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 # Verify placement using a constructor pinned before host hooks can replace it.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -81,13 +83,25 @@ class SemanticPlacementError(RuntimeError):
     """Raised when semantic edit placement is missing, ambiguous, or unsafe."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SemanticLocator:
     """Hashed source-unit range plus immediate canonical context."""
 
     source_digests: tuple[bytes, ...]
     before_digests: tuple[bytes, ...]
     after_digests: tuple[bytes, ...]
+
+    def __init__(
+        self,
+        source_digests: tuple[bytes, ...],
+        before_digests: tuple[bytes, ...],
+        after_digests: tuple[bytes, ...],
+    ) -> None:
+        """Seal source/context metadata with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "source_digests", source_digests)
+        _NATIVE_OBJECT_SETATTR(self, "before_digests", before_digests)
+        _NATIVE_OBJECT_SETATTR(self, "after_digests", after_digests)
+        _LOCATOR_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require at least one source or context digest.
@@ -114,6 +128,10 @@ class SemanticLocator:
             raise SemanticPlacementError(message)
 
 
+_LOCATOR_VALIDATOR = cast(
+    "Callable[[SemanticLocator], None]",
+    SemanticLocator.__dict__["__post_init__"],
+)
 _LOCATOR_SOURCE_SLOT = cast(
     "MemberDescriptorType", SemanticLocator.__dict__["source_digests"]
 )
@@ -145,13 +163,25 @@ def read_semantic_locator(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SemanticEdit:
     """Target replacement relative to hashed canonical source units."""
 
     locator: SemanticLocator
     replacement: bytes
     replacement_digests: tuple[bytes, ...]
+
+    def __init__(
+        self,
+        locator: SemanticLocator,
+        replacement: bytes,
+        replacement_digests: tuple[bytes, ...],
+    ) -> None:
+        """Seal edit metadata with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "locator", locator)
+        _NATIVE_OBJECT_SETATTR(self, "replacement", replacement)
+        _NATIVE_OBJECT_SETATTR(self, "replacement_digests", replacement_digests)
+        _EDIT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require exact locator, replacement, and target digest metadata.
@@ -180,6 +210,9 @@ class SemanticEdit:
             raise SemanticPlacementError(message)
 
 
+_EDIT_VALIDATOR = cast(
+    "Callable[[SemanticEdit], None]", SemanticEdit.__dict__["__post_init__"]
+)
 _EDIT_LOCATOR_SLOT = cast(
     "MemberDescriptorType", SemanticEdit.__dict__["locator"]
 )
@@ -204,11 +237,16 @@ def read_semantic_edit(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SemanticAuthoringPlan:
     """Non-distributable semantic edit plan for one mapped source file."""
 
     edits: tuple[SemanticEdit, ...]
+
+    def __init__(self, edits: tuple[SemanticEdit, ...]) -> None:
+        """Seal the edit sequence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "edits", edits)
+        _PLAN_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require one immutable sequence of exact semantic edits.
@@ -228,6 +266,10 @@ class SemanticAuthoringPlan:
             raise SemanticPlacementError(message)
 
 
+_PLAN_VALIDATOR = cast(
+    "Callable[[SemanticAuthoringPlan], None]",
+    SemanticAuthoringPlan.__dict__["__post_init__"],
+)
 _PLAN_EDITS_SLOT = cast(
     "MemberDescriptorType", SemanticAuthoringPlan.__dict__["edits"]
 )

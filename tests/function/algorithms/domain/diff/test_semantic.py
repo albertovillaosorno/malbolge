@@ -1137,3 +1137,42 @@ def test_semantic_plan_ignores_late_empty_edits_getter(
         output = apply_semantic_plan(source, plan, _map)
     assert output == target.raw
     assert calls == 0, "late plan getter dropped accepted semantic edits"
+
+
+@pytest.mark.parametrize("kind", ["locator", "edit", "plan"])
+def test_semantic_constructors_ignore_late_postinit_override(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A late validation-method override cannot admit malformed plans."""
+    locator = SemanticLocator((b"a" * 32,), (), ())
+    edit = SemanticEdit(locator, b"new", (b"b" * 32,))
+    calls = 0
+
+    if kind == "locator":
+        record_type = SemanticLocator
+        invalid: dict[str, object] = {
+            "source_digests": [b"a" * 32],
+            "before_digests": (),
+            "after_digests": (),
+        }
+    elif kind == "edit":
+        record_type = SemanticEdit
+        invalid = {
+            "locator": locator,
+            "replacement": bytearray(b"new"),
+            "replacement_digests": (b"b" * 32,),
+        }
+    else:
+        record_type = SemanticAuthoringPlan
+        invalid = {"edits": [edit]}
+
+    def skip_validation(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(record_type, "__post_init__", skip_validation)
+        constructor = cast("Callable[..., object]", record_type)
+        with pytest.raises(SemanticPlacementError):
+            _ = constructor(**invalid)
+    assert calls == 0, "late semantic validator admitted invalid evidence"
