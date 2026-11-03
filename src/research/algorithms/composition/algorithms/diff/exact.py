@@ -113,6 +113,8 @@ _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_EXCEPTION = builtins.Exception
 # Model errors are imported from a consumer-visible mutable module namespace.
 _NATIVE_TREE_MODEL_ERROR = TreeModelError
+# Portable path policy must not call a late consumer-replaced helper alias.
+_NATIVE_RESERVED_WINDOWS_COMPONENT = reserved_windows_component
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
@@ -580,7 +582,7 @@ def _validate_relative_path(relative_path: str) -> str:
     if _NATIVE_ANY(part in _UNSAFE_PATH_PARTS for part in parts):
         message = f"relative path is not canonically normalized: {admitted!r}"
         raise _NATIVE_TREE_MODEL_ERROR(message)
-    if _NATIVE_ANY(reserved_windows_component(part) for part in parts):
+    if _NATIVE_ANY(_NATIVE_RESERVED_WINDOWS_COMPONENT(part) for part in parts):
         message = f"unsafe relative path: {admitted!r}"
         raise _NATIVE_TREE_MODEL_ERROR(message)
     return admitted

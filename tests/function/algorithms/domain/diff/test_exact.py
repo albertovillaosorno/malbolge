@@ -5156,3 +5156,30 @@ def test_exact_path_model_error_keeps_native_identity_under_late_alias(
         patched.setattr(exact_module, "TreeModelError", LookupError)
         with pytest.raises(TreeModelError):
             _ = validate(invalid)
+
+
+@pytest.mark.parametrize("invalid", ["CON", "src/COM1/file.bin", "trailing."])
+def test_exact_path_rejects_reserved_components_after_helper_alias(
+    monkeypatch: pytest.MonkeyPatch, invalid: str
+) -> None:
+    """A late replacement cannot admit forbidden portable source labels."""
+    validate = cast(
+        "Callable[[str], str]", vars(exact_module)["_validate_relative_path"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "reserved_windows_component", lambda _part: False)
+        with pytest.raises(TreeModelError, match="unsafe relative path"):
+            _ = validate(invalid)
+
+
+@pytest.mark.parametrize("valid", ["source.c", "src/safe-file.bin"])
+def test_exact_path_keeps_safe_labels_after_helper_alias(
+    monkeypatch: pytest.MonkeyPatch, valid: str
+) -> None:
+    """An adversarial helper alias cannot reject a valid portable label."""
+    validate = cast(
+        "Callable[[str], str]", vars(exact_module)["_validate_relative_path"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "reserved_windows_component", lambda _part: True)
+        assert validate(valid) == valid
