@@ -108,6 +108,14 @@ format.
   diff checks were clean. Existing 35 test-file typing diagnostics and the
   degraded global Jig gate remain unresolved. External filesystem races and
   trusted instance mutation are not isolated by this check.
+- Relocatable output containment also pins original `PurePath.parents`,
+  equality, parent-sequence membership/iteration and class alias, and related
+  builtin dispatch (`d57dd2b6a`). Forged parent lists previously admitted
+  outputs inside the source tree. Nineteen new red-first cases and 263 focused
+  postcommit tests passed; Ruff, strict source typing, and diff checks passed.
+  The integrated run had 3,510 passes and four concurrent probe WIP failures,
+  not a green verdict. The older 35 relocatable-test typing diagnostics, global
+  Jig graph absence, and external filesystem races remain outstanding.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused

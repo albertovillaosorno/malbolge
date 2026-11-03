@@ -1652,6 +1652,19 @@ diagnostics, with none introduced by this fix. Jig doctor remains degraded
 with an absent graph, so this evidence does not assert a complete Jig gate.
 External filesystem races and trusted object mutation remain out of scope.
 
+Relocatable containment now also verifies original `PurePath.parents` and
+`__eq__` path hooks, the native parent-sequence class alias and its inherited
+iteration/membership methods, and the equality-related builtin hooks
+(`d57dd2b6a`). Replacing `PurePath.parents` with an empty sequence previously
+admitted an output nested inside the candidate tree. Nineteen new red-first
+ancestry tests reject forged inherited/concrete hooks and aliases. All 263
+postcommit focused relocatable tests passed; Ruff, strict source
+BasedPyright, and diff checks passed, with the existing 35 test-file typing
+diagnostics unchanged. The concurrent integrated diff run passed 3,510 tests
+but had four failures in another agent's still-uncommitted probe ancestry
+regressions, so that run is not claimed as green. The global Jig graph and
+external filesystem race limitations remain open.
+
 Relocatable authoring now creates internal `RangeLocator`,
 `RelocatableSourceRange`, `RelocatableInstruction`, and
 `RelocatableAuthoringPlan` records using captured native allocation and the
