@@ -1750,6 +1750,32 @@ def _validate_probe_batch(
     if _NATIVE_TYPE(context) is not ProbeRunContext:
         message = "probe run context must use the exact ProbeRunContext type"
         raise ProbeProgramError(message)
+    # Exact native records can be allocated without their original constructors.
+    # Revalidate all nested metadata before any filesystem or process preflight.
+    try:
+        _PROBE_RUN_CONTEXT_VALIDATOR(cast("ProbeRunContext", context))
+        for program in admitted:
+            _PROBE_PROGRAM_VALIDATOR(program)
+            commands = cast(
+                "tuple[ProbeCommand, ...]", _probe_field(program, ProbeProgram, "commands")
+            )
+            for command in commands:
+                _PROBE_COMMAND_VALIDATOR(command)
+                executable = _probe_field(command, ProbeCommand, "executable")
+                if _NATIVE_TYPE(executable) is ToolExecutable:
+                    _TOOL_EXECUTABLE_VALIDATOR(cast("ToolExecutable", executable))
+                else:
+                    _ROOTED_EXECUTABLE_VALIDATOR(cast("RootedExecutable", executable))
+                arguments = cast(
+                    "tuple[ProbeArgument, ...]",
+                    _probe_field(command, ProbeCommand, "arguments"),
+                )
+                for argument in arguments:
+                    if _NATIVE_TYPE(argument) is PathArgument:
+                        _PATH_ARGUMENT_VALIDATOR(cast("PathArgument", argument))
+    except AttributeError as error:
+        message = "probe batch contains incomplete native metadata"
+        raise ProbeProgramError(message) from error
     identifiers = _NATIVE_TUPLE(
         cast("str", _probe_field(program, ProbeProgram, "probe_id"))
         for program in admitted

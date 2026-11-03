@@ -48,6 +48,7 @@ import threading
 import time
 from collections import UserString
 from contextlib import suppress
+from dataclasses import fields as dataclass_fields
 from dataclasses import replace
 from pathlib import Path
 from types import MemberDescriptorType, SimpleNamespace
@@ -4058,3 +4059,110 @@ def test_probe_captured_process_ignores_late_field_getters(
         observed = run_probe_program(program, context)
         assert observed == baseline
     assert calls == 0
+
+
+def _forged_native_probe_record(
+    record: object,
+    overrides: dict[str, object] | None = None,
+    *,
+    missing: tuple[str, ...] = (),
+) -> object:
+    """Bypass constructor admission but preserve native record identity."""
+    owner = type(record)
+    forged = object.__new__(owner)
+    for field in dataclass_fields(cast("ProbeProgram", record)):
+        name = field.name
+        if name in missing:
+            continue
+        slot = cast("MemberDescriptorType", owner.__dict__[name])
+        value = (overrides or {}).get(name, slot.__get__(record, owner))
+        slot.__set__(forged, value)
+    return forged
+
+
+@pytest.mark.parametrize(
+    ("forgery", "field", "invalid"),
+    [
+        ("program", "commands", ()),
+        ("command", "timeout_ms", 0),
+        ("command", "digest_stdout", 1),
+        ("tool", "tool_id", ""),
+        ("argument", "relative_path", "../escape"),
+        ("context", "enforce_source_immutable", 1),
+        ("rooted", "root", "foreign"),
+    ],
+)
+def test_probe_batch_revalidates_native_nested_metadata_before_work(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+    field: str,
+    invalid: object,
+) -> None:
+    """Constructor-bypassed probe metadata cannot reach file or process work."""
+    source = tmp_path / "source"
+    source.mkdir()
+    context = _context(source, tmp_path)
+    command = ProbeCommand(
+        ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "print('trusted')", PathArgument(ProbeRoot.SOURCE, "input")),
+        digest_stdout=True,
+    )
+    program = ProbeProgram("native-identity", (command,))
+    if forgery == "context":
+        context = cast(
+            "ProbeRunContext",
+            _forged_native_probe_record(context, {field: invalid}),
+        )
+    elif forgery == "program":
+        program = cast(
+            "ProbeProgram",
+            _forged_native_probe_record(program, {field: invalid}),
+        )
+    else:
+        if forgery == "command":
+            command = cast(
+                "ProbeCommand",
+                _forged_native_probe_record(command, {field: invalid}),
+            )
+        elif forgery == "tool":
+            tool = cast(
+                "ToolExecutable",
+                _forged_native_probe_record(command.executable, {field: invalid}),
+            )
+            command = replace(command, executable=tool)
+        elif forgery == "rooted":
+            rooted = RootedExecutable(ProbeRoot.SCRATCH, "run")
+            forged = _forged_native_probe_record(rooted, {field: invalid})
+            command = replace(command, executable=cast("RootedExecutable", forged))
+        else:
+            path = cast("PathArgument", command.arguments[-1])
+            forged = _forged_native_probe_record(path, {field: invalid})
+            command = replace(
+                command,
+                arguments=(*command.arguments[:-1], cast("PathArgument", forged)),
+            )
+        program = cast(
+            "ProbeProgram",
+            _forged_native_probe_record(program, {"commands": (command,)}),
+        )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalid probe metadata entered host preflight")
+
+    monkeypatch.setattr(probe_exec_module, "_require_repository_paths_disjoint", forbidden)
+    with pytest.raises(ProbeProgramError):
+        _ = run_probe_program(program, context)
+
+
+@pytest.mark.parametrize("missing", ["commands", "probe_id"])
+def test_probe_batch_rejects_missing_native_program_slots(
+    tmp_path: Path, missing: str,
+) -> None:
+    """Absent native program storage produces a typed error before execution."""
+    original = _program("identity", "print('ok')")
+    forged = _forged_native_probe_record(original, missing=(missing,))
+    with pytest.raises(ProbeProgramError):
+        _ = run_probe_program(
+            cast("ProbeProgram", forged), _context(tmp_path / "source", tmp_path)
+        )
