@@ -173,6 +173,14 @@ format.
   on success as well as failure, including helpers with independently closed
   stdio. Cross-platform Windows descendant cleanup and escaped POSIX sessions
   remain open hardening tasks.
+- Internal pipe and running-worker state now uses captured native slots for all
+  thirteen transient fields, preventing late class getters/setters from
+  bypassing quota checks or rewriting accepted stdout/stderr evidence.
+  Twenty-seven red-first regressions in `504e00c81` include a reproduced
+  five-byte capture under a two-byte quota. The signed fix passed 338 focused
+  tests after commit and 2,595 integrated diff tests before it. Direct instance
+  mutation, trusted host interference and concurrent filesystem writers remain
+  outside the guarantee.
 - Identity and bug behavior program records now require at least one selected
   stdout/exit-code observation at authoring and direct-authored construction;
   selector-free compatibility preconditions remain allowed. This prevents

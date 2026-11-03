@@ -499,6 +499,7 @@ native `None` completion on reader, writer, unused, and empty-stdin pipes;
 foreign completion receipts reject the transcript or remain secondary to the
 original failure. The wall deadline starts before
 process launch and covers reader/writer setup, child and pipe completion.
+
 Unrepresentably large timeout integers reject through the probe execution
 boundary before spawning, rather than leaking host float-conversion overflow.
 A child that already exited by the time delayed pipe setup finishes still fails
@@ -510,6 +511,17 @@ success. Windows still stops only the direct child on failure; descendants that
 detach their POSIX session are also outside cleanup. Cross-platform child-tree
 cleanup remains open.
 
+The six transient `_PipeCapture` fields (quota, fragments, byte count, overflow,
+error, completion) and seven `_RunningProbe` fields (process, pipes, workers,
+stdin errors and acknowledgment) now construct through captured native slots.
+Runtime quota checks, worker-health checks, cleanup, and transcript assembly
+also read and update those original slots instead of late replaceable class
+properties. Commit `504e00c81` adds 26 red-first class getter/setter cases
+plus a direct quota-spoof regression: a two-byte quota previously retained
+five bytes after a forged `limit` getter. All 338 focused probe tests passed
+after the commit, and 2,595 integrated diff tests passed before it. The repair
+prevents late class-property substitution, not direct mutation of live state,
+trusted host-process interference, or external filesystem races.
 A probe batch validates the candidate source as a regular-file-only tree and
 rejects an OS temporary-directory parent resolving inside that source before
 creating scratch state, preventing recursive self-copying when `TMPDIR` points
