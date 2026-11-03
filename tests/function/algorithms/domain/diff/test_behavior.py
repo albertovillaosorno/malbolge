@@ -32,6 +32,7 @@
 
 """Synthetic tests for generic behavior-probe admission semantics."""
 
+import builtins
 from dataclasses import replace
 import math
 from typing import cast
@@ -412,6 +413,52 @@ def test_behavior_identifiers_require_portable_unicode(invalid: str) -> None:
     for build in constructors:
         with pytest.raises(BehaviorPolicyError, match="portable"):
             _ = build()
+
+
+def test_behavior_profile_rejects_unsorted_ids_after_sort_hook_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late global sort hooks cannot authorize unordered probe metadata."""
+    profile = _profile()
+    unordered = (profile.identity[1], profile.identity[0], *profile.identity[2:])
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "sorted", lambda values: list(values))
+        with pytest.raises(BehaviorPolicyError, match="sorted by probe_id"):
+            _ = BehaviorProfile(
+                identity=unordered,
+                compatibility=profile.compatibility,
+                bugs=profile.bugs,
+            )
+
+
+@pytest.mark.parametrize("duplicate_kind", ["probe", "correction"])
+def test_behavior_profile_rejects_duplicates_after_set_hook_swap(
+    monkeypatch: pytest.MonkeyPatch,
+    duplicate_kind: str,
+) -> None:
+    """Late set hooks cannot authorize duplicate identity or correction IDs."""
+    profile = _profile()
+    identity = profile.identity
+    bugs = profile.bugs
+    if duplicate_kind == "probe":
+        identity = (identity[0], *identity)
+        message = "globally unique"
+    else:
+        bugs = (*bugs, BugProbe("historical-bug-other", "fix-bug"))
+        message = "correction identifiers must be unique"
+
+    def construct_after_hook_swap() -> BehaviorProfile:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "set", lambda values: list(values))
+            return BehaviorProfile(
+                identity=identity,
+                compatibility=profile.compatibility,
+                bugs=bugs,
+            )
+
+    with pytest.raises(BehaviorPolicyError, match=message):
+        _ = construct_after_hook_swap()
 
 
 def test_behavior_containers_require_exact_records() -> None:

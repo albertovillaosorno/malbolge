@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 from enum import StrEnum
 import math
@@ -44,6 +45,8 @@ _ONE = 1
 _NUL = "\x00"
 # Do not allow domain-loaded code to redefine finite score admission.
 _NATIVE_ISFINITE = math.isfinite
+_NATIVE_SORTED = builtins.sorted
+_NATIVE_SET = builtins.set
 
 
 class BehaviorPolicyError(ValueError):
@@ -130,14 +133,14 @@ def _probe_ids(
     if any(not identifier for identifier in identifiers):
         message = "behavior probe identifiers must be non-empty"
         raise BehaviorPolicyError(message)
-    if identifiers != tuple(sorted(identifiers)):
+    if identifiers != tuple(_NATIVE_SORTED(identifiers)):
         message = "behavior probes must be sorted by probe_id"
         raise BehaviorPolicyError(message)
     return identifiers
 
 
 def _validate_unique(values: tuple[str, ...], message: str) -> None:
-    if len(values) != len(set(values)):
+    if len(values) != len(_NATIVE_SET(values)):
         raise BehaviorPolicyError(message)
 
 
@@ -349,10 +352,10 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
         evidence.corrections_to_skip,
         "corrections to skip",
     )
-    if len(apply) != len(set(apply)) or len(skip) != len(set(skip)):
+    if len(apply) != len(_NATIVE_SET(apply)) or len(skip) != len(_NATIVE_SET(skip)):
         message = "behavior correction routes must not contain duplicates"
         raise BehaviorPolicyError(message)
-    if set(apply) & set(skip):
+    if _NATIVE_SET(apply) & _NATIVE_SET(skip):
         message = "behavior correction routes must be disjoint"
         raise BehaviorPolicyError(message)
     _ = _require_string_tuple(evidence.reasons, "behavior evidence reasons")
@@ -410,8 +413,8 @@ def _observation_map(
     | tuple[BugObservation, ...],
 ) -> dict[str, IdentityObservation | CompatibilityObservation | BugObservation]:
     identifiers = tuple(item.probe_id for item in observations)
-    if identifiers != tuple(sorted(identifiers)) or len(identifiers) != len(
-        set(identifiers)
+    if identifiers != tuple(_NATIVE_SORTED(identifiers)) or len(identifiers) != len(
+        _NATIVE_SET(identifiers)
     ):
         message = (
             "behavior observations must have unique sorted probe identifiers"
