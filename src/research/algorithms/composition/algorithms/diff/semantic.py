@@ -107,7 +107,7 @@ class SemanticLocator:
             SemanticPlacementError: Locator has no semantic evidence.
 
         """
-        groups = read_semantic_locator(self)
+        groups = _stored_semantic_locator(self)
         for group in groups:
             if _NATIVE_TYPE(group) is not _NATIVE_TUPLE:
                 message = "semantic locator digests must use immutable tuples"
@@ -140,7 +140,7 @@ _LOCATOR_AFTER_SLOT = cast(
 )
 
 
-def read_semantic_locator(
+def _stored_semantic_locator(
     locator: SemanticLocator,
 ) -> tuple[tuple[bytes, ...], tuple[bytes, ...], tuple[bytes, ...]]:
     """Read immutable source/context hashes through original slot storage.
@@ -172,6 +172,17 @@ def read_semantic_locator(
         raise SemanticPlacementError(message) from error
 
 
+def read_semantic_locator(
+    locator: SemanticLocator,
+) -> tuple[tuple[bytes, ...], tuple[bytes, ...], tuple[bytes, ...]]:
+    """Validate native locator evidence before exposing its stored hashes."""
+    if _NATIVE_TYPE(locator) is not SemanticLocator:
+        message = "semantic locator reader requires the exact locator type"
+        raise SemanticPlacementError(message)
+    _LOCATOR_VALIDATOR(locator)
+    return _stored_semantic_locator(locator)
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class SemanticEdit:
     """Target replacement relative to hashed canonical source units."""
@@ -199,7 +210,7 @@ class SemanticEdit:
             SemanticPlacementError: Edit metadata is malformed.
 
         """
-        locator, replacement, replacement_digests = read_semantic_edit(self)
+        locator, replacement, replacement_digests = _stored_semantic_edit(self)
         if _NATIVE_TYPE(locator) is not SemanticLocator:
             message = "semantic edit locator must use the exact locator type"
             raise SemanticPlacementError(message)
@@ -235,7 +246,7 @@ _EDIT_DIGESTS_SLOT = cast(
 )
 
 
-def read_semantic_edit(
+def _stored_semantic_edit(
     edit: SemanticEdit,
 ) -> tuple[SemanticLocator, bytes, tuple[bytes, ...]]:
     """Read the stored source locator and replacement evidence directly.
@@ -267,6 +278,17 @@ def read_semantic_edit(
         raise SemanticPlacementError(message) from error
 
 
+def read_semantic_edit(
+    edit: SemanticEdit,
+) -> tuple[SemanticLocator, bytes, tuple[bytes, ...]]:
+    """Validate native edit and locator evidence before exposing its fields."""
+    if _NATIVE_TYPE(edit) is not SemanticEdit:
+        message = "semantic edit reader requires the exact edit type"
+        raise SemanticPlacementError(message)
+    _EDIT_VALIDATOR(edit)
+    return _stored_semantic_edit(edit)
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class SemanticAuthoringPlan:
     """Non-distributable semantic edit plan for one mapped source file."""
@@ -285,7 +307,7 @@ class SemanticAuthoringPlan:
             SemanticPlacementError: Plan records are mutable or foreign.
 
         """
-        edits = read_semantic_plan(self)
+        edits = _stored_semantic_plan(self)
         if _NATIVE_TYPE(edits) is not _NATIVE_TUPLE:
             message = "semantic edits must use the exact immutable tuple type"
             raise SemanticPlacementError(message)
@@ -308,7 +330,7 @@ _PLAN_EDITS_SLOT = cast(
 )
 
 
-def read_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ...]:
+def _stored_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ...]:
     """Read the original immutable edit sequence, not late class getters.
 
     Returns:
@@ -326,6 +348,15 @@ def read_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ...]:
     except AttributeError as error:
         message = "semantic plan is missing edit fields"
         raise SemanticPlacementError(message) from error
+
+
+def read_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ...]:
+    """Validate native plan and nested edit evidence before exposing edits."""
+    if _NATIVE_TYPE(plan) is not SemanticAuthoringPlan:
+        message = "semantic plan reader requires the exact authoring-plan type"
+        raise SemanticPlacementError(message)
+    _PLAN_VALIDATOR(plan)
+    return _stored_semantic_plan(plan)
 
 
 @dataclass(frozen=True, slots=True, init=False)

@@ -53,6 +53,9 @@ from algorithms.diff.semantic import (
     SemanticPlacementError,
     apply_semantic_plan,
     build_semantic_plan,
+    read_semantic_edit,
+    read_semantic_locator,
+    read_semantic_plan,
 )
 
 if TYPE_CHECKING:
@@ -1736,3 +1739,119 @@ def test_semantic_application_rejects_forged_native_plan(
             pass
     with pytest.raises(SemanticPlacementError, match="semantic"):
         _ = apply_semantic_plan(_map(b"original"), plan, _map)
+
+
+@pytest.mark.parametrize("kind", ["locator", "edit", "plan", "nested-plan"])
+def test_semantic_public_readers_revalidate_constructor_bypassed_evidence(
+    kind: str,
+) -> None:
+    """Raw native slots alone are insufficient for public evidence reads."""
+    locator = SemanticLocator((bytes(32),), (), ())
+    edit = SemanticEdit(locator, b"replacement", (bytes(32),))
+    if kind == "locator":
+        forged = object.__new__(SemanticLocator)
+        for field, value in {
+            "source_digests": (b"short",),
+            "before_digests": (),
+            "after_digests": (),
+        }.items():
+            SemanticLocator.__dict__[field].__set__(forged, value)
+        read = lambda: read_semantic_locator(forged)
+    elif kind == "edit":
+        forged = object.__new__(SemanticEdit)
+        for field, value in {
+            "locator": locator,
+            "replacement": b"replacement",
+            "replacement_digests": (b"short",),
+        }.items():
+            SemanticEdit.__dict__[field].__set__(forged, value)
+        read = lambda: read_semantic_edit(forged)
+    else:
+        forged = object.__new__(SemanticAuthoringPlan)
+        if kind == "plan":
+            SemanticAuthoringPlan.__dict__["edits"].__set__(forged, [edit])
+        else:
+            invalid = object.__new__(SemanticEdit)
+            for field, value in {
+                "locator": locator,
+                "replacement": bytearray(b"unsafe"),
+                "replacement_digests": (bytes(32),),
+            }.items():
+                SemanticEdit.__dict__[field].__set__(invalid, value)
+            SemanticAuthoringPlan.__dict__["edits"].__set__(forged, (invalid,))
+        read = lambda: read_semantic_plan(forged)
+    with pytest.raises(SemanticPlacementError, match="semantic"):
+        _ = read()
+
+
+@pytest.mark.parametrize("kind", ["locator", "edit", "plan"])
+def test_semantic_public_readers_require_exact_native_type(kind: str) -> None:
+    """Inherited raw slots do not certify subclass evidence at the boundary."""
+    if kind == "locator":
+
+        class DerivedLocator(SemanticLocator):
+            pass
+
+        read = lambda: read_semantic_locator(DerivedLocator((bytes(32),), (), ()))
+    elif kind == "edit":
+
+        class DerivedEdit(SemanticEdit):
+            pass
+
+        read = lambda: read_semantic_edit(
+            DerivedEdit(SemanticLocator((bytes(32),), (), ()), b"a", ())
+        )
+    else:
+
+        class DerivedPlan(SemanticAuthoringPlan):
+            pass
+
+        read = lambda: read_semantic_plan(DerivedPlan(()))
+    with pytest.raises(SemanticPlacementError, match="exact"):
+        _ = read()
+
+
+@pytest.mark.parametrize("kind", ["locator", "edit", "plan"])
+def test_semantic_public_readers_ignore_late_validator_override(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A swapped validator must not certify constructor-bypassed metadata."""
+    locator = SemanticLocator((bytes(32),), (), ())
+    edit = SemanticEdit(locator, b"valid", ())
+    owner: type
+    if kind == "locator":
+        owner = SemanticLocator
+        value = object.__new__(SemanticLocator)
+        for field, stored in {
+            "source_digests": (),
+            "before_digests": (),
+            "after_digests": (),
+        }.items():
+            owner.__dict__[field].__set__(value, stored)
+        read = lambda: read_semantic_locator(value)
+    elif kind == "edit":
+        owner = SemanticEdit
+        value = object.__new__(SemanticEdit)
+        for field, stored in {
+            "locator": locator,
+            "replacement": bytearray(b"bad"),
+            "replacement_digests": (),
+        }.items():
+            owner.__dict__[field].__set__(value, stored)
+        read = lambda: read_semantic_edit(value)
+    else:
+        owner = SemanticAuthoringPlan
+        value = object.__new__(SemanticAuthoringPlan)
+        owner.__dict__["edits"].__set__(value, [edit])
+        read = lambda: read_semantic_plan(value)
+    calls = 0
+
+    def unsafe_validator(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__post_init__", unsafe_validator)
+        with pytest.raises(SemanticPlacementError, match="semantic"):
+            _ = read()
+    assert calls == 0, "a late class validator certified fabricated evidence"
