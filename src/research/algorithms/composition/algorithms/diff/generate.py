@@ -337,7 +337,9 @@ def _validate_path(value: object, name: str) -> None:
     # Python 3.14 Path may format its stored raw strings lazily through
     # os.fspath. Check the native raw components directly: a later module
     # hook cannot turn an unsafe path into benign preflight evidence.
-    components = value._raw_paths
+    components = cast(
+        "list[str]", _NATIVE_PATH_RAW_SLOT.__get__(value, PurePath)
+    )
     if _NATIVE_TYPE(components) is not _NATIVE_LIST:
         message = f"{name} must use a native path component list"
         raise TypeError(message)

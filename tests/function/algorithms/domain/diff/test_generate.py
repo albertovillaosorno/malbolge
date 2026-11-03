@@ -42,7 +42,7 @@ import os
 import subprocess
 import sys
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePath
 from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
@@ -76,6 +76,9 @@ _STD_MARKER = b"use std::"
 _LITERAL_MARKER = b"target-only"
 _OUTPUT_ALGORITHM = "output_algorithm"
 _EXACT_STRING_TYPE = "exact string type"
+_RAW_PATH_SLOT_NAME = "_raw_paths"
+_RAW_GETATTRIBUTE_MODE = "getattribute"
+_RAW_SLOT_MODE = "slot"
 
 
 def _blocks(label: str) -> bytes:
@@ -377,6 +380,74 @@ def test_generator_path_rejects_foreign_internal_components(
         ]
     with pytest.raises(TypeError, match="native.*component"):
         generate_module._validate_path(candidate, "source_root")
+
+
+def _validate_native_recipe_path(path: Path) -> None:
+    generate_module._validate_path(path, "source_root")
+
+
+@pytest.mark.parametrize("unsafe_fragment", ["bad\x00path", "bad\ud800path"])
+@pytest.mark.parametrize("getter", [_RAW_SLOT_MODE, _RAW_GETATTRIBUTE_MODE])
+def test_generator_path_rejects_late_native_raw_path_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    unsafe_fragment: str,
+    getter: str,
+) -> None:
+    """A native path class getter cannot hide invalid stored components."""
+    path = tmp_path / unsafe_fragment
+    getter_calls = 0
+    native_getattribute = PurePath.__getattribute__
+
+    def forged_raw_paths(self: PurePath) -> list[str]:
+        del self
+        return ["safe"]
+
+    def forged_getattribute(self: PurePath, name: str) -> object:
+        nonlocal getter_calls
+        if name == _RAW_PATH_SLOT_NAME:
+            getter_calls += 1
+            return ["safe"]
+        return cast("object", native_getattribute(self, name))
+
+    with monkeypatch.context() as patched:
+        if getter == _RAW_SLOT_MODE:
+            patched.setattr(
+                PurePath, _RAW_PATH_SLOT_NAME, property(forged_raw_paths)
+            )
+        else:
+            patched.setattr(PurePath, "__getattribute__", forged_getattribute)
+        with pytest.raises(ValueError, match="must be a usable path"):
+            _validate_native_recipe_path(path)
+    assert getter_calls == 0
+
+
+@pytest.mark.parametrize("getter", [_RAW_SLOT_MODE, _RAW_GETATTRIBUTE_MODE])
+def test_generator_path_ignores_late_native_raw_path_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, getter: str
+) -> None:
+    """Only the original stored path can justify rejecting a valid recipe."""
+    valid = tmp_path / "safe-path"
+    native_getattribute = PurePath.__getattribute__
+
+    def forged_raw_paths(self: PurePath) -> list[str]:
+        del self
+        return ["bad\x00path"]
+
+    def forged_getattribute(self: PurePath, name: str) -> object:
+        if name == _RAW_PATH_SLOT_NAME:
+            return ["bad\x00path"]
+        return cast("object", native_getattribute(self, name))
+
+    with monkeypatch.context() as patched:
+        if getter == _RAW_SLOT_MODE:
+            patched.setattr(
+                PurePath, _RAW_PATH_SLOT_NAME, property(forged_raw_paths)
+            )
+        else:
+            patched.setattr(PurePath, "__getattribute__", forged_getattribute)
+        _validate_native_recipe_path(valid)
 
 
 @pytest.mark.parametrize("profile", ["bad\x00profile", "bad\ud800profile"])
