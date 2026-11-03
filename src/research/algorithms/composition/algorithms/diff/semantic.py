@@ -143,21 +143,33 @@ _LOCATOR_AFTER_SLOT = cast(
 def read_semantic_locator(
     locator: SemanticLocator,
 ) -> tuple[tuple[bytes, ...], tuple[bytes, ...], tuple[bytes, ...]]:
-    """Read immutable source/context hashes through original slot storage."""
-    return (
-        cast(
-            "tuple[bytes, ...]",
-            _LOCATOR_SOURCE_SLOT.__get__(locator, SemanticLocator),
-        ),
-        cast(
-            "tuple[bytes, ...]",
-            _LOCATOR_BEFORE_SLOT.__get__(locator, SemanticLocator),
-        ),
-        cast(
-            "tuple[bytes, ...]",
-            _LOCATOR_AFTER_SLOT.__get__(locator, SemanticLocator),
-        ),
-    )
+    """Read immutable source/context hashes through original slot storage.
+
+    Returns:
+        Stored source, before, and after digest tuples.
+
+    Raises:
+        SemanticPlacementError: Native locator slots are missing.
+
+    """
+    try:
+        return (
+            cast(
+                "tuple[bytes, ...]",
+                _LOCATOR_SOURCE_SLOT.__get__(locator, SemanticLocator),
+            ),
+            cast(
+                "tuple[bytes, ...]",
+                _LOCATOR_BEFORE_SLOT.__get__(locator, SemanticLocator),
+            ),
+            cast(
+                "tuple[bytes, ...]",
+                _LOCATOR_AFTER_SLOT.__get__(locator, SemanticLocator),
+            ),
+        )
+    except AttributeError as error:
+        message = "semantic locator is missing evidence fields"
+        raise SemanticPlacementError(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -191,6 +203,8 @@ class SemanticEdit:
         if _NATIVE_TYPE(locator) is not SemanticLocator:
             message = "semantic edit locator must use the exact locator type"
             raise SemanticPlacementError(message)
+        # A constructor-bypassed exact locator is not validated evidence.
+        _LOCATOR_VALIDATOR(locator)
         if _NATIVE_TYPE(replacement) is not _NATIVE_BYTES:
             message = "semantic replacement must use exact bytes"
             raise SemanticPlacementError(message)
@@ -224,14 +238,33 @@ _EDIT_DIGESTS_SLOT = cast(
 def read_semantic_edit(
     edit: SemanticEdit,
 ) -> tuple[SemanticLocator, bytes, tuple[bytes, ...]]:
-    """Read the stored source locator and replacement evidence directly."""
-    return (
-        cast("SemanticLocator", _EDIT_LOCATOR_SLOT.__get__(edit, SemanticEdit)),
-        cast("bytes", _EDIT_REPLACEMENT_SLOT.__get__(edit, SemanticEdit)),
-        cast(
-            "tuple[bytes, ...]", _EDIT_DIGESTS_SLOT.__get__(edit, SemanticEdit)
-        ),
-    )
+    """Read the stored source locator and replacement evidence directly.
+
+    Returns:
+        The original locator, raw replacement, and replacement digests.
+
+    Raises:
+        SemanticPlacementError: Native edit slots are missing.
+
+    """
+    try:
+        return (
+            cast(
+                "SemanticLocator",
+                _EDIT_LOCATOR_SLOT.__get__(edit, SemanticEdit),
+            ),
+            cast(
+                "bytes",
+                _EDIT_REPLACEMENT_SLOT.__get__(edit, SemanticEdit),
+            ),
+            cast(
+                "tuple[bytes, ...]",
+                _EDIT_DIGESTS_SLOT.__get__(edit, SemanticEdit),
+            ),
+        )
+    except AttributeError as error:
+        message = "semantic edit is missing metadata fields"
+        raise SemanticPlacementError(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -261,6 +294,9 @@ class SemanticAuthoringPlan:
         ):
             message = "semantic plan contains a foreign edit record"
             raise SemanticPlacementError(message)
+        # Exact nested records may bypass their frozen dataclass initializers.
+        for edit in edits:
+            _EDIT_VALIDATOR(edit)
 
 
 _PLAN_VALIDATOR = cast(
@@ -273,11 +309,23 @@ _PLAN_EDITS_SLOT = cast(
 
 
 def read_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ...]:
-    """Read the original immutable edit sequence, not late class getters."""
-    return cast(
-        "tuple[SemanticEdit, ...]",
-        _PLAN_EDITS_SLOT.__get__(plan, SemanticAuthoringPlan),
-    )
+    """Read the original immutable edit sequence, not late class getters.
+
+    Returns:
+        Original stored semantic edits.
+
+    Raises:
+        SemanticPlacementError: Native plan edit storage is missing.
+
+    """
+    try:
+        return cast(
+            "tuple[SemanticEdit, ...]",
+            _PLAN_EDITS_SLOT.__get__(plan, SemanticAuthoringPlan),
+        )
+    except AttributeError as error:
+        message = "semantic plan is missing edit fields"
+        raise SemanticPlacementError(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -1242,6 +1290,8 @@ def apply_semantic_plan(
     if _NATIVE_TYPE(plan) is not SemanticAuthoringPlan:
         message = "semantic plan must use the exact authoring-plan type"
         raise SemanticPlacementError(message)
+    # Replay only original, fully validated nested source/target evidence.
+    _PLAN_VALIDATOR(plan)
     _validate_mapper(mapper)
     if not read_semantic_plan(plan):
         return read_mapped_view(candidate)[0]

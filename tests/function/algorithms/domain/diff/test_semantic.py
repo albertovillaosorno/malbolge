@@ -1614,3 +1614,125 @@ assert build_semantic_plan(source, target) == baseline
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("source", [(), (b"short",), [bytes(32)]])
+def test_semantic_edit_revalidates_native_locator(source: object) -> None:
+    """An exact locator with bypassed native initialization has no authority."""
+    locator = object.__new__(SemanticLocator)
+    values = {
+        "source_digests": source,
+        "before_digests": (),
+        "after_digests": (),
+    }
+    for field, value in values.items():
+        slot = cast("MemberDescriptorType", SemanticLocator.__dict__[field])
+        slot.__set__(locator, value)
+    with pytest.raises(SemanticPlacementError, match="semantic"):
+        _ = SemanticEdit(locator, b"replacement", (bytes(32),))
+
+
+@pytest.mark.parametrize(
+    "missing_field", ["source_digests", "before_digests", "after_digests"]
+)
+def test_semantic_edit_rejects_incomplete_native_locator(
+    missing_field: str,
+) -> None:
+    """Missing frozen locator slots cannot enter a normal semantic edit."""
+    locator = object.__new__(SemanticLocator)
+    values = {
+        "source_digests": (bytes(32),),
+        "before_digests": (),
+        "after_digests": (),
+    }
+    for field, value in values.items():
+        if field != missing_field:
+            slot = cast("MemberDescriptorType", SemanticLocator.__dict__[field])
+            slot.__set__(locator, value)
+    with pytest.raises(SemanticPlacementError, match="semantic"):
+        _ = SemanticEdit(locator, b"replacement", (bytes(32),))
+
+
+@pytest.mark.parametrize(
+    ("invalid_field", "invalid_value"),
+    [
+        ("locator", object()),
+        ("replacement", bytearray(b"changed")),
+        ("replacement_digests", (b"short",)),
+    ],
+)
+def test_semantic_plan_revalidates_native_edit(
+    invalid_field: str, invalid_value: object
+) -> None:
+    """An exact but malformed nested edit does not authorize a plan."""
+    locator = SemanticLocator((bytes(32),), (), ())
+    values: dict[str, object] = {
+        "locator": locator,
+        "replacement": b"replacement",
+        "replacement_digests": (bytes(32),),
+    }
+    values[invalid_field] = invalid_value
+    edit = object.__new__(SemanticEdit)
+    for field, value in values.items():
+        slot = cast("MemberDescriptorType", SemanticEdit.__dict__[field])
+        slot.__set__(edit, value)
+    with pytest.raises(SemanticPlacementError, match="semantic"):
+        _ = SemanticAuthoringPlan((edit,))
+
+
+@pytest.mark.parametrize(
+    "missing_field", ["locator", "replacement", "replacement_digests"]
+)
+def test_semantic_plan_rejects_incomplete_native_edit(
+    missing_field: str,
+) -> None:
+    """Missing exact-edit slots fail inside the semantic plan validator."""
+    values = {
+        "locator": SemanticLocator((bytes(32),), (), ()),
+        "replacement": b"replacement",
+        "replacement_digests": (bytes(32),),
+    }
+    edit = object.__new__(SemanticEdit)
+    for field, value in values.items():
+        if field != missing_field:
+            slot = cast("MemberDescriptorType", SemanticEdit.__dict__[field])
+            slot.__set__(edit, value)
+    with pytest.raises(SemanticPlacementError, match="semantic"):
+        _ = SemanticAuthoringPlan((edit,))
+
+
+@pytest.mark.parametrize("forgery", ["mutable", "missing", "nested"])
+def test_semantic_application_rejects_forged_native_plan(
+    forgery: str,
+) -> None:
+    """Public placement validates a plan before short-circuiting any edits."""
+    plan = object.__new__(SemanticAuthoringPlan)
+    edits_slot = cast(
+        "MemberDescriptorType", SemanticAuthoringPlan.__dict__["edits"]
+    )
+    match forgery:
+        case "mutable":
+            edits_slot.__set__(plan, [])
+        case "nested":
+            locator = object.__new__(SemanticLocator)
+            for field in ("source_digests", "before_digests", "after_digests"):
+                slot = cast(
+                    "MemberDescriptorType", SemanticLocator.__dict__[field]
+                )
+                slot.__set__(locator, ())
+            edit = object.__new__(SemanticEdit)
+            values = {
+                "locator": locator,
+                "replacement": b"changed",
+                "replacement_digests": (bytes(32),),
+            }
+            for field, value in values.items():
+                slot = cast(
+                    "MemberDescriptorType", SemanticEdit.__dict__[field]
+                )
+                slot.__set__(edit, value)
+            edits_slot.__set__(plan, (edit,))
+        case _:
+            pass
+    with pytest.raises(SemanticPlacementError, match="semantic"):
+        _ = apply_semantic_plan(_map(b"original"), plan, _map)
