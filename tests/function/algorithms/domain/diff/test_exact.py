@@ -4020,3 +4020,79 @@ def test_exact_materialization_ignores_replaced_plan_validator(
             materialize_exact_plan(source, forged, tmp_path / "output")
     assert calls == 0
     assert not (tmp_path / "output").exists()
+
+
+@pytest.mark.parametrize("role", ["source", "output"])
+def test_exact_rejects_late_host_realpath_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """Mutable host resolution cannot select foreign source or output roots."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    foreign = tmp_path / "foreign"
+    _write(foreign, "foreign.bin", b"not part of the source")
+    intended = source if role == "source" else source / "nested-output"
+    redirected = foreign if role == "source" else tmp_path / "outside-output"
+    native_realpath = os.path.realpath
+    calls = 0
+
+    def forged_realpath(path: object, *, strict: bool = False) -> str:
+        nonlocal calls
+        if str(path) == str(intended):
+            calls += 1
+            return str(native_realpath(redirected, strict=strict))
+        return str(native_realpath(cast("str", path), strict=strict))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if role == "source":
+                _ = snapshot_tree(source)
+            else:
+                materialize_exact_plan(source, plan, intended)
+    assert calls == 0, "late host resolver selected an unadmitted root"
+    assert not (tmp_path / "outside-output").exists()
+    assert not (source / "nested-output").exists()
+
+
+def test_exact_rejects_late_host_realpath_false_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resolver replacement cannot deny an otherwise valid output root."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "outside-output"
+    native_realpath = os.path.realpath
+    calls = 0
+
+    def forged_realpath(path: object, *, strict: bool = False) -> str:
+        nonlocal calls
+        if str(path) == str(output):
+            calls += 1
+            return str(native_realpath(source / "nested", strict=strict))
+        return str(native_realpath(cast("str", path), strict=strict))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            materialize_exact_plan(source, plan, output)
+    assert calls == 0, "late resolver influenced containment rejection"
+    assert not output.exists()
+
+
+def test_exact_bound_reader_does_not_use_late_host_realpath(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Descriptor-bound source reads need no unrelated host resolver."""
+    source = tmp_path / "source.bin"
+    _ = source.write_bytes(b"admitted bytes")
+
+    def unused_realpath(path: object, *, strict: bool = False) -> str:
+        del path, strict
+        message = "direct descriptor read consulted host realpath"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "realpath", unused_realpath)
+        actual = exact_module.read_exact_regular_file(source, "source")
+    assert actual == b"admitted bytes"

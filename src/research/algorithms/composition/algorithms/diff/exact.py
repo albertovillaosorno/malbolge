@@ -119,6 +119,7 @@ _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 # Owned staging deletion must ignore consumer changes to shutil hooks.
 _NATIVE_RMTREE = shutil.rmtree
 _NATIVE_OS_FSPATH = os.fspath
+_NATIVE_OS_REALPATH = os.path.realpath
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Capturing Path.__str__ is insufficient: it reads a mutable cached slot,
 # and original filesystem operations call late Path.__fspath__ dispatch.
@@ -156,7 +157,13 @@ _NATIVE_PATH_HOOKS = _NATIVE_TUPLE(
 def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
     """Guard path resolution; direct descriptor reads ignore late os.fspath."""
     if (
-        (not direct_file_read and os.fspath is not _NATIVE_OS_FSPATH)
+        (
+            not direct_file_read
+            and (
+                os.fspath is not _NATIVE_OS_FSPATH
+                or os.path.realpath is not _NATIVE_OS_REALPATH
+            )
+        )
         or _NATIVE_ANY(
             cls.__dict__.get(name) is not original
             for cls, hooks in _NATIVE_PATH_HOOKS
