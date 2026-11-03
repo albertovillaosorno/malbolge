@@ -111,8 +111,17 @@ _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_OS_WALK = os.walk
 _NATIVE_OS_SCANDIR = os.scandir
-_NATIVE_PATH_IS_JUNCTION = Path.is_junction
+# The native Path.is_junction still dispatches through mutable os.path.
+# Pass original path text to the pinned host classifier instead.
+_NATIVE_OS_IS_JUNCTION = os.path.isjunction
 _NATIVE_PATH_STRING = Path.__str__
+
+
+def _native_path_is_junction(path: Path) -> bool:
+    return _NATIVE_OS_IS_JUNCTION(_NATIVE_PATH_STRING(path))
+
+
+_NATIVE_PATH_IS_JUNCTION = _native_path_is_junction
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
 _NATIVE_IO_OPEN = io.open
@@ -165,6 +174,7 @@ _PATH_HOOK_NAMES = (
     "root",
     "_parse_path",
     "_format_parsed_parts",
+    "_from_parsed_string",
     "parser",
 )
 _NATIVE_PATH_HOOKS = _NATIVE_TUPLE(
@@ -212,6 +222,7 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
                 "with_segments",
                 "__truediv__",
                 "as_posix",
+                "_from_parsed_string",
             }
         )
     ):

@@ -4651,3 +4651,84 @@ def test_exact_reader_ignores_late_equal_length_read_forgery(
         observed = exact_module.read_exact_regular_file(path, "source")
     assert observed == b"original", "untrusted read changed source evidence"
     assert calls == 0, "late read dispatch was consulted"
+
+
+@pytest.mark.parametrize("entrypoint", ["snapshot", "excluded"])
+def test_exact_tree_walk_rejects_late_parsed_path_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """Native Path.walk must not invoke a replaced parsed-string factory."""
+    source = tmp_path / "source"
+    source.mkdir()
+    _ = (source / "admitted.bin").write_bytes(b"source evidence")
+    original_factory = cast(
+        "Callable[[PurePath, str], PurePath]",
+        vars(PurePath)["_from_parsed_string"],
+    )
+    callbacks = 0
+
+    def forged_factory(self: PurePath, path_str: str) -> PurePath:
+        nonlocal callbacks
+        callbacks += 1
+        return original_factory(self, path_str)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_from_parsed_string", forged_factory)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if entrypoint == "snapshot":
+                _ = snapshot_tree(source)
+            else:
+                _ = snapshot_tree_excluding(source, ())
+    assert callbacks == 0, "late parsed-string factory executed during tree walk"
+
+
+def test_exact_direct_file_reader_ignores_late_parsed_path_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A direct native descriptor read does not require tree traversal hooks."""
+    source = tmp_path / "admitted.bin"
+    _ = source.write_bytes(b"admitted source")
+    calls = 0
+
+    def forbidden_factory(_self: PurePath, _path_str: str) -> PurePath:
+        nonlocal calls
+        calls += 1
+        message = "late parsed-string factory executed"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_from_parsed_string", forbidden_factory)
+        assert (
+            exact_module.read_exact_regular_file(source, "source")
+            == b"admitted source"
+        )
+    assert calls == 0
+
+
+@pytest.mark.parametrize("entrypoint", ["snapshot", "direct-read"])
+def test_exact_admission_ignores_late_host_junction_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """File admission must not use a replaced host junction classifier."""
+    root = tmp_path / "source"
+    root.mkdir()
+    leaf = root / "identity.bin"
+    _ = leaf.write_bytes(b"native evidence")
+    expected = snapshot_tree(root)
+    callbacks = 0
+
+    def forged_junction(_path: object) -> bool:
+        nonlocal callbacks
+        callbacks += 1
+        return True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "isjunction", forged_junction)
+        if entrypoint == "snapshot":
+            assert snapshot_tree(root) == expected
+        else:
+            assert (
+                exact_module.read_exact_regular_file(leaf, "source")
+                == b"native evidence"
+            )
+    assert callbacks == 0, "late host junction classifier affected admission"
