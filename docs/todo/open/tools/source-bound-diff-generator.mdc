@@ -499,6 +499,12 @@ format.
   and verifies 165 official files against deterministic snapshot SHA-256
   `20f6b67369b98c3f62b7c8ff34493ef9647c88bce7b85c82b9ecd72bad336d8b`; `data/`
   remains outside that code pin.
+- Observed source-revision evidence now pins original allocation and record
+  initialization (`9aa20356d`). Three red-first initializer forgeries, one
+  isolated `__new__` case, and wrong-pin admission rejection passed with 125
+  focused provenance tests and 2,689 integrated diff tests. Scoped Ruff and
+  BasedPyright had zero errors (46 older type warnings). Direct instance edits
+  and concurrent filesystem mutation remain outside these class-hook guards.
 
 - `passthrough_roots` are authenticated plan metadata. Source/oracle must match
   there

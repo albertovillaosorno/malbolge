@@ -225,6 +225,15 @@ forged setters from changing source revision commitments. All remain process
 class-hook guards, not protection from direct instance-storage mutation or
 external concurrent filesystem changes.
 
+Measured `SourcePinEvidence` now uses captured native allocation and its
+original initializer when returning a source snapshot (`9aa20356d`). Three
+red-first initializer forgeries previously changed the counted source files,
+changed the SHA-256 digest, or promoted a deliberately incorrect revision pin;
+an isolated `__new__` case protects snapshot allocation. All 125 provenance
+tests and 2,689 integrated diff tests passed, with zero scoped Ruff and
+BasedPyright errors (46 pre-existing type warnings). This guards against late
+class hooks, not direct trusted object edits or concurrent filesystem writers.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from
