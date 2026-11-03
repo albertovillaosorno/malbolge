@@ -105,6 +105,27 @@ def _quote(text: str) -> str:
     return source
 
 
+def _retained_json_text(payload: object) -> str:
+    """Bind published JSON sidecars to the original native report values."""
+    try:
+        encoder = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True)
+        source = encoder.encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+        after = encoder.encode(payload)
+    except Exception as error:
+        message = f"host-C retained JSON serializer failed: {type(error).__name__}"
+        raise ReferenceStudyError(message) from error
+    if (
+        type(source) is not str
+        or type(observed) is not str
+        or type(after) is not str
+        or observed != source
+        or after != source
+    ):
+        _fail("host-C retained JSON serializer disagrees with source")
+    return source + "\n"
+
+
 def _commit() -> str:
     try:
         executable = shutil.which("git", path=os.defpath)
@@ -551,7 +572,7 @@ def _document(
 
 
 def _verify_report(environment: _Env, document: dict[str, Any]) -> None:
-    admitted = analyze.parse_document(json.dumps(document))
+    admitted = analyze.parse_document(_retained_json_text(document))
     _ = analyze.analyze(admitted)
     _ = evidence.validate_links(
         admitted,
@@ -896,33 +917,14 @@ def _run_study(root: Path, plan: StudyPlan, *, commit: str) -> dict[str, Any]:
     _ = check_retained_failures(document, environment.failures)
     _write_retained_text(
         root / "failures.json",
-        json.dumps(
-            {
-                "schema_version": 1,
-                "failures": environment.failures,
-            },
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
+        _retained_json_text({"schema_version": 1, "failures": environment.failures}),
     )
     _write_retained_text(
         root / "resource-controls.json",
-        json.dumps(
-            host_c_oracle.resource_controls_record(),
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
+        _retained_json_text(host_c_oracle.resource_controls_record()),
     )
-    _write_retained_text(
-        root / "artifacts.json",
-        json.dumps(artifacts, indent=2, sort_keys=True) + "\n",
-    )
-    _write_retained_text(
-        root / "study.json",
-        json.dumps(document, indent=2, sort_keys=True) + "\n",
-    )
+    _write_retained_text(root / "artifacts.json", _retained_json_text(artifacts))
+    _write_retained_text(root / "study.json", _retained_json_text(document))
     return document
 
 

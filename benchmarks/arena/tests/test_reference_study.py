@@ -191,6 +191,126 @@ def test_host_reference_quoted_provenance_accepts_equivalent_cached_encoder(
         assert reference_study._quote(text) == expected  # ruff: ignore[private-member-access]
 
 
+def _is_retained_json_payload(payload: object, filename: str) -> bool:
+    """Distinguish the four final study receipts without real child work."""
+    if type(payload) is not dict:
+        return False
+    if filename == "failures.json":
+        return payload.get("schema_version") == 1 and "failures" in payload
+    if filename == "resource-controls.json":
+        return payload.get("schema_version") == 2 and "limiter" in payload
+    if filename == "artifacts.json":
+        return payload == {}
+    return "study" in payload and "observations" in payload
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ("failures.json", "resource-controls.json", "artifacts.json", "study.json"),
+)
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+def test_host_reference_retained_json_rejects_forged_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    filename: str,
+    provider: str,
+) -> None:
+    """Native trial receipts cannot be rewritten after provenance checks."""
+    root = tmp_path / "study"
+    root.mkdir()
+    monkeypatch.setattr(reference_study, "_ROOT", tmp_path)
+    monkeypatch.setattr(reference_study, "_write_case", lambda *_args: ([], {}))
+    monkeypatch.setattr(reference_study, "_verify_report", lambda *_args: None)
+    monkeypatch.setattr(reference_study, "check_retained_artifacts", lambda *_args: 0)
+    monkeypatch.setattr(reference_study, "check_retained_failures", lambda *_args: 0)
+    native_dumps = json.dumps
+    native_encoder = json.JSONEncoder
+    forged = '{"forged_verified_evidence":true}'
+
+    class ForgedEncoder(native_encoder):
+        def encode(self, o: Any) -> str:
+            if _is_retained_json_payload(o, filename):
+                return forged
+            return super().encode(o)
+
+    def forged_writer(payload: object, **options: Any) -> str:
+        if _is_retained_json_payload(payload, filename):
+            return forged
+        return native_dumps(payload, **options)
+
+    with monkeypatch.context() as patch:
+        if provider in ("encoder", "joint"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if provider in ("writer", "joint"):
+            patch.setattr(json, "dumps", forged_writer)
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="retained JSON serializer disagrees with source",
+        ):
+            _ = reference_study._run_study(  # ruff: ignore[private-member-access]
+                root, reference_study.StudyPlan(FAMILY, (4,), 7, 1), commit="a" * 40
+            )
+    assert not (root / filename).exists()
+
+
+def test_host_reference_retained_json_rejects_writer_mutating_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Identical returned JSON is not permission to rewrite checked costs."""
+    payload = {"observations": [{"metrics": {"elapsed_ns": 19}}]}
+    before = json.dumps(payload, sort_keys=True, indent=2)
+    native_dumps = json.dumps
+
+    def mutating_writer(document: object, **options: Any) -> str:
+        original = native_dumps(document, **options)
+        payload["observations"][0]["metrics"]["elapsed_ns"] = 1
+        return original
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", mutating_writer)
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="retained JSON serializer disagrees with source",
+        ):
+            _ = reference_study._retained_json_text(payload)  # ruff: ignore[private-member-access]
+    assert json.dumps(payload, sort_keys=True, indent=2) != before
+
+
+def test_host_reference_retained_json_types_writer_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Serializer faults retain their cause without a forged sidecar."""
+    failure = RuntimeError("foreign encoder error")
+
+    def broken_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", broken_writer)
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="retained JSON serializer failed: RuntimeError",
+        ) as caught:
+            _ = reference_study._retained_json_text({"report": "actual"})  # ruff: ignore[private-member-access]
+        assert caught.value.__cause__ is failure
+
+
+def test_host_reference_retained_json_accepts_equivalent_public_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent JSON providers retain exact newline-terminated bytes."""
+    native_encoder = json.JSONEncoder
+    payload = {"observations": [0, "\u00e9"], "metadata": {"version": 2}}
+    expected = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+
+    class EquivalentEncoder(native_encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        assert reference_study._retained_json_text(payload) == expected  # ruff: ignore[private-member-access]
+
+
 class _UnexpectedHostFault(IndexError):
     """Unexpected dependency errors cannot control study diagnostics."""
 

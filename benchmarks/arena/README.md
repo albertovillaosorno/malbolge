@@ -897,6 +897,13 @@ challenge bundle files, an `artifacts.json` map, and the exact compiled
 executables and their SHA-256 identities in a unique **Git-ignored**
 `.temp/arena-host-c-study-*/` directory. The tool's JSON stdout reports the
 study path and the number of observations, not an authoritative conclusion.
+The producer checks each retained `failures.json`, `resource-controls.json`,
+`artifacts.json`, and `study.json` JSON serialization against an import-bound
+native encoder before writing, and verifies written bytes separately. A
+substituted public JSON writer cannot silently rewrite costs, artifacts, or
+resource-policy receipts after the producer has checked them. This is local
+serializer consistency, not authentication of measurement sources.
+
 Before publishing the local study, the producer also reopens every retained
 successful native executable through the arena's bounded non-symlink file
 reader, checks its path against the originating trial, and independently
