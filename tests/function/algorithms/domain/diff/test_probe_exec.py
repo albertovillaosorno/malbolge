@@ -185,7 +185,7 @@ def test_selected_stdout_produces_deterministic_transcript(
     _expect(first.digested_commands == 1, "selected stdout was not digested")
 
 
-def test_selected_commands_ignore_late_enumerate_suppression(
+def test_selected_commands_reject_late_enumerate_suppression(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A callback cannot hide authenticated probe commands."""
@@ -207,8 +207,8 @@ def test_selected_commands_ignore_late_enumerate_suppression(
 
     with monkeypatch.context() as patch:
         patch.setattr(builtins, "enumerate", suppress_commands)
-        observed = run_probe_program(program, context)
-    assert observed == expected, "late enumerate omitted an authenticated probe"
+        with pytest.raises(ProbeExecutionError, match="native path hooks changed"):
+            _ = run_probe_program(program, context)
     assert calls == 0, "host enumerate controlled authenticated probe execution"
 
 
@@ -3764,6 +3764,67 @@ def test_probe_rooted_containment_rejects_late_path_hooks(
     assert calls == 0, "late path containment hook was consulted"
     assert PurePath.parents is original_parents
     assert PurePath.__eq__ is original_eq
+
+
+@pytest.mark.parametrize("dependency", ["chain", "enumerate", "hasattr"])
+def test_probe_rooted_containment_rejects_late_relative_to_globals(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    dependency: str,
+) -> None:
+    """Mutable relative_to globals cannot mark an escaped symlink as inside."""
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "private.txt"
+    _ = secret.write_bytes(b"outside")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    try:
+        (source / "alias").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    context = _context(source, repository)
+    calls = 0
+
+    def forged_chain(_values: object, _parents: object) -> tuple[Path, ...]:
+        nonlocal calls
+        calls += 1
+        return (secret,)
+
+    def forged_enumerate(_values: object) -> tuple[tuple[int, Path], ...]:
+        nonlocal calls
+        calls += 1
+        return ((0, secret),)
+
+    def forged_hasattr(_value: object, _name: str) -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    rooted = cast(
+        "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+        vars(probe_exec_module)["_rooted_path"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        if dependency == "chain":
+            patch.setattr(pathlib, "chain", forged_chain)
+        elif dependency == "enumerate":
+            patch.setattr(builtins, "enumerate", forged_enumerate)
+        else:
+            patch.setattr(builtins, "hasattr", forged_hasattr)
+        try:
+            _ = rooted(
+                PathArgument(ProbeRoot.SOURCE, "alias/private.txt"),
+                context,
+                tmp_path,
+            )
+        except ProbeExecutionError as error:
+            rejected = "native path hooks changed" in str(error)
+    assert rejected, "late path containment global was not rejected"
+    assert calls == 0, "foreign relative_to callback was executed"
 
 
 @pytest.mark.parametrize("hook", ["getitem", "iter", "module-alias"])

@@ -98,6 +98,8 @@ _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_NEW = Path.__new__
 _NATIVE_PURE_PATH_INIT = PurePath.__init__
 _NATIVE_OS_FSPATH = os.fspath
+# PurePath.relative_to uses this mutable module alias during containment.
+_NATIVE_PATH_CHAIN = pathlib.__dict__["chain"]
 # Freeze the host filesystem codec before any consumer module can mutate os.
 _FILESYSTEM_ENCODING = _get_filesystem_encoding()
 _FILESYSTEM_ERRORS = _get_filesystem_encode_errors()
@@ -123,6 +125,7 @@ _NATIVE_ALL = builtins.all
 _NATIVE_MIN = builtins.min
 _NATIVE_MAX = builtins.max
 _NATIVE_ENUMERATE = builtins.enumerate
+_NATIVE_HASATTR = builtins.hasattr
 # Exact native platform identity must not construct a Path during admission.
 _NATIVE_PLATFORM_PATH_TYPE = _NATIVE_TYPE(Path())
 # Path.__str__ still reads replaceable Python path metadata, even when its
@@ -195,10 +198,15 @@ def _native_path_hooks_changed() -> bool:
 
 
 def _native_resolver_hooks_changed() -> bool:
-    return _NATIVE_ANY(
-        cls.__dict__.get(name) is not original
-        for cls, hooks in _NATIVE_RESOLVER_HOOKS
-        for name, original in hooks
+    return (
+        pathlib.__dict__.get("chain") is not _NATIVE_PATH_CHAIN
+        or builtins.enumerate is not _NATIVE_ENUMERATE
+        or builtins.hasattr is not _NATIVE_HASATTR
+        or _NATIVE_ANY(
+            cls.__dict__.get(name) is not original
+            for cls, hooks in _NATIVE_RESOLVER_HOOKS
+            for name, original in hooks
+        )
     )
 
 
