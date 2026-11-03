@@ -733,6 +733,21 @@ and immutable unit records; semantic locators/edits/plans require exact SHA-256
 digests and immutable records, and build/apply validate views, context width,
 plan, and mapper before placement.
 
+Slotted mapped and semantic records do not make their class getters immutable.
+The mapped unit/view constructor validators, canonical-key extraction, raw
+coordinate readers, and semantic placement now use captured original slot
+descriptors rather than class attributes replaceable after consumer code runs.
+Semantic locator, edit, and plan construction and application likewise read
+stored source/context digests, replacement bytes/digests, and edit sequences
+through the original slots. Compatible authoring and correction routing consume
+the same pinned semantic edit sequence when selecting copy versus patch,
+checking correction cardinality, and replaying required edits. Red-first
+regressions show late getter and descriptor replacements cannot certify mutable
+record fields, authorize changed candidate units, move replacements to a forged
+raw span, skip valid edits, or accept incomplete correction vectors. This is a
+late process-hook isolation boundary, not protection against trusted code that
+directly rewrites private object storage or races an external filesystem writer.
+
 Semantic placement and compatible tree authoring/materialization wrap
 consumer mapper and postcondition failures without evaluating foreign exception
 formatters. Their typed failure keeps the original callback exception as its

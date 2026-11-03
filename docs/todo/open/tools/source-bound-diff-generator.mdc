@@ -277,6 +277,14 @@ format.
   red-first regressions cover both host hooks and both binding roles. Two more
   show that mirror copy-completion receipts cannot be forged or denied by a
   late `Path.__eq__` override.
+- Mapped-unit/view metadata and semantic locator/edit/plan records now read
+  their original frozen slot descriptors at construction and during placement.
+  Red-first regressions cover forged canonical identities, mutable evidence,
+  source locator matches, raw edit spans, replacement bytes/digests, and empty
+  edit lists. Compatible authoring and correction routing also pin semantic
+  edit sequences so late class getters cannot substitute a copy for a patch,
+  suppress routed edits, or admit a short correction vector. The protections
+  address late class hooks, not direct mutation of stored object fields.
 - Generic mapped semantic placement now hashes canonical units, uniquely locates
   them
   in candidate source, maps them back to raw spans, preserves unrelated raw
