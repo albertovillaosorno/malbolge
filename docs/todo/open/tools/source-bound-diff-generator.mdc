@@ -518,6 +518,13 @@ format.
   model/fingerprint tests, scoped Ruff, strict BasedPyright, and diff checks
   passed. Direct instance edits and external writers remain outside scope;
   Jig doctor is degraded and global check timed out.
+- Exact materialization now reruns the original nested plan validator before
+  any filesystem access (`ddf59bc5d`). Ten red-first malformed exact native
+  plan cases now fail closed; 266 focused exact tests passed postcommit and
+  3,102 integrated diff tests passed precommit. Scoped Ruff and strict source
+  BasedPyright were clean, while Jig doctor remained degraded and a bounded
+  115-second global check timed out. The preflight is not atomic against
+  direct instance mutations or external filesystem writers.
 - The Python generated-Rust source emitter now admits only an exact native
   `pathlib.Path` output before rendering or staging, with red-first regressions
   for both render-only and disk-output APIs.
@@ -588,6 +595,15 @@ format.
   strict BasedPyright, and diff checks were clean. Jig doctor was degraded;
   `jig check` timed out after 100 seconds with no passing verdict. This does
   not isolate direct private object mutation or concurrent filesystem writers.
+- Linux publication now pins mutable `ctypes.CDLL` dispatch and module-level
+  native loader/function-pointer dependencies (`41c16504e`). Four red-first
+  overwrite attempts via late `renameat2` symbol and `_CFuncPtr` replacement
+  are rejected before libc loading, alongside ten other ABI mutation cases.
+  The published DCO passed 101 postcommit publication tests; 3,102 integrated
+  diff tests passed on the shared checkout before commit. Ruff, source
+  BasedPyright, and diff checks were clean; Jig doctor remained degraded and
+  a 105-second global check timed out without a green verdict. External
+  races and direct private-state mutation remain outside this guard.
 - Probe runtime `_CommandResult`, `_PipeCapture`, and `_RunningProbe`
   receipts now use captured original initializers and native allocation
   (`82e32113e`). Eight late `__init__`/`__new__` regression cases pass;

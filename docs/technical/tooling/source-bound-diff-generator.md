@@ -285,6 +285,16 @@ strict BasedPyright, and diff checks were clean. These checks are not atomic
 against instance mutation or external source-tree races; Jig doctor remains
 degraded (graph absent), and the bounded global check timed out.
 
+Exact materialization now reruns the import-captured `ExactAuthoringPlan`
+validator before filesystem access (`ddf59bc5d`). Ten red-first cases reject
+fabricated exact plans with malformed nested metadata or missing slots,
+including records altered through late class hooks. All 266 focused exact
+tests passed after commit, and 3,102 integrated diff tests passed before it;
+scoped Ruff and source BasedPyright had zero errors. Jig doctor remained
+degraded and a bounded 115-second global check timed out without a pass.
+Direct instance mutation after preflight and concurrent filesystem writers
+remain outside these guards.
+
 The six exact-authoring model constructors now also write all seventeen
 fields through captured original storage descriptors instead of
 `object.__setattr__`, which dispatches replaceable class property setters.
@@ -526,6 +536,21 @@ degraded and a bounded 100-second `jig check` timed out during native
 validation scheduling; no repository-wide clean verdict is asserted. Direct
 private object mutation and concurrent external filesystem writers are not
 isolated by this guard.
+
+The Linux no-replace publisher also pins original `ctypes.CDLL` class dispatch
+and the module's native `_dlopen`, `_CFuncPtr`, and function-pointer flag
+bindings (`41c16504e`). A late symbol/getitem override or replaced pointer
+base previously could call overwriting `os.rename` on an occupied empty
+output directory, then satisfy the moved-inode attestation. Four red-first
+overwrite cases and ten additional loader/ABI mutation cases now reject
+changed dependencies with `ENOTSUP` before loading libc. All 101 publication
+tests passed after commit; 3,102 integrated diff tests passed on the live
+shared checkout before commit, with scoped Ruff and BasedPyright at zero
+errors and clean diff checks. Jig doctor remained degraded (graph absent);
+a bounded 105-second global check timed out at native-validator scheduling.
+These in-process dispatch guards do not isolate direct module-private
+mutation, malicious native code, or concurrent external filesystem writers.
+
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.
