@@ -652,6 +652,70 @@ def test_behavior_authoring_rejects_forged_native_context_resolution(
         )
 
 
+def test_behavior_context_rejects_late_host_splitroot_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late host parser must not redirect a previously selected root."""
+    source = tmp_path / "selected"
+    redirected = tmp_path / "redirected"
+    source.mkdir()
+    redirected.mkdir()
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(behavior_module)["_resolved_context_path"],
+    )
+    expected = resolve(source, "repository")
+    source_label = os.fspath(source)
+    redirected_label = os.fspath(redirected)
+    native_splitroot = os.path.splitroot
+    calls = 0
+
+    def forged_splitroot(path: str) -> tuple[str, str, str]:
+        nonlocal calls
+        if path == source_label:
+            calls += 1
+            return native_splitroot(redirected_label)
+        return native_splitroot(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "splitroot", forged_splitroot)
+        with pytest.raises(
+            BehaviorProgramError, match="resolver hooks changed"
+        ):
+            _ = resolve(source, "repository")
+    assert expected == source.resolve()
+    assert calls == 0, "late host parser redirected behavior context"
+
+
+@pytest.mark.parametrize("hook", ["splitdrive", "join", "sep", "altsep"])
+def test_behavior_context_rejects_late_host_parser_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Reject process-global parser mutations before context resolution."""
+    source = tmp_path / "safe"
+    source.mkdir()
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(behavior_module)["_resolved_context_path"],
+    )
+    if hook in {"sep", "altsep"}:
+        replacement: object = "!"
+    else:
+
+        def forbidden_parser(*args: object) -> object:
+            del args
+            message = "late host parser hook executed"
+            raise AssertionError(message)
+
+        replacement = forbidden_parser
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, hook, replacement)
+        with pytest.raises(
+            BehaviorProgramError, match="resolver hooks changed"
+        ):
+            _ = resolve(source, "repository")
+
+
 def test_behavior_program_records_reject_foreign_mutable_inputs() -> None:
     """Validate metadata before dereferencing program records."""
     program = _read_program("identity", "identity.txt")

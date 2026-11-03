@@ -78,6 +78,15 @@ if TYPE_CHECKING:
 # Bind native path operations before domain hooks can replace them.
 _NATIVE_PATH_STR = Path.__str__
 _NATIVE_OS_REALPATH = os.path.realpath
+# The captured realpath implementation still reads mutable host parser
+# helpers while converting path segments. A late splitroot replacement can
+# redirect a context root even when realpath itself remains unchanged.
+_NATIVE_OS_PATH_PARSER = os.path
+_NATIVE_OS_PATH_SPLITROOT = os.path.splitroot
+_NATIVE_OS_PATH_SPLITDRIVE = os.path.splitdrive
+_NATIVE_OS_PATH_JOIN = os.path.join
+_NATIVE_OS_PATH_SEP = os.path.sep
+_NATIVE_OS_PATH_ALTSEP = os.path.altsep
 # The import-original realpath function still uses dynamically looked-up
 # filesystem helpers. Its Path result also invokes mutable class factories.
 _NATIVE_OS_FSPATH = os.fspath
@@ -148,9 +157,20 @@ _NATIVE_WINDOWS_HOST = os.name == "nt"
 
 
 def _require_native_context_resolver() -> None:
-    """Reject late helpers that can redirect realpath or its Path result."""
+    """Reject late helpers that can redirect realpath or its Path result.
+
+    Raises:
+        BehaviorProgramError: A captured host resolver dependency changed.
+
+    """
     if (
-        os.fspath is not _NATIVE_OS_FSPATH
+        os.path is not _NATIVE_OS_PATH_PARSER
+        or os.path.splitroot is not _NATIVE_OS_PATH_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_OS_PATH_SPLITDRIVE
+        or os.path.join is not _NATIVE_OS_PATH_JOIN
+        or os.path.sep is not _NATIVE_OS_PATH_SEP
+        or os.path.altsep is not _NATIVE_OS_PATH_ALTSEP
+        or os.fspath is not _NATIVE_OS_FSPATH
         or os.lstat is not _NATIVE_OS_LSTAT
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
