@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MemberDescriptorType
@@ -98,41 +99,117 @@ def _require_digest(value: object, context: str) -> bytes:
     return value
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class IdentityProbe:
     """Stable historical behavior fingerprint expected from source lineage."""
 
     probe_id: str
     expected_digest: bytes
 
+    def __init__(
+        self,
+        probe_id: str,
+        expected_digest: bytes,
+    ) -> None:
+        """Validate IdentityProbe via its original constructor guard."""
+        _IDENTITY_PROBE_ID_SLOT.__set__(self, probe_id)
+        _IDENTITY_PROBE_DIGEST_SLOT.__set__(self, expected_digest)
+        _IDENTITY_PROBE_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require canonical probe identity and exact fingerprint bytes."""
-        _ = _require_identifier(self.probe_id, "identity probe ID")
-        _ = _require_digest(self.expected_digest, "identity probe digest")
+        _ = _require_identifier(_probe_identifier(self), "identity probe ID")
+        _ = _require_digest(
+            _IDENTITY_PROBE_DIGEST_SLOT.__get__(self, IdentityProbe),
+            "identity probe digest",
+        )
 
 
-@dataclass(frozen=True, slots=True, order=True)
+# Pin the original validator before consumers can replace class hooks.
+_IDENTITY_PROBE_ID_SLOT = cast(
+    "MemberDescriptorType", IdentityProbe.__dict__["probe_id"]
+)
+_IDENTITY_PROBE_DIGEST_SLOT = cast(
+    "MemberDescriptorType", IdentityProbe.__dict__["expected_digest"]
+)
+
+
+_IDENTITY_PROBE_VALIDATOR = cast(
+    "Callable[[IdentityProbe], None]",
+    IdentityProbe.__dict__["__post_init__"],
+)
+
+
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class CompatibilityProbe:
     """Named runtime/build precondition required before transformation."""
 
     probe_id: str
 
+    def __init__(
+        self,
+        probe_id: str,
+    ) -> None:
+        """Validate CompatibilityProbe via its original constructor guard."""
+        _COMPATIBILITY_PROBE_ID_SLOT.__set__(self, probe_id)
+        _COMPATIBILITY_PROBE_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require one canonical compatibility probe identity."""
-        _ = _require_identifier(self.probe_id, "compatibility probe ID")
+        _ = _require_identifier(
+            _probe_identifier(self), "compatibility probe ID"
+        )
 
 
-@dataclass(frozen=True, slots=True, order=True)
+# Pin the original validator before consumers can replace class hooks.
+_COMPATIBILITY_PROBE_ID_SLOT = cast(
+    "MemberDescriptorType", CompatibilityProbe.__dict__["probe_id"]
+)
+
+
+_COMPATIBILITY_PROBE_VALIDATOR = cast(
+    "Callable[[CompatibilityProbe], None]",
+    CompatibilityProbe.__dict__["__post_init__"],
+)
+
+
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class BugProbe:
     """Known defect whose correction can be skipped when already fixed."""
 
     probe_id: str
     correction_id: str
 
+    def __init__(
+        self,
+        probe_id: str,
+        correction_id: str,
+    ) -> None:
+        """Validate BugProbe via its original constructor guard."""
+        _BUG_PROBE_ID_SLOT.__set__(self, probe_id)
+        _BUG_PROBE_CORRECTION_SLOT.__set__(self, correction_id)
+        _BUG_PROBE_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require canonical bug and correction identities."""
-        _ = _require_identifier(self.probe_id, "bug probe ID")
-        _ = _require_identifier(self.correction_id, "bug correction ID")
+        _ = _require_identifier(_probe_identifier(self), "bug probe ID")
+        _ = _require_identifier(
+            _BUG_PROBE_CORRECTION_SLOT.__get__(self, BugProbe),
+            "bug correction ID",
+        )
+
+
+# Pin the original validator before consumers can replace class hooks.
+_BUG_PROBE_ID_SLOT = cast("MemberDescriptorType", BugProbe.__dict__["probe_id"])
+_BUG_PROBE_CORRECTION_SLOT = cast(
+    "MemberDescriptorType", BugProbe.__dict__["correction_id"]
+)
+
+
+_BUG_PROBE_VALIDATOR = cast(
+    "Callable[[BugProbe], None]",
+    BugProbe.__dict__["__post_init__"],
+)
 
 
 def _probe_ids(
@@ -140,7 +217,7 @@ def _probe_ids(
     | tuple[CompatibilityProbe, ...]
     | tuple[BugProbe, ...],
 ) -> tuple[str, ...]:
-    identifiers = _NATIVE_TUPLE(item.probe_id for item in probes)
+    identifiers = _NATIVE_TUPLE(_probe_identifier(item) for item in probes)
     if _NATIVE_ANY(not identifier for identifier in identifiers):
         message = "behavior probe identifiers must be non-empty"
         raise BehaviorPolicyError(message)
@@ -156,7 +233,9 @@ def _validate_unique(values: tuple[str, ...], message: str) -> None:
 
 
 def _validate_correction_ids(bugs: tuple[BugProbe, ...]) -> None:
-    correction_ids = _NATIVE_TUPLE(item.correction_id for item in bugs)
+    correction_ids = _NATIVE_TUPLE(
+        _BUG_PROBE_CORRECTION_SLOT.__get__(item, BugProbe) for item in bugs
+    )
     if _NATIVE_ANY(not correction_id for correction_id in correction_ids):
         message = "bug probes require non-empty correction identifiers"
         raise BehaviorPolicyError(message)
@@ -179,13 +258,25 @@ def _require_probe_tuple(
         raise BehaviorPolicyError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class BehaviorProfile:
     """Behavior expectations generated from the authoring source."""
 
     identity: tuple[IdentityProbe, ...]
     compatibility: tuple[CompatibilityProbe, ...]
     bugs: tuple[BugProbe, ...]
+
+    def __init__(
+        self,
+        identity: tuple[IdentityProbe, ...],
+        compatibility: tuple[CompatibilityProbe, ...],
+        bugs: tuple[BugProbe, ...],
+    ) -> None:
+        """Validate BehaviorProfile via its original constructor guard."""
+        _PROFILE_IDENTITY_SLOT.__set__(self, identity)
+        _PROFILE_COMPATIBILITY_SLOT.__set__(self, compatibility)
+        _PROFILE_BUGS_SLOT.__set__(self, bugs)
+        _BEHAVIOR_PROFILE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require deterministic unique probe identifiers.
@@ -215,6 +306,13 @@ class BehaviorProfile:
             all_ids, "behavior probe identifiers must be globally unique"
         )
         _validate_correction_ids(bugs)
+
+
+# Pin the original validator before consumers can replace class hooks.
+_BEHAVIOR_PROFILE_VALIDATOR = cast(
+    "Callable[[BehaviorProfile], None]",
+    BehaviorProfile.__dict__["__post_init__"],
+)
 
 
 _PROFILE_IDENTITY_SLOT = cast(
@@ -251,16 +349,28 @@ def _profile_fields(
     )
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class IdentityObservation:
     """Candidate identity-probe result; ``None`` means execution unavailable."""
 
     probe_id: str
     digest: bytes | None
 
+    def __init__(
+        self,
+        probe_id: str,
+        digest: bytes | None,
+    ) -> None:
+        """Validate IdentityObservation via its original constructor guard."""
+        _IDENTITY_OBSERVATION_ID_SLOT.__set__(self, probe_id)
+        _IDENTITY_OBSERVATION_DIGEST_SLOT.__set__(self, digest)
+        _IDENTITY_OBSERVATION_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require canonical identity evidence or explicit unavailability."""
-        _ = _require_identifier(self.probe_id, "identity observation ID")
+        _ = _require_identifier(
+            _observation_identifier(self), "identity observation ID"
+        )
         digest = cast(
             "bytes | None",
             _IDENTITY_OBSERVATION_DIGEST_SLOT.__get__(
@@ -271,17 +381,39 @@ class IdentityObservation:
             _ = _require_digest(digest, "identity observation digest")
 
 
+# Pin the original validator before consumers can replace class hooks.
+_IDENTITY_OBSERVATION_VALIDATOR = cast(
+    "Callable[[IdentityObservation], None]",
+    IdentityObservation.__dict__["__post_init__"],
+)
+
+
+_IDENTITY_OBSERVATION_ID_SLOT = cast(
+    "MemberDescriptorType", IdentityObservation.__dict__["probe_id"]
+)
+
+
 _IDENTITY_OBSERVATION_DIGEST_SLOT = cast(
     "MemberDescriptorType", IdentityObservation.__dict__["digest"]
 )
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class CompatibilityObservation:
     """Candidate precondition result; ``None`` means execution unavailable."""
 
     probe_id: str
     compatible: bool | None
+
+    def __init__(
+        self,
+        probe_id: str,
+        compatible: bool | None,
+    ) -> None:
+        """Seal compatibility observation through original validation."""
+        _COMPATIBILITY_OBSERVATION_ID_SLOT.__set__(self, probe_id)
+        _COMPATIBILITY_OBSERVATION_VALUE_SLOT.__set__(self, compatible)
+        _COMPATIBILITY_OBSERVATION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require canonical identity and exact tri-state compatibility.
@@ -290,7 +422,9 @@ class CompatibilityObservation:
             BehaviorPolicyError: Identity or compatibility metadata is invalid.
 
         """
-        _ = _require_identifier(self.probe_id, "compatibility observation ID")
+        _ = _require_identifier(
+            _observation_identifier(self), "compatibility observation ID"
+        )
         compatible = cast(
             "bool | None",
             _COMPATIBILITY_OBSERVATION_VALUE_SLOT.__get__(
@@ -305,17 +439,39 @@ class CompatibilityObservation:
             raise BehaviorPolicyError(message)
 
 
+# Pin the original validator before consumers can replace class hooks.
+_COMPATIBILITY_OBSERVATION_VALIDATOR = cast(
+    "Callable[[CompatibilityObservation], None]",
+    CompatibilityObservation.__dict__["__post_init__"],
+)
+
+
+_COMPATIBILITY_OBSERVATION_ID_SLOT = cast(
+    "MemberDescriptorType", CompatibilityObservation.__dict__["probe_id"]
+)
+
+
 _COMPATIBILITY_OBSERVATION_VALUE_SLOT = cast(
     "MemberDescriptorType", CompatibilityObservation.__dict__["compatible"]
 )
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class BugObservation:
     """Candidate classification for one known historical defect."""
 
     probe_id: str
     state: BugState
+
+    def __init__(
+        self,
+        probe_id: str,
+        state: BugState,
+    ) -> None:
+        """Validate BugObservation via its original constructor guard."""
+        _BUG_OBSERVATION_ID_SLOT.__set__(self, probe_id)
+        _BUG_OBSERVATION_STATE_SLOT.__set__(self, state)
+        _BUG_OBSERVATION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require canonical identity and exact bug-state enum metadata.
@@ -324,7 +480,9 @@ class BugObservation:
             BehaviorPolicyError: Identity or bug-state metadata is invalid.
 
         """
-        _ = _require_identifier(self.probe_id, "bug observation ID")
+        _ = _require_identifier(
+            _observation_identifier(self), "bug observation ID"
+        )
         state = cast(
             "BugState",
             _BUG_OBSERVATION_STATE_SLOT.__get__(self, BugObservation),
@@ -334,9 +492,70 @@ class BugObservation:
             raise BehaviorPolicyError(message)
 
 
+# Pin the original validator before consumers can replace class hooks.
+_BUG_OBSERVATION_VALIDATOR = cast(
+    "Callable[[BugObservation], None]",
+    BugObservation.__dict__["__post_init__"],
+)
+
+
+_BUG_OBSERVATION_ID_SLOT = cast(
+    "MemberDescriptorType", BugObservation.__dict__["probe_id"]
+)
+
+
 _BUG_OBSERVATION_STATE_SLOT = cast(
     "MemberDescriptorType", BugObservation.__dict__["state"]
 )
+
+
+def _probe_identifier(
+    probe: IdentityProbe | CompatibilityProbe | BugProbe,
+) -> str:
+    """Read a validated probe ID without mutable class field dispatch."""
+    kind = _NATIVE_TYPE(probe)
+    if kind is IdentityProbe:
+        return cast(
+            "str", _IDENTITY_PROBE_ID_SLOT.__get__(probe, IdentityProbe)
+        )
+    if kind is CompatibilityProbe:
+        return cast(
+            "str",
+            _COMPATIBILITY_PROBE_ID_SLOT.__get__(probe, CompatibilityProbe),
+        )
+    if kind is BugProbe:
+        return cast("str", _BUG_PROBE_ID_SLOT.__get__(probe, BugProbe))
+    message = "behavior probe identifier requires exact probe record"
+    raise BehaviorPolicyError(message)
+
+
+def _observation_identifier(
+    observation: (
+        IdentityObservation | CompatibilityObservation | BugObservation
+    ),
+) -> str:
+    """Read a validated observation ID from its original immutable slot."""
+    kind = _NATIVE_TYPE(observation)
+    if kind is IdentityObservation:
+        return cast(
+            "str", _IDENTITY_OBSERVATION_ID_SLOT.__get__(
+                observation, IdentityObservation
+            )
+        )
+    if kind is CompatibilityObservation:
+        return cast(
+            "str", _COMPATIBILITY_OBSERVATION_ID_SLOT.__get__(
+                observation, CompatibilityObservation
+            )
+        )
+    if kind is BugObservation:
+        return cast(
+            "str", _BUG_OBSERVATION_ID_SLOT.__get__(observation, BugObservation)
+        )
+    message = (
+        "behavior observation identifier requires exact observation record"
+    )
+    raise BehaviorPolicyError(message)
 
 
 def _require_observation_tuple(
@@ -355,13 +574,25 @@ def _require_observation_tuple(
         raise BehaviorPolicyError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class BehaviorObservations:
     """All candidate probe results for one deterministic evaluation."""
 
     identity: tuple[IdentityObservation, ...]
     compatibility: tuple[CompatibilityObservation, ...]
     bugs: tuple[BugObservation, ...]
+
+    def __init__(
+        self,
+        identity: tuple[IdentityObservation, ...],
+        compatibility: tuple[CompatibilityObservation, ...],
+        bugs: tuple[BugObservation, ...],
+    ) -> None:
+        """Validate BehaviorObservations via its original constructor guard."""
+        _OBSERVATIONS_IDENTITY_SLOT.__set__(self, identity)
+        _OBSERVATIONS_COMPATIBILITY_SLOT.__set__(self, compatibility)
+        _OBSERVATIONS_BUGS_SLOT.__set__(self, bugs)
+        _BEHAVIOR_OBSERVATIONS_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require immutable exact observation records for every category."""
@@ -375,6 +606,13 @@ class BehaviorObservations:
             "compatibility observations",
         )
         _require_observation_tuple(bugs, BugObservation, "bug observations")
+
+
+# Pin the original validator before consumers can replace class hooks.
+_BEHAVIOR_OBSERVATIONS_VALIDATOR = cast(
+    "Callable[[BehaviorObservations], None]",
+    BehaviorObservations.__dict__["__post_init__"],
+)
 
 
 _OBSERVATIONS_IDENTITY_SLOT = cast(
@@ -485,7 +723,7 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
     _validate_behavior_evidence_binding(evidence)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class BehaviorEvidence:
     """Aggregated behavior admission plus bug-correction routing."""
 
@@ -498,6 +736,30 @@ class BehaviorEvidence:
     profile: BehaviorProfile
     observations: BehaviorObservations
     minimum_similarity: float
+
+    def __init__(
+        self,
+        similarity: float,
+        matched_identity_probes: int,
+        total_identity_probes: int,
+        corrections_to_apply: tuple[str, ...],
+        corrections_to_skip: tuple[str, ...],
+        reasons: tuple[str, ...],
+        profile: BehaviorProfile,
+        observations: BehaviorObservations,
+        minimum_similarity: float,
+    ) -> None:
+        """Validate BehaviorEvidence via its original constructor guard."""
+        _BEHAVIOR_SIMILARITY_SLOT.__set__(self, similarity)
+        _BEHAVIOR_MATCHED_SLOT.__set__(self, matched_identity_probes)
+        _BEHAVIOR_TOTAL_SLOT.__set__(self, total_identity_probes)
+        _BEHAVIOR_APPLY_SLOT.__set__(self, corrections_to_apply)
+        _BEHAVIOR_SKIP_SLOT.__set__(self, corrections_to_skip)
+        _BEHAVIOR_REASONS_SLOT.__set__(self, reasons)
+        _BEHAVIOR_PROFILE_SLOT.__set__(self, profile)
+        _BEHAVIOR_OBSERVATIONS_SLOT.__set__(self, observations)
+        _BEHAVIOR_MINIMUM_SLOT.__set__(self, minimum_similarity)
+        _BEHAVIOR_EVIDENCE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require internally coherent aggregated behavior evidence."""
@@ -512,6 +774,13 @@ class BehaviorEvidence:
 
         """
         return not _BEHAVIOR_REASONS_SLOT.__get__(self, BehaviorEvidence)
+
+
+# Pin the original validator before consumers can replace class hooks.
+_BEHAVIOR_EVIDENCE_VALIDATOR = cast(
+    "Callable[[BehaviorEvidence], None]",
+    BehaviorEvidence.__dict__["__post_init__"],
+)
 
 
 # The class descriptor can change after domain callbacks; trust the saved
@@ -596,7 +865,9 @@ def _observation_map(
     | tuple[CompatibilityObservation, ...]
     | tuple[BugObservation, ...],
 ) -> dict[str, IdentityObservation | CompatibilityObservation | BugObservation]:
-    identifiers = _NATIVE_TUPLE(item.probe_id for item in observations)
+    identifiers = _NATIVE_TUPLE(
+        _observation_identifier(item) for item in observations
+    )
     if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(identifiers)) or _NATIVE_LEN(
         identifiers
     ) != _NATIVE_LEN(_NATIVE_SET(identifiers)):
@@ -604,7 +875,7 @@ def _observation_map(
             "behavior observations must have unique sorted probe identifiers"
         )
         raise BehaviorPolicyError(message)
-    return {item.probe_id: item for item in observations}
+    return {_observation_identifier(item): item for item in observations}
 
 
 def _require_observation_shape(
@@ -625,14 +896,14 @@ def _identity_evidence(
 ) -> tuple[int, tuple[str, ...]]:
     observed = _observation_map(_observations_fields(observations)[0])
     expected = _profile_fields(profile)[0]
-    expected_ids = _NATIVE_TUPLE(item.probe_id for item in expected)
+    expected_ids = _NATIVE_TUPLE(_probe_identifier(item) for item in expected)
     _require_observation_shape(
         expected_ids, _NATIVE_TUPLE(observed), "identity"
     )
     matched = 0
     reasons: list[str] = []
     for probe in expected:
-        observation = observed[probe.probe_id]
+        observation = observed[_probe_identifier(probe)]
         if _NATIVE_TYPE(observation) is not IdentityObservation:
             message = "internal identity observation type mismatch"
             raise BehaviorPolicyError(message)
@@ -643,9 +914,13 @@ def _identity_evidence(
             ),
         )
         if digest is None:
-            reasons.append(f"identity probe unavailable: {probe.probe_id}")
+            reasons.append(
+                f"identity probe unavailable: {_probe_identifier(probe)}"
+            )
             continue
-        matched += digest == probe.expected_digest
+        matched += digest == _IDENTITY_PROBE_DIGEST_SLOT.__get__(
+            probe, IdentityProbe
+        )
     return matched, _NATIVE_TUPLE(reasons)
 
 
@@ -655,20 +930,22 @@ def _compatibility_reasons(
 ) -> tuple[str, ...]:
     observed = _observation_map(_observations_fields(observations)[1])
     expected = _profile_fields(profile)[1]
-    expected_ids = _NATIVE_TUPLE(item.probe_id for item in expected)
+    expected_ids = _NATIVE_TUPLE(_probe_identifier(item) for item in expected)
     _require_observation_shape(
         expected_ids, _NATIVE_TUPLE(observed), "compatibility"
     )
     reasons: list[str] = []
     for probe in expected:
-        observation = observed[probe.probe_id]
+        observation = observed[_probe_identifier(probe)]
         if _NATIVE_TYPE(observation) is not CompatibilityObservation:
             message = "internal compatibility observation type mismatch"
             raise BehaviorPolicyError(message)
         if _COMPATIBILITY_OBSERVATION_VALUE_SLOT.__get__(
             observation, CompatibilityObservation
         ) is not True:
-            reasons.append(f"compatibility probe failed: {probe.probe_id}")
+            reasons.append(
+                f"compatibility probe failed: {_probe_identifier(probe)}"
+            )
     return _NATIVE_TUPLE(reasons)
 
 
@@ -678,13 +955,13 @@ def _bug_routing(
 ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     observed = _observation_map(_observations_fields(observations)[2])
     expected = _profile_fields(profile)[2]
-    expected_ids = _NATIVE_TUPLE(item.probe_id for item in expected)
+    expected_ids = _NATIVE_TUPLE(_probe_identifier(item) for item in expected)
     _require_observation_shape(expected_ids, _NATIVE_TUPLE(observed), "bug")
     apply: list[str] = []
     skip: list[str] = []
     reasons: list[str] = []
     for probe in expected:
-        observation = observed[probe.probe_id]
+        observation = observed[_probe_identifier(probe)]
         if _NATIVE_TYPE(observation) is not BugObservation:
             message = "internal bug observation type mismatch"
             raise BehaviorPolicyError(message)
@@ -693,11 +970,11 @@ def _bug_routing(
             _BUG_OBSERVATION_STATE_SLOT.__get__(observation, BugObservation),
         )
         if state is BugState.PRESENT:
-            apply.append(probe.correction_id)
+            apply.append(_BUG_PROBE_CORRECTION_SLOT.__get__(probe, BugProbe))
         elif state is BugState.FIXED:
-            skip.append(probe.correction_id)
+            skip.append(_BUG_PROBE_CORRECTION_SLOT.__get__(probe, BugProbe))
         else:
-            reasons.append(f"bug probe unresolved: {probe.probe_id}")
+            reasons.append(f"bug probe unresolved: {_probe_identifier(probe)}")
     return _NATIVE_TUPLE(apply), _NATIVE_TUPLE(skip), _NATIVE_TUPLE(reasons)
 
 

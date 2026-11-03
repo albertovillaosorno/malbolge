@@ -35,7 +35,8 @@
 import builtins
 import math
 from collections import UserString
-from dataclasses import replace
+from collections.abc import Callable
+from dataclasses import fields, replace
 from types import MemberDescriptorType
 from typing import cast
 
@@ -1171,3 +1172,210 @@ def test_behavior_observation_outcomes_ignore_late_getters(
             with pytest.raises(BehaviorAdmissionError):
                 _ = require_behavior(profile, invalid, 1.0)
     assert calls == 0, "late outcome getter participated in behavior evidence"
+
+
+@pytest.mark.parametrize("via_replace", [False, True])
+@pytest.mark.parametrize(
+    ("valid", "invalid_fields"),
+    [
+        (IdentityProbe("identity", b"digest"), {"expected_digest": b""}),
+        (CompatibilityProbe("compatibility"), {"probe_id": ""}),
+        (BugProbe("bug", "correction"), {"correction_id": ""}),
+        (
+            BehaviorProfile((IdentityProbe("identity", b"digest"),), (), ()),
+            {"identity": ()},
+        ),
+        (IdentityObservation("identity", b"digest"), {"digest": b""}),
+        (CompatibilityObservation("compatibility", True), {"compatible": 1}),
+        (BugObservation("bug", BugState.PRESENT), {"state": "present"}),
+        (
+            BehaviorObservations(
+                (IdentityObservation("identity", b"digest"),), (), ()
+            ),
+            {"identity": []},
+        ),
+        (
+            require_behavior(_profile(), _observations(), 0.8),
+            {"total_identity_probes": 0},
+        ),
+    ],
+    ids=[
+        "identity-probe", "compatibility-probe", "bug-probe", "profile",
+        "identity-observation", "compatibility-observation", "bug-observation",
+        "observations", "evidence",
+    ],
+)
+def test_behavior_records_pin_original_construction_validator(
+    monkeypatch: pytest.MonkeyPatch,
+    valid: (
+        IdentityProbe | CompatibilityProbe | BugProbe | BehaviorProfile
+        | IdentityObservation | CompatibilityObservation | BugObservation
+        | BehaviorObservations | BehaviorEvidence
+    ),
+    invalid_fields: dict[str, object],
+    via_replace: bool,
+) -> None:
+    """A late post-init replacement must not admit forged behavior records."""
+    factory = cast("Callable[..., object]", type(valid))
+    constructor_fields = {
+        field.name: getattr(valid, field.name) for field in fields(valid)
+    }
+    constructor_fields.update(invalid_fields)
+    calls = 0
+
+    def forged_validator(_record: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(valid), "__post_init__", forged_validator)
+        with pytest.raises(BehaviorPolicyError):
+            if via_replace:
+                _ = replace(valid, **invalid_fields)
+            else:
+                _ = factory(**constructor_fields)
+    assert calls == 0, "late class validator participated in behavior admission"
+
+
+@pytest.mark.parametrize(
+    ("record_type", "field", "forged"),
+    [
+        (IdentityProbe, "probe_id", "different"),
+        (IdentityProbe, "expected_digest", b"different"),
+        (CompatibilityProbe, "probe_id", "different"),
+        (BugProbe, "probe_id", "different"),
+        (BugProbe, "correction_id", "different"),
+        (IdentityObservation, "probe_id", "different"),
+        (CompatibilityObservation, "probe_id", "different"),
+        (BugObservation, "probe_id", "different"),
+    ],
+)
+def test_behavior_decision_ignores_late_probe_metadata_getters(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    field: str,
+    forged: object,
+) -> None:
+    """Reject late getter changes to immutable probe decision evidence."""
+    profile = _profile()
+    observations = _observations()
+    expected = require_behavior(profile, observations, 0.8)
+    original = record_type.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return original(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__getattribute__", forged_getter)
+        actual = require_behavior(profile, observations, 0.8)
+    assert calls == 0, "late probe getter influenced behavior admission"
+    assert actual == expected
+
+
+@pytest.mark.parametrize(
+    ("record_type", "args", "field", "forged"),
+    [
+        (IdentityProbe, ("", b"digest"), "probe_id", "identity"),
+        (IdentityProbe, ("identity", b""), "expected_digest", b"digest"),
+        (CompatibilityProbe, ("",), "probe_id", "compatibility"),
+        (BugProbe, ("", "correction"), "probe_id", "bug"),
+        (BugProbe, ("bug", ""), "correction_id", "correction"),
+        (IdentityObservation, ("", b"digest"), "probe_id", "identity"),
+        (CompatibilityObservation, ("", True), "probe_id", "compatibility"),
+        (BugObservation, ("", BugState.PRESENT), "probe_id", "bug"),
+    ],
+)
+def test_behavior_construction_ignores_late_probe_metadata_getters(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    args: tuple[object, ...],
+    field: str,
+    forged: object,
+) -> None:
+    """Forged class accessors cannot approve invalid stored probe fields."""
+    original = record_type.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return original(record, name)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__getattribute__", forged_getter)
+        try:
+            _ = record_type(*args)
+        except BehaviorPolicyError:
+            rejected = True
+    assert rejected, "late getter approved invalid probe construction"
+    assert calls == 0, "late probe getter participated in validation"
+
+
+@pytest.mark.parametrize(
+    ("valid", "field", "invalid"),
+    [
+        (IdentityProbe("identity", b"digest"), "probe_id", ""),
+        (CompatibilityProbe("compatibility"), "probe_id", ""),
+        (BugProbe("bug", "correction"), "probe_id", ""),
+        (
+            BehaviorProfile((IdentityProbe("identity", b"digest"),), (), ()),
+            "identity",
+            (),
+        ),
+        (IdentityObservation("identity", b"digest"), "probe_id", ""),
+        (CompatibilityObservation("compatibility", True), "probe_id", ""),
+        (BugObservation("bug", BugState.PRESENT), "probe_id", ""),
+        (
+            BehaviorObservations(
+                (IdentityObservation("identity", b"digest"),), (), ()
+            ),
+            "identity",
+            [],
+        ),
+        (
+            require_behavior(_profile(), _observations(), 0.8),
+            "total_identity_probes",
+            0,
+        ),
+    ],
+)
+def test_behavior_construction_ignores_late_class_field_setters(
+    monkeypatch: pytest.MonkeyPatch,
+    valid: (
+        IdentityProbe | CompatibilityProbe | BugProbe | BehaviorProfile
+        | IdentityObservation | CompatibilityObservation | BugObservation
+        | BehaviorObservations | BehaviorEvidence
+    ),
+    field: str,
+    invalid: object,
+) -> None:
+    """A class property setter cannot rewrite invalid constructor storage."""
+    owner = type(valid)
+    factory = cast("Callable[..., object]", owner)
+    values = {datum.name: getattr(valid, datum.name) for datum in fields(valid)}
+    original = values[field]
+    values[field] = invalid
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    calls = 0
+
+    def forged_getter(_record: object) -> object:
+        return original
+
+    def forged_setter(record: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(record, original)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(forged_getter, forged_setter))
+        with pytest.raises(BehaviorPolicyError):
+            _ = factory(**values)
+    assert calls == 0, "mutable class setter rewrote the stored evidence"
