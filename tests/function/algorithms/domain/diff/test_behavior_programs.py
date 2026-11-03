@@ -255,6 +255,59 @@ def test_context_resolution_error_ignores_late_path_string_hook(
     _expect(caught.__cause__ is failure, "context failure lost original cause")
 
 
+@pytest.mark.parametrize(
+    "error_type", [ExactTreeError, ProbeExecutionError, BehaviorProgramError]
+)
+def test_behavior_error_detail_bypasses_late_native_class_getter(
+    monkeypatch: pytest.MonkeyPatch, error_type: type[Exception]
+) -> None:
+    """Native error text must not invoke a late exception-class getter."""
+    error = error_type("trusted native failure")
+    original = error_type.__getattribute__
+    calls = 0
+
+    def reject_args(error_instance: Exception, attribute: str) -> object:
+        nonlocal calls
+        if attribute == "args":
+            calls += 1
+            raise AssertionError("late exception metadata hook executed")
+        return cast("object", original(error_instance, attribute))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(error_type, "__getattribute__", reject_args)
+        assert behavior_module._behavior_error_detail(error) == "trusted native failure"
+    assert calls == 0, "native error detail used the mutable class getter"
+
+
+def test_behavior_snapshot_preserves_native_error_without_late_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Candidate snapshot failure retains the real native diagnostic and cause."""
+    failure = ExactTreeError("trusted snapshot failure")
+    original = ExactTreeError.__getattribute__
+    calls = 0
+
+    def fail_snapshot(_root: Path) -> TreeSnapshot:
+        raise failure
+
+    def reject_args(error: ExactTreeError, attribute: str) -> object:
+        nonlocal calls
+        if attribute == "args":
+            calls += 1
+            raise AssertionError("late exact error getter executed")
+        return cast("object", original(error, attribute))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, "snapshot_tree", fail_snapshot)
+        patched.setattr(ExactTreeError, "__getattribute__", reject_args)
+        with pytest.raises(
+            ProbeExecutionError, match="trusted snapshot failure"
+        ) as caught:
+            _ = behavior_module._snapshot_observed_source(tmp_path)
+    assert caught.value.__cause__ is failure
+    assert calls == 0, "candidate snapshot used late native metadata getter"
+
+
 def test_behavior_context_error_does_not_format_foreign_exception(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

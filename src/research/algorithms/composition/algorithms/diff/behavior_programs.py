@@ -232,7 +232,14 @@ def _behavior_error_detail(error: BaseException) -> str:
         ProbeExecutionError,
         BehaviorProgramError,
     ):
-        arguments = cast("tuple[object, ...]", error.args)
+        # Exact error classes are mutable even after native-type admission.
+        # Use the BaseException slot rather than late __getattribute__ hooks.
+        arguments = cast(
+            "tuple[object, ...]",
+            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                error, "args"
+            ),
+        )
         if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR:
             return arguments[0]
     return _NATIVE_TYPE(error).__name__
