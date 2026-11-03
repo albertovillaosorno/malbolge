@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import builtins
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import MemberDescriptorType
 from typing import cast
@@ -47,19 +48,27 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_INT = builtins.int
 _NATIVE_LEN = builtins.len
 _NATIVE_TUPLE = builtins.tuple
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 
 class MappedViewError(ValueError):
     """Raised when canonical-to-raw mapping metadata is malformed."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class MappedUnit:
     """One canonical identity unit and its half-open raw byte span."""
 
     canonical: bytes
     raw_start: int
     raw_end: int
+
+    def __init__(self, canonical: bytes, raw_start: int, raw_end: int) -> None:
+        """Construct and validate through the original stored-field checker."""
+        _NATIVE_OBJECT_SETATTR(self, "canonical", canonical)
+        _NATIVE_OBJECT_SETATTR(self, "raw_start", raw_start)
+        _NATIVE_OBJECT_SETATTR(self, "raw_end", raw_end)
+        _MAPPED_UNIT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Reject empty canonical units or invalid raw ranges.
@@ -82,6 +91,12 @@ class MappedUnit:
             message = "mapped raw span is invalid"
             raise MappedViewError(message)
 
+
+# Dataclass-generated initializers look up ``__post_init__`` on the class.
+# Pin the original validation method so later class hooks cannot skip it.
+_MAPPED_UNIT_VALIDATOR = cast(
+    "Callable[[MappedUnit], None]", MappedUnit.__dict__["__post_init__"]
+)
 
 # Slotted frozen records still expose mutable class descriptors to callbacks.
 # Preserve the initial storage readers before domain code can replace them.
@@ -116,12 +131,18 @@ def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
         previous_end = end
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class MappedView:
     """Raw source bytes plus sorted non-overlapping canonical units."""
 
     raw: bytes
     units: tuple[MappedUnit, ...]
+
+    def __init__(self, raw: bytes, units: tuple[MappedUnit, ...]) -> None:
+        """Construct and validate through the original stored-field checker."""
+        _NATIVE_OBJECT_SETATTR(self, "raw", raw)
+        _NATIVE_OBJECT_SETATTR(self, "units", units)
+        _MAPPED_VIEW_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require spans to stay inside raw bytes and remain ordered.
@@ -159,6 +180,9 @@ class MappedView:
         )
 
 
+_MAPPED_VIEW_VALIDATOR = cast(
+    "Callable[[MappedView], None]", MappedView.__dict__["__post_init__"]
+)
 _VIEW_RAW_SLOT = cast("MemberDescriptorType", MappedView.__dict__["raw"])
 _VIEW_UNITS_SLOT = cast("MemberDescriptorType", MappedView.__dict__["units"])
 

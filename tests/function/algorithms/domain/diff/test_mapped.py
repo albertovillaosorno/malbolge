@@ -34,6 +34,7 @@
 
 import builtins
 from collections.abc import Callable
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import cast
 
@@ -444,3 +445,70 @@ def test_mapped_keys_ignore_late_view_field_getter(
         assert view.canonical == b"A"
         assert view.keys == (b"A",)
     assert calls == 0, "late mapped view getter changed placement identity"
+
+
+@pytest.mark.parametrize("field", ["canonical", "raw_start", "raw_end"])
+def test_mapped_unit_constructor_ignores_late_validator_override(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Replacing the class post-init method cannot admit malformed storage."""
+    values: dict[str, object] = {
+        "canonical": b"A", "raw_start": 0, "raw_end": 1
+    }
+    values[field] = bytearray(b"A") if field == "canonical" else True
+    calls = 0
+
+    def skip_validation(_value: MappedUnit) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(MappedUnit, "__post_init__", skip_validation)
+        constructor = cast("Callable[..., MappedUnit]", MappedUnit)
+        with pytest.raises(MappedViewError):
+            _ = constructor(**values)
+    assert calls == 0, "late unit validator override gained authoring authority"
+
+
+@pytest.mark.parametrize("field", ["raw", "units", "span"])
+def test_mapped_view_constructor_ignores_late_validator_override(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A late class validation hook cannot admit mutable or escaping views."""
+    values: dict[str, object] = {
+        "raw": b"a", "units": (MappedUnit(b"A", 0, 1),)
+    }
+    if field == "raw":
+        values["raw"] = bytearray(b"a")
+    elif field == "units":
+        values["units"] = [MappedUnit(b"A", 0, 1)]
+    else:
+        values["units"] = (MappedUnit(b"A", 0, 2),)
+    calls = 0
+
+    def skip_validation(_value: MappedView) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(MappedView, "__post_init__", skip_validation)
+        constructor = cast("Callable[..., MappedView]", MappedView)
+        with pytest.raises(MappedViewError):
+            _ = constructor(**values)
+    assert calls == 0, "late view validator override gained authoring authority"
+
+
+
+def test_mapped_explicit_initializers_preserve_dataclass_replacement() -> None:
+    """Pinned validation still preserves normal frozen-dataclass replacement."""
+    unit = MappedUnit(b"A", 0, 1)
+    moved = replace(unit, raw_start=1, raw_end=2)
+    assert moved.raw_start == 1 and moved.raw_end == 2
+    with pytest.raises(MappedViewError, match="invalid"):
+        _ = replace(unit, raw_end=-1)
+
+    view = MappedView(b"a", (unit,))
+    expanded = replace(view, raw=b"aa")
+    assert expanded.units == (unit,)
+    with pytest.raises(MappedViewError, match="escapes"):
+        _ = replace(expanded, units=(MappedUnit(b"B", 0, 3),))
