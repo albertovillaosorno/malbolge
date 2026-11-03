@@ -125,6 +125,9 @@ _NATIVE_RUNTIME_ERROR = builtins.RuntimeError
 _NATIVE_UNICODE_ERROR = builtins.UnicodeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
 _NATIVE_EXCEPTION = builtins.Exception
+# Capture delegated exception identities before consumer callbacks can rebind them.
+_NATIVE_EXACT_TREE_ERROR = ExactTreeError
+_NATIVE_SEMANTIC_PLACEMENT_ERROR = SemanticPlacementError
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -919,7 +922,7 @@ def _validate_semantic(instruction: CompatibleInstruction) -> None:
     # correction IDs are attached to this semantic patch.
     try:
         edits = read_semantic_plan(instruction.semantic)
-    except SemanticPlacementError as error:
+    except _NATIVE_SEMANTIC_PLACEMENT_ERROR as error:
         message = "compatible semantic evidence is invalid"
         raise CompatiblePlanError(message) from error
     if instruction.correction_ids and _NATIVE_LEN(
@@ -1401,11 +1404,11 @@ def _path_present(path: Path, context: str) -> bool:
 def _read_compatible_bytes(path: Path, context: str) -> bytes:
     try:
         return read_exact_regular_file(path, context)
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} read failed: {path}: {detail}"
         failure = CompatiblePlanError(message)
-        if _NATIVE_TYPE(error) is ExactTreeError:
+        if _NATIVE_TYPE(error) is _NATIVE_EXACT_TREE_ERROR:
             # Native note access bypasses late exact-error class getters.
             try:
                 notes = cast(
@@ -2076,7 +2079,7 @@ def _admit(request: CompatibleMaterializeRequest) -> TransformAdmissionEvidence:
 def _snapshot_compatible_tree(root: Path, context: str) -> TreeSnapshot:
     try:
         return snapshot_tree(root)
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _safe_compatible_error_detail(error)
         message = f"compatible {context} snapshot failed: {detail}"
         raise CompatiblePlanError(message) from error
@@ -2097,7 +2100,7 @@ def _require_tree_unchanged(
     """
     try:
         current = snapshot_tree(root)
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _safe_compatible_error_detail(error)
         message = f"compatible {context} tree changed during {phase}: {detail}"
         raise CompatiblePlanError(message) from error

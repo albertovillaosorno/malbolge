@@ -92,6 +92,7 @@ from algorithms.diff.semantic import (
     SemanticAuthoringPlan,
     SemanticEdit,
     SemanticLocator,
+    SemanticPlacementError,
 )
 
 if TYPE_CHECKING:
@@ -5176,3 +5177,76 @@ def test_compatible_unicode_rejection_stays_typed_after_exception_alias(
             builtins.__dict__["UnicodeError"] = original
     assert caught is not None
     assert type(caught.__cause__) is UnicodeEncodeError
+
+
+def test_compatible_semantic_rejection_keeps_imported_error_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed native semantic evidence must retain compatible error ownership."""
+    forged = object.__new__(SemanticAuthoringPlan)
+    cast("MemberDescriptorType", SemanticAuthoringPlan.__dict__["edits"]).__set__(
+        forged, []
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "SemanticPlacementError", LookupError)
+        with pytest.raises(CompatiblePlanError, match="semantic evidence") as caught:
+            _ = CompatibleInstruction(
+                output_path="code.src",
+                kind=CompatibleFileKind.SEMANTIC_PATCH,
+                source_path="code.src",
+                semantic=forged,
+            )
+    assert type(caught.value.__cause__) is SemanticPlacementError
+
+
+def test_compatible_exact_read_rejection_keeps_imported_error_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late imported error alias cannot leak a native read denial or its notes."""
+    failure = ExactTreeError("native read denied")
+    BaseException.add_note(failure, "trusted reader note")
+
+    def fail_read(_path: Path, _label: str) -> bytes:
+        raise failure
+
+    read_compatible = cast(
+        "Callable[[Path, str], bytes]",
+        cast("object", vars(compatible_module)["_read_compatible_bytes"]),
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "read_exact_regular_file", fail_read)
+        patched.setattr(compatible_module, "ExactTreeError", LookupError)
+        with pytest.raises(CompatiblePlanError, match="read failed") as caught:
+            _ = read_compatible(tmp_path / "file", "source")
+    assert caught.value.__cause__ is failure
+    assert getattr(caught.value, "__notes__", []) == ["trusted reader note"]
+
+
+@pytest.mark.parametrize("phase", ["snapshot", "unchanged"])
+def test_compatible_snapshot_rejection_keeps_imported_error_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, phase: str
+) -> None:
+    """A late imported error alias cannot leak an exact snapshot denial."""
+    baseline = snapshot_tree(tmp_path)
+    failure = ExactTreeError("native snapshot denied")
+
+    def fail_snapshot(_root: Path) -> TreeSnapshot:
+        raise failure
+
+    snapshot_compatible = cast(
+        "Callable[[Path, str], TreeSnapshot]",
+        cast("object", vars(compatible_module)["_snapshot_compatible_tree"]),
+    )
+    require_unchanged = cast(
+        "Callable[[Path, TreeSnapshot, str], None]",
+        cast("object", vars(compatible_module)["_require_tree_unchanged"]),
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "snapshot_tree", fail_snapshot)
+        patched.setattr(compatible_module, "ExactTreeError", LookupError)
+        with pytest.raises(CompatiblePlanError, match="snapshot|tree changed") as caught:
+            if phase == "snapshot":
+                _ = snapshot_compatible(tmp_path, "candidate")
+            else:
+                require_unchanged(tmp_path, baseline, "candidate")
+    assert caught.value.__cause__ is failure
