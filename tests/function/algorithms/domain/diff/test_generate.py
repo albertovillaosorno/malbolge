@@ -36,6 +36,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 import hashlib
+import ntpath
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -841,6 +842,10 @@ def test_exact_mode_runs_domain_preflight_with_passthrough(
         ("src\\file",),
         ("C:/drive",),
         ("C:relative",),
+        ("CON",),
+        ("src/COM1/child.bin",),
+        ("src/stream:fork",),
+        ("src/trailing.",),
         ("src\x00file",),
         ("src\ud800file",),
         ("z", "a"),
@@ -863,6 +868,36 @@ def test_generator_rejects_unsafe_passthrough_roots_before_domain(
     with pytest.raises(ValueError, match=r"passthrough_roots.*canonical"):
         write_algorithm(recipe)
     _expect(not recipe.output_algorithm.exists(), "bad roots wrote output")
+
+
+@pytest.mark.parametrize(
+    "reserved_root", ["CON", "src/COM1/child.bin", "src/trailing."]
+)
+def test_generator_passthrough_policy_resists_host_checker_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_root: str,
+) -> None:
+    """A domain hook cannot redefine portable dynamic-root identities."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    recipe = replace(recipe, passthrough_roots=(reserved_root,))
+
+    def forged_isreserved(path: str) -> bool:
+        del path
+        return False
+
+    def unexpected_preflight(ignored_recipe: DiffRecipe) -> None:
+        del ignored_recipe
+        message = "reserved root reached domain preflight"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
+    monkeypatch.setattr(
+        generate_module, "_preflight_domain", unexpected_preflight
+    )
+    with pytest.raises(ValueError, match=r"passthrough_roots.*canonical"):
+        write_algorithm(recipe)
+    assert not recipe.output_algorithm.exists()
 
 
 def test_generator_rejects_foreign_recipe_fields_before_output(

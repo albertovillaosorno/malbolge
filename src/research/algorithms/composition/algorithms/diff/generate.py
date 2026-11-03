@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 import hashlib
 import math
+from ntpath import isreserved as _native_isreserved
 import os
 from pathlib import Path
 from pathlib import PurePosixPath
@@ -245,6 +246,7 @@ def _canonical_passthrough_root(root: str) -> bool:
     unsafe_shape = (
         candidate.is_absolute()
         or PureWindowsPath(root).drive
+        or _native_isreserved(root)
         or _PARENT in candidate.parts
         or candidate.as_posix() != root
     )
