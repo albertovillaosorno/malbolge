@@ -38,6 +38,7 @@ import builtins
 import hashlib
 import math
 import os
+import stat
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
@@ -111,6 +112,10 @@ _NATIVE_CONCRETE_GETATTRIBUTE = _NATIVE_PATH_TYPE.__getattribute__
 _NATIVE_CONCRETE_NEW = _NATIVE_PATH_TYPE.__new__
 _NATIVE_CONCRETE_INIT = _NATIVE_PATH_TYPE.__init__
 _NATIVE_OS_FSPATH = os.fspath
+_NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_READLINK = os.readlink
+_NATIVE_OS_GETCWD = os.getcwd
+_NATIVE_STAT_ISLNK = stat.S_ISLNK
 _NATIVE_REALPATH = os.path.realpath
 _MAX_SHARES = 255
 _NUL = "\x00"
@@ -387,6 +392,10 @@ def _require_native_host_realpath(name: str) -> None:
     # still delegates to these mutable conversion hooks before containment.
     if (
         os.fspath is not _NATIVE_OS_FSPATH
+        or os.lstat is not _NATIVE_OS_LSTAT
+        or os.readlink is not _NATIVE_OS_READLINK
+        or os.getcwd is not _NATIVE_OS_GETCWD
+        or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
         or Path.__fspath__ is not _NATIVE_PATH_FSPATH
         or Path.__str__ is not _NATIVE_PATH_STRING
         or Path.with_segments is not _NATIVE_PATH_WITH_SEGMENTS

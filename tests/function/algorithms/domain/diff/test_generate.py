@@ -39,6 +39,7 @@ import hashlib
 import math
 import ntpath
 import os
+import stat
 import subprocess
 import sys
 from dataclasses import replace
@@ -832,6 +833,91 @@ def test_generator_rejects_late_fspath_after_domain_preflight(
             write_algorithm(recipe)
     assert not emitted
     assert calls == 0, "late domain host conversion was consulted"
+
+
+@pytest.mark.parametrize("hook", ["readlink", "lstat", "islink"])
+@pytest.mark.parametrize("case", ["hidden-output", "false-denial"])
+def test_generator_rejects_late_symlink_resolution_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    case: str,
+) -> None:
+    """Realpath must not trust mutable symlink readers or mode selectors."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    alias = tmp_path / "source-alias"
+    try:
+        alias.symlink_to(recipe.source_root, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    recipe = replace(recipe, output_algorithm=alias / "generated.rs")
+    external = tmp_path / "unrelated-directory"
+    _ = external.mkdir()
+    native_readlink = os.readlink
+    native_lstat = os.lstat
+    calls = 0
+
+    def switched() -> None:
+        nonlocal calls
+        calls += 1
+        if case == "false-denial":
+            message = "mutable symlink resolver consulted"
+            raise AssertionError(message)
+
+    def forged_readlink(path: str | os.PathLike[str], *args: object, **kwargs: object) -> str:
+        if os.fspath(path) == str(alias):
+            switched()
+            return str(external)
+        return native_readlink(path, *args, **kwargs)
+
+    def forged_lstat(path: str | os.PathLike[str], *args: object, **kwargs: object) -> object:
+        if os.fspath(path) == str(alias):
+            switched()
+            return SimpleNamespace(st_mode=stat.S_IFREG)
+        return native_lstat(path, *args, **kwargs)
+
+    def forged_islink(mode: int) -> bool:
+        del mode
+        switched()
+        return False
+
+    with monkeypatch.context() as patched:
+        if hook == "readlink":
+            patched.setattr(os, "readlink", forged_readlink)
+        elif hook == "lstat":
+            patched.setattr(os, "lstat", forged_lstat)
+        else:
+            patched.setattr(stat, "S_ISLNK", forged_islink)
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0, "late symlink resolver was consulted"
+
+
+@pytest.mark.parametrize("case", ["hidden-output", "false-denial"])
+def test_generator_rejects_late_cwd_during_relative_path_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """Relative output resolution must not consume a late process cwd hook."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    recipe = replace(recipe, output_algorithm=Path("source/generated.rs"))
+    external = tmp_path / "unrelated-directory"
+    _ = external.mkdir()
+    calls = 0
+
+    def forged_getcwd() -> str:
+        nonlocal calls
+        calls += 1
+        if case == "false-denial":
+            message = "mutable cwd resolver consulted"
+            raise AssertionError(message)
+        return str(external)
+
+    with monkeypatch.context() as patched:
+        patched.chdir(tmp_path)
+        patched.setattr(os, "getcwd", forged_getcwd)
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0, "late host cwd callback was consulted"
 
 
 class _ForgedResolvedRecipePath(type(Path())):
