@@ -1395,6 +1395,123 @@ def test_compatible_containment_rejects_late_host_resolver_dependencies(
     assert calls == 0
 
 
+@pytest.mark.parametrize("force", [False, True])
+def test_compatible_resolver_ignores_late_any_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, force: bool
+) -> None:
+    """Late any() cannot suppress native hook checks or falsely deny paths."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(compatible_module)["_resolve_request_root"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted compatible path hook executed")
+
+    def forged_any(_items: object) -> bool:
+        return force
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "any", forged_any)
+        if not force:
+            patch.setattr(Path, "with_segments", forbidden)
+        try:
+            _ = resolve(candidate, "candidate")
+        except CompatiblePlanError as error:
+            rejected = "path resolution hooks changed" in str(error)
+    assert rejected is not force, "late any changed native resolution verdict"
+    assert calls == 0, "late compatible path factory was invoked"
+
+
+@pytest.mark.parametrize(
+    "hook", ["parents", "__eq__", "parent_contains", "parent_iter", "alias"]
+)
+def test_compatible_containment_rejects_late_parent_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Output containment cannot consult a substituted native parent hook."""
+    import pathlib
+    from pathlib import PurePath
+
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = candidate / "inside"
+    request = _request(candidate, plan, output)
+    guard = cast(
+        "Callable[[CompatibleMaterializeRequest], None]",
+        vars(compatible_module)["_require_output_outside_candidate"],
+    )
+    parent_type = type(candidate.parents)
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted compatible parent hook executed")
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        if hook == "parents":
+            patch.setattr(PurePath, "parents", property(forbidden))
+        elif hook == "__eq__":
+            patch.setattr(PurePath, "__eq__", forbidden)
+        elif hook == "parent_contains":
+            patch.setattr(parent_type, "__contains__", forbidden)
+        elif hook == "parent_iter":
+            patch.setattr(parent_type, "__iter__", forbidden)
+        else:
+            patch.setattr(pathlib, "_PathParents", forbidden)
+        try:
+            guard(request)
+        except CompatiblePlanError as error:
+            rejected = "path resolution hooks changed" in str(error)
+    assert rejected, "a forged parent hook avoided compatible containment"
+    assert calls == 0, "untrusted parent hook executed before rejection"
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("hook", ["parents", "membership"])
+def test_compatible_containment_rejects_silent_parent_omission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A forged empty ancestry cannot place the output under its candidate."""
+    from pathlib import PurePath
+
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = candidate / "nested"
+    request = _request(candidate, plan, output)
+    guard = cast(
+        "Callable[[CompatibleMaterializeRequest], None]",
+        vars(compatible_module)["_require_output_outside_candidate"],
+    )
+
+    def omit_parents(_path: PurePath) -> tuple[()]:
+        return ()
+
+    def omit_membership(_parents: object, _path: object) -> bool:
+        return False
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        if hook == "parents":
+            patch.setattr(PurePath, "parents", property(omit_parents))
+        else:
+            patch.setattr(type(candidate.parents), "__contains__", omit_membership)
+        try:
+            guard(request)
+        except CompatiblePlanError as error:
+            rejected = "path resolution hooks changed" in str(error)
+    assert rejected, "forged empty ancestry was admitted as a safe output"
+    assert not output.exists()
+
+
 @pytest.mark.parametrize("hook", ["with_segments", "__new__", "__init__"])
 def test_compatible_containment_rejects_late_path_factories(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str

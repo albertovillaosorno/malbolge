@@ -38,6 +38,7 @@ import builtins
 import hashlib
 import io
 import os
+import pathlib
 import shutil
 import stat
 import sys
@@ -100,6 +101,7 @@ _NATIVE_BOOL = builtins.bool
 _NATIVE_CALLABLE = builtins.callable
 _NATIVE_FROZENSET = builtins.frozenset
 _NATIVE_ISINSTANCE = builtins.isinstance
+_NATIVE_HASATTR = builtins.hasattr
 _NATIVE_LEN = builtins.len
 _NATIVE_LIST = builtins.list
 _NATIVE_SET = builtins.set
@@ -128,9 +130,30 @@ _NATIVE_OS_GETCWD = os.getcwd
 _NATIVE_STAT_ISLNK = stat.S_ISLNK
 # Capturing Path.resolve does not capture its dynamic host and class hooks.
 _RESOLVER_HOOK_NAMES = (
-    "with_segments", "__new__", "__init__", "__getattribute__",
-    "__fspath__", "__str__", "_str", "_raw_paths", "_parse_path",
+    "with_segments",
+    "__new__",
+    "__init__",
+    "__getattribute__",
+    "__fspath__",
+    "__str__",
+    "_str",
+    "_raw_paths",
+    "_parse_path",
     "_format_parsed_parts",
+    "parents",
+    "__eq__",
+    "_str_normcase",
+    "_str_normcase_cached",
+    "_from_parsed_parts",
+    "_from_parsed_string",
+    "_tail",
+    "_tail_cached",
+    "_raw_path",
+    "_drv",
+    "_root",
+    "drive",
+    "root",
+    "parser",
 )
 _NATIVE_RESOLVER_HOOKS = tuple(
     (
@@ -139,6 +162,33 @@ _NATIVE_RESOLVER_HOOKS = tuple(
     )
     for path_class in _NATIVE_PATH_TYPE.__mro__
     if issubclass(path_class, PurePath)
+)
+# Path.is_relative_to calls the mutable _PathParents membership sequence.
+_NATIVE_PATH_PARENTS_TYPE = _NATIVE_TYPE(Path().parents)
+_PARENT_SEQUENCE_HOOK_NAMES = (
+    "__new__",
+    "__init__",
+    "__getattribute__",
+    "__setattr__",
+    "__contains__",
+    "__iter__",
+    "__getitem__",
+    "__len__",
+    "_path",
+    "_drv",
+    "_root",
+    "_tail",
+)
+_NATIVE_PATH_PARENTS_HOOKS = tuple(
+    (
+        parent_class,
+        tuple(
+            (name, parent_class.__dict__.get(name))
+            for name in _PARENT_SEQUENCE_HOOK_NAMES
+        ),
+    )
+    for parent_class in _NATIVE_PATH_PARENTS_TYPE.__mro__
+    if parent_class is not object
 )
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
@@ -163,7 +213,15 @@ def _require_native_resolution() -> None:
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
         or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
-        or any(
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.hasattr is not _NATIVE_HASATTR
+        or pathlib.__dict__.get("_PathParents") is not _NATIVE_PATH_PARENTS_TYPE
+        or _NATIVE_ANY(
+            parent_class.__dict__.get(name) is not original
+            for parent_class, hooks in _NATIVE_PATH_PARENTS_HOOKS
+            for name, original in hooks
+        )
+        or _NATIVE_ANY(
             path_class.__dict__.get(name) is not original
             for path_class, hooks in _NATIVE_RESOLVER_HOOKS
             for name, original in hooks
@@ -736,7 +794,10 @@ def _require_output_outside_candidate(
 ) -> None:
     candidate = _resolve_request_root(request.candidate_root, "candidate")
     output = _resolve_request_root(request.output_root, "output")
-    if _NATIVE_IS_RELATIVE_TO(output, candidate):
+    _require_native_resolution()
+    contained = _NATIVE_IS_RELATIVE_TO(output, candidate)
+    _require_native_resolution()
+    if contained:
         message = "compatible output root must remain outside candidate tree"
         raise CompatiblePlanError(message)
 
