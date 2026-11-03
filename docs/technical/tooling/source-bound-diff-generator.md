@@ -237,6 +237,20 @@ errors. The check is not atomic against external writers or direct instance
 storage changes; repository-wide Jig doctor was degraded (graph absent), and
 a 110-second Jig check timed out during native validation.
 
+Exact regular-file reads now use import-captured `os.open`, `os.fstat`,
+`os.read`, and `os.close` rather than late process-global dispatch
+(`c9efabb77`). A red-first test showed a replaced `os.read` could
+substitute equally long bytes while inode and pathname metadata stayed
+unchanged; four other red-first cases covered every descriptor hook.
+Existing fault-injection tests now target internal test-only seams.
+All five regressions and 318 exact tests passed; 1,183 adjacent
+exact/generator/protection/binding/emission tests passed before commit,
+and 594 exact/generator tests passed after it. Scoped Ruff, source
+strict BasedPyright, and diff checks were clean; one inherited test
+typing diagnostic persists. Global Jig still fails unrelated text and
+version checks. These original function captures do not make filesystem
+snapshots atomic or protect against trusted direct module-state edits.
+
 The exact tree boundary independently rejects late changes to import-original
 `os.path.realpath` before source and output resolution (`97f5f2a30`). Three
 red-first source/output redirection and false-denial cases now fail closed;

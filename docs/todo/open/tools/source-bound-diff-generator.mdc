@@ -214,6 +214,15 @@ format.
   exact tests pass. Ruff, strict source typing, and diff checks are clean;
   one inherited test typing diagnostic persists. Descriptor-bound file reads
   remain intact; host/filesystem races remain outside the guarantee.
+- Exact descriptor reads now use captured original `os.open`, `os.fstat`,
+  `os.read`, and `os.close` (`c9efabb77`). A changed `os.read` previously
+  forged same-length source bytes without changing inode metadata. Five
+  red-first dispatcher/substitution cases now pass, along with 318
+  focused exact, 1,183 precommit adjacent, and 594 postcommit
+  exact/generator tests. Scoped Ruff, source strict typing, and diff
+  checks pass; one old test typing finding and repository-wide Jig
+  text/version failures remain. External filesystem races and trusted
+  direct state mutations remain outside this check.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused
