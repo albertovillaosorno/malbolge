@@ -802,6 +802,9 @@ class TreeAdmissionEvidence:
             AdmissionPolicyError: The native admission receipt is malformed.
 
         """
+        if _NATIVE_TYPE(self) is not TreeAdmissionEvidence:
+            message = "tree admission requires exact TreeAdmissionEvidence"
+            raise AdmissionPolicyError(message)
         # A raw native receipt can be allocated with an empty reasons slot.
         # Rerun the original decision validator before exposing acceptance.
         try:

@@ -127,6 +127,9 @@ class TransformAdmissionEvidence:
             True exactly when neither evidence family rejected the candidate.
 
         """
+        if _NATIVE_TYPE(self) is not TransformAdmissionEvidence:
+            message = "transform admission requires exact TransformAdmissionEvidence"
+            raise AdmissionError(message)
         # Public verdicts must also reject fabricated native instances that
         # never ran the constructor's conjunctive validation.
         try:

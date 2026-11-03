@@ -768,3 +768,24 @@ else:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("receiver_kind", ["subclass", "unbound"])
+def test_gate_admitted_rejects_foreign_verdict_receiver(receiver_kind: str) -> None:
+    """Only native conjunctive receipts may expose public admission decisions."""
+    native = combine_admission(_source_evidence("reference"), _behavior_evidence())
+
+    class ForeignGateEvidence(TransformAdmissionEvidence):
+        pass
+
+    foreign = object.__new__(ForeignGateEvidence)
+    for field in TransformAdmissionEvidence.__slots__:
+        slot = cast("MemberDescriptorType", TransformAdmissionEvidence.__dict__[field])
+        slot.__set__(foreign, slot.__get__(native, TransformAdmissionEvidence))
+    with pytest.raises(AdmissionError, match="exact TransformAdmissionEvidence"):
+        if receiver_kind == "subclass":
+            _ = foreign.admitted
+        else:
+            getter = cast("property", TransformAdmissionEvidence.__dict__["admitted"]).fget
+            assert getter is not None
+            _ = getter(object())

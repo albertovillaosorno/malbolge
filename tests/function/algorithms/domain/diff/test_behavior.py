@@ -1586,3 +1586,24 @@ else:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("receiver_kind", ["subclass", "unbound"])
+def test_behavior_admitted_rejects_foreign_verdict_receiver(receiver_kind: str) -> None:
+    """Only native behavior receipts may expose public admission decisions."""
+    native = require_behavior(_profile(), _observations(), _MINIMUM_BEHAVIOR_SIMILARITY)
+
+    class ForeignBehaviorEvidence(BehaviorEvidence):
+        pass
+
+    foreign = object.__new__(ForeignBehaviorEvidence)
+    for field in BehaviorEvidence.__slots__:
+        slot = cast("MemberDescriptorType", BehaviorEvidence.__dict__[field])
+        slot.__set__(foreign, slot.__get__(native, BehaviorEvidence))
+    with pytest.raises(BehaviorPolicyError, match="exact BehaviorEvidence"):
+        if receiver_kind == "subclass":
+            _ = foreign.admitted
+        else:
+            getter = cast("property", BehaviorEvidence.__dict__["admitted"]).fget
+            assert getter is not None
+            _ = getter(object())

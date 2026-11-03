@@ -1774,7 +1774,7 @@ def test_admission_rejects_late_aggregate_getter_spoof(
 
     with monkeypatch.context() as patch:
         for name in _AGGREGATE_FIELDS:
-            original_slot = aggregate_type.__dict__[name]
+            original_slot = cast("MemberDescriptorType", aggregate_type.__dict__[name])
             forged = 1.0 if name in {"source_similarity", "anchor_average"} else 999
 
             def getter(_self: object, value: object = forged) -> object:
@@ -1783,7 +1783,9 @@ def test_admission_rejects_late_aggregate_getter_spoof(
                 return value
 
             def setter(
-                self: object, value: object, slot: object = original_slot
+                self: object,
+                value: object,
+                slot: MemberDescriptorType = original_slot,
             ) -> None:
                 slot.__set__(self, value)
 
@@ -2141,3 +2143,25 @@ def test_tree_admitted_revalidates_fabricated_native_receipt(
     )
     with pytest.raises(AdmissionPolicyError, match=r"(metadata|reasons)"):
         _ = fabricated.admitted
+
+
+@pytest.mark.parametrize("receiver_kind", ["subclass", "unbound"])
+def test_tree_admitted_rejects_foreign_verdict_receiver(receiver_kind: str) -> None:
+    """Only native source receipts may expose public admission decisions."""
+    reference = identity_tree(_reference_files())
+    native = evaluate_admission(reference, reference, _policy())
+
+    class ForeignTreeEvidence(TreeAdmissionEvidence):
+        pass
+
+    foreign = object.__new__(ForeignTreeEvidence)
+    for field in TreeAdmissionEvidence.__slots__:
+        slot = cast("MemberDescriptorType", TreeAdmissionEvidence.__dict__[field])
+        slot.__set__(foreign, slot.__get__(native, TreeAdmissionEvidence))
+    with pytest.raises(AdmissionPolicyError, match="exact TreeAdmissionEvidence"):
+        if receiver_kind == "subclass":
+            _ = foreign.admitted
+        else:
+            getter = cast("property", TreeAdmissionEvidence.__dict__["admitted"]).fget
+            assert getter is not None
+            _ = getter(object())

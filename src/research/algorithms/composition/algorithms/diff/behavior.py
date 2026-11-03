@@ -813,6 +813,9 @@ class BehaviorEvidence:
             True exactly when no deterministic rejection reason exists.
 
         """
+        if _NATIVE_TYPE(self) is not BehaviorEvidence:
+            message = "behavior evidence requires exact BehaviorEvidence"
+            raise BehaviorPolicyError(message)
         # Exact native receipts can be allocated without this constructor.
         # Re-check the original binding before exposing a public verdict.
         try:
