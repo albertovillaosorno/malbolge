@@ -38,27 +38,28 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
 import sys
+from dataclasses import asdict, dataclass
 from typing import Final
 
-from optimizer.crazy_target import CrazyTargetProblem
-from optimizer.crazy_target import PreparedCrazyTargetSelection
-from optimizer.crazy_target import build_crazy_target_batch
-from optimizer.crazy_target import crazy_target_projected_evaluation_id
-from optimizer.crazy_target import crazy_target_selection_preparer_id
-from optimizer.crazy_target import prepare_crazy_target_selection
+from optimizer.crazy_target import (
+    CrazyTargetProblem,
+    PreparedCrazyTargetSelection,
+    build_crazy_target_batch,
+    crazy_target_projected_evaluation_id,
+    crazy_target_selection_preparer_id,
+    prepare_crazy_target_selection,
+)
 
-from benchmarks.accelerator.crazy_search_workload import ACCUMULATOR
-from benchmarks.accelerator.crazy_search_workload import CORPUS_SIZE
-from benchmarks.accelerator.crazy_search_workload import PREIMAGE_COUNT
 from benchmarks.accelerator.crazy_search_workload import (
-    WORKLOAD_ID as CRAZY_SEARCH_WORKLOAD_ID,
+    ACCUMULATOR,
+    CORPUS_SIZE,
+    PREIMAGE_COUNT,
+    full_domain_crazy_target_workload,
 )
 from benchmarks.accelerator.crazy_search_workload import (
-    full_domain_crazy_target_workload,
+    WORKLOAD_ID as CRAZY_SEARCH_WORKLOAD_ID,
 )
 
 BENCHMARK_ID: Final = "cuda-crazy-lookup-address-fanout-v1"
@@ -69,6 +70,7 @@ LOOKUP_CHUNKS: Final = ("low", "middle")
 LOOKUP_DIVISORS: Final = (1, CRAZY_CHUNK_VALUES)
 ORDINARY_ROUTE: Final = "ordinary-full-domain"
 PREPARED_ROUTE: Final = "prepared-exact-projection"
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 INTERPRETATION: Final = (
     "unique constant-table addresses requested by active lanes in execution "
     "order; this is serialization-pressure evidence, not cache hit/miss data"
@@ -123,6 +125,44 @@ def crazy_lookup_address_fanout() -> tuple[CrazyLookupFanoutRow, ...]:
     return tuple(rows)
 
 
+class CrazyLookupFanoutReportError(ValueError):
+    """Deterministic CUDA lookup-address evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Compare public JSON with source-bound native encoding before output."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"crazy lookup fanout JSON writer failed: {type(error).__name__}"
+        raise CrazyLookupFanoutReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "crazy lookup fanout JSON writer differs from source"
+        raise CrazyLookupFanoutReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require exact native stdout write receipt and a successful flush."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"crazy lookup fanout stdout write failed: {type(error).__name__}"
+        raise CrazyLookupFanoutReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "crazy lookup fanout stdout write incomplete"
+        raise CrazyLookupFanoutReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"crazy lookup fanout stdout flush failed: {type(error).__name__}"
+        raise CrazyLookupFanoutReportError(message) from error
+    if flushed is not None:
+        message = "crazy lookup fanout stdout flush incomplete"
+        raise CrazyLookupFanoutReportError(message)
+
+
 def main() -> int:
     """Emit deterministic address-fanout evidence as JSON.
 
@@ -141,7 +181,7 @@ def main() -> int:
         "warp_size": WARP_SIZE,
         "workload_id": WORKLOAD_ID,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
@@ -195,11 +235,13 @@ def _fanout_row(
 
 def _warp_unique_addresses(data: tuple[int, ...], divisor: int) -> int:
     accumulator_chunk = (ACCUMULATOR // divisor) % CRAZY_CHUNK_VALUES
-    return len({
-        (((value // divisor) % CRAZY_CHUNK_VALUES) * CRAZY_CHUNK_VALUES)
-        + accumulator_chunk
-        for value in data
-    })
+    return len(
+        {
+            (((value // divisor) % CRAZY_CHUNK_VALUES) * CRAZY_CHUNK_VALUES)
+            + accumulator_chunk
+            for value in data
+        }
+    )
 
 
 if __name__ == "__main__":

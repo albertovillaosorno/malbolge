@@ -161,6 +161,12 @@ model, not a hardware cache hit/miss measurement, and the current candidate
 search kernel remains tritwise. Retained structural evidence is under
 `benchmarks/accelerator/evidence/2026-09-04-crazy-lookup-address-fanout/`.
 
+The deterministic report compares public JSON against the import-bound native
+encoder before publication, protecting raw per-warp fanout counts and route
+identity from substituted serializers. Exact native stdout write and complete
+flush receipts are required to report success. These structural checks do not
+claim GPU timing or hardware cache measurements.
+
 Run with:
 
 ```powershell
