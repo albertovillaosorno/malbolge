@@ -374,6 +374,30 @@ def test_protected_path_admission_ignores_late_any_hook(
     assert rejected, "a late any hook admitted an unsafe output path"
 
 
+def test_protected_roots_reject_overlap_under_late_enumerate_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late iterator alias cannot skip protected root overlap checks."""
+
+    def suppress_indices(_items: object) -> tuple[()]:
+        return ()
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "enumerate", suppress_indices)
+        try:
+            _ = ProtectedMetadata(
+                source=TreeSnapshot(files=()),
+                target=TreeSnapshot(files=()),
+                instructions=(),
+                passthrough_roots=("data", "data/archive"),
+            )
+        except ProtectedPlanError:
+            rejected = True
+    message = "late enumerate hook admitted overlapping passthrough roots"
+    assert rejected, message
+
+
 def test_protected_roots_ignore_late_sorted_set_hooks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

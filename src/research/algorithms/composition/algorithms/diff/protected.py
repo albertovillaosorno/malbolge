@@ -98,6 +98,7 @@ _NATIVE_SET = builtins.set
 _NATIVE_TYPE = builtins.type
 _NATIVE_LEN = builtins.len
 _NATIVE_TUPLE = builtins.tuple
+_NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_BOOL = builtins.bool
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_BYTEARRAY = builtins.bytearray
@@ -151,7 +152,7 @@ def _require_utf8_roots(roots: tuple[str, ...]) -> None:
     if roots != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(roots))):
         message = "protected passthrough roots must be unique and sorted"
         raise ProtectedPlanError(message)
-    for index, root in enumerate(roots):
+    for index, root in _NATIVE_ENUMERATE(roots):
         prefix = root + "/"
         if _NATIVE_ANY(
             other.startswith(prefix) for other in roots[index + 1 :]
