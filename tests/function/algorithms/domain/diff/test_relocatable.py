@@ -1095,6 +1095,130 @@ def test_relocatable_path_rejects_post_import_resolver_spoof(
     assert calls == 0
 
 
+def test_relocatable_output_rejects_late_host_realpath_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late host resolver cannot make a source-contained output look safe."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "generated"
+    realpath = os.path.realpath
+    calls = 0
+
+    def forged_realpath(
+        path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> str:
+        nonlocal calls
+        calls += 1
+        if os.fspath(path) == str(output):
+            return str(tmp_path / "outside")
+        return cast("str", realpath(path, *args, **kwargs))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(RelocationError, match="resolution.*failed|hooks changed"):
+            materialize_relocatable_plan(
+                candidate, relocatable_module.RelocatableAuthoringPlan(()), output
+            )
+    assert calls == 0
+    assert not output.exists()
+    assert not (candidate / ".generated.relocatable-staging").exists()
+
+
+def test_relocatable_output_rejects_host_resolver_mutation_during_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host resolver changed mid-preflight cannot authorize an output."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "generated"
+    native_resolve = cast(
+        "Callable[[Path], Path]", vars(relocatable_module)["_NATIVE_RESOLVE"]
+    )
+    native_realpath = os.path.realpath
+    calls = 0
+
+    def forged_realpath(
+        path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> str:
+        if os.fspath(path) == str(output):
+            return str(tmp_path / "outside")
+        return cast("str", native_realpath(path, *args, **kwargs))
+
+    with monkeypatch.context() as patched:
+
+        def change_after_first_resolve(path: Path) -> Path:
+            nonlocal calls
+            result = native_resolve(path)
+            if calls == 0:
+                calls += 1
+                patched.setattr(os.path, "realpath", forged_realpath)
+            return result
+
+        patched.setattr(
+            relocatable_module, "_NATIVE_RESOLVE", change_after_first_resolve
+        )
+        with pytest.raises(RelocationError, match="resolution.*failed|hooks changed"):
+            materialize_relocatable_plan(
+                candidate, relocatable_module.RelocatableAuthoringPlan(()), output
+            )
+    assert calls == 1
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("dependency", ["lstat", "readlink", "getcwd", "islink", "fspath"])
+def test_relocatable_output_rejects_late_host_resolution_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """The original resolver must not delegate through mutated host hooks."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = tmp_path / "output"
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted host path dependency invoked")
+
+    with monkeypatch.context() as patched:
+        if dependency == "islink":
+            patched.setattr(relocatable_module.stat, "S_ISLNK", forbidden)
+        else:
+            patched.setattr(os, dependency, forbidden)
+        with pytest.raises(RelocationError, match="resolution.*failed|hooks changed"):
+            materialize_relocatable_plan(
+                candidate, relocatable_module.RelocatableAuthoringPlan(()), output
+            )
+    assert calls == 0
+    assert not output.exists()
+
+
+@pytest.mark.parametrize("hook", ["with_segments", "__new__", "__init__"])
+def test_relocatable_output_rejects_late_path_factories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Native Path.resolve still invokes mutable pathlib constructors."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = tmp_path / "output"
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted pathlib constructor invoked")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, hook, forbidden)
+        with pytest.raises(RelocationError, match="resolution.*failed|hooks changed"):
+            materialize_relocatable_plan(
+                candidate, relocatable_module.RelocatableAuthoringPlan(()), output
+            )
+    assert calls == 0
+    assert not output.exists()
+
+
 def test_relocatable_path_rejects_post_import_containment_spoof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -3117,7 +3241,7 @@ def test_relocation_materialize_revalidates_raw_native_plan_before_staging(
 
 
 def _raw_exact_clone(
-    original: object,
+    original: ExactAuthoringPlan | ExactInstruction | SourceSlice,
     updates: dict[str, object],
     *,
     missing: tuple[str, ...] = (),

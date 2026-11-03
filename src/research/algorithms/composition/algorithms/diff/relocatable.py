@@ -46,10 +46,11 @@ import hashlib
 import io
 import os
 import shutil
+import stat
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from stat import S_ISDIR, S_ISLNK
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
@@ -96,6 +97,36 @@ _NATIVE_IS_RELATIVE_TO = _NATIVE_PATH_TYPE.is_relative_to
 _NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_REALPATH = os.path.realpath
+_NATIVE_OS_FSPATH = os.fspath
+_NATIVE_OS_READLINK = os.readlink
+_NATIVE_OS_GETCWD = os.getcwd
+_NATIVE_STAT_ISLNK = stat.S_ISLNK
+# Path.resolve retains mutable host conversion, symlink, and Path factory
+# dependencies even when the resolver method itself is captured at import.
+_PATH_RESOLUTION_HOOK_NAMES = (
+    "with_segments",
+    "__new__",
+    "__init__",
+    "__getattribute__",
+    "__fspath__",
+    "__str__",
+    "_str",
+    "_raw_paths",
+    "_parse_path",
+    "_format_parsed_parts",
+)
+_NATIVE_PATH_RESOLUTION_HOOKS = tuple(
+    (
+        path_class,
+        tuple(
+            (name, path_class.__dict__.get(name))
+            for name in _PATH_RESOLUTION_HOOK_NAMES
+        ),
+    )
+    for path_class in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(path_class, PurePath)
+)
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
@@ -123,6 +154,33 @@ _EXACT_PLAN_VALIDATOR = cast(
     "Callable[[ExactAuthoringPlan], None]",
     ExactAuthoringPlan.__dict__["__post_init__"],
 )
+
+
+def _require_native_host_resolution() -> None:
+    """Refuse late host or pathlib hooks before path trust decisions."""
+    if (
+        os.path.realpath is not _NATIVE_OS_REALPATH
+        or os.fspath is not _NATIVE_OS_FSPATH
+        or os.lstat is not _NATIVE_OS_LSTAT
+        or os.readlink is not _NATIVE_OS_READLINK
+        or os.getcwd is not _NATIVE_OS_GETCWD
+        or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or any(
+            path_class.__dict__.get(name) is not original
+            for path_class, hooks in _NATIVE_PATH_RESOLUTION_HOOKS
+            for name, original in hooks
+        )
+    ):
+        message = "relocatable path resolution hooks changed"
+        raise RelocationError(message)
+
+
+def _trusted_resolve(path: Path) -> Path:
+    """Check original resolver dependencies on both sides of resolution."""
+    _require_native_host_resolution()
+    result = _NATIVE_RESOLVE(path)
+    _require_native_host_resolution()
+    return result
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -893,6 +951,7 @@ def _validate_path(value: object, context: str) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{context} must use exact pathlib Path"
         raise RelocationError(message)
+    _require_native_host_resolution()
     text = _NATIVE_PATH_STRING(value)
     if _NUL in text:
         message = f"{context} is not a representable filesystem path"
@@ -1015,10 +1074,11 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
 
 def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
+    _require_native_host_resolution()
     path = root.joinpath(*normalized.split("/"))
     try:
-        resolved_path = _NATIVE_RESOLVE(path)
-        resolved_root = _NATIVE_RESOLVE(root)
+        resolved_path = _trusted_resolve(path)
+        resolved_root = _trusted_resolve(root)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = (
@@ -1177,8 +1237,8 @@ def _require_external_output_root(
 
     """
     try:
-        candidate = _NATIVE_RESOLVE(candidate_root)
-        output = _NATIVE_RESOLVE(output_root)
+        candidate = _trusted_resolve(candidate_root)
+        output = _trusted_resolve(output_root)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"relocatable root resolution failed: {detail}"
