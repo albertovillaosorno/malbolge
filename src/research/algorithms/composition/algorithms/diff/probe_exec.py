@@ -88,6 +88,7 @@ _NATIVE_HOST_ISLINK = stat.S_ISLNK
 _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
+_NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_OS_FSPATH = os.fspath
 # Freeze the host filesystem codec before any consumer module can mutate os.
 _FILESYSTEM_ENCODING = _get_filesystem_encoding()
@@ -841,6 +842,9 @@ def _require_native_host_resolver() -> None:
     ):
         message = "probe native path hooks changed"
         raise ProbeExecutionError(message)
+    if Path.joinpath is not _NATIVE_PATH_JOINPATH:
+        message = "probe native path hooks changed"
+        raise ProbeExecutionError(message)
     if (
         os.path.realpath is not _NATIVE_HOST_REALPATH
         or os.lstat is not _NATIVE_HOST_LSTAT
@@ -897,7 +901,8 @@ def _rooted_path(
         "tuple[ProbeRoot, str]", _probe_path_fields(argument, _NATIVE_TYPE(argument))
     )
     root = _root_path(root_kind, context, scratch_root)
-    candidate = root.joinpath(*relative_path.split("/"))
+    _require_native_host_resolver()
+    candidate = _NATIVE_PATH_JOINPATH(root, *relative_path.split("/"))
     _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(candidate)

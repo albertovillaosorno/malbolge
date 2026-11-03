@@ -3295,6 +3295,58 @@ def test_probe_rejects_host_dependency_mutation_during_resolution(
     assert os.readlink is native_readlink
 
 
+@pytest.mark.parametrize(
+    "case",
+    [(root, executable) for root in ProbeRoot for executable in (False, True)],
+)
+def test_probe_rooted_path_rejects_late_joinpath_redirection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[ProbeRoot, bool],
+) -> None:
+    """A later joinpath hook cannot redirect an admitted structured path."""
+    root, executable = case
+    source = tmp_path / "source"
+    source.mkdir()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    context = _context(source, repository)
+    selected = {
+        ProbeRoot.SOURCE: source,
+        ProbeRoot.REPOSITORY: repository,
+        ProbeRoot.SCRATCH: scratch,
+    }[root]
+    _ = (selected / "requested.txt").write_bytes(b"approved")
+    _ = (selected / "other.txt").write_bytes(b"other")
+    native_joinpath = Path.joinpath
+    calls = 0
+
+    def forged_joinpath(path: Path, *parts: str) -> Path:
+        nonlocal calls
+        if path == selected and parts == ("requested.txt",):
+            calls += 1
+            return native_joinpath(path, "other.txt")
+        return native_joinpath(path, *parts)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "joinpath", forged_joinpath)
+        with pytest.raises(
+            ProbeExecutionError, match="native path hooks changed"
+        ):
+            _ = cast(
+                "Callable[..., Path]", vars(probe_exec_module)["_rooted_path"]
+            )(
+                RootedExecutable(root, "requested.txt")
+                if executable
+                else PathArgument(root, "requested.txt"),
+                context,
+                scratch,
+            )
+    assert calls == 0, "late joinpath hook was consulted"
+
+
 @pytest.mark.parametrize("hook", ["getattribute", "cached-descriptor"])
 def test_probe_context_rejects_late_path_cache_spoof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
