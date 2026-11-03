@@ -43,6 +43,7 @@ from types import MemberDescriptorType
 from typing import cast
 
 import pytest
+from algorithms.diff import fingerprints as fingerprints_module
 from algorithms.diff.fingerprints import (
     AnchorCoverage,
     AnchorPolicy,
@@ -1016,3 +1017,70 @@ assert replay() == baseline
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param(b"short source", id="short"),
+        pytest.param(b"source content " * 128, id="long"),
+    ],
+)
+def test_fingerprint_policy_survives_late_imported_class_alias(
+    monkeypatch: pytest.MonkeyPatch, content: bytes
+) -> None:
+    """Native source fingerprints cannot be denied by a changed class alias."""
+    policy = AnchorPolicy(16, 8)
+    expected = stable_anchors(content, policy)
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprints_module, "AnchorPolicy", dict)
+        observed = stable_anchors(content, policy)
+    assert observed == expected
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        pytest.param(b"short source", id="short"),
+        pytest.param(b"source content " * 128, id="long"),
+    ],
+)
+def test_fingerprint_selection_survives_late_anchor_class_alias(
+    monkeypatch: pytest.MonkeyPatch, content: bytes
+) -> None:
+    """Source digests continue using native allocated anchor receipts."""
+    expected = stable_anchors(content)
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprints_module, "StableAnchor", dict)
+        observed = stable_anchors(content)
+    assert observed == expected
+
+
+@pytest.mark.parametrize("alias", ["StableAnchor", "AnchorCoverage"])
+def test_fingerprint_coverage_survives_late_record_class_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Native anchor evidence keeps its type and matching score."""
+    source = (StableAnchor(b"a" * 32, 0), StableAnchor(b"b" * 32, 8))
+    candidate = (StableAnchor(b"a" * 32, 9),)
+    expected = anchor_coverage(source, candidate)
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprints_module, alias, dict)
+        observed = anchor_coverage(source, candidate)
+    assert type(observed) is AnchorCoverage
+    assert observed == expected
+
+
+@pytest.mark.parametrize("alias", ["AnchorPolicy", "StableAnchor"])
+def test_fingerprint_rejects_foreign_record_after_late_class_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A foreign mapping cannot reach the original native record validator."""
+    foreign = cast("object", {})
+    with monkeypatch.context() as patch:
+        patch.setattr(fingerprints_module, alias, dict)
+        with pytest.raises(FingerprintPolicyError, match="exact|foreign"):
+            if alias == "AnchorPolicy":
+                _ = stable_anchors(b"source", cast("AnchorPolicy", foreign))
+            else:
+                _ = anchor_coverage((cast("StableAnchor", foreign),), ())

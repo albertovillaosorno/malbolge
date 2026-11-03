@@ -262,6 +262,10 @@ _COVERAGE_INIT = cast(
     "Callable[[AnchorCoverage, int, int, float], None]",
     AnchorCoverage.__dict__["__init__"],
 )
+# Native class identities remain authoritative after consumer module alias edits.
+_NATIVE_ANCHOR_POLICY = AnchorPolicy
+_NATIVE_STABLE_ANCHOR = StableAnchor
+_NATIVE_ANCHOR_COVERAGE = AnchorCoverage
 
 
 def _coverage_fields(coverage: AnchorCoverage) -> tuple[int, int, float]:
@@ -274,14 +278,14 @@ def _coverage_fields(coverage: AnchorCoverage) -> tuple[int, int, float]:
 
 def _new_anchor(digest: bytes, offset: int) -> StableAnchor:
     """Construct internal evidence without late class allocation/init hooks."""
-    anchor = _NATIVE_OBJECT_NEW(StableAnchor)
+    anchor = _NATIVE_OBJECT_NEW(_NATIVE_STABLE_ANCHOR)
     _ANCHOR_INIT(anchor, digest, offset)
     return anchor
 
 
 def _new_coverage(matched: int, total: int, ratio: float) -> AnchorCoverage:
     """Keep computed lineage coverage independent of late class constructors."""
-    coverage = _NATIVE_OBJECT_NEW(AnchorCoverage)
+    coverage = _NATIVE_OBJECT_NEW(_NATIVE_ANCHOR_COVERAGE)
     _COVERAGE_INIT(coverage, matched, total, ratio)
     return coverage
 
@@ -377,7 +381,7 @@ def stable_anchors(
     if _NATIVE_TYPE(data) is not _NATIVE_BYTES:
         message = "stable anchor input must use exact bytes"
         raise FingerprintPolicyError(message)
-    if _NATIVE_TYPE(policy) is not AnchorPolicy:
+    if _NATIVE_TYPE(policy) is not _NATIVE_ANCHOR_POLICY:
         message = "stable anchor policy must use the exact AnchorPolicy type"
         raise FingerprintPolicyError(message)
     # Exact native type alone does not prove that callers ran __init__.
@@ -423,7 +427,7 @@ def anchor_coverage(
         message = "anchor coverage inputs must use exact immutable tuples"
         raise FingerprintPolicyError(message)
     for anchor in (*reference, *candidate):
-        if _NATIVE_TYPE(anchor) is not StableAnchor:
+        if _NATIVE_TYPE(anchor) is not _NATIVE_STABLE_ANCHOR:
             message = "anchor coverage inputs contain a foreign anchor record"
             raise FingerprintPolicyError(message)
         # A fabricated exact StableAnchor can carry invalid native slots even
