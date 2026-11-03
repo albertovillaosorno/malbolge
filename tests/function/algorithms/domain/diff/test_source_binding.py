@@ -38,6 +38,7 @@ import hmac
 import itertools
 import math
 import ntpath
+import os
 from dataclasses import replace
 from pathlib import PurePosixPath, PureWindowsPath
 from types import SimpleNamespace
@@ -59,7 +60,7 @@ from algorithms.diff.source_binding import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sized
+    from collections.abc import Callable, Iterable, Sized
 
     from algorithms.diff.source_binding import BoundShare, ThresholdBinding
 
@@ -994,7 +995,10 @@ def test_recovery_rejects_windows_drive_prefixed_share_paths() -> None:
 
 @pytest.mark.parametrize(
     "reserved_path",
-    ["NUL", "src/CON.txt", "src/COM1", "src/name:stream", "src/end.", "src/end "],
+    [
+        "NUL", "src/CON.txt", "src/COM1", "src/name:stream",
+        "src/end.", "src/end ", "src/LPT².txt", "src/CONOUT$",
+    ],
 )
 def test_recovery_rejects_windows_reserved_share_paths(
     reserved_path: str,
@@ -1044,6 +1048,88 @@ def test_recovery_reserved_share_paths_resist_host_hook_swap(
         _ = validate_threshold_binding(malformed)
     with pytest.raises(SourceBindingError, match="reserved"):
         _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
+def _forge_ntpath_any(patched: pytest.MonkeyPatch, invalid: str) -> None:
+    del invalid
+    native_any = builtins.any
+
+    def forged_any(values: Iterable[object]) -> bool:
+        frame = getattr(values, "gi_frame", None)
+        globals_map = getattr(frame, "f_globals", {})
+        if globals_map.get("__name__") == "ntpath":
+            return False
+        return native_any(values)
+
+    patched.setattr(builtins, "any", forged_any)
+
+
+def _forge_ntpath_reversed(patched: pytest.MonkeyPatch, invalid: str) -> None:
+    native_reversed = builtins.reversed
+
+    def forged_reversed(values: list[str]) -> object:
+        if values == [invalid]:
+            return ()
+        return native_reversed(values)
+
+    patched.setattr(builtins, "reversed", forged_reversed)
+
+
+def _forge_ntpath_splitroot(patched: pytest.MonkeyPatch, invalid: str) -> None:
+    native_splitroot = ntpath.splitroot
+
+    def forged_splitroot(path: str) -> tuple[str, str, str]:
+        if path == invalid:
+            return "", "", "safe.c"
+        return native_splitroot(path)
+
+    patched.setattr(ntpath, "splitroot", forged_splitroot)
+
+
+def _forge_ntpath_fspath(patched: pytest.MonkeyPatch, invalid: str) -> None:
+    native_fspath = os.fspath
+
+    def forged_fspath(path: os.PathLike[str] | str) -> str:
+        if path == invalid:
+            return "safe.c"
+        return native_fspath(path)
+
+    patched.setattr(os, "fspath", forged_fspath)
+
+
+@pytest.mark.parametrize(
+    ("forge", "invalid"),
+    [
+        (_forge_ntpath_any, "NUL"),
+        (_forge_ntpath_reversed, "NUL"),
+        (_forge_ntpath_splitroot, "src/COM1/child.txt"),
+        (_forge_ntpath_fspath, "C:/escape.c"),
+    ],
+)
+def test_binding_share_path_rejects_late_ntpath_dependency_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    forge: Callable[[pytest.MonkeyPatch, str], None],
+    invalid: str,
+) -> None:
+    """An imported ntpath function cannot trust its mutable dependencies."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    malformed = replace(
+        binding,
+        shares=(
+            replace(binding.shares[0], source_path=invalid),
+            *binding.shares[1:],
+        ),
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        forge(patched, invalid)
+        try:
+            _ = validate_threshold_binding(malformed)
+        except SourceBindingError:
+            rejected = True
+    assert rejected, f"late host hook admitted unsafe share path {invalid!r}"
 
 
 def _forge_binding_path_method(

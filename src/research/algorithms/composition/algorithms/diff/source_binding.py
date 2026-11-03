@@ -47,11 +47,9 @@ from __future__ import annotations
 
 import builtins
 import math
-import ntpath
 from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256 as _native_sha256
-from ntpath import splitdrive as _native_splitdrive
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import IdentityTree
@@ -75,8 +73,18 @@ _ZERO = 0
 _BACKSLASH = "\\"
 _UNSAFE_PATH_COMPONENTS = frozenset(("", ".", ".."))
 _NUL = "\x00"
-# Domain hooks must not redefine the Windows reserved-name verdict.
-_NATIVE_IS_RESERVED = ntpath.isreserved
+# Portable Windows name checks must not call ntpath.isreserved/splitdrive:
+# those helpers reconsult mutable os.fspath, splitroot, and builtins.
+_WINDOWS_DRIVE_SEPARATOR = ":"
+_WINDOWS_RESERVED_CHARACTERS = frozenset(
+    chr(value) for value in range(32)
+) | frozenset("*?<>/\\:|") | frozenset((chr(34),))
+_WINDOWS_RESERVED_DEVICES = frozenset(
+    ("CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$")
+) | frozenset(
+    f"{prefix}{digit}" for prefix in ("COM", "LPT")
+    for digit in "123456789¹²³"
+)
 # Preserve threshold and selection semantics across domain callback hooks.
 _NATIVE_MAX = builtins.max
 _NATIVE_SORTED = builtins.sorted
@@ -538,6 +546,30 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
     return _NATIVE_BYTES(a ^ b for a, b in pairs)
 
 
+def _has_windows_drive(value: str) -> bool:
+    # Backslash/UNC forms also fail canonical relative-path checks.
+    return (
+        value[1:2] == _WINDOWS_DRIVE_SEPARATOR
+        or value.startswith(("//", "\\\\"))
+    )
+
+
+def _is_windows_reserved_component(component: str) -> bool:
+    device = component.partition(".")[0].rstrip(" ").upper()
+    return (
+        (component[-1:] in {".", " "} and component not in {".", ".."})
+        or bool(_WINDOWS_RESERVED_CHARACTERS.intersection(component))
+        or device in _WINDOWS_RESERVED_DEVICES
+    )
+
+
+def _is_windows_reserved(value: str) -> bool:
+    return _NATIVE_ANY(
+        _is_windows_reserved_component(component)
+        for component in value.split("/")
+    )
+
+
 def _validate_bind_identity(reference: object, policy: object) -> None:
     if _NATIVE_TYPE(reference) is not IdentityTree:
         message = "source-binding reference must use the exact IdentityTree type"
@@ -545,7 +577,7 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
     if _NATIVE_TYPE(policy) is not SourceBindingPolicy:
         message = "source-binding policy must use the exact SourceBindingPolicy type"
         raise SourceBindingPolicyError(message)
-    drives = (_native_splitdrive(item.path)[0] for item in reference.files)
+    drives = (_has_windows_drive(item.path) for item in reference.files)
     if _NATIVE_ANY(drives):
         message = "source-binding reference path cannot have a Windows drive"
         raise SourceBindingPolicyError(message)
@@ -642,7 +674,7 @@ def bind_secret(
 
 
 def _require_no_windows_drive(value: str) -> None:
-    if _native_splitdrive(value)[0]:
+    if _has_windows_drive(value):
         message = "source-binding share path cannot have a Windows drive"
         raise SourceBindingError(message)
 
@@ -660,7 +692,7 @@ def _validate_share_path(value: object) -> None:
         message = "source-binding share path must be UTF-8 encodable"
         raise SourceBindingError(message) from error
     _require_no_windows_drive(value)
-    if _NATIVE_IS_RESERVED(value):
+    if _is_windows_reserved(value):
         message = "source-binding share path uses a Windows reserved name"
         raise SourceBindingError(message)
     # Lexical admission cannot trust late mutations of pathlib class methods.
