@@ -36,6 +36,8 @@ import builtins
 import hashlib
 import math
 import ntpath
+import os
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from pathlib import PurePosixPath
 from typing import cast
@@ -319,7 +321,7 @@ def test_identity_tree_rejects_late_any_spoof(
         path: str = "source.c"
         canonical: bytes = b"source"
 
-    def forged_any(values: object) -> bool:
+    def forged_any(values: Iterable[object]) -> bool:
         del values
         return False
 
@@ -815,6 +817,90 @@ def test_identity_reserved_paths_ignore_mutable_host_hook(
         AdmissionPolicyError, match="invalid file admission path"
     ):
         _ = FileAdmissionEvidence(unsafe_path, 1.0, 1.0, 1, 1)
+
+
+def _forge_admission_any(patched: pytest.MonkeyPatch, invalid: str) -> None:
+    del invalid
+    native_any = builtins.any
+
+    def forged_any(values: object) -> bool:
+        frame = getattr(values, "gi_frame", None)
+        globals_map = getattr(frame, "f_globals", {})
+        if globals_map is vars(ntpath):
+            return False
+        return native_any(values)
+
+    patched.setattr(builtins, "any", forged_any)
+
+
+def _forge_admission_reversed(
+    patched: pytest.MonkeyPatch, invalid: str
+) -> None:
+    native_reversed = builtins.reversed
+
+    def forged_reversed(values: list[str]) -> object:
+        if values == [invalid]:
+            return ()
+        return native_reversed(values)
+
+    patched.setattr(builtins, "reversed", forged_reversed)
+
+
+def _forge_admission_splitroot(
+    patched: pytest.MonkeyPatch, invalid: str
+) -> None:
+    native_splitroot = ntpath.splitroot
+
+    def forged_splitroot(path: str) -> tuple[str, str, str]:
+        if path == invalid:
+            return "", "", "safe.c"
+        return native_splitroot(path)
+
+    patched.setattr(ntpath, "splitroot", forged_splitroot)
+
+
+def _forge_admission_fspath(patched: pytest.MonkeyPatch, invalid: str) -> None:
+    native_fspath = os.fspath
+
+    def forged_fspath(path: os.PathLike[str] | str) -> str:
+        if path == invalid:
+            return "safe.c"
+        return native_fspath(path)
+
+    patched.setattr(os, "fspath", forged_fspath)
+
+
+@pytest.mark.parametrize(
+    ("forge", "unsafe_path"),
+    [
+        (_forge_admission_any, "NUL"),
+        (_forge_admission_reversed, "NUL"),
+        (_forge_admission_splitroot, "src/COM1/child.txt"),
+        (_forge_admission_fspath, "C:/escape.c"),
+    ],
+)
+def test_identity_admission_ignores_late_ntpath_dependency_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    forge: Callable[[pytest.MonkeyPatch, str], None],
+    unsafe_path: str,
+) -> None:
+    """Mutating ntpath helper internals cannot admit foreign source evidence."""
+    constructors = (
+        lambda: IdentityFile(path=unsafe_path, canonical=b"source"),
+        lambda: identity_tree({unsafe_path: b"source"}),
+        lambda: FileAdmissionEvidence(unsafe_path, 1.0, 1.0, 1, 1),
+    )
+    rejected = []
+    with monkeypatch.context() as patched:
+        forge(patched, unsafe_path)
+        for constructor in constructors:
+            try:
+                _ = constructor()
+            except AdmissionPolicyError:
+                rejected.append(True)
+    assert len(rejected) == len(constructors), (
+        f"mutable host admitted unsafe identity {unsafe_path!r}"
+    )
 
 
 def test_admission_rejects_foreign_tree_and_policy_objects() -> None:

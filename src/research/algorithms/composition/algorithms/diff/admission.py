@@ -36,7 +36,6 @@ from __future__ import annotations
 
 import builtins
 import math
-import ntpath
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
@@ -57,9 +56,17 @@ _ZERO = 0
 _ONE = 1
 _STRUCTURAL_POLICY = AnchorPolicy(window_bytes=16, selection_modulus=8)
 _ANCHOR_POLICY = AnchorPolicy(window_bytes=32, selection_modulus=64)
-# Domain-loaded hooks cannot redefine Windows reserved-path admission.
-_NATIVE_IS_RESERVED = ntpath.isreserved
-_NATIVE_SPLITDRIVE = ntpath.splitdrive
+# Avoid mutable helper dependencies within ntpath.isreserved/splitdrive.
+_WINDOWS_DRIVE_SEPARATOR = ":"
+_WINDOWS_RESERVED_CHARACTERS = frozenset(
+    chr(value) for value in range(32)
+) | frozenset("*?<>/\\:|") | frozenset((chr(34),))
+_WINDOWS_RESERVED_DEVICES = frozenset(
+    ("CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$")
+) | frozenset(
+    f"{prefix}{digit}" for prefix in ("COM", "LPT")
+    for digit in "123456789¹²³"
+)
 _NATIVE_FSUM = math.fsum
 _NATIVE_ISFINITE = math.isfinite
 # Source-lineage verdicts cannot trust post-import mutable sum hooks.
@@ -87,6 +94,29 @@ class AdmissionError(RuntimeError):
     """Raised when candidate source evidence does not satisfy admission."""
 
 
+def _has_windows_drive(value: str) -> bool:
+    return (
+        value[1:2] == _WINDOWS_DRIVE_SEPARATOR
+        or value.startswith(("//", "\\\\"))
+    )
+
+
+def _is_windows_reserved_component(component: str) -> bool:
+    device = component.partition(".")[0].rstrip(" ").upper()
+    return (
+        (component[-1:] in {".", " "} and component not in {".", ".."})
+        or bool(_WINDOWS_RESERVED_CHARACTERS.intersection(component))
+        or device in _WINDOWS_RESERVED_DEVICES
+    )
+
+
+def _is_windows_reserved(value: str) -> bool:
+    return _NATIVE_ANY(
+        _is_windows_reserved_component(component)
+        for component in value.split("/")
+    )
+
+
 def _is_portable_relative_path(path: str) -> bool:
     if (
         not path
@@ -101,8 +131,8 @@ def _is_portable_relative_path(path: str) -> bool:
     # Identity labels are lexical authority, not mutable pathlib methods.
     # Empty/dot/parent components also cover absolute and noncanonical paths.
     return (
-        not _NATIVE_SPLITDRIVE(path)[0]
-        and not _NATIVE_IS_RESERVED(path)
+        not _has_windows_drive(path)
+        and not _is_windows_reserved(path)
         and _NATIVE_ALL(
             part not in {"", _DOT, _PARENT} for part in path.split("/")
         )
