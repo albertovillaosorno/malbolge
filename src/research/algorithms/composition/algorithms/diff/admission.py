@@ -84,7 +84,6 @@ _NATIVE_DICT = builtins.dict
 _NATIVE_ANY = builtins.any
 _NATIVE_ALL = builtins.all
 _NATIVE_LEN = builtins.len
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_FROZENSET = builtins.frozenset
 # Fingerprint receipt classes retain mutable class-level attribute hooks.
 _ANCHOR_DIGEST_SLOT = cast(
@@ -183,8 +182,8 @@ class IdentityFile:
 
     def __init__(self, path: str, canonical: bytes) -> None:
         """Seal portable identity with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "path", path)
-        _NATIVE_OBJECT_SETATTR(self, "canonical", canonical)
+        _IDENTITY_PATH_SLOT.__set__(self, path)
+        _IDENTITY_CANONICAL_SLOT.__set__(self, canonical)
         _IDENTITY_FILE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -236,7 +235,7 @@ class IdentityTree:
 
     def __init__(self, files: tuple[IdentityFile, ...]) -> None:
         """Seal sorted source identity with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "files", files)
+        _IDENTITY_FILES_SLOT.__set__(self, files)
         _IDENTITY_TREE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -301,20 +300,12 @@ class AdmissionPolicy:
         anchor_policy: AnchorPolicy = _ANCHOR_POLICY,
     ) -> None:
         """Seal source admission thresholds with the original validator."""
-        _NATIVE_OBJECT_SETATTR(
-            self, "minimum_source_similarity", minimum_source_similarity
-        )
-        _NATIVE_OBJECT_SETATTR(
-            self, "minimum_anchor_coverage", minimum_anchor_coverage
-        )
-        _NATIVE_OBJECT_SETATTR(
-            self, "minimum_anchor_files", minimum_anchor_files
-        )
-        _NATIVE_OBJECT_SETATTR(
-            self, "minimum_anchors_per_file", minimum_anchors_per_file
-        )
-        _NATIVE_OBJECT_SETATTR(self, "structural_policy", structural_policy)
-        _NATIVE_OBJECT_SETATTR(self, "anchor_policy", anchor_policy)
+        _POLICY_SOURCE_SLOT.__set__(self, minimum_source_similarity)
+        _POLICY_COVERAGE_SLOT.__set__(self, minimum_anchor_coverage)
+        _POLICY_FILES_SLOT.__set__(self, minimum_anchor_files)
+        _POLICY_PER_FILE_SLOT.__set__(self, minimum_anchors_per_file)
+        _POLICY_STRUCTURAL_SLOT.__set__(self, structural_policy)
+        _POLICY_ANCHORS_SLOT.__set__(self, anchor_policy)
         _ADMISSION_POLICY_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -616,17 +607,11 @@ class FileAdmissionEvidence:
         matched_anchor_count: int,
     ) -> None:
         """Seal per-file source evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "path", path)
-        _NATIVE_OBJECT_SETATTR(
-            self, "structural_similarity", structural_similarity
-        )
-        _NATIVE_OBJECT_SETATTR(self, "anchor_coverage", anchor_coverage)
-        _NATIVE_OBJECT_SETATTR(
-            self, "reference_anchor_count", reference_anchor_count
-        )
-        _NATIVE_OBJECT_SETATTR(
-            self, "matched_anchor_count", matched_anchor_count
-        )
+        _FILE_EVIDENCE_PATH_SLOT.__set__(self, path)
+        _FILE_EVIDENCE_SIMILARITY_SLOT.__set__(self, structural_similarity)
+        _FILE_EVIDENCE_COVERAGE_SLOT.__set__(self, anchor_coverage)
+        _FILE_EVIDENCE_REFERENCE_SLOT.__set__(self, reference_anchor_count)
+        _FILE_EVIDENCE_MATCHED_SLOT.__set__(self, matched_anchor_count)
         _FILE_ADMISSION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -718,17 +703,13 @@ class TreeAdmissionEvidence:
         policy: AdmissionPolicy,
     ) -> None:
         """Seal aggregate source evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "source_similarity", source_similarity)
-        _NATIVE_OBJECT_SETATTR(self, "anchor_coverage", anchor_coverage)
-        _NATIVE_OBJECT_SETATTR(
-            self, "eligible_anchor_files", eligible_anchor_files
-        )
-        _NATIVE_OBJECT_SETATTR(
-            self, "satisfied_anchor_files", satisfied_anchor_files
-        )
-        _NATIVE_OBJECT_SETATTR(self, "files", files)
-        _NATIVE_OBJECT_SETATTR(self, "reasons", reasons)
-        _NATIVE_OBJECT_SETATTR(self, "policy", policy)
+        _TREE_SOURCE_SLOT.__set__(self, source_similarity)
+        _TREE_ANCHOR_SLOT.__set__(self, anchor_coverage)
+        _TREE_ELIGIBLE_SLOT.__set__(self, eligible_anchor_files)
+        _TREE_SATISFIED_SLOT.__set__(self, satisfied_anchor_files)
+        _TREE_FILES_SLOT.__set__(self, files)
+        _TREE_REASONS_SLOT.__set__(self, reasons)
+        _TREE_POLICY_SLOT.__set__(self, policy)
         _TREE_ADMISSION_VALIDATOR(self)
 
     def __post_init__(self) -> None:

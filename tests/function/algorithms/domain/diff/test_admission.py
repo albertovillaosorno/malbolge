@@ -1689,3 +1689,61 @@ def test_admission_record_construction_pins_original_validator(
             else:
                 _ = record_type(**constructor_fields)
     assert calls == 0, "late validator skipped source-lineage admission"
+
+
+@pytest.mark.parametrize(
+    ("valid", "field", "invalid"),
+    [
+        (IdentityFile("source.c", b"source"), "path", "../escape.c"),
+        (IdentityTree((IdentityFile("source.c", b"source"),)), "files", []),
+        (AdmissionPolicy(0.5, 0.5, 1, 1), "minimum_anchor_files", 0),
+        (FileAdmissionEvidence("source.c", 1.0, 1.0, 1, 1), "matched_anchor_count", 2),
+        (
+            TreeAdmissionEvidence(
+                1.0,
+                1.0,
+                1,
+                1,
+                (FileAdmissionEvidence("source.c", 1.0, 1.0, 1, 1),),
+                (),
+                AdmissionPolicy(0.5, 0.5, 1, 1),
+            ),
+            "source_similarity",
+            0.0,
+        ),
+    ],
+)
+def test_admission_constructors_ignore_late_class_setters(
+    monkeypatch: pytest.MonkeyPatch,
+    valid: (
+        IdentityFile
+        | IdentityTree
+        | AdmissionPolicy
+        | FileAdmissionEvidence
+        | TreeAdmissionEvidence
+    ),
+    field: str,
+    invalid: object,
+) -> None:
+    """Mutable property setters cannot forge native source-admission slots."""
+    owner = type(valid)
+    factory = cast("Callable[..., object]", owner)
+    values = {datum.name: getattr(valid, datum.name) for datum in fields(valid)}
+    original = values[field]
+    values[field] = invalid
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    calls = 0
+
+    def forged_getter(_record: object) -> object:
+        return original
+
+    def forged_setter(record: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(record, original)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(forged_getter, forged_setter))
+        with pytest.raises(AdmissionPolicyError):
+            _ = factory(**values)
+    assert calls == 0, "mutable class setter rewrote source-admission storage"
