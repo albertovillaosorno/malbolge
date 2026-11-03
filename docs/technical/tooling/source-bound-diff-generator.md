@@ -1640,6 +1640,18 @@ the generated graph was absent, and a 120-second `jig check` timed out with
 no clean verdict. External path races and direct trusted-state mutation
 remain outside this guard.
 
+The relocatable resolver also pins the original lazy `PurePath` pathname
+parsing and string-formatting descriptors before and after resolution
+(`a7906cdbe`). A late replacement of `_tail` previously redirected an
+output located inside the candidate source to a different host path and
+bypassed containment. Fifteen red-first inherited/concrete descriptor cases
+now reject without consulting late hooks. All 244 focused relocatable and
+3,483 integrated diff tests passed; scoped Ruff, source strict BasedPyright,
+and diff checks were clean. The relocatable test file retains 35 older typing
+diagnostics, with none introduced by this fix. Jig doctor remains degraded
+with an absent graph, so this evidence does not assert a complete Jig gate.
+External filesystem races and trusted object mutation remain out of scope.
+
 Relocatable authoring now creates internal `RangeLocator`,
 `RelocatableSourceRange`, `RelocatableInstruction`, and
 `RelocatableAuthoringPlan` records using captured native allocation and the

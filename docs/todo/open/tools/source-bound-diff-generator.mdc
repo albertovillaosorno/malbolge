@@ -100,6 +100,14 @@ format.
   passed before the final added test. Ruff, strict BasedPyright and diff checks
   passed. Jig doctor was degraded (absent graph); 120-second global Jig check
   timed out. This does not isolate external filesystem races.
+- Relocatable source/output resolution now additionally pins lazy `PurePath`
+  pathname descriptors (`a7906cdbe`): replacing `_tail` redirected a
+  source-contained destination outside its real root. Fifteen red-first
+  inherited/concrete hook regressions fail closed. All 244 focused relocatable
+  and 3,483 integrated diff tests passed; Ruff, strict source BasedPyright, and
+  diff checks were clean. Existing 35 test-file typing diagnostics and the
+  degraded global Jig gate remain unresolved. External filesystem races and
+  trusted instance mutation are not isolated by this check.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused
