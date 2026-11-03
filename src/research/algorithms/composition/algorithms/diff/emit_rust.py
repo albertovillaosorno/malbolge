@@ -89,6 +89,9 @@ _NATIVE_UNICODE_ERROR = builtins.UnicodeError
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
 _NATIVE_FILE_EXISTS_ERROR = builtins.FileExistsError
+# Delegated validators must retain their original imported error identity.
+_NATIVE_PROTECTED_PLAN_ERROR = ProtectedPlanError
+_NATIVE_EXACT_TREE_ERROR = ExactTreeError
 _NATIVE_STR_TYPE = str
 _NATIVE_INT_TYPE = int
 _NATIVE_BOOL_TYPE = bool
@@ -523,7 +526,7 @@ def _validate_emission_inputs(
     # nested binding, metadata and required slots before reading the template.
     try:
         _NATIVE_PROTECTED_PLAN_VALIDATOR(plan)
-    except (ProtectedPlanError, _NATIVE_ATTRIBUTE_ERROR) as error:
+    except (_NATIVE_PROTECTED_PLAN_ERROR, _NATIVE_ATTRIBUTE_ERROR) as error:
         message = "Rust emission requires a valid native protected plan"
         raise RustEmissionError(message) from error
 
@@ -778,7 +781,7 @@ def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
     """
     try:
         actual = read_exact_regular_file(path, f"{phase} Rust source")
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _safe_emission_error_detail(error)
         message = f"{phase} Rust source verification failed: {detail}"
         raise RustEmissionError(message) from error

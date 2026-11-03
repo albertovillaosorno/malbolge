@@ -57,7 +57,7 @@ from algorithms.diff.emit_rust import (
     emit_rust_transform,
     write_rust_transform,
 )
-from algorithms.diff.exact import build_exact_plan, snapshot_tree
+from algorithms.diff.exact import ExactTreeError, build_exact_plan, snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.source_binding import (
@@ -3339,3 +3339,48 @@ def test_emitter_short_write_raises_native_valueerror_after_alias_swap(
         finally:
             builtins.ValueError = native_value_error
     assert type(caught) is native_value_error
+
+
+@pytest.mark.parametrize("publish", [False, True])
+def test_emitter_catches_original_protected_error_after_import_alias_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, publish: bool
+) -> None:
+    """A malformed native plan remains a typed emission rejection."""
+    _, _, _, protected = _fixture(tmp_path)
+    forged = object.__new__(type(protected))
+    for name in (
+        "source", "target", "instructions", "passthrough_roots",
+        "context", "nonce", "payload", "binding",
+    ):
+        value = b"too-short" if name == "nonce" else getattr(protected, name)
+        object.__setattr__(forged, name, value)
+    output = tmp_path / "invalid.rs"
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "ProtectedPlanError", LookupError)
+        with pytest.raises(RustEmissionError, match="valid native protected plan"):
+            if publish:
+                write_rust_transform(forged, _PROFILE, output)
+            else:
+                _ = emit_rust_transform(forged, _PROFILE, output)
+    assert not output.exists()
+
+
+def test_emitter_catches_original_exact_error_after_import_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Physical verification failures must not leak delegated tree errors."""
+    failure = ExactTreeError("native content changed")
+
+    def fail_read(_path: Path, _label: str) -> bytes:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "read_exact_regular_file", fail_read)
+        patched.setattr(emit_rust_module, "ExactTreeError", LookupError)
+        with pytest.raises(
+            RustEmissionError, match="staged Rust source verification failed"
+        ) as caught:
+            emit_rust_module._verify_rust_source_bytes(
+                Path("stage.rs"), b"expected", "staged"
+            )
+    assert caught.value.__cause__ is failure
