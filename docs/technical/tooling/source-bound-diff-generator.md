@@ -309,8 +309,11 @@ aliases, as well as existing regular-file hardlinks sharing source device/inode
 identity. Unrelated hardlinks remain admitted. Executable admission
 also requires an exact host-native `os.stat_result` before trusting regular-file
 mode; foreign status receipts reject execution, and status errors never invoke
-foreign exception string hooks. This prevents a repository-rooted
-path from bypassing the source mirror, including when post-run source checks are
+foreign exception string hooks. Other host faults in root/path/tool resolution,
+source snapshots, inode status, temporary workspace, and source mirroring also
+retain typed causes without invoking foreign exception formatters. This prevents
+a repository-rooted path from bypassing the source mirror, including when
+post-run source checks are
 disabled. It is not an OS sandbox: arbitrary raw string argv and
 consumer-selected
 executable behavior still require external trust and isolation policy. Commands

@@ -34,31 +34,23 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import field
-from dataclasses import replace
-from enum import StrEnum
 import hashlib
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
 import shutil
 import signal
-from stat import S_ISREG
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - no shell; resolved executables only.
 import tempfile
 import threading
 import time
-from typing import IO
-from typing import Protocol
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass, field, replace
+from enum import StrEnum
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from stat import S_ISREG
+from typing import IO, TYPE_CHECKING, Protocol, cast
 
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import snapshot_tree
+from algorithms.diff.exact import ExactTreeError, snapshot_tree
 
 if TYPE_CHECKING:
     from algorithms.diff.model import TreeSnapshot
@@ -445,7 +437,10 @@ def _resolved_root(path: Path, description: str) -> Path:
     try:
         return path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"probe {description} root resolution failed: {path}: {error}"
+        detail = _safe_probe_error_detail(error)
+        message = (
+            f"probe {description} root resolution failed: {path}: {detail}"
+        )
         raise ProbeExecutionError(message) from error
 
 
@@ -471,7 +466,8 @@ def _rooted_path(
     try:
         resolved = candidate.resolve()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"probe path resolution failed: {candidate}: {error}"
+        detail = _safe_probe_error_detail(error)
+        message = f"probe path resolution failed: {candidate}: {detail}"
         raise ProbeExecutionError(message) from error
     try:
         _ = resolved.relative_to(root)
@@ -487,7 +483,8 @@ def _resolved_tool_path(path: Path) -> Path:
     try:
         return path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"probe tool resolution failed: {path}: {error}"
+        detail = _safe_probe_error_detail(error)
+        message = f"probe tool resolution failed: {path}: {detail}"
         raise ProbeExecutionError(message) from error
 
 
@@ -851,8 +848,14 @@ def _safe_probe_error_detail(error: BaseException) -> str:
         A native single-string reason or an exception class name.
 
     """
-    if type(error) in (OSError, RuntimeError, ValueError, ProbeExecutionError):
-        arguments = error.args
+    if type(error) in (
+        OSError,
+        RuntimeError,
+        ValueError,
+        ExactTreeError,
+        ProbeExecutionError,
+    ):
+        arguments = cast("tuple[object, ...]", error.args)
         if len(arguments) == 1 and type(arguments[0]) is str:
             return arguments[0]
     return type(error).__name__
@@ -1138,7 +1141,8 @@ def _temporary_probe_root(
     try:
         return tempfile.TemporaryDirectory(prefix=prefix, dir=parent)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"probe temporary root failed: {error}"
+        detail = _safe_probe_error_detail(error)
+        message = f"probe temporary root failed: {detail}"
         raise ProbeExecutionError(message) from error
 
 
@@ -1209,7 +1213,8 @@ def _snapshot_probe_tree(root: Path, context: str) -> TreeSnapshot:
     try:
         return snapshot_tree(root)
     except ExactTreeError as error:
-        message = f"probe {context} snapshot rejected: {error}"
+        detail = _safe_probe_error_detail(error)
+        message = f"probe {context} snapshot rejected: {detail}"
         raise ProbeExecutionError(message) from error
 
 
@@ -1231,7 +1236,8 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
             for status in ((source / record.path).stat(),)
         )
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"probe source inode status failed: {error}"
+        detail = _safe_probe_error_detail(error)
+        message = f"probe source inode status failed: {detail}"
         raise ProbeExecutionError(message) from error
 
 
@@ -1250,7 +1256,8 @@ def _repository_inode_status(path: Path) -> os.stat_result | None:
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"probe repository path status failed: {error}"
+        detail = _safe_probe_error_detail(error)
+        message = f"probe repository path status failed: {detail}"
         raise ProbeExecutionError(message) from error
 
 
@@ -1290,7 +1297,8 @@ def _require_repository_argument_disjoint(
     try:
         resolved = path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"probe repository argument resolution failed: {error}"
+        detail = _safe_probe_error_detail(error)
+        message = f"probe repository argument resolution failed: {detail}"
         raise ProbeExecutionError(message) from error
     if resolved.is_relative_to(original_source):
         message = "probe repository path overlaps original source tree"
@@ -1352,7 +1360,8 @@ def _run_isolated_batch(
                 )
             )
         except (OSError, ValueError, RuntimeError) as error:
-            message = f"probe source mirror creation failed: {error}"
+            detail = _safe_probe_error_detail(error)
+            message = f"probe source mirror creation failed: {detail}"
             raise ProbeExecutionError(message) from error
         isolated = replace(
             context, source_root=mirror_root, enforce_source_immutable=False

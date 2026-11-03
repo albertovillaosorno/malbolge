@@ -34,39 +34,39 @@
 
 from __future__ import annotations
 
-from contextlib import suppress
-from dataclasses import replace
 import gc
 import hashlib
 import io
 import os
-from pathlib import Path
 import shutil
 import signal
 import sys
 import tempfile
 import threading
 import time
+from contextlib import suppress
+from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
-from typing import Protocol
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from typing import TYPE_CHECKING, Protocol, cast, override
 
-from algorithms.diff import probe_exec as probe_exec_module
-from algorithms.diff.probe_exec import PathArgument
-from algorithms.diff.probe_exec import ProbeCommand
-from algorithms.diff.probe_exec import ProbeExecutionError
-from algorithms.diff.probe_exec import ProbeProgram
-from algorithms.diff.probe_exec import ProbeProgramError
-from algorithms.diff.probe_exec import ProbeRoot
-from algorithms.diff.probe_exec import ProbeRunContext
-from algorithms.diff.probe_exec import ProbeTranscript
-from algorithms.diff.probe_exec import RootedExecutable
-from algorithms.diff.probe_exec import ToolExecutable
-from algorithms.diff.probe_exec import run_probe_program
-from algorithms.diff.probe_exec import run_probe_programs
 import pytest
+from algorithms.diff import probe_exec as probe_exec_module
+from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.probe_exec import (
+    PathArgument,
+    ProbeCommand,
+    ProbeExecutionError,
+    ProbeProgram,
+    ProbeProgramError,
+    ProbeRoot,
+    ProbeRunContext,
+    ProbeTranscript,
+    RootedExecutable,
+    ToolExecutable,
+    run_probe_program,
+    run_probe_programs,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -2263,6 +2263,195 @@ def test_probe_executable_rejects_foreign_status_receipt(
     )
     with pytest.raises(ProbeExecutionError, match="native filesystem status"):
         require_executable(tool)
+
+
+class _HostileProbeFilesystemError(OSError):
+    """Host callback errors must not execute their display hooks."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile probe host formatter executed"
+        raise AssertionError(message)
+
+    @override
+    def __repr__(self) -> str:
+        message = "hostile probe host representation executed"
+        raise AssertionError(message)
+
+
+class _HostileProbeSnapshotError(ExactTreeError):
+    """Delegated source snapshots may return foreign error subclasses."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile probe snapshot formatter executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        ("root", "root resolution failed"),
+        ("rooted_path", "path resolution failed"),
+        ("tool", "tool resolution failed"),
+        ("temporary", "temporary root failed"),
+        ("snapshot", "snapshot rejected"),
+        ("source_inode", "source inode status failed"),
+        ("repository_inode", "repository path status failed"),
+        ("repository_argument", "repository argument resolution failed"),
+    ],
+)
+def test_probe_host_boundaries_reject_foreign_formatters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    expected: str,
+) -> None:
+    """Reject malicious filesystem exceptions while retaining their cause."""
+    source = tmp_path / "source"
+    source.mkdir()
+    source_leaf = source / "input.txt"
+    _ = source_leaf.write_bytes(b"trusted")
+    external = tmp_path / "external.txt"
+    _ = external.write_bytes(b"repository bytes")
+    context = _context(source, tmp_path)
+    failure = (
+        _HostileProbeSnapshotError("foreign tree snapshot")
+        if operation == "snapshot"
+        else _HostileProbeFilesystemError("foreign host status")
+    )
+    invoke: Callable[[], object]
+    if operation in {"root", "rooted_path", "tool", "repository_argument"}:
+        original = Path.resolve
+        target = {
+            "root": tmp_path,
+            "rooted_path": external,
+            "tool": Path(sys.executable),
+            "repository_argument": external,
+        }[operation]
+        resolutions = 0
+
+        def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+            nonlocal resolutions
+            if path == target:
+                resolutions += 1
+                if operation != "repository_argument" or resolutions == 2:
+                    raise failure
+            return original(path, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", fail_resolve)
+        if operation == "root":
+            require_root = cast(
+                "Callable[[Path, str], Path]",
+                vars(probe_exec_module)["_resolved_root"],
+            )
+            invoke = lambda: require_root(tmp_path, "repository")
+        elif operation == "rooted_path":
+            rooted_path = cast(
+                "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+                vars(probe_exec_module)["_rooted_path"],
+            )
+            invoke = lambda: rooted_path(
+                PathArgument(ProbeRoot.REPOSITORY, external.name),
+                context,
+                tmp_path / "scratch",
+            )
+        elif operation == "tool":
+            tool_path = cast(
+                "Callable[[Path], Path]",
+                vars(probe_exec_module)["_resolved_tool_path"],
+            )
+            invoke = lambda: tool_path(target)
+        else:
+            require_disjoint = cast(
+                "Callable[[PathArgument, ProbeRunContext, Path], None]",
+                vars(probe_exec_module)[
+                    "_require_repository_argument_disjoint"
+                ],
+            )
+            invoke = lambda: require_disjoint(
+                PathArgument(ProbeRoot.REPOSITORY, external.name),
+                context,
+                source,
+            )
+    elif operation == "temporary":
+
+        def fail_temp(
+            *, prefix: str, dir: Path
+        ) -> tempfile.TemporaryDirectory[str]:
+            _ = prefix, dir
+            raise failure
+
+        monkeypatch.setattr(tempfile, "TemporaryDirectory", fail_temp)
+        temp_root = cast(
+            "Callable[..., tempfile.TemporaryDirectory[str]]",
+            vars(probe_exec_module)["_temporary_probe_root"],
+        )
+        invoke = lambda: temp_root("test-probe-", parent=tmp_path)
+    elif operation == "snapshot":
+
+        def fail_snapshot(root: Path) -> object:
+            _ = root
+            raise failure
+
+        monkeypatch.setattr(probe_exec_module, "snapshot_tree", fail_snapshot)
+        snapshot = cast(
+            "Callable[[Path, str], object]",
+            vars(probe_exec_module)["_snapshot_probe_tree"],
+        )
+        invoke = lambda: snapshot(source, "source")
+    else:
+        original_stat = Path.stat
+        target = source_leaf if operation == "source_inode" else external
+
+        def fail_stat(
+            path: Path, *, follow_symlinks: bool = True
+        ) -> os.stat_result:
+            if path == target:
+                raise failure
+            return original_stat(path, follow_symlinks=follow_symlinks)
+
+        monkeypatch.setattr(Path, "stat", fail_stat)
+        if operation == "source_inode":
+            source_inodes = cast(
+                "Callable[[Path], frozenset[tuple[int, int]]]",
+                vars(probe_exec_module)["_source_file_inode_keys"],
+            )
+            invoke = lambda: source_inodes(source)
+        else:
+            repo_stat = cast(
+                "Callable[[Path], os.stat_result | None]",
+                vars(probe_exec_module)["_repository_inode_status"],
+            )
+            invoke = lambda: repo_stat(external)
+    with pytest.raises(ProbeExecutionError, match=expected) as caught:
+        _ = invoke()
+    _expect(caught.value.__cause__ is failure, "foreign failure cause was lost")
+
+
+def test_probe_mirror_host_failure_does_not_format_foreign_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hostile mirror provider cannot authorize probe execution."""
+    source = tmp_path / "source"
+    source.mkdir()
+    failure = _HostileProbeFilesystemError("foreign mirror failure")
+
+    def fail_copy(
+        source_root: Path, destination: Path, *, symlinks: bool = False
+    ) -> Path:
+        _ = source_root, destination, symlinks
+        raise failure
+
+    monkeypatch.setattr(shutil, "copytree", fail_copy)
+    with pytest.raises(
+        ProbeExecutionError, match="source mirror creation failed"
+    ) as caught:
+        _ = run_probe_program(
+            _program("hostile-mirror", "print('unreachable')"),
+            _context(source, tmp_path),
+        )
+    _expect(caught.value.__cause__ is failure, "mirror failure cause was lost")
 
 
 def test_probe_executable_status_error_does_not_format_foreign_exception(
