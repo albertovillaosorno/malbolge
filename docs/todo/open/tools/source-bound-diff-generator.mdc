@@ -242,6 +242,12 @@ format.
   and domain module loading now admit only exact native `Path` types before
   filesystem or import methods execute; six red-first tests cover each public
   boundary without weakening their typed failure contracts.
+- Domain module loading now hashes path identity through a pinned host
+  filesystem codec rather than late `os.fsencode` dispatch. Resolution rejects
+  replaced `os.fspath`, CWD, file-status, or link-reader helpers and attests the
+  original and resolved regular-file identities before importing. Five red-first
+  tests cover forged module names and redirected imports, including hardlinks.
+  External filesystem mutation between checks still requires coordination.
 - Exact tree snapshot, planning, and materialization and compatible plan build
   and materialization envelopes now require exact native host `Path` roots;
   eight red-first cases cover snapshot/source/oracle/candidate/output roles

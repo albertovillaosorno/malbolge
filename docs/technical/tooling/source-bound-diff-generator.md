@@ -132,6 +132,17 @@ module and ancestor status receipts must also be native `os.stat_result`
 objects before the domain module executes. Invalid receipts cannot authorize
 import, and errors from import, hook lookup, status, or resolution retain their
 typed causes without invoking foreign exception string/representation hooks.
+Domain module namespace names also hash the exact native path using the
+host filesystem codec captured before domain hooks execute. Imported
+`os.fsencode` alone was insufficient because it still calls mutable
+`os.fspath`. The module resolver fails closed if later code replaces
+`os.fspath`, `os.getcwd`, `os.lstat`, or `os.readlink`, even when the outer
+`realpath` implementation remains pinned. A second native status check
+confirms that the resolved regular file still has the admitted device and
+inode before import. Five red-first regressions cover forged namespace
+names, redirected module files, same-inode hardlinks, and CWD/link hooks.
+Neither status check nor import is atomic against external filesystem writes;
+this is not a sandbox for trusted consumer-domain code.
 Pinned-source snapshots also require native `os.stat_result` receipts for the
 source root, selected paths and parent components, and file-identity rechecks.
 Foreign mode and inode records cannot certify pinned provenance. Filesystem
