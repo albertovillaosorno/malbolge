@@ -137,6 +137,65 @@ def test_publication_rejects_late_type_spoof_of_foreign_path(
     assert staging.is_dir() and not destination.exists()
 
 
+@pytest.mark.skipif(
+    os.name != _WINDOWS_OS_NAME and sys.platform != _LINUX_PLATFORM,
+    reason="requires supported native directory publication",
+)
+def test_publication_ignores_late_path_equality_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A consumer cannot make distinct native roots appear identical."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    calls = 0
+
+    def forged_path_equality(_left: Path, _right: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__eq__", forged_path_equality)
+        publication.publish_directory_no_replace(staging, destination)
+
+    assert calls == 0, "publication consulted mutable Path equality"
+    assert not staging.exists()
+    assert (destination / "payload").read_bytes() == _OURS
+
+
+def test_publication_ignores_false_path_equality_for_aliased_roots(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late false equality hook cannot authorize the same root twice."""
+    staging = tmp_path / "staging"
+    status_calls = 0
+    equality_calls = 0
+
+    def forged_path_equality(_left: Path, _right: object) -> bool:
+        nonlocal equality_calls
+        equality_calls += 1
+        return False
+
+    def observe_lstat(_path: Path) -> os.stat_result:
+        nonlocal status_calls
+        status_calls += 1
+        raise AssertionError("aliased roots reached filesystem status")
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__eq__", forged_path_equality)
+        patched.setattr(publication, "_NATIVE_PATH_LSTAT", observe_lstat)
+        try:
+            publication.publish_directory_no_replace(staging, staging)
+        except OSError as error:
+            rejected = error.errno == errno.EINVAL
+    assert rejected, "late equality hook admitted identical roots"
+    assert equality_calls == 0
+    assert status_calls == 0
+
+
 @pytest.mark.parametrize("nul_staging", [False, True])
 def test_publication_rejects_late_str_spoof_of_nul_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nul_staging: bool

@@ -270,7 +270,10 @@ def _validate_publication_inputs(
             "directory publication host selectors must use exact strings",
         )
     _require_host_match(os_name, platform, destination)
-    if staging == destination:
+    # Exact Path types still inherit a mutable Python equality method.
+    # Compare the pinned native path spellings instead of letting consumer
+    # hooks reject distinct directories or admit aliased publication roots.
+    if _NATIVE_PATH_STRING(staging) == _NATIVE_PATH_STRING(destination):
         raise OSError(
             errno.EINVAL,
             "directory publication staging and destination must differ",
