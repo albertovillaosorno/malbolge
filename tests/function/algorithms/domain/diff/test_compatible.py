@@ -3654,6 +3654,58 @@ def test_compatible_envelope_constructor_rejects_late_validator_replacement(
     assert calls == 0, "late validator admitted forged compatible metadata"
 
 
+@pytest.mark.parametrize(
+    "record_kind", ["instruction", "build", "plan", "materialize"]
+)
+def test_compatible_constructor_ignores_late_builtin_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record_kind: str
+) -> None:
+    """Native record construction cannot consult a late builtin type hook."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    records = {
+        "instruction": CompatibleInstruction(
+            output_path="created.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        ),
+        "build": build,
+        "plan": plan,
+        "materialize": _request(candidate, plan, tmp_path / "output"),
+    }
+    baseline = records[record_kind]
+    native_type = type
+    record_type = native_type(baseline)
+    kwargs = {
+        field.name: getattr(baseline, field.name)
+        for field in fields(cast("CompatibleInstruction", baseline))
+    }
+    calls = 0
+
+    def reject_type(value: object) -> type:
+        nonlocal calls
+        if native_type(value) is record_type:
+            calls += 1
+            raise AssertionError(
+                "late builtin type executed during construction"
+            )
+        return native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", reject_type)
+        constructed = record_type(**kwargs)
+    assert constructed == baseline
+    assert calls == 0, "constructor dispatched through mutable builtin type"
+
+
 @pytest.mark.parametrize("record_kind", ["instruction", "build", "plan", "materialize"])
 def test_compatible_envelope_constructor_keeps_valid_after_late_rejection(
     tmp_path: Path,

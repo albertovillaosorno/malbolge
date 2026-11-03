@@ -361,7 +361,9 @@ class CompatibleInstruction:
             ("literal", literal),
             ("correction_ids", correction_ids),
         ):
-            _COMPATIBLE_RECORD_SLOT_MAP[type(self)][name].__set__(self, value)
+            _COMPATIBLE_RECORD_SLOT_MAP[_NATIVE_TYPE(self)][name].__set__(
+                self, value
+            )
         _INSTRUCTION_VALIDATOR(
             cast(
                 "CompatibleInstruction",
@@ -403,7 +405,9 @@ class CompatibleBuildRequest:
             ("mapper", mapper),
             ("preserve_candidate_only", preserve_candidate_only),
         ):
-            _COMPATIBLE_RECORD_SLOT_MAP[type(self)][name].__set__(self, value)
+            _COMPATIBLE_RECORD_SLOT_MAP[_NATIVE_TYPE(self)][name].__set__(
+                self, value
+            )
         _BUILD_REQUEST_VALIDATOR(
             cast(
                 "CompatibleBuildRequest",
@@ -445,7 +449,9 @@ class CompatibleAuthoringPlan:
             ("instructions", instructions),
             ("preserve_candidate_only", preserve_candidate_only),
         ):
-            _COMPATIBLE_RECORD_SLOT_MAP[type(self)][name].__set__(self, value)
+            _COMPATIBLE_RECORD_SLOT_MAP[_NATIVE_TYPE(self)][name].__set__(
+                self, value
+            )
         _AUTHORING_PLAN_VALIDATOR(
             cast(
                 "CompatibleAuthoringPlan",
@@ -490,7 +496,9 @@ class CompatibleMaterializeRequest:
             ("output_root", output_root),
             ("postcondition", postcondition),
         ):
-            _COMPATIBLE_RECORD_SLOT_MAP[type(self)][name].__set__(self, value)
+            _COMPATIBLE_RECORD_SLOT_MAP[_NATIVE_TYPE(self)][name].__set__(
+                self, value
+            )
         _MATERIALIZE_REQUEST_VALIDATOR(
             cast(
                 "CompatibleMaterializeRequest",
