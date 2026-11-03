@@ -4280,3 +4280,126 @@ def test_exact_rejects_host_dependency_changed_during_path_resolution(
                 _ = safe_tree_path(root, "child.bin")
     assert changed, "native resolver was not exercised"
     assert os.readlink is native_readlink
+
+
+@pytest.mark.parametrize(
+    "hook", ["pure-with-segments", "path-with-segments", "native-new", "native-init"]
+)
+@pytest.mark.parametrize("entrypoint", ["output", "nested"])
+def test_exact_rejects_late_native_path_factories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str, entrypoint: str
+) -> None:
+    """Original Path.resolve and joinpath dispatch through late class factories."""
+    from pathlib import PurePath
+
+    root = tmp_path / "root"
+    root.mkdir()
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    output = root / "generated"
+    native_path_type = type(root)
+    native_init = native_path_type.__init__
+    calls = 0
+
+    def forged_segments(_path: PurePath, *_args: object) -> Path:
+        nonlocal calls
+        calls += 1
+        return foreign
+
+    def forged_new(_cls: type[Path], *_args: object) -> Path:
+        nonlocal calls
+        calls += 1
+        return foreign
+
+    def forged_init(path: Path, *args: object) -> None:
+        nonlocal calls
+        calls += 1
+        native_init(path, *args)
+
+    owner, attribute, replacement = {
+        "pure-with-segments": (PurePath, "with_segments", forged_segments),
+        "path-with-segments": (Path, "with_segments", forged_segments),
+        "native-new": (native_path_type, "__new__", staticmethod(forged_new)),
+        "native-init": (native_path_type, "__init__", forged_init),
+    }[hook]
+    resolve_output = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_output_root"]
+    )
+    safe_tree_path = cast(
+        "Callable[[Path, str], Path]", vars(exact_module)["_safe_tree_path"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, attribute, replacement)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if entrypoint == "output":
+                _ = resolve_output(output)
+            else:
+                _ = safe_tree_path(root, "leaf.bin")
+    assert calls == 0, "a late native path factory was invoked"
+
+
+@pytest.mark.parametrize("entrypoint", ["tree", "output", "nested"])
+def test_exact_rejects_path_factory_mutation_during_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """An original resolution result cannot hide a late path factory swap."""
+    from pathlib import PurePath
+
+    root = tmp_path / "source"
+    root.mkdir()
+    native_resolve = Path.resolve
+    native_segments = PurePath.with_segments
+    changed = False
+
+    def forged_segments(_path: PurePath, *_args: object) -> Path:
+        return tmp_path / "decoy"
+
+    def mutate_after_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal changed
+        result = native_resolve(path, strict=strict)
+        patched.setattr(PurePath, "with_segments", forged_segments)
+        changed = True
+        return result
+
+    resolve_tree = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_tree_root"]
+    )
+    resolve_output = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_output_root"]
+    )
+    safe_tree_path = cast(
+        "Callable[[Path, str], Path]", vars(exact_module)["_safe_tree_path"]
+    )
+    output = root / "output"
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "_NATIVE_PATH_RESOLVE", mutate_after_resolve)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if entrypoint == "tree":
+                _ = resolve_tree(root)
+            elif entrypoint == "output":
+                _ = resolve_output(output)
+            else:
+                _ = safe_tree_path(root, "child.bin")
+    assert changed, "native resolve was not exercised"
+    assert PurePath.with_segments is native_segments
+
+
+def test_exact_direct_file_reader_ignores_late_path_factory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An already supplied regular file still reads from its descriptor."""
+    from pathlib import PurePath
+
+    path = tmp_path / "source.bin"
+    _ = path.write_bytes(b"admitted source")
+    calls = 0
+
+    def forbidden_factory(_path: PurePath, *_args: object) -> Path:
+        nonlocal calls
+        calls += 1
+        return tmp_path / "wrong-source.bin"
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "with_segments", forbidden_factory)
+        assert exact_module.read_exact_regular_file(path, "source") == b"admitted source"
+    assert calls == 0

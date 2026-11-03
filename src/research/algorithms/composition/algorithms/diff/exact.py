@@ -132,6 +132,9 @@ _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Capturing Path.__str__ is insufficient: it reads a mutable cached slot,
 # and original filesystem operations call late Path.__fspath__ dispatch.
 _PATH_HOOK_NAMES = (
+    "__new__",
+    "__init__",
+    "with_segments",
     "__getattribute__",
     "__getattr__",
     "__setattr__",
@@ -163,7 +166,7 @@ _NATIVE_PATH_HOOKS = _NATIVE_TUPLE(
 
 
 def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
-    """Guard path resolution; direct descriptor reads ignore late os.fspath."""
+    """Guard resolution hooks without restricting descriptor-bound file reads."""
     if (
         (
             not direct_file_read
@@ -181,7 +184,14 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
             cls.__dict__.get(name) is not original
             for cls, hooks in _NATIVE_PATH_HOOKS
             for name, original in hooks
-            if not direct_file_read or name not in {"__truediv__", "as_posix"}
+            if not direct_file_read
+            or name not in {
+                "__new__",
+                "__init__",
+                "with_segments",
+                "__truediv__",
+                "as_posix",
+            }
         )
     ):
         message = "exact filesystem path hooks changed"
