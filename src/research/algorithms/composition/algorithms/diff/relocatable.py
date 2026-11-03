@@ -45,6 +45,7 @@ import builtins
 import hashlib
 import io
 import os
+import pathlib
 import shutil
 import stat
 import sys
@@ -90,6 +91,8 @@ _NATIVE_STR = builtins.str
 _NATIVE_LEN = builtins.len
 _NATIVE_BOOL = builtins.bool
 _NATIVE_TUPLE = builtins.tuple
+_NATIVE_ISINSTANCE = builtins.isinstance
+_NATIVE_HASATTR = builtins.hasattr
 # Keep output containment independent of post-load pathlib hook swaps.
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
@@ -122,8 +125,14 @@ _PATH_RESOLUTION_HOOK_NAMES = (
     "_tail_cached",
     "_raw_path",
     "_tail",
+    "_str_normcase",
+    "_str_normcase_cached",
+    "_from_parsed_parts",
+    "_from_parsed_string",
     "drive",
     "root",
+    "parents",
+    "__eq__",
     "parser",
     "_parse_path",
     "_format_parsed_parts",
@@ -138,6 +147,34 @@ _NATIVE_PATH_RESOLUTION_HOOKS = tuple(
     )
     for path_class in _NATIVE_PATH_TYPE.__mro__
     if issubclass(path_class, PurePath)
+)
+# Path.is_relative_to traverses a separately mutable Python _PathParents
+# sequence; pin its class alias and inherited membership/iteration methods.
+_NATIVE_PATH_PARENTS_TYPE = type(Path().parents)
+_PARENT_SEQUENCE_HOOK_NAMES = (
+    "__new__",
+    "__init__",
+    "__getattribute__",
+    "__setattr__",
+    "__contains__",
+    "__iter__",
+    "__getitem__",
+    "__len__",
+    "_path",
+    "_drv",
+    "_root",
+    "_tail",
+)
+_NATIVE_PATH_PARENTS_HOOKS = tuple(
+    (
+        parent_class,
+        tuple(
+            (name, parent_class.__dict__.get(name))
+            for name in _PARENT_SEQUENCE_HOOK_NAMES
+        ),
+    )
+    for parent_class in _NATIVE_PATH_PARENTS_TYPE.__mro__
+    if parent_class is not object
 )
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
@@ -177,6 +214,14 @@ def _require_native_host_resolution() -> None:
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
         or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.hasattr is not _NATIVE_HASATTR
+        or pathlib.__dict__.get("_PathParents") is not _NATIVE_PATH_PARENTS_TYPE
+        or any(
+            parent_class.__dict__.get(name) is not original
+            for parent_class, hooks in _NATIVE_PATH_PARENTS_HOOKS
+            for name, original in hooks
+        )
         or any(
             path_class.__dict__.get(name) is not original
             for path_class, hooks in _NATIVE_PATH_RESOLUTION_HOOKS
@@ -1261,7 +1306,12 @@ def _require_external_output_root(
     ):
         message = "relocatable root resolution requires native resolved Path"
         raise RelocationError(message)
-    if _NATIVE_IS_RELATIVE_TO(output, candidate):
+    # The original is_relative_to delegates to mutable Path.parents and
+    # equality/parent-sequence methods, not only to the captured function.
+    _require_native_host_resolution()
+    contained = _NATIVE_IS_RELATIVE_TO(output, candidate)
+    _require_native_host_resolution()
+    if contained:
         message = "relocatable output must not be inside the candidate source"
         raise RelocationError(message)
 

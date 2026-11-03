@@ -1284,6 +1284,141 @@ def test_relocatable_path_resolution_rejects_late_path_string_descriptors(
     assert calls == 0, "late pathname descriptor was consulted"
 
 
+@pytest.mark.parametrize(
+    "hook", ["parents", "__eq__", "_str_normcase", "_from_parsed_parts"]
+)
+@pytest.mark.parametrize("concrete", [False, True])
+def test_relocatable_output_rejects_late_parent_path_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str, concrete: bool
+) -> None:
+    """An ancestry comparison cannot depend on late native Path overrides."""
+    from pathlib import PurePath
+
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "inside"
+    owner = type(candidate) if concrete else PurePath
+    require_output = cast(
+        "Callable[[Path, Path], None]",
+        vars(relocatable_module)["_require_external_output_root"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted native path ancestry hook executed")
+
+    with monkeypatch.context() as patched:
+        if hook in {"parents", "_str_normcase"}:
+            patched.setattr(owner, hook, property(forbidden), raising=False)
+        else:
+            patched.setattr(owner, hook, forbidden, raising=False)
+        with pytest.raises(RelocationError, match="path resolution hooks changed"):
+            require_output(candidate, output)
+    assert calls == 0, "late native path hook was consulted"
+
+
+@pytest.mark.parametrize(
+    "hook",
+    [
+        "__init__",
+        "__getattribute__",
+        "__setattr__",
+        "__contains__",
+        "__iter__",
+        "__getitem__",
+        "__len__",
+        "_path",
+        "_tail",
+    ],
+)
+def test_relocatable_output_rejects_late_parent_sequence_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Parent sequence class methods cannot falsify the containment verdict."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "inside"
+    parent_type = type(candidate.parents)
+    require_output = cast(
+        "Callable[[Path, Path], None]",
+        vars(relocatable_module)["_require_external_output_root"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted parent sequence operation executed")
+
+    with monkeypatch.context() as patched:
+        if hook in {"_path", "_tail"}:
+            patched.setattr(parent_type, hook, property(forbidden), raising=False)
+        else:
+            patched.setattr(parent_type, hook, forbidden)
+        with pytest.raises(RelocationError, match="path resolution hooks changed"):
+            require_output(candidate, output)
+    assert calls == 0, "late parent-sequence hook was consulted"
+
+
+def test_relocatable_output_rejects_parent_class_alias_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Even the captured parents getter resolves its native class by name."""
+    import pathlib
+
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "inside"
+    require_output = cast(
+        "Callable[[Path, Path], None]",
+        vars(relocatable_module)["_require_external_output_root"],
+    )
+    calls = 0
+
+    def forged_parents(*_args: object, **_kwargs: object) -> tuple[()]:
+        nonlocal calls
+        calls += 1
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(pathlib, "_PathParents", forged_parents)
+        with pytest.raises(RelocationError, match="path resolution hooks changed"):
+            require_output(candidate, output)
+    assert calls == 0, "late native parent class alias was invoked"
+
+
+def test_relocatable_output_rejects_late_isinstance_ancestry_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The native equality used by Path parents must reject builtin spoofing."""
+    from pathlib import PurePath
+
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "inside"
+    require_output = cast(
+        "Callable[[Path, Path], None]",
+        vars(relocatable_module)["_require_external_output_root"],
+    )
+    native_isinstance = isinstance
+    calls = 0
+
+    def forged_isinstance(value: object, expected: object) -> bool:
+        nonlocal calls
+        if type(value) is type(candidate) and expected is PurePath:
+            calls += 1
+            return False
+        return native_isinstance(value, cast("type[object]", expected))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "isinstance", forged_isinstance)
+        with pytest.raises(RelocationError, match="path resolution hooks changed"):
+            require_output(candidate, output)
+    assert calls == 0, "late builtin reclassified native path ancestry"
+
+
 def test_relocatable_path_rejects_post_import_containment_spoof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
