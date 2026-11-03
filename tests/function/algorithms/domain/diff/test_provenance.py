@@ -689,6 +689,86 @@ def test_source_pin_rejects_post_import_root_resolution_redirect(
 
 
 @pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_uncached_late_host_parser_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """Late splitroot must not retarget public source snapshot or pin checks."""
+    source = tmp_path / "source"
+    foreign = tmp_path / "foreign"
+    _write(source, "README", b"authenticated source")
+    _write(foreign, "README", b"unselected foreign tree")
+    baseline = source_snapshot_evidence(source, ("README",))
+    pin = SourcePin("repository", _COMMIT, ("README",),
+                    baseline.file_count, baseline.snapshot_sha256)
+    selected = tmp_path / "source"
+    source_spelling = f"{tmp_path}/source"
+    foreign_spelling = str(foreign)
+    native_splitroot = os.path.splitroot
+    calls = 0
+
+    def forged_splitroot(value: str) -> tuple[str, str, str]:
+        nonlocal calls
+        if value == source_spelling:
+            calls += 1
+            return native_splitroot(foreign_spelling)
+        return native_splitroot(value)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(os.path, "splitroot", forged_splitroot)
+        try:
+            if operation == "snapshot":
+                _ = source_snapshot_evidence(selected, ("README",))
+            else:
+                _ = require_source_pin(selected, pin)
+        except SourcePinError as error:
+            rejected = "host" in str(error) and "resolver" in str(error)
+    assert rejected, "source pin operation consumed a late parser"
+    assert calls == 0, "late parser retargeted a trusted source pin"
+
+
+@pytest.mark.parametrize(
+    "helper", ["splitdrive", "join", "sep", "altsep", "bytes", "len"]
+)
+def test_source_pin_rejects_late_host_parser_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    """Original resolver must not consult swapped parser or builtin aliases."""
+    source = tmp_path / "source"
+    _write(source, "README", b"authenticated source")
+    selected = tmp_path / "source"
+    if helper in {"bytes", "len"}:
+        owner, name = builtins, helper
+    else:
+        owner, name = os.path, helper
+    original = getattr(owner, name)
+    calls = 0
+
+    def watched(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    if helper == "bytes":
+        replacement: object = str
+    elif helper == "sep":
+        replacement = "!"
+    elif helper == "altsep":
+        replacement = "\\"
+    else:
+        replacement = watched
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, name, replacement)
+        try:
+            _ = source_snapshot_evidence(selected, ("README",))
+        except SourcePinError as error:
+            rejected = "host" in str(error) and "resolver" in str(error)
+    assert rejected, f"late native {helper} alias was accepted"
+    assert calls == 0, f"late native {helper} alias executed"
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
 @pytest.mark.parametrize("mutation", ["redirect", "deny"])
 def test_source_pin_rejects_late_host_realpath_replacement(
     tmp_path: Path,

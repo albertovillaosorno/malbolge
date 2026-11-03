@@ -77,6 +77,7 @@ _NATIVE_LIST = builtins.list
 _NATIVE_TYPE = builtins.type
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
+_NATIVE_BYTES = builtins.bytes
 _NATIVE_ZIP = builtins.zip
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
@@ -84,6 +85,12 @@ _NATIVE_OBJECT_NEW: Final = object.__new__
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_HOST_REALPATH = os.path.realpath
+_NATIVE_HOST_PATH_MODULE = os.path
+_NATIVE_HOST_SPLITROOT = os.path.splitroot
+_NATIVE_HOST_SPLITDRIVE = os.path.splitdrive
+_NATIVE_HOST_JOIN = os.path.join
+_NATIVE_HOST_SEP = os.path.sep
+_NATIVE_HOST_ALTSEP = os.path.altsep
 _NATIVE_OS_FSPATH = os.fspath
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_READLINK = os.readlink
@@ -599,6 +606,9 @@ def _validate_root_path(root: object) -> None:
     if _NATIVE_TYPE(root) is not _NATIVE_PATH_TYPE:
         message = "pinned source root must use exact pathlib Path"
         raise SourcePinError(message)
+    # Path.__str__ itself can reparse an uncached root through the mutable
+    # host parser, before the later filesystem resolver is reached.
+    _require_native_root_resolver()
     if _NATIVE_ANY(
         cls.__dict__.get(name) is not original
         for cls, hooks in _NATIVE_PATH_STRING_HOOKS
@@ -626,7 +636,16 @@ def _require_native_root_resolver() -> None:
     # Original realpath still calls host functions by their mutable names.
     # Native lstat used for our status check does not protect its internals.
     if (
-        os.fspath is not _NATIVE_OS_FSPATH
+        os.path is not _NATIVE_HOST_PATH_MODULE
+        or os.path.splitroot is not _NATIVE_HOST_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_HOST_SPLITDRIVE
+        or os.path.join is not _NATIVE_HOST_JOIN
+        or os.path.sep is not _NATIVE_HOST_SEP
+        or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.bytes is not _NATIVE_BYTES
+        or builtins.len is not _NATIVE_LEN
+        or os.fspath is not _NATIVE_OS_FSPATH
         or os.lstat is not _NATIVE_OS_LSTAT
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
