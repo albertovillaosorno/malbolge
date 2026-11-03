@@ -37,6 +37,7 @@ from __future__ import annotations
 import hashlib
 import ntpath
 import shutil
+from pathlib import PurePosixPath
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast, override
 
@@ -75,6 +76,8 @@ _MISSING = "missing"
 _REORDERED = "reordered"
 _WRONG_DIGEST = "wrong-digest"
 _EXTRA = "extra"
+_PATH_PARTS = "parts"
+_PATH_AS_POSIX = "as_posix"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -403,6 +406,59 @@ def test_protected_paths_are_canonical_before_serialization(
             instructions=(),
             passthrough_roots=(invalid,),
         )
+
+
+def _forge_protected_path_method(
+    patched: pytest.MonkeyPatch, method: str, invalid: str
+) -> None:
+    def forged_parts(_path: PurePosixPath) -> tuple[str, ...]:
+        del _path
+        return ()
+
+    def forged_as_posix(_path: PurePosixPath) -> str:
+        del _path
+        return invalid
+
+    def forged_absolute(_path: PurePosixPath) -> bool:
+        del _path
+        return False
+
+    hooks = {
+        _PATH_PARTS: property(forged_parts),
+        _PATH_AS_POSIX: forged_as_posix,
+        "is_absolute": forged_absolute,
+    }
+    patched.setattr(PurePosixPath, method, hooks[method])
+
+
+@pytest.mark.parametrize(
+    ("method", "invalid"),
+    [
+        ("is_absolute", "/outside.bin"),
+        ("parts", "nested/../outside.bin"),
+        ("as_posix", "nested//outside.bin"),
+    ],
+)
+def test_protected_paths_ignore_replaced_pathlib_class_methods(
+    monkeypatch: pytest.MonkeyPatch, method: str, invalid: str
+) -> None:
+    """Mutable native path methods cannot authorize unsafe metadata labels."""
+    with monkeypatch.context() as patched:
+        _forge_protected_path_method(patched, method, invalid)
+        with pytest.raises(ProtectedPlanError, match="canonical relative"):
+            _ = ProtectedInstruction(
+                output_path=invalid,
+                kind=ProtectedInstructionKind.COPY_SOURCE,
+                expected_sha256="0" * 64,
+                source_path="safe.bin",
+            )
+        with pytest.raises(ProtectedPlanError, match="canonical relative"):
+            _ = ProtectedMetadata(
+                source=TreeSnapshot(files=()),
+                target=TreeSnapshot(files=()),
+                instructions=(),
+                passthrough_roots=(invalid,),
+            )
 
 
 @pytest.mark.parametrize(

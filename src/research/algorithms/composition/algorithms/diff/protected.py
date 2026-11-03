@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
 from ntpath import isreserved as _native_isreserved
-from pathlib import PurePosixPath, PureWindowsPath
+from ntpath import splitdrive as _native_splitdrive
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import IdentityTree
@@ -80,8 +80,7 @@ _SHA256_HEX_LENGTH = 64
 _HEX_DIGITS = frozenset("0123456789abcdef")
 _NUL = "\x00"
 _BACKSLASH = "\\"
-_DOT = "."
-_PARENT = ".."
+_UNSAFE_COMPONENTS = frozenset(("", ".", ".."))
 _AAD_MAGIC = b"source-bound-exact-plan-aad-v2\0"
 _KEY_DOMAIN = b"source-bound-exact-plan-source-key-v1\0"
 _BINDING_CONTEXT_DOMAIN = b"source-bound-exact-plan-binding-v1\0"
@@ -108,15 +107,13 @@ def _require_utf8_path(value: str, context: str) -> None:
     except UnicodeError as error:
         message = f"{context} must use UTF-8-encodable text"
         raise ProtectedPlanError(message) from error
-    path = PurePosixPath(value)
+    # Lexical canonicalization must not delegate to mutable pathlib methods.
+    # Empty, dot, or parent components are never valid portable file labels.
     unsafe = (
         _BACKSLASH in value
-        or value == _DOT
-        or path.is_absolute()
-        or PureWindowsPath(value).drive
+        or bool(_native_splitdrive(value)[0])
         or _native_isreserved(value)
-        or _PARENT in path.parts
-        or path.as_posix() != value
+        or any(part in _UNSAFE_COMPONENTS for part in value.split("/"))
     )
     if unsafe:
         message = f"{context} must be a canonical relative path"
