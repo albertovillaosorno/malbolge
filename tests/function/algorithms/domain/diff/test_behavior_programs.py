@@ -53,6 +53,7 @@ import pytest
 from algorithms.diff import behavior_programs as behavior_module
 from algorithms.diff.behavior import (
     BehaviorObservations,
+    BehaviorPolicyError,
     BehaviorProfile,
     BugObservation,
     BugProbe,
@@ -78,6 +79,7 @@ from algorithms.diff.probe_exec import (
     ProbeCommand,
     ProbeExecutionError,
     ProbeProgram,
+    ProbeProgramError,
     ProbeRoot,
     ProbeRunContext,
     ProbeTranscript,
@@ -3497,3 +3499,40 @@ def test_behavior_unexpected_probe_error_not_swallowed_by_late_class_alias(
                 cast("ProbeProgram", object()), cast("ProbeRunContext", object())
             )
     assert caught.value is failure
+
+
+@pytest.mark.parametrize("route", ["profile", "run-context"])
+def test_behavior_delegated_validator_ignores_late_error_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """A changed imported exception class cannot leak native policy failure."""
+    caught: BehaviorProgramError | None = None
+    raw_profile = object.__new__(BehaviorProfile)
+    native_context = _context(tmp_path, tmp_path)
+    if route == "profile":
+        object.__setattr__(raw_profile, "identity", ())
+        object.__setattr__(raw_profile, "compatibility", ())
+        object.__setattr__(raw_profile, "bugs", ())
+        native_failure = BehaviorPolicyError
+    else:
+        object.__setattr__(native_context, "enforce_source_immutable", "forged")
+        native_failure = ProbeProgramError
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            behavior_module,
+            "BehaviorPolicyError" if route == "profile" else "ProbeProgramError",
+            LookupError,
+        )
+        try:
+            if route == "profile":
+                _ = AuthoredBehaviorPrograms(raw_profile, (), (), ())
+            else:
+                _ = behavior_module._require_run_context(  # pyright: ignore[reportPrivateUsage]
+                    native_context, "behavior context"
+                )
+        except BehaviorProgramError as error:
+            caught = error
+    assert type(caught) is BehaviorProgramError, (route, caught)
+    assert type(caught.__cause__) is native_failure
+    assert "native" in str(caught)

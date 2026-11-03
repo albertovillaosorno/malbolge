@@ -159,6 +159,8 @@ _NATIVE_VALUE_ERROR = builtins.ValueError
 _NATIVE_RUNTIME_ERROR = builtins.RuntimeError
 _NATIVE_PROBE_EXECUTION_ERROR = ProbeExecutionError
 _NATIVE_EXACT_TREE_ERROR = ExactTreeError
+_NATIVE_BEHAVIOR_POLICY_ERROR = BehaviorPolicyError
+_NATIVE_PROBE_PROGRAM_ERROR = ProbeProgramError
 _NATIVE_EXCEPTION = builtins.Exception
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_BASE_EXCEPTION_GETATTRIBUTE = BaseException.__getattribute__
@@ -726,7 +728,7 @@ class AuthoredBehaviorPrograms:
             raise BehaviorProgramError(message)
         try:
             _PROFILE_VALIDATOR(profile)
-        except (BehaviorPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
+        except (_NATIVE_BEHAVIOR_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
             message = "authored behavior requires valid native profile evidence"
             raise BehaviorProgramError(message) from error
         _require_identity_program_tuple(identity, "authored identity programs")
@@ -916,7 +918,7 @@ def _require_run_context(value: object, context: str) -> ProbeRunContext:
     # type identity is insufficient before repository/tool comparison or reads.
     try:
         _PROBE_RUN_CONTEXT_VALIDATOR(value)
-    except (ProbeProgramError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
+    except (_NATIVE_PROBE_PROGRAM_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = f"{context} contains invalid native context evidence"
         raise BehaviorProgramError(message) from error
     return value
