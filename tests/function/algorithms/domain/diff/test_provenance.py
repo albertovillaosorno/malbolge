@@ -440,13 +440,18 @@ def test_source_pin_errors_do_not_invoke_foreign_formatters(
         )
 
     selected = {
-        "status": ("lstat", fail_lstat, "status failed"),
-        "junction": ("is_junction", fail_junction, "status failed"),
-        "resolve": ("resolve", fail_resolve, "resolution failed"),
-        "walk": ("walk", fail_walk, "traversal failed"),
+        "status": (Path, "lstat", fail_lstat, "status failed"),
+        "junction": (Path, "is_junction", fail_junction, "status failed"),
+        "resolve": (
+            provenance_module,
+            "_NATIVE_PATH_RESOLVE",
+            fail_resolve,
+            "resolution failed",
+        ),
+        "walk": (Path, "walk", fail_walk, "traversal failed"),
     }[operation]
-    method_name, replacement, expected = selected
-    monkeypatch.setattr(Path, method_name, replacement)
+    owner, method_name, replacement, expected = selected
+    monkeypatch.setattr(owner, method_name, replacement)
     with pytest.raises(SourcePinError, match=expected):
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
@@ -495,6 +500,32 @@ def test_pinned_source_root_status_error_fails_closed(
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
 
+def test_source_pin_rejects_post_import_root_resolution_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mutable host resolver cannot substitute another pinned source tree."""
+    source = tmp_path / "source"
+    redirected = tmp_path / "redirected"
+    _write(source, "README", b"trusted")
+    _write(redirected, "README", b"foreign")
+    baseline = source_snapshot_evidence(source, ("README",))
+    original_resolve = Path.resolve
+    calls = 0
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        if path == source and strict:
+            calls += 1
+            return original_resolve(redirected, strict=True)
+        return original_resolve(path, strict=strict)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "resolve", forged_resolve)
+        observed = source_snapshot_evidence(source, ("README",))
+    assert calls == 0
+    assert observed == baseline
+
+
 @pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
 def test_pinned_source_root_resolution_errors_fail_typed(
     tmp_path: Path,
@@ -511,7 +542,7 @@ def test_pinned_source_root_resolution_errors_fail_typed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(provenance_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(SourcePinError, match="pinned source root resolution failed"):
         _ = source_snapshot_evidence(tmp_path, ("README",))
 

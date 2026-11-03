@@ -57,6 +57,7 @@ _SHA256_HEX_LENGTH = 64
 _LOWER_HEX = frozenset("0123456789abcdef")
 _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
+_NATIVE_PATH_RESOLVE = Path.resolve
 
 
 class SourcePinError(RuntimeError):
@@ -332,7 +333,7 @@ def _resolved_source_root(root: Path) -> Path:
         message = f"pinned source root must be a directory: {root}"
         raise SourcePinError(message)
     try:
-        return root.resolve(strict=True)
+        return _NATIVE_PATH_RESOLVE(root, strict=True)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"pinned source root resolution failed: {root}: {detail}"
