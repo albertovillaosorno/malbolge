@@ -451,6 +451,13 @@ format.
   focused and 2,732 integrated diff tests; scoped Ruff and source
   BasedPyright were clean. The guard excludes direct stored-record mutation
   and racing external filesystem writers.
+- Nested relocation records now revalidate captured original locator,
+  source-range, oracle-literal, and instruction guards (`f081f4fdc`). Raw
+  exact-class plans are revalidated before staging output, not admitted on
+  type alone. Nine red-first failures and twelve total new cases passed;
+  213 focused and 3,074 integrated diff tests were green, strict source
+  BasedPyright had zero errors, and Ruff diagnostic counts did not rise.
+  External writer races and distributable compatible emission remain open.
 - Relocatable staging now pins `io.open` for exclusive file creation, native
   `os.mkdir`, and original output parent/name/with-name operations. Four
   red-first Path hook regressions (`65c7738a8`) reproduced staging/file
@@ -459,6 +466,14 @@ format.
   tests passed before it. Direct mutation of trusted module bindings and
   concurrent filesystem writers remain outside this process-level guard.
 
+- Source-lineage admission now revalidates fabricated exact native
+  `IdentityTree`, `IdentityFile`, `AdmissionPolicy`, nested `AnchorPolicy`,
+  and `FileAdmissionEvidence` (`4bf88a776`). Native aggregate receipts also
+  revalidate before returning `admitted`; an empty reasons slot alone is
+  insufficient. Twenty-four new regression cases exercised malformed,
+  missing, and forged slots; 162 focused and 3,004 integrated tests passed,
+  strict source BasedPyright had zero errors, and Ruff did not regress.
+  A bounded 105-second Jig check timed out (124), so no global verdict exists.
 - Source pin snapshot/verification, relocatable tree authoring/materialization
   and domain module loading now admit only exact native `Path` types before
   filesystem or import methods execute; six red-first tests cover each public

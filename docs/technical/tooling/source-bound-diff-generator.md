@@ -628,6 +628,20 @@ creation and per-file/aggregate verdicts; all 138 focused tests and 2,681
 integrated diff tests passed. This prevents class-hook redirection during
 lineage calculation, not direct trusted record edits or concurrent writers.
 
+Native source-lineage admission now also reruns the import-captured validators
+on exact `IdentityTree`, nested `IdentityFile`, `AdmissionPolicy`, nested
+`AnchorPolicy`, and `FileAdmissionEvidence` records (`4bf88a776`). This closes
+constructor-bypass cases in which malformed paths, mutable bytes, invalid
+thresholds, or missing native slots could reach lineage scoring. An exact
+`TreeAdmissionEvidence` with only an empty reasons slot can no longer certify
+`admitted=True` without revalidating the complete policy-bound receipt.
+Twenty-four targeted regression cases include red-first reproductions and
+valid direct evidence checks; 162 focused admission and 3,004 integrated diff
+tests passed, with strict source BasedPyright at zero errors and no increase in
+Ruff diagnostics. The check does not guard direct stored-instance mutation or
+concurrent source writers; repository-wide Jig remains degraded with no clean
+verdict after a bounded 105-second check timed out (exit 124).
+
 ### First Language-Aware Consumer Identity
 
 `src/research/algorithms/domain/algorithms/doom/generator/doom.py` provides the
@@ -1219,6 +1233,17 @@ plan construction from late class hooks. All 201 focused relocatable tests
 and 2,732 integrated diff tests passed; scoped Ruff and source BasedPyright
 had zero errors. Direct stored-instance tampering and concurrent source
 changes remain outside this boundary.
+
+Native relocation record admission now reruns original validation of nested
+`RangeLocator`, `RelocatableSourceRange`, and `OracleLiteral` segments, and
+of `RelocatableInstruction` records inside plans (`f081f4fdc`). Public
+materialization also rejects fabricated or incomplete exact native plans
+before creating staging output. Twelve new regression cases include nine
+red-first malformed-slot failures. All 213 focused relocatable and 3,074
+integrated diff tests passed; source BasedPyright reported zero errors, with no
+increase in existing Ruff diagnostics or Git diff whitespace errors.
+This does not make external source-tree mutations atomic, provide compatible
+transform admission, or establish a repository-wide Jig pass.
 
 Relocatable output staging now uses import-pinned `io.open` with exclusive `xb`
 mode, native `os.mkdir` for parent creation, and original `Path.parent`,
