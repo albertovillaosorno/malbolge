@@ -190,6 +190,12 @@ budget. It also plans 100,000 repeated requests against each live module/device
 snapshot without allocating that planned batch, exposing first admitted chunk,
 chunk count, reserve, usable memory, and measured free memory.
 
+The stdout report is checked against the import-bound native JSON encoder before
+publication; a changed public serializer fails closed rather than replacing
+measured device identity or resource rows. The command requires an exact
+character-write receipt and successful flush before returning success. These
+reporting checks can be tested with a synthetic adapter without CUDA hardware.
+
 The arithmetic geometry changes kernel code and constant data only; it must not
 change the per-VM buffer footprint. Live planner capacity can still differ by a
 few items across routes because each separately loaded module observes its own

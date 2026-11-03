@@ -34,15 +34,15 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
 import sys
-from typing import Final
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from typing import TYPE_CHECKING, Final
 
-from accelerator.cuda.profile_run import CudaProfileRunAdapter
-from accelerator.cuda.profile_run import cuda_profile_resident_footprint
+from accelerator.cuda.profile_run import (
+    CudaProfileRunAdapter,
+    cuda_profile_resident_footprint,
+)
 
 from benchmarks.accelerator import (
     profile_width_crazy_geometry_throughput as geom,
@@ -58,6 +58,7 @@ PLANNING_REQUESTS: Final = 100_000
 WIDTHS: Final = geom.WIDTHS
 CRAZY_GEOMETRIES: Final = geom.CRAZY_GEOMETRIES
 WORKLOAD_ID: Final = geom.WORKLOAD_ID
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +85,44 @@ class CrazyGeometryResourceRow:
     word_trits: int
 
 
+class GeometryResourceReportError(ValueError):
+    """Frozen CRAZY geometry resource evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Corroborate public JSON output against the source-bound encoder."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"geometry resource JSON writer failed: {type(error).__name__}"
+        raise GeometryResourceReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "geometry resource JSON writer differs from source"
+        raise GeometryResourceReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require an exact native write receipt and a successful flush."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"geometry resource stdout write failed: {type(error).__name__}"
+        raise GeometryResourceReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "geometry resource stdout write incomplete"
+        raise GeometryResourceReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"geometry resource stdout flush failed: {type(error).__name__}"
+        raise GeometryResourceReportError(message) from error
+    if flushed is not None:
+        message = "geometry resource stdout flush incomplete"
+        raise GeometryResourceReportError(message)
+
+
 def main() -> int:
     """Emit per-VM CUDA footprint and live planner capacity by geometry.
 
@@ -107,7 +146,7 @@ def main() -> int:
         "widths": WIDTHS,
         "workload_id": WORKLOAD_ID,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
@@ -165,9 +204,7 @@ def _row(
         first_chunk_bytes=first.bytes_required,
         first_chunk_items=first.item_count,
         free_memory_bytes=plan.resources.free_memory_bytes,
-        initial_host_to_device_bytes_per_vm=(
-            footprint.initial_host_to_device_bytes
-        ),
+        initial_host_to_device_bytes_per_vm=(footprint.initial_host_to_device_bytes),
         input_buffer_bytes_per_vm=footprint.input_buffer_bytes,
         memory_bytes_per_vm=footprint.memory_bytes,
         output_buffer_bytes_per_vm=footprint.output_buffer_bytes,
