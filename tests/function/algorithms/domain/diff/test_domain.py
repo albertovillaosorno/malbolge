@@ -40,6 +40,7 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import os
+import stat
 from pathlib import Path
 import sys
 from types import ModuleType
@@ -138,6 +139,93 @@ def test_domain_loader_rejects_foreign_path_subclass_before_methods() -> None:
         DomainContractError, match="must use exact pathlib Path"
     ):
         _ = load_diff_domain(_ForeignDomainModulePath("unsafe-domain.py"))
+
+
+def test_domain_rejects_late_type_spoofed_module_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumer type hooks cannot admit overridable module selectors."""
+    foreign = _ForeignDomainModulePath("unsafe-domain.py")
+    native_type = type
+    native_path_type = type(Path())
+    calls = 0
+
+    def forged_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return native_path_type
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = load_diff_domain(foreign)
+        except DomainContractError as error:
+            rejected = error.args == (
+                "diff domain module path must use exact pathlib Path",
+            )
+    assert rejected, "mutable type admitted a foreign consumer path"
+    assert calls == 0, "consumer type hook was consulted"
+
+
+def test_domain_rejects_late_type_spoofed_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer cannot type-launder a foreign filesystem receipt."""
+    foreign = SimpleNamespace(st_mode=stat.S_IFREG | 0o644)
+    native_type = type
+    calls = 0
+
+    def forged_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return os.stat_result
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = domain_module._require_native_module_status(foreign, "module")
+        except DomainContractError:
+            rejected = True
+    assert rejected, "mutable type admitted non-native filesystem receipt"
+    assert calls == 0, "consumer type hook was consulted"
+
+
+def test_domain_rejects_late_type_spoofed_resolver(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign resolved path must not gain local module-file authority."""
+    foreign = object()
+    native_type = type
+    native_path_type = type(Path())
+    calls = 0
+
+    def forged_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return native_path_type
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            domain_module, "_NATIVE_PATH_RESOLVE", lambda *a, **k: foreign
+        )
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = domain_module._resolved_native_module_path(
+                tmp_path / "policy.py"
+            )
+        except DomainContractError:
+            rejected = True
+    assert rejected, "mutable type admitted foreign resolved path"
+    assert calls == 0, "consumer type hook was consulted"
 
 
 @pytest.mark.parametrize("name", ["domain\x00.py", "domain\ud800.py"])

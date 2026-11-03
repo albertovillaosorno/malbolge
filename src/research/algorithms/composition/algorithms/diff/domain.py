@@ -68,8 +68,10 @@ _NUL = "\x00"
 # Domain validation must not trust builtins replaced by imported consumers.
 _NATIVE_CALLABLE = builtins.callable
 _NATIVE_GETATTR = builtins.getattr
+_NATIVE_TYPE = builtins.type
+_NATIVE_BOOL_TYPE = builtins.bool
 _NATIVE_STAT_RESULT = os.stat_result
-_NATIVE_PATH_TYPE = type(Path())
+_NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_PARENT = Path.parent
 _NATIVE_OS_LSTAT = os.lstat
@@ -80,7 +82,7 @@ _SHA256_FACTORY = hashlib.sha256
 
 
 def _native_path_parent(path: Path) -> Path:
-    return _NATIVE_PATH_PARENT.__get__(path, type(path))
+    return _NATIVE_PATH_PARENT.__get__(path, _NATIVE_TYPE(path))
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -166,7 +168,7 @@ def _module_is_junction(path: Path) -> bool:
             f"{_NATIVE_PATH_STRING(path)!r}"
         )
         raise DomainContractError(message) from error
-    if type(verdict) is not bool:
+    if _NATIVE_TYPE(verdict) is not _NATIVE_BOOL_TYPE:
         message = "diff domain module junction status requires native boolean"
         raise DomainContractError(message)
     return verdict
@@ -184,7 +186,7 @@ def _require_native_module_status(
         DomainContractError: Status is not an exact host record.
 
     """
-    if type(receipt) is not _NATIVE_STAT_RESULT:
+    if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"diff domain {description} requires native filesystem status"
         raise DomainContractError(message)
     return receipt
@@ -228,7 +230,7 @@ def _resolved_native_module_path(path: Path) -> Path:
     except (OSError, ValueError, RuntimeError) as error:
         message = f"diff domain module resolution failed: {_NATIVE_PATH_STRING(path)!r}"
         raise DomainContractError(message) from error
-    if type(resolved) is not _NATIVE_PATH_TYPE:
+    if _NATIVE_TYPE(resolved) is not _NATIVE_PATH_TYPE:
         message = "diff domain module resolution requires native Path"
         raise DomainContractError(message)
     return resolved
@@ -361,7 +363,7 @@ def load_diff_domain(path: object) -> DiffDomain:
 
     """
     # Loading a module executes code; never admit overridable Path methods.
-    if type(path) is not type(Path()):
+    if _NATIVE_TYPE(path) is not _NATIVE_PATH_TYPE:
         message = "diff domain module path must use exact pathlib Path"
         raise DomainContractError(message)
     module, previous = _load_module(path)
