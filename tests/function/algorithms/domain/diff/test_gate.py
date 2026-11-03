@@ -34,7 +34,9 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -194,6 +196,40 @@ def test_gate_rejects_failed_evidence_after_admitted_descriptor_spoof(
             _ = require_transform_admission(source, behavior)
         with pytest.raises(AdmissionError, match="do not match evidence"):
             _ = TransformAdmissionEvidence(source, behavior, reasons=())
+
+
+def test_gate_rejects_after_its_own_admitted_property_is_spoofed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late descriptor cannot promote rejected combined evidence."""
+    source = _source_evidence("unrelated")
+    behavior = _behavior_evidence()
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            TransformAdmissionEvidence, "admitted", property(lambda _: True)
+        )
+        with pytest.raises(AdmissionError, match="source lineage"):
+            _ = require_transform_admission(source, behavior)
+
+
+def test_gate_rejects_foreign_reason_after_late_any_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged text subclasses cannot authenticate a combined gate verdict."""
+    class ForeignReason(str):
+        """A non-exact reason masquerading as validated text."""
+
+    source = _source_evidence("unrelated")
+    behavior = _behavior_evidence()
+    valid = combine_admission(source, behavior)
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        try:
+            _ = replace(valid, reasons=(ForeignReason(valid.reasons[0]),))
+        except AdmissionError:
+            rejected = True
+    assert rejected, "late any hook admitted a foreign gate reason"
 
 
 def test_combined_gate_accepts_only_when_both_families_pass() -> None:

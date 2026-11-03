@@ -34,10 +34,14 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 
 from algorithms.diff.admission import AdmissionError, TreeAdmissionEvidence
 from algorithms.diff.behavior import BehaviorEvidence
+
+# Conjunctive gate validation must not trust late global builtins hooks.
+_NATIVE_ANY = builtins.any
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +61,7 @@ class TransformAdmissionEvidence:
         """
         source = _require_source_evidence(self.source)
         behavior = _require_behavior_evidence(self.behavior)
-        if type(self.reasons) is not tuple or any(
+        if type(self.reasons) is not tuple or _NATIVE_ANY(
             type(reason) is not str for reason in self.reasons
         ):
             message = "transform admission reasons must use exact strings"
@@ -139,7 +143,7 @@ def require_transform_admission(
 
     """
     evidence = combine_admission(source, behavior)
-    if not evidence.admitted:
+    if evidence.reasons:
         message = "; ".join(evidence.reasons)
         raise AdmissionError(message)
     return evidence
