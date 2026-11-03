@@ -60,6 +60,7 @@ from algorithms.diff.probe_exec import (
     ProbeCommand,
     ProbeExecutionError,
     ProbeProgram,
+    ProbeProgramError,
     ProbeRunContext,
     ProbeTranscript,
     run_probe_program,
@@ -675,6 +676,9 @@ _BEHAVIOR_OBSERVATIONS_INIT = cast(
 _PROBE_RUN_CONTEXT_INIT = cast(
     "Callable[..., None]", ProbeRunContext.__dict__["__init__"]
 )
+_PROBE_RUN_CONTEXT_VALIDATOR = cast(
+    "Callable[[ProbeRunContext], None]", ProbeRunContext.__dict__["__post_init__"]
+)
 _PROBE_RUN_CONTEXT_SOURCE_SLOT = cast(
     "MemberDescriptorType", ProbeRunContext.__dict__["source_root"]
 )
@@ -742,6 +746,13 @@ def _require_run_context(value: object, context: str) -> ProbeRunContext:
     if _NATIVE_TYPE(value) is not ProbeRunContext:
         message = f"{context} must use the exact ProbeRunContext type"
         raise BehaviorProgramError(message)
+    # Exact native dataclasses may be allocated without their constructor;
+    # type identity is insufficient before repository/tool comparison or reads.
+    try:
+        _PROBE_RUN_CONTEXT_VALIDATOR(value)
+    except (ProbeProgramError, AttributeError, TypeError) as error:
+        message = f"{context} contains invalid native context evidence"
+        raise BehaviorProgramError(message) from error
     return value
 
 

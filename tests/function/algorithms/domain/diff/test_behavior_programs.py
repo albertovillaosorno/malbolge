@@ -2638,3 +2638,121 @@ def test_behavior_authoring_snapshot_uses_native_context_source(
         native_slot.__get__(oracle_context, ProbeRunContext),
     ]
     assert calls == 0, "source getter changed an authorized snapshot root"
+
+
+@pytest.mark.parametrize("role", ["source", "oracle"])
+def test_behavior_authoring_rejects_uninitialized_native_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """Constructor-bypassed native contexts cannot reach path resolution."""
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    oracle_context = _context(oracle, tmp_path)
+    forged = object.__new__(ProbeRunContext)
+    if role == "source":
+        source_context = forged
+    else:
+        oracle_context = forged
+
+    def unexpected_snapshot(_root: Path) -> TreeSnapshot:
+        raise AssertionError("unvalidated native context reached source snapshot")
+
+    monkeypatch.setattr(
+        behavior_module, "_snapshot_observed_source", unexpected_snapshot
+    )
+    with pytest.raises(BehaviorProgramError, match="behavior context.*invalid"):
+        _ = author_behavior_programs(_programs(), source_context, oracle_context)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("source_root", "foreign-path"),
+        ("repository_root", "foreign-path"),
+        ("tools", "foreign-binding"),
+        ("enforce_source_immutable", "nonboolean"),
+    ],
+)
+@pytest.mark.parametrize("role", ["source", "oracle"])
+def test_behavior_authoring_rejects_forged_native_context_fields(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    role: str,
+    field: str,
+    invalid: str,
+) -> None:
+    """Stored context fields must satisfy the pinned original validator."""
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    oracle_context = _context(oracle, tmp_path)
+    base = source_context if role == "source" else oracle_context
+    forged = object.__new__(ProbeRunContext)
+    invalid_value: object = (
+        object()
+        if invalid == "foreign-path"
+        else (("not-a-pair",),)
+        if invalid == "foreign-binding"
+        else "yes"
+    )
+    for name in (
+        "source_root",
+        "repository_root",
+        "tools",
+        "enforce_source_immutable",
+    ):
+        slot = ProbeRunContext.__dict__[name]
+        slot.__set__(
+            forged,
+            invalid_value
+            if name == field
+            else slot.__get__(base, ProbeRunContext),
+        )
+    if role == "source":
+        source_context = forged
+    else:
+        oracle_context = forged
+
+    def unexpected_snapshot(_root: Path) -> TreeSnapshot:
+        raise AssertionError("unvalidated native context reached source snapshot")
+
+    monkeypatch.setattr(
+        behavior_module, "_snapshot_observed_source", unexpected_snapshot
+    )
+    with pytest.raises(BehaviorProgramError, match="behavior context.*invalid"):
+        _ = author_behavior_programs(_programs(), source_context, oracle_context)
+
+
+def test_behavior_context_validation_ignores_late_post_init_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Caller changes to class validators cannot admit forged native context."""
+    source, _ = _trees(tmp_path)
+    native = _context(source, tmp_path)
+    forged = object.__new__(ProbeRunContext)
+    for name in (
+        "source_root",
+        "repository_root",
+        "tools",
+        "enforce_source_immutable",
+    ):
+        slot = ProbeRunContext.__dict__[name]
+        slot.__set__(
+            forged,
+            "not-a-repository" if name == "repository_root" else slot.__get__(native, ProbeRunContext),
+        )
+    calls = 0
+
+    def forged_validator(_context: ProbeRunContext) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ProbeRunContext, "__post_init__", forged_validator)
+        with pytest.raises(BehaviorProgramError, match="behavior context.*invalid"):
+            _ = behavior_module._require_run_context(  # pyright: ignore[reportPrivateUsage]
+                forged, "source behavior context"
+            )
+        assert behavior_module._require_run_context(  # pyright: ignore[reportPrivateUsage]
+            native, "source behavior context"
+        ) is native
+    assert calls == 0, "late validator was called instead of the original"
