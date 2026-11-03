@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import os
 from pathlib import Path
 from stat import S_IFDIR
@@ -124,7 +125,17 @@ def test_source_snapshot_rejects_nonportable_root_path(
         _ = source_snapshot_evidence(tmp_path / invalid, ("src",))
 
 
-@pytest.mark.parametrize("path", ["C:/absolute.c", "D:relative.c"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "C:/absolute.c",
+        "D:relative.c",
+        "CON",
+        "src/COM1/child.c",
+        "src/trailing.",
+        "src/stream:fork",
+    ],
+)
 def test_source_pin_rejects_windows_drive_roots_before_traversal(
     tmp_path: Path,
     path: str,
@@ -134,6 +145,27 @@ def test_source_pin_rejects_windows_drive_roots_before_traversal(
         _ = SourcePin("repo", _COMMIT, (path,), 1, "0" * 64)
     with pytest.raises(SourcePinError, match="unsafe pinned source path"):
         _ = source_snapshot_evidence(tmp_path, (path,))
+
+
+@pytest.mark.parametrize(
+    "reserved_path", ["CON", "src/COM1/child.c", "src/trailing."]
+)
+def test_source_pin_reserved_roots_ignore_host_policy_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_path: str,
+) -> None:
+    """Post-import callbacks cannot authorize nonportable source pins."""
+
+    def forged_isreserved(path: str) -> bool:
+        del path
+        return False
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
+    with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+        _ = SourcePin("repo", _COMMIT, (reserved_path,), 1, "0" * 64)
+    with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+        _ = source_snapshot_evidence(tmp_path, (reserved_path,))
 
 
 @pytest.mark.parametrize("invalid", ["nul\x00repo", "unpaired\ud800repo"])

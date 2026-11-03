@@ -37,6 +37,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
+from ntpath import isreserved as _native_isreserved
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import Final, cast
@@ -185,6 +186,7 @@ def _validate_relative_path(relative_path: object) -> str:
         or relative_path == _DOT
         or candidate.is_absolute()
         or bool(PureWindowsPath(relative_path).drive)
+        or _native_isreserved(relative_path)
         or _PARENT in candidate.parts
         or candidate.as_posix() != relative_path
     )
