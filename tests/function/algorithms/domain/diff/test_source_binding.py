@@ -32,26 +32,26 @@
 
 """Synthetic tests for deterministic threshold source binding."""
 
-from dataclasses import replace
 import hashlib
+import hmac
 import itertools
 import math
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import replace
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.admission import AdmissionPolicyError
-from algorithms.diff.admission import IdentityTree
-from algorithms.diff.admission import identity_tree
-from algorithms.diff.fingerprints import AnchorPolicy
-from algorithms.diff.source_binding import SourceBindingError
-from algorithms.diff.source_binding import SourceBindingPolicy
-from algorithms.diff.source_binding import SourceBindingPolicyError
-from algorithms.diff.source_binding import bind_secret
-from algorithms.diff.source_binding import hkdf_expand_sha256
-from algorithms.diff.source_binding import hkdf_extract_sha256
-from algorithms.diff.source_binding import recover_secret
-from algorithms.diff.source_binding import validate_threshold_binding
 import pytest
+from algorithms.diff.admission import AdmissionPolicyError, IdentityTree, identity_tree
+from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.source_binding import (
+    SourceBindingError,
+    SourceBindingPolicy,
+    SourceBindingPolicyError,
+    bind_secret,
+    hkdf_expand_sha256,
+    hkdf_extract_sha256,
+    recover_secret,
+    validate_threshold_binding,
+)
 
 if TYPE_CHECKING:
     from algorithms.diff.source_binding import BoundShare
@@ -72,9 +72,7 @@ def _expect(condition: object, message: str) -> None:
 def _files(label: str) -> dict[str, bytes]:
     return {
         f"src/file-{file_index}.c": b"".join(
-            hashlib.sha256(
-                f"{label}:{file_index}:{block_index}".encode()
-            ).digest()
+            hashlib.sha256(f"{label}:{file_index}:{block_index}".encode()).digest()
             for block_index in range(_BLOCKS_PER_FILE)
         )
         for file_index in range(_FILE_COUNT)
@@ -94,9 +92,7 @@ def _reference() -> IdentityTree:
     return identity_tree(_files("reference"))
 
 
-def _candidate_paths(
-    reference: IdentityTree, paths: tuple[str, ...]
-) -> IdentityTree:
+def _candidate_paths(reference: IdentityTree, paths: tuple[str, ...]) -> IdentityTree:
     by_path = {item.path: item.canonical for item in reference.files}
     return identity_tree({path: by_path[path] for path in paths})
 
@@ -123,28 +119,79 @@ def test_hkdf_sha256_matches_rfc5869_test_case_1() -> None:
     _expect(output == expected_okm, "HKDF expand vector changed")
 
 
+def test_hkdf_ignores_replaced_global_sha256_constructor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign digest constructor cannot rewrite the RFC 5869 key schedule."""
+    ikm = bytes.fromhex("0b" * 22)
+    salt = bytes.fromhex("000102030405060708090a0b0c")
+    info = bytes.fromhex("f0f1f2f3f4f5f6f7f8f9")
+    reference_prk = hkdf_extract_sha256(salt, ikm)
+    reference_okm = hkdf_expand_sha256(reference_prk, info, 42)
+    calls = 0
+
+    def forged_hash(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        message = "mutable SHA-256 constructor evaluated"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(hashlib, "sha256", forged_hash)
+    _expect(hkdf_extract_sha256(salt, ikm) == reference_prk, "HKDF extract changed")
+    _expect(
+        hkdf_expand_sha256(reference_prk, info, 42) == reference_okm,
+        "HKDF expand changed",
+    )
+    _expect(calls == 0, "mutable digest constructor was consulted")
+
+
+def test_bound_shares_ignore_replaced_global_hmac_constructor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Untrusted domain hooks cannot expose the plaintext secret as masked shares."""
+    reference = _reference()
+    calls = 0
+
+    class _ZeroDigest:
+        def digest(self) -> bytes:
+            return bytes(32)
+
+    def forge_hmac(
+        _key: bytes,
+        _message: bytes,
+        _digestmod: object,
+    ) -> _ZeroDigest:
+        nonlocal calls
+        calls += 1
+        return _ZeroDigest()
+
+    monkeypatch.setattr(hmac, "new", forge_hmac)
+    monkeypatch.setattr(hmac, "HMAC", forge_hmac)
+    binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
+    _expect(
+        all(share.masked_share != _SECRET for share in binding.shares),
+        "replaced HMAC made distributable masked shares expose the secret",
+    )
+    _expect(calls == 0, "mutable global HMAC constructor was consulted")
+    _expect(recover_secret(binding, reference) == _SECRET, "valid binding changed")
+
+
 def test_full_reference_recovers_bound_secret() -> None:
     """Recover key material from the exact canonical reference source."""
     reference = _reference()
-    binding = bind_secret(
-        reference, _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
 
     recovered = recover_secret(binding, reference)
 
     _expect(recovered == _SECRET, "exact reference did not recover secret")
-    _expect(
-        binding.threshold == _DEFAULT_THRESHOLD, "synthetic threshold changed"
-    )
+    _expect(binding.threshold == _DEFAULT_THRESHOLD, "synthetic threshold changed")
     _expect(len(binding.shares) == _FILE_COUNT, "binding share count changed")
 
 
 def test_every_exact_threshold_file_combination_recovers() -> None:
     """Recover from every exact-threshold combination of source files."""
     reference = _reference()
-    binding = bind_secret(
-        reference, _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
     paths = tuple(share.source_path for share in binding.shares)
 
     for selected in itertools.combinations(paths, binding.threshold):
@@ -158,29 +205,21 @@ def test_every_exact_threshold_file_combination_recovers() -> None:
 def test_below_threshold_fails_before_secret_recovery() -> None:
     """Reject a candidate with one fewer bound source file than required."""
     reference = _reference()
-    binding = bind_secret(
-        reference, _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
     selected = tuple(
         share.source_path for share in binding.shares[: binding.threshold - 1]
     )
     candidate = _candidate_paths(reference, selected)
 
-    with pytest.raises(
-        SourceBindingError, match="insufficient source-bound anchors"
-    ):
+    with pytest.raises(SourceBindingError, match="insufficient source-bound anchors"):
         _ = recover_secret(binding, candidate)
 
 
 def test_empty_source_cannot_materialize_bound_secret() -> None:
     """Prove the distributable binding metadata is insufficient by itself."""
-    binding = bind_secret(
-        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
 
-    with pytest.raises(
-        SourceBindingError, match="insufficient source-bound anchors"
-    ):
+    with pytest.raises(SourceBindingError, match="insufficient source-bound anchors"):
         _ = recover_secret(binding, identity_tree({}))
 
 
@@ -219,10 +258,9 @@ def test_insertions_shift_offsets_without_breaking_bound_anchors() -> None:
         policy=_policy(),
         context=_CONTEXT,
     )
-    candidate = identity_tree({
-        path: b"inserted-prefix:" + data
-        for path, data in reference_files.items()
-    })
+    candidate = identity_tree(
+        {path: b"inserted-prefix:" + data for path, data in reference_files.items()}
+    )
 
     _expect(
         recover_secret(binding, candidate) == _SECRET,
@@ -232,14 +270,10 @@ def test_insertions_shift_offsets_without_breaking_bound_anchors() -> None:
 
 def test_unrelated_same_shape_source_cannot_recover_secret() -> None:
     """Reject unrelated canonical bytes with similar paths and sizes."""
-    binding = bind_secret(
-        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
     unrelated = identity_tree(_files("unrelated"))
 
-    with pytest.raises(
-        SourceBindingError, match="insufficient source-bound anchors"
-    ):
+    with pytest.raises(SourceBindingError, match="insufficient source-bound anchors"):
         _ = recover_secret(binding, unrelated)
 
 
@@ -298,8 +332,7 @@ def test_recovery_reconstructs_from_distributed_threshold_shares() -> None:
 
     malformed_share = replace(
         minority,
-        masked_share=bytes([minority.masked_share[0] ^ 1])
-        + minority.masked_share[1:],
+        masked_share=bytes([minority.masked_share[0] ^ 1]) + minority.masked_share[1:],
     )
     forged = replace(
         binding,
@@ -312,9 +345,7 @@ def test_recovery_reconstructs_from_distributed_threshold_shares() -> None:
 def test_tampered_masked_share_fails_secret_commitment() -> None:
     """Reject malformed transform metadata rather than returning a wrong key."""
     reference = _reference()
-    binding = bind_secret(
-        reference, _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
     first = binding.shares[0]
     tampered_bytes = bytes([first.masked_share[0] ^ 1]) + first.masked_share[1:]
     tampered_share = replace(first, masked_share=tampered_bytes)
@@ -338,9 +369,7 @@ def test_binding_rejects_threshold_below_required_file_count() -> None:
 
 def test_recovery_rejects_file_requirement_above_share_threshold() -> None:
     """A forged envelope cannot declare more required files than shares."""
-    valid = bind_secret(
-        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    valid = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
     malformed = replace(valid, threshold=valid.minimum_anchor_files - 1)
     with pytest.raises(SourceBindingError, match=r"threshold.*minimum"):
         _ = validate_threshold_binding(malformed)
@@ -409,9 +438,7 @@ def test_decimal_share_boundaries_keep_expected_quorum(
         minimum_anchor_files=1,
         anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
     )
-    binding = bind_secret(
-        _reference(), _SECRET, policy=policy, context=_CONTEXT
-    )
+    binding = bind_secret(_reference(), _SECRET, policy=policy, context=_CONTEXT)
     assert binding.threshold == expected_threshold
 
 
@@ -456,9 +483,7 @@ def test_public_source_binding_inputs_fail_closed() -> None:
             policy=policy,
             context=_CONTEXT,
         )
-    with pytest.raises(
-        SourceBindingPolicyError, match="exact SourceBindingPolicy"
-    ):
+    with pytest.raises(SourceBindingPolicyError, match="exact SourceBindingPolicy"):
         _ = bind_secret(
             reference,
             _SECRET,
@@ -473,9 +498,7 @@ def test_public_source_binding_inputs_fail_closed() -> None:
             context=cast("bytes", cast("object", bytearray(_CONTEXT))),
         )
     with pytest.raises(SourceBindingPolicyError, match="extract inputs"):
-        _ = hkdf_extract_sha256(
-            cast("bytes", cast("object", bytearray())), _SECRET
-        )
+        _ = hkdf_extract_sha256(cast("bytes", cast("object", bytearray())), _SECRET)
     with pytest.raises(SourceBindingPolicyError, match="expand inputs"):
         _ = hkdf_expand_sha256(
             _SECRET, cast("bytes", cast("object", bytearray(b"info"))), 1
@@ -506,9 +529,7 @@ def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
         replace(binding, anchor_policy=cast("AnchorPolicy", object())),
         replace(
             binding,
-            shares=cast(
-                "tuple[BoundShare, ...]", cast("object", list(binding.shares))
-            ),
+            shares=cast("tuple[BoundShare, ...]", cast("object", list(binding.shares))),
         ),
         replace(binding, threshold=len(binding.shares) + 1),
         replace(binding, minimum_anchor_files=len(binding.shares) + 1),
@@ -520,9 +541,7 @@ def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
 
 def test_recovery_rejects_impossible_share_file_topology() -> None:
     """A file cannot also be the ancestor directory of another bound file."""
-    binding = bind_secret(
-        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
     first, second = binding.shares[:2]
     for first_path, second_path in (
         (first.source_path, f"{first.source_path}/child.c"),
@@ -553,9 +572,7 @@ def test_binding_inputs_reject_windows_drive_prefixed_paths() -> None:
 
 def test_recovery_rejects_windows_drive_prefixed_share_paths() -> None:
     """Portable bindings reject Windows drive paths before candidate use."""
-    binding = bind_secret(
-        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
     for drive_path in ("C:/unsafe.c", "C:unsafe.c"):
         malformed = replace(
             binding,
@@ -578,9 +595,7 @@ def test_recovery_rejects_windows_reserved_share_paths(
     reserved_path: str,
 ) -> None:
     """Distributable shares must use file names portable to Windows hosts."""
-    binding = bind_secret(
-        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
-    )
+    binding = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
     malformed = replace(
         binding,
         shares=(
@@ -635,8 +650,6 @@ def test_recovery_rejects_malformed_share_metadata() -> None:
     )
     with pytest.raises(SourceBindingError, match="anchors must be unique"):
         _ = recover_secret(
-            replace(
-                binding, shares=(first, duplicate_anchor, *binding.shares[2:])
-            ),
+            replace(binding, shares=(first, duplicate_anchor, *binding.shares[2:])),
             reference,
         )

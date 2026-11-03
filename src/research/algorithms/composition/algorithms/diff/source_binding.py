@@ -45,19 +45,17 @@ binding claim, not a claim of information-theoretic perfect secret sharing.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from fractions import Fraction
-import hashlib
-import hmac
 import math
 import ntpath
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
+from dataclasses import dataclass
+from fractions import Fraction
+from hashlib import sha256 as _native_sha256
+from hmac import HMAC as _NativeHMAC
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import IdentityTree
-from algorithms.diff.fingerprints import AnchorPolicy
-from algorithms.diff.fingerprints import stable_anchors
+from algorithms.diff.fingerprints import AnchorPolicy, stable_anchors
 
 if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityFile
@@ -104,9 +102,7 @@ def _binding_fraction(value: object) -> float:
     return value
 
 
-def _binding_positive_int(
-    value: object, context: str, maximum: int | None
-) -> int:
+def _binding_positive_int(value: object, context: str, maximum: int | None) -> int:
     if type(value) is not int or value < _ONE:
         message = f"{context} must be a positive integer"
         raise SourceBindingPolicyError(message)
@@ -198,7 +194,7 @@ def hkdf_extract_sha256(salt: bytes, input_key_material: bytes) -> bytes:
         message = "HKDF-SHA-256 extract inputs must use exact bytes"
         raise SourceBindingPolicyError(message)
     effective_salt = salt or bytes(_SHA256_BYTES)
-    return hmac.new(effective_salt, input_key_material, hashlib.sha256).digest()
+    return _NativeHMAC(effective_salt, input_key_material, _native_sha256).digest()
 
 
 def hkdf_expand_sha256(
@@ -223,19 +219,16 @@ def hkdf_expand_sha256(
         or length < _ZERO
         or length > _HKDF_MAX_BLOCKS * _SHA256_BYTES
     ):
-        message = (
-            "HKDF-SHA-256 output length must be an integer within "
-            "RFC 5869 limits"
-        )
+        message = "HKDF-SHA-256 output length must be an integer within RFC 5869 limits"
         raise SourceBindingPolicyError(message)
     output = bytearray()
     previous = b""
     block_count = math.ceil(length / _SHA256_BYTES)
     for block_index in range(_ONE, block_count + _ONE):
-        previous = hmac.new(
+        previous = _NativeHMAC(
             pseudorandom_key,
             previous + info + bytes([block_index]),
-            hashlib.sha256,
+            _native_sha256,
         ).digest()
         output.extend(previous)
     return bytes(output[:length])
@@ -246,16 +239,12 @@ def _frame(value: bytes) -> bytes:
 
 
 def _context_digest(context: bytes) -> bytes:
-    return hashlib.sha256(
-        b"source-binding-context-v1\0" + _frame(context)
-    ).digest()
+    return _native_sha256(b"source-binding-context-v1\0" + _frame(context)).digest()
 
 
 def _secret_commitment(context: bytes, secret: bytes) -> bytes:
-    return hashlib.sha256(
-        b"source-binding-secret-commitment-v1\0"
-        + _frame(context)
-        + _frame(secret)
+    return _native_sha256(
+        b"source-binding-secret-commitment-v1\0" + _frame(context) + _frame(secret)
     ).digest()
 
 
@@ -347,8 +336,7 @@ def _split_secret(
                 x,
             )
     return tuple(
-        (share_index + _ONE, bytes(share))
-        for share_index, share in enumerate(shares)
+        (share_index + _ONE, bytes(share)) for share_index, share in enumerate(shares)
     )
 
 
@@ -448,9 +436,7 @@ def _round_robin_materials(
     maximum_anchors: int,
 ) -> tuple[_AnchorMaterial, ...]:
     selected: list[_AnchorMaterial] = []
-    maximum_depth = max(
-        (len(materials) for materials in per_file), default=_ZERO
-    )
+    maximum_depth = max((len(materials) for materials in per_file), default=_ZERO)
     for depth in range(maximum_depth):
         for materials in per_file:
             if depth < len(materials):
@@ -510,14 +496,10 @@ def _xor_bytes(left: bytes, right: bytes) -> bytes:
 
 def _validate_bind_identity(reference: object, policy: object) -> None:
     if type(reference) is not IdentityTree:
-        message = (
-            "source-binding reference must use the exact IdentityTree type"
-        )
+        message = "source-binding reference must use the exact IdentityTree type"
         raise SourceBindingPolicyError(message)
     if type(policy) is not SourceBindingPolicy:
-        message = (
-            "source-binding policy must use the exact SourceBindingPolicy type"
-        )
+        message = "source-binding policy must use the exact SourceBindingPolicy type"
         raise SourceBindingPolicyError(message)
     if any(PureWindowsPath(item.path).drive for item in reference.files):
         message = "source-binding reference path cannot have a Windows drive"
@@ -675,9 +657,7 @@ def _validate_binding_counts(binding: ThresholdBinding) -> None:
         type(binding.minimum_anchor_files) is not int
         or binding.minimum_anchor_files <= _ZERO
     ):
-        message = (
-            "source-binding minimum anchor files must be a positive integer"
-        )
+        message = "source-binding minimum anchor files must be a positive integer"
         raise SourceBindingError(message)
     if binding.threshold < binding.minimum_anchor_files:
         message = "source-binding threshold must reach minimum anchor files"
@@ -707,9 +687,7 @@ def _validate_binding_header(binding: ThresholdBinding) -> None:
     _validate_binding_counts(binding)
     _validate_binding_secret(binding)
     if type(binding.anchor_policy) is not AnchorPolicy:
-        message = (
-            "source-binding anchor policy must use the exact AnchorPolicy type"
-        )
+        message = "source-binding anchor policy must use the exact AnchorPolicy type"
         raise SourceBindingError(message)
 
 
@@ -734,9 +712,7 @@ def _require_possible_share_paths(source_paths: set[str]) -> None:
         for path in source_paths
         for parent in PurePosixPath(path).parents
     ):
-        message = (
-            "source-binding share paths contain an ancestor/descendant overlap"
-        )
+        message = "source-binding share paths contain an ancestor/descendant overlap"
         raise SourceBindingError(message)
 
 
@@ -758,9 +734,7 @@ def _validate_binding_shares(binding: ThresholdBinding) -> None:
         source_paths.add(share.source_path)
     _require_possible_share_paths(source_paths)
     if binding.minimum_anchor_files > len(source_paths):
-        message = (
-            "source-binding minimum anchor files exceeds represented files"
-        )
+        message = "source-binding minimum anchor files exceeds represented files"
         raise SourceBindingError(message)
 
 
@@ -804,10 +778,12 @@ def _recover_available_shares(
     candidate_materials = _candidate_materials(candidate, binding.anchor_policy)
     available: list[_RecoveredShare] = []
     for bound in binding.shares:
-        material = candidate_materials.get((
-            bound.source_path,
-            bound.anchor_digest,
-        ))
+        material = candidate_materials.get(
+            (
+                bound.source_path,
+                bound.anchor_digest,
+            )
+        )
         if material is None:
             continue
         mask = _share_mask(
@@ -875,9 +851,7 @@ def recover_secret(
     """
     admitted = validate_threshold_binding(binding)
     if type(candidate) is not IdentityTree:
-        message = (
-            "source-binding candidate must use the exact IdentityTree type"
-        )
+        message = "source-binding candidate must use the exact IdentityTree type"
         raise SourceBindingError(message)
     available = _recover_available_shares(admitted, candidate)
     if len(available) < admitted.threshold:
@@ -892,10 +866,7 @@ def recover_secret(
         for share in _select_distributed_quorum(admitted, available)
     )
     secret = _recover_shares(raw_shares)
-    if (
-        _secret_commitment(admitted.context, secret)
-        != admitted.secret_commitment
-    ):
+    if _secret_commitment(admitted.context, secret) != admitted.secret_commitment:
         message = "recovered source-bound secret failed commitment"
         raise SourceBindingError(message)
     return secret
