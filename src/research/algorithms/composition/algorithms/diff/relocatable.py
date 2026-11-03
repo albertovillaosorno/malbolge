@@ -42,31 +42,33 @@ compatible-plan layer is implemented.
 from __future__ import annotations
 
 import builtins
-from dataclasses import dataclass
 import hashlib
 import io
 import os
-from pathlib import Path
 import shutil
-from stat import S_ISDIR
-from stat import S_ISLNK
 import sys
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+from stat import S_ISDIR, S_ISLNK
 from types import MemberDescriptorType
-from typing import Callable
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import read_exact_regular_file
-from algorithms.diff.exact import snapshot_tree_excluding
-from algorithms.diff.model import ExactAuthoringPlan
-from algorithms.diff.model import ExactInstruction
-from algorithms.diff.model import ExactInstructionKind
-from algorithms.diff.model import FileRecord
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import SourceSlice
-from algorithms.diff.model import TreeSnapshot
-from algorithms.diff.model import reserved_windows_component
+from algorithms.diff.exact import (
+    ExactTreeError,
+    read_exact_regular_file,
+    snapshot_tree_excluding,
+)
+from algorithms.diff.model import (
+    ExactAuthoringPlan,
+    ExactInstruction,
+    ExactInstructionKind,
+    FileRecord,
+    OracleLiteral,
+    SourceSlice,
+    TreeSnapshot,
+    reserved_windows_component,
+)
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
@@ -110,6 +112,7 @@ _NATIVE_SET = builtins.set
 _NATIVE_SUM = builtins.sum
 _NATIVE_MIN = builtins.min
 _NATIVE_RANGE = builtins.range
+_NATIVE_OBJECT_NEW = object.__new__
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -477,6 +480,77 @@ def _plan_instructions(
     )
 
 
+# The placement writer builds internal records after source reads. Capture
+# original constructors so later class substitutions cannot forge locators.
+_RANGE_LOCATOR_INIT = cast(
+    "Callable[[RangeLocator, int, int, bytes, bytes | None], None]",
+    RangeLocator.__dict__["__init__"],
+)
+_SOURCE_RANGE_INIT = cast(
+    "Callable[[RelocatableSourceRange, RangeLocator], None]",
+    RelocatableSourceRange.__dict__["__init__"],
+)
+_RELOCATABLE_INSTRUCTION_INIT = cast(
+    Callable[
+        [
+            RelocatableInstruction,
+            str,
+            str | None,
+            bool,
+            bytes | None,
+            tuple[RelocatableSegment, ...],
+        ],
+        None,
+    ],
+    RelocatableInstruction.__dict__["__init__"],
+)
+_RELOCATABLE_PLAN_INIT = cast(
+    "Callable[[RelocatableAuthoringPlan, tuple[RelocatableInstruction, ...]], None]",
+    RelocatableAuthoringPlan.__dict__["__init__"],
+)
+
+
+def _new_range_locator(
+    source_length: int,
+    window_bytes: int,
+    start_digest: bytes,
+    end_digest: bytes | None,
+) -> RangeLocator:
+    locator = _NATIVE_OBJECT_NEW(RangeLocator)
+    _RANGE_LOCATOR_INIT(
+        locator, source_length, window_bytes, start_digest, end_digest
+    )
+    return locator
+
+
+def _new_source_range(locator: RangeLocator) -> RelocatableSourceRange:
+    segment = _NATIVE_OBJECT_NEW(RelocatableSourceRange)
+    _SOURCE_RANGE_INIT(segment, locator)
+    return segment
+
+
+def _new_relocatable_instruction(
+    output_path: str,
+    source_path: str | None,
+    copy_candidate_file: bool,
+    literal: bytes | None = None,
+    segments: tuple[RelocatableSegment, ...] = (),
+) -> RelocatableInstruction:
+    instruction = _NATIVE_OBJECT_NEW(RelocatableInstruction)
+    _RELOCATABLE_INSTRUCTION_INIT(
+        instruction, output_path, source_path, copy_candidate_file, literal, segments
+    )
+    return instruction
+
+
+def _new_relocatable_plan(
+    instructions: tuple[RelocatableInstruction, ...],
+) -> RelocatableAuthoringPlan:
+    plan = _NATIVE_OBJECT_NEW(RelocatableAuthoringPlan)
+    _RELOCATABLE_PLAN_INIT(plan, instructions)
+    return plan
+
+
 def _lexical_ancestors(path: str) -> tuple[str, ...]:
     """Find canonical file ancestors without mutable pathlib class hooks."""
     parts = path.split("/")
@@ -612,7 +686,7 @@ def _range_locator(source: bytes, segment: SourceSlice) -> RangeLocator:
     end_digest = None
     if _NATIVE_LEN(data) > window_bytes:
         end_digest = _sha256(data[-window_bytes:])
-    return RangeLocator(
+    return _new_range_locator(
         source_length=_NATIVE_LEN(data),
         window_bytes=window_bytes,
         start_digest=start_digest,
@@ -626,7 +700,7 @@ def _relocatable_segment(
     if _NATIVE_TYPE(segment) is OracleLiteral:
         return segment
     source_slice = cast("SourceSlice", segment)
-    return RelocatableSourceRange(_range_locator(source, source_slice))
+    return _new_source_range(_range_locator(source, source_slice))
 
 
 def _instruction(
@@ -637,7 +711,7 @@ def _instruction(
         _exact_instruction_fields(exact_instruction)
     )
     if kind is ExactInstructionKind.COPY_SOURCE:
-        return RelocatableInstruction(
+        return _new_relocatable_instruction(
             output_path=output_path,
             source_path=source_path,
             copy_candidate_file=True,
@@ -646,7 +720,7 @@ def _instruction(
         if literal is None:
             message = "exact literal instruction lost authoring bytes"
             raise RelocationError(message)
-        return RelocatableInstruction(
+        return _new_relocatable_instruction(
             output_path=output_path,
             source_path=None,
             copy_candidate_file=False,
@@ -658,7 +732,7 @@ def _instruction(
     source = _read_relocatable_bytes(
         _safe_path(source_root, source_path), "relocatable source"
     )
-    return RelocatableInstruction(
+    return _new_relocatable_instruction(
         output_path=output_path,
         source_path=source_path,
         copy_candidate_file=False,
@@ -823,7 +897,7 @@ def build_relocatable_plan(
         for instruction in _exact_plan_fields(exact_plan)[1]
     )
     _require_exact_source_snapshot(source_root, exact_plan)
-    return RelocatableAuthoringPlan(instructions=instructions)
+    return _new_relocatable_plan(instructions=instructions)
 
 
 def _validate_relative_path(relative_path: object) -> str:

@@ -38,32 +38,38 @@ import builtins
 import hashlib
 import ntpath
 import os
-from pathlib import Path
 import shutil
+import subprocess
+import sys
+from pathlib import Path
 from types import MemberDescriptorType
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from typing import TYPE_CHECKING, cast, override
 
-from algorithms.diff import relocatable as relocatable_module
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.exact import read_exact_regular_file
-from algorithms.diff.exact import snapshot_tree_excluding
-from algorithms.diff.model import ExactAuthoringPlan
-from algorithms.diff.model import ExactInstruction
-from algorithms.diff.model import FileRecord
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import SourceSlice
-from algorithms.diff.model import TreeModelError
-from algorithms.diff.model import TreeSnapshot
-from algorithms.diff.relocatable import RangeLocator
-from algorithms.diff.relocatable import RelocatableInstruction
-from algorithms.diff.relocatable import RelocatableSourceRange
-from algorithms.diff.relocatable import RelocationError
-from algorithms.diff.relocatable import build_relocatable_plan
-from algorithms.diff.relocatable import materialize_relocatable_plan
 import pytest
+from algorithms.diff import relocatable as relocatable_module
+from algorithms.diff.exact import (
+    ExactTreeError,
+    build_exact_plan,
+    read_exact_regular_file,
+    snapshot_tree_excluding,
+)
+from algorithms.diff.model import (
+    ExactAuthoringPlan,
+    ExactInstruction,
+    FileRecord,
+    OracleLiteral,
+    SourceSlice,
+    TreeModelError,
+    TreeSnapshot,
+)
+from algorithms.diff.relocatable import (
+    RangeLocator,
+    RelocatableInstruction,
+    RelocatableSourceRange,
+    RelocationError,
+    build_relocatable_plan,
+    materialize_relocatable_plan,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -2864,3 +2870,73 @@ def test_relocatable_output_ignores_late_path_write_hooks(
     assert not outside.exists()
     assert not (tmp_path / "unexpected-stage").exists()
     assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "record", ("locator", "source-range", "instruction", "plan")
+)
+def test_relocatable_internal_records_ignore_late_init(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Late initializer cannot redirect source-derived relocation evidence."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact_plan = build_exact_plan(source, oracle)
+    expected = build_relocatable_plan(source, exact_plan)
+    owner: type[object] = {
+        "locator": RangeLocator,
+        "source-range": RelocatableSourceRange,
+        "instruction": RelocatableInstruction,
+        "plan": relocatable_module.RelocatableAuthoringPlan,
+    }[record]
+    calls = 0
+
+    def forbidden_init(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late relocation record initializer was consulted")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__init__", forbidden_init)
+        assert build_relocatable_plan(source, exact_plan) == expected
+    assert calls == 0, "late relocation record initializer participated in plan"
+
+
+@pytest.mark.parametrize(
+    "record", ("locator", "source-range", "instruction", "plan")
+)
+def test_relocatable_internal_records_ignore_late_new(record: str) -> None:
+    """A changed class allocation hook must not rewrite source locators."""
+    script = f"""
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from test_relocatable import _fixture
+from algorithms.diff.exact import build_exact_plan
+from algorithms.diff import relocatable as relocation
+with TemporaryDirectory() as directory:
+    source, oracle, _ = _fixture(Path(directory))
+    exact_plan = build_exact_plan(source, oracle)
+    expected = relocation.build_relocatable_plan(source, exact_plan)
+    owner = {{
+        "locator": relocation.RangeLocator,
+        "source-range": relocation.RelocatableSourceRange,
+        "instruction": relocation.RelocatableInstruction,
+        "plan": relocation.RelocatableAuthoringPlan,
+    }}[{record!r}]
+    def forbidden_new(*args, **kwargs):
+        raise AssertionError("late relocation record allocation was consulted")
+    owner.__new__ = staticmethod(forbidden_new)
+    assert relocation.build_relocatable_plan(source, exact_plan) == expected
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
