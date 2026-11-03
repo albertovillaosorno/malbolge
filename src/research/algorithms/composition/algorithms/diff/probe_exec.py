@@ -644,10 +644,34 @@ def _probe_path_fields(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class _CommandResult:
+    """Internal process evidence pinned against late Python class hooks."""
+
     stdout: bytes
     returncode: int
+
+    def __init__(self, stdout: bytes, returncode: int) -> None:
+        _COMMAND_RESULT_STDOUT_SLOT.__set__(self, stdout)
+        _COMMAND_RESULT_RETURN_CODE_SLOT.__set__(self, returncode)
+
+
+_COMMAND_RESULT_STDOUT_SLOT = cast(
+    "MemberDescriptorType", _CommandResult.__dict__["stdout"]
+)
+_COMMAND_RESULT_RETURN_CODE_SLOT = cast(
+    "MemberDescriptorType", _CommandResult.__dict__["returncode"]
+)
+
+
+def _command_result_stdout(result: _CommandResult) -> bytes:
+    return cast("bytes", _COMMAND_RESULT_STDOUT_SLOT.__get__(result, _CommandResult))
+
+
+def _command_result_returncode(result: _CommandResult) -> int:
+    return cast(
+        "int", _COMMAND_RESULT_RETURN_CODE_SLOT.__get__(result, _CommandResult)
+    )
 
 
 def _validate_probe_root(root: object) -> None:
@@ -1495,10 +1519,10 @@ def _run_program(
                 )
             selected = False
             if cast("bool", _probe_field(command, ProbeCommand, "digest_stdout")):
-                _update_stdout_digest(hasher, command_index, result.stdout)
+                _update_stdout_digest(hasher, command_index, _command_result_stdout(result))
                 selected = True
             if cast("bool", _probe_field(command, ProbeCommand, "digest_exit_code")):
-                _update_exit_digest(hasher, command_index, result.returncode)
+                _update_exit_digest(hasher, command_index, _command_result_returncode(result))
                 selected = True
             if selected:
                 digested_commands += 1

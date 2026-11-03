@@ -3701,3 +3701,50 @@ def test_probe_runtime_ignores_late_executable_and_path_getters(
         observed = run_probe_program(program, context)
     assert observed == baseline
     assert calls == 0, f"probe runtime consulted late {record}.{field} getter"
+
+
+@pytest.mark.parametrize("field", ("stdout", "returncode"))
+@pytest.mark.parametrize("hook", ("setter", "getter"))
+def test_probe_command_result_ignores_late_class_field_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    hook: str,
+) -> None:
+    """An internal result cannot change authenticated process observations."""
+    source = tmp_path / "source"
+    source.mkdir()
+    command = ProbeCommand(
+        ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "print('trusted')"),
+        digest_stdout=True,
+        digest_exit_code=True,
+    )
+    program = ProbeProgram("identity", (command,))
+    context = _context(source, tmp_path)
+    baseline = run_probe_program(program, context)
+    owner = cast("type[object]", vars(probe_exec_module)["_CommandResult"])
+    slot = owner.__dict__[field]
+    forged = b"forged bytes" if field == "stdout" else 99
+    calls = 0
+
+    def forged_getter(record: object) -> object:
+        nonlocal calls
+        if hook == "getter":
+            calls += 1
+            return forged
+        return slot.__get__(record, owner)
+
+    def forged_setter(record: object, supplied: object) -> None:
+        nonlocal calls
+        if hook == "setter":
+            calls += 1
+            slot.__set__(record, forged)
+        else:
+            slot.__set__(record, supplied)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, field, property(forged_getter, forged_setter))
+        observed = run_probe_program(program, context)
+    assert observed == baseline
+    assert calls == 0, f"late _CommandResult.{field} {hook} changed transcript"
