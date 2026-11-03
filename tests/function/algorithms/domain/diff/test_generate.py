@@ -599,6 +599,241 @@ def test_generator_rechecks_host_realpath_after_domain_preflight(
     assert not emitted
 
 
+@pytest.mark.parametrize(
+    "hook",
+    [
+        "os-fspath",
+        "path-fspath",
+        "path-string",
+        "concrete-path-fspath",
+        "concrete-path-string",
+    ],
+)
+@pytest.mark.parametrize("case", ["hidden-output", "false-denial"])
+def test_generator_rejects_late_host_path_conversion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    case: str,
+) -> None:
+    """Native Path.resolve must not use replaced host/path conversion hooks."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    if case == "hidden-output":
+        recipe = replace(
+            recipe,
+            output_algorithm=recipe.source_root / "nested" / "generated.rs",
+        )
+    target_text = str(recipe.output_algorithm)
+    outside_text = str(tmp_path / "unrelated-output.rs")
+    original_os_fspath = os.fspath
+    original_path_fspath = Path.__fspath__
+    original_path_string = Path.__str__
+    calls = 0
+
+    def switch_path(text: str) -> str:
+        nonlocal calls
+        if text == target_text:
+            calls += 1
+            if case == "false-denial":
+                message = "late path conversion callback executed"
+                raise AssertionError(message)
+            return outside_text
+        return text
+
+    def forged_os_fspath(value: object) -> str:
+        return switch_path(original_os_fspath(cast("os.PathLike[str]", value)))
+
+    def forged_path_fspath(path: Path) -> str:
+        return switch_path(original_path_fspath(path))
+
+    def forged_path_string(path: Path) -> str:
+        return switch_path(original_path_string(path))
+
+    with monkeypatch.context() as patched:
+        if hook == "os-fspath":
+            patched.setattr(os, "fspath", forged_os_fspath)
+        elif hook.endswith("fspath"):
+            owner = (
+                type(recipe.output_algorithm) if hook.startswith("concrete") else Path
+            )
+            patched.setattr(owner, "__fspath__", forged_path_fspath)
+        else:
+            owner = (
+                type(recipe.output_algorithm) if hook.startswith("concrete") else Path
+            )
+            patched.setattr(owner, "__str__", forged_path_string)
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0, "late host path conversion was consulted"
+
+
+@pytest.mark.parametrize(
+    "hook", ["path-with-segments", "concrete-with-segments", "builtin-type"]
+)
+@pytest.mark.parametrize("case", ["hidden-output", "false-denial"])
+def test_generator_rejects_late_resolved_path_factory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    case: str,
+) -> None:
+    """Path.resolve cannot delegate its final receipt to mutable factories."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    if case == "hidden-output":
+        recipe = replace(
+            recipe,
+            output_algorithm=recipe.source_root / "nested" / "generated.rs",
+        )
+    target = recipe.output_algorithm
+    outside = tmp_path / "unrelated-output.rs"
+    original_with_segments = Path.with_segments
+    original_type = type
+    calls = 0
+
+    def redirect() -> Path:
+        nonlocal calls
+        calls += 1
+        if case == "false-denial":
+            message = "late resolved path factory executed"
+            raise AssertionError(message)
+        return outside
+
+    def forged_with_segments(
+        path: Path, *segments: str | os.PathLike[str]
+    ) -> Path:
+        if path is target:
+            return redirect()
+        return original_with_segments(path, *segments)
+
+    def forged_type(*args: object) -> object:
+        if len(args) == 1 and args[0] is target:
+            return lambda *_segments: redirect()
+        return original_type(*args)
+
+    with monkeypatch.context() as patched:
+        if hook.endswith("with-segments"):
+            owner = type(target) if hook.startswith("concrete") else Path
+            patched.setattr(owner, "with_segments", forged_with_segments)
+        else:
+            patched.setattr(builtins, "type", forged_type)
+        rejected = False
+        try:
+            _validate_realpath_recipe(recipe)
+        except ValueError as error:
+            rejected = "could not be resolved safely" in str(error)
+    assert rejected, "late resolved path factory changed containment admission"
+    assert calls == 0, "late resolved path factory was consulted"
+
+
+@pytest.mark.parametrize("owner", ["base", "concrete"])
+@pytest.mark.parametrize("case", ["hidden-output", "false-denial"])
+def test_generator_rejects_late_resolve_method_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str,
+    case: str,
+) -> None:
+    """An instance getter cannot supply Path.resolve a forged path factory."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    if case == "hidden-output":
+        recipe = replace(
+            recipe,
+            output_algorithm=recipe.source_root / "nested" / "generated.rs",
+        )
+    target = recipe.output_algorithm
+    unsafe_replacement = tmp_path / "unrelated-output.rs"
+    host_type = type(target) if owner == "concrete" else Path
+    original_getattribute = host_type.__getattribute__
+    calls = 0
+
+    def forged_getattribute(path: Path, name: str) -> object:
+        nonlocal calls
+        if path is target and name == "with_segments":
+            calls += 1
+            if case == "false-denial":
+                message = "late path getter reached"
+                raise AssertionError(message)
+            return lambda *_parts: unsafe_replacement
+        return original_getattribute(path, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(host_type, "__getattribute__", forged_getattribute)
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0, "late Path.resolve getter was consulted"
+
+
+@pytest.mark.parametrize("owner", ["base", "concrete"])
+@pytest.mark.parametrize("hook", ["new", "init"])
+def test_generator_rejects_late_resolved_path_initializers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str,
+    hook: str,
+) -> None:
+    """No mutable path allocation or initializer may run during preflight."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    path_type = type(recipe.output_algorithm) if owner == "concrete" else Path
+    calls = 0
+
+    def forbidden_new(cls: type[Path], *args: object) -> Path:
+        nonlocal calls
+        del cls, args
+        calls += 1
+        message = "late path allocator reached"
+        raise AssertionError(message)
+
+    def forbidden_init(path: Path, *args: object) -> None:
+        nonlocal calls
+        del path, args
+        calls += 1
+        message = "late path initializer reached"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patched:
+        if hook == "new":
+            patched.setattr(path_type, "__new__", forbidden_new)
+        else:
+            patched.setattr(path_type, "__init__", forbidden_init)
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0, "late native path construction was consulted"
+
+
+def test_generator_rejects_late_fspath_after_domain_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Domain callbacks cannot change native path interpretation before emit."""
+    recipe = replace(
+        _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE),
+        domain_module=_domain_module(tmp_path),
+    )
+    emitted: list[bool] = []
+    original_fspath = os.fspath
+    calls = 0
+
+    def forged_fspath(value: object) -> str:
+        nonlocal calls
+        calls += 1
+        return original_fspath(cast("os.PathLike[str]", value))
+
+    def unexpected_emission(_recipe: object) -> None:
+        emitted.append(True)
+
+    with monkeypatch.context() as patched:
+        def replace_fspath(_recipe: object) -> None:
+            patched.setattr(os, "fspath", forged_fspath)
+
+        patched.setattr(generate_module, "_preflight_domain", replace_fspath)
+        patched.setattr(
+            generate_module, "_write_exact_algorithm", unexpected_emission
+        )
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            write_algorithm(recipe)
+    assert not emitted
+    assert calls == 0, "late domain host conversion was consulted"
+
+
 class _ForgedResolvedRecipePath(type(Path())):
     """A foreign resolved receipt can lie about destination containment."""
 

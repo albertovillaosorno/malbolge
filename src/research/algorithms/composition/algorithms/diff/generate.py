@@ -98,6 +98,19 @@ _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_PATH_EQ = Path.__eq__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
+_NATIVE_PATH_FSPATH = Path.__fspath__
+_NATIVE_PATH_GETATTRIBUTE = Path.__getattribute__
+_NATIVE_PATH_NEW = Path.__new__
+_NATIVE_PATH_INIT = Path.__init__
+# The concrete PosixPath/WindowsPath class can override inherited methods.
+_NATIVE_CONCRETE_FSPATH = _NATIVE_PATH_TYPE.__fspath__
+_NATIVE_CONCRETE_STRING = _NATIVE_PATH_TYPE.__str__
+_NATIVE_CONCRETE_WITH_SEGMENTS = _NATIVE_PATH_TYPE.with_segments
+_NATIVE_CONCRETE_GETATTRIBUTE = _NATIVE_PATH_TYPE.__getattribute__
+_NATIVE_CONCRETE_NEW = _NATIVE_PATH_TYPE.__new__
+_NATIVE_CONCRETE_INIT = _NATIVE_PATH_TYPE.__init__
+_NATIVE_OS_FSPATH = os.fspath
 _NATIVE_REALPATH = os.path.realpath
 _MAX_SHARES = 255
 _NUL = "\x00"
@@ -369,6 +382,26 @@ def _require_native_host_realpath(name: str) -> None:
     """
     if os.path.realpath is not _NATIVE_REALPATH:
         message = f"{name} could not be resolved safely: host realpath changed"
+        raise ValueError(message)
+    # Path.resolve calls realpath with a Path value. The original resolver
+    # still delegates to these mutable conversion hooks before containment.
+    if (
+        os.fspath is not _NATIVE_OS_FSPATH
+        or Path.__fspath__ is not _NATIVE_PATH_FSPATH
+        or Path.__str__ is not _NATIVE_PATH_STRING
+        or Path.with_segments is not _NATIVE_PATH_WITH_SEGMENTS
+        or Path.__getattribute__ is not _NATIVE_PATH_GETATTRIBUTE
+        or Path.__new__ is not _NATIVE_PATH_NEW
+        or Path.__init__ is not _NATIVE_PATH_INIT
+        or _NATIVE_PATH_TYPE.__fspath__ is not _NATIVE_CONCRETE_FSPATH
+        or _NATIVE_PATH_TYPE.__str__ is not _NATIVE_CONCRETE_STRING
+        or _NATIVE_PATH_TYPE.with_segments is not _NATIVE_CONCRETE_WITH_SEGMENTS
+        or _NATIVE_PATH_TYPE.__getattribute__ is not _NATIVE_CONCRETE_GETATTRIBUTE
+        or _NATIVE_PATH_TYPE.__new__ is not _NATIVE_CONCRETE_NEW
+        or _NATIVE_PATH_TYPE.__init__ is not _NATIVE_CONCRETE_INIT
+        or builtins.type is not _NATIVE_TYPE
+    ):
+        message = f"{name} could not be resolved safely: host path hooks changed"
         raise ValueError(message)
 
 
