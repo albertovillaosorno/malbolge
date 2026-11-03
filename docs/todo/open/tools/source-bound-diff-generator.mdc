@@ -752,6 +752,16 @@ format.
   integrated diff tests passed, with scoped Ruff, strict source/test typing,
   and diff checks clean. This does not sandbox trusted consumer code or exclude
   concurrent changes to host import state.
+- Native consumer-domain path loading now checks import-original `PurePath`
+  internal factories, parsing/cached-slot descriptors, and host path-join
+  resolution before inspecting a module and after consumer import
+  (`d3ae694d0`). Two red-first cases exposed symlink-parent bypass and late
+  path-formatting redirection; two more reject import-time factory changes and
+  late `builtins.any` override. All 118 domain tests pass postcommit, with
+  scoped Ruff, strict source/test typing, and diff checks clean; an independent
+  combined diff suite passed 3,602 tests. This guard is not a sandbox and
+  cannot isolate trusted object mutation or concurrent filesystem writers.
+  Jig doctor remains degraded (compiled graph absent).
 - Source-lineage and behavior evidence now validate, expose, and enforce
   rejection reasons through original frozen-slot readers rather than late
   class getters. Three source and four behavior red-first cases cover forged

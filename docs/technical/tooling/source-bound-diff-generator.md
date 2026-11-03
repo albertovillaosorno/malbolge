@@ -296,6 +296,20 @@ hooks, and late mutations. All 114 postcommit domain and 3,538 precommit
 integrated diff tests passed, with scoped Ruff, strict source/test BasedPyright,
 and diff checks clean. This guards only the import registration boundary;
 consumer code is still trusted and external concurrent writes are not isolated.
+Native domain-module path validation now also pins the original internal
+`PurePath` parsing, parent-construction, formatting, cached-slot descriptors,
+and host `os.path.join` resolution dependency (`d3ae694d0`). Original
+`Path.parent` and `Path.__str__` methods otherwise still dispatch through
+mutable internal factories. Two red-first tests exposed a symlinked-parent
+admission bypass and a late formatting redirection. A further import-stage
+test rejects consumer changes to these factories and restores registration;
+a fourth proves a replaced `builtins.any` cannot disable the guard. All 118
+focused domain tests pass postcommit; Ruff, strict source/test BasedPyright,
+and diff checks are clean. An independent combined diff run passed 3,602
+tests. The guard does not sandbox authorized consumer code, prevent direct
+trusted object mutations, or make host filesystem checks atomic. Global Jig
+remains unverified (`jig doctor` reports the compiled graph absent).
+
 Neither status check nor import is atomic against external filesystem writes;
 this is not a sandbox for trusted consumer-domain code.
 Generator domain preflight now revalidates the original stored fields of
