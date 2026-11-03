@@ -490,3 +490,47 @@ def test_gate_constructor_rejects_late_field_forgery(
         with pytest.raises(AdmissionError):
             _ = TransformAdmissionEvidence(source, behavior, reasons)
     assert calls == 0, "late gate getter participated in admission"
+
+
+@pytest.mark.parametrize("field", ["source", "behavior", "reasons"])
+def test_gate_constructor_rejects_late_validator_override(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A late class validator cannot approve false conjunctive admission."""
+    admitted = combine_admission(_source_evidence("reference"), _behavior_evidence())
+    invalid: dict[str, object] = {
+        "source": _source_evidence("unrelated"),
+        "behavior": _behavior_evidence(compatible=False),
+        "reasons": ("forged",),
+    }
+    calls = 0
+
+    def allow_forged(_value: TransformAdmissionEvidence) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TransformAdmissionEvidence, "__post_init__", allow_forged)
+        with pytest.raises(AdmissionError):
+            _ = replace(admitted, **{field: invalid[field]})
+    assert calls == 0, "late gate validator bypassed conjunctive rejection"
+
+
+def test_gate_constructor_keeps_valid_after_validator_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late class validator cannot reject admitted source/behavior evidence."""
+    admitted = combine_admission(_source_evidence("reference"), _behavior_evidence())
+    calls = 0
+
+    def reject_valid(_value: TransformAdmissionEvidence) -> None:
+        nonlocal calls
+        calls += 1
+        raise AdmissionError("forged rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TransformAdmissionEvidence, "__post_init__", reject_valid)
+        clone = replace(admitted)
+    assert clone == admitted
+    assert clone.admitted
+    assert calls == 0, "late gate validator rejected valid evidence"

@@ -37,7 +37,7 @@ from __future__ import annotations
 import builtins
 from dataclasses import dataclass
 from types import MemberDescriptorType
-from typing import cast
+from typing import Callable, cast
 
 from algorithms.diff.admission import AdmissionError, TreeAdmissionEvidence
 from algorithms.diff.behavior import BehaviorEvidence
@@ -47,6 +47,7 @@ _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = type
 _NATIVE_STR = builtins.str
 _NATIVE_TUPLE = tuple
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 # Slotted frozen dataclass fields still have mutable *class* descriptors.
 # Retain the original slot readers before loading any consumer hooks.
 _SOURCE_REASONS_SLOT = cast(
@@ -57,13 +58,25 @@ _BEHAVIOR_REASONS_SLOT = cast(
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class TransformAdmissionEvidence:
     """Independent source-lineage and behavior evidence for one candidate."""
 
     source: TreeAdmissionEvidence
     behavior: BehaviorEvidence
     reasons: tuple[str, ...]
+
+    def __init__(
+        self,
+        source: TreeAdmissionEvidence,
+        behavior: BehaviorEvidence,
+        reasons: tuple[str, ...],
+    ) -> None:
+        """Validate conjunctive admission with the captured native guard."""
+        _NATIVE_OBJECT_SETATTR(self, "source", source)
+        _NATIVE_OBJECT_SETATTR(self, "behavior", behavior)
+        _NATIVE_OBJECT_SETATTR(self, "reasons", reasons)
+        _TRANSFORM_ADMISSION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require exact evidence and canonical conjunctive rejection reasons.
@@ -101,6 +114,12 @@ class TransformAdmissionEvidence:
         """
         return not _GATE_REASONS_SLOT.__get__(self, TransformAdmissionEvidence)
 
+
+# Original admission cannot be weakened or forged via late class hooks.
+_TRANSFORM_ADMISSION_VALIDATOR = cast(
+    "Callable[[TransformAdmissionEvidence], None]",
+    TransformAdmissionEvidence.__dict__["__post_init__"],
+)
 
 _GATE_REASONS_SLOT = cast(
     "MemberDescriptorType", TransformAdmissionEvidence.__dict__["reasons"]
