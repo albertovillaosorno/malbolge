@@ -41,6 +41,7 @@ import errno
 import os
 import platform
 import stat
+import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -1537,6 +1538,70 @@ def test_linux_publication_rejects_late_cdll_class_dispatch_mutation(
     assert rejected.value.errno == errno.ENOTSUP
     assert replacement.call_count == 0
     assert staging.is_dir() and not destination.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux renameat2",
+)
+def test_linux_publication_rejects_late_cdll_allocator_overwrite(
+    tmp_path: Path,
+) -> None:
+    """A forged CDLL allocator cannot downgrade no-replace to os.rename."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    # Altering a native Python type's __new__ slot can poison its allocator
+    # even after removing the patch. Keep this adversarial test in a child.
+    attack = """
+import ctypes
+import errno
+import os
+import sys
+from pathlib import Path
+from algorithms.diff import publication
+staging, destination = (Path(part) for part in sys.argv[1:])
+calls = []
+class UnsafeRename:
+    argtypes = ()
+    restype = None
+    def __call__(self, *_args):
+        calls.append("rename")
+        os.rename(staging, destination)
+        return 0
+class ForeignLibrary:
+    renameat2 = UnsafeRename()
+def forged_new(_cls, *_args, **_kwargs):
+    calls.append("allocator")
+    return ForeignLibrary()
+ctypes.CDLL.__new__ = forged_new
+try:
+    publication.publish_directory_no_replace(staging, destination)
+except OSError as error:
+    assert error.errno == errno.ENOTSUP, error
+else:
+    raise AssertionError("forged native loader bypassed no-replace")
+assert calls == [], calls
+"""
+    environment = os.environ.copy()
+    library_root = str(Path(publication.__file__).resolve().parents[2])
+    environment["PYTHONPATH"] = (
+        library_root + os.pathsep + environment.get("PYTHONPATH", "")
+    )
+    completed = sp.run(  # ruff: ignore[subprocess-without-shell-equals-true]
+        [sys.executable, "-c", attack, str(staging), str(destination)],
+        check=False,
+        shell=False,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert (staging / "payload").read_bytes() == _OURS
+    assert list(destination.iterdir()) == []
 
 
 @pytest.mark.skipif(

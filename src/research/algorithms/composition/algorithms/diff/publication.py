@@ -114,6 +114,7 @@ _MAX_LINUX_ERRNO: Final = 4095
 # ctypes.CDLL is a mutable Python class even when its module alias is pinned.
 # A consumer must not replace its symbol lookup with overwriting os.rename.
 _CDLL_DISPATCH_HOOK_NAMES: Final = (
+    "__new__",
     "__init__",
     "__getattribute__",
     "__getattr__",
