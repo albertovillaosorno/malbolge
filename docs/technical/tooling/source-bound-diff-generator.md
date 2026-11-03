@@ -672,6 +672,13 @@ and immutable unit records; semantic locators/edits/plans require exact SHA-256
 digests and immutable records, and build/apply validate views, context width,
 plan, and mapper before placement.
 
+Semantic placement and compatible tree authoring/materialization wrap
+consumer mapper and postcondition failures without evaluating foreign exception
+formatters. Their typed failure keeps the original callback exception as its
+cause, and compatible staging still cleans up before publication. If cleanup
+also fails, both failure descriptions avoid foreign string hooks; the original
+materialization exception remains the cause of the typed cleanup failure.
+
 `compatible.py` now composes admission, behavior evidence, file topology,
 semantic
 placement, conservative opaque-file gates, candidate-only preservation,

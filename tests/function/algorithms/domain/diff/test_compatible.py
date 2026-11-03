@@ -40,6 +40,7 @@ import re
 import shutil
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 from algorithms.diff import compatible as compatible_module
 from algorithms.diff.admission import AdmissionError
@@ -102,6 +103,15 @@ _EXPECTED_MIXED_EDITS = 2
 _CHANGE_MODIFY = "modify"
 _CHANGE_CREATE = "create"
 _CHANGE_DELETE = "delete"
+
+
+class _HostileFormattingError(RuntimeError):
+    """Simulate a foreign exception with an executable string hook."""
+
+    @override
+    def __str__(self) -> str:
+        message = "foreign exception formatter executed"
+        raise AssertionError(message)
 
 
 def _expect(condition: object, message: str) -> None:
@@ -976,6 +986,32 @@ def test_compatible_mapper_failures_stay_inside_plan_boundary(
         _ = build_compatible_plan(request)
 
 
+def test_compatible_mapper_does_not_format_foreign_exception(
+    tmp_path: Path,
+) -> None:
+    """Mapper failure preserves a typed cause without running its formatter."""
+    source, oracle = _roots(tmp_path / "author")
+
+    failure = _HostileFormattingError("untrusted callback failure")
+
+    def hostile_mapper(path: str, raw: bytes) -> MappedView | None:
+        _ = path, raw
+        raise failure
+
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=hostile_mapper,
+    )
+    with pytest.raises(
+        CompatiblePlanError, match="compatible mapper failed"
+    ) as caught:
+        _ = build_compatible_plan(request)
+    assert caught.value.__cause__ is failure
+
+
 def test_compatible_runtime_mapper_failure_cleans_staging(
     tmp_path: Path,
 ) -> None:
@@ -1244,6 +1280,65 @@ def test_compatible_cleanup_failure_preserves_primary_error(
         match=r"instruction output write failed.*staging cleanup failed",
     ):
         _ = materialize_compatible_plan(_request(candidate, plan, output))
+
+
+def test_compatible_cleanup_does_not_format_hostile_primary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup must not format an arbitrary primary failure."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    primary = _HostileFormattingError("untrusted materialization failure")
+
+    def fail_populate(*arguments: object) -> None:
+        _ = arguments
+        raise primary
+
+    def fail_cleanup(path: Path) -> None:
+        _ = path
+        message = "blocked compatible cleanup"
+        raise PermissionError(message)
+
+    monkeypatch.setattr(compatible_module, "_populate_staging", fail_populate)
+    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        CompatiblePlanError, match="staging cleanup failed"
+    ) as caught:
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    assert caught.value.__cause__ is primary
+    assert not output.exists()
+
+
+def test_compatible_cleanup_does_not_format_hostile_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup failure cannot execute an exception formatter."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    original_write = Path.write_bytes
+    blocked = tmp_path / ".out.compatible-staging" / "created.bin"
+
+    def fail_write(path: Path, data: bytes) -> int:
+        if path == blocked:
+            message = "blocked compatible write"
+            raise PermissionError(message)
+        return original_write(path, data)
+
+    def fail_cleanup(path: Path) -> None:
+        _ = path
+        message = "untrusted cleanup failure"
+        raise _HostileFormattingError(message)
+
+    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        CompatiblePlanError, match="staging cleanup failed"
+    ) as caught:
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    assert isinstance(caught.value.__cause__, CompatiblePlanError)
+    assert not output.exists()
 
 
 @pytest.mark.parametrize(
@@ -1666,6 +1761,33 @@ def test_postcondition_failures_are_wrapped_and_cleaned(
     _expect(
         not output.exists(), "foreign postcondition result published output"
     )
+
+
+def test_postcondition_does_not_format_foreign_exception(
+    tmp_path: Path,
+) -> None:
+    """Postcondition faults cannot run hostile formatting or publish output."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+
+    failure = _HostileFormattingError("untrusted quality callback failure")
+
+    def hostile_postcondition(root: Path) -> bool:
+        _ = root
+        raise failure
+
+    request = replace(
+        _request(candidate, plan, output),
+        postcondition=hostile_postcondition,
+    )
+    with pytest.raises(
+        CompatiblePlanError, match="postcondition failed"
+    ) as caught:
+        _ = materialize_compatible_plan(request)
+    assert caught.value.__cause__ is failure
+    assert not output.exists()
+    assert not (tmp_path / ".out.compatible-staging").exists()
 
 
 def test_postcondition_rejects_staging_before_publish(tmp_path: Path) -> None:

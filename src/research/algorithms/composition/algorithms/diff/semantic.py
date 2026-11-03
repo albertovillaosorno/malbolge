@@ -750,7 +750,9 @@ def _map_semantic_output(
     try:
         mapped = mapper(output)
     except Exception as error:
-        message = f"semantic mapper failed after edit application: {error}"
+        # Callback exceptions may define executable or failing __str__ hooks.
+        # Preserve the original error as the cause without formatting it.
+        message = "semantic mapper failed after edit application"
         raise SemanticPlacementError(message) from error
     if type(mapped) is not MappedView:
         message = "semantic mapper must return the exact MappedView type"

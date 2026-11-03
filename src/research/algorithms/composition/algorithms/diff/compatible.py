@@ -767,7 +767,8 @@ def _map_compatible_file(
     try:
         view = mapper(path, data)
     except Exception as error:
-        message = f"compatible mapper failed for {path!r}: {error}"
+        # Preserve the callback cause without evaluating a foreign __str__.
+        message = f"compatible mapper failed for {path!r}"
         raise CompatiblePlanError(message) from error
     if view is not None and type(view) is not MappedView:
         message = "compatible mapper must return exact MappedView or None"
@@ -1215,7 +1216,8 @@ def _require_postcondition(
     try:
         accepted = postcondition(staging)
     except Exception as error:
-        message = f"compatible output postcondition failed: {error}"
+        # A consumer callback may supply a hostile exception formatter.
+        message = "compatible output postcondition failed"
         raise CompatiblePlanError(message) from error
     if type(accepted) is not bool:
         message = "compatible output postcondition must return an exact boolean"
@@ -1278,20 +1280,43 @@ def _check_staged_output(
     return staged
 
 
+def _safe_compatible_error_detail(error: Exception) -> str:
+    """Retain native fault messages without executing foreign formatters.
+
+    Returns:
+        An exact native single-string reason or an exception class name.
+
+    """
+    if type(error) in {
+        CompatiblePlanError,
+        OSError,
+        PermissionError,
+        RuntimeError,
+        ValueError,
+    }:
+        arguments = cast("tuple[object, ...]", error.args)
+        if len(arguments) == 1:
+            reason = arguments[0]
+            if type(reason) is str:
+                return reason
+    return type(error).__name__
+
+
 def _cleanup_compatible_staging(path: Path) -> str | None:
     try:
         shutil.rmtree(path)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
-        return str(error)
+        return _safe_compatible_error_detail(error)
     return None
 
 
 def _raise_compatible_cleanup_failure(
     error: Exception, cleanup_error: str
 ) -> None:
-    message = f"{error}; compatible staging cleanup failed: {cleanup_error}"
+    detail = _safe_compatible_error_detail(error)
+    message = f"{detail}; compatible staging cleanup failed: {cleanup_error}"
     raise CompatiblePlanError(message) from error
 
 

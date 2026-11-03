@@ -37,6 +37,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 from algorithms.diff.mapped import MappedUnit
 from algorithms.diff.mapped import MappedView
@@ -235,6 +236,30 @@ def test_semantic_mapper_failure_is_contained() -> None:
 
     with pytest.raises(SemanticPlacementError, match="mapper failed"):
         _ = apply_semantic_plan(candidate, plan, fail_mapper)
+
+
+def test_semantic_mapper_does_not_format_foreign_exception() -> None:
+    """A failed mapper cannot execute arbitrary exception string hooks."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    plan = build_semantic_plan(source, target)
+
+    class HostileError(RuntimeError):
+        @override
+        def __str__(self) -> str:
+            message = "foreign mapper exception formatter executed"
+            raise AssertionError(message)
+
+    failure = HostileError("untrusted callback failure")
+
+    def hostile_mapper(_: bytes) -> MappedView:
+        raise failure
+
+    with pytest.raises(
+        SemanticPlacementError, match="semantic mapper failed"
+    ) as caught:
+        _ = apply_semantic_plan(source, plan, hostile_mapper)
+    assert caught.value.__cause__ is failure
 
 
 def test_semantic_mapper_return_type_is_exact() -> None:
