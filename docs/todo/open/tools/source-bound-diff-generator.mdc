@@ -393,6 +393,14 @@ format.
   384 postcommit probe tests and 3,391 integrated diff tests passed. Strict
   source typing retains three existing unrelated errors; full Jig remains
   unverified. External writer and host mutation races remain out of scope.
+- Probe rooted argument construction now checks original `Path.joinpath`
+  before and after and invokes the captured method (`8df8dbbbb`). A late hook
+  previously replaced an authored file with another still-contained file.
+  Six red-first source/repository/scratch and path/executable variants plus
+  390 postcommit focused probe tests pass. The shared run stopped at 525
+  passes and one concurrent behavior-context WIP test failure; no integrated
+  green verdict is claimed. No new edited-line lint/typing findings; existing
+  file diagnostics and external races remain out of scope.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.

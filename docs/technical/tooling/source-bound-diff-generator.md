@@ -1144,6 +1144,18 @@ retains three unrelated existing errors; full Jig validation has no green
 verdict. The identity checks remain non-atomic against external writers or
 concurrent process-global mutation.
 
+Probe structured relative paths now pin the import-original `Path.joinpath`
+(`8df8dbbbb`) and use that original for rooted argument construction.
+A late hook previously redirected a requested file to another, still-contained
+file, defeating the selected-path identity without escaping the source,
+repository, or scratch root. Six red-first cases cover those three roots with
+both path arguments and rooted executables. All 390 focused probe tests passed
+postcommit; the integrated diff run stopped after 525 passes and one failure
+in concurrently uncommitted behavior-context tests, so no clean shared-suite
+verdict is claimed for this revision. New probe lines introduce no additional
+Ruff or strict BasedPyright diagnostics; existing file findings persist.
+Path-hook identity remains non-atomic against host and filesystem races.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record
