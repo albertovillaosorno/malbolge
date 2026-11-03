@@ -1099,6 +1099,16 @@ format.
   postcommit focused and 3,172 precommit integrated diff tests passed.
   Strict source BasedPyright is clean and pinned Ruff has no new findings
   (54 source, 149 tests). Direct stored-record mutation remains out of scope.
+- Authored behavior-profile alignment now validates original native
+  `BehaviorProfile` evidence and compares captured profile/probe slots rather
+  than replaced class getters (`a21cc564d`, `f66a1988f`). Five forged
+  identity/compatibility/bug/correction/profile getter cases and one
+  incomplete-native-profile case failed red-first and now pass. All 250
+  postcommit focused behavior-program and 1,084 adjacent precommit tests
+  passed; scoped Ruff, strict source/test BasedPyright, diff and added-line
+  length checks were clean. Local admission integrity does not establish
+  concurrency isolation; Jig doctor remains degraded (graph absent) and the
+  global check timed out after 85 seconds without a green verdict.
 - Observed behavior mirrors now preserve original `ProbeRunContext` source,
   repository, and tool slots across copy callbacks and use the captured
   initializer plus native allocation (`b7f2df5f9`), not `dataclasses.replace`.

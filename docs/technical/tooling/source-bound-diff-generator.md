@@ -1669,6 +1669,18 @@ and non-atomic external filesystem writes remain outside this guard.
 Repository-wide Jig doctor is degraded (cached graph absent); the full
 check did not finish within a 110-second bound.
 
+Authored behavior-profile alignment now revalidates original native
+`BehaviorProfile` evidence and reads captured profile/probe slots instead of
+late mutable class getters (`a21cc564d`, `f66a1988f`). Five red-first cases
+cover forged identity, compatibility, bug, correction, and profile getters;
+one more rejects an uninitialized exact native profile with typed
+`BehaviorProgramError` instead of leaking `AttributeError`. All 250
+postcommit focused behavior-program tests and 1,084 adjacent precommit tests
+passed, with scoped Ruff, strict source/test BasedPyright, diff checks, and
+added-line length checks clean. This closes local authored-profile admission,
+not direct stored-object mutation or external host/filesystem races. Jig doctor
+remains degraded (absent graph), and its global check timed out at 85 seconds.
+
 ### First DOOM Executable Identity Probe
 
 The first consumer program is
