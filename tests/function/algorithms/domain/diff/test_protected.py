@@ -39,6 +39,8 @@ import hashlib
 import ntpath
 import os
 import shutil
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, SupportsIndex, cast, override
@@ -1813,3 +1815,124 @@ def test_protected_payload_builder_ignores_late_buffer_getter(
     assert (location.offset, location.length) == (0, len(b"authenticated literal"))
     assert observed == b"authenticated literal"
     assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "record", ["builder", "slice", "instruction", "metadata", "plan"]
+)
+def test_protected_internal_authoring_pins_original_initializer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Authenticated authoring cannot dispatch late record initializers."""
+    _, _, source_files, exact, baseline = _protected(tmp_path)
+    owners: dict[str, type[object]] = {
+        "builder": cast("type[object]", vars(protected_module)["_PayloadBuilder"]),
+        "slice": PayloadSlice,
+        "instruction": ProtectedInstruction,
+        "metadata": ProtectedMetadata,
+        "plan": type(baseline),
+    }
+    calls = 0
+
+    def forged_init(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        raise AssertionError("late protected constructor rewrote key evidence")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owners[record], "__init__", forged_init)
+        observed = protect_exact_plan(
+            exact,
+            _identity(source_files),
+            binding_policy=_policy(),
+            context=_CONTEXT,
+        )
+        assert observed == baseline
+    assert calls == 0, f"late {record} initializer was consulted"
+
+
+@pytest.mark.parametrize(
+    "record", ["builder", "slice", "instruction", "metadata", "plan"]
+)
+def test_protected_internal_authoring_pins_original_new(record: str) -> None:
+    """Isolate mutable class allocation hooks from the parent test process."""
+    script = """
+import hashlib
+import tempfile
+from pathlib import Path
+from algorithms.diff import protected as module
+from algorithms.diff.admission import identity_tree
+from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.protected import (
+    PayloadSlice, ProtectedInstruction, ProtectedMetadata, protect_exact_plan,
+)
+from algorithms.diff.source_binding import SourceBindingPolicy
+with tempfile.TemporaryDirectory() as directory:
+    source = Path(directory) / "source"
+    oracle = Path(directory) / "oracle"
+    source.mkdir()
+    oracle.mkdir()
+    raw = b"".join(hashlib.sha256(str(i).encode()).digest() for i in range(64))
+    (source / "source.bin").write_bytes(raw)
+    (oracle / "source.bin").write_bytes(raw)
+    (oracle / "new.bin").write_bytes(b"only in target")
+    exact = build_exact_plan(source, oracle)
+    identity = identity_tree({"source.bin": raw})
+    policy = SourceBindingPolicy(
+        1.0, maximum_anchors=3, minimum_anchor_files=1,
+        anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
+    )
+    baseline = protect_exact_plan(exact, identity, binding_policy=policy, context=b"test")
+    owners = {
+        "builder": module._PayloadBuilder,
+        "slice": PayloadSlice,
+        "instruction": ProtectedInstruction,
+        "metadata": ProtectedMetadata,
+        "plan": type(baseline),
+    }
+    def forbidden_new(*args, **kwargs):
+        raise AssertionError("late allocation rewrote authenticated key evidence")
+    owners[RECORD].__new__ = staticmethod(forbidden_new)
+    observed = protect_exact_plan(
+        exact, identity, binding_policy=policy, context=b"test"
+    )
+    assert observed == baseline
+""".replace("RECORD", repr(record))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_protected_authoring_ignores_late_payload_builder_append(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A post-import buffer append hook cannot change authenticated slices."""
+    _, _, source_files, exact, baseline = _protected(tmp_path)
+    owner = cast("type[object]", vars(protected_module)["_PayloadBuilder"])
+    calls = 0
+
+    def forged_append(_builder: object, _literal: bytes) -> PayloadSlice:
+        nonlocal calls
+        calls += 1
+        return PayloadSlice(offset=0, length=0)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, "append", forged_append)
+        observed = protect_exact_plan(
+            exact,
+            _identity(source_files),
+            binding_policy=_policy(),
+            context=_CONTEXT,
+        )
+        assert observed == baseline
+    assert calls == 0, "late payload builder append redirected source payload"

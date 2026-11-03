@@ -106,6 +106,7 @@ _NATIVE_BYTEARRAY = builtins.bytearray
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
 _NATIVE_ISINSTANCE = builtins.isinstance
+_NATIVE_OBJECT_NEW = object.__new__
 
 
 class ProtectedPlanError(ValueError):
@@ -591,7 +592,7 @@ class ProtectedExactPlan:
             payload,
             binding,
         ) = _plan_fields(self)
-        _ = ProtectedMetadata(
+        _ = _new_protected_metadata(
             source=source,
             target=target,
             instructions=instructions,
@@ -701,12 +702,112 @@ class _PayloadBuilder:
         )
         start = _NATIVE_LEN(buffer)
         buffer.extend(literal)
-        return PayloadSlice(offset=start, length=_NATIVE_LEN(literal))
+        return _new_payload_slice(offset=start, length=_NATIVE_LEN(literal))
 
 
 _PAYLOAD_BUILDER_DATA_SLOT = cast(
     "MemberDescriptorType", _PayloadBuilder.__dict__["data"]
 )
+
+
+# Protected authoring can invoke domain/payload callbacks before building each
+# record. Pin the original allocation and slot-writing initializers so late
+# class hooks cannot change the authenticated key, slices, or instruction map.
+_PAYLOAD_SLICE_INIT = cast(
+    "Callable[[PayloadSlice, int, int], None]", PayloadSlice.__dict__["__init__"]
+)
+_PROTECTED_INSTRUCTION_INIT = cast(
+    "Callable[..., None]", ProtectedInstruction.__dict__["__init__"]
+)
+_PROTECTED_METADATA_INIT = cast(
+    Callable[
+        [
+            ProtectedMetadata,
+            TreeSnapshot,
+            TreeSnapshot,
+            tuple[ProtectedInstruction, ...],
+            tuple[str, ...],
+        ],
+        None,
+    ],
+    ProtectedMetadata.__dict__["__init__"],
+)
+_PROTECTED_PLAN_INIT = cast(
+    "Callable[..., None]", ProtectedExactPlan.__dict__["__init__"]
+)
+_PAYLOAD_BUILDER_INIT = cast(
+    "Callable[[_PayloadBuilder, bytearray], None]",
+    _PayloadBuilder.__dict__["__init__"],
+)
+_PAYLOAD_BUILDER_APPEND = cast(
+    "Callable[[_PayloadBuilder, bytes], PayloadSlice]",
+    _PayloadBuilder.__dict__["append"],
+)
+
+
+def _new_payload_slice(offset: int, length: int) -> PayloadSlice:
+    record = _NATIVE_OBJECT_NEW(PayloadSlice)
+    _PAYLOAD_SLICE_INIT(record, offset, length)
+    return record
+
+
+def _new_protected_instruction(
+    output_path: str,
+    kind: ProtectedInstructionKind,
+    expected_sha256: str,
+    source_path: str | None = None,
+    payload_slice: PayloadSlice | None = None,
+    segments: tuple[ProtectedSegment, ...] = (),
+) -> ProtectedInstruction:
+    record = _NATIVE_OBJECT_NEW(ProtectedInstruction)
+    _PROTECTED_INSTRUCTION_INIT(
+        record, output_path, kind, expected_sha256, source_path, payload_slice, segments
+    )
+    return record
+
+
+def _new_protected_metadata(
+    source: TreeSnapshot,
+    target: TreeSnapshot,
+    instructions: tuple[ProtectedInstruction, ...],
+    passthrough_roots: tuple[str, ...] = (),
+) -> ProtectedMetadata:
+    record = _NATIVE_OBJECT_NEW(ProtectedMetadata)
+    _PROTECTED_METADATA_INIT(
+        record, source, target, instructions, passthrough_roots
+    )
+    return record
+
+
+def _new_protected_exact_plan(
+    source: TreeSnapshot,
+    target: TreeSnapshot,
+    instructions: tuple[ProtectedInstruction, ...],
+    passthrough_roots: tuple[str, ...],
+    context: bytes,
+    nonce: bytes,
+    payload: AuthenticatedPayload,
+    binding: ThresholdBinding,
+) -> ProtectedExactPlan:
+    record = _NATIVE_OBJECT_NEW(ProtectedExactPlan)
+    _PROTECTED_PLAN_INIT(
+        record,
+        source,
+        target,
+        instructions,
+        passthrough_roots,
+        context,
+        nonce,
+        payload,
+        binding,
+    )
+    return record
+
+
+def _new_payload_builder(data: bytearray) -> _PayloadBuilder:
+    builder = _NATIVE_OBJECT_NEW(_PayloadBuilder)
+    _PAYLOAD_BUILDER_INIT(builder, data)
+    return builder
 
 
 def _payload_builder_bytes(builder: _PayloadBuilder) -> bytes:
@@ -833,7 +934,7 @@ def _metadata(
     *,
     passthrough_roots: tuple[str, ...],
 ) -> ProtectedMetadata:
-    return ProtectedMetadata(
+    return _new_protected_metadata(
         source=source,
         target=target,
         instructions=instructions,
@@ -847,7 +948,7 @@ def _protected_segment(
 ) -> ProtectedSegment:
     if _NATIVE_ISINSTANCE(segment, SourceSlice):
         return segment
-    return builder.append(segment.data)
+    return _PAYLOAD_BUILDER_APPEND(builder, segment.data)
 
 
 def _protect_instruction(
@@ -855,14 +956,14 @@ def _protect_instruction(
     builder: _PayloadBuilder,
 ) -> ProtectedInstruction:
     if instruction.kind is ExactInstructionKind.COPY_SOURCE:
-        return ProtectedInstruction(
+        return _new_protected_instruction(
             output_path=instruction.output_path,
             kind=ProtectedInstructionKind.COPY_SOURCE,
             expected_sha256=instruction.expected_sha256,
             source_path=instruction.source_path,
         )
     if instruction.kind is ExactInstructionKind.PATCH_SOURCE:
-        return ProtectedInstruction(
+        return _new_protected_instruction(
             output_path=instruction.output_path,
             kind=ProtectedInstructionKind.PATCH_SOURCE,
             expected_sha256=instruction.expected_sha256,
@@ -875,11 +976,11 @@ def _protect_instruction(
     if instruction.literal is None:
         message = "literal instruction lost authoring bytes before protection"
         raise ProtectedPlanError(message)
-    return ProtectedInstruction(
+    return _new_protected_instruction(
         output_path=instruction.output_path,
         kind=ProtectedInstructionKind.PAYLOAD,
         expected_sha256=instruction.expected_sha256,
-        payload_slice=builder.append(instruction.literal),
+        payload_slice=_PAYLOAD_BUILDER_APPEND(builder, instruction.literal),
     )
 
 
@@ -956,7 +1057,7 @@ def protect_exact_plan(
 
     """
     _validate_protect_inputs(plan, reference_identity, context)
-    builder = _PayloadBuilder(_NATIVE_BYTEARRAY())
+    builder = _new_payload_builder(_NATIVE_BYTEARRAY())
     instructions = _NATIVE_TUPLE(
         _protect_instruction(instruction, builder)
         for instruction in plan.instructions
@@ -987,7 +1088,7 @@ def protect_exact_plan(
         policy=binding_policy,
         context=_binding_context(aad, context),
     )
-    return ProtectedExactPlan(
+    return _new_protected_exact_plan(
         source=plan.source,
         target=plan.target,
         instructions=instructions,
