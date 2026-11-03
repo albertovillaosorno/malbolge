@@ -1932,3 +1932,45 @@ def test_generator_post_protection_replay_ignores_late_model_equality(
         with pytest.raises(ExactTreeError, match="source tree changed"):
             write_algorithm(recipe)
     assert not emitted, "a stale protected source reached the emitter"
+
+
+@pytest.mark.parametrize("collision", [True, False])
+def test_generator_domain_collision_ignores_late_path_equality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    collision: bool,
+) -> None:
+    """Late Path equality cannot approve a collision or reject a valid output."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    module = _domain_module(tmp_path)
+    output = module if collision else recipe.output_algorithm
+    recipe = replace(recipe, domain_module=module, output_algorithm=output)
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__eq__", lambda _left, _right: not collision)
+        if collision:
+            with pytest.raises(ValueError, match="output_algorithm.*domain_module"):
+                generate_module._validate_recipe_paths(recipe)
+        else:
+            generate_module._validate_recipe_paths(recipe)
+
+
+@pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])
+@pytest.mark.parametrize("hook", ["equality", "parents"])
+def test_generator_output_containment_ignores_late_ancestry_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    input_name: str,
+    hook: str,
+) -> None:
+    """Late path equality or parent chains cannot mask a nested output."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    root = recipe.source_root if input_name == "source_root" else recipe.oracle_root
+    recipe = replace(recipe, output_algorithm=root / "nested" / "main.rs")
+    with monkeypatch.context() as patched:
+        if hook == "equality":
+            patched.setattr(Path, "__eq__", lambda _left, _right: False)
+        else:
+            patched.setattr(Path, "parents", property(lambda _: ()))
+        with pytest.raises(ValueError, match=f"output_algorithm.*{input_name}"):
+            generate_module._validate_recipe_paths(recipe)

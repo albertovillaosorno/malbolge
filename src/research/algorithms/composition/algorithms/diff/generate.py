@@ -86,7 +86,8 @@ _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 # Domain callbacks cannot redefine the host path containment verdict.
-_NATIVE_IS_RELATIVE_TO = Path.is_relative_to
+_NATIVE_PATH_EQ = Path.__eq__
+_NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_RESOLVE = Path.resolve
 _MAX_SHARES = 255
 _NUL = "\x00"
@@ -353,17 +354,29 @@ def _resolve_recipe_path(path: Path, name: str) -> Path:
     return resolved
 
 
+def _native_path_contained(path: Path, root: Path) -> bool:
+    """Compare resolved native ancestry without late Path equality/parents."""
+    current = path
+    while True:
+        if _NATIVE_PATH_EQ(current, root):
+            return True
+        parent = _NATIVE_PATH_PARENT(current)
+        if _NATIVE_PATH_EQ(parent, current):
+            return False
+        current = parent
+
+
 def _validate_output_location(recipe: _RecipeLike) -> None:
     output = _resolve_recipe_path(recipe.output_algorithm, "output_algorithm")
     for name, root in (
         ("source_root", recipe.source_root),
         ("oracle_root", recipe.oracle_root),
     ):
-        if _NATIVE_IS_RELATIVE_TO(output, _resolve_recipe_path(root, name)):
+        if _native_path_contained(output, _resolve_recipe_path(root, name)):
             message = f"output_algorithm must be outside {name}"
             raise ValueError(message)
-    if recipe.domain_module is not None and output == _resolve_recipe_path(
-        recipe.domain_module, "domain_module"
+    if recipe.domain_module is not None and _NATIVE_PATH_EQ(
+        output, _resolve_recipe_path(recipe.domain_module, "domain_module")
     ):
         message = "output_algorithm must not overwrite domain_module"
         raise ValueError(message)
