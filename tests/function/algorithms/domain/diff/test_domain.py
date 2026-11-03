@@ -2146,3 +2146,36 @@ def test_domain_import_errors_are_typed_after_exception_alias(
             builtins.__dict__["Exception"] = original
     assert caught is not None, stage
     assert caught.__cause__ is failure
+
+
+@pytest.mark.parametrize("foreign_type", [object, dict])
+def test_domain_loader_keeps_native_record_after_public_class_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, foreign_type: type[object]
+) -> None:
+    """Rebinding the record name cannot bypass native hook construction."""
+    module = tmp_path / "native_domain.py"
+    _write(module, _COMPLETE)
+    native_type = domain_module.DiffDomain
+    with monkeypatch.context() as patched:
+        patched.setattr(domain_module, "DiffDomain", foreign_type)
+        observed = load_diff_domain(module)
+    assert type(observed) is native_type
+    assert observed.build_identity_tree(tmp_path) is None
+
+
+def test_domain_loader_keeps_native_record_after_module_side_effect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A loaded module cannot replace the hook bundle's trusted class."""
+    module = tmp_path / "native_domain.py"
+    _write(
+        module,
+        _COMPLETE
+        + "\nimport algorithms.diff.domain as host\nhost.DiffDomain = object\n",
+    )
+    native_type = domain_module.DiffDomain
+    with monkeypatch.context() as patched:
+        patched.setattr(domain_module, "DiffDomain", native_type)
+        observed = load_diff_domain(module)
+    assert type(observed) is native_type
+    assert observed.build_identity_tree(tmp_path) is None

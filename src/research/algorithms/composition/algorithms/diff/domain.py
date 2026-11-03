@@ -278,10 +278,14 @@ class DiffDomain:
 
         """
         for name, slot in _DIFF_DOMAIN_HOOK_SLOTS:
-            if not _NATIVE_CALLABLE(slot.__get__(self, DiffDomain)):
+            if not _NATIVE_CALLABLE(slot.__get__(self, _NATIVE_DIFF_DOMAIN)):
                 message = f"diff domain hook must be callable: {name}"
                 raise DomainContractError(message)
 
+
+# A consumer module can rebind the public DiffDomain name during execution.
+# Native record construction and hook-slot validation must retain this class.
+_NATIVE_DIFF_DOMAIN = DiffDomain
 
 # Generated dataclass initializers would look up the mutable class validator.
 # Keep the constructor guard and original slot descriptors independent of later
@@ -629,7 +633,7 @@ def _validated_domain(module: ModuleType) -> DiffDomain:
         Validated domain hooks ready for use.
 
     """
-    domain = _NATIVE_OBJECT_NEW(DiffDomain)
+    domain = _NATIVE_OBJECT_NEW(_NATIVE_DIFF_DOMAIN)
     _DIFF_DOMAIN_INIT(
         domain,
         validate_source_provenance=cast(
