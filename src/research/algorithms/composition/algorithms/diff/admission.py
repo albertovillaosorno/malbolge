@@ -37,8 +37,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 import ntpath
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -59,6 +57,7 @@ _STRUCTURAL_POLICY = AnchorPolicy(window_bytes=16, selection_modulus=8)
 _ANCHOR_POLICY = AnchorPolicy(window_bytes=32, selection_modulus=64)
 # Domain-loaded hooks cannot redefine Windows reserved-path admission.
 _NATIVE_IS_RESERVED = ntpath.isreserved
+_NATIVE_SPLITDRIVE = ntpath.splitdrive
 _NATIVE_FSUM = math.fsum
 _NATIVE_ISFINITE = math.isfinite
 
@@ -82,13 +81,12 @@ def _is_portable_relative_path(path: str) -> bool:
         _ = path.encode("utf-8")
     except UnicodeEncodeError:
         return False
-    candidate = PurePosixPath(path)
+    # Identity labels are lexical authority, not mutable pathlib methods.
+    # Empty/dot/parent components also cover absolute and noncanonical paths.
     return (
-        not candidate.is_absolute()
-        and not PureWindowsPath(path).drive
+        not _NATIVE_SPLITDRIVE(path)[0]
         and not _NATIVE_IS_RESERVED(path)
-        and _PARENT not in candidate.parts
-        and candidate.as_posix() == path
+        and all(part not in {"", _DOT, _PARENT} for part in path.split("/"))
     )
 
 
@@ -100,13 +98,16 @@ def _require_file_path_topology(paths: tuple[str, ...]) -> None:
 
     """
     file_paths = set(paths)
-    if any(
-        parent.as_posix() in file_paths
-        for path in paths
-        for parent in PurePosixPath(path).parents
-    ):
-        message = "identity file paths contain an ancestor/descendant overlap"
-        raise AdmissionPolicyError(message)
+    for path in paths:
+        components = path.split("/")
+        ancestor = components[0]
+        for component in components[1:]:
+            if ancestor in file_paths:
+                message = (
+                    "identity file paths contain an ancestor/descendant overlap"
+                )
+                raise AdmissionPolicyError(message)
+            ancestor += "/" + component
 
 
 @dataclass(frozen=True, slots=True, order=True)

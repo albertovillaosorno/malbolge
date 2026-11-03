@@ -36,6 +36,7 @@ from dataclasses import replace
 import hashlib
 import math
 import ntpath
+from pathlib import PurePosixPath
 from typing import cast
 
 from algorithms.diff.admission import AdmissionError
@@ -473,6 +474,60 @@ def test_identity_records_reject_foreign_runtime_types() -> None:
         _ = identity_tree({
             "source.c": cast("bytes", cast("object", bytearray(b"source")))
         })
+
+
+def _forged_path_is_absolute(path: PurePosixPath) -> bool:
+    del path
+    return False
+
+
+def _forged_path_parts(path: PurePosixPath) -> tuple[str, ...]:
+    del path
+    return ("src", "safe.c")
+
+
+def _forged_path_as_posix(path: PurePosixPath) -> str:
+    del path
+    return "src//unsafe.c"
+
+
+def _forged_path_parents(path: PurePosixPath) -> tuple[PurePosixPath, ...]:
+    del path
+    return ()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("/absolute/source.c", "is_absolute", _forged_path_is_absolute),
+        ("src/../unsafe.c", "parts", property(_forged_path_parts)),
+        ("src//unsafe.c", "as_posix", _forged_path_as_posix),
+    ],
+)
+def test_identity_rejects_post_import_path_method_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, str, object],
+) -> None:
+    """Late pathlib method swaps must not approve malformed source labels."""
+    unsafe_path, method, replacement = case
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePosixPath, method, replacement)
+        with pytest.raises(AdmissionPolicyError, match="invalid identity path"):
+            _ = IdentityFile(path=unsafe_path, canonical=b"source")
+
+
+def test_identity_rejects_post_import_parent_topology_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable pathlib.parents cannot admit a file as another file's root."""
+    file = IdentityFile(path="src", canonical=b"file")
+    child = IdentityFile(path="src/file.c", canonical=b"child")
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            PurePosixPath, "parents", property(_forged_path_parents)
+        )
+        with pytest.raises(AdmissionPolicyError, match="ancestor"):
+            _ = IdentityTree(files=(file, child))
 
 
 @pytest.mark.parametrize(
