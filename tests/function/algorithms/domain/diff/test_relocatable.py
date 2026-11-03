@@ -2059,3 +2059,41 @@ def test_relocation_literal_dispatch_ignores_late_isinstance(
     else:
         assert result == b"target"
     assert calls == 0, "consumer classification hook received a literal"
+
+
+@pytest.mark.parametrize("role", ["output", "source"])
+@pytest.mark.parametrize("hook", ["splitroot", "fspath", "any"])
+@pytest.mark.parametrize("unsafe", ["CON", "src/COM1", "src/trailing."])
+def test_relocatable_rejects_late_ntpath_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe: str,
+    hook: str,
+    role: str,
+) -> None:
+    """Late host hooks must not authorize forbidden relocation labels."""
+
+    def hide_windows_path(value: object) -> tuple[str, str, str]:
+        del value
+        return "", "", "safe"
+
+    with monkeypatch.context() as patch:
+        if hook == "splitroot":
+            patch.setattr(ntpath, "splitroot", hide_windows_path)
+        elif hook == "fspath":
+            patch.setattr(os, "fspath", lambda value: "safe")
+        else:
+            patch.setattr(builtins, "any", lambda values: False)
+        with pytest.raises(RelocationError, match="unsafe relocatable"):
+            if role == "output":
+                _ = RelocatableInstruction(
+                    output_path=unsafe,
+                    source_path=None,
+                    copy_candidate_file=False,
+                    literal=b"target",
+                )
+            else:
+                _ = RelocatableInstruction(
+                    output_path="out.bin",
+                    source_path=unsafe,
+                    copy_candidate_file=True,
+                )

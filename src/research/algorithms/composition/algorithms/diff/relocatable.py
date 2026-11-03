@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import builtins
 import hashlib
-import ntpath
 import os
 import shutil
 import sys
@@ -57,6 +56,7 @@ from algorithms.diff.exact import (
     read_exact_regular_file,
     snapshot_tree_excluding,
 )
+from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.model import (
     ExactAuthoringPlan,
     ExactInstructionKind,
@@ -77,7 +77,6 @@ _BOUNDARY_BYTES = 32
 # A loaded domain must not redefine the relocation hash primitive.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_DIGEST_BYTES = _SHA256_FACTORY().digest_size
-_NATIVE_ISRESERVED = ntpath.isreserved
 # Consumer modules cannot replace exact-record or byte-count admission.
 _NATIVE_TYPE = builtins.type
 _NATIVE_INT = builtins.int
@@ -535,7 +534,10 @@ def _validate_relative_path(relative_path: object) -> str:
         or relative_path == _DOT
         or candidate.is_absolute()
         or _NATIVE_BOOL(PureWindowsPath(relative_path).drive)
-        or _NATIVE_ISRESERVED(relative_path)
+        or _NATIVE_ANY(
+            reserved_windows_component(component)
+            for component in relative_path.split("/")
+        )
         or _PARENT in candidate.parts
         or candidate.as_posix() != relative_path
     )
