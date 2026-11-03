@@ -103,6 +103,9 @@ _NATIVE_INT = builtins.int
 _NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_RANGE = builtins.range
 _NATIVE_OBJECT_NEW = object.__new__
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_EXCEPTION = builtins.Exception
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
@@ -635,7 +638,7 @@ def _walk_tree(
         yield from _NATIVE_PATH_WALK(root, on_error=_raise_tree_walk_error)
     except ExactTreeError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         _raise_tree_walk_error(error)
 
 
@@ -705,7 +708,7 @@ def _entry_mode(path: Path, context: str) -> int | None:
         receipt = _NATIVE_PATH_LSTAT(path)
     except FileNotFoundError:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         message = f"{context} status failed: {_safe_host_error_detail(error)}"
         raise ExactTreeError(message) from error
     _ = _require_native_status(receipt, context)
@@ -717,7 +720,7 @@ def _is_redirect(path: Path, mode: int) -> bool:
         if S_ISLNK(mode):
             return True
         is_junction = _NATIVE_PATH_IS_JUNCTION(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         detail = _safe_host_error_detail(error)
         message = f"tree redirect status failed: {path}: {detail}"
         raise ExactTreeError(message) from error
@@ -850,7 +853,7 @@ def _verify_closed_source(
     # Finalizers may change or replace the named file after the last fstat.
     try:
         final = _NATIVE_PATH_LSTAT(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         message = f"{context} status failed after descriptor close: {path}"
         raise ExactTreeError(message) from error
     final = _require_native_status(final, context)
@@ -906,7 +909,7 @@ def _copy_native_failure_notes(
                 error, "__notes__"
             ),
         )
-    except AttributeError:
+    except _NATIVE_ATTRIBUTE_ERROR:
         return
     if _NATIVE_TYPE(notes) is _NATIVE_LIST:
         for note in cast("list[object]", notes):
@@ -928,7 +931,7 @@ def read_exact_regular_file(path: Path, context: str) -> bytes:
         return _read_bound_file(path, context)
     except ExactTreeError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         detail = _safe_host_error_detail(error)
         message = f"{context} read failed: {path}: {detail}"
         failure = ExactTreeError(message)
@@ -1006,7 +1009,7 @@ def _resolved_tree_root(root: Path) -> Path:
         raise ExactTreeError(message)
     try:
         resolved = _NATIVE_PATH_RESOLVE(root, strict=True)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         detail = _safe_host_error_detail(error)
         message = f"tree root resolution failed: {root}: {detail}"
         raise ExactTreeError(message) from error
@@ -1335,7 +1338,7 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
         resolved_root = _require_native_resolved_path(
             _NATIVE_PATH_RESOLVE(root), "tree root"
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         message = (
             "tree path resolution failed: "
             f"{relative_path!r}: {_safe_host_error_detail(error)}"
@@ -1407,7 +1410,7 @@ def _native_make_output_directory(path: Path, *, parents: bool, exist_ok: bool) 
             raise
         _native_make_output_directory(parent, parents=True, exist_ok=True)
         _native_make_output_directory(path, parents=False, exist_ok=exist_ok)
-    except OSError:
+    except _NATIVE_OS_ERROR:
         if not exist_ok:
             raise
         mode = _entry_mode(path, "output directory")
@@ -1421,7 +1424,7 @@ def _write_output_file(path: Path, data: bytes, context: str) -> None:
             _NATIVE_PATH_PARENT(path), parents=True, exist_ok=True
         )
         written = _NATIVE_WRITE_OUTPUT_BYTES(path, data)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         message = f"{context} write failed: {path}: " + _safe_host_error_detail(
             error
         )
@@ -1440,7 +1443,7 @@ def _make_output_directory(
 ) -> None:
     try:
         _native_make_output_directory(path, parents=parents, exist_ok=exist_ok)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         detail = _safe_host_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
         raise ExactTreeError(message) from error
@@ -1601,7 +1604,7 @@ def _resolved_output_root(output_root: Path) -> Path:
         raise ExactTreeError(message)
     try:
         resolved = _NATIVE_PATH_RESOLVE(output_root)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         message = (
             "output root resolution failed: "
             f"{output_root}: {_safe_host_error_detail(error)}"
@@ -1615,7 +1618,7 @@ def _cleanup_exact_staging(path: Path) -> str | None:
         _NATIVE_RMTREE(path)
     except FileNotFoundError:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
         return _safe_host_error_detail(error)
     return None
 
@@ -1631,7 +1634,7 @@ def _raise_exact_cleanup_failure(error: Exception, cleanup_error: str) -> None:
 def _publish_exact_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
-    except OSError as error:
+    except _NATIVE_OS_ERROR as error:
         message = "exact output publication failed: " + _safe_host_error_detail(
             error
         )
@@ -1659,7 +1662,7 @@ def materialize_exact_plan(
     # their nested immutable evidence before any filesystem or staging access.
     try:
         _EXACT_PLAN_VALIDATOR(plan)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "exact materialization received an incomplete native authoring plan"
         raise TreeModelError(message) from error
     resolved_source = _resolved_tree_root(source_root)
@@ -1673,7 +1676,7 @@ def materialize_exact_plan(
         _populate_staging(resolved_source, staging_root, plan)
         _verify_source(resolved_source, plan)
         _publish_exact_output(staging_root, resolved_output)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         cleanup_error = _cleanup_exact_staging(staging_root)
         if cleanup_error is not None:
             _raise_exact_cleanup_failure(error, cleanup_error)

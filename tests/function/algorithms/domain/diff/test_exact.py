@@ -4887,3 +4887,83 @@ def test_exact_walk_rejects_late_host_builtin_aliases(
             rejected_message = error.args[0]
     assert rejected_message is not None
     assert "path hooks changed" in rejected_message
+
+
+@pytest.mark.parametrize("route", ["notes", "native-plan", "existing-dir", "publish"])
+def test_exact_native_error_guards_reject_late_builtin_exception_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """Native read, metadata, and publication errors ignore late aliases."""
+    native_attribute_error = builtins.AttributeError
+    native_os_error = builtins.OSError
+    rejected: TreeModelError | ExactTreeError | None = None
+    with monkeypatch.context() as patched:
+        if route in {"notes", "native-plan"}:
+            patched.setattr(builtins, "AttributeError", RuntimeError)
+        else:
+            patched.setattr(builtins, "OSError", RuntimeError)
+        if route == "publish":
+
+            def fail_publish(_staging: Path, _destination: Path) -> None:
+                raise native_os_error("publication refused")
+
+            patched.setattr(exact_module, "publish_directory_no_replace", fail_publish)
+        try:
+            if route == "notes":
+                error = ExactTreeError("native reader failure")
+                failure = ExactTreeError("wrapped")
+                exact_module._copy_native_failure_notes(error, failure)
+            elif route == "native-plan":
+                _ = materialize_exact_plan(
+                    tmp_path, object.__new__(ExactAuthoringPlan), tmp_path / "out"
+                )
+            elif route == "existing-dir":
+                exact_module._native_make_output_directory(
+                    tmp_path, parents=False, exist_ok=True
+                )
+            else:
+                exact_module._publish_exact_output(
+                    tmp_path / "stage", tmp_path / "published"
+                )
+        except (TreeModelError, ExactTreeError) as error:
+            rejected = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+            builtins.__dict__["OSError"] = native_os_error
+    if route == "native-plan":
+        assert type(rejected) is TreeModelError
+        assert "incomplete native authoring plan" in str(rejected)
+    elif route == "publish":
+        assert type(rejected) is ExactTreeError
+        assert "publication failed" in str(rejected)
+    else:
+        assert rejected is None
+
+
+def test_exact_staging_cleanup_ignores_late_exception_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed post-stage callback cannot bypass cleanup by swapping Exception."""
+    source = tmp_path / "source"
+    source.mkdir()
+    output = tmp_path / "published"
+    snapshot = TreeSnapshot(())
+    plan = ExactAuthoringPlan(snapshot, snapshot, ())
+    native_exception = builtins.Exception
+    observed: RuntimeError | None = None
+    with monkeypatch.context() as patched:
+
+        def fail_populate(*_args: object) -> None:
+            patched.setattr(builtins, "Exception", ValueError)
+            raise RuntimeError("injected post-stage failure")
+
+        patched.setattr(exact_module, "_populate_staging", fail_populate)
+        try:
+            materialize_exact_plan(source, plan, output)
+        except RuntimeError as error:
+            observed = error
+        finally:
+            builtins.__dict__["Exception"] = native_exception
+    assert type(observed) is RuntimeError
+    assert not (tmp_path / ".published.staging").exists()
+    assert not output.exists()
