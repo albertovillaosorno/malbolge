@@ -286,6 +286,16 @@ case proved that forged source metadata could authorize cached bytecode from an
 unselected file. All 100 focused domain and 3,255 integrated diff tests pass;
 scoped Ruff and strict BasedPyright report zero errors. Direct trusted-state
 mutation and concurrent filesystem or bytecode-cache writes remain out of scope.
+Rejected domain loads now restore the original `sys.modules` registration
+(`38ee4b9bc`) even if executing consumer code replaces or deletes its own key.
+The loader also rejects successful execution or late hook lookup that changes
+that registration instead of returning an accepted hook bundle under a foreign
+module identity. Six initial red-first failures and fourteen total new cases
+cover initial imports, accepted-module reloads, execution failures, missing
+hooks, and late mutations. All 114 postcommit domain and 3,538 precommit
+integrated diff tests passed, with scoped Ruff, strict source/test BasedPyright,
+and diff checks clean. This guards only the import registration boundary;
+consumer code is still trusted and external concurrent writes are not isolated.
 Neither status check nor import is atomic against external filesystem writes;
 this is not a sandbox for trusted consumer-domain code.
 A frozen, slotted Python evidence record still permits its *class* slot

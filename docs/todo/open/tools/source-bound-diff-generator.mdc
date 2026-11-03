@@ -701,6 +701,14 @@ format.
   original and resolved regular-file identities before importing. Five red-first
   tests cover forged module names and redirected imports, including hardlinks.
   External filesystem mutation between checks still requires coordination.
+- Domain loader registration rollback now restores the previously accepted
+  `sys.modules` entry after rejected imports, even when a consumer has rebound
+  or deleted the import key (`38ee4b9bc`). Successful execution and late hook
+  validation also reject unexpected key substitutions. Six red-first failures
+  and fourteen total new cases, 114 postcommit focused and 3,538 precommit
+  integrated diff tests passed, with scoped Ruff, strict source/test typing,
+  and diff checks clean. This does not sandbox trusted consumer code or exclude
+  concurrent changes to host import state.
 - Source-lineage and behavior evidence now validate, expose, and enforce
   rejection reasons through original frozen-slot readers rather than late
   class getters. Three source and four behavior red-first cases cover forged
