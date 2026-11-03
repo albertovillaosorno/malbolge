@@ -91,6 +91,14 @@ format.
   callback/alias cases now fail closed instead of executing late hooks or
   leaking `TypeError`. All 272 postcommit generator tests, strict typing,
   Ruff, and diff checks pass. External host/filesystem races remain open.
+- Generator path containment also pins inherited `PurePath.drive`/`.root`
+  getters and normalized-label/cache descriptors (`1fb2fa50f`). A forged
+  `_str_normcase` previously let a source-contained output evade original
+  `Path.__eq__`; replaced public getters ran during uncached native path
+  formatting. Four red-first cases, 276 postcommit generator tests, and
+  3,718 integrated diff tests pass. Default Ruff/diff checks pass; strict
+  project typing retains 121 older source/test findings and no new findings
+  in added lines. External host/filesystem races remain unresolved.
 - Generator domain preflight now invokes the original native
   `SourcePinEvidence` validator after the consumer callback (`a27f430de`),
   rather than accepting an exact-type object whose initializer never ran.

@@ -2447,6 +2447,16 @@ previously redirected an uncached native source path despite unchanged
 postcommit, with strict source/test typing, Ruff, and diff checks clean.
 Direct stored-object mutations and filesystem races remain unisolated.
 
+Generator path admission now also pins the inherited `PurePath.drive` and
+`.root` component getters, plus `_str_normcase` and its cache descriptor
+(`1fb2fa50f`). A late normalized-label replacement previously made an output
+inside the source tree appear unrelated during native ancestor equality; late
+component getters also ran before preflight could reject them. Four red-first
+cases, 276 postcommit generator tests, and 3,718 integrated diff tests pass.
+Default Ruff and diff checks are clean; strict project typing retains 121
+existing findings across the source and test files, none at newly added lines.
+This guards late process-hook replacement, not external filesystem races.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:
