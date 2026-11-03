@@ -44,10 +44,10 @@ from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.exact import (
     ExactTreeError,
-    TreeSnapshot,
     read_exact_regular_file,
 )
 from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.payload import AuthenticatedPayload
 from algorithms.diff.protected import (
     ProtectedExactPlan,
@@ -58,6 +58,7 @@ from algorithms.diff.protected import (
 from algorithms.diff.source_binding import BoundShare, ThresholdBinding
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from typing import IO
 
 
@@ -85,8 +86,12 @@ _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Guard output classification as well as runtime-template resolution against
 # mutable process-global hooks installed after the emitter was imported.
 _NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_MKDIR = os.mkdir
+_NATIVE_OS_REPLACE = os.replace
+_NATIVE_OS_UNLINK = os.unlink
 _NATIVE_OS_FSENCODE = os.fsencode
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 
@@ -135,6 +140,55 @@ def _native_path_lstat(path: Path) -> os.stat_result:
 
 _NATIVE_PATH_LSTAT = _native_path_lstat
 _NATIVE_IO_OPEN = io.open
+
+
+def _staged_output_open(path: Path) -> IO[str]:
+    """Claim a new stage without calling mutable Path.open methods.
+
+    Returns:
+        Exclusive UTF-8 text stream for the new stage.
+
+    """
+    return _NATIVE_IO_OPEN(
+        _NATIVE_PATH_STRING(path), "x", encoding="utf-8", newline="\n"
+    )
+
+
+def _output_replace(source: Path, destination: Path) -> Path:
+    """Publish through the captured host rename, not mutable Path.replace.
+
+    Returns:
+        The destination path, after the host operation completes.
+
+    """
+    _NATIVE_OS_REPLACE(
+        _NATIVE_PATH_STRING(source), _NATIVE_PATH_STRING(destination)
+    )
+    return destination
+
+
+def _output_unlink(path: Path) -> None:
+    """Remove only the exact staged path using the captured host unlink."""
+    _NATIVE_OS_UNLINK(_NATIVE_PATH_STRING(path))
+
+
+def _output_mkdir(path: Path) -> None:
+    """Create parents through captured path and host directory operations."""
+    chain: list[str] = []
+    current = path
+    while True:
+        spelling = _NATIVE_PATH_STRING(current)
+        chain.append(spelling)
+        parent = _NATIVE_PATH_PARENT(current)
+        if _NATIVE_PATH_STRING(parent) == spelling:
+            break
+        current = parent
+    for spelling in reversed(chain):
+        try:
+            _NATIVE_OS_MKDIR(spelling)
+        except FileExistsError:
+            # The second parent-chain preflight rejects non-directories/links.
+            continue
 
 
 def _native_template_read(path: Path) -> str:
@@ -490,7 +544,7 @@ def _prepare_output_path(output_path: Path) -> Path:
     _validate_output_leaf(output_path)
     _validate_output_parent_chain(output_path.parent)
     try:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        _output_mkdir(output_path.parent)
     except (OSError, ValueError, RuntimeError) as error:
         message = (
             "Rust output parent creation failed: "
@@ -507,7 +561,7 @@ def _temporary_output_path(output_path: Path) -> Path:
 
 def _cleanup_owned_temporary(path: Path) -> str | None:
     try:
-        path.unlink()
+        _output_unlink(path)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
@@ -528,7 +582,7 @@ def _write_complete_staged_source(stream: IO[str], source: str) -> None:
 def _claim_and_write_temporary(path: Path, source: str) -> None:
     owned = False
     try:
-        with path.open("x", encoding="utf-8", newline="\n") as stream:
+        with _staged_output_open(path) as stream:
             owned = True
             _write_complete_staged_source(stream, source)
             stream.flush()
@@ -618,7 +672,7 @@ def write_rust_transform(
         _verify_rust_source_bytes(temporary, expected, "staged")
         _validate_output_leaf(prepared_output)
         _validate_output_parent_chain(prepared_output.parent)
-        published = temporary.replace(prepared_output)
+        published = _output_replace(temporary, prepared_output)
         if (
             _NATIVE_TYPE(published) is not _NATIVE_PATH_TYPE
             or _NATIVE_PATH_STRING(published) != (

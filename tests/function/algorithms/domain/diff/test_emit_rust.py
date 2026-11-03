@@ -1854,21 +1854,15 @@ def test_writer_wraps_output_parent_creation_failure(
     _, _, _, protected = _fixture(tmp_path)
     parent = tmp_path / "generated"
     output = parent / "main.rs"
-    original_mkdir = Path.mkdir
+    original_mkdir = emit_rust_module._output_mkdir
 
-    def fail_mkdir(
-        path: Path,
-        mode: int = 0o777,
-        *,
-        parents: bool = False,
-        exist_ok: bool = False,
-    ) -> None:
+    def fail_mkdir(path: Path) -> None:
         if path == parent:
             message = "blocked Rust output parent creation"
             raise failure_type(message)
-        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        original_mkdir(path)
 
-    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    monkeypatch.setattr(emit_rust_module, "_output_mkdir", fail_mkdir)
     with pytest.raises(
         RustEmissionError, match="output parent creation failed"
     ):
@@ -1943,7 +1937,7 @@ def test_writer_cleans_owned_temporary_after_replace_failure(
     """Failed publication cannot leave an owned staging file behind."""
     _, _, _, protected = _fixture(tmp_path)
     output = tmp_path / "generated.rs"
-    original_replace = Path.replace
+    original_replace = emit_rust_module._output_replace
     attempted: list[Path] = []
 
     def reject_replace(path: Path, target: Path) -> Path:
@@ -1954,7 +1948,7 @@ def test_writer_cleans_owned_temporary_after_replace_failure(
             raise failure_type(message)
         return original_replace(path, target)
 
-    monkeypatch.setattr(Path, "replace", reject_replace)
+    monkeypatch.setattr(emit_rust_module, "_output_replace", reject_replace)
     with pytest.raises(RustEmissionError, match="publication failed"):
         write_rust_transform(protected, _PROFILE, output)
     assert attempted, "fixture did not reach atomic publication"
@@ -1980,28 +1974,17 @@ def test_writer_cleans_owned_temporary_after_write_failure(
     monkeypatch.setattr(
         emit_rust_module, "_runtime_template_text", lambda: template
     )
-    original_open = Path.open
+    original_open = emit_rust_module._staged_output_open
     wrote: list[str] = []
 
     @contextmanager
-    def fail_after_open(
-        path: Path,
-        mode: str = "r",
-        *,
-        encoding: str | None = None,
-        newline: str | None = None,
-    ) -> Generator[IO[str] | _BrokenStagedRustWriter]:
-        with original_open(
-            path, mode, encoding=encoding, newline=newline
-        ) as stream:
-            if mode == _EXCLUSIVE_CREATE_MODE:
-                yield _BrokenStagedRustWriter(
-                    cast("IO[str]", stream), failure_type, wrote
-                )
-            else:
-                yield cast("IO[str]", stream)
+    def fail_after_open(path: Path) -> Generator[_BrokenStagedRustWriter]:
+        with original_open(path) as stream:
+            yield _BrokenStagedRustWriter(stream, failure_type, wrote)
 
-    monkeypatch.setattr(Path, "open", fail_after_open)
+    monkeypatch.setattr(
+        emit_rust_module, "_staged_output_open", fail_after_open
+    )
     with pytest.raises(RustEmissionError, match="publication failed"):
         write_rust_transform(protected, _PROFILE, output)
     assert wrote, "fixture did not write to the owned temporary"
@@ -2029,27 +2012,20 @@ def test_writer_rejects_short_or_invalid_staging_write_count(
     monkeypatch.setattr(
         emit_rust_module, "_runtime_template_text", lambda: template
     )
-    original_open = Path.open
+    original_open = emit_rust_module._staged_output_open
 
     @contextmanager
     def misreport_staged_write(
         path: Path,
-        mode: str = "r",
-        *,
-        encoding: str | None = None,
-        newline: str | None = None,
-    ) -> Generator[IO[str] | _MisreportedStagedRustWriter]:
-        with original_open(
-            path, mode, encoding=encoding, newline=newline
-        ) as stream:
-            if mode == _EXCLUSIVE_CREATE_MODE:
-                yield _MisreportedStagedRustWriter(
-                    cast("IO[str]", stream), reported, partial=partial
-                )
-            else:
-                yield cast("IO[str]", stream)
+    ) -> Generator[_MisreportedStagedRustWriter]:
+        with original_open(path) as stream:
+            yield _MisreportedStagedRustWriter(
+                stream, reported, partial=partial
+            )
 
-    monkeypatch.setattr(Path, "open", misreport_staged_write)
+    monkeypatch.setattr(
+        emit_rust_module, "_staged_output_open", misreport_staged_write
+    )
     with pytest.raises(RustEmissionError, match="publication failed"):
         write_rust_transform(protected, _PROFILE, output)
     assert not output.exists()
@@ -2065,8 +2041,8 @@ def test_writer_preserves_primary_error_after_invalid_cleanup(
     """Broken host cleanup cannot mask an already failed publication."""
     _, _, _, protected = _fixture(tmp_path)
     output = tmp_path / "generated.rs"
-    original_unlink = Path.unlink
-    original_replace = Path.replace
+    original_unlink = emit_rust_module._output_unlink
+    original_replace = emit_rust_module._output_replace
     attempted: list[Path] = []
 
     def reject_replace(path: Path, target: Path) -> Path:
@@ -2076,15 +2052,15 @@ def test_writer_preserves_primary_error_after_invalid_cleanup(
             raise RuntimeError(message)
         return original_replace(path, target)
 
-    def reject_cleanup(path: Path, *, missing_ok: bool = False) -> None:
+    def reject_cleanup(path: Path) -> None:
         if path in attempted:
             message = "injected cleanup failure"
             raise cleanup_error(message)
-        original_unlink(path, missing_ok=missing_ok)
+        original_unlink(path)
 
     with monkeypatch.context() as patch:
-        patch.setattr(Path, "replace", reject_replace)
-        patch.setattr(Path, "unlink", reject_cleanup)
+        patch.setattr(emit_rust_module, "_output_replace", reject_replace)
+        patch.setattr(emit_rust_module, "_output_unlink", reject_cleanup)
         with pytest.raises(
             RustEmissionError,
             match=r"publication failed.*temporary cleanup failed",
@@ -2126,14 +2102,14 @@ def test_writer_replace_does_not_format_hostile_exception(
     _, _, _, protected = _fixture(tmp_path)
     output = tmp_path / "generated.rs"
     failure = _HostileEmissionError("hostile rename")
-    original_replace = Path.replace
+    original_replace = emit_rust_module._output_replace
 
     def fail_replace(path: Path, target: Path) -> Path:
         if target == output:
             raise failure
         return original_replace(path, target)
 
-    monkeypatch.setattr(Path, "replace", fail_replace)
+    monkeypatch.setattr(emit_rust_module, "_output_replace", fail_replace)
     with pytest.raises(RustEmissionError, match="publication failed") as caught:
         write_rust_transform(protected, _PROFILE, output)
     assert caught.value.__cause__ is failure
@@ -2147,8 +2123,8 @@ def test_writer_cleanup_does_not_format_hostile_exception(
     """A hostile secondary cleanup error cannot mask publication failure."""
     _, _, _, protected = _fixture(tmp_path)
     output = tmp_path / "generated.rs"
-    original_replace = Path.replace
-    original_unlink = Path.unlink
+    original_replace = emit_rust_module._output_replace
+    original_unlink = emit_rust_module._output_unlink
     attempted: list[Path] = []
 
     def fail_replace(path: Path, target: Path) -> Path:
@@ -2158,15 +2134,15 @@ def test_writer_cleanup_does_not_format_hostile_exception(
             raise OSError(message)
         return original_replace(path, target)
 
-    def fail_unlink(path: Path, *, missing_ok: bool = False) -> None:
+    def fail_unlink(path: Path) -> None:
         if path in attempted:
             message = "hostile Rust cleanup"
             raise _HostileEmissionError(message)
-        original_unlink(path, missing_ok=missing_ok)
+        original_unlink(path)
 
     with monkeypatch.context() as patch:
-        patch.setattr(Path, "replace", fail_replace)
-        patch.setattr(Path, "unlink", fail_unlink)
+        patch.setattr(emit_rust_module, "_output_replace", fail_replace)
+        patch.setattr(emit_rust_module, "_output_unlink", fail_unlink)
         with pytest.raises(
             RustEmissionError, match="temporary cleanup failed"
         ) as caught:
@@ -2183,38 +2159,26 @@ def test_writer_rejects_staged_bytes_modified_during_stream_close(
     """A successful text-stream close cannot certify rewritten Rust bytes."""
     _, _, _, protected = _fixture(tmp_path)
     output = tmp_path / "generated.rs"
-    original_open = Path.open
+    original_open = emit_rust_module._staged_output_open
     changed = False
 
     @contextmanager
-    def change_staged_bytes_on_close(
-        path: Path,
-        mode: str = "r",
-        buffering: int = -1,
-        *,
-        encoding: str | None = None,
-        errors: str | None = None,
-        newline: str | None = None,
-    ) -> Generator[IO[str]]:
+    def change_staged_bytes_on_close(path: Path) -> Generator[IO[str]]:
         nonlocal changed
-        with original_open(
-            path,
-            mode,
-            buffering=buffering,
-            encoding=encoding,
-            errors=errors,
-            newline=newline,
-        ) as stream:
+        with original_open(path) as stream:
             yield cast("IO[str]", stream)
-        if mode == _EXCLUSIVE_CREATE_MODE:
-            before = path.stat()
-            content = path.read_bytes()
-            _ = path.write_bytes(b"!" + content[1:])
-            os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
-            changed = True
+        before = path.stat()
+        content = path.read_bytes()
+        _ = path.write_bytes(b"!" + content[1:])
+        os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        changed = True
 
     with monkeypatch.context() as patch:
-        patch.setattr(Path, "open", change_staged_bytes_on_close)
+        patch.setattr(
+            emit_rust_module,
+            "_staged_output_open",
+            change_staged_bytes_on_close,
+        )
         with pytest.raises(RustEmissionError, match="staged Rust source"):
             write_rust_transform(protected, _PROFILE, output)
     assert changed
@@ -2232,7 +2196,7 @@ def test_writer_rejects_forged_noop_publication(
     if preexisting:
         _ = output.write_text(emit_rust_transform(protected, _PROFILE))
     attempted = False
-    original_replace = Path.replace
+    original_replace = emit_rust_module._output_replace
 
     def skip_replace(path: Path, target: Path) -> Path:
         nonlocal attempted
@@ -2241,7 +2205,7 @@ def test_writer_rejects_forged_noop_publication(
             return target
         return original_replace(path, target)
 
-    monkeypatch.setattr(Path, "replace", skip_replace)
+    monkeypatch.setattr(emit_rust_module, "_output_replace", skip_replace)
     with pytest.raises(RustEmissionError, match="published Rust source"):
         write_rust_transform(protected, _PROFILE, output)
     assert attempted
@@ -2255,7 +2219,7 @@ def test_writer_rejects_published_bytes_modified_during_replace(
     """A post-rename mutation must not be reported as successful emission."""
     _, _, _, protected = _fixture(tmp_path)
     output = tmp_path / "generated.rs"
-    original_replace = Path.replace
+    original_replace = emit_rust_module._output_replace
     modified = False
 
     def tamper_with_published(path: Path, target: Path) -> Path:
@@ -2267,7 +2231,9 @@ def test_writer_rejects_published_bytes_modified_during_replace(
             modified = True
         return result
 
-    monkeypatch.setattr(Path, "replace", tamper_with_published)
+    monkeypatch.setattr(
+        emit_rust_module, "_output_replace", tamper_with_published
+    )
     with pytest.raises(RustEmissionError, match="published Rust source"):
         write_rust_transform(protected, _PROFILE, output)
     assert modified
@@ -2482,4 +2448,175 @@ def test_emitted_rust_preserves_dynamic_passthrough_root(
     _expect(
         (output / "external/extra.bin").is_file(),
         "generated runtime lost passthrough-only file",
+    )
+
+
+def test_writer_ignores_late_path_open_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced Path.open cannot write the staged Rust source elsewhere."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    unrelated = tmp_path / "unrelated.rs"
+    _ = unrelated.write_bytes(_SENTINEL)
+    original_open = Path.open
+    intercepted = 0
+
+    def redirected_open(
+        path: Path,
+        mode: str = "r",
+        *,
+        encoding: str | None = None,
+        newline: str | None = None,
+    ) -> IO[str]:
+        nonlocal intercepted
+        if mode == _EXCLUSIVE_CREATE_MODE:
+            intercepted += 1
+            return cast(
+                "IO[str]",
+                original_open(
+                    unrelated, "w", encoding=encoding, newline=newline
+                ),
+            )
+        return cast(
+            "IO[str]",
+            original_open(path, mode, encoding=encoding, newline=newline),
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "open", redirected_open)
+        write_rust_transform(protected, _PROFILE, output)
+    assert intercepted == 0
+    assert unrelated.read_bytes() == _SENTINEL
+    assert output.read_text(encoding="utf-8") == emit_rust_transform(
+        protected, _PROFILE
+    )
+
+
+def test_writer_ignores_late_path_replace_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced Path.replace cannot publish to an unrelated file."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    unrelated = tmp_path / "unrelated.rs"
+    _ = unrelated.write_bytes(_SENTINEL)
+    original_replace = Path.replace
+    intercepted = 0
+
+    def redirected_replace(path: Path, target: Path) -> Path:
+        nonlocal intercepted
+        if target == output:
+            intercepted += 1
+            return original_replace(path, unrelated)
+        return original_replace(path, target)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", redirected_replace)
+        write_rust_transform(protected, _PROFILE, output)
+    assert intercepted == 0
+    assert unrelated.read_bytes() == _SENTINEL
+    assert output.read_text(encoding="utf-8") == emit_rust_transform(
+        protected, _PROFILE
+    )
+
+
+def test_writer_ignores_late_path_mkdir_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A class-level mkdir hook cannot create parents outside the output."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated" / "main.rs"
+    unrelated = tmp_path / "redirected"
+    original_mkdir = Path.mkdir
+    intercepted = 0
+
+    def redirected_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        nonlocal intercepted
+        if path == output.parent:
+            intercepted += 1
+            original_mkdir(unrelated, mode=mode, parents=True, exist_ok=True)
+            return
+        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "mkdir", redirected_mkdir)
+        write_rust_transform(protected, _PROFILE, output)
+    assert intercepted == 0
+    assert not unrelated.exists()
+    assert output.read_text(encoding="utf-8") == emit_rust_transform(
+        protected, _PROFILE
+    )
+
+
+def test_writer_ignores_late_path_unlink_redirect_on_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failed publication cannot delete an unrelated file via Path.unlink."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    unrelated = tmp_path / "important.bin"
+    _ = unrelated.write_bytes(_SENTINEL)
+    original_unlink = Path.unlink
+    intercepted = 0
+
+    def redirected_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        nonlocal intercepted
+        if path.name.startswith(".generated.rs."):
+            intercepted += 1
+            original_unlink(unrelated)
+            return
+        original_unlink(path, missing_ok=missing_ok)
+
+    def reject_publication(_source: Path, _destination: Path) -> Path:
+        message = "injected publication failure"
+        raise OSError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "unlink", redirected_unlink)
+        patch.setattr(emit_rust_module, "_output_replace", reject_publication)
+        with pytest.raises(RustEmissionError, match="publication failed"):
+            write_rust_transform(protected, _PROFILE, output)
+    assert intercepted == 0
+    assert unrelated.read_bytes() == _SENTINEL
+    assert not output.exists()
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
+def test_writer_ignores_late_os_mkdir_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late os.mkdir hook cannot redirect recursive output setup."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated" / "nested" / "main.rs"
+    unrelated = tmp_path / "redirected"
+    original_mkdir = os.mkdir
+    intercepted = 0
+
+    def redirected_mkdir(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> None:
+        nonlocal intercepted
+        if os.fspath(path) == str(output.parent):
+            intercepted += 1
+            original_mkdir(unrelated, mode)
+            return
+        original_mkdir(path, mode, dir_fd=dir_fd)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "mkdir", redirected_mkdir)
+        write_rust_transform(protected, _PROFILE, output)
+    assert intercepted == 0
+    assert not unrelated.exists()
+    assert output.read_text(encoding="utf-8") == emit_rust_transform(
+        protected, _PROFILE
     )
