@@ -47,10 +47,10 @@ from __future__ import annotations
 
 import math
 import ntpath
+from ntpath import splitdrive as _native_splitdrive
 from dataclasses import dataclass
 from fractions import Fraction
 from hashlib import sha256 as _native_sha256
-from pathlib import PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import IdentityTree
@@ -72,8 +72,7 @@ _MAX_SHARES = 255
 _ONE = 1
 _ZERO = 0
 _BACKSLASH = "\\"
-_DOT = "."
-_PARENT = ".."
+_UNSAFE_PATH_COMPONENTS = frozenset(("", ".", ".."))
 _NUL = "\x00"
 # Domain hooks must not redefine the Windows reserved-name verdict.
 _NATIVE_IS_RESERVED = ntpath.isreserved
@@ -515,7 +514,7 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
     if type(policy) is not SourceBindingPolicy:
         message = "source-binding policy must use the exact SourceBindingPolicy type"
         raise SourceBindingPolicyError(message)
-    if any(PureWindowsPath(item.path).drive for item in reference.files):
+    if any(_native_splitdrive(item.path)[0] for item in reference.files):
         message = "source-binding reference path cannot have a Windows drive"
         raise SourceBindingPolicyError(message)
 
@@ -608,7 +607,7 @@ def bind_secret(
 
 
 def _require_no_windows_drive(value: str) -> None:
-    if PureWindowsPath(value).drive:
+    if _native_splitdrive(value)[0]:
         message = "source-binding share path cannot have a Windows drive"
         raise SourceBindingError(message)
 
@@ -629,10 +628,11 @@ def _validate_share_path(value: object) -> None:
     if _NATIVE_IS_RESERVED(value):
         message = "source-binding share path uses a Windows reserved name"
         raise SourceBindingError(message)
-    path = PurePosixPath(value)
-    unsafe = _BACKSLASH in value or value == _DOT or path.is_absolute()
-    noncanonical = _PARENT in path.parts or path.as_posix() != value
-    if unsafe or noncanonical:
+    # Lexical admission cannot trust late mutations of pathlib class methods.
+    unsafe = _BACKSLASH in value or any(
+        part in _UNSAFE_PATH_COMPONENTS for part in value.split("/")
+    )
+    if unsafe:
         message = "source-binding share path must be canonical and relative"
         raise SourceBindingError(message)
 
@@ -722,9 +722,10 @@ def _validate_binding_extent(binding: ThresholdBinding) -> None:
 
 def _require_possible_share_paths(source_paths: set[str]) -> None:
     if any(
-        parent.as_posix() in source_paths
+        "/".join(parts[:index]) in source_paths
         for path in source_paths
-        for parent in PurePosixPath(path).parents
+        for parts in (path.split("/"),)
+        for index in range(1, len(parts))
     ):
         message = "source-binding share paths contain an ancestor/descendant overlap"
         raise SourceBindingError(message)

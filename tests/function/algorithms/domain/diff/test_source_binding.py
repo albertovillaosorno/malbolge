@@ -37,6 +37,7 @@ import hmac
 import itertools
 import math
 import ntpath
+from pathlib import PurePosixPath, PureWindowsPath
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
@@ -598,7 +599,9 @@ def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
 
 def test_recovery_rejects_impossible_share_file_topology() -> None:
     """A file cannot also be the ancestor directory of another bound file."""
-    binding = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
     first, second = binding.shares[:2]
     for first_path, second_path in (
         (first.source_path, f"{first.source_path}/child.c"),
@@ -652,7 +655,9 @@ def test_recovery_rejects_windows_reserved_share_paths(
     reserved_path: str,
 ) -> None:
     """Distributable shares must use file names portable to Windows hosts."""
-    binding = bind_secret(_reference(), _SECRET, policy=_policy(), context=_CONTEXT)
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
     malformed = replace(
         binding,
         shares=(
@@ -694,6 +699,109 @@ def test_recovery_reserved_share_paths_resist_host_hook_swap(
         _ = validate_threshold_binding(malformed)
     with pytest.raises(SourceBindingError, match="reserved"):
         _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
+def _forge_binding_path_method(
+    patched: pytest.MonkeyPatch, method: str, invalid: str
+) -> None:
+    def forged_parts(_path: PurePosixPath) -> tuple[str, ...]:
+        del _path
+        return ()
+
+    def forged_as_posix(_path: PurePosixPath) -> str:
+        del _path
+        return invalid
+
+    def forged_absolute(_path: PurePosixPath) -> bool:
+        del _path
+        return False
+
+    hooks = {
+        "parts": property(forged_parts),
+        "as_posix": forged_as_posix,
+        "is_absolute": forged_absolute,
+    }
+    patched.setattr(PurePosixPath, method, hooks[method])
+
+
+@pytest.mark.parametrize(
+    ("method", "invalid"),
+    [
+        ("is_absolute", "/outside.c"),
+        ("parts", "nested/../outside.c"),
+        ("as_posix", "nested//outside.c"),
+    ],
+)
+def test_binding_share_paths_resist_late_pathlib_method_spoof(
+    monkeypatch: pytest.MonkeyPatch, method: str, invalid: str
+) -> None:
+    """Mutable native path methods must not admit noncanonical share labels."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    malformed = replace(
+        binding,
+        shares=(
+            replace(binding.shares[0], source_path=invalid),
+            *binding.shares[1:],
+        ),
+    )
+    with monkeypatch.context() as patched:
+        _forge_binding_path_method(patched, method, invalid)
+        with pytest.raises(SourceBindingError, match="canonical and relative"):
+            _ = validate_threshold_binding(malformed)
+
+
+def test_binding_share_drive_resists_late_pathlib_drive_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable Windows property cannot authorize drive-prefixed metadata."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    malformed = replace(
+        binding,
+        shares=(
+            replace(binding.shares[0], source_path="C:/escape.c"),
+            *binding.shares[1:],
+        ),
+    )
+
+    def forged_drive(_path: PureWindowsPath) -> str:
+        del _path
+        return ""
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PureWindowsPath, "drive", property(forged_drive))
+        with pytest.raises(SourceBindingError, match="drive"):
+            _ = validate_threshold_binding(malformed)
+
+
+def test_binding_share_ancestry_resists_late_pathlib_parent_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable parent hook cannot hide impossible share-file topology."""
+    binding = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    first, second = binding.shares[:2]
+    malformed = replace(
+        binding,
+        shares=(
+            first,
+            replace(second, source_path=first.source_path + "/child.c"),
+            *binding.shares[2:],
+        ),
+    )
+
+    def forged_parents(_path: PurePosixPath) -> tuple[()]:
+        del _path
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePosixPath, "parents", property(forged_parents))
+        with pytest.raises(SourceBindingError, match="ancestor/descendant"):
+            _ = validate_threshold_binding(malformed)
 
 
 def test_recovery_rejects_malformed_share_metadata() -> None:
