@@ -59,7 +59,7 @@ from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator, Sized
+    from collections.abc import Callable, Iterable, Iterator, Sized
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.domain import DiffDomain
@@ -1083,6 +1083,65 @@ def test_generator_passthrough_policy_resists_host_checker_mutation(
     with pytest.raises(ValueError, match=r"passthrough_roots.*canonical"):
         write_algorithm(recipe)
     assert not recipe.output_algorithm.exists()
+
+
+def _forge_recipe_any(patched: pytest.MonkeyPatch, root: str) -> None:
+    del root
+    native_any = builtins.any
+
+    def forged_any(values: Iterable[object]) -> bool:
+        frame = getattr(values, "gi_frame", None)
+        if getattr(frame, "f_globals", None) is vars(ntpath):
+            return False
+        return native_any(values)
+
+    patched.setattr(builtins, "any", forged_any)
+
+
+def _forge_recipe_reversed(patched: pytest.MonkeyPatch, root: str) -> None:
+    native_reversed = builtins.reversed
+
+    def forged_reversed(values: list[str]) -> object:
+        if values == [root]:
+            return ()
+        return native_reversed(values)
+
+    patched.setattr(builtins, "reversed", forged_reversed)
+
+
+def _forge_recipe_splitroot(patched: pytest.MonkeyPatch, root: str) -> None:
+    native_splitroot = ntpath.splitroot
+
+    def forged_splitroot(path: str) -> tuple[str, str, str]:
+        if path == root:
+            return "", "", "safe.c"
+        return native_splitroot(path)
+
+    patched.setattr(ntpath, "splitroot", forged_splitroot)
+
+
+@pytest.mark.parametrize(
+    "forge",
+    [_forge_recipe_any, _forge_recipe_reversed, _forge_recipe_splitroot],
+)
+def test_recipe_passthrough_rejects_late_ntpath_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    forge: Callable[[pytest.MonkeyPatch, str], None],
+) -> None:
+    """Unsafe passthrough labels cannot become safe through ntpath globals."""
+    unsafe_root = "NUL"
+    rejected = False
+    with monkeypatch.context() as patched:
+        forge(patched, unsafe_root)
+        try:
+            generate_module._validate_passthrough_roots((unsafe_root,))
+        except ValueError:
+            rejected = True
+    assert rejected, "mutable host admitted a Windows device passthrough root"
+    # A valid root must remain admissible under the same domain mutation.
+    with monkeypatch.context() as patched:
+        forge(patched, unsafe_root)
+        generate_module._validate_passthrough_roots(("assets/shaders",))
 
 
 @pytest.mark.parametrize(

@@ -40,8 +40,7 @@ import math
 import sys
 from dataclasses import dataclass
 from enum import StrEnum
-from ntpath import isreserved as _native_isreserved
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import identity_tree
@@ -54,6 +53,7 @@ from algorithms.diff.exact import (
     snapshot_tree_excluding,
 )
 from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
 from algorithms.diff.source_binding import SourceBindingPolicy
@@ -64,6 +64,7 @@ _SHA256_FACTORY = hashlib.sha256
 _NATIVE_ISFINITE = math.isfinite
 # Policy checks must keep their pre-domain Python semantics after hook loading.
 _NATIVE_ANY = builtins.any
+_NATIVE_ALL = builtins.all
 _NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
@@ -83,7 +84,6 @@ _NATIVE_IS_RELATIVE_TO = Path.is_relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
 _MAX_SHARES = 255
 _NUL = "\x00"
-_BACKSLASH = "\\"
 _PARENT = ".."
 _DOT = "."
 
@@ -268,25 +268,23 @@ def _validate_recipe_identity(recipe: DiffRecipe) -> None:
         raise TypeError(message)
 
 
+def _canonical_passthrough_component(component: str) -> bool:
+    return (
+        component not in {"", _DOT, _PARENT}
+        and not reserved_windows_component(component)
+    )
+
+
 def _canonical_passthrough_root(root: str) -> bool:
-    candidate = PurePosixPath(root)
-    unsafe_text = root == _DOT or _NATIVE_ANY(
-        char in root for char in (_BACKSLASH, _NUL)
-    )
-    unsafe_shape = (
-        candidate.is_absolute()
-        or PureWindowsPath(root).drive
-        or _native_isreserved(root)
-        or _PARENT in candidate.parts
-        or candidate.as_posix() != root
-    )
-    if unsafe_text or unsafe_shape:
-        return False
+    # ntpath's helpers and pathlib's methods consult late mutable host hooks.
+    # Admit path labels lexically without executing those dependencies.
     try:
         _ = root.encode("utf-8")
     except UnicodeEncodeError:
         return False
-    return True
+    return _NATIVE_ALL(
+        _canonical_passthrough_component(part) for part in root.split("/")
+    )
 
 
 def _validate_passthrough_topology(roots: tuple[str, ...]) -> None:
