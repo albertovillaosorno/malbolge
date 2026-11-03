@@ -148,6 +148,20 @@ _NATIVE_MIN = builtins.min
 _NATIVE_MAX = builtins.max
 _NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_HASATTR = builtins.hasattr
+# Native error classification must not depend on builtin aliases replaced by
+# consumer probe/domain callbacks after this module was imported.
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
+_NATIVE_UNICODE_ERROR = builtins.UnicodeError
+_NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
+_NATIVE_PROCESS_LOOKUP_ERROR = builtins.ProcessLookupError
+_NATIVE_BROKEN_PIPE_ERROR = builtins.BrokenPipeError
+_NATIVE_OVERFLOW_ERROR = builtins.OverflowError
+_NATIVE_EXCEPTION = builtins.Exception
+_NATIVE_SUBPROCESS_TIMEOUT = subprocess.TimeoutExpired
 # Exact native platform identity must not construct a Path during admission.
 _NATIVE_PLATFORM_PATH_TYPE = _NATIVE_TYPE(Path())
 # Path.__str__ still reads replaceable Python path metadata, even when its
@@ -348,7 +362,7 @@ def _require_portable_probe_identifier(value: object, context: str) -> str:
 def _require_portable_utf8_text(value: str, context: str) -> None:
     try:
         _ = value.encode("utf-8")
-    except UnicodeEncodeError as error:
+    except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"{context} must use portable UTF-8 text"
         raise ProbeProgramError(message) from error
 
@@ -419,7 +433,7 @@ ProbeExecutable = ToolExecutable | RootedExecutable
 def _require_fs_encodable(value: str, context: str) -> None:
     try:
         _ = value.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
-    except UnicodeError as error:
+    except _NATIVE_UNICODE_ERROR as error:
         message = f"{context} must be filesystem-encodable"
         raise ProbeProgramError(message) from error
 
@@ -929,7 +943,7 @@ def _native_path_inside(path: Path, root: Path) -> bool:
     _require_native_host_resolver()
     try:
         _ = _NATIVE_RELATIVE_TO(path, root)
-    except ValueError:
+    except _NATIVE_VALUE_ERROR:
         _require_native_host_resolver()
         return False
     _require_native_host_resolver()
@@ -989,7 +1003,9 @@ def _resolved_root(path: Path, description: str) -> Path:
     _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_probe_error_detail(error)
         message = (
             f"probe {description} root resolution failed: {path}: {detail}"
@@ -1031,7 +1047,9 @@ def _rooted_path(
     _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(candidate)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe path resolution failed: {candidate}: {detail}"
         raise ProbeExecutionError(message) from error
@@ -1039,7 +1057,7 @@ def _rooted_path(
     resolved = _native_resolved_path(resolved, "rooted path")
     try:
         _ = _NATIVE_RELATIVE_TO(resolved, root)
-    except ValueError as error:
+    except _NATIVE_VALUE_ERROR as error:
         message = f"probe path escapes authorized root: {relative_path!r}"
         raise ProbeExecutionError(message) from error
     _require_native_host_resolver()
@@ -1050,7 +1068,9 @@ def _resolved_tool_path(path: Path) -> Path:
     _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe tool resolution failed: {path}: {detail}"
         raise ProbeExecutionError(message) from error
@@ -1089,10 +1109,12 @@ def _require_executable(path: Path) -> None:
         receipt = _NATIVE_PATH_STAT(path)
     except ProbeExecutionError:
         raise
-    except FileNotFoundError as error:
+    except _NATIVE_FILE_NOT_FOUND_ERROR as error:
         message = "probe executable is unavailable"
         raise ProbeExecutionError(message) from error
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         reason = _safe_probe_error_detail(error)
         message = f"probe executable status failed: {path}: {reason}"
         raise ProbeExecutionError(message) from error
@@ -1358,7 +1380,7 @@ def _feed_stdin(
     try:
         _write_complete_probe_stdin(stream, data)
         wrote = True
-    except BrokenPipeError:
+    except _NATIVE_BROKEN_PIPE_ERROR:
         wrote = True
     except _PIPE_DEPENDENCY_ERRORS as error:
         errors.append(error)
@@ -1380,9 +1402,9 @@ def _signal_probe_group(process: subprocess.Popen[bytes]) -> OSError | None:
     """
     try:
         _NATIVE_OS_KILL(-process.pid, _NATIVE_GROUP_SIGNAL)
-    except ProcessLookupError:
+    except _NATIVE_PROCESS_LOOKUP_ERROR:
         return None
-    except OSError as error:
+    except _NATIVE_OS_ERROR as error:
         return error
     return None
 
@@ -1401,9 +1423,9 @@ def _kill_direct_probe_child(
     failure: OSError | None = None
     try:
         process.kill()
-    except ProcessLookupError:
+    except _NATIVE_PROCESS_LOOKUP_ERROR:
         failure = None
-    except OSError as error:
+    except _NATIVE_OS_ERROR as error:
         failure = error
     return failure
 
@@ -1425,7 +1447,7 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
     )
     try:
         _ = process.wait(timeout=_CHILD_REAP_SECONDS)
-    except (*_PIPE_DEPENDENCY_ERRORS, subprocess.TimeoutExpired) as error:
+    except (*_PIPE_DEPENDENCY_ERRORS, _NATIVE_SUBPROCESS_TIMEOUT) as error:
         message = (
             "probe direct child reaping failed: "
             + _safe_probe_error_detail(error)
@@ -1547,9 +1569,9 @@ def _safe_probe_error_detail(error: BaseException) -> str:
 
     """
     if _NATIVE_TYPE(error) in (
-        OSError,
-        RuntimeError,
-        ValueError,
+        _NATIVE_OS_ERROR,
+        _NATIVE_RUNTIME_ERROR,
+        _NATIVE_VALUE_ERROR,
         ExactTreeError,
         ProbeExecutionError,
     ):
@@ -1782,7 +1804,7 @@ def _probe_wall_deadline(timeout_ms: int) -> float:
     """
     try:
         return time.monotonic() + timeout_ms / 1000
-    except OverflowError as error:
+    except _NATIVE_OVERFLOW_ERROR as error:
         message = "probe command has an unrepresentable timeout"
         raise ProbeExecutionError(message) from error
 
@@ -1825,7 +1847,7 @@ def _launch_command(
                 )
             ),
         )
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         try:
             _stop_child(process)
         except ProbeExecutionError as cleanup_error:
@@ -1911,7 +1933,9 @@ def _temporary_probe_root(
 ) -> tempfile.TemporaryDirectory[str]:
     try:
         return _NATIVE_TEMPORARY_DIRECTORY(prefix=prefix, dir=parent)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe temporary root failed: {detail}"
         raise ProbeExecutionError(message) from error
@@ -1997,7 +2021,7 @@ def _validate_probe_batch(
                 for argument in arguments:
                     if _NATIVE_TYPE(argument) is PathArgument:
                         _PATH_ARGUMENT_VALIDATOR(cast("PathArgument", argument))
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "probe batch contains incomplete native metadata"
         raise ProbeProgramError(message) from error
     identifiers = _NATIVE_TUPLE(
@@ -2062,7 +2086,9 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
         )
     except ProbeExecutionError:
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe source inode status failed: {detail}"
         raise ProbeExecutionError(message) from error
@@ -2082,9 +2108,11 @@ def _repository_inode_status(path: Path) -> os.stat_result | None:
         return _native_inode_status(_NATIVE_PATH_STAT(path), "repository")
     except ProbeExecutionError:
         raise
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe repository path status failed: {detail}"
         raise ProbeExecutionError(message) from error
@@ -2129,7 +2157,9 @@ def _require_repository_argument_disjoint(
     _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe repository argument resolution failed: {detail}"
         raise ProbeExecutionError(message) from error
@@ -2202,7 +2232,9 @@ def _run_isolated_batch(
     _require_native_host_resolver()
     try:
         temporary_parent = _NATIVE_PATH_RESOLVE(Path(_NATIVE_GETTEMPDIR()))
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         message = "probe temporary parent resolution failed"
         raise ProbeExecutionError(message) from error
     _require_native_host_resolver()
@@ -2227,7 +2259,9 @@ def _run_isolated_batch(
                     symlinks=True,
                 )
             )
-        except (OSError, ValueError, RuntimeError) as error:
+        except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
             detail = _safe_probe_error_detail(error)
             message = f"probe source mirror creation failed: {detail}"
             raise ProbeExecutionError(message) from error

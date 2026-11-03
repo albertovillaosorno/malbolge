@@ -5491,3 +5491,91 @@ def test_probe_transcript_ignores_late_os_read_forgery(
         actual = run_probe_program(program, context)
     assert actual == expected
     assert callbacks == 0, "untrusted host read entered probe output capture"
+
+
+@pytest.mark.parametrize("boundary", ["repository", "executable"])
+def test_probe_status_denial_is_not_missing_after_builtin_exception_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """A late FileNotFoundError alias must not conceal a denied inode check."""
+    path = tmp_path / "tool.bin"
+    _ = path.write_bytes(b"trusted")
+    failure = PermissionError("native status denied")
+    native_missing = builtins.FileNotFoundError
+
+    def denied(_path: Path) -> os.stat_result:
+        raise failure
+
+    caught: ProbeExecutionError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(probe_exec_module, "_NATIVE_PATH_STAT", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            if boundary == "repository":
+                observed = probe_exec_module._repository_inode_status(path)
+                assert observed is not None, "denial forged a missing path"
+            else:
+                probe_exec_module._require_executable(path)
+        except ProbeExecutionError as error:
+            caught = error
+        finally:
+            builtins.__dict__["FileNotFoundError"] = native_missing
+    assert caught is not None
+    assert "status failed" in str(caught)
+    assert caught.__cause__ is failure
+
+
+@pytest.mark.parametrize("boundary", ["root", "repository"])
+def test_probe_native_resolution_denial_stays_typed_after_oserror_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """A changed OSError alias cannot leak a raw native resolver failure."""
+    failure = PermissionError("native resolution denied")
+    native_oserror = builtins.OSError
+
+    def denied(_path: Path) -> Path:
+        raise failure
+
+    caught: ProbeExecutionError | None = None
+    with monkeypatch.context() as patched:
+        if boundary == "root":
+            patched.setattr(probe_exec_module, "_NATIVE_PATH_RESOLVE", denied)
+        else:
+            patched.setattr(probe_exec_module, "_NATIVE_PATH_STAT", denied)
+        patched.setattr(builtins, "OSError", LookupError)
+        try:
+            if boundary == "root":
+                _ = probe_exec_module._resolved_root(tmp_path, "source")
+            else:
+                _ = probe_exec_module._repository_inode_status(tmp_path)
+        except ProbeExecutionError as error:
+            caught = error
+        finally:
+            builtins.__dict__["OSError"] = native_oserror
+    assert caught is not None
+    assert caught.__cause__ is failure
+
+
+@pytest.mark.parametrize("boundary", ["identifier", "filesystem"])
+def test_probe_unicode_encoding_failure_stays_typed_after_alias(
+    monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """A late Unicode exception alias cannot expose a raw codec failure."""
+    native_unicode = builtins.UnicodeError
+    native_encode = builtins.UnicodeEncodeError
+    caught: ProbeProgramError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeError", LookupError)
+        patched.setattr(builtins, "UnicodeEncodeError", LookupError)
+        try:
+            if boundary == "identifier":
+                probe_exec_module._require_portable_utf8_text("\ud800", "probe ID")
+            else:
+                probe_exec_module._require_fs_encodable("\ud800", "probe argument")
+        except ProbeProgramError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeError"] = native_unicode
+            builtins.__dict__["UnicodeEncodeError"] = native_encode
+    assert caught is not None
+    assert type(caught.__cause__) is native_encode
