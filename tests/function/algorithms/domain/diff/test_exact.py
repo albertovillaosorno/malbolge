@@ -2787,3 +2787,51 @@ def test_exact_roots_accept_native_disjoint_after_late_enumerate_alias(
         patched.setattr(builtins, "enumerate", omit_roots)
         roots = normalized_roots(("src", "tests"))
     assert roots == ("src", "tests")
+
+
+def test_exact_root_admission_ignores_late_fsencode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A post-import filesystem hook cannot replace exact root preflight."""
+    _write(tmp_path, "src/a.c", b"trusted source")
+    baseline = snapshot_tree(tmp_path)
+    calls = 0
+
+    def forged_fsencode(value: object) -> bytes:
+        nonlocal calls
+        del value
+        calls += 1
+        raise AssertionError("consumer fsencode hook executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "fsencode", forged_fsencode)
+        observed = snapshot_tree(tmp_path)
+    assert observed == baseline
+    assert calls == 0, "consumer filesystem codec hook was consulted"
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_exact_root_admission_ignores_late_path_string_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: bool,
+) -> None:
+    """A late Path formatter cannot authorize or deny a native root."""
+    require_root = cast(
+        "Callable[[object, str], None]",
+        vars(exact_module)["_require_filesystem_root"],
+    )
+    source = tmp_path / ("nul\x00root" if invalid else "safe-root")
+
+    def forged_path_string(path: Path) -> str:
+        del path
+        return "safe-root" if invalid else "nul\x00root"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "__str__", forged_path_string)
+        if invalid:
+            with pytest.raises(ExactTreeError, match="representable"):
+                require_root(source, "tree root")
+        else:
+            require_root(source, "tree root")

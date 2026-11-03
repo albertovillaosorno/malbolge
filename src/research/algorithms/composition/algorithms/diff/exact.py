@@ -97,6 +97,12 @@ _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
+_NATIVE_PATH_STRING = Path.__str__
+# Encode native Path strings without mutable late pathlib/os conversion hooks.
+_FILESYSTEM_ENCODING = sys.getfilesystemencoding()
+_FILESYSTEM_ERRORS = (
+    "strict" if _FILESYSTEM_ENCODING == "mbcs" else "surrogateescape"
+)
 # Owned staging deletion must ignore consumer changes to shutil hooks.
 _NATIVE_RMTREE = shutil.rmtree
 
@@ -553,11 +559,12 @@ def _require_filesystem_root(value: object, context: str) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
         message = f"{context} must use an exact pathlib Path filesystem path"
         raise ExactTreeError(message)
-    if _NUL in _NATIVE_STR(value):
+    raw = _NATIVE_PATH_STRING(value)
+    if _NUL in raw:
         message = f"{context} must use a representable filesystem path"
         raise ExactTreeError(message)
     try:
-        _ = os.fsencode(value)
+        _ = raw.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
     except UnicodeError as error:
         message = f"{context} must use a representable filesystem path"
         raise ExactTreeError(message) from error
