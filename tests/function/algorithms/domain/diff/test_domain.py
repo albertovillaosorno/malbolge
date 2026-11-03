@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+import importlib._bootstrap_external as bootstrap_external
 import importlib.machinery
 import importlib.util
 import os
@@ -47,7 +48,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path, PurePath
 from types import CodeType, MemberDescriptorType, ModuleType, SimpleNamespace
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING, Self, cast, override
 
 import pytest
 from algorithms.diff import domain as domain_module
@@ -626,6 +627,87 @@ def test_domain_rejects_late_native_import_loader_substitution(
     assert not marker.exists(), "late import hook executed an unselected module"
     registered = frozenset(sys.modules) - before
     assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
+
+
+@pytest.mark.parametrize(
+    "replacement", ["bootstrap_loader", "supported_loaders"]
+)
+def test_domain_rejects_late_bootstrap_loader_factories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """Native import preparation must not execute redirected loader factories."""
+    trusted = tmp_path / "trusted.py"
+    _write(trusted, _COMPLETE)
+    original_loader = bootstrap_external.SourceFileLoader
+    calls = 0
+
+    class ForgedSourceFileLoader(original_loader):
+        def __new__(cls, fullname: str, path: str) -> Self:
+            del fullname, path
+            nonlocal calls
+            calls += 1
+            raise AssertionError("untrusted import loader constructor executed")
+
+    def forged_supported_loaders() -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted supported-loader factory executed")
+
+    with monkeypatch.context() as patched:
+        if replacement == "bootstrap_loader":
+            patched.setattr(
+                bootstrap_external, "SourceFileLoader", ForgedSourceFileLoader
+            )
+        elif replacement == "supported_loaders":
+            patched.setattr(
+                bootstrap_external,
+                "_get_supported_file_loaders",
+                forged_supported_loaders,
+            )
+        with pytest.raises(DomainContractError):
+            _ = load_diff_domain(trusted)
+    assert calls == 0, "late loader factory executed before domain preflight"
+
+
+def test_domain_rejects_late_loader_allocator_in_isolated_process(
+    tmp_path: Path,
+) -> None:
+    """A patched loader allocator must fail before an untrusted invocation."""
+    trusted = tmp_path / "trusted.py"
+    _write(trusted, _COMPLETE)
+    # CPython retains a changed tp_new slot after deleting a temporary
+    # __new__ attribute; isolate this host-mutation case in a subprocess.
+    script = """
+import importlib.machinery
+import sys
+from pathlib import Path
+from algorithms.diff.domain import DomainContractError, load_diff_domain
+calls = []
+def forged_new(cls, *args, **kwargs):
+    calls.append(1)
+    raise AssertionError("untrusted loader allocator executed")
+importlib.machinery.SourceFileLoader.__new__ = staticmethod(forged_new)
+try:
+    load_diff_domain(Path(sys.argv[1]))
+except DomainContractError:
+    pass
+else:
+    raise AssertionError("late native loader allocator was admitted")
+assert calls == [], "untrusted native allocator ran before preflight"
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script, str(trusted)],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_domain_rejects_late_source_loader_cache_metadata_substitution(

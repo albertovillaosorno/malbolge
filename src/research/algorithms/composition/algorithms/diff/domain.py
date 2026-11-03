@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+import importlib._bootstrap_external as bootstrap_external
 import importlib.machinery
 import importlib.util
 import os
@@ -107,6 +108,13 @@ _NATIVE_SOURCE_LOADER_SOURCE_TO_CODE = importlib.machinery.SourceFileLoader.sour
 _NATIVE_SOURCE_LOADER_INIT = importlib.machinery.SourceFileLoader.__init__
 _NATIVE_SOURCE_LOADER_CREATE_MODULE = importlib.machinery.SourceFileLoader.create_module
 _NATIVE_SOURCE_LOADER_PATH_STATS = importlib.machinery.SourceFileLoader.path_stats
+# The native spec factory still resolves private loader globals at runtime.
+# Replacing them can execute an untrusted allocator before hook validation.
+_NATIVE_BOOTSTRAP_SOURCE_LOADER = bootstrap_external.SourceFileLoader
+_NATIVE_BOOTSTRAP_SUPPORTED_LOADERS = _NATIVE_GETATTR(
+    bootstrap_external, "_get_supported_file_loaders"
+)
+_NATIVE_SOURCE_LOADER_NEW = importlib.machinery.SourceFileLoader.__new__
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_OS_PATH_PARSER = os.path
 _NATIVE_OS_PATH_JOIN = os.path.join
@@ -478,6 +486,15 @@ def _prepare_module(
         or importlib.util.module_from_spec is not _NATIVE_IMPORT_MODULE
     ):
         message = "diff domain import preparation failed: native import hooks changed"
+        raise DomainContractError(message)
+    if (
+        bootstrap_external.SourceFileLoader is not _NATIVE_BOOTSTRAP_SOURCE_LOADER
+        or _NATIVE_GETATTR(bootstrap_external, "_get_supported_file_loaders")
+        is not _NATIVE_BOOTSTRAP_SUPPORTED_LOADERS
+        or importlib.machinery.SourceFileLoader.__new__
+        is not _NATIVE_SOURCE_LOADER_NEW
+    ):
+        message = "diff domain import preparation failed: native loader factories changed"
         raise DomainContractError(message)
     if (
         importlib.machinery.SourceFileLoader.exec_module
