@@ -740,6 +740,12 @@ precedes 15 fixed interleaved samples of all four routes. Every sample still
 
 checks exact proposal identity and independent CPU admission.
 
+Prepared throughput JSON is checked against the import-bound native encoder
+before output, so substituted serializers cannot silently forge raw route
+samples, device, speedups, or proof/session identifiers. An exact native stdout
+write and a successful flush receipt are required. Synthetic samples test the
+reporting boundary without claiming CUDA measurements.
+
 Run with:
 
 ```powershell
@@ -767,6 +773,10 @@ validation, and inclusive total time for 15 fixed interleaved CPU-then-CUDA
 samples. Preparation, CUDA adapter construction, and NVRTC setup remain outside
 timed intervals; every profile still checks exact proposals and independent CPU
 admission.
+
+Prepared phase JSON also requires source-bound native encoding and complete
+stdout delivery acknowledgements. Hardware-free synthetic phase results protect
+the retained attribution and prepared-session proof fields.
 
 Run with:
 

@@ -34,36 +34,35 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
-from hashlib import sha256
 import json
-from statistics import median
-from statistics import pstdev
 import sys
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from statistics import median, pstdev
 from time import perf_counter_ns
-from typing import Final
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cpu import CpuExactPrimitiveAdapter
 from accelerator.cuda import CudaExactPrimitiveAdapter
 from accelerator.exact_primitives import PrimitiveKind
-from accelerator.primitive_candidates import packed_primitive_validation_id
-from accelerator.primitive_candidates import prepared_primitive_validation_id
-from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
-from optimizer.rotate_target import rotate_target_projected_evaluation_id
-from optimizer.rotate_target import rotate_target_search_adapter
-
-from benchmarks.accelerator.search_workload import CORPUS_SIZE
-from benchmarks.accelerator.search_workload import CPU_BACKEND
-from benchmarks.accelerator.search_workload import CUDA_BACKEND
-from benchmarks.accelerator.search_workload import SEED
-from benchmarks.accelerator.search_workload import TARGET
-from benchmarks.accelerator.search_workload import WORKLOAD_ID
-from benchmarks.accelerator.search_workload import (
-    full_domain_rotate_target_workload,
+from accelerator.primitive_candidates import (
+    packed_primitive_validation_id,
+    prepared_primitive_validation_id,
 )
+from optimizer.rotate_target import (
+    ROTATE_TARGET_ALGORITHM_ID,
+    rotate_target_projected_evaluation_id,
+    rotate_target_search_adapter,
+)
+
 from benchmarks.accelerator.search_workload import (
+    CORPUS_SIZE,
+    CPU_BACKEND,
+    CUDA_BACKEND,
+    SEED,
+    TARGET,
+    WORKLOAD_ID,
+    full_domain_rotate_target_workload,
     validate_search_benchmark_result,
 )
 
@@ -72,8 +71,10 @@ if TYPE_CHECKING:
 
     from accelerator.cpu import CpuPreparedPrimitiveStats
     from accelerator.cuda import CudaPreparedPrimitiveStats
-    from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
-    from accelerator.evaluated_search import PreparedEvaluatedSearch
+    from accelerator.evaluated_search import (
+        EvaluatedSearchExecutionAdapter,
+        PreparedEvaluatedSearch,
+    )
     from accelerator.exact_primitives import AcceleratorCapability
     from accelerator.work_ports import SearchResult
 
@@ -81,6 +82,7 @@ if TYPE_CHECKING:
 
 SAMPLE_COUNT: Final = 15
 WARMUP_COUNT: Final = 1
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 CPU_ORDINARY: Final = "cpu-ordinary"
 CPU_PREPARED: Final = "cpu-prepared"
 CUDA_ORDINARY: Final = "cuda-ordinary"
@@ -108,6 +110,44 @@ class _MeasuredSearch:
     reference_word_count: int
     rows: tuple[SearchTiming, ...]
     selection_count: int
+
+
+class PreparedThroughputReportError(ValueError):
+    """Retained prepared-search evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Corroborate public prepared evidence against native source encoding."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"prepared throughput JSON writer failed: {type(error).__name__}"
+        raise PreparedThroughputReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "prepared throughput JSON writer differs from source"
+        raise PreparedThroughputReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require native exact stdout write and a successful void flush."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"prepared throughput stdout write failed: {type(error).__name__}"
+        raise PreparedThroughputReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "prepared throughput stdout write incomplete"
+        raise PreparedThroughputReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"prepared throughput stdout flush failed: {type(error).__name__}"
+        raise PreparedThroughputReportError(message) from error
+    if flushed is not None:
+        message = "prepared throughput stdout flush incomplete"
+        raise PreparedThroughputReportError(message)
 
 
 def main() -> int:
@@ -163,20 +203,17 @@ def main() -> int:
         "prepared_reference_word_count": measured.reference_word_count,
         "speedups_at_median": {
             "cpu_prepared_over_ordinary": (
-                by_route[CPU_ORDINARY].median_ns
-                / by_route[CPU_PREPARED].median_ns
+                by_route[CPU_ORDINARY].median_ns / by_route[CPU_PREPARED].median_ns
             ),
             "cuda_prepared_over_ordinary": (
-                by_route[CUDA_ORDINARY].median_ns
-                / by_route[CUDA_PREPARED].median_ns
+                by_route[CUDA_ORDINARY].median_ns / by_route[CUDA_PREPARED].median_ns
             ),
             "cuda_prepared_over_cpu_prepared": (
-                by_route[CPU_PREPARED].median_ns
-                / by_route[CUDA_PREPARED].median_ns
+                by_route[CPU_PREPARED].median_ns / by_route[CUDA_PREPARED].median_ns
             ),
         },
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
@@ -281,9 +318,7 @@ def _validate_cpu_prepared_stats(stats: CpuPreparedPrimitiveStats) -> None:
         stats.rotate_table_entries,
     )
     if observed != expected:
-        message = (
-            "prepared CPU rotate did not build and reuse one decode session"
-        )
+        message = "prepared CPU rotate did not build and reuse one decode session"
         raise RuntimeError(message)
 
 
