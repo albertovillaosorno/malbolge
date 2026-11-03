@@ -48,6 +48,9 @@ from algorithms.diff import relocatable as relocatable_module
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import build_exact_plan
 from algorithms.diff.exact import read_exact_regular_file
+from algorithms.diff.exact import snapshot_tree_excluding
+from algorithms.diff.model import ExactAuthoringPlan
+from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
 from algorithms.diff.model import TreeModelError
@@ -62,7 +65,6 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.relocatable import RelocatableAuthoringPlan
 
 _BLOCKS = 64
@@ -2395,3 +2397,204 @@ def test_relocation_materialization_ignores_late_plan_getter(
         )
     assert (tmp_path / "out/target.bin").read_bytes() == b"target"
     assert calls == 0, "late getter suppressed output instructions"
+
+
+def test_relocation_source_range_constructor_ignores_late_locator_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign stored locator cannot be disguised by a class getter."""
+    original = RelocatableSourceRange.__getattribute__
+    valid = RangeLocator(1, 1, hashlib.sha256(b"a").digest())
+    calls = 0
+
+    def getter(value: RelocatableSourceRange, name: str) -> object:
+        nonlocal calls
+        if name == "locator":
+            calls += 1
+            return valid
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(RelocatableSourceRange, "__getattribute__", getter)
+        with pytest.raises(RelocationError, match="exact locator"):
+            _ = RelocatableSourceRange(cast("RangeLocator", object()))
+    assert calls == 0, "late getter forged a valid source-range locator"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_relocation_source_range_rejects_late_locator_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A range's original locator remains authoritative during placement."""
+    locator = RangeLocator(3, 3, hashlib.sha256(b"abc").digest())
+    forged = RangeLocator(3, 3, hashlib.sha256(b"XYZ").digest())
+    source_range = RelocatableSourceRange(locator)
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            "target.bin", "source.bin", False, segments=(source_range,)
+        ),
+    ))
+    _write(tmp_path / "candidate", "source.bin", b"abcXYZ")
+    original = RelocatableSourceRange.__getattribute__
+    calls = 0
+
+    def getter(value: RelocatableSourceRange, name: str) -> object:
+        nonlocal calls
+        if value is source_range and name == "locator":
+            calls += 1
+            return forged
+        return cast("object", original(value, name))
+
+    def forged_property(_value: RelocatableSourceRange) -> RangeLocator:
+        return forged
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(
+                RelocatableSourceRange, "locator", property(forged_property)
+            )
+        else:
+            patched.setattr(RelocatableSourceRange, "__getattribute__", getter)
+        materialize_relocatable_plan(
+            tmp_path / "candidate", plan, tmp_path / "out"
+        )
+    assert (tmp_path / "out/target.bin").read_bytes() == b"abc"
+    assert calls == 0, "late range getter redirected placement"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_relocation_patch_ignores_late_oracle_literal_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """An immutable authoring literal cannot be replaced by a late getter."""
+    literal = OracleLiteral(b"original")
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            "target.bin", "source.bin", False, segments=(literal,)
+        ),
+    ))
+    _write(tmp_path / "candidate", "source.bin", b"source")
+    original = OracleLiteral.__getattribute__
+    calls = 0
+
+    def getter(value: OracleLiteral, name: str) -> object:
+        nonlocal calls
+        if value is literal and name == "data":
+            calls += 1
+            return b"forged"
+        return cast("object", original(value, name))
+
+    def forged_property(_value: OracleLiteral) -> bytes:
+        return b"forged"
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(OracleLiteral, "data", property(forged_property))
+        else:
+            patched.setattr(OracleLiteral, "__getattribute__", getter)
+        materialize_relocatable_plan(
+            tmp_path / "candidate", plan, tmp_path / "out"
+        )
+    assert (tmp_path / "out/target.bin").read_bytes() == b"original"
+    assert calls == 0, "late literal getter replaced stored target bytes"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_relocation_authoring_ignores_late_source_slice_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """The exact plan's stored source spans determine relocation digests."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    expected = build_relocatable_plan(source, exact)
+    original = SourceSlice.__getattribute__
+    calls = 0
+
+    def getter(value: SourceSlice, name: str) -> object:
+        nonlocal calls
+        if name == "offset":
+            calls += 1
+            return 0
+        return cast("object", original(value, name))
+
+    def forged_property(_value: SourceSlice) -> int:
+        return 0
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(SourceSlice, "offset", property(forged_property))
+        else:
+            patched.setattr(SourceSlice, "__getattribute__", getter)
+        observed = build_relocatable_plan(source, exact)
+    assert observed == expected
+    assert calls == 0, "late source-slice getter changed location evidence"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_relocation_authoring_ignores_late_exact_instruction_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Source-backed output paths must remain tied to exact plan storage."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    expected = build_relocatable_plan(source, exact)
+    original = ExactInstruction.__getattribute__
+    calls = 0
+
+    def getter(value: ExactInstruction, name: str) -> object:
+        nonlocal calls
+        if name == "output_path":
+            calls += 1
+            return "forged.bin"
+        return cast("object", original(value, name))
+
+    def forged_property(_value: ExactInstruction) -> str:
+        return "forged.bin"
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(
+                ExactInstruction,
+                "output_path", property(forged_property),
+            )
+        else:
+            patched.setattr(
+                ExactInstruction, "__getattribute__", getter
+            )
+        observed = build_relocatable_plan(source, exact)
+    assert observed == expected
+    assert calls == 0, "late exact instruction getter changed output path"
+
+
+@pytest.mark.parametrize("field", ["instructions", "source"])
+def test_relocation_authoring_ignores_late_exact_plan_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Exact source and instruction evidence cannot be forged by a getter."""
+    source, oracle, base = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    original = ExactAuthoringPlan.__getattribute__
+    calls = 0
+    expected = build_relocatable_plan(source, exact)
+    if field == "source":
+        _write(source, "code.bin", b"z" + base[1:])
+
+    def getter(value: ExactAuthoringPlan, name: str) -> object:
+        nonlocal calls
+        if value is exact and name == field:
+            calls += 1
+            if field == "instructions":
+                return ()
+            return snapshot_tree_excluding(source, ())
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            ExactAuthoringPlan, "__getattribute__", getter
+        )
+        if field == "source":
+            with pytest.raises(RelocationError, match="differs from exact"):
+                _ = build_relocatable_plan(source, exact)
+        else:
+            assert build_relocatable_plan(source, exact) == expected
+    assert calls == 0, "late exact plan getter substituted authoring evidence"

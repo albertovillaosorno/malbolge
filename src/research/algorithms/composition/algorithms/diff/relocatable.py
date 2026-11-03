@@ -57,15 +57,16 @@ from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import read_exact_regular_file
 from algorithms.diff.exact import snapshot_tree_excluding
 from algorithms.diff.model import ExactAuthoringPlan
+from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import ExactInstructionKind
 from algorithms.diff.model import OracleLiteral
+from algorithms.diff.model import SourceSlice
 from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
-    from algorithms.diff.model import ExactInstruction
     from algorithms.diff.model import ExactSegment
-    from algorithms.diff.model import SourceSlice
+    from algorithms.diff.model import TreeSnapshot
 
 _ZERO = 0
 _ONE = 1
@@ -421,12 +422,89 @@ def _sha256(data: bytes) -> bytes:
     return _SHA256_FACTORY(data).digest()
 
 
+# Relocation consumes exact authoring evidence after domain callbacks may have
+# replaced model class readers. Keep the original model storage descriptors.
+_SLICE_OFFSET_SLOT = cast(
+    "MemberDescriptorType", SourceSlice.__dict__["offset"]
+)
+_SLICE_LENGTH_SLOT = cast(
+    "MemberDescriptorType", SourceSlice.__dict__["length"]
+)
+_LITERAL_DATA_SLOT = cast(
+    "MemberDescriptorType", OracleLiteral.__dict__["data"]
+)
+_EXACT_KIND_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["kind"]
+)
+_EXACT_OUTPUT_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["output_path"]
+)
+_EXACT_SOURCE_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["source_path"]
+)
+_EXACT_LITERAL_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["literal"]
+)
+_EXACT_SEGMENTS_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["segments"]
+)
+_EXACT_PLAN_SOURCE_SLOT = cast(
+    "MemberDescriptorType", ExactAuthoringPlan.__dict__["source"]
+)
+_EXACT_PLAN_INSTRUCTIONS_SLOT = cast(
+    "MemberDescriptorType", ExactAuthoringPlan.__dict__["instructions"]
+)
+_EXACT_PLAN_PASSTHROUGH_SLOT = cast(
+    "MemberDescriptorType", ExactAuthoringPlan.__dict__["passthrough_roots"]
+)
+
+
+def _source_slice_fields(segment: SourceSlice) -> tuple[int, int]:
+    return (
+        _SLICE_OFFSET_SLOT.__get__(segment, SourceSlice),
+        _SLICE_LENGTH_SLOT.__get__(segment, SourceSlice),
+    )
+
+
+def _oracle_literal_bytes(literal: OracleLiteral) -> bytes:
+    return cast("bytes", _LITERAL_DATA_SLOT.__get__(literal, OracleLiteral))
+
+
+def _exact_instruction_fields(
+    instruction: ExactInstruction,
+) -> tuple[
+    ExactInstructionKind,
+    str,
+    str | None,
+    bytes | None,
+    tuple[ExactSegment, ...],
+]:
+    return (
+        _EXACT_KIND_SLOT.__get__(instruction, ExactInstruction),
+        _EXACT_OUTPUT_SLOT.__get__(instruction, ExactInstruction),
+        _EXACT_SOURCE_SLOT.__get__(instruction, ExactInstruction),
+        _EXACT_LITERAL_SLOT.__get__(instruction, ExactInstruction),
+        _EXACT_SEGMENTS_SLOT.__get__(instruction, ExactInstruction),
+    )
+
+
+def _exact_plan_fields(
+    plan: ExactAuthoringPlan,
+) -> tuple[TreeSnapshot, tuple[ExactInstruction, ...], tuple[str, ...]]:
+    return (
+        _EXACT_PLAN_SOURCE_SLOT.__get__(plan, ExactAuthoringPlan),
+        _EXACT_PLAN_INSTRUCTIONS_SLOT.__get__(plan, ExactAuthoringPlan),
+        _EXACT_PLAN_PASSTHROUGH_SLOT.__get__(plan, ExactAuthoringPlan),
+    )
+
+
 def _range_locator(source: bytes, segment: SourceSlice) -> RangeLocator:
-    end = segment.offset + segment.length
+    offset, length = _source_slice_fields(segment)
+    end = offset + length
     if end > _NATIVE_LEN(source):
         message = "exact source slice exceeds authoring source file"
         raise RelocationError(message)
-    data = source[segment.offset : end]
+    data = source[offset:end]
     window_bytes = _NATIVE_MIN(_BOUNDARY_BYTES, _NATIVE_LEN(data))
     start_digest = _sha256(data[:window_bytes])
     end_digest = None
@@ -453,34 +531,37 @@ def _instruction(
     source_root: Path,
     exact_instruction: ExactInstruction,
 ) -> RelocatableInstruction:
-    if exact_instruction.kind is ExactInstructionKind.COPY_SOURCE:
+    kind, output_path, source_path, literal, segments = (
+        _exact_instruction_fields(exact_instruction)
+    )
+    if kind is ExactInstructionKind.COPY_SOURCE:
         return RelocatableInstruction(
-            output_path=exact_instruction.output_path,
-            source_path=exact_instruction.source_path,
+            output_path=output_path,
+            source_path=source_path,
             copy_candidate_file=True,
         )
-    if exact_instruction.kind is ExactInstructionKind.LITERAL_ORACLE:
-        if exact_instruction.literal is None:
+    if kind is ExactInstructionKind.LITERAL_ORACLE:
+        if literal is None:
             message = "exact literal instruction lost authoring bytes"
             raise RelocationError(message)
         return RelocatableInstruction(
-            output_path=exact_instruction.output_path,
+            output_path=output_path,
             source_path=None,
             copy_candidate_file=False,
-            literal=exact_instruction.literal,
+            literal=literal,
         )
-    if exact_instruction.source_path is None:
+    if source_path is None:
         message = "exact patch instruction lost source path"
         raise RelocationError(message)
-    source_path = _safe_path(source_root, exact_instruction.source_path)
-    source = _read_relocatable_bytes(source_path, "relocatable source")
+    source = _read_relocatable_bytes(
+        _safe_path(source_root, source_path), "relocatable source"
+    )
     return RelocatableInstruction(
-        output_path=exact_instruction.output_path,
-        source_path=exact_instruction.source_path,
+        output_path=output_path,
+        source_path=source_path,
         copy_candidate_file=False,
         segments=_NATIVE_TUPLE(
-            _relocatable_segment(source, segment)
-            for segment in exact_instruction.segments
+            _relocatable_segment(source, segment) for segment in segments
         ),
     )
 
@@ -571,14 +652,13 @@ def _require_exact_source_snapshot(
 
     """
     try:
-        current = snapshot_tree_excluding(
-            source_root, exact_plan.passthrough_roots
-        )
+        source, _, passthrough = _exact_plan_fields(exact_plan)
+        current = snapshot_tree_excluding(source_root, passthrough)
     except ExactTreeError as error:
         detail = _host_error_detail(error)
         message = f"relocatable source snapshot failed: {detail}"
         raise RelocationError(message) from error
-    if current != exact_plan.source:
+    if current != source:
         message = "relocatable source snapshot differs from exact plan"
         raise RelocationError(message)
 
@@ -605,7 +685,7 @@ def build_relocatable_plan(
     _require_exact_source_snapshot(source_root, exact_plan)
     instructions = _NATIVE_TUPLE(
         _instruction(source_root, instruction)
-        for instruction in exact_plan.instructions
+        for instruction in _exact_plan_fields(exact_plan)[1]
     )
     _require_exact_source_snapshot(source_root, exact_plan)
     return RelocatableAuthoringPlan(instructions=instructions)
@@ -743,7 +823,7 @@ def _patch_bytes(
     previous_end = _ZERO
     for segment in segments:
         if _NATIVE_TYPE(segment) is OracleLiteral:
-            parts.append(segment.data)
+            parts.append(_oracle_literal_bytes(segment))
             continue
         relocated = cast("RelocatableSourceRange", segment)
         start, end = _locate_range(candidate, _range_locator_field(relocated))
