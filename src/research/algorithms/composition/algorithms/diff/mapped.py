@@ -34,9 +34,12 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 
 _ZERO = 0
+# Preserve exact-record admission after untrusted domain callback execution.
+_NATIVE_ANY = builtins.any
 
 
 class MappedViewError(ValueError):
@@ -101,7 +104,7 @@ class MappedView:
         if type(self.units) is not tuple:
             message = "mapped units must use the exact immutable tuple type"
             raise MappedViewError(message)
-        if any(type(unit) is not MappedUnit for unit in self.units):
+        if _NATIVE_ANY(type(unit) is not MappedUnit for unit in self.units):
             message = "mapped view contains a foreign unit record"
             raise MappedViewError(message)
         _validate_view_units(self.raw, self.units)

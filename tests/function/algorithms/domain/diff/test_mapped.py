@@ -33,6 +33,7 @@
 """Synthetic invariants for canonical units mapped to raw source spans."""
 
 import builtins
+from types import SimpleNamespace
 from typing import cast
 
 import pytest
@@ -104,6 +105,24 @@ def test_mapped_view_rejects_overlap_after_late_builtin_max_override(
         patched.setattr(builtins, "max", lambda *_values: 0)
         with pytest.raises(MappedViewError, match="overlap"):
             _ = MappedView(raw=b"abc", units=(first, overlapping))
+
+
+def test_mapped_view_rejects_foreign_unit_after_late_any_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A shape-compatible object must never cross canonical mapping trust."""
+    foreign = cast(
+        "MappedUnit",
+        cast("object", SimpleNamespace(canonical=b"A", raw_start=0, raw_end=1)),
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        try:
+            _ = MappedView(raw=b"a", units=(foreign,))
+        except MappedViewError:
+            rejected = True
+    assert rejected, "late any hook admitted a foreign canonical unit"
 
 
 def test_mapped_records_reject_foreign_runtime_metadata() -> None:
