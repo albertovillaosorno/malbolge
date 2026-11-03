@@ -37,6 +37,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 import ntpath
+import os
 import re
 import shutil
 from dataclasses import replace
@@ -2819,3 +2820,57 @@ def test_compatible_instruction_rejects_late_string_alias_for_foreign_path(
         except CompatiblePlanError as error:
             rejected = _EXACT_STRING_TYPE in error.args[0]
     assert rejected, "foreign compatible path bypassed typed preflight"
+
+
+@pytest.mark.parametrize("role", ["output", "source"])
+@pytest.mark.parametrize("hook", ["splitroot", "any"])
+@pytest.mark.parametrize("unsafe", ["CON", "src/COM1", "src/trailing."])
+def test_compatible_rejects_late_ntpath_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe: str,
+    hook: str,
+    role: str,
+) -> None:
+    """Late Windows path hooks cannot authorize unsafe plan metadata."""
+
+    def hide_windows_path(value: object) -> tuple[str, str, str]:
+        del value
+        return "", "", "safe"
+
+    with monkeypatch.context() as patch:
+        if hook == "splitroot":
+            patch.setattr(ntpath, "splitroot", hide_windows_path)
+        else:
+            patch.setattr(builtins, "any", lambda values: False)
+        with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
+            if role == "output":
+                _ = CompatibleInstruction(
+                    output_path=unsafe,
+                    kind=CompatibleFileKind.CREATE_LITERAL,
+                    literal=b"target",
+                )
+            else:
+                _ = CompatibleInstruction(
+                    output_path="out.bin",
+                    kind=CompatibleFileKind.COPY_CANDIDATE,
+                    source_path=unsafe,
+                )
+
+
+def test_compatible_request_path_ignores_late_fsencode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Imported path validation cannot invoke a consumer fsencode hook."""
+    calls = 0
+
+    def forged_fsencode(value: object) -> bytes:
+        nonlocal calls
+        del value
+        calls += 1
+        raise AssertionError("consumer filesystem hook executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "fsencode", forged_fsencode)
+        compatible_module._validate_request_path(tmp_path, "compatible root")
+    assert calls == 0, "consumer filesystem codec was consulted"

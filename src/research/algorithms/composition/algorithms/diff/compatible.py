@@ -36,9 +36,9 @@ from __future__ import annotations
 
 import builtins
 import hashlib
-import ntpath
 import os
 import shutil
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
@@ -57,6 +57,7 @@ from algorithms.diff.exact import (
 )
 from algorithms.diff.gate import require_transform_admission
 from algorithms.diff.mapped import MappedView
+from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.model import (
     ExactInstruction,
     ExactInstructionKind,
@@ -108,9 +109,10 @@ _NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_FS_ENCODING = sys.getfilesystemencoding()
+_NATIVE_FS_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_IS_SYMLINK = S_ISLNK
-_NATIVE_ISRESERVED = ntpath.isreserved
 # Cleanup must not use a consumer-replaced global filesystem helper.
 _NATIVE_RMTREE = shutil.rmtree
 
@@ -268,7 +270,7 @@ def _validate_request_path(value: object, context: str) -> None:
         raise CompatiblePlanError(message)
     try:
         _ = raw.encode("utf-8")
-        _ = os.fsencode(value)
+        _ = raw.encode(_NATIVE_FS_ENCODING, _NATIVE_FS_ERRORS)
     except (UnicodeError, TypeError) as error:
         message = f"{context} path cannot be encoded"
         raise CompatiblePlanError(message) from error
@@ -718,7 +720,10 @@ def _validate_relative_path(relative_path: str) -> str:
         or relative_path == _DOT
         or candidate.is_absolute()
         or _NATIVE_BOOL(PureWindowsPath(relative_path).drive)
-        or _NATIVE_ISRESERVED(relative_path)
+        or _NATIVE_ANY(
+            reserved_windows_component(component)
+            for component in relative_path.split("/")
+        )
         or _PARENT in candidate.parts
         or candidate.as_posix() != relative_path
     )
