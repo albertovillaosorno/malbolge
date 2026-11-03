@@ -154,6 +154,22 @@ errors. The check is not atomic against external writers or direct instance
 storage changes; repository-wide Jig doctor was degraded (graph absent), and
 a 110-second Jig check timed out during native validation.
 
+The exact tree boundary independently rejects late changes to import-original
+`os.path.realpath` before source and output resolution (`97f5f2a30`). Three
+red-first source/output redirection and false-denial cases now fail closed;
+a direct descriptor-bound file read still works under a replaced resolver.
+All 270 focused exact and 3,240 integrated diff tests passed. This does not
+make filesystem resolution atomic against concurrent writers.
+
+Even a pinned `Path.walk` delegates to mutable host `os.walk` and `os.scandir`,
+while `os.walk` resolves nested children through `os.path.join`. Exact tree
+snapshots now require the import-original identities of all three hooks
+(`dccb70b71`). Six red-first full and passthrough-excluded snapshot cases
+prove late replacements could silently omit included source files. All 276
+focused exact tests pass with zero scoped Ruff or strict BasedPyright errors.
+The new guards address late hook substitution, not direct module-state
+mutation or concurrent filesystem races.
+
 This local plan is verification evidence, not a distributable transform. Raw
 `OracleLiteral` bytes must never cross the public emission boundary. A later
 source-binding stage must convert them to recovery material that cannot be

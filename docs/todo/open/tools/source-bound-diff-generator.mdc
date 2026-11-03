@@ -60,6 +60,15 @@ format.
   `os.path.realpath` before and after `Path.resolve` (`f15620ff7`). Two
   red-first laundering/denial cases and 152 focused emitter tests passed.
   External filesystem races remain outside this admission guarantee.
+- Exact tree source/output resolution now pins import-original
+  `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
+  cases fail closed while direct descriptor reads still work; 270 focused
+  exact and 3,240 integrated diff tests pass. External path races remain.
+- Exact tree enumeration now checks original `os.walk`, `os.scandir`, and
+  `os.path.join` (`dccb70b71`) before full or passthrough-excluded snapshots.
+  Six red-first omitted-file cases now fail closed; 276 focused exact tests
+  and scoped Ruff/strict BasedPyright pass. Concurrent host mutations and
+  external filesystem races remain outside this guarantee.
 - Domain-module import now rejects late replacements of importlib
   spec/module constructors or source-file loader execution (`97ea0cdff`),
   blocking substitutions of unselected module code after native path checks.
