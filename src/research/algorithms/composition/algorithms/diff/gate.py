@@ -127,6 +127,13 @@ class TransformAdmissionEvidence:
             True exactly when neither evidence family rejected the candidate.
 
         """
+        # Public verdicts must also reject fabricated native instances that
+        # never ran the constructor's conjunctive validation.
+        try:
+            _TRANSFORM_ADMISSION_VALIDATOR(self)
+        except AttributeError as error:
+            message = "transform gate evidence has incomplete native metadata"
+            raise AdmissionError(message) from error
         return not _GATE_REASONS_SLOT.__get__(self, TransformAdmissionEvidence)
 
 

@@ -235,6 +235,49 @@ def test_gate_revalidates_forged_exact_evidence(
             _ = require_transform_admission(source, behavior)
 
 
+def test_gate_admitted_rejects_uninitialized_native_record() -> None:
+    """A fabricated gate cannot certify admission without any source evidence."""
+    forged = object.__new__(TransformAdmissionEvidence)
+    slot = cast(
+        "MemberDescriptorType", TransformAdmissionEvidence.__dict__["reasons"]
+    )
+    slot.__set__(forged, ())
+    with pytest.raises(AdmissionError, match="evidence"):
+        _ = forged.admitted
+
+
+@pytest.mark.parametrize(
+    ("source_label", "compatible", "reasons"),
+    [
+        ("unrelated", True, ()),
+        ("reference", False, ()),
+        ("reference", True, ("source lineage admission failed",)),
+    ],
+)
+@pytest.mark.parametrize("late_validator", [False, True])
+def test_gate_admitted_revalidates_fabricated_native_verdict(
+    monkeypatch: pytest.MonkeyPatch,
+    source_label: str,
+    compatible: bool,
+    reasons: tuple[str, ...],
+    late_validator: bool,
+) -> None:
+    """A raw gate's reasons slot cannot assert a false admission verdict."""
+    forged = object.__new__(TransformAdmissionEvidence)
+    for name, stored in {
+        "source": _source_evidence(source_label),
+        "behavior": _behavior_evidence(compatible=compatible),
+        "reasons": reasons,
+    }.items():
+        slot = cast("MemberDescriptorType", TransformAdmissionEvidence.__dict__[name])
+        slot.__set__(forged, stored)
+    with monkeypatch.context() as patched:
+        if late_validator:
+            patched.setattr(TransformAdmissionEvidence, "__post_init__", lambda _: None)
+        with pytest.raises(AdmissionError, match="evidence"):
+            _ = forged.admitted
+
+
 def test_gate_rejects_failed_source_after_late_tuple_subclass_swap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
