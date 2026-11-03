@@ -385,6 +385,15 @@ format.
   direct stored-instance edits or concurrent writers. Jig doctor was degraded
   (graph absent); a 105-second global `jig check` timed out (exit 124) during
   native-validator scheduling, without a clean Jig verdict.
+- Anchor coverage ratio receipts now require exact count parity at
+  rounded float endpoints (`94e3b15ac`). Very large incomplete counts
+  cannot appear fully matched, and tiny positive counts cannot appear
+  wholly unmatched. Two rejecting and three valid endpoint cases pass;
+  3,726 integrated diff tests passed precommit and 78 fingerprint
+  tests passed postcommit. Scoped Ruff, strict BasedPyright, and diff
+  checks are clean. Global Jig check exits 1 on wider repository
+  violations. Direct record storage mutation and external source-tree
+  races remain outside this fix.
 - Source-binding anchor materials, masked shares, binding envelopes, and
   recovered shares now use pinned native allocation/original initializers
   (`b6d41a9ea`): eight red-first hook regressions, 147 focused tests, and

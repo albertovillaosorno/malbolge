@@ -981,6 +981,17 @@ consumer execution, or concurrent external writers. Jig doctor remains degraded
 with no generated graph; a bounded 105-second `jig check` attempt timed out
 (exit 124) at native-validator scheduling, without a clean Jig verdict.
 
+Coverage record admission now also rejects rounded float endpoints when the
+underlying integer counts disagree (`94e3b15ac`). A near-complete ratio
+that rounds to `1.0` cannot conceal missing anchors; a tiny positive
+ratio that rounds to `0.0` cannot conceal surviving anchors. Two
+adversarial cases and three valid endpoint cases pass. All 3,726
+integrated diff tests passed before commit, and all 78 fingerprint
+tests passed after commit; scoped Ruff, strict BasedPyright, and diff
+checks are clean. Global `jig check` exits 1 on broader repository
+violations and still has no green verdict. Direct instance-storage
+tampering and concurrent external writers remain outside scope.
+
 ### Implemented Tree-Level Admission
 
 Source identity and source-binding share-envelope Windows filename checks now
