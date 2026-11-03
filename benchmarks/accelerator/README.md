@@ -276,6 +276,11 @@ uses batch sizes 1, 8, and 32 with 15 samples each so phase evidence remains
 comparable with the end-to-end throughput run without retaining redundant large
 batch points.
 
+Retained per-phase JSON must match the import-bound native encoder before
+publication, preventing swapped resource snapshots, raw samples, or medians.
+The CLI requires an exact native stdout write and a successful flush receipt;
+hardware-free synthetic phase samples test this report boundary.
+
 Run with:
 
 ```powershell
@@ -324,6 +329,10 @@ includes
 observable Python/OS page-commit effects but does not claim a lower-level
 allocator
 breakdown.
+
+Resident snapshot phase reports also compare public output against the native
+import-bound JSON encoder and require exact stdout delivery acknowledgements.
+Synthetic rows test both phase report boundaries without CUDA hardware.
 
 Run with:
 

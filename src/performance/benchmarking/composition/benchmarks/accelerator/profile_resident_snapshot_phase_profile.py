@@ -34,38 +34,38 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import gc
 import json
-from statistics import median
-from statistics import pstdev
 import sys
-from typing import Final
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from statistics import median, pstdev
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
 
-from benchmarks.accelerator.profile_workload import GEOMETRY
-from benchmarks.accelerator.profile_workload import PROFILE_TRITS
-from benchmarks.accelerator.profile_workload import PROFILE_WORDS
-from benchmarks.accelerator.profile_workload import STEP_BUDGET
-from benchmarks.accelerator.profile_workload import WORD_BYTES
-from benchmarks.accelerator.profile_workload import profile_noop_request
 from benchmarks.accelerator.profile_workload import (
+    GEOMETRY,
+    PROFILE_TRITS,
+    PROFILE_WORDS,
+    STEP_BUDGET,
+    WORD_BYTES,
+    profile_noop_request,
     validate_profile_noop_results,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from accelerator.cuda.profile_run import CudaProfileRunSession
-    from accelerator.cuda.profile_run import ProfileSnapshotPhaseProfile
+    from accelerator.cuda.profile_run import (
+        CudaProfileRunSession,
+        ProfileSnapshotPhaseProfile,
+    )
     from accelerator.profile_run import ProfileRunRequest
 
 BENCHMARK_ID: Final = "current-profile-resident-snapshot-phase-profile-v1"
 BATCH_SIZES: Final = (1, 8, 32)
 SAMPLE_COUNT: Final = 15
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 WARMUP_COUNT: Final = 1
 
 
@@ -105,6 +105,44 @@ class SnapshotPhaseRow:
     total: Timing
 
 
+class ProfileSnapshotPhaseReportError(ValueError):
+    """Retained CUDA phase profile evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Require public JSON to agree with source-bound native encoding."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"profile snapshot phase JSON writer failed: {type(error).__name__}"
+        raise ProfileSnapshotPhaseReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "profile snapshot phase JSON writer differs from source"
+        raise ProfileSnapshotPhaseReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require native exact stdout write and complete flush receipts."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"profile snapshot phase stdout write failed: {type(error).__name__}"
+        raise ProfileSnapshotPhaseReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "profile snapshot phase stdout write incomplete"
+        raise ProfileSnapshotPhaseReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"profile snapshot phase stdout flush failed: {type(error).__name__}"
+        raise ProfileSnapshotPhaseReportError(message) from error
+    if flushed is not None:
+        message = "profile snapshot phase stdout flush incomplete"
+        raise ProfileSnapshotPhaseReportError(message)
+
+
 def main() -> int:
     """Measure complete resident snapshot phases and emit raw JSON evidence.
 
@@ -135,7 +173,7 @@ def main() -> int:
         "timed_region": "CudaProfileRunSession.profile_snapshot only",
         "warmup_count": WARMUP_COUNT,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 

@@ -34,24 +34,22 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
-from statistics import median
 import sys
-from typing import Final
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from statistics import median
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
 
-from benchmarks.accelerator.profile_workload import GEOMETRY
-from benchmarks.accelerator.profile_workload import PROFILE_TRITS
-from benchmarks.accelerator.profile_workload import PROFILE_WORDS
-from benchmarks.accelerator.profile_workload import STEP_BUDGET
-from benchmarks.accelerator.profile_workload import WORD_BYTES
-from benchmarks.accelerator.profile_workload import WORKLOAD_DESCRIPTION
-from benchmarks.accelerator.profile_workload import profile_noop_request
 from benchmarks.accelerator.profile_workload import (
+    GEOMETRY,
+    PROFILE_TRITS,
+    PROFILE_WORDS,
+    STEP_BUDGET,
+    WORD_BYTES,
+    WORKLOAD_DESCRIPTION,
+    profile_noop_request,
     validate_profile_noop_results,
 )
 
@@ -61,6 +59,7 @@ if TYPE_CHECKING:
 
 BATCH_SIZES: Final = (1, 8, 32)
 SAMPLE_COUNT: Final = 15
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +76,44 @@ class PhaseSummary:
     total_ns: int
     upload_ns: int
     validation_plan_ns: int
+
+
+class ProfileRunPhaseReportError(ValueError):
+    """Retained CUDA phase profile evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Require public JSON to agree with source-bound native encoding."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"profile run phase JSON writer failed: {type(error).__name__}"
+        raise ProfileRunPhaseReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "profile run phase JSON writer differs from source"
+        raise ProfileRunPhaseReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require native exact stdout write and complete flush receipts."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"profile run phase stdout write failed: {type(error).__name__}"
+        raise ProfileRunPhaseReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "profile run phase stdout write incomplete"
+        raise ProfileRunPhaseReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"profile run phase stdout flush failed: {type(error).__name__}"
+        raise ProfileRunPhaseReportError(message) from error
+    if flushed is not None:
+        message = "profile run phase stdout flush incomplete"
+        raise ProfileRunPhaseReportError(message)
 
 
 def main() -> int:
@@ -118,7 +155,7 @@ def main() -> int:
         "step_budget": STEP_BUDGET,
         "workload": WORKLOAD_DESCRIPTION,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
@@ -147,9 +184,7 @@ def _summarize(
         batch_size=batch_size,
         decode_ns=_median_values(tuple(item.decode_ns for item in samples)),
         download_ns=_median_values(tuple(item.download_ns for item in samples)),
-        host_build_ns=_median_values(
-            tuple(item.host_build_ns for item in samples)
-        ),
+        host_build_ns=_median_values(tuple(item.host_build_ns for item in samples)),
         kernel_ns=_median_values(tuple(item.kernel_ns for item in samples)),
         release_ns=_median_values(tuple(item.release_ns for item in samples)),
         total_ns=_median_values(tuple(item.total_ns for item in samples)),
