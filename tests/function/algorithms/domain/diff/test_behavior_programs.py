@@ -38,6 +38,7 @@ import builtins
 import math
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -2371,3 +2372,177 @@ def test_behavior_selector_rejects_uninitialized_probe_slots(missing: str) -> No
     program = ProbeProgram("identity", (command,))
     with pytest.raises(BehaviorProgramError, match="incomplete command selectors"):
         _ = BehaviorPrograms((program,), (), ())
+
+
+@pytest.mark.parametrize("dependency", ["lstat", "readlink", "getcwd", "islink"])
+def test_behavior_context_rejects_late_native_realpath_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """The captured realpath still consults mutable host resolver helpers."""
+    target = tmp_path / "target"
+    target.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    assert alias.resolve() == outside
+    native_lstat = os.lstat
+    native_readlink = os.readlink
+
+    def forged_lstat(path: str | os.PathLike[str]) -> os.stat_result:
+        if os.fspath(path) == os.fspath(alias):
+            return native_lstat(target)
+        return native_lstat(path)
+
+    def forged_readlink(path: str | os.PathLike[str]) -> str:
+        if os.fspath(path) == os.fspath(alias):
+            return os.fspath(target)
+        return native_readlink(path)
+
+    def forged_getcwd() -> str:
+        return os.fspath(outside)
+
+    def forged_islink(_mode: int) -> bool:
+        return False
+
+    owner, attribute, replacement = {
+        "lstat": (os, "lstat", forged_lstat),
+        "readlink": (os, "readlink", forged_readlink),
+        "getcwd": (os, "getcwd", forged_getcwd),
+        "islink": (stat, "S_ISLNK", forged_islink),
+    }[dependency]
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, attribute, replacement)
+        with pytest.raises(BehaviorProgramError, match="host resolver hooks changed"):
+            _ = behavior_module._resolved_context_path(alias, "repository")  # pyright: ignore[reportPrivateUsage]
+    assert alias.resolve() == outside
+
+
+def test_behavior_context_rejects_late_path_factory_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The resolved Path constructor must not redirect an admitted binding."""
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    native_new = cast("Callable[..., Path]", Path.__new__)
+    calls = 0
+
+    def redirected_new(cls: type[Path], *args: object, **kwargs: object) -> Path:
+        nonlocal calls
+        if args and args[0] == os.fspath(source):
+            calls += 1
+            return native_new(cls, outside)
+        return native_new(cls, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__new__", redirected_new)
+        with pytest.raises(BehaviorProgramError, match="host resolver hooks changed"):
+            _ = behavior_module._resolved_context_path(source, "repository")  # pyright: ignore[reportPrivateUsage]
+    assert calls == 0, "late path constructor was called before guard"
+
+
+def test_behavior_context_matching_cannot_accept_alias_after_readlink_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged symlink target must not make distinct bindings appear equal."""
+    source, oracle = _trees(tmp_path)
+    outside = tmp_path / "other-binding"
+    outside.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    source_context = _context(source, tmp_path)
+    oracle_context = ProbeRunContext(
+        source_root=oracle,
+        repository_root=alias,
+        tools=source_context.tools,
+    )
+    native_readlink = os.readlink
+
+    def forged_readlink(path: str | os.PathLike[str]) -> str:
+        if os.fspath(path) == os.fspath(alias):
+            return os.fspath(tmp_path)
+        return native_readlink(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "readlink", forged_readlink)
+        with pytest.raises(BehaviorProgramError, match="host resolver hooks changed"):
+            _ = behavior_module._require_matching_contexts(  # pyright: ignore[reportPrivateUsage]
+                source_context, oracle_context
+            )
+
+
+@pytest.mark.parametrize("dependency", ["fspath", "path-init", "path-getattribute"])
+def test_behavior_context_rejects_late_conversion_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """Realpath input and Path result must not consult changed conversion."""
+    root = tmp_path / "root"
+    root.mkdir()
+    native_fspath = cast("Callable[[object], str]", os.fspath)
+    native_init = cast("Callable[..., None]", Path.__init__)
+    native_getattribute = Path.__getattribute__
+    calls = 0
+
+    def forged_fspath(path: object) -> str:
+        nonlocal calls
+        calls += 1
+        return native_fspath(path)
+
+    def forged_init(path: Path, *args: object, **kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        native_init(path, *args, **kwargs)
+
+    def forged_getattribute(path: Path, name: str) -> object:
+        nonlocal calls
+        if name == "_str":
+            calls += 1
+            return native_fspath(tmp_path)
+        return native_getattribute(path, name)
+
+    owner, attribute, replacement = {
+        "fspath": (os, "fspath", forged_fspath),
+        "path-init": (Path, "__init__", forged_init),
+        "path-getattribute": (Path, "__getattribute__", forged_getattribute),
+    }[dependency]
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, attribute, replacement)
+        with pytest.raises(BehaviorProgramError, match="host resolver hooks changed"):
+            _ = behavior_module._resolved_context_path(root, "repository")  # pyright: ignore[reportPrivateUsage]
+    assert calls == 0, "late conversion hook ran before the resolver guard"
+
+
+def test_behavior_context_rejects_resolver_hook_swap_during_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resolver that changes host dependencies mid-call must fail closed."""
+    root = tmp_path / "root"
+    root.mkdir()
+    native_resolve = behavior_module._NATIVE_PATH_RESOLVE  # pyright: ignore[reportPrivateUsage]
+    native_readlink = os.readlink
+    changed = False
+
+    def forged_readlink(path: str | os.PathLike[str]) -> str:
+        return f"wrong-{os.fspath(path)}"
+
+    def mutate_after_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal changed
+        resolved = native_resolve(path, strict=strict)
+        patched.setattr(os, "readlink", forged_readlink)
+        changed = True
+        return resolved
+
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", mutate_after_resolve)
+        with pytest.raises(BehaviorProgramError, match="host resolver hooks changed"):
+            _ = behavior_module._resolved_context_path(root, "repository")  # pyright: ignore[reportPrivateUsage]
+    assert changed, "captured resolver was not exercised"
+    assert os.readlink is native_readlink

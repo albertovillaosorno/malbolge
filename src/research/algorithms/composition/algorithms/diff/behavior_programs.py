@@ -37,6 +37,7 @@ from __future__ import annotations
 import builtins
 import os
 import shutil
+import stat
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -76,6 +77,20 @@ if TYPE_CHECKING:
 # Bind native path operations before domain hooks can replace them.
 _NATIVE_PATH_STR = Path.__str__
 _NATIVE_OS_REALPATH = os.path.realpath
+# The import-original realpath function still uses dynamically looked-up
+# filesystem helpers. Its Path result also invokes mutable class factories.
+_NATIVE_OS_FSPATH = os.fspath
+_NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_READLINK = os.readlink
+_NATIVE_OS_GETCWD = os.getcwd
+_NATIVE_STAT_ISLNK = stat.S_ISLNK
+_NATIVE_PATH_NEW = Path.__new__
+_NATIVE_PATH_INIT = Path.__init__
+_NATIVE_PATH_GETATTRIBUTE = Path.__getattribute__
+_NATIVE_PATH_TYPE = type(Path())
+_NATIVE_CONCRETE_PATH_NEW = _NATIVE_PATH_TYPE.__new__
+_NATIVE_CONCRETE_PATH_INIT = _NATIVE_PATH_TYPE.__init__
+_NATIVE_CONCRETE_PATH_GETATTRIBUTE = _NATIVE_PATH_TYPE.__getattribute__
 _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = builtins.type
 _NATIVE_TUPLE = builtins.tuple
@@ -90,6 +105,26 @@ _NATIVE_COPYTREE = shutil.copytree
 _NATIVE_TEMPORARY_DIRECTORY = tempfile.TemporaryDirectory
 _NUL = "\x00"
 _NATIVE_WINDOWS_HOST = os.name == "nt"
+
+
+def _require_native_context_resolver() -> None:
+    """Reject late helpers that can redirect realpath or its Path result."""
+    if (
+        os.fspath is not _NATIVE_OS_FSPATH
+        or os.lstat is not _NATIVE_OS_LSTAT
+        or os.readlink is not _NATIVE_OS_READLINK
+        or os.getcwd is not _NATIVE_OS_GETCWD
+        or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or Path.__new__ is not _NATIVE_PATH_NEW
+        or Path.__init__ is not _NATIVE_PATH_INIT
+        or Path.__getattribute__ is not _NATIVE_PATH_GETATTRIBUTE
+        or _NATIVE_PATH_TYPE.__getattribute__
+        is not _NATIVE_CONCRETE_PATH_GETATTRIBUTE
+        or _NATIVE_PATH_TYPE.__new__ is not _NATIVE_CONCRETE_PATH_NEW
+        or _NATIVE_PATH_TYPE.__init__ is not _NATIVE_CONCRETE_PATH_INIT
+    ):
+        message = "behavior host resolver hooks changed"
+        raise BehaviorProgramError(message)
 
 
 def _native_path_resolve(path: Path, *, strict: bool = False) -> Path:
@@ -770,6 +805,7 @@ def _require_digest(transcript: ProbeTranscript) -> bytes:
 
 
 def _resolved_context_path(path: Path, description: str) -> Path:
+    _require_native_context_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
@@ -777,7 +813,8 @@ def _resolved_context_path(path: Path, description: str) -> Path:
         native_path = _NATIVE_PATH_STR(path)
         message = f"behavior {description} resolution failed: {native_path}: {detail}"
         raise BehaviorProgramError(message) from error
-    if _NATIVE_TYPE(resolved) is not _NATIVE_TYPE(Path()):
+    _require_native_context_resolver()
+    if _NATIVE_TYPE(resolved) is not _NATIVE_PATH_TYPE:
         message = f"behavior {description} resolution requires native resolved Path"
         raise BehaviorProgramError(message)
     return resolved
