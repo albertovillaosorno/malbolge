@@ -47,13 +47,14 @@ import time
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath
 from stat import S_ISREG
-from sys import getfilesystemencoding as _get_filesystem_encoding
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
+from sys import getfilesystemencoding as _get_filesystem_encoding
 from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from algorithms.diff.exact import ExactTreeError, snapshot_tree
+from algorithms.diff.model import reserved_windows_component
 
 if TYPE_CHECKING:
     from algorithms.diff.model import TreeSnapshot
@@ -64,8 +65,6 @@ _DEFAULT_TIMEOUT_MS = 10_000
 _DEFAULT_OUTPUT_LIMIT = 1_048_576
 _FRAME_LENGTH_BYTES = 8
 _SHA256_BYTES = _native_sha256().digest_size
-_BACKSLASH = "\\"
-_PARENT = ".."
 _TOOL_BINDING_LENGTH = 2
 _NUL = "\x00"
 _READ_CHUNK_BYTES = 16_384
@@ -463,19 +462,21 @@ def _validate_relative_path(relative_path: object) -> None:
     if _NATIVE_TYPE(relative_path) is not _NATIVE_STR:
         message = "probe relative path must use the exact string type"
         raise ProbeProgramError(message)
-    candidate = PurePosixPath(relative_path)
     if _NUL in relative_path:
         message = "probe relative paths must not contain NUL bytes"
         raise ProbeProgramError(message)
     _require_fs_encodable(relative_path, "probe relative path")
     _require_portable_utf8_text(relative_path, "probe relative path")
+    # PureWindowsPath delegates to mutable ntpath helpers. Validate lexical
+    # components before consumer-controlled process hooks can spoof drives or
+    # route native Windows device / alternate-stream paths outside the tree.
     unsafe = (
         not relative_path
-        or _BACKSLASH in relative_path
-        or candidate.is_absolute()
-        or PureWindowsPath(relative_path).drive
-        or _PARENT in candidate.parts
-        or candidate.as_posix() != relative_path
+        or _NATIVE_ANY(
+            component in ("", ".", "..")
+            or reserved_windows_component(component)
+            for component in relative_path.split("/")
+        )
     )
     if unsafe:
         message = (

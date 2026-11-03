@@ -2359,6 +2359,49 @@ def test_rooted_probe_arguments_reject_windows_drive_paths(
         _ = RootedExecutable(ProbeRoot.REPOSITORY, unsafe)
 
 
+@pytest.mark.parametrize(
+    "unsafe",
+    [
+        "CON",
+        "nested/AUX.txt",
+        "nested/COM1",
+        "nested/LPT².log",
+        "nested/file:stream",
+        "nested/trailing.",
+        "nested/trailing ",
+        "nested/bad|name",
+    ],
+)
+def test_rooted_probe_paths_reject_reserved_windows_components(
+    unsafe: str,
+) -> None:
+    """A portable probe path must never name a Windows device or stream."""
+    with pytest.raises(ProbeProgramError, match="unsafe probe relative path"):
+        _ = PathArgument(ProbeRoot.SOURCE, unsafe)
+    with pytest.raises(ProbeProgramError, match="unsafe probe relative path"):
+        _ = RootedExecutable(ProbeRoot.REPOSITORY, unsafe)
+
+
+@pytest.mark.parametrize("unsafe", ["C:relative", "C:/outside"])
+def test_rooted_probe_paths_ignore_late_ntpath_splitroot_spoof(
+    unsafe: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer cannot redefine Windows drive names after module import."""
+    import ntpath
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ntpath, "splitroot", lambda path: ("", "", path))
+        with pytest.raises(
+            ProbeProgramError, match="unsafe probe relative path"
+        ):
+            _ = PathArgument(ProbeRoot.SOURCE, unsafe)
+        with pytest.raises(
+            ProbeProgramError, match="unsafe probe relative path"
+        ):
+            _ = RootedExecutable(ProbeRoot.SCRATCH, unsafe)
+
+
 @pytest.mark.parametrize("kind", ["rooted-path", "rooted-tool", "raw-argv"])
 def test_probe_rejects_surrogateescape_text_from_portable_records(
     kind: str,
