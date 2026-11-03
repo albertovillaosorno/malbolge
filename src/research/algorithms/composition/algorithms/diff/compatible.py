@@ -204,7 +204,7 @@ _CORRECTION_ID_SLOT = cast(
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class CompatibleInstruction:
     """One target-path instruction for compatible authoring."""
 
@@ -217,12 +217,37 @@ class CompatibleInstruction:
     literal: bytes | None = None
     correction_ids: tuple[str | None, ...] = ()
 
+    def __init__(
+        self,
+        output_path: str,
+        kind: CompatibleFileKind,
+        source_path: str | None = None,
+        source_sha256: str | None = None,
+        semantic: SemanticAuthoringPlan | None = None,
+        exact: ExactInstruction | None = None,
+        literal: bytes | None = None,
+        correction_ids: tuple[str | None, ...] = (),
+    ) -> None:
+        """Validate stored instruction values with the original guard."""
+        for name, value in (
+            ("output_path", output_path),
+            ("kind", kind),
+            ("source_path", source_path),
+            ("source_sha256", source_sha256),
+            ("semantic", semantic),
+            ("exact", exact),
+            ("literal", literal),
+            ("correction_ids", correction_ids),
+        ):
+            _NATIVE_OBJECT_SETATTR(self, name, value)
+        _INSTRUCTION_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject incomplete instruction forms."""
         _validate_instruction(self)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class CompatibleBuildRequest:
     """Inputs required to author one in-memory compatible tree plan."""
 
@@ -233,12 +258,33 @@ class CompatibleBuildRequest:
     mapper: Mapper
     preserve_candidate_only: bool = True
 
+    def __init__(
+        self,
+        source_root: Path,
+        oracle_root: Path,
+        reference_identity: IdentityTree,
+        admission_policy: AdmissionPolicy,
+        mapper: Mapper,
+        preserve_candidate_only: bool = True,
+    ) -> None:
+        """Validate stored build request values with the original guard."""
+        for name, value in (
+            ("source_root", source_root),
+            ("oracle_root", oracle_root),
+            ("reference_identity", reference_identity),
+            ("admission_policy", admission_policy),
+            ("mapper", mapper),
+            ("preserve_candidate_only", preserve_candidate_only),
+        ):
+            _NATIVE_OBJECT_SETATTR(self, name, value)
+        _BUILD_REQUEST_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject malformed compatible authoring request envelopes."""
         _validate_build_request(self)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class CompatibleAuthoringPlan:
     """Non-distributable tree plan around admission and semantic placement."""
 
@@ -249,12 +295,33 @@ class CompatibleAuthoringPlan:
     instructions: tuple[CompatibleInstruction, ...]
     preserve_candidate_only: bool = True
 
+    def __init__(
+        self,
+        source: TreeSnapshot,
+        target: TreeSnapshot,
+        reference_identity: IdentityTree,
+        admission_policy: AdmissionPolicy,
+        instructions: tuple[CompatibleInstruction, ...],
+        preserve_candidate_only: bool = True,
+    ) -> None:
+        """Validate stored plan values with the original guard."""
+        for name, value in (
+            ("source", source),
+            ("target", target),
+            ("reference_identity", reference_identity),
+            ("admission_policy", admission_policy),
+            ("instructions", instructions),
+            ("preserve_candidate_only", preserve_candidate_only),
+        ):
+            _NATIVE_OBJECT_SETATTR(self, name, value)
+        _AUTHORING_PLAN_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require one self-consistent immutable compatible authoring plan."""
         _validate_authoring_plan(self)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class CompatibleMaterializeRequest:
     """Candidate evidence and hooks for compatible materialization."""
 
@@ -266,9 +333,51 @@ class CompatibleMaterializeRequest:
     output_root: Path
     postcondition: Postcondition | None = None
 
+    def __init__(
+        self,
+        candidate_root: Path,
+        candidate_identity: IdentityTree,
+        behavior: BehaviorEvidence,
+        plan: CompatibleAuthoringPlan,
+        mapper: Mapper,
+        output_root: Path,
+        postcondition: Postcondition | None = None,
+    ) -> None:
+        """Validate stored materialization values with the original guard."""
+        for name, value in (
+            ("candidate_root", candidate_root),
+            ("candidate_identity", candidate_identity),
+            ("behavior", behavior),
+            ("plan", plan),
+            ("mapper", mapper),
+            ("output_root", output_root),
+            ("postcondition", postcondition),
+        ):
+            _NATIVE_OBJECT_SETATTR(self, name, value)
+        _MATERIALIZE_REQUEST_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject malformed compatible materialization request envelopes."""
         _validate_materialize_request(self)
+
+
+# Pinned constructor validators cannot be replaced by late class hooks.
+_INSTRUCTION_VALIDATOR = cast(
+    "Callable[[CompatibleInstruction], None]",
+    CompatibleInstruction.__dict__["__post_init__"],
+)
+_BUILD_REQUEST_VALIDATOR = cast(
+    "Callable[[CompatibleBuildRequest], None]",
+    CompatibleBuildRequest.__dict__["__post_init__"],
+)
+_AUTHORING_PLAN_VALIDATOR = cast(
+    "Callable[[CompatibleAuthoringPlan], None]",
+    CompatibleAuthoringPlan.__dict__["__post_init__"],
+)
+_MATERIALIZE_REQUEST_VALIDATOR = cast(
+    "Callable[[CompatibleMaterializeRequest], None]",
+    CompatibleMaterializeRequest.__dict__["__post_init__"],
+)
 
 
 @dataclass(frozen=True, slots=True)

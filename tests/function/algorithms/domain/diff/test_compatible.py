@@ -3083,3 +3083,95 @@ def test_correction_constructor_reads_original_path_after_getter_override(
         with pytest.raises(CompatiblePlanError, match="unsafe compatible tree path"):
             _ = CompatibleCorrectionBinding("../unsafe", 0, "fix")
     assert calls == 0, "late correction getter concealed unsafe routing"
+
+
+@pytest.mark.parametrize(
+    ("record_kind", "invalid"),
+    [
+        ("instruction", {"output_path": "../foreign"}),
+        ("build", {"preserve_candidate_only": 1}),
+        ("plan", {"instructions": ()}),
+        ("materialize", {"postcondition": object()}),
+    ],
+)
+def test_compatible_envelope_constructor_rejects_late_validator_replacement(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_kind: str,
+    invalid: dict[str, object],
+) -> None:
+    """A late replaceable class validator cannot admit forged envelopes."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    records = {
+        "instruction": CompatibleInstruction(
+            output_path="created.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        ),
+        "build": build,
+        "plan": plan,
+        "materialize": _request(candidate, plan, tmp_path / "output"),
+    }
+    baseline = records[record_kind]
+    calls = 0
+
+    def forged_validator(_record: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(baseline), "__post_init__", forged_validator)
+        with pytest.raises(CompatiblePlanError):
+            _ = replace(baseline, **invalid)
+    assert calls == 0, "late validator admitted forged compatible metadata"
+
+
+@pytest.mark.parametrize("record_kind", ["instruction", "build", "plan", "materialize"])
+def test_compatible_envelope_constructor_keeps_valid_after_late_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_kind: str,
+) -> None:
+    """A late class hook cannot reject an otherwise valid envelope."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    records = {
+        "instruction": CompatibleInstruction(
+            output_path="created.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        ),
+        "build": build,
+        "plan": plan,
+        "materialize": _request(candidate, plan, tmp_path / "output"),
+    }
+    baseline = records[record_kind]
+    calls = 0
+
+    def forged_validator(_record: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise CompatiblePlanError("forged late rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(baseline), "__post_init__", forged_validator)
+        clone = replace(baseline)
+    assert clone == baseline
+    assert calls == 0, "late validator rejected valid compatible metadata"
