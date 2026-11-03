@@ -35,16 +35,15 @@
 from __future__ import annotations
 
 import builtins
-from dataclasses import dataclass
 import hashlib
 import importlib.util
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from stat import S_ISLNK
-from stat import S_ISREG
-from typing import TYPE_CHECKING
-from typing import cast
+from stat import S_ISLNK, S_ISREG
+from types import MemberDescriptorType
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,8 +51,10 @@ if TYPE_CHECKING:
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior_programs import BehaviorPrograms
-    from algorithms.diff.compatible import CompatibleAuthoringPlan
-    from algorithms.diff.compatible import CompatibleCorrectionBinding
+    from algorithms.diff.compatible import (
+        CompatibleAuthoringPlan,
+        CompatibleCorrectionBinding,
+    )
     from algorithms.diff.mapped import MappedView
     from algorithms.diff.probe_exec import ProbeRunContext
     from algorithms.diff.provenance import SourcePinEvidence
@@ -67,6 +68,7 @@ if TYPE_CHECKING:
 _NUL = "\x00"
 # Domain validation must not trust builtins replaced by imported consumers.
 _NATIVE_CALLABLE = builtins.callable
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_GETATTR = builtins.getattr
 _NATIVE_TYPE = builtins.type
 _NATIVE_BOOL_TYPE = builtins.bool
@@ -122,7 +124,7 @@ class DomainContractError(ValueError):
     """Invalid diff consumer-module contract."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class DiffDomain:
     """Callable hooks required by generic domain-aware authoring."""
 
@@ -134,6 +136,38 @@ class DiffDomain:
     build_behavior_programs: Callable[[], BehaviorPrograms]
     build_behavior_probe_context: Callable[[Path, Path], ProbeRunContext]
 
+    def __init__(
+        self,
+        validate_source_provenance: Callable[[Path], SourcePinEvidence],
+        validate_authoring_oracle: Callable[[Path], None],
+        build_identity_tree: Callable[[Path], IdentityTree],
+        map_compatible_file: Callable[[str, bytes], MappedView | None],
+        build_compatible_correction_bindings: CorrectionBindingBuilder,
+        build_behavior_programs: Callable[[], BehaviorPrograms],
+        build_behavior_probe_context: Callable[[Path, Path], ProbeRunContext],
+    ) -> None:
+        """Validate native hook slots through the original constructor guard."""
+        _NATIVE_OBJECT_SETATTR(
+            self, "validate_source_provenance", validate_source_provenance
+        )
+        _NATIVE_OBJECT_SETATTR(
+            self, "validate_authoring_oracle", validate_authoring_oracle
+        )
+        _NATIVE_OBJECT_SETATTR(self, "build_identity_tree", build_identity_tree)
+        _NATIVE_OBJECT_SETATTR(self, "map_compatible_file", map_compatible_file)
+        _NATIVE_OBJECT_SETATTR(
+            self,
+            "build_compatible_correction_bindings",
+            build_compatible_correction_bindings,
+        )
+        _NATIVE_OBJECT_SETATTR(
+            self, "build_behavior_programs", build_behavior_programs
+        )
+        _NATIVE_OBJECT_SETATTR(
+            self, "build_behavior_probe_context", build_behavior_probe_context
+        )
+        _DIFF_DOMAIN_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require every trusted consumer hook to remain callable.
 
@@ -141,25 +175,54 @@ class DiffDomain:
             DomainContractError: Any trusted hook is not callable.
 
         """
-        hooks = (
-            ("validate_source_provenance", self.validate_source_provenance),
-            ("validate_authoring_oracle", self.validate_authoring_oracle),
-            ("build_identity_tree", self.build_identity_tree),
-            ("map_compatible_file", self.map_compatible_file),
-            (
-                "build_compatible_correction_bindings",
-                self.build_compatible_correction_bindings,
-            ),
-            ("build_behavior_programs", self.build_behavior_programs),
-            (
-                "build_behavior_probe_context",
-                self.build_behavior_probe_context,
-            ),
-        )
-        for name, hook in hooks:
-            if not _NATIVE_CALLABLE(hook):
+        for name, slot in _DIFF_DOMAIN_HOOK_SLOTS:
+            if not _NATIVE_CALLABLE(slot.__get__(self, DiffDomain)):
                 message = f"diff domain hook must be callable: {name}"
                 raise DomainContractError(message)
+
+
+# Generated dataclass initializers would look up the mutable class validator.
+# Keep the constructor guard and original slot descriptors independent of later
+# consumer-supplied class getters and validators.
+_DIFF_DOMAIN_VALIDATOR = cast(
+    "Callable[[DiffDomain], None]", DiffDomain.__dict__["__post_init__"]
+)
+_DIFF_DOMAIN_HOOK_SLOTS: tuple[tuple[str, MemberDescriptorType], ...] = (
+    (
+        "validate_source_provenance",
+        cast("MemberDescriptorType", DiffDomain.__dict__["validate_source_provenance"]),
+    ),
+    (
+        "validate_authoring_oracle",
+        cast("MemberDescriptorType", DiffDomain.__dict__["validate_authoring_oracle"]),
+    ),
+    (
+        "build_identity_tree",
+        cast("MemberDescriptorType", DiffDomain.__dict__["build_identity_tree"]),
+    ),
+    (
+        "map_compatible_file",
+        cast("MemberDescriptorType", DiffDomain.__dict__["map_compatible_file"]),
+    ),
+    (
+        "build_compatible_correction_bindings",
+        cast(
+            "MemberDescriptorType",
+            DiffDomain.__dict__["build_compatible_correction_bindings"],
+        ),
+    ),
+    (
+        "build_behavior_programs",
+        cast("MemberDescriptorType", DiffDomain.__dict__["build_behavior_programs"]),
+    ),
+    (
+        "build_behavior_probe_context",
+        cast(
+            "MemberDescriptorType",
+            DiffDomain.__dict__["build_behavior_probe_context"],
+        ),
+    ),
+)
 
 
 def _module_name(path: Path) -> str:

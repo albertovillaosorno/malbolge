@@ -35,24 +35,20 @@
 from __future__ import annotations
 
 import builtins
-from dataclasses import replace
 import hashlib
 import importlib.machinery
 import importlib.util
 import os
 import stat
-from pathlib import Path
 import sys
-from types import ModuleType
-from types import SimpleNamespace
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from dataclasses import replace
+from pathlib import Path
+from types import ModuleType, SimpleNamespace
+from typing import TYPE_CHECKING, cast, override
 
-from algorithms.diff import domain as domain_module
-from algorithms.diff.domain import DomainContractError
-from algorithms.diff.domain import load_diff_domain
 import pytest
+from algorithms.diff import domain as domain_module
+from algorithms.diff.domain import DomainContractError, load_diff_domain
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1302,3 +1298,52 @@ def test_domain_failed_hook_validation_uses_original_registration_key(
         assert sys.modules.get(name) is previous
     finally:
         _ = sys.modules.pop(name, None)
+
+
+def test_domain_constructor_cannot_skip_original_hook_validator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late post-init replacement must not admit a non-callable domain hook."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    valid = load_diff_domain(module)
+    calls = 0
+
+    def skip_validation(_domain: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(domain_module.DiffDomain, "__post_init__", skip_validation)
+        with pytest.raises(DomainContractError, match="map_compatible_file"):
+            _ = replace(
+                valid,
+                map_compatible_file=cast(
+                    "Callable[[str, bytes], MappedView | None]", object()
+                ),
+            )
+    assert calls == 0, "late validator replacement was consulted"
+
+
+def test_domain_validator_reads_original_hook_storage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A class getter cannot spoof a non-callable stored consumer hook."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    valid = load_diff_domain(module)
+    object.__setattr__(valid, "map_compatible_file", object())
+    calls = 0
+
+    def spoof_hook(_self: object) -> object:
+        nonlocal calls
+        calls += 1
+        return lambda _path, _data: None
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            domain_module.DiffDomain, "map_compatible_file", property(spoof_hook)
+        )
+        with pytest.raises(DomainContractError, match="map_compatible_file"):
+            domain_module.DiffDomain.__post_init__(valid)
+    assert calls == 0, "late class getter hid the original hook"
