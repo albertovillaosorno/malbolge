@@ -189,6 +189,16 @@ chosen source, oracle, mode, or output after preflight. Twenty-eight red-first
 regressions cover stored invalid fields and post-validation class edits. This
 does not protect against deliberate direct mutation of stored instance values.
 
+The `DiffRecipe` constructor also writes all fifteen fields through the same
+captured native descriptors, instead of a dataclass-generated initializer that
+would dispatch replaceable class property setters. Fifteen malformed-field
+and fifteen valid-field regressions in `21e31bba1` prove that class setters
+cannot launder invalid recipe input before the original-slot snapshot and
+policy check. The defect was reproduced red-first; all 2,501 diff tests
+passed after that signed commit. This
+protects class-level setter substitution, not direct instance edits, mutation
+of trusted module internals, or concurrent filesystem writes.
+
 The six exact-authoring model records (`FileRecord`, `TreeSnapshot`,
 `SourceSlice`, `OracleLiteral`, `ExactInstruction`, and `ExactAuthoringPlan`)
 now invoke original constructor validators instead of late class

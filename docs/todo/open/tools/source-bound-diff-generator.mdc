@@ -68,6 +68,13 @@ format.
   view through domain preflight and exact output. Twenty-eight red-first
   regressions reject forged getters, masked invalid storage, and post-preflight
   mode/path/policy redirection without claiming arbitrary instance isolation.
+- The `DiffRecipe` constructor now writes all fifteen fields through captured
+  native descriptors before policy preflight. Fifteen invalid-field and fifteen
+  valid-field cases in `21e31bba1` block replaceable class setters from
+  changing authored values before the stored-slot view. Two failures were
+  reproduced red-first; all 2,501 diff tests passed after that commit. This
+  does not isolate direct
+  instance mutation, trusted module internals, or racing filesystem writers.
 - Six exact model record constructors now write seventeen original slots;
   protected metadata and plan constructors write twenty, and two source-pin
   constructors write seven. Captured descriptor writes prevent hostile class
