@@ -450,6 +450,7 @@ def _require_native_host_realpath(name: str) -> None:
         or os.path.altsep is not _NATIVE_HOST_ALTSEP
         or builtins.isinstance is not _NATIVE_ISINSTANCE
         or builtins.bytes is not _NATIVE_BYTES_TYPE
+        or builtins.str is not _NATIVE_STR
         or builtins.len is not _NATIVE_LEN
         or _NATIVE_ANY(
             path_class.__dict__.get(name) is not original

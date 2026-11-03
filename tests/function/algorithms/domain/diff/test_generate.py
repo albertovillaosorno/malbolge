@@ -79,6 +79,7 @@ _LITERAL_MARKER = b"target-only"
 _OUTPUT_ALGORITHM = "output_algorithm"
 _HOST_PATH_HOOKS_CHANGED = "host path hooks changed"
 _EXACT_STRING_TYPE = "exact string type"
+_STRING_CALLBACK_REPLACEMENT = "callable"
 _RAW_PATH_SLOT_NAME = "_raw_paths"
 _RAW_GETATTRIBUTE_MODE = "getattribute"
 _RAW_SLOT_MODE = "slot"
@@ -643,6 +644,44 @@ def test_generator_rejects_late_realpath_builtin_callback(
     assert calls == 0, f"late builtin {helper} callback was executed"
 
 
+@pytest.mark.parametrize("replacement", ["callable", "bytes"])
+def test_generator_rejects_late_realpath_string_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """Native resolution must reject changed str before invoking host hooks."""
+    selected = tmp_path / "source"
+    selected.mkdir()
+    original_str = builtins.str
+    calls = 0
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(generate_module)["_resolve_recipe_path"],
+    )
+
+    def watched(*args: object, **kwargs: object) -> str:
+        nonlocal calls
+        calls += 1
+        return original_str(*args, **kwargs)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            builtins,
+            "str",
+            watched if replacement == _STRING_CALLBACK_REPLACEMENT else bytes,
+        )
+        try:
+            _ = resolve(selected, "source_root")
+        except (TypeError, ValueError) as error:
+            rejected = type(error) is ValueError and (
+                _HOST_PATH_HOOKS_CHANGED in error.args[0]
+            )
+    assert rejected, "late builtin str reached native realpath resolution"
+    assert calls == 0, "late builtin str callback was executed"
+
+
 def test_generator_rejects_late_realpath_bytes_alias(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -802,6 +841,38 @@ def test_generator_rechecks_host_realpath_after_domain_preflight(
         with pytest.raises(ValueError, match="could not be resolved safely"):
             write_algorithm(recipe)
     assert not emitted
+
+
+def test_generator_rejects_late_string_alias_after_domain_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer callback cannot replace native path-type dispatch."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    recipe = replace(recipe, domain_module=_domain_module(tmp_path))
+    emitted = False
+
+    def replace_string(_recipe: object) -> None:
+        del _recipe
+        patched.setattr(builtins, "str", bytes)
+
+    def unexpected_emission(_recipe: object) -> None:
+        nonlocal emitted
+        del _recipe
+        emitted = True
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "_preflight_domain", replace_string)
+        patched.setattr(
+            generate_module, "_write_exact_algorithm", unexpected_emission
+        )
+        try:
+            write_algorithm(recipe)
+        except ValueError as error:
+            rejected = _HOST_PATH_HOOKS_CHANGED in error.args[0]
+    assert rejected, "post-domain builtin string replacement was admitted"
+    assert not emitted, "post-domain mutable string hook reached emission"
 
 
 @pytest.mark.parametrize(
