@@ -3847,3 +3847,221 @@ def test_relocation_rejects_late_ancestor_division_redirect(
         with pytest.raises(RelocationError, match="resolution hooks changed"):
             _ = relocatable_module._safe_path(root, "link/file.bin")
     assert not intercepted, "late path operator hid a linked ancestor"
+
+
+def test_relocation_status_denial_is_not_missing_after_exception_alias_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late missing-file alias must not hide a native permission denial."""
+    failure = PermissionError("status denied")
+    native_missing = builtins.FileNotFoundError
+
+    def denied(_path: Path) -> os.stat_result:
+        raise failure
+
+    caught: RelocationError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "_NATIVE_PATH_LSTAT", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            _ = relocatable_module._path_status(tmp_path / "missing", "output")
+        except RelocationError as error:
+            caught = error
+        finally:
+            builtins.__dict__["FileNotFoundError"] = native_missing
+    assert type(caught) is RelocationError
+    assert caught is not None
+    assert caught.__cause__ is failure
+
+
+def test_relocation_cleanup_reports_denial_after_exception_alias_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup must not claim success when it was denied by the host."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    native_missing = builtins.FileNotFoundError
+
+    def denied(_path: Path) -> None:
+        raise PermissionError("cleanup denied")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "_NATIVE_RMTREE", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            detail = relocatable_module._cleanup_relocatable_staging(staging)
+        finally:
+            builtins.__dict__["FileNotFoundError"] = native_missing
+    assert detail == "PermissionError"
+    assert staging.is_dir()
+
+
+def test_relocation_writer_wraps_native_denial_after_oserror_alias_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late OSError alias cannot expose an untyped output write failure."""
+    failure = PermissionError("write denied")
+    native_oserror = builtins.OSError
+
+    def denied(_path: Path, _data: bytes) -> int:
+        raise failure
+
+    caught: RelocationError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "_NATIVE_WRITE_RELOCATABLE_BYTES", denied)
+        patched.setattr(builtins, "OSError", LookupError)
+        try:
+            relocatable_module._write_relocatable_bytes(
+                tmp_path / "target", b"target", "relocatable target"
+            )
+        except RelocationError as error:
+            caught = error
+        finally:
+            builtins.__dict__["OSError"] = native_oserror
+    assert type(caught) is RelocationError
+    assert caught is not None
+    assert caught.__cause__ is failure
+
+
+def test_relocation_reader_keeps_native_missing_notes_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late AttributeError aliases cannot leak a failed note inspection."""
+    failure = ExactTreeError("read denied")
+    native_attribute_error = builtins.AttributeError
+
+    def denied(_path: Path, _context: str) -> bytes:
+        raise failure
+
+    caught: RelocationError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "read_exact_regular_file", denied)
+        patched.setattr(builtins, "AttributeError", LookupError)
+        try:
+            _ = relocatable_module._read_relocatable_bytes(tmp_path, "source")
+        except RelocationError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(caught) is RelocationError
+    assert caught is not None
+    assert caught.__cause__ is failure
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires POSIX surrogate encoding")
+def test_relocation_path_rejects_unencodable_unicode_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late UnicodeError aliases cannot leak a native encoding error."""
+    native_unicode_error = builtins.UnicodeError
+    caught: RelocationError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeError", LookupError)
+        try:
+            relocatable_module._validate_path(Path("\ud800"), "relocatable source")
+        except RelocationError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeError"] = native_unicode_error
+    assert type(caught) is RelocationError
+    assert caught is not None
+    assert type(caught.__cause__) is UnicodeEncodeError
+
+
+def test_relocation_mkdir_denial_is_not_existing_directory_after_alias_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A permission denial cannot certify a previously existing directory."""
+    directory = tmp_path / "existing"
+    directory.mkdir()
+    failure = PermissionError("mkdir denied")
+    native_exists = builtins.FileExistsError
+
+    def denied(_path: str) -> None:
+        raise failure
+
+    caught: RelocationError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "_NATIVE_OS_MKDIR", denied)
+        patched.setattr(builtins, "FileExistsError", PermissionError)
+        try:
+            relocatable_module._make_relocatable_directory(
+                directory, "output directory", parents=False, exist_ok=True
+            )
+        except RelocationError as error:
+            caught = error
+        finally:
+            builtins.__dict__["FileExistsError"] = native_exists
+    assert type(caught) is RelocationError
+    assert caught is not None
+    assert caught.__cause__ is failure
+    assert directory.is_dir()
+
+
+@pytest.mark.parametrize("record", ["range", "instruction", "plan"])
+def test_relocation_rejects_missing_record_after_attribute_alias_swap(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Incomplete native receipt slots must retain their typed rejection."""
+    native_attribute = builtins.AttributeError
+    if record == "range":
+        invalid_range = object.__new__(RangeLocator)
+
+        def validate() -> None:
+            _ = RelocatableSourceRange(invalid_range)
+    elif record == "instruction":
+        invalid_instruction = object.__new__(RelocatableInstruction)
+
+        def validate() -> None:
+            relocatable_module._require_valid_relocatable_instructions(
+                (invalid_instruction,)
+            )
+    else:
+        invalid_plan = object.__new__(relocatable_module.RelocatableAuthoringPlan)
+
+        def validate() -> None:
+            relocatable_module._require_valid_native_relocatable_plan(invalid_plan)
+
+    caught: RelocationError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", LookupError)
+        try:
+            validate()
+        except RelocationError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute
+    assert type(caught) is RelocationError
+    assert caught is not None
+    assert type(caught.__cause__) is native_attribute
+
+
+def test_relocation_cleanup_runs_after_exception_alias_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late Exception alias must not skip staging cleanup on failure."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = tmp_path / "output"
+    plan = relocatable_module.RelocatableAuthoringPlan(
+        (RelocatableInstruction("target", None, copy_candidate_file=False, literal=b"target"),)
+    )
+    failure = RelocationError("publish denied")
+    native_exception = builtins.Exception
+
+    def denied(_staging: Path, _destination: Path) -> None:
+        raise failure
+
+    caught: RelocationError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "_publish_relocatable_output", denied)
+        patched.setattr(builtins, "Exception", LookupError)
+        try:
+            materialize_relocatable_plan(candidate, plan, output)
+        except RelocationError as error:
+            caught = error
+        finally:
+            builtins.__dict__["Exception"] = native_exception
+    assert caught is failure
+    assert not output.exists()
+    assert not (tmp_path / ".output.relocatable-staging").exists()

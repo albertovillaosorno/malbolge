@@ -94,6 +94,18 @@ _NATIVE_TUPLE = builtins.tuple
 _NATIVE_LIST = builtins.list
 _NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_HASATTR = builtins.hasattr
+# Host failures must retain their original exception classes after consumer
+# code changes process-global builtin names during source evaluation.
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
+_NATIVE_FILE_EXISTS_ERROR = builtins.FileExistsError
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
+_NATIVE_UNICODE_ERROR = builtins.UnicodeError
+_NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
+_NATIVE_EXCEPTION = builtins.Exception
 # Keep output containment independent of post-load pathlib hook swaps.
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
@@ -278,9 +290,9 @@ class RelocationError(RuntimeError):
 def _host_error_detail(error: BaseException) -> str:
     """Contain untrusted exception formatting within typed host failures."""
     if _NATIVE_TYPE(error) in (
-        OSError,
-        ValueError,
-        RuntimeError,
+        _NATIVE_OS_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
         ExactTreeError,
         RelocationError,
     ):
@@ -421,7 +433,7 @@ class RelocatableSourceRange:
             raise RelocationError(message)
         try:
             _LOCATOR_VALIDATOR(locator)
-        except AttributeError as error:
+        except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "relocatable source range has incomplete locator metadata"
             raise RelocationError(message) from error
 
@@ -492,7 +504,7 @@ def _require_valid_segments(segments: tuple[RelocatableSegment, ...]) -> None:
                 _SOURCE_RANGE_VALIDATOR(segment)
             else:
                 _ORACLE_LITERAL_VALIDATOR(cast("OracleLiteral", segment))
-    except (AttributeError, RelocationError, TreeModelError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, RelocationError, TreeModelError) as error:
         message = "relocatable instruction contains invalid native segment"
         raise RelocationError(message) from error
 
@@ -652,7 +664,7 @@ def _require_valid_relocatable_instructions(
     try:
         for instruction in instructions:
             _INSTRUCTION_VALIDATOR(instruction)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "relocatable plan has incomplete native instruction metadata"
         raise RelocationError(message) from error
 
@@ -940,9 +952,11 @@ def _instruction(
 def _path_status(path: Path, context: str) -> os.stat_result | None:
     try:
         status = _NATIVE_PATH_LSTAT(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _host_error_detail(error)
         message = f"{context} status failed: {path}: {detail}"
         raise RelocationError(message) from error
@@ -972,7 +986,7 @@ def _read_relocatable_bytes(path: Path, context: str) -> bytes:
                         error, "__notes__"
                     ),
                 )
-            except AttributeError:
+            except _NATIVE_ATTRIBUTE_ERROR:
                 notes = None
             if _NATIVE_TYPE(notes) is _NATIVE_LIST:
                 for note in cast("list[object]", notes):
@@ -996,13 +1010,13 @@ def _native_make_relocatable_directory(
     """Create directories through captured native OS and path operations."""
     try:
         _NATIVE_OS_MKDIR(_NATIVE_PATH_STRING(path))
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         parent = _NATIVE_PATH_PARENT(path)
         if not parents or _NATIVE_PATH_STRING(parent) == _NATIVE_PATH_STRING(path):
             raise
         _native_make_relocatable_directory(parent, parents=True, exist_ok=True)
         _native_make_relocatable_directory(path, parents=False, exist_ok=exist_ok)
-    except FileExistsError:
+    except _NATIVE_FILE_EXISTS_ERROR:
         if not exist_ok:
             raise
         status = _path_status(path, "relocatable output directory")
@@ -1016,7 +1030,9 @@ def _write_relocatable_bytes(path: Path, data: bytes, context: str) -> None:
             _NATIVE_PATH_PARENT(path), parents=True, exist_ok=True
         )
         written = _NATIVE_WRITE_RELOCATABLE_BYTES(path, data)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _host_error_detail(error)
         message = f"{context} write failed: {path}: {detail}"
         raise RelocationError(message) from error
@@ -1036,7 +1052,9 @@ def _make_relocatable_directory(
         _native_make_relocatable_directory(
             path, parents=parents, exist_ok=exist_ok
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _host_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
         raise RelocationError(message) from error
@@ -1054,7 +1072,7 @@ def _validate_path(value: object, context: str) -> None:
         raise RelocationError(message)
     try:
         _ = text.encode(_NATIVE_FS_ENCODING, _NATIVE_FS_ERRORS)
-    except UnicodeError as error:
+    except _NATIVE_UNICODE_ERROR as error:
         message = f"{context} is not a representable filesystem path"
         raise RelocationError(message) from error
 
@@ -1101,7 +1119,7 @@ def build_relocatable_plan(
         raise RelocationError(message)
     try:
         _EXACT_PLAN_VALIDATOR(exact_plan)
-    except (AttributeError, TreeModelError, TypeError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, TreeModelError, _NATIVE_TYPE_ERROR) as error:
         message = "relocatable exact plan has invalid native metadata"
         raise RelocationError(message) from error
     _require_exact_source_snapshot(source_root, exact_plan)
@@ -1119,7 +1137,7 @@ def _validate_relative_path(relative_path: object) -> str:
         raise RelocationError(message)
     try:
         _ = relative_path.encode("utf-8")
-    except UnicodeEncodeError as error:
+    except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"unsafe relocatable tree path: {relative_path!r}"
         raise RelocationError(message) from error
     # Pathlib class methods and parsers remain mutable after import. Keep
@@ -1143,7 +1161,9 @@ def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
     try:
         symlink = _NATIVE_IS_SYMLINK(status.st_mode)
         junction = _NATIVE_IS_JUNCTION(path) if not symlink else False
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _host_error_detail(error)
         message = f"ancestor inspection failed: {path}: {detail}"
         raise RelocationError(message) from error
@@ -1175,7 +1195,9 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     try:
         resolved_path = _trusted_resolve(path)
         resolved_root = _trusted_resolve(root)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _host_error_detail(error)
         message = (
             f"relocatable path resolution failed: {relative_path!r}: {detail}"
@@ -1189,7 +1211,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
         raise RelocationError(message)
     try:
         _ = _NATIVE_RELATIVE_TO(resolved_path, resolved_root)
-    except ValueError as error:
+    except _NATIVE_VALUE_ERROR as error:
         message = f"relocatable path escapes tree root: {relative_path!r}"
         raise RelocationError(message) from error
     _reject_linked_ancestors(root, normalized)
@@ -1299,9 +1321,11 @@ def _prepare_staging(output_root: Path) -> Path:
 def _cleanup_relocatable_staging(path: Path) -> str | None:
     try:
         _NATIVE_RMTREE(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         return _host_error_detail(error)
     return None
 
@@ -1317,7 +1341,9 @@ def _raise_relocatable_cleanup_failure(
 def _publish_relocatable_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _host_error_detail(error)
         message = f"relocatable output publication failed: {detail}"
         raise RelocationError(message) from error
@@ -1335,7 +1361,9 @@ def _require_external_output_root(
     try:
         candidate = _trusted_resolve(candidate_root)
         output = _trusted_resolve(output_root)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _host_error_detail(error)
         message = f"relocatable root resolution failed: {detail}"
         raise RelocationError(message) from error
@@ -1366,7 +1394,7 @@ def _require_valid_native_relocatable_plan(
     """
     try:
         _PLAN_VALIDATOR(plan)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "relocatable plan has incomplete native metadata"
         raise RelocationError(message) from error
 
@@ -1400,7 +1428,7 @@ def materialize_relocatable_plan(
             output = _safe_path(staging, _instruction_fields(instruction)[0])
             _write_relocatable_bytes(output, data, "relocatable output")
         _publish_relocatable_output(staging, output_root)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         cleanup_error = _cleanup_relocatable_staging(staging)
         if cleanup_error is not None:
             _raise_relocatable_cleanup_failure(error, cleanup_error)
