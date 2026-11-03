@@ -46,6 +46,7 @@ import hashlib
 import ntpath
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISLNK
@@ -79,6 +80,9 @@ _SHA256_DIGEST_BYTES = _SHA256_FACTORY().digest_size
 _NATIVE_ISRESERVED = ntpath.isreserved
 # Consumer modules cannot replace exact-record or byte-count admission.
 _NATIVE_TYPE = builtins.type
+_NATIVE_INT = builtins.int
+_NATIVE_BYTES = builtins.bytes
+_NATIVE_STR = builtins.str
 _NATIVE_LEN = builtins.len
 _NATIVE_BOOL = builtins.bool
 _NATIVE_TUPLE = builtins.tuple
@@ -90,6 +94,8 @@ _NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_FS_ENCODING = sys.getfilesystemencoding()
+_NATIVE_FS_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_IS_SYMLINK = S_ISLNK
 _NATIVE_ANY = builtins.any
@@ -124,7 +130,10 @@ def _host_error_detail(error: BaseException) -> str:
         RelocationError,
     ):
         arguments = cast("tuple[object, ...]", error.args)
-        if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is str:
+        if (
+            _NATIVE_LEN(arguments) == 1
+            and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR
+        ):
             return arguments[0]
     return _NATIVE_TYPE(error).__name__
 
@@ -146,26 +155,26 @@ class RangeLocator:
 
         """
         if (
-            _NATIVE_TYPE(self.source_length) is not int
+            _NATIVE_TYPE(self.source_length) is not _NATIVE_INT
             or self.source_length <= _ZERO
         ):
             message = "relocatable source length must be a positive integer"
             raise RelocationError(message)
         if (
-            _NATIVE_TYPE(self.window_bytes) is not int
+            _NATIVE_TYPE(self.window_bytes) is not _NATIVE_INT
             or self.window_bytes <= _ZERO
             or self.window_bytes > self.source_length
         ):
             message = "relocatable boundary width must be a valid integer"
             raise RelocationError(message)
         if (
-            _NATIVE_TYPE(self.start_digest) is not bytes
+            _NATIVE_TYPE(self.start_digest) is not _NATIVE_BYTES
             or _NATIVE_LEN(self.start_digest) != _SHA256_DIGEST_BYTES
         ):
             message = "relocatable start digest must be exact SHA-256 bytes"
             raise RelocationError(message)
         if self.end_digest is not None and (
-            _NATIVE_TYPE(self.end_digest) is not bytes
+            _NATIVE_TYPE(self.end_digest) is not _NATIVE_BYTES
             or _NATIVE_LEN(self.end_digest) != _SHA256_DIGEST_BYTES
         ):
             message = "relocatable end digest must be exact SHA-256 bytes"
@@ -217,7 +226,7 @@ def _validate_relocatable_payload(instruction: RelocatableInstruction) -> None:
         raise RelocationError(message)
     if (
         instruction.literal is not None
-        and _NATIVE_TYPE(instruction.literal) is not bytes
+        and _NATIVE_TYPE(instruction.literal) is not _NATIVE_BYTES
     ):
         message = "relocatable literal must use exact bytes or None"
         raise RelocationError(message)
@@ -418,7 +427,7 @@ def _write_relocatable_bytes(path: Path, data: bytes, context: str) -> None:
         detail = _host_error_detail(error)
         message = f"{context} write failed: {path}: {detail}"
         raise RelocationError(message) from error
-    if _NATIVE_TYPE(written) is not int or written != _NATIVE_LEN(data):
+    if _NATIVE_TYPE(written) is not _NATIVE_INT or written != _NATIVE_LEN(data):
         message = f"{context} short or invalid byte count: {path}"
         raise RelocationError(message)
 
@@ -443,12 +452,12 @@ def _validate_path(value: object, context: str) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{context} must use exact pathlib Path"
         raise RelocationError(message)
-    text = str(value)
+    text = _NATIVE_PATH_STRING(value)
     if _NUL in text:
         message = f"{context} is not a representable filesystem path"
         raise RelocationError(message)
     try:
-        _ = os.fsencode(text)
+        _ = text.encode(_NATIVE_FS_ENCODING, _NATIVE_FS_ERRORS)
     except UnicodeError as error:
         message = f"{context} is not a representable filesystem path"
         raise RelocationError(message) from error
@@ -505,7 +514,7 @@ def build_relocatable_plan(
 
 
 def _validate_relative_path(relative_path: object) -> str:
-    if _NATIVE_TYPE(relative_path) is not str:
+    if _NATIVE_TYPE(relative_path) is not _NATIVE_STR:
         message = "relocatable path must use the exact string type"
         raise RelocationError(message)
     try:

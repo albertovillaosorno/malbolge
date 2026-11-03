@@ -75,6 +75,7 @@ _SYMLINK_METHOD = "is_symlink"
 _POSIX = "posix"
 _ROOT_TARGET = b"target"
 _SHORT_WRITE = "short"
+_EXACT_STRING_TYPE = "exact string type"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -1766,3 +1767,190 @@ def test_relocatable_public_boundaries_reject_foreign_inputs(
             source, cast("RelocatableAuthoringPlan", object()), output
         )
     _expect(not output.exists(), "invalid public input published output")
+
+
+def test_relocation_locator_rejects_late_integer_alias_for_boolean_widths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed integer class cannot authenticate Boolean source lengths."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            _ = RangeLocator(
+                source_length=True, window_bytes=True, start_digest=b"x" * 32
+            )
+        except RelocationError:
+            rejected = True
+    assert rejected, "Boolean locator dimensions passed late int alias"
+
+
+def test_relocation_locator_rejects_late_bytes_alias_for_mutable_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed bytes class cannot certify mutable range fingerprints."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = RangeLocator(
+                1, 1, cast("bytes", cast("object", bytearray(b"x" * 32)))
+            )
+        except RelocationError:
+            rejected = True
+    assert rejected, "mutable locator digest passed late bytes alias"
+
+
+def test_relocation_instruction_rejects_late_bytes_alias_for_mutable_literal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed bytes class cannot certify target-only mutable literals."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = RelocatableInstruction(
+                output_path="out.bin",
+                source_path=None,
+                copy_candidate_file=False,
+                literal=cast("bytes", cast("object", bytearray(b"oracle"))),
+            )
+        except RelocationError:
+            rejected = True
+    assert rejected, "mutable authoring literal passed late bytes alias"
+
+
+def test_relocation_locator_and_literal_accept_valid_native_after_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid pinned metadata remains accepted under late builtin changes."""
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        locator = RangeLocator(1, 1, b"x" * 32)
+    assert locator.source_length == 1
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        instruction = RelocatableInstruction(
+            output_path="out.bin",
+            source_path=None,
+            copy_candidate_file=False,
+            literal=_TARGET,
+        )
+    assert instruction.literal == _TARGET
+
+
+def test_relocation_writer_rejects_late_integer_alias_for_boolean_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Boolean write receipt cannot certify even a one-byte target file."""
+    write_bytes = cast(
+        "Callable[[Path, bytes, str], None]",
+        relocatable_module.__dict__["_write_relocatable_bytes"],
+    )
+    output = tmp_path / "absent.txt"
+
+    def fake_write(_: Path, _data: bytes) -> bool:
+        del _data
+        return True
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        patch.setattr(Path, "write_bytes", fake_write)
+        try:
+            write_bytes(output, b"x", "relocatable target")
+        except RelocationError:
+            rejected = True
+    assert rejected, "Boolean write receipt certified absent target bytes"
+    assert not output.exists()
+
+
+def test_relocation_writer_accepts_native_receipt_after_integer_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native one-byte writer remains valid despite a late int alias."""
+    write_bytes = cast(
+        "Callable[[Path, bytes, str], None]",
+        relocatable_module.__dict__["_write_relocatable_bytes"],
+    )
+    output = tmp_path / "native.txt"
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        write_bytes(output, _ROOT_TARGET[:1], "relocatable target")
+    assert output.read_bytes() == _ROOT_TARGET[:1]
+
+
+def test_relocation_path_rejects_late_string_alias_with_typed_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign bytes cannot be accepted as exact relative source path text."""
+    require_path = cast(
+        "Callable[[object], str]",
+        relocatable_module.__dict__["_validate_relative_path"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", bytes)
+        try:
+            _ = require_path(b"foreign")
+        except RelocationError as error:
+            rejected = _EXACT_STRING_TYPE in error.args[0]
+    assert rejected, "late string alias bypassed typed relative path rejection"
+
+
+def test_relocation_host_error_detail_survives_late_string_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native host diagnostics cannot be erased by late string aliases."""
+    host_error_detail = cast(
+        "Callable[[BaseException], str]",
+        relocatable_module.__dict__["_host_error_detail"],
+    )
+    error = ExactTreeError("native source read failed")
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", bytes)
+        detail = host_error_detail(error)
+    assert detail == error.args[0]
+
+
+def test_relocation_path_preflight_rejects_late_string_spoofed_nul(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer text hook must not hide NUL in a native authoring path."""
+    validate_path = cast(
+        "Callable[[object, str], None]",
+        relocatable_module.__dict__["_validate_path"],
+    )
+    unsafe = Path("unsafe\x00name")
+
+    def forge_safe_text(_: object) -> str:
+        return "safe"
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", forge_safe_text)
+        try:
+            validate_path(unsafe, "authoring root")
+        except RelocationError:
+            rejected = True
+    assert rejected, "late string conversion concealed unsafe source root"
+
+
+def test_relocation_path_preflight_preserves_native_text_under_string_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged conversion cannot turn a safe native path into a NUL path."""
+    validate_path = cast(
+        "Callable[[object, str], None]",
+        relocatable_module.__dict__["_validate_path"],
+    )
+
+    def forge_unsafe_text(_: object) -> str:
+        return "unsafe\x00name"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", forge_unsafe_text)
+        validate_path(tmp_path, "authoring root")
