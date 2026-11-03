@@ -39,6 +39,7 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import os
+import stat
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePath
@@ -74,6 +75,11 @@ _NATIVE_TUPLE = tuple
 _NATIVE_GETATTR = builtins.getattr
 _NATIVE_TYPE = builtins.type
 _NATIVE_BOOL_TYPE = builtins.bool
+_NATIVE_BYTES_TYPE = builtins.bytes
+_NATIVE_ISINSTANCE = builtins.isinstance
+_NATIVE_LEN = builtins.len
+_NATIVE_STAT_ISLNK = stat.S_ISLNK
+_NATIVE_STAT_ISDIR = stat.S_ISDIR
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_PATH_STRING = Path.__str__
@@ -154,6 +160,11 @@ def _require_native_path_hooks() -> None:
         or os.path.splitdrive is not _NATIVE_OS_PATH_SPLITDRIVE
         or os.path.sep is not _NATIVE_OS_PATH_SEP
         or os.path.altsep is not _NATIVE_OS_PATH_ALTSEP
+        or builtins.bytes is not _NATIVE_BYTES_TYPE
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.len is not _NATIVE_LEN
+        or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
     ):
         message = "diff domain module path helpers changed"
         raise DomainContractError(message)
@@ -175,6 +186,9 @@ def _native_path_lstat(path: Path) -> os.stat_result:
 
 
 def _native_path_resolve(path: Path, *, strict: bool = False) -> Path:
+    # The captured realpath still calls mutable builtins and stat predicates.
+    # Check again at resolution, not only at public module-entry preflight.
+    _require_native_path_hooks()
     # realpath dynamically consults these process-global helpers even when
     # the outer function is pinned. A changed CWD, lstat, or readlink can
     # redirect an import, including to a hardlink with identical inode data.

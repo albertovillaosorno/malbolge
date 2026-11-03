@@ -248,6 +248,60 @@ def test_domain_loader_rejects_late_host_path_separator_override(
             _ = load_diff_domain(selected)
 
 
+@pytest.mark.parametrize(
+    ("provider", "helper"),
+    [
+        ("stat", "S_ISLNK"),
+        ("stat", "S_ISDIR"),
+        ("builtins", "isinstance"),
+        ("builtins", "len"),
+    ],
+)
+def test_domain_loader_rejects_late_realpath_helper_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    helper: str,
+) -> None:
+    """The pinned realpath must not invoke mutable host helper callbacks."""
+    selected = tmp_path / "domain.py"
+    _write(selected, _COMPLETE)
+    module = stat if provider == "stat" else builtins
+    original = cast("Callable[..., object]", getattr(module, helper))
+    calls = 0
+
+    def watched(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(module, helper, watched)
+        try:
+            _ = load_diff_domain(selected)
+        except DomainContractError:
+            rejected = True
+    assert rejected, f"late {provider}.{helper} hook was admitted"
+    assert calls == 0, f"late {provider}.{helper} callback was executed"
+
+
+def test_domain_loader_rejects_late_realpath_bytes_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged builtin bytes type must not change realpath dispatch."""
+    selected = tmp_path / "domain.py"
+    _write(selected, _COMPLETE)
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", str)
+        try:
+            _ = load_diff_domain(selected)
+        except DomainContractError:
+            rejected = True
+    assert rejected, "late bytes alias reached native path resolution"
+
+
 def test_domain_loader_rejects_path_factory_swap_after_module_execution(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
