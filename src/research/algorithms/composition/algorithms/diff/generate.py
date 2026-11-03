@@ -68,6 +68,7 @@ _NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TUPLE = builtins.tuple
+_NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_TYPE = builtins.type
 _NATIVE_INT = builtins.int
 _NATIVE_FLOAT = builtins.float
@@ -276,7 +277,7 @@ def _validate_passthrough_topology(roots: tuple[str, ...]) -> None:
     if roots != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(roots))):
         message = "passthrough_roots must be canonical, sorted and disjoint"
         raise ValueError(message)
-    for index, root in enumerate(roots):
+    for index, root in _NATIVE_ENUMERATE(roots):
         if _NATIVE_ANY(
             other.startswith(root + "/") for other in roots[index + 1 :]
         ):

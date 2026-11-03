@@ -1045,6 +1045,27 @@ def test_generator_recipe_ignores_late_sort_and_set_hooks(
     assert rejected, "late sorted/set hook admitted invalid passthrough roots"
 
 
+@pytest.mark.parametrize(
+    "roots",
+    [
+        ("assets", "assets/nested"),
+        ("assets", "assets/nested/child", "other"),
+    ],
+)
+def test_generator_recipe_ignores_late_enumerate_topology_skip(
+    monkeypatch: pytest.MonkeyPatch, roots: tuple[str, ...]
+) -> None:
+    """Consumer hooks cannot skip checking an overlapping passthrough root."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "enumerate", lambda _: iter(()))
+        try:
+            generate_module._validate_passthrough_roots(roots)
+        except ValueError:
+            rejected = True
+    assert rejected, "late enumerate hook skipped overlapping root admission"
+
+
 class _ForeignProfile(str):
     """An inexact profile label that still supports text operations."""
 
