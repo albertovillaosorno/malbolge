@@ -1471,3 +1471,38 @@ def test_source_pin_selected_root_ignores_late_joinpath(
         observed = source_snapshot_evidence(tmp_path, (selected,))
     assert observed == baseline
     assert calls == 0, "consumer selected-root resolver was consulted"
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    ["C:relative", "CON", "src/COM1", "src/trailing.", "src/stream:fork"],
+)
+def test_source_pin_rejects_late_ntpath_dependency_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe: str,
+) -> None:
+    """Native pin labels cannot be relabeled by ntpath splitroot hooks."""
+
+    def hide_windows_path(value: object) -> tuple[str, str, str]:
+        del value
+        return "", "", "safe"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ntpath, "splitroot", hide_windows_path)
+        with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+            _ = SourcePin("repo", _COMMIT, (unsafe,), 1, "0" * 64)
+
+
+@pytest.mark.parametrize("hook", ["fspath", "any"])
+def test_source_pin_device_rejects_late_host_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """Immutable device-name checks cannot use process-global callbacks."""
+    with monkeypatch.context() as patch:
+        if hook == "fspath":
+            patch.setattr(os, "fspath", lambda value: "safe")
+        else:
+            patch.setattr(builtins, "any", lambda values: False)
+        with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+            _ = SourcePin("repo", _COMMIT, ("CON",), 1, "0" * 64)

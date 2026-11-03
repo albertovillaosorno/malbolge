@@ -38,14 +38,13 @@ import builtins
 import os
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
-from ntpath import isreserved as _native_isreserved
-from ntpath import splitdrive as _native_splitdrive
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from sys import getfilesystemencoding as _get_filesystem_encoding
 from typing import Final, cast
 
 from algorithms.diff.exact import ExactTreeError, read_exact_regular_file
+from algorithms.diff.model import reserved_windows_component
 
 _ZERO = 0
 _ONE = 1
@@ -61,7 +60,6 @@ _LOWER_HEX = frozenset("0123456789abcdef")
 # Snapshot acceptance must not depend on later consumer-global hooks.
 _NATIVE_ALL = builtins.all
 _NATIVE_ANY = builtins.any
-_NATIVE_BOOL = builtins.bool
 _NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
@@ -236,8 +234,10 @@ def _validate_relative_path(relative_path: object) -> str:
         or _BACKSLASH in relative_path
         or _NUL in relative_path
         or relative_path.startswith("/")
-        or _NATIVE_BOOL(_native_splitdrive(relative_path)[0])
-        or _native_isreserved(relative_path)
+        or _NATIVE_ANY(
+            reserved_windows_component(component)
+            for component in relative_path.split("/")
+        )
         or _NATIVE_ANY(part in {"", _DOT, _PARENT} for part in relative_path.split("/"))
     )
     if unsafe:
