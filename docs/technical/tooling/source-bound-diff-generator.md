@@ -1052,6 +1052,16 @@ Ruff diagnostics. The check does not guard direct stored-instance mutation or
 concurrent source writers; repository-wide Jig remains degraded with no clean
 verdict after a bounded 105-second check timed out (exit 124).
 
+File-admission receipts now also reject rounded coverage endpoints that
+conceal mismatched integer anchor counts (`c55ecea8f`). Previously,
+`2**54 / (2**54 + 1)` could be accepted as full coverage and
+`1 / 10**400` as zero coverage, despite both being incomplete.
+Two red-first rejection cases and three valid endpoint cases pass;
+448 adjacent admission/fingerprint/source-binding tests passed after
+commit. Scoped Ruff, strict BasedPyright, and diff checks were clean.
+This check validates admitted records, not direct instance-storage edits
+or external source-tree races. Full repository Jig validation remains open.
+
 ### First Language-Aware Consumer Identity
 
 `src/research/algorithms/domain/algorithms/doom/generator/doom.py` provides the

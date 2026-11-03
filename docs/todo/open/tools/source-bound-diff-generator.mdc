@@ -851,6 +851,14 @@ format.
   missing, and forged slots; 162 focused and 3,004 integrated tests passed,
   strict source BasedPyright had zero errors, and Ruff did not regress.
   A bounded 105-second Jig check timed out (124), so no global verdict exists.
+- Direct file-admission records now reject rounded `1.0` and `0.0`
+  anchor coverage unless the underlying counts are respectively equal
+  or genuinely zero (`c55ecea8f`). Two red-first forged endpoint cases
+  and three valid endpoint cases pass; all 448 adjacent
+  admission/fingerprint/source-binding tests passed postcommit. Scoped
+  Ruff, strict BasedPyright, and diff checks passed. Direct stored-record
+  edits, external source-tree writers, and global Jig remain outside
+  this bounded validation.
 - Source pin snapshot/verification, relocatable tree authoring/materialization
   and domain module loading now admit only exact native `Path` types before
   filesystem or import methods execute; six red-first tests cover each public
