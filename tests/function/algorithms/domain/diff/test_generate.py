@@ -1974,3 +1974,26 @@ def test_generator_output_containment_ignores_late_ancestry_hooks(
             patched.setattr(Path, "parents", property(lambda _: ()))
         with pytest.raises(ValueError, match=f"output_algorithm.*{input_name}"):
             generate_module._validate_recipe_paths(recipe)
+
+
+@pytest.mark.parametrize("hook", ["__truediv__", "joinpath", "with_segments"])
+def test_generator_source_replay_ignores_late_path_join_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """A domain hook cannot redirect exact identity reads through path joins."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    source = generate_module.snapshot_tree_excluding(recipe.source_root, ())
+    observed_calls = 0
+
+    def forged_join(_path: Path, *_segments: object) -> Path:
+        nonlocal observed_calls
+        observed_calls += 1
+        raise AssertionError("late path join redirected source identity")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, hook, forged_join)
+        identity = generate_module._raw_exact_identity(recipe, source)
+    assert len(identity.files) == 2
+    assert observed_calls == 0, "late Path join hook was consulted"

@@ -88,6 +88,7 @@ _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 # Domain callbacks cannot redefine the host path containment verdict.
 _NATIVE_PATH_EQ = Path.__eq__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
+_NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
 _NATIVE_PATH_RESOLVE = Path.resolve
 _MAX_SHARES = 255
 _NUL = "\x00"
@@ -520,7 +521,8 @@ def _raw_exact_identity(
     for record in _snapshot_files(source):
         relative = _file_fields(record)[0]
         files[relative] = _read_exact_identity_file(
-            recipe.source_root / relative, record
+            _NATIVE_PATH_WITH_SEGMENTS(recipe.source_root, recipe.source_root, relative),
+            record,
         )
     return identity_tree(files)
 
