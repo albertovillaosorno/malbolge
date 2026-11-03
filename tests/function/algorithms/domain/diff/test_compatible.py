@@ -78,7 +78,12 @@ from algorithms.diff.compatible import (
 # jig-ignore-next-line: canonical Ruff import grouping requires one statement
 from algorithms.diff.exact import ExactTreeError, build_exact_plan, snapshot_tree
 from algorithms.diff.mapped import MappedUnit, MappedView
-from algorithms.diff.model import ExactInstruction, ExactInstructionKind
+from algorithms.diff.model import (
+    ExactInstruction,
+    ExactInstructionKind,
+    OracleLiteral,
+    SourceSlice,
+)
 from algorithms.diff.semantic import SemanticAuthoringPlan
 
 if TYPE_CHECKING:
@@ -3388,3 +3393,81 @@ def test_compatible_binding_uses_original_record_slots(
     )
     assert semantic.correction_ids == ("fix",)
     assert calls == 0, "late getter redirected compatible correction binding"
+
+
+@pytest.mark.parametrize(
+    ("field", "spoofed"),
+    [
+        ("kind", ExactInstructionKind.LITERAL_ORACLE),
+        ("literal", b"forged-literal"),
+        ("expected_sha256", "f" * 64),
+    ],
+)
+def test_compatible_opaque_gate_ignores_late_exact_getters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    spoofed: object,
+) -> None:
+    """Late exact instruction getters must not rewrite admitted target bytes."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "output"
+    getter = ExactInstruction.__getattribute__
+    calls = 0
+
+    def forged_getter(record: ExactInstruction, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return spoofed
+        return getter(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ExactInstruction, "__getattribute__", forged_getter)
+        admitted = materialize_compatible_plan(_request(candidate, plan, output))
+    assert admitted.admitted
+    assert (output / "blob.bin").read_bytes() == _BLOB
+    assert calls == 0, "exact gate read replaceable getter during replay"
+
+
+@pytest.mark.parametrize(
+    ("segment_kind", "field", "forged"),
+    [
+        ("source", "offset", 1),
+        ("source", "length", 1),
+        ("literal", "data", b"forged"),
+    ],
+)
+def test_compatible_exact_patch_ignores_late_segment_getters(
+    monkeypatch: pytest.MonkeyPatch,
+    segment_kind: str,
+    field: str,
+    forged: object,
+) -> None:
+    """Original source spans and literal bytes determine exact patch replay."""
+    expected = b"al!"
+    segments = (SourceSlice(0, 2), OracleLiteral(b"!"))
+    exact = ExactInstruction(
+        output_path="patch.bin",
+        kind=ExactInstructionKind.PATCH_SOURCE,
+        expected_sha256=hashlib.sha256(expected).hexdigest(),
+        source_path="patch.bin",
+        segments=segments,
+    )
+    cls = SourceSlice if segment_kind == "source" else OracleLiteral
+    original_getter = cls.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return original_getter(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(cls, "__getattribute__", forged_getter)
+        materialized = compatible_module._exact_bytes(b"alpha", exact)
+    assert materialized == expected
+    assert calls == 0, "late segment getter redirected exact patch bytes"

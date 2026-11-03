@@ -62,8 +62,15 @@ from algorithms.diff.model import (
     ExactInstruction,
     ExactInstructionKind,
     OracleLiteral,
+    SourceSlice,
     TreeSnapshot,
+    _file_fields,
+    _oracle_literal_data,
+    _source_slice_fields,
     reserved_windows_component,
+)
+from algorithms.diff.model import (
+    _instruction_fields as _exact_instruction_fields,
 )
 from algorithms.diff.publication import publish_directory_no_replace
 from algorithms.diff.semantic import (
@@ -742,21 +749,19 @@ def _validate_exact_plan_binding(
         return
     if (
         source_record is None
-        or instruction.source_sha256 != source_record.sha256
+        or instruction.source_sha256 != _file_fields(source_record)[1]
     ):
         message = "compatible exact gate does not match plan source hash"
         raise CompatiblePlanError(message)
     exact = instruction.exact
-    if (
-        exact is None
-        or exact.output_path != instruction.output_path
-        or exact.expected_sha256 != target_record.sha256
-    ):
+    if exact is None:
         message = "compatible exact gate does not match plan target evidence"
         raise CompatiblePlanError(message)
-    if exact.source_path is not None and (
-        exact.source_path != instruction.source_path
-    ):
+    output, _, expected, source, _, _ = _exact_instruction_fields(exact)
+    if output != instruction.output_path or expected != _file_fields(target_record)[1]:
+        message = "compatible exact gate does not match plan target evidence"
+        raise CompatiblePlanError(message)
+    if source is not None and source != instruction.source_path:
         message = "compatible exact gate source path differs from plan source"
         raise CompatiblePlanError(message)
 
@@ -1297,31 +1302,40 @@ def _sha256(data: bytes) -> str:
 
 
 def _exact_literal(instruction: ExactInstruction) -> bytes:
-    if instruction.literal is None:
+    literal = _exact_instruction_fields(instruction)[4]
+    if literal is None:
         message = "exact-gated literal lost target bytes"
         raise CompatiblePlanError(message)
-    return instruction.literal
+    return literal
 
 
 def _exact_patch(candidate: bytes, instruction: ExactInstruction) -> bytes:
     parts: list[bytes] = []
-    for segment in instruction.segments:
-        if _NATIVE_ISINSTANCE(segment, OracleLiteral):
-            parts.append(segment.data)
+    for segment in _exact_instruction_fields(instruction)[5]:
+        if _NATIVE_TYPE(segment) is OracleLiteral:
+            parts.append(_oracle_literal_data(cast("OracleLiteral", segment)))
             continue
-        end = segment.offset + segment.length
+        if _NATIVE_TYPE(segment) is not SourceSlice:
+            message = "exact-gated patch contains foreign segment"
+            raise CompatiblePlanError(message)
+        offset, length = _source_slice_fields(cast("SourceSlice", segment))
+        end = offset + length
         if end > _NATIVE_LEN(candidate):
             message = "exact-gated source slice exceeds candidate file"
             raise CompatiblePlanError(message)
-        parts.append(candidate[segment.offset : end])
+        parts.append(candidate[offset:end])
     return b"".join(parts)
 
 
 def _exact_bytes(candidate: bytes, instruction: ExactInstruction) -> bytes:
-    if instruction.kind is ExactInstructionKind.COPY_SOURCE:
+    kind = _exact_instruction_fields(instruction)[1]
+    if kind is ExactInstructionKind.COPY_SOURCE:
         return candidate
-    if instruction.kind is ExactInstructionKind.LITERAL_ORACLE:
+    if kind is ExactInstructionKind.LITERAL_ORACLE:
         return _exact_literal(instruction)
+    if kind is not ExactInstructionKind.PATCH_SOURCE:
+        message = "exact-gated instruction has unsupported kind"
+        raise CompatiblePlanError(message)
     return _exact_patch(candidate, instruction)
 
 
@@ -1402,7 +1416,7 @@ def _materialize_exact(
         message = "opaque compatible source changed beyond exact-gated support"
         raise CompatiblePlanError(message)
     transformed = _exact_bytes(candidate, instruction.exact)
-    if _sha256(transformed) != instruction.exact.expected_sha256:
+    if _sha256(transformed) != _exact_instruction_fields(instruction.exact)[2]:
         message = "compatible exact-gated output differs from target snapshot"
         raise CompatiblePlanError(message)
     return transformed
