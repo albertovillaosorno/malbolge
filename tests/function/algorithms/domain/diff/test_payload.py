@@ -34,8 +34,9 @@
 
 import builtins
 import hmac
+from collections.abc import Iterable, Sized
 from dataclasses import replace
-from typing import cast
+from typing import cast, override
 
 import pytest
 from algorithms.diff.payload import (
@@ -162,13 +163,207 @@ def test_authentication_preserves_valid_tag_after_global_comparator_replacement(
     _expect(calls == 0, "mutable process-global comparison was consulted")
 
 
+def test_encrypt_does_not_consult_late_zip_for_stream_xor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer hook cannot emit authenticated plaintext as ciphertext."""
+    native_zip = zip
+    calls = 0
+
+    def forge_stream_pairs(
+        left: Iterable[int], right: Iterable[int], *, strict: bool = False
+    ) -> Iterable[tuple[int, int]]:
+        nonlocal calls
+        calls += 1
+        if type(left) is bytes:
+            return ((value, 0) for value in left)
+        return native_zip(left, right, strict=strict)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "zip", forge_stream_pairs)
+        payload = chacha20_poly1305_encrypt(
+            _RFC_KEY, _RFC_NONCE, _RFC_PLAINTEXT, aad=_RFC_AAD
+        )
+
+    _expect(payload.ciphertext == _RFC_CIPHERTEXT, "stream XOR was replaced")
+    _expect(payload.tag == _RFC_TAG, "forged stream altered authentication")
+    _expect(calls == 0, "mutable process-global zip was consulted")
+
+
+def test_encrypt_ignores_late_chacha_state_list_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced list must not silently suppress ChaCha20 rounds."""
+    native_list = list
+    calls = 0
+
+    class SilentState(native_list[int]):
+        @override
+        def __setitem__(self, key: object, value: object) -> None:
+            del key, value
+
+    def replace_state(values: Iterable[int]) -> SilentState:
+        nonlocal calls
+        calls += 1
+        return SilentState(values)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "list", replace_state)
+        payload = chacha20_poly1305_encrypt(
+            _RFC_KEY, _RFC_NONCE, _RFC_PLAINTEXT, aad=_RFC_AAD
+        )
+
+    _expect(payload.ciphertext == _RFC_CIPHERTEXT, "ChaCha state was replaced")
+    _expect(calls == 0, "mutable process-global list was consulted")
+
+
+def test_encrypt_ignores_late_chacha_word_tuple_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Word decoding cannot be reordered by a late tuple replacement."""
+    native_tuple = tuple
+    calls = 0
+
+    def reorder_words(values: Iterable[int]) -> tuple[int, ...]:
+        nonlocal calls
+        calls += 1
+        return native_tuple(reversed(native_tuple(values)))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", reorder_words)
+        payload = chacha20_poly1305_encrypt(
+            _RFC_KEY, _RFC_NONCE, _RFC_PLAINTEXT, aad=_RFC_AAD
+        )
+
+    _expect(payload.ciphertext == _RFC_CIPHERTEXT, "ChaCha words were reordered")
+    _expect(calls == 0, "mutable process-global tuple was consulted")
+
+
+def test_decrypt_rejects_forgery_after_late_mac_range_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced range cannot skip the authenticated Poly1305 message."""
+    native_range = range
+    calls = 0
+
+    def omit_mac_blocks(*args: int) -> range:
+        nonlocal calls
+        calls += 1
+        if len(args) == 3 and args[2] == 16:
+            return native_range(0)
+        return native_range(*args)
+
+    key = bytes(range(32))
+    nonce = bytes(range(12))
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "range", omit_mac_blocks)
+        payload = chacha20_poly1305_encrypt(key, nonce, b"protected payload")
+        forged = replace(payload, ciphertext=b"corrupted payload")
+        try:
+            _ = chacha20_poly1305_decrypt(key, nonce, forged)
+        except PayloadCryptoError:
+            rejected = True
+
+    _expect(rejected, "range substitution admitted a forged ciphertext")
+    _expect(calls == 0, "mutable process-global range was consulted")
+
+
+def test_payload_metadata_rejects_foreign_bytes_after_namespace_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late builtins.bytes alias cannot admit mutable ciphertext or tags."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = AuthenticatedPayload(
+                ciphertext=cast("bytes", cast("object", bytearray(b"x"))),
+                tag=cast("bytes", cast("object", bytearray(16))),
+            )
+        except PayloadCryptoError:
+            rejected = True
+
+    _expect(rejected, "mutable bytes aliases admitted a foreign payload")
+
+
+def test_decrypt_preserves_rfc_vector_after_bytes_namespace_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Authenticated native bytes remain valid after a global type alias."""
+    payload = AuthenticatedPayload(_RFC_CIPHERTEXT, _RFC_TAG)
+    result: bytes | None = None
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        try:
+            result = chacha20_poly1305_decrypt(
+                _RFC_KEY, _RFC_NONCE, payload, aad=_RFC_AAD
+            )
+        except PayloadCryptoError:
+            result = None
+
+    _expect(result == _RFC_PLAINTEXT, "native bytes were rejected by alias")
+
+
+def test_payload_rejects_short_tag_after_late_len_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged length must not admit invalid authentication tags."""
+    native_len = len
+    calls = 0
+
+    def approve_short_tag(value: Sized) -> int:
+        nonlocal calls
+        calls += 1
+        if type(value) is bytes and value == b"short":
+            return 16
+        return native_len(value)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "len", approve_short_tag)
+        try:
+            _ = AuthenticatedPayload(ciphertext=b"data", tag=b"short")
+        except PayloadCryptoError:
+            rejected = True
+
+    _expect(rejected, "forged length admitted short authentication tag")
+    _expect(calls == 0, "mutable process-global len was consulted")
+
+
+def test_encrypt_ignores_late_mutable_output_buffer_factory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced bytearray must not corrupt authenticated ciphertext."""
+    native_bytearray = bytearray
+    calls = 0
+
+    class SilentBuffer(native_bytearray):
+        @override
+        def __setitem__(self, key: object, value: object) -> None:
+            del key, value
+
+    def replace_output_buffer(size: int) -> SilentBuffer:
+        nonlocal calls
+        calls += 1
+        return SilentBuffer(size)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytearray", replace_output_buffer)
+        payload = chacha20_poly1305_encrypt(
+            _RFC_KEY, _RFC_NONCE, _RFC_PLAINTEXT, aad=_RFC_AAD
+        )
+
+    _expect(payload.ciphertext == _RFC_CIPHERTEXT, "ciphertext buffer corrupted")
+    _expect(payload.tag == _RFC_TAG, "ciphertext tag was changed")
+    _expect(calls == 0, "mutable process-global bytearray was consulted")
+
+
 class _ForgedInt:
     """Simulate a domain callback replacing the ambient integer namespace."""
 
     @staticmethod
-    def from_bytes(
-        data: bytes, byteorder: str = "big", *, signed: bool = False
-    ) -> int:
+    def from_bytes(data: bytes, byteorder: str = "big", *, signed: bool = False) -> int:
         """Return a zero even for nonzero inputs.
 
         Returns:

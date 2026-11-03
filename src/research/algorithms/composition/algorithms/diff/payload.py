@@ -49,7 +49,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from hmac import compare_digest as _native_compare_digest
 
-# Keep Poly1305 decoding independent of mutable global builtins.
+# Keep AEAD input identity and byte operations independent of late
+# consumer hooks that change process-global Python builtins.
+_NATIVE_BYTES = bytes
+_NATIVE_LIST = list
+_NATIVE_TUPLE = tuple
+_NATIVE_BYTEARRAY = bytearray
+_NATIVE_ZIP = zip
+_NATIVE_RANGE = range
+_NATIVE_LEN = len
 _NATIVE_FROM_BYTES = int.from_bytes
 
 _KEY_BYTES = 32
@@ -70,7 +78,7 @@ class PayloadCryptoError(ValueError):
 
 
 def _require_bytes(value: object, context: str) -> bytes:
-    if type(value) is not bytes:
+    if type(value) is not _NATIVE_BYTES:
         message = f"{context} must use exact bytes"
         raise PayloadCryptoError(message)
     return value
@@ -92,7 +100,7 @@ class AuthenticatedPayload:
         """
         _ = _require_bytes(self.ciphertext, "ChaCha20-Poly1305 ciphertext")
         tag = _require_bytes(self.tag, "ChaCha20-Poly1305 tag")
-        if len(tag) != _TAG_BYTES:
+        if _NATIVE_LEN(tag) != _TAG_BYTES:
             message = "ChaCha20-Poly1305 tag must be 16 bytes"
             raise PayloadCryptoError(message)
 
@@ -100,10 +108,10 @@ class AuthenticatedPayload:
 def _require_key_nonce(key: object, nonce: object) -> None:
     key_bytes = _require_bytes(key, "ChaCha20-Poly1305 key")
     nonce_bytes = _require_bytes(nonce, "ChaCha20-Poly1305 nonce")
-    if len(key_bytes) != _KEY_BYTES:
+    if _NATIVE_LEN(key_bytes) != _KEY_BYTES:
         message = "ChaCha20-Poly1305 key must be 32 bytes"
         raise PayloadCryptoError(message)
-    if len(nonce_bytes) != _NONCE_BYTES:
+    if _NATIVE_LEN(nonce_bytes) != _NONCE_BYTES:
         message = "ChaCha20-Poly1305 nonce must be 12 bytes"
         raise PayloadCryptoError(message)
 
@@ -130,9 +138,9 @@ def _quarter_round(state: list[int], indexes: tuple[int, int, int, int]) -> None
 
 
 def _words(data: bytes) -> tuple[int, ...]:
-    return tuple(
+    return _NATIVE_TUPLE(
         _NATIVE_FROM_BYTES(data[offset : offset + 4], byteorder="little")
-        for offset in range(_ZERO, len(data), 4)
+        for offset in _NATIVE_RANGE(_ZERO, _NATIVE_LEN(data), 4)
     )
 
 
@@ -151,8 +159,8 @@ def _chacha20_block(key: bytes, nonce: bytes, counter: int) -> bytes:
         message = "ChaCha20 block counter exceeds 32-bit domain"
         raise PayloadCryptoError(message)
     initial = _initial_state(key, nonce, counter)
-    state = list(initial)
-    for _ in range(10):
+    state = _NATIVE_LIST(initial)
+    for _ in _NATIVE_RANGE(10):
         _quarter_round(state, (0, 4, 8, 12))
         _quarter_round(state, (1, 5, 9, 13))
         _quarter_round(state, (2, 6, 10, 14))
@@ -163,7 +171,7 @@ def _chacha20_block(key: bytes, nonce: bytes, counter: int) -> bytes:
         _quarter_round(state, (3, 4, 9, 14))
     return b"".join(
         ((word + original) & _WORD_MASK).to_bytes(4, byteorder="little")
-        for word, original in zip(state, initial, strict=True)
+        for word, original in _NATIVE_ZIP(state, initial, strict=True)
     )
 
 
@@ -178,30 +186,32 @@ def _chacha20_xor(
     *,
     initial_counter: int,
 ) -> bytes:
-    blocks = _block_count(len(data))
+    blocks = _block_count(_NATIVE_LEN(data))
     if blocks and initial_counter + blocks - _ONE > _COUNTER_MAX:
         message = "ChaCha20 payload exceeds the RFC 8439 counter space"
         raise PayloadCryptoError(message)
-    output = bytearray(len(data))
-    for block_index in range(blocks):
+    output = _NATIVE_BYTEARRAY(_NATIVE_LEN(data))
+    for block_index in _NATIVE_RANGE(blocks):
         offset = block_index * _BLOCK_BYTES
         block = data[offset : offset + _BLOCK_BYTES]
         stream = _chacha20_block(key, nonce, initial_counter + block_index)
-        output[offset : offset + len(block)] = bytes(
+        output[offset : offset + _NATIVE_LEN(block)] = _NATIVE_BYTES(
             left ^ right
-            for left, right in zip(block, stream[: len(block)], strict=True)
+            for left, right in _NATIVE_ZIP(
+                block, stream[: _NATIVE_LEN(block)], strict=True
+            )
         )
-    return bytes(output)
+    return _NATIVE_BYTES(output)
 
 
 def _poly1305_mac(message: bytes, one_time_key: bytes) -> bytes:
-    if len(one_time_key) != _KEY_BYTES:
+    if _NATIVE_LEN(one_time_key) != _KEY_BYTES:
         error_message = "Poly1305 one-time key must be 32 bytes"
         raise PayloadCryptoError(error_message)
     r = _NATIVE_FROM_BYTES(one_time_key[:16], byteorder="little") & _POLY_R_MASK
     s = _NATIVE_FROM_BYTES(one_time_key[16:], byteorder="little")
     accumulator = _ZERO
-    for offset in range(_ZERO, len(message), 16):
+    for offset in _NATIVE_RANGE(_ZERO, _NATIVE_LEN(message), 16):
         block = message[offset : offset + 16]
         value = _NATIVE_FROM_BYTES(block + b"\x01", byteorder="little")
         accumulator = ((accumulator + value) * r) % _POLY_MODULUS
@@ -210,13 +220,13 @@ def _poly1305_mac(message: bytes, one_time_key: bytes) -> bytes:
 
 
 def _pad16(data: bytes) -> bytes:
-    remainder = len(data) % 16
-    return b"" if remainder == _ZERO else bytes(16 - remainder)
+    remainder = _NATIVE_LEN(data) % 16
+    return b"" if remainder == _ZERO else _NATIVE_BYTES(16 - remainder)
 
 
 def _mac_data(aad: bytes, ciphertext: bytes) -> bytes:
     maximum = (1 << 64) - _ONE
-    if len(aad) > maximum or len(ciphertext) > maximum:
+    if _NATIVE_LEN(aad) > maximum or _NATIVE_LEN(ciphertext) > maximum:
         message = "ChaCha20-Poly1305 length exceeds 64-bit AEAD encoding"
         raise PayloadCryptoError(message)
     return b"".join(
@@ -225,8 +235,8 @@ def _mac_data(aad: bytes, ciphertext: bytes) -> bytes:
             _pad16(aad),
             ciphertext,
             _pad16(ciphertext),
-            len(aad).to_bytes(8, byteorder="little"),
-            len(ciphertext).to_bytes(8, byteorder="little"),
+            _NATIVE_LEN(aad).to_bytes(8, byteorder="little"),
+            _NATIVE_LEN(ciphertext).to_bytes(8, byteorder="little"),
         )
     )
 
