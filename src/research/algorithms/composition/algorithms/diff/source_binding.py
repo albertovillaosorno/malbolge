@@ -47,11 +47,12 @@ from __future__ import annotations
 
 import builtins
 import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
-from typing import Callable, cast
+from typing import cast
 
 from algorithms.diff.admission import IdentityFile, IdentityTree
 from algorithms.diff.fingerprints import (
@@ -105,6 +106,7 @@ _NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_ISFINITE = math.isfinite
 _NATIVE_CEIL = math.ceil
 _NATIVE_ZIP = builtins.zip
+_NATIVE_OBJECT_NEW = object.__new__
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
     selection_modulus=64,
@@ -374,6 +376,83 @@ def _recovered_x(value: _RecoveredShare) -> int:
 
 def _recovered_value(value: _RecoveredShare) -> bytes:
     return _RECOVERED_VALUE_SLOT.__get__(value, _RecoveredShare)
+
+
+# Bound key material must not reenter mutable class allocation/initializer
+# hooks after consumer callbacks. Public constructors retain normal behavior.
+_ANCHOR_MATERIAL_INIT = cast(
+    "Callable[[_AnchorMaterial, str, bytes, bytes], None]",
+    _AnchorMaterial.__dict__["__init__"],
+)
+_BOUND_SHARE_INIT = cast(
+    "Callable[[BoundShare, str, bytes, int, bytes], None]",
+    BoundShare.__dict__["__init__"],
+)
+_THRESHOLD_BINDING_INIT = cast(
+    Callable[
+        [
+            ThresholdBinding,
+            bytes,
+            int,
+            int,
+            int,
+            bytes,
+            AnchorPolicy,
+            tuple[BoundShare, ...],
+        ],
+        None,
+    ],
+    ThresholdBinding.__dict__["__init__"],
+)
+_RECOVERED_SHARE_INIT = cast(
+    "Callable[[_RecoveredShare, str, int, bytes], None]",
+    _RecoveredShare.__dict__["__init__"],
+)
+
+
+def _new_anchor_material(
+    source_path: str, digest: bytes, window: bytes
+) -> _AnchorMaterial:
+    material = _NATIVE_OBJECT_NEW(_AnchorMaterial)
+    _ANCHOR_MATERIAL_INIT(material, source_path, digest, window)
+    return material
+
+
+def _new_bound_share(
+    source_path: str, anchor_digest: bytes, x: int, masked_share: bytes
+) -> BoundShare:
+    share = _NATIVE_OBJECT_NEW(BoundShare)
+    _BOUND_SHARE_INIT(share, source_path, anchor_digest, x, masked_share)
+    return share
+
+
+def _new_threshold_binding(
+    context: bytes,
+    threshold: int,
+    minimum_anchor_files: int,
+    secret_length: int,
+    secret_commitment: bytes,
+    anchor_policy: AnchorPolicy,
+    shares: tuple[BoundShare, ...],
+) -> ThresholdBinding:
+    binding = _NATIVE_OBJECT_NEW(ThresholdBinding)
+    _THRESHOLD_BINDING_INIT(
+        binding,
+        context,
+        threshold,
+        minimum_anchor_files,
+        secret_length,
+        secret_commitment,
+        anchor_policy,
+        shares,
+    )
+    return binding
+
+
+def _new_recovered_share(source_path: str, x: int, value: bytes) -> _RecoveredShare:
+    share = _NATIVE_OBJECT_NEW(_RecoveredShare)
+    _RECOVERED_SHARE_INIT(share, source_path, x, value)
+    return share
 
 
 # Source identities are admitted at construction; mutable class getters must
@@ -733,7 +812,7 @@ def _file_anchor_materials(
         key=lambda anchor: _stable_anchor_digest(anchor),
     )
     return _NATIVE_TUPLE(
-        _AnchorMaterial(
+        _new_anchor_material(
             source_path=_identity_path(identity_file),
             digest=_stable_anchor_digest(anchor),
             window=_anchor_window(identity_file, anchor, policy),
@@ -924,7 +1003,7 @@ def bind_secret(
     )
     paired = _NATIVE_ZIP(materials, raw_shares, strict=True)
     bound_shares = _NATIVE_TUPLE(
-        BoundShare(
+        _new_bound_share(
             source_path=_anchor_path(material),
             anchor_digest=_anchor_digest(material),
             x=x,
@@ -940,7 +1019,7 @@ def bind_secret(
         )
         for material, (x, share) in paired
     )
-    return ThresholdBinding(
+    return _new_threshold_binding(
         context=context,
         threshold=threshold,
         minimum_anchor_files=minimum_files,
@@ -1167,7 +1246,7 @@ def _recover_available_shares(
             length=_binding_secret_length(binding),
         )
         available.append(
-            _RecoveredShare(
+            _new_recovered_share(
                 source_path=_share_path(bound),
                 x=_share_x(bound),
                 value=_xor_bytes(_share_masked(bound), mask),

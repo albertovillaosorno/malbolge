@@ -39,6 +39,9 @@ import itertools
 import math
 import ntpath
 import os
+import subprocess
+import sys
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from pathlib import PurePosixPath, PureWindowsPath
 from types import MemberDescriptorType, SimpleNamespace
@@ -60,7 +63,7 @@ from algorithms.diff.source_binding import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable, Sized
+    from collections.abc import Sized
 
     from algorithms.diff.source_binding import BoundShare, ThresholdBinding
 
@@ -1837,3 +1840,86 @@ def test_recovered_share_constructor_ignores_property_setters(
         )
         assert recover_secret(binding, reference) == _SECRET
     assert calls == 0, "late recovered share setter intercepted construction"
+
+
+@pytest.mark.parametrize("record", ["material", "share", "binding", "recovered"])
+def test_binding_internal_creation_ignores_late_class_initializers(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Consumer class hooks cannot rewrite internal key-binding evidence."""
+    reference = _reference()
+    policy = _policy()
+    baseline = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    owners: dict[str, type[object]] = {
+        "material": cast("type[object]", vars(binding_module)["_AnchorMaterial"]),
+        "share": type(baseline.shares[0]),
+        "binding": type(baseline),
+        "recovered": cast("type[object]", vars(binding_module)["_RecoveredShare"]),
+    }
+    calls = 0
+
+    def forbidden_constructor(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        raise AssertionError("late record constructor replaced source evidence")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owners[record], "__init__", forbidden_constructor)
+        if record == "recovered":
+            assert recover_secret(baseline, reference) == _SECRET
+        else:
+            observed = bind_secret(
+                reference, _SECRET, policy=policy, context=_CONTEXT
+            )
+            assert observed == baseline
+    assert calls == 0, f"late {record} initializer was consulted"
+
+
+@pytest.mark.parametrize("record", ["material", "share", "binding", "recovered"])
+def test_binding_internal_allocation_ignores_late_class_new(record: str) -> None:
+    """Check unsafe class allocation changes in an isolated interpreter."""
+    script = """
+from algorithms.diff import source_binding as module
+from algorithms.diff.admission import identity_tree
+from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.source_binding import (
+    SourceBindingPolicy, bind_secret, recover_secret,
+)
+reference = identity_tree({
+    "src/a.c": b"alpha-alpha",
+    "src/b.c": b"bravo-bravo",
+    "src/c.c": b"charlie-charlie",
+})
+policy = SourceBindingPolicy(
+    1.0, maximum_anchors=3, minimum_anchor_files=3,
+    anchor_policy=AnchorPolicy(window_bytes=4, selection_modulus=1),
+)
+secret = b"synthetic 32-byte protected key!"
+context = b"isolated-constructor-test"
+baseline = bind_secret(reference, secret, policy=policy, context=context)
+owners = {
+    "material": module._AnchorMaterial,
+    "share": type(baseline.shares[0]),
+    "binding": type(baseline),
+    "recovered": module._RecoveredShare,
+}
+def forbidden_new(*args, **kwargs):
+    raise AssertionError("late __new__ hook rewrote source evidence")
+owners[RECORD].__new__ = staticmethod(forbidden_new)
+if RECORD == "recovered":
+    assert recover_secret(baseline, reference) == secret
+else:
+    assert bind_secret(reference, secret, policy=policy, context=context) == baseline
+""".replace("RECORD", repr(record))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
