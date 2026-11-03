@@ -444,6 +444,119 @@ def test_emitter_rejects_nul_path_after_late_path_string_override(
     _expect(calls == 0, "mutable pathlib string hook was consulted")
 
 
+class _ForeignEmissionProfile(str):
+    """A string subclass cannot be admitted as an exact target profile."""
+
+
+def test_emitter_rejects_late_str_spoof_of_profile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Post-import string aliases cannot promote foreign profile metadata."""
+    _, _, _, protected = _fixture(tmp_path)
+    foreign = _ForeignEmissionProfile(_PROFILE)
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignEmissionProfile)
+        try:
+            _ = emit_rust_transform(protected, foreign)
+        except RustEmissionError:
+            rejected = True
+    assert rejected, "late str alias admitted a foreign profile"
+
+
+def test_emitter_rejects_late_int_spoof_of_boolean_write_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A boolean staged count cannot impersonate a one-character write."""
+    class _ForeignCountWriter:
+        def write(self, _source: str) -> int:
+            return cast("int", True)
+
+    writer = cast("IO[str]", cast("object", _ForeignCountWriter()))
+    verify_write = cast(
+        "Callable[[IO[str], str], None]",
+        vars(emit_rust_module)["_write_complete_staged_source"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            verify_write(writer, "x")
+        except ValueError:
+            rejected = True
+    assert rejected, "late int alias admitted boolean write receipt"
+
+
+def test_emitter_rejects_late_bool_spoof_of_junction_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Foreign junction status cannot authorize an output ancestor."""
+    target = tmp_path / "output.rs"
+    original = cast(
+        "Callable[[Path], bool]", vars(emit_rust_module)["_NATIVE_IS_JUNCTION"]
+    )
+    output_redirects = cast(
+        "Callable[[Path, int], bool]",
+        vars(emit_rust_module)["_output_redirects"],
+    )
+
+    def forged_junction(path: Path) -> object:
+        if path == target:
+            return 0
+        return original(path)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_NATIVE_IS_JUNCTION", forged_junction)
+        patch.setattr(builtins, "bool", int)
+        try:
+            _ = output_redirects(target, 0)
+        except RustEmissionError:
+            rejected = True
+    assert rejected, "late bool alias admitted foreign junction status"
+
+
+class _ForeignEmissionDetail(str):
+    """A foreign status reason cannot run arbitrary formatting code."""
+
+    @override
+    def __str__(self) -> str:
+        message = "untrusted Rust status reason formatting executed"
+        raise AssertionError(message)
+
+
+def test_emitter_ignores_late_str_spoof_of_error_detail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Do not return a consumer-defined string subclass as a host reason."""
+    foreign = _ForeignEmissionDetail("foreign")
+    failure = OSError(foreign)
+    safe_detail = cast(
+        "Callable[[Exception], str]",
+        vars(emit_rust_module)["_safe_emission_error_detail"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignEmissionDetail)
+        detail = safe_detail(failure)
+    assert detail == "OSError"
+    assert type(detail) is str
+
+
+def test_emitter_template_error_never_formats_foreign_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failing runtime-template reader cannot execute an error string hook."""
+    _, _, _, protected = _fixture(tmp_path)
+
+    def fail_read(_path: Path) -> str:
+        raise _HostileEmissionError("native reader failed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_NATIVE_TEMPLATE_READ", fail_read)
+        with pytest.raises(RustEmissionError, match="template read failed"):
+            _ = emit_rust_transform(protected, _PROFILE)
+
+
 def test_emitter_hex_chunks_ignore_late_range_replacement(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

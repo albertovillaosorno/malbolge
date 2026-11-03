@@ -68,6 +68,9 @@ _PRINTABLE_ASCII_END = 0x7E
 _NATIVE_STAT_RESULT = os.stat_result
 # Keep emitter input admission independent of late consumer type hooks.
 _NATIVE_TYPE = type
+_NATIVE_STR_TYPE = str
+_NATIVE_INT_TYPE = int
+_NATIVE_BOOL_TYPE = bool
 _NATIVE_LEN = len
 _NATIVE_RANGE = range
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
@@ -234,9 +237,8 @@ def _runtime_template_text() -> str:
     try:
         return _NATIVE_TEMPLATE_READ(_RUNTIME_TEMPLATE)
     except (OSError, UnicodeError) as error:
-        message = (
-            f"Rust runtime template read failed: {_RUNTIME_TEMPLATE}: {error}"
-        )
+        reason = _safe_emission_error_detail(error)
+        message = f"Rust runtime template read failed: {reason}"
         raise RustEmissionError(message) from error
 
 
@@ -248,7 +250,7 @@ def _validate_emission_inputs(
             "Rust emission plan must use the exact ProtectedExactPlan type"
         )
         raise RustEmissionError(message)
-    if _NATIVE_TYPE(profile) is not str or not profile:
+    if _NATIVE_TYPE(profile) is not _NATIVE_STR_TYPE or not profile:
         message = "Rust transform profile must use a non-empty exact string"
         raise RustEmissionError(message)
     _validate_output_path(output_path)
@@ -319,8 +321,10 @@ def _safe_emission_error_detail(error: Exception) -> str:
         ValueError,
     }:
         arguments = cast("tuple[object, ...]", error.args)
-        if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is str:
-            return arguments[0]
+        if _NATIVE_LEN(arguments) == 1:
+            reason = arguments[0]
+            if _NATIVE_TYPE(reason) is _NATIVE_STR_TYPE:
+                return reason
     return _NATIVE_TYPE(error).__name__
 
 
@@ -363,7 +367,7 @@ def _output_redirects(path: Path, mode: int) -> bool:
         detail = _safe_emission_error_detail(error)
         message = f"Rust output junction status failed: {path}: {detail}"
         raise RustEmissionError(message) from error
-    if _NATIVE_TYPE(junction) is not bool:
+    if _NATIVE_TYPE(junction) is not _NATIVE_BOOL_TYPE:
         message = "Rust output junction status requires native boolean"
         raise RustEmissionError(message)
     return junction
@@ -432,7 +436,10 @@ def _cleanup_owned_temporary(path: Path) -> str | None:
 
 def _write_complete_staged_source(stream: IO[str], source: str) -> None:
     written = stream.write(source)
-    if _NATIVE_TYPE(written) is not int or written != _NATIVE_LEN(source):
+    if (
+        _NATIVE_TYPE(written) is not _NATIVE_INT_TYPE
+        or written != _NATIVE_LEN(source)
+    ):
         message = "Rust staging write reported a short or invalid count"
         raise ValueError(message)
 
