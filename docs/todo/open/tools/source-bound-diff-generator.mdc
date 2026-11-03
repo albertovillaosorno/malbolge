@@ -216,6 +216,11 @@ format.
   red-first constructor/buffer-hook tests and 147 focused tests passed. An
   intermediate integrated run had two concurrently failing exact-planner tests;
   the next integrated run passed 2,724 tests after that peer change stabilized.
+- Protected authoring now uses original native exact-plan, instruction, and
+  literal stored fields rather than late class getters (`1ceb9b305`, which
+  includes concurrently authored protected code and domain documentation).
+  Twenty-two red-first cases, 206 protected and 3,240 integrated tests passed;
+  direct storage mutation and filesystem races remain excluded.
 - Semantic authoring now pins original allocation and initializers for
   locators, edits, plans, and build contexts (`fa60753bb`). Eight red-first
   constructor-hook tests, all 127 focused tests, and 2,724 integrated diff

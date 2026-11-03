@@ -1237,6 +1237,14 @@ edited exact-planner tests; the subsequent integrated run passed all 2,724
 tests after that peer's exact-planner fix. This isolates class hooks,
 not direct instance-storage edits or external filesystem races.
 
+Protected authoring also now reads native exact-plan, instruction, and literal
+slots rather than mutable class getters (`1ceb9b305`, which includes a
+concurrent protected-code contribution and documentation). Twenty-two red-first
+descriptor/getattribute tests cover forged authoring metadata and source or
+payload redirection. All 206 focused protected and 3,240 integrated diff tests
+passed on the shared checkout. Direct stored-object mutation and filesystem
+races remain outside the boundary.
+
 A read-only DOOM exact-baseline smoke generated 152 protected instructions and a
 2,116,232-byte ciphertext with a 16-byte tag. The binding contained 127 shares
 with
