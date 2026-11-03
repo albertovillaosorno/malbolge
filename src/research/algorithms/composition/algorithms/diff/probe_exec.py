@@ -104,6 +104,10 @@ _NATIVE_OS_STAT = os.stat
 _NATIVE_OS_READ = os.read
 # Process-group cleanup must not trust a late host signal dispatcher.
 _NATIVE_OS_KILL = os.kill
+# Process launch must reject substituted host class and pipe sentinels.
+_IMPORTED_POPEN = subprocess.Popen
+_NATIVE_POPEN = _IMPORTED_POPEN
+_NATIVE_SUBPROCESS_PIPE = subprocess.PIPE
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
 _NATIVE_PATH_JOINPATH = Path.joinpath
@@ -1460,14 +1464,19 @@ def _spawn_probe(
         ProbeExecutionError: The executable could not start.
 
     """
+    if (
+        subprocess.Popen is not _IMPORTED_POPEN
+        or subprocess.PIPE is not _NATIVE_SUBPROCESS_PIPE
+    ):
+        message = "probe native subprocess launch aliases changed"
+        raise ProbeExecutionError(message)
     try:
-        # jig-ignore-next-line: indivisible reviewed identifier
-        return subprocess.Popen(  # ruff: ignore[subprocess-without-shell-equals-true] - explicit argv; shell disabled.
+        return _NATIVE_POPEN(
             argv,
             cwd=scratch_root,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stdin=_NATIVE_SUBPROCESS_PIPE,
+            stdout=_NATIVE_SUBPROCESS_PIPE,
+            stderr=_NATIVE_SUBPROCESS_PIPE,
             shell=False,
             start_new_session=os.name == _POSIX_OS_NAME,
         )

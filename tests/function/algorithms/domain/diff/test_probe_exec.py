@@ -765,6 +765,34 @@ def test_successful_probe_ignores_late_signal_enum_alias(
     assert observed_signals == [int(signal.Signals["SIGKILL"])]
 
 
+@pytest.mark.parametrize("alias", ["Popen", "PIPE"])
+def test_probe_launch_ignores_late_subprocess_module_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A late launch alias must fail before calling untrusted host code."""
+    source = tmp_path / "source"
+    source.mkdir()
+    intercepted: list[str] = []
+
+    def forbidden_spawn(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        intercepted.append("Popen")
+        message = "late host spawn hook executed"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patched:
+        if alias == subprocess.Popen.__name__:
+            patched.setattr(subprocess, "Popen", forbidden_spawn)
+        else:
+            patched.setattr(subprocess, "PIPE", None)
+        with pytest.raises(ProbeExecutionError, match="launch aliases changed"):
+            _ = run_probe_program(
+                _program("pinned-probe-spawn", "print('admitted')"),
+                _context(source, tmp_path),
+            )
+    assert not intercepted, "late host spawn alias was called"
+
+
 def _reject_group_kill_for_test(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[list[int], Callable[[int, int], None]]:
@@ -1248,7 +1276,7 @@ def test_probe_spawn_unexpected_host_fault_remains_typed(
         del args, kwargs
         raise primary
 
-    monkeypatch.setattr(probe_exec_module.subprocess, "Popen", fail_launch)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_POPEN", fail_launch)
     with pytest.raises(ProbeExecutionError, match="command launch failed") as caught:
         _ = probe_exec_module._spawn_probe(["probe"], tmp_path)
     assert caught.value.__cause__ is primary
@@ -1314,7 +1342,7 @@ def test_probe_host_launch_and_worker_failures_reject_foreign_hooks(
 
     with monkeypatch.context() as patch:
         if site == "launch":
-            patch.setattr(probe_exec_module.subprocess, "Popen", reject_host)
+            patch.setattr(probe_exec_module, "_NATIVE_POPEN", reject_host)
             call = lambda: probe_exec_module._spawn_probe(["probe"], tmp_path)
             label = "command launch failed"
         else:
