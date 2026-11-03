@@ -40,8 +40,9 @@ from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
-from sys import getfilesystemencoding as _get_filesystem_encoding
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
+from sys import getfilesystemencoding as _get_filesystem_encoding
+from types import MemberDescriptorType
 from typing import Final, cast
 
 from algorithms.diff.exact import ExactTreeError, read_exact_regular_file
@@ -60,6 +61,7 @@ _SHA256_HEX_LENGTH = 64
 _LOWER_HEX = frozenset("0123456789abcdef")
 # Snapshot acceptance must not depend on later consumer-global hooks.
 _NATIVE_ALL = builtins.all
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_ANY = builtins.any
 _NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
@@ -101,7 +103,7 @@ class SourcePinError(RuntimeError):
     """Raised when a local source tree does not satisfy its pinned snapshot."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SourcePin:
     """Externally named revision plus locally verifiable snapshot identity."""
 
@@ -111,13 +113,56 @@ class SourcePin:
     file_count: int
     snapshot_sha256: str
 
+    def __init__(
+        self,
+        repository: str,
+        commit: str,
+        roots: tuple[str, ...],
+        file_count: int,
+        snapshot_sha256: str,
+    ) -> None:
+        """Bind raw fields and execute the original metadata validator."""
+        _NATIVE_OBJECT_SETATTR(self, "repository", repository)
+        _NATIVE_OBJECT_SETATTR(self, "commit", commit)
+        _NATIVE_OBJECT_SETATTR(self, "roots", roots)
+        _NATIVE_OBJECT_SETATTR(self, "file_count", file_count)
+        _NATIVE_OBJECT_SETATTR(self, "snapshot_sha256", snapshot_sha256)
+        _SOURCE_PIN_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject malformed source-pin metadata."""
-        _validate_repository(self.repository)
-        _validate_commit(self.commit)
-        _validate_file_count(self.file_count)
-        _validate_snapshot_sha256(self.snapshot_sha256)
-        _validate_roots(self.roots)
+        repository, commit, roots, file_count, digest = _source_pin_fields(self)
+        _validate_repository(repository)
+        _validate_commit(commit)
+        _validate_file_count(file_count)
+        _validate_snapshot_sha256(digest)
+        _validate_roots(roots)
+
+
+# Record classes can acquire late class getters or validator replacements.
+# Preserve their initial member storage readers and constructor guards.
+_SOURCE_PIN_VALIDATOR: Final = SourcePin.__post_init__
+_PIN_REPOSITORY_SLOT = cast(
+    "MemberDescriptorType", SourcePin.__dict__["repository"]
+)
+_PIN_COMMIT_SLOT = cast("MemberDescriptorType", SourcePin.__dict__["commit"])
+_PIN_ROOTS_SLOT = cast("MemberDescriptorType", SourcePin.__dict__["roots"])
+_PIN_COUNT_SLOT = cast("MemberDescriptorType", SourcePin.__dict__["file_count"])
+_PIN_DIGEST_SLOT = cast(
+    "MemberDescriptorType", SourcePin.__dict__["snapshot_sha256"]
+)
+
+
+def _source_pin_fields(
+    pin: SourcePin,
+) -> tuple[str, str, tuple[str, ...], int, str]:
+    return (
+        cast("str", _PIN_REPOSITORY_SLOT.__get__(pin, SourcePin)),
+        cast("str", _PIN_COMMIT_SLOT.__get__(pin, SourcePin)),
+        cast("tuple[str, ...]", _PIN_ROOTS_SLOT.__get__(pin, SourcePin)),
+        cast("int", _PIN_COUNT_SLOT.__get__(pin, SourcePin)),
+        cast("str", _PIN_DIGEST_SLOT.__get__(pin, SourcePin)),
+    )
 
 
 def _validate_repository(repository: object) -> None:
@@ -193,17 +238,44 @@ def _require_disjoint_roots(roots: tuple[str, ...]) -> None:
         selected.add(root)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SourcePinEvidence:
     """Observed deterministic snapshot for one pinned local source tree."""
 
     file_count: int
     snapshot_sha256: str
 
+    def __init__(self, file_count: int, snapshot_sha256: str) -> None:
+        """Bind observed fields and execute the original evidence validator."""
+        _NATIVE_OBJECT_SETATTR(self, "file_count", file_count)
+        _NATIVE_OBJECT_SETATTR(self, "snapshot_sha256", snapshot_sha256)
+        _SOURCE_EVIDENCE_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject malformed observed source-pin evidence."""
-        _validate_file_count(self.file_count)
-        _validate_snapshot_sha256(self.snapshot_sha256)
+        count, digest = _source_evidence_fields(self)
+        _validate_file_count(count)
+        _validate_snapshot_sha256(digest)
+
+
+_SOURCE_EVIDENCE_VALIDATOR: Final = SourcePinEvidence.__post_init__
+_EVIDENCE_COUNT_SLOT = cast(
+    "MemberDescriptorType", SourcePinEvidence.__dict__["file_count"]
+)
+_EVIDENCE_DIGEST_SLOT = cast(
+    "MemberDescriptorType", SourcePinEvidence.__dict__["snapshot_sha256"]
+)
+
+
+def _source_evidence_fields(evidence: SourcePinEvidence) -> tuple[int, str]:
+    return (
+        cast(
+            "int", _EVIDENCE_COUNT_SLOT.__get__(evidence, SourcePinEvidence)
+        ),
+        cast(
+            "str", _EVIDENCE_DIGEST_SLOT.__get__(evidence, SourcePinEvidence)
+        ),
+    )
 
 
 def _u64(value: int) -> bytes:
@@ -333,7 +405,8 @@ def _directory_paths(selected: Path) -> tuple[Path, ...]:
                         raise SourcePinError(message)
                     if not (S_ISDIR(mode) or S_ISREG(mode)):
                         message = (
-                            f"special entry is not accepted in pinned source: {relative}"
+                            "special entry is not accepted in pinned source: "
+                            f"{relative}"
                         )
                         raise SourcePinError(message)
                     paths.append(child)
@@ -501,14 +574,18 @@ def require_source_pin(root: Path, pin: SourcePin) -> SourcePinEvidence:
     if _NATIVE_TYPE(pin) is not SourcePin:
         message = "source pin must use the exact SourcePin type"
         raise SourcePinError(message)
-    observed = source_snapshot_evidence(root, pin.roots)
-    if observed.file_count != pin.file_count:
+    repository, commit, roots, expected_count, expected_digest = (
+        _source_pin_fields(pin)
+    )
+    observed = source_snapshot_evidence(root, roots)
+    count, digest = _source_evidence_fields(observed)
+    if count != expected_count:
         message = (
             "pinned source file count mismatch: "
-            f"expected {pin.file_count}, found {observed.file_count}"
+            f"expected {expected_count}, found {count}"
         )
         raise SourcePinError(message)
-    if observed.snapshot_sha256 != pin.snapshot_sha256:
-        message = f"pinned source snapshot mismatch for {pin.repository}@{pin.commit}"
+    if digest != expected_digest:
+        message = f"pinned source snapshot mismatch for {repository}@{commit}"
         raise SourcePinError(message)
     return observed

@@ -39,6 +39,7 @@ import hashlib
 import ntpath
 import os
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from stat import S_IFDIR
 from types import SimpleNamespace
@@ -1506,3 +1507,109 @@ def test_source_pin_device_rejects_late_host_hook(
             patch.setattr(builtins, "any", lambda values: False)
         with pytest.raises(SourcePinError, match="unsafe pinned source path"):
             _ = SourcePin("repo", _COMMIT, ("CON",), 1, "0" * 64)
+
+
+@pytest.mark.parametrize(
+    ("record_type", "arguments", "diagnostic"),
+    [
+        (
+            SourcePin,
+            ("repo", _COMMIT, ("src",), 0, "0" * 64),
+            "positive integer",
+        ),
+        (SourcePinEvidence, (0, "0" * 64), "positive integer"),
+    ],
+)
+def test_pin_constructor_ignores_late_validator_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    arguments: tuple[object, ...],
+    diagnostic: str,
+) -> None:
+    """A late class validator cannot approve malformed pin metadata."""
+    calls = 0
+
+    def skip_validation(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(record_type, "__post_init__", skip_validation)
+        with pytest.raises(SourcePinError, match=diagnostic):
+            _ = record_type(*arguments)
+    assert calls == 0, "late post-init replacement bypassed pin admission"
+
+
+@pytest.mark.parametrize(
+    "field", ["roots", "file_count", "snapshot_sha256"]
+)
+def test_require_source_pin_ignores_late_pin_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Pin comparisons use stored commitments, not mutable class getters."""
+    _write(tmp_path, "README", b"release")
+    _write(tmp_path, "src/main.c", b"int main(void) { return 0; }")
+    valid = _pin(tmp_path)
+    fields: dict[str, object] = {
+        "repository": valid.repository,
+        "commit": valid.commit,
+        "roots": valid.roots,
+        "file_count": valid.file_count,
+        "snapshot_sha256": valid.snapshot_sha256,
+    }
+    if field == "roots":
+        fields[field] = ("src",)
+    elif field == "file_count":
+        fields[field] = valid.file_count + 1
+    else:
+        fields[field] = "f" * 64
+    forged = replace(valid, **fields)
+    calls = 0
+
+    def spoof(_self: object) -> object:
+        nonlocal calls
+        calls += 1
+        return getattr(valid, field)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SourcePin, field, property(spoof))
+        with pytest.raises(SourcePinError):
+            _ = require_source_pin(tmp_path, forged)
+    assert calls == 0, "late pin getter replaced stored commitment"
+
+
+@pytest.mark.parametrize("field", ["file_count", "snapshot_sha256"])
+def test_require_source_pin_ignores_late_evidence_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """An observed result cannot be spoofed to match an incorrect pin."""
+    _write(tmp_path, "README", b"release")
+    _write(tmp_path, "src/main.c", b"int main(void) { return 0; }")
+    valid = _pin(tmp_path)
+    observed = source_snapshot_evidence(tmp_path, valid.roots)
+    fields: dict[str, object] = {
+        "repository": valid.repository,
+        "commit": valid.commit,
+        "roots": valid.roots,
+        "file_count": valid.file_count,
+        "snapshot_sha256": valid.snapshot_sha256,
+    }
+    fields[field] = (
+        valid.file_count + 1 if field == "file_count" else "f" * 64
+    )
+    forged = replace(valid, **fields)
+    fake_calls = 0
+
+    def spoof(_self: object) -> object:
+        nonlocal fake_calls
+        fake_calls += 1
+        return fields[field]
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            provenance_module, "source_snapshot_evidence", lambda *_: observed
+        )
+        patched.setattr(SourcePinEvidence, field, property(spoof))
+        with pytest.raises(SourcePinError):
+            _ = require_source_pin(tmp_path, forged)
+    assert fake_calls == 0, "late evidence getter forged a matching snapshot"
