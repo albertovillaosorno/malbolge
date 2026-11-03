@@ -46,6 +46,7 @@ and verification, not as the eventual distributable runtime implementation.
 
 from __future__ import annotations
 
+import builtins
 from collections.abc import Callable
 from dataclasses import dataclass
 from hmac import compare_digest as _native_compare_digest
@@ -54,6 +55,7 @@ from typing import cast
 
 # Keep AEAD input identity and byte operations independent of late
 # consumer hooks that change process-global Python builtins.
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE = type
 _NATIVE_BYTES = bytes
 _NATIVE_LIST = list
@@ -147,7 +149,7 @@ def _payload_fields(payload: AuthenticatedPayload) -> tuple[bytes, bytes]:
             _PAYLOAD_CIPHERTEXT_SLOT.__get__(payload, AuthenticatedPayload),
             _PAYLOAD_TAG_SLOT.__get__(payload, AuthenticatedPayload),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "ChaCha20-Poly1305 payload is missing authenticated fields"
         raise PayloadCryptoError(message) from error
 

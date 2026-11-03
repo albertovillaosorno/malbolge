@@ -524,6 +524,36 @@ def test_incomplete_native_payload_validator_reports_owned_error() -> None:
         incomplete.__post_init__()
 
 
+@pytest.mark.parametrize("entrypoint", ["decrypt", "validator"])
+@pytest.mark.parametrize("present_fields", [(), ("ciphertext",), ("tag",)])
+def test_payload_incomplete_receipt_rejects_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    entrypoint: str,
+    present_fields: tuple[str, ...],
+) -> None:
+    """A replaced global exception type must not escape AEAD admission."""
+    incomplete = object.__new__(AuthenticatedPayload)
+    valid_fields = {"ciphertext": b"payload", "tag": bytes(16)}
+    for name in present_fields:
+        slot = cast("MemberDescriptorType", AuthenticatedPayload.__dict__[name])
+        slot.__set__(incomplete, valid_fields[name])
+    native_attribute_error = builtins.AttributeError
+    caught: PayloadCryptoError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if entrypoint == "decrypt":
+                _ = chacha20_poly1305_decrypt(bytes(32), bytes(12), incomplete)
+            else:
+                incomplete.__post_init__()
+        except PayloadCryptoError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(caught) is PayloadCryptoError, caught
+    assert "missing" in str(caught)
+
+
 def test_authenticated_payload_rejects_late_type_spoof(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
