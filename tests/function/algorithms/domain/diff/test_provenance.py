@@ -307,6 +307,31 @@ def test_pinned_snapshot_accepts_exact_selected_tree(tmp_path: Path) -> None:
     )
 
 
+def test_source_pin_rejects_post_import_as_posix_digest_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late mutable path formatting cannot hide a changed source file name."""
+    _write(tmp_path, "src/original.c", b"unchanged source")
+    original = source_snapshot_evidence(tmp_path, ("src",))
+    pin = SourcePin("repo", _COMMIT, ("src",), 1, original.snapshot_sha256)
+    _ = (tmp_path / "src/original.c").rename(tmp_path / "src/renamed.c")
+    original_as_posix = PurePosixPath.as_posix
+    calls = 0
+
+    def forged_as_posix(path: PurePosixPath) -> str:
+        nonlocal calls
+        if str(path) == "src/renamed.c":
+            calls += 1
+            return "src/original.c"
+        return original_as_posix(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePosixPath, "as_posix", forged_as_posix)
+        with pytest.raises(SourcePinError, match="snapshot mismatch"):
+            _ = require_source_pin(tmp_path, pin)
+    assert calls == 0, "late path formatter was consulted for source pin labels"
+
+
 def test_pinned_snapshot_ignores_replaced_relative_path_labels(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
