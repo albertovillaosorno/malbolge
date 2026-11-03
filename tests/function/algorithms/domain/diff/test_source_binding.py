@@ -63,6 +63,7 @@ _FILE_COUNT = 5
 _BLOCKS_PER_FILE = 64
 _DEFAULT_THRESHOLD = 3
 _STRICT_THRESHOLD = 5
+_HMAC_DIGEST_METHOD = "digest"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -120,6 +121,22 @@ def test_hkdf_sha256_matches_rfc5869_test_case_1() -> None:
     _expect(output == expected_okm, "HKDF expand vector changed")
 
 
+@pytest.mark.parametrize("salt_length", [0, 1, 63, 64, 65, 256])
+def test_hkdf_extract_matches_independent_hmac_across_key_lengths(
+    salt_length: int,
+) -> None:
+    """The SHA-256 implementation preserves RFC 2104 HMAC key normalization."""
+    salt = bytes(index % 256 for index in range(salt_length))
+    input_key_material = b"independent HMAC-SHA-256 cross-check"
+    expected = hmac.digest(
+        salt or bytes(32), input_key_material, hashlib.sha256
+    )
+    _expect(
+        hkdf_extract_sha256(salt, input_key_material) == expected,
+        "HKDF extract differs from standard-library HMAC",
+    )
+
+
 def test_hkdf_ignores_replaced_global_sha256_constructor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -175,6 +192,45 @@ def test_bound_shares_ignore_replaced_global_hmac_constructor(
     )
     _expect(calls == 0, "mutable global HMAC constructor was consulted")
     _expect(recover_secret(binding, reference) == _SECRET, "valid binding changed")
+
+
+@pytest.mark.parametrize("method", ["digest", "_current"])
+def test_bound_shares_ignore_replaced_hmac_class_methods(
+    monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    """A late HMAC method swap must not expose plaintext threshold shares."""
+    reference = _reference()
+    policy = _policy()
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    calls = 0
+
+    class _ZeroDigest:
+        @staticmethod
+        def digest() -> bytes:
+            return bytes(32)
+
+    def forged_method(_hmac: hmac.HMAC) -> bytes | _ZeroDigest:
+        nonlocal calls
+        del _hmac
+        calls += 1
+        if method == _HMAC_DIGEST_METHOD:
+            return bytes(32)
+        return _ZeroDigest()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(hmac.HMAC, method, forged_method)
+        actual = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+        _expect(actual == expected, "mutable HMAC changed bound shares")
+        _expect(
+            all(share.masked_share != _SECRET for share in actual.shares),
+            "forged HMAC exposed the plaintext secret",
+        )
+        _expect(
+            recover_secret(actual, reference) == _SECRET, "recovery changed"
+        )
+    _expect(calls == 0, "mutable HMAC method was evaluated")
 
 
 def test_full_reference_recovers_bound_secret() -> None:

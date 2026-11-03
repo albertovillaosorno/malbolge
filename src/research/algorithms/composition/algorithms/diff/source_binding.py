@@ -50,7 +50,6 @@ import ntpath
 from dataclasses import dataclass
 from fractions import Fraction
 from hashlib import sha256 as _native_sha256
-from hmac import HMAC as _NativeHMAC
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING
 
@@ -62,6 +61,9 @@ if TYPE_CHECKING:
     from algorithms.diff.fingerprints import StableAnchor
 
 _SHA256_BYTES = 32
+_SHA256_BLOCK_BYTES = 64
+_HMAC_INNER_PAD = 0x36
+_HMAC_OUTER_PAD = 0x5C
 _HKDF_MAX_BLOCKS = 255
 _GF_SIZE = 256
 _GF_REDUCTION = 0x1B
@@ -182,6 +184,18 @@ class _RecoveredShare:
     value: bytes
 
 
+def _hmac_sha256(key: bytes, message: bytes) -> bytes:
+    # Use the import-pinned SHA-256 factory rather than mutable HMAC class
+    # methods, which callbacks could replace after this module is imported.
+    if len(key) > _SHA256_BLOCK_BYTES:
+        key = _native_sha256(key).digest()
+    padded_key = key.ljust(_SHA256_BLOCK_BYTES, b"\0")
+    inner = bytes(byte ^ _HMAC_INNER_PAD for byte in padded_key)
+    outer = bytes(byte ^ _HMAC_OUTER_PAD for byte in padded_key)
+    inner_digest = _native_sha256(inner + message).digest()
+    return _native_sha256(outer + inner_digest).digest()
+
+
 def hkdf_extract_sha256(salt: bytes, input_key_material: bytes) -> bytes:
     """Apply RFC 5869 HKDF-Extract with SHA-256.
 
@@ -196,7 +210,7 @@ def hkdf_extract_sha256(salt: bytes, input_key_material: bytes) -> bytes:
         message = "HKDF-SHA-256 extract inputs must use exact bytes"
         raise SourceBindingPolicyError(message)
     effective_salt = salt or bytes(_SHA256_BYTES)
-    return _NativeHMAC(effective_salt, input_key_material, _native_sha256).digest()
+    return _hmac_sha256(effective_salt, input_key_material)
 
 
 def hkdf_expand_sha256(
@@ -227,11 +241,9 @@ def hkdf_expand_sha256(
     previous = b""
     block_count = math.ceil(length / _SHA256_BYTES)
     for block_index in range(_ONE, block_count + _ONE):
-        previous = _NativeHMAC(
-            pseudorandom_key,
-            previous + info + bytes([block_index]),
-            _native_sha256,
-        ).digest()
+        previous = _hmac_sha256(
+            pseudorandom_key, previous + info + bytes([block_index])
+        )
         output.extend(previous)
     return bytes(output[:length])
 
