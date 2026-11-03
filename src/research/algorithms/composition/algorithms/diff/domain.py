@@ -66,6 +66,9 @@ if TYPE_CHECKING:
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_PATH_TYPE = type(Path())
+_NATIVE_PATH_LSTAT = Path.lstat
+_NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_PATH_IS_JUNCTION = Path.is_junction
 _SHA256_FACTORY = hashlib.sha256
 
 
@@ -126,7 +129,7 @@ def _require_module_path_without_nul(path: Path) -> None:
 
 def _module_is_junction(path: Path) -> bool:
     try:
-        verdict = path.is_junction()
+        verdict = _NATIVE_PATH_IS_JUNCTION(path)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"diff domain module junction status failed: {path!r}"
         raise DomainContractError(message) from error
@@ -158,7 +161,7 @@ def _reject_linked_module_ancestors(path: Path) -> None:
     current = path.parent
     while current != current.parent:
         try:
-            receipt = current.lstat()
+            receipt = _NATIVE_PATH_LSTAT(current)
         except (OSError, ValueError, RuntimeError) as error:
             message = f"diff domain module parent status failed: {current!r}"
             raise DomainContractError(message) from error
@@ -180,7 +183,7 @@ def _resolved_native_module_path(path: Path) -> Path:
 
     """
     try:
-        resolved = path.resolve(strict=True)
+        resolved = _NATIVE_PATH_RESOLVE(path, strict=True)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"diff domain module resolution failed: {path!r}"
         raise DomainContractError(message) from error
@@ -193,7 +196,7 @@ def _resolved_native_module_path(path: Path) -> Path:
 def _regular_module_path(path: Path) -> Path:
     _require_module_path_without_nul(path)
     try:
-        receipt = path.lstat()
+        receipt = _NATIVE_PATH_LSTAT(path)
     except FileNotFoundError as error:
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message) from error

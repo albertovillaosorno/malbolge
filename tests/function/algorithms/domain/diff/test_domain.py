@@ -46,6 +46,7 @@ from typing import TYPE_CHECKING
 from typing import cast
 from typing import override
 
+from algorithms.diff import domain as domain_module
 from algorithms.diff.domain import DomainContractError
 from algorithms.diff.domain import load_diff_domain
 import pytest
@@ -420,6 +421,65 @@ def test_missing_or_symlinked_domain_file_fails_closed(tmp_path: Path) -> None:
         _ = load_diff_domain(link)
 
 
+@pytest.mark.parametrize("linked_role", [_STAGE_MODULE, _STAGE_PARENT])
+def test_domain_loader_rejects_symlink_under_post_import_status_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, linked_role: str
+) -> None:
+    """A substituted native status cannot authorize executable linked policy."""
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    real_module = real_parent / "domain.py"
+    _write(real_module, _COMPLETE)
+    alias = tmp_path / "alias"
+    linked = alias if linked_role == _STAGE_MODULE else alias / "domain.py"
+    target = real_module if linked_role == _STAGE_MODULE else real_parent
+    alias.symlink_to(target, target_is_directory=linked_role != _STAGE_MODULE)
+    native_lstat = Path.lstat
+    native_status = target.stat()
+    forged_calls = 0
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        nonlocal forged_calls
+        if path == alias:
+            forged_calls += 1
+            return native_status
+        return native_lstat(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "lstat", forged_lstat)
+        with pytest.raises(
+            DomainContractError, match=r"regular file|linked parent"
+        ):
+            _ = load_diff_domain(linked)
+    assert forged_calls == 0
+
+
+def test_domain_loader_ignores_post_import_native_resolver_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mutable host resolver cannot redirect a verified local policy."""
+    admitted = tmp_path / "admitted.py"
+    redirected = tmp_path / "redirected.py"
+    expected = "admitted"
+    _write(admitted, _COMPLETE.replace("return None", f"return {expected!r}"))
+    _write(redirected, _COMPLETE.replace("return None", "return 'redirected'"))
+    native_resolve = Path.resolve
+    calls = 0
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        if path == admitted and strict:
+            calls += 1
+            return native_resolve(redirected, strict=True)
+        return native_resolve(path, strict=strict)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "resolve", forged_resolve)
+        domain = load_diff_domain(admitted)
+    assert calls == 0
+    assert domain.build_behavior_programs() == expected
+
+
 def test_domain_loader_rejects_linked_parent_directory(
     tmp_path: Path,
 ) -> None:
@@ -452,7 +512,7 @@ def test_domain_module_parent_status_error_fails_closed(
             raise PermissionError(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_parent_status)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_LSTAT", fail_parent_status)
     with pytest.raises(DomainContractError, match="parent status failed"):
         _ = load_diff_domain(module)
 
@@ -471,7 +531,7 @@ def test_domain_file_status_error_fails_closed(
             raise PermissionError(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_LSTAT", fail_lstat)
     with pytest.raises(DomainContractError, match="status failed"):
         _ = load_diff_domain(module)
 
@@ -496,7 +556,7 @@ def test_domain_rejects_foreign_status_before_module_execution(
             return cast("os.stat_result", cast("object", foreign))
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", foreign_lstat)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_LSTAT", foreign_lstat)
     with pytest.raises(DomainContractError, match="native filesystem status"):
         _ = load_diff_domain(module)
     registered = frozenset(sys.modules) - previous
@@ -528,8 +588,8 @@ def test_domain_metadata_fault_does_not_format_foreign_exception(
             raise failure
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "lstat", fail_lstat)
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_LSTAT", fail_lstat)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(
         DomainContractError, match=r"status failed|resolution failed"
     ) as caught:
@@ -573,8 +633,8 @@ def test_domain_module_metadata_failures_are_typed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "lstat", blocked_lstat)
-    monkeypatch.setattr(Path, "resolve", blocked_resolve)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_LSTAT", blocked_lstat)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_RESOLVE", blocked_resolve)
     with pytest.raises(
         DomainContractError, match=r"status failed|resolution failed"
     ):
@@ -607,7 +667,9 @@ def test_domain_junction_status_failures_are_typed(
             raise failure_type(message)
         return original_is_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", blocked_is_junction)
+    monkeypatch.setattr(
+        domain_module, "_NATIVE_PATH_IS_JUNCTION", blocked_is_junction
+    )
     with pytest.raises(DomainContractError, match="junction status failed"):
         _ = load_diff_domain(module)
 
@@ -630,7 +692,9 @@ def test_domain_junction_requires_exact_native_boolean(
             return 0
         return native_is_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    monkeypatch.setattr(
+        domain_module, "_NATIVE_PATH_IS_JUNCTION", forged_junction
+    )
     with pytest.raises(DomainContractError, match="native boolean"):
         _ = load_diff_domain(module)
     _expect(observed, "foreign junction receipt was not reached")
@@ -661,7 +725,7 @@ def test_domain_resolved_path_must_be_native(
             return _ForeignResolvedDomainPath(path)
         return native_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_RESOLVE", forged_resolve)
     with pytest.raises(DomainContractError, match="native Path"):
         _ = load_diff_domain(module)
     _expect(observed, "foreign resolved path was not consumed")
@@ -725,7 +789,7 @@ def test_domain_file_resolution_error_fails_closed(
             raise FileNotFoundError(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(domain_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(DomainContractError, match="resolution failed"):
         _ = load_diff_domain(module)
 
