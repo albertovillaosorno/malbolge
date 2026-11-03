@@ -741,6 +741,96 @@ def test_writer_rejects_linked_output_parent_when_supported(
     assert not (target_parent / "generated.rs").exists()
 
 
+def _linked_emission_output(
+    tmp_path: Path, location: str
+) -> tuple[Path, Path, Path, Path]:
+    real = tmp_path / "external"
+    real.mkdir()
+    if location == _LOCATION_PARENT:
+        linked = tmp_path / "linked"
+        try:
+            linked.symlink_to(real, target_is_directory=True)
+        except OSError, NotImplementedError:
+            pytest.skip("directory symlinks unavailable")
+        return linked / "generated.rs", linked, real / "generated.rs", real
+    victim = real / "victim.rs"
+    _ = victim.write_bytes(_SENTINEL)
+    output = tmp_path / "generated.rs"
+    try:
+        output.symlink_to(victim)
+    except OSError, NotImplementedError:
+        pytest.skip("symlinks unavailable")
+    return output, output, victim, victim
+
+
+def _assert_emission_link_preserved(
+    linked: Path, victim: Path, *, location: str
+) -> None:
+    assert linked.is_symlink()
+    if location == _LOCATION_LEAF:
+        assert victim.read_bytes() == _SENTINEL
+    else:
+        assert not victim.exists()
+
+
+@pytest.mark.parametrize("location", [_LOCATION_LEAF, _LOCATION_PARENT])
+def test_writer_rejects_post_import_path_lstat_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, location: str
+) -> None:
+    """A late pathlib hook cannot authorize writing through a linked output."""
+    _, _, _, protected = _fixture(tmp_path)
+    output, linked, victim, spoof_target = _linked_emission_output(
+        tmp_path, location
+    )
+    native_lstat = Path.lstat
+    forged_count = 0
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        nonlocal forged_count
+        if path == linked:
+            forged_count += 1
+            return native_lstat(spoof_target)
+        return native_lstat(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "lstat", forged_lstat)
+        with pytest.raises(
+            RustEmissionError,
+            match=r"parent must not be linked|regular non-linked file",
+        ):
+            write_rust_transform(protected, _PROFILE, output)
+    assert forged_count == 0
+    _assert_emission_link_preserved(linked, victim, location=location)
+
+
+@pytest.mark.parametrize("location", [_LOCATION_LEAF, _LOCATION_PARENT])
+def test_writer_rejects_post_import_os_lstat_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, location: str
+) -> None:
+    """A late os.lstat hook cannot authorize linked output publication."""
+    _, _, _, protected = _fixture(tmp_path)
+    output, linked, victim, spoof_target = _linked_emission_output(
+        tmp_path, location
+    )
+    native_lstat = os.lstat
+
+    def forged_lstat(path: str | os.PathLike[str]) -> os.stat_result:
+        if Path(path) == linked:
+            return native_lstat(spoof_target)
+        return native_lstat(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "lstat", forged_lstat)
+        with pytest.raises(
+            RustEmissionError,
+            match=r"parent must not be linked|regular non-linked file",
+        ):
+            write_rust_transform(protected, _PROFILE, output)
+    # Other pathlib operations may consult os.lstat; output classification
+    # must use only the captured native syscall.
+    _assert_emission_link_preserved(linked, victim, location=location)
+
+
 def test_writer_rejects_directory_output(tmp_path: Path) -> None:
     """An existing output directory cannot be replaced as a generated file."""
     _, _, _, protected = _fixture(tmp_path)
@@ -772,7 +862,7 @@ def test_writer_wraps_output_status_failure(
             raise failure_type(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    monkeypatch.setattr(emit_rust_module, "_NATIVE_PATH_LSTAT", fail_lstat)
     with pytest.raises(RustEmissionError, match="output file status failed"):
         write_rust_transform(protected, _PROFILE, output)
 
@@ -798,7 +888,7 @@ def test_writer_rejects_foreign_output_status_before_publication(
             return cast("os.stat_result", cast("object", foreign))
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    monkeypatch.setattr(emit_rust_module, "_NATIVE_PATH_LSTAT", forged_lstat)
     with pytest.raises(RustEmissionError, match="native filesystem status"):
         write_rust_transform(protected, _PROFILE, output)
     if location == _LOCATION_LEAF:
@@ -828,7 +918,9 @@ def test_writer_rejects_foreign_junction_boolean(
             return 0
         return native_is_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", forged_is_junction)
+    monkeypatch.setattr(
+        emit_rust_module, "_NATIVE_IS_JUNCTION", forged_is_junction
+    )
     with pytest.raises(RustEmissionError, match="native boolean"):
         write_rust_transform(protected, _PROFILE, output)
     _expect(observed, "foreign junction result was not observed")
@@ -893,7 +985,9 @@ def test_writer_wraps_output_junction_inspection_failure(
             raise failure_type(message)
         return original_is_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", fail_junction)
+    monkeypatch.setattr(
+        emit_rust_module, "_NATIVE_IS_JUNCTION", fail_junction
+    )
     with pytest.raises(RustEmissionError, match="junction status failed"):
         write_rust_transform(protected, _PROFILE, output)
     if location == _LOCATION_LEAF:
@@ -959,7 +1053,9 @@ def test_writer_cleans_staging_after_late_junction_inspection_failure(
                 raise OSError(message)
         return original_is_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", fail_late_junction)
+    monkeypatch.setattr(
+        emit_rust_module, "_NATIVE_IS_JUNCTION", fail_late_junction
+    )
     with pytest.raises(RustEmissionError, match="junction status failed"):
         write_rust_transform(protected, _PROFILE, output)
     assert checked == _LATE_OUTPUT_RECHECK
@@ -1169,7 +1265,7 @@ def test_writer_status_does_not_format_hostile_exception(
             raise failure
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    monkeypatch.setattr(emit_rust_module, "_NATIVE_PATH_LSTAT", fail_lstat)
     with pytest.raises(
         RustEmissionError, match="output file status failed"
     ) as caught:

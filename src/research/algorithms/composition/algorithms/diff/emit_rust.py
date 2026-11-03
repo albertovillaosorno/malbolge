@@ -65,8 +65,19 @@ _SURROGATE_END = 0xDFFF
 _PRINTABLE_ASCII_START = 0x20
 _PRINTABLE_ASCII_END = 0x7E
 _NATIVE_STAT_RESULT = os.stat_result
-# Guard the runtime template with host resolution held before callbacks.
+# Guard output classification as well as runtime-template resolution against
+# mutable process-global hooks installed after the emitter was imported.
+_NATIVE_OS_LSTAT = os.lstat
+_NATIVE_PATH_STRING = Path.__str__
+_NATIVE_IS_JUNCTION = type(Path()).is_junction
 _NATIVE_RESOLVE = type(Path()).resolve
+
+
+def _native_path_lstat(path: Path) -> os.stat_result:
+    return _NATIVE_OS_LSTAT(_NATIVE_PATH_STRING(path))
+
+
+_NATIVE_PATH_LSTAT = _native_path_lstat
 
 
 class RustEmissionError(ValueError):
@@ -315,7 +326,7 @@ def _require_native_output_status(
 
 def _output_mode(path: Path, description: str) -> int | None:
     try:
-        receipt = path.lstat()
+        receipt = _NATIVE_PATH_LSTAT(path)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
@@ -329,7 +340,7 @@ def _output_redirects(path: Path, mode: int) -> bool:
     try:
         if S_ISLNK(mode):
             return True
-        junction = path.is_junction()
+        junction = _NATIVE_IS_JUNCTION(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_emission_error_detail(error)
         message = f"Rust output junction status failed: {path}: {detail}"
