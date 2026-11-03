@@ -102,6 +102,16 @@ passed 3,320 tests and failed two concurrent, uncommitted probe-execution
 regressions in a separate owned file. This check is not atomic against host
 mutation or external filesystem races, nor does it validate every host hook.
 
+A further audit found that original `os.path.realpath` dynamically selects
+`os.lstat`, `os.readlink`, `os.getcwd`, and `stat.S_ISLNK`; late replacements
+could disguise a source-targeting output symlink as a safe directory, or retarget
+a relative output. Generator preflight now verifies these import-original
+functions before and after resolution (`138599216`). Eight additional
+red-first cases pass, bringing focused generator tests to 256; scoped Ruff and
+BasedPyright remain zero-error. Repository-wide `jig doctor` exited cleanly,
+but `jig check` did not complete within the 120-second validation budget.
+Hook identity checks are not atomic under concurrent host or filesystem writes.
+
 The Rust source emitter protects its own runtime template from output overwrite
 with the same import-original `os.path.realpath` identity requirement before
 and after resolving the template and destination (`f15620ff7`). Two red-first
