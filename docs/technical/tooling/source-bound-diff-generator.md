@@ -337,6 +337,19 @@ focused and 2,619 integrated diff tests, and left direct private-instance
 mutation and concurrent external filesystem writers outside the guard. A
 global Jig check exceeded 90 seconds without a conclusive pass.
 
+Exact generator source identity also constructs child file paths without late
+`Path.__truediv__`, `Path.joinpath`, `Path.with_segments`, `builtins.type`,
+`Path.__new__`/`__init__`, or `os.fspath` hooks. The signed `aedb58b65`
+fix first pinned source path joining, followed by `5cc2fcf1b` using captured
+native `pathlib` raw-path and cached-string slots to bypass nested constructor
+and string-formatting dispatch. Seven additional path-hook cases (including
+six red-first failures) and ten canonical spelling cases preserve native
+path equality for dot, root, double-root, and nested paths on the tested host.
+The final local evidence was 201 generator tests and 2,651 integrated diff
+tests, with scoped Ruff, BasedPyright, and diff checks clean. These are
+in-process hook guards, not an atomic defense against external source changes
+or arbitrary mutation of trusted private storage.
+
 The same publisher admits only the running host's exact native `pathlib.Path`
 type for both staging and destination before querying filesystem methods.
 Caller-defined `Path` subclasses may override path resolution, file status, or

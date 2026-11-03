@@ -389,6 +389,13 @@ format.
   Jig check timed out after 90 seconds and has no green verdict. Direct
   mutations of trusted private internals and external filesystem races remain
   outside these guards.
+- Exact source identity path formation now bypasses late `Path` division,
+  join, segment-factory, constructor, `builtins.type`, and `os.fspath` hooks.
+  Signed `aedb58b65` and `5cc2fcf1b` use captured native `pathlib` record
+  slots and canonical cached path text. Seven path-hook cases (six red-first)
+  and ten path normalization cases passed with 201 generator and 2,651
+  integrated diff tests; scoped Ruff, BasedPyright, and diff checks were
+  clean. This does not isolate direct private storage edits or external races.
 - The no-replace directory publisher now rejects foreign `pathlib.Path`
   subclasses for both staging and destination before any path conversion or
   filesystem method can run. Two red-first regressions preserve exact native
