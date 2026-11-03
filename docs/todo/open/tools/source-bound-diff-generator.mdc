@@ -1611,6 +1611,35 @@ format.
   `/usr/bin/chktex` 1.7.9 instead of required 1.7.10; a separate
   user-local ChkTeX 1.7.10 binary is present.
 
+- Atomic no-replace publication now binds import-original filesystem and
+  native error classes (`f60e2c08d`). Seven red-first alias cases include a
+  replaced `FileNotFoundError` falsely attesting a permission-denied staging
+  directory as successfully published. Postcommit publication tests passed
+  120/120, and 3,951 integrated diff tests passed from the test directory.
+  Strict typing has no new findings and source/test Ruff counts did not grow.
+- Native identity path guards now reject unencodable UTF-8 labels after late
+  `UnicodeEncodeError` replacement (`9accb694f`). Three red-first cases
+  cover file, evidence, and tree constructors; 181 postcommit admission and
+  3,954 integrated diff tests passed, with no new lint/type findings.
+  Relocatable native file/cleanup/receipt handlers now use import-original
+  exception classes (`c4a8f365e`), with ten late-alias regressions and 297
+  postcommit focused tests. Ruff, strict source/test typing and diff checks
+  passed; its standalone integrated attempt overlapped active red-first
+  tests in other modules, so no separate green integrated result is claimed.
+  Generator native filesystem and validation catches are similarly pinned
+  (`19d9ac778`), eight red-first regressions, 292 postcommit focused,
+  3,954 integrated diff tests passed. No new strict type findings, and
+  scoped Ruff/diff checks passed. These were DCO signed and pushed.
+- Behavior evidence now pins native Unicode and incomplete-slot exception
+  classes (`a5d5acff9`). Twelve red-first malformed-ID/profile/observation/
+  verdict cases passed, along with 182 postcommit focused and 3,966
+  integrated diff tests; no new Ruff or strict source/test typing findings.
+  The prior behavior program resolver guard (`3da6b6c45`) also passed
+  277 focused and 3,926 integrated diff tests with stable scoped checks.
+  Both behavior fixes were DCO signed and pushed.
+  These changes were DCO signed and pushed. External filesystem writers,
+  direct trusted-state mutation, and a green global Jig gate remain open.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle

@@ -2854,6 +2854,54 @@ completion: its tool projection uses `/usr/bin/chktex` 1.7.9 instead of
 required 1.7.10, despite a separate user-local 1.7.10 binary. No green
 global Jig verdict is claimed.
 
+## Native publication and path codec continuation (2026-11-03)
+
+Atomic no-replace directory publication now uses original CPython exception
+classes both for host failure catches and for constructed native `OSError`
+reports (`f60e2c08d`). A red-first regression demonstrated that a late
+`FileNotFoundError = PermissionError` substitution could make a denied staging
+status read look like an absent stage, falsely confirming a rename that never
+happened. Seven regression cases cover this receipt and related host/codec
+aliases. All 120 publication tests passed postcommit; a correctly rooted
+integrated diff run passed 3,951 tests. The source and test files gained no
+new strict typing errors; inherited Ruff diagnostics remain in that area.
+
+Identity label admission now catches the import-original `UnicodeEncodeError`
+(`9accb694f`), so malformed surrogate paths reject as owned policy failures
+even after a late builtin alias swap. Three red-first probes exercise native
+identity records, file evidence, and tree construction. The postcommit focused
+suite passed 181 tests and the integrated diff suite passed 3,954; neither
+changed path introduced new Ruff or strict typing findings. Both commits
+were DCO signed and pushed on `main`. Relocatable byte-range placement
+(`c4a8f365e`) also now catches import-original native errors for filesystem
+status, cleanup, and publication receipts. Ten alias regressions and all 297
+postcommit relocatable tests pass; scoped Ruff, strict source/test typing,
+and diff checks are clean. Its standalone integrated attempt overlapped
+red-first work in other files, so no standalone integrated green result is
+claimed for that commit.
+
+Generator recipe admission and native file operations now pin their original
+exception handlers as well (`19d9ac778`). Eight red-first alias regressions,
+292 postcommit generator tests, and 3,954 integrated diff tests pass; Ruff
+and diff checks are clean with no new strict typing errors. This change was
+also DCO signed and pushed on `main`.
+
+Behavior evidence now preserves the import-original `UnicodeEncodeError`,
+`AttributeError`, and `TypeError` classes (`a5d5acff9`). Twelve red-first
+regressions cover seven malformed probe/observation identifiers and five
+incomplete native profile, observation, and verdict receipts under late
+builtin alias swaps. The postcommit focused suite passed 182 tests; the
+integrated diff suite passed 3,966. Ruff diagnostics are unchanged, and no
+new strict source/test typing findings were introduced. The commit was
+DCO signed and pushed to `main`. The earlier behavior program resolver
+hardening (`3da6b6c45`) was also DCO signed and pushed after 277 focused
+and 3,926 integrated passing tests, with scoped lint and typing stable.
+
+These guards do not isolate external filesystem races or trusted direct
+object-state mutation. `jig doctor`
+remains degraded because the repository graph is absent; no global green
+Jig verdict is claimed.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:
