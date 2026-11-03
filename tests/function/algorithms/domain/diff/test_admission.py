@@ -256,6 +256,130 @@ def test_identity_tree_ignores_late_sort_and_set_hooks(
 
 
 
+@pytest.mark.parametrize(
+    ("unsafe_path", "hook", "forged_verdict"),
+    [
+        ("src/\x00file.c", "any", False),
+        ("src/../file.c", "all", True),
+    ],
+)
+def test_identity_path_rejects_late_truth_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_path: str,
+    hook: str,
+    forged_verdict: bool,
+) -> None:
+    """Replacing built-in predicates cannot admit unsafe source labels."""
+    identity_rejected = False
+    evidence_rejected = False
+    def forged_predicate(values: object) -> bool:
+        del values
+        return forged_verdict
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, hook, forged_predicate)
+        try:
+            _ = IdentityFile(unsafe_path, b"source")
+        except AdmissionPolicyError:
+            identity_rejected = True
+        try:
+            _ = FileAdmissionEvidence(unsafe_path, 1.0, 1.0, 1, 1)
+        except AdmissionPolicyError:
+            evidence_rejected = True
+    assert identity_rejected, "late predicate admitted unsafe identity path"
+    assert evidence_rejected, "late predicate admitted unsafe evidence path"
+
+
+def test_identity_file_rejects_late_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign mutable byte buffer cannot pass an exact bytes admission."""
+    foreign = bytearray(b"source")
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = IdentityFile("source.c", cast("bytes", cast("object", foreign)))
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "late type hook admitted mutable source bytes"
+
+
+def test_identity_tree_rejects_late_any_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign identity record cannot be smuggled through tree admission."""
+
+    class ForeignRecord:
+        path: str = "source.c"
+        canonical: bytes = b"source"
+
+    def forged_any(values: object) -> bool:
+        del values
+        return False
+
+    foreign = cast("IdentityFile", cast("object", ForeignRecord()))
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", forged_any)
+        try:
+            _ = IdentityTree(files=(foreign,))
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "late any hook admitted a foreign identity record"
+
+
+def test_tree_evidence_rejects_late_len_score_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing tuple lengths cannot inflate structural source evidence."""
+    first = FileAdmissionEvidence("a.c", 0.0, 0.0, 1, 0)
+    second = FileAdmissionEvidence("b.c", 1.0, 1.0, 1, 1)
+    policy = AdmissionPolicy(0.75, 0.75, 1, 1)
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        if isinstance(value, tuple) and value == (0.0, 1.0):
+            return 1
+        return native_len(cast("tuple[object, ...]", value))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        try:
+            _ = TreeAdmissionEvidence(
+                1.0, 1.0, 1, 1, (first, second), (), policy
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "late len hook inflated lineage evidence"
+
+
+def test_structural_similarity_ignores_late_frozenset_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Source digests cannot be replaced by one invented shared digest."""
+    reference = identity_tree({"source.c": b"A" * 512})
+    candidate = identity_tree({"source.c": b"B" * 512})
+    policy = AdmissionPolicy(0.9, 0.0, 1, 1)
+    native_frozenset = frozenset
+
+    def forged_frozenset(values: object) -> frozenset[bytes]:
+        del values
+        return native_frozenset({b"forged"})
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "frozenset", forged_frozenset)
+        evidence = evaluate_admission(reference, candidate, policy)
+    assert evidence.source_similarity == 0.0
+    assert not evidence.admitted
+
+
 def test_identity_tree_builder_ignores_late_sort_and_set_hooks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

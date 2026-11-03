@@ -62,6 +62,11 @@ _NATIVE_ISFINITE = math.isfinite
 _NATIVE_SUM = builtins.sum
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
+_NATIVE_TYPE = builtins.type
+_NATIVE_ANY = builtins.any
+_NATIVE_ALL = builtins.all
+_NATIVE_LEN = builtins.len
+_NATIVE_FROZENSET = builtins.frozenset
 
 
 class AdmissionPolicyError(ValueError):
@@ -76,7 +81,7 @@ def _is_portable_relative_path(path: str) -> bool:
     if (
         not path
         or path == _DOT
-        or any(char in path for char in (_NUL, _BACKSLASH))
+        or _NATIVE_ANY(char in path for char in (_NUL, _BACKSLASH))
     ):
         return False
     try:
@@ -88,7 +93,9 @@ def _is_portable_relative_path(path: str) -> bool:
     return (
         not _NATIVE_SPLITDRIVE(path)[0]
         and not _NATIVE_IS_RESERVED(path)
-        and all(part not in {"", _DOT, _PARENT} for part in path.split("/"))
+        and _NATIVE_ALL(
+            part not in {"", _DOT, _PARENT} for part in path.split("/")
+        )
     )
 
 
@@ -126,10 +133,10 @@ class IdentityFile:
             AdmissionPolicyError: The identity path is unsafe or non-canonical.
 
         """
-        if type(self.path) is not str:
+        if _NATIVE_TYPE(self.path) is not str:
             message = "identity path must use the exact string type"
             raise AdmissionPolicyError(message)
-        if type(self.canonical) is not bytes:
+        if _NATIVE_TYPE(self.canonical) is not bytes:
             message = "identity canonical content must use exact bytes"
             raise AdmissionPolicyError(message)
         if not _is_portable_relative_path(self.path):
@@ -150,10 +157,12 @@ class IdentityTree:
             AdmissionPolicyError: Files are duplicated or out of order.
 
         """
-        if type(self.files) is not tuple:
+        if _NATIVE_TYPE(self.files) is not tuple:
             message = "identity tree files must use the exact immutable tuple"
             raise AdmissionPolicyError(message)
-        if any(type(item) is not IdentityFile for item in self.files):
+        if _NATIVE_ANY(
+            _NATIVE_TYPE(item) is not IdentityFile for item in self.files
+        ):
             message = "identity tree contains a foreign file record"
             raise AdmissionPolicyError(message)
         paths = tuple(item.path for item in self.files)
@@ -188,27 +197,27 @@ class AdmissionPolicy:
             "minimum_anchor_coverage", self.minimum_anchor_coverage
         )
         if (
-            type(self.minimum_anchor_files) is not int
+            _NATIVE_TYPE(self.minimum_anchor_files) is not int
             or self.minimum_anchor_files < _ONE
         ):
             message = "minimum_anchor_files must be a positive integer"
             raise AdmissionPolicyError(message)
         if (
-            type(self.minimum_anchors_per_file) is not int
+            _NATIVE_TYPE(self.minimum_anchors_per_file) is not int
             or self.minimum_anchors_per_file < _ONE
         ):
             message = "minimum_anchors_per_file must be a positive integer"
             raise AdmissionPolicyError(message)
-        if type(self.structural_policy) is not AnchorPolicy:
+        if _NATIVE_TYPE(self.structural_policy) is not AnchorPolicy:
             message = "structural_policy must use the exact AnchorPolicy type"
             raise AdmissionPolicyError(message)
-        if type(self.anchor_policy) is not AnchorPolicy:
+        if _NATIVE_TYPE(self.anchor_policy) is not AnchorPolicy:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise AdmissionPolicyError(message)
 
 
 def _require_evidence_fraction(value: object, context: str) -> float:
-    if type(value) is not float or not _NATIVE_ISFINITE(value):
+    if _NATIVE_TYPE(value) is not float or not _NATIVE_ISFINITE(value):
         message = f"{context} must use a finite exact float"
         raise AdmissionPolicyError(message)
     if value < _ZERO or value > _ONE:
@@ -218,14 +227,14 @@ def _require_evidence_fraction(value: object, context: str) -> float:
 
 
 def _require_evidence_count(value: object, context: str) -> int:
-    if type(value) is not int or value < _ZERO:
+    if _NATIVE_TYPE(value) is not int or value < _ZERO:
         message = f"{context} must use a non-negative exact integer"
         raise AdmissionPolicyError(message)
     return value
 
 
 def _require_evidence_path(value: object) -> str:
-    if type(value) is not str:
+    if _NATIVE_TYPE(value) is not str:
         message = "file admission path must use the exact string type"
         raise AdmissionPolicyError(message)
     if not _is_portable_relative_path(value):
@@ -235,11 +244,11 @@ def _require_evidence_path(value: object) -> str:
 
 
 def _require_reason_tuple(value: object) -> tuple[str, ...]:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not tuple:
         message = "tree admission reasons must use the exact immutable tuple"
         raise AdmissionPolicyError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(item) is not str or not item for item in items):
+    if _NATIVE_ANY(_NATIVE_TYPE(item) is not str or not item for item in items):
         message = "tree admission reasons must contain non-empty exact strings"
         raise AdmissionPolicyError(message)
     return cast("tuple[str, ...]", value)
@@ -288,11 +297,13 @@ def _validate_file_admission_evidence(evidence: FileAdmissionEvidence) -> None:
 def _require_file_evidence_tuple(
     value: object,
 ) -> tuple[FileAdmissionEvidence, ...]:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not tuple:
         message = "tree admission files must use the exact immutable tuple"
         raise AdmissionPolicyError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(item) is not FileAdmissionEvidence for item in items):
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(item) is not FileAdmissionEvidence for item in items
+    ):
         message = "tree admission files must use exact immutable records"
         raise AdmissionPolicyError(message)
     files = cast("tuple[FileAdmissionEvidence, ...]", value)
@@ -311,14 +322,14 @@ def _tree_file_aggregates(
     files: tuple[FileAdmissionEvidence, ...],
 ) -> tuple[float, float, int]:
     source_values = tuple(item.structural_similarity for item in files)
-    source = _NATIVE_FSUM(source_values) / len(source_values)
+    source = _NATIVE_FSUM(source_values) / _NATIVE_LEN(source_values)
     covered = tuple(
         item.anchor_coverage
         for item in files
         if item.anchor_coverage is not None
     )
-    anchor = _NATIVE_FSUM(covered) / len(covered) if covered else 0.0
-    return source, anchor, len(covered)
+    anchor = _NATIVE_FSUM(covered) / _NATIVE_LEN(covered) if covered else 0.0
+    return source, anchor, _NATIVE_LEN(covered)
 
 
 def _require_equal_evidence_value(
@@ -381,11 +392,11 @@ def _validate_policy_bound_evidence(
     aggregates: tuple[float, float, int],
 ) -> None:
     reasons = _require_reason_tuple(evidence.reasons)
-    if type(evidence.policy) is not AdmissionPolicy:
+    if _NATIVE_TYPE(evidence.policy) is not AdmissionPolicy:
         message = "tree admission evidence requires exact AdmissionPolicy"
         raise AdmissionPolicyError(message)
     policy = evidence.policy
-    if any(
+    if _NATIVE_ANY(
         (item.anchor_coverage is not None)
         != (item.reference_anchor_count >= policy.minimum_anchors_per_file)
         for item in files
@@ -464,14 +475,14 @@ def identity_tree(files: dict[str, bytes]) -> IdentityTree:
         AdmissionPolicyError: The mapping or any path/content value is invalid.
 
     """
-    if type(files) is not dict:
+    if _NATIVE_TYPE(files) is not dict:
         message = "identity source files must use the exact dictionary type"
         raise AdmissionPolicyError(message)
     for path, canonical in files.items():
-        if type(path) is not str:
+        if _NATIVE_TYPE(path) is not str:
             message = "identity source path must use the exact string type"
             raise AdmissionPolicyError(message)
-        if type(canonical) is not bytes:
+        if _NATIVE_TYPE(canonical) is not bytes:
             message = "identity source content must use exact bytes"
             raise AdmissionPolicyError(message)
     records = tuple(
@@ -482,12 +493,12 @@ def identity_tree(files: dict[str, bytes]) -> IdentityTree:
 
 
 def _validate_fraction(name: str, value: object) -> None:
-    if type(value) is int:
+    if _NATIVE_TYPE(value) is int:
         # Only zero and one can be integer fractions in the admitted range.
         # Never coerce arbitrary-sized integers to float or diagnostic text.
         if _ZERO <= value <= _ONE:
             return
-    elif type(value) is float:
+    elif _NATIVE_TYPE(value) is float:
         if _NATIVE_ISFINITE(value) and _ZERO <= value <= _ONE:
             return
     else:
@@ -498,7 +509,7 @@ def _validate_fraction(name: str, value: object) -> None:
 
 
 def _digest_set(anchors: tuple[StableAnchor, ...]) -> frozenset[bytes]:
-    return frozenset(anchor.digest for anchor in anchors)
+    return _NATIVE_FROZENSET(anchor.digest for anchor in anchors)
 
 
 def _structural_similarity(
@@ -512,10 +523,9 @@ def _structural_similarity(
     candidate_digests = _digest_set(stable_anchors(candidate, policy))
     if not reference_digests or not candidate_digests:
         return 0.0
-    intersection = len(reference_digests & candidate_digests)
-    return (
-        2.0 * intersection / (len(reference_digests) + len(candidate_digests))
-    )
+    intersection = _NATIVE_LEN(reference_digests & candidate_digests)
+    total = _NATIVE_LEN(reference_digests) + _NATIVE_LEN(candidate_digests)
+    return 2.0 * intersection / total
 
 
 def _file_evidence(
@@ -551,7 +561,7 @@ def _file_evidence(
 def _mean(values: tuple[float, ...]) -> float:
     if not values:
         return 0.0
-    return _NATIVE_FSUM(values) / len(values)
+    return _NATIVE_FSUM(values) / _NATIVE_LEN(values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -598,14 +608,14 @@ def evaluate_admission(
 
     """
     if (
-        type(reference) is not IdentityTree
-        or type(candidate) is not IdentityTree
+        _NATIVE_TYPE(reference) is not IdentityTree
+        or _NATIVE_TYPE(candidate) is not IdentityTree
     ):
         message = (
             "admission identity inputs must use the exact IdentityTree type"
         )
         raise AdmissionPolicyError(message)
-    if type(policy) is not AdmissionPolicy:
+    if _NATIVE_TYPE(policy) is not AdmissionPolicy:
         message = "admission policy must use the exact AdmissionPolicy type"
         raise AdmissionPolicyError(message)
     if not reference.files:
@@ -631,14 +641,14 @@ def evaluate_admission(
     aggregate = _AggregateEvidence(
         source_similarity=source_similarity,
         anchor_average=anchor_average,
-        eligible_files=len(eligible),
+        eligible_files=_NATIVE_LEN(eligible),
         satisfied_files=satisfied,
     )
     reasons = _reason_tuple(aggregate, policy)
     return TreeAdmissionEvidence(
         source_similarity=source_similarity,
         anchor_coverage=anchor_average,
-        eligible_anchor_files=len(eligible),
+        eligible_anchor_files=_NATIVE_LEN(eligible),
         satisfied_anchor_files=satisfied,
         files=files,
         reasons=reasons,
