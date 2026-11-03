@@ -34,26 +34,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import StrEnum
+import builtins
 import hashlib
 import math
-from ntpath import isreserved as _native_isreserved
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from enum import StrEnum
+from ntpath import isreserved as _native_isreserved
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import identity_tree
-from algorithms.diff.domain import DomainContractError
-from algorithms.diff.domain import load_diff_domain
+from algorithms.diff.domain import DomainContractError, load_diff_domain
 from algorithms.diff.emit_rust import write_rust_transform
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.exact import read_exact_regular_file
-from algorithms.diff.exact import snapshot_tree_excluding
+from algorithms.diff.exact import (
+    ExactTreeError,
+    build_exact_plan,
+    read_exact_regular_file,
+    snapshot_tree_excluding,
+)
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
@@ -63,6 +62,10 @@ from algorithms.diff.source_binding import SourceBindingPolicy
 _SHA256_FACTORY = hashlib.sha256
 # Recipe admission must not trust a late-replaced host finite checker.
 _NATIVE_ISFINITE = math.isfinite
+# Policy checks must keep their pre-domain Python semantics after hook loading.
+_NATIVE_ANY = builtins.any
+_NATIVE_SORTED = builtins.sorted
+_NATIVE_SET = builtins.set
 # Domain callbacks cannot redefine the host path containment verdict.
 _NATIVE_IS_RELATIVE_TO = Path.is_relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
@@ -74,8 +77,7 @@ _DOT = "."
 
 if TYPE_CHECKING:
     from algorithms.diff.admission import IdentityTree
-    from algorithms.diff.model import FileRecord
-    from algorithms.diff.model import TreeSnapshot
+    from algorithms.diff.model import FileRecord, TreeSnapshot
 
 
 class TransformMode(StrEnum):
@@ -243,7 +245,7 @@ def _validate_recipe_identity(recipe: DiffRecipe) -> None:
 
 def _canonical_passthrough_root(root: str) -> bool:
     candidate = PurePosixPath(root)
-    unsafe_text = root == _DOT or any(
+    unsafe_text = root == _DOT or _NATIVE_ANY(
         char in root for char in (_BACKSLASH, _NUL)
     )
     unsafe_shape = (
@@ -263,11 +265,11 @@ def _canonical_passthrough_root(root: str) -> bool:
 
 
 def _validate_passthrough_topology(roots: tuple[str, ...]) -> None:
-    if roots != tuple(sorted(set(roots))):
+    if roots != tuple(_NATIVE_SORTED(_NATIVE_SET(roots))):
         message = "passthrough_roots must be canonical, sorted and disjoint"
         raise ValueError(message)
     for index, root in enumerate(roots):
-        if any(other.startswith(root + "/") for other in roots[index + 1 :]):
+        if _NATIVE_ANY(other.startswith(root + "/") for other in roots[index + 1 :]):
             message = "passthrough_roots must be canonical, sorted and disjoint"
             raise ValueError(message)
 
@@ -277,14 +279,14 @@ def _validate_passthrough_roots(value: object) -> None:
         message = "passthrough_roots must use the exact immutable tuple type"
         raise TypeError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(root) is not str for root in items):
+    if _NATIVE_ANY(type(root) is not str for root in items):
         message = "passthrough_roots entries must use the exact string type"
         raise TypeError(message)
     roots = cast("tuple[str, ...]", value)
-    if any(not root for root in roots):
+    if _NATIVE_ANY(not root for root in roots):
         message = "passthrough_roots entries must be non-empty"
         raise ValueError(message)
-    if any(not _canonical_passthrough_root(root) for root in roots):
+    if _NATIVE_ANY(not _canonical_passthrough_root(root) for root in roots):
         message = "passthrough_roots must be canonical, sorted and disjoint"
         raise ValueError(message)
     _validate_passthrough_topology(roots)

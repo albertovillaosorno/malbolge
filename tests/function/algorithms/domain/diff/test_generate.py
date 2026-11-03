@@ -34,27 +34,27 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+import builtins
 import hashlib
 import math
 import ntpath
 import os
+from dataclasses import replace
 from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from typing import TYPE_CHECKING, cast, override
 
+import pytest
 from algorithms.diff import generate as generate_module
 from algorithms.diff.domain import DomainContractError
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.generate import DiffGeneratorUnavailableError
-from algorithms.diff.generate import DiffRecipe
-from algorithms.diff.generate import TransformMode
-from algorithms.diff.generate import write_algorithm
+from algorithms.diff.exact import ExactTreeError, build_exact_plan
+from algorithms.diff.generate import (
+    DiffGeneratorUnavailableError,
+    DiffRecipe,
+    TransformMode,
+    write_algorithm,
+)
 from algorithms.diff.model import FileRecord
 from algorithms.diff.protected import protect_exact_plan
-import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -1004,6 +1004,41 @@ def test_generator_passthrough_policy_resists_host_checker_mutation(
     with pytest.raises(ValueError, match=r"passthrough_roots.*canonical"):
         write_algorithm(recipe)
     assert not recipe.output_algorithm.exists()
+
+
+@pytest.mark.parametrize(
+    "invalid_roots", [("src\\unsafe",), ("assets", "assets/child")]
+)
+def test_generator_recipe_ignores_late_any_hook(
+    monkeypatch: pytest.MonkeyPatch, invalid_roots: tuple[str, ...],
+) -> None:
+    """Recipe preflight rejects unsafe/overlapping dynamic paths under hooks."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        try:
+            generate_module._validate_passthrough_roots(invalid_roots)
+        except ValueError:
+            rejected = True
+    assert rejected, "late any hook admitted an invalid passthrough root"
+
+
+@pytest.mark.parametrize(
+    "invalid_roots", [("zeta", "alpha"), ("assets", "assets")]
+)
+def test_generator_recipe_ignores_late_sort_and_set_hooks(
+    monkeypatch: pytest.MonkeyPatch, invalid_roots: tuple[str, ...],
+) -> None:
+    """Recipe preflight rejects duplicated and unordered root identities."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "sorted", lambda values: list(values))
+        patched.setattr(builtins, "set", lambda values: list(values))
+        try:
+            generate_module._validate_passthrough_roots(invalid_roots)
+        except ValueError:
+            rejected = True
+    assert rejected, "late sorted/set hook admitted invalid passthrough roots"
 
 
 def test_generator_rejects_foreign_recipe_fields_before_output(
