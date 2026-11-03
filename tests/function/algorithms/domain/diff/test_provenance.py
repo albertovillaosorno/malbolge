@@ -2311,3 +2311,60 @@ def test_source_pin_rejects_nonportable_discovered_file_names(
     _write(tmp_path, f"src/{unsafe_name}", b"canonical source bytes")
     with pytest.raises(SourcePinError, match="unsafe pinned source path"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
+
+
+@pytest.mark.parametrize(
+    "hook",
+    [
+        "parents",
+        "equality",
+        "parent_contains",
+        "parent_iter",
+        "parent_alias",
+        "hasattr",
+        "enumerate",
+        "chain",
+    ],
+)
+def test_source_pin_rejects_late_relative_label_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Source labels must not consult late relative_to ancestry dispatch."""
+    import pathlib
+
+    source = tmp_path / "source"
+    _write(source, "sub/README", b"trusted source")
+    original = source_snapshot_evidence(source, ("sub",))
+    parent_type = type(source.parents)
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted relative path hook executed")
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        if hook == "parents":
+            patched.setattr(PurePath, "parents", property(forbidden))
+        elif hook == "equality":
+            patched.setattr(PurePath, "__eq__", forbidden)
+        elif hook == "parent_contains":
+            patched.setattr(parent_type, "__contains__", forbidden)
+        elif hook == "parent_iter":
+            patched.setattr(parent_type, "__iter__", forbidden)
+        elif hook == "parent_alias":
+            patched.setattr(pathlib, "_PathParents", forbidden)
+        elif hook == "hasattr":
+            patched.setattr(builtins, "hasattr", forbidden)
+        elif hook == "enumerate":
+            patched.setattr(builtins, "enumerate", forbidden)
+        else:
+            patched.setattr(pathlib, "chain", forbidden)
+        try:
+            _ = source_snapshot_evidence(source, ("sub",))
+        except SourcePinError as error:
+            rejected = "path hooks changed" in str(error)
+    assert rejected, "source evidence consulted an untrusted relative path hook"
+    assert calls == 0, "a late relative path hook executed before rejection"
+    assert original.file_count == 1

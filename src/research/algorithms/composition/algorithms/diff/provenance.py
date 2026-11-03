@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import os
+import pathlib
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -65,6 +66,9 @@ _LOWER_HEX = frozenset("0123456789abcdef")
 # Snapshot acceptance must not depend on later consumer-global hooks.
 _NATIVE_ALL = builtins.all
 _NATIVE_ANY = builtins.any
+_NATIVE_HASATTR = builtins.hasattr
+_NATIVE_ENUMERATE = builtins.enumerate
+_NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
@@ -89,6 +93,34 @@ _NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
+# Original Path.relative_to delegates to mutable pathlib.chain and builtins.
+_NATIVE_PATH_CHAIN = pathlib.__dict__.get("chain")
+_NATIVE_PATH_PARENTS_TYPE = _NATIVE_TYPE(Path().parents)
+_PARENT_SEQUENCE_HOOK_NAMES = (
+    "__new__",
+    "__init__",
+    "__getattribute__",
+    "__setattr__",
+    "__contains__",
+    "__iter__",
+    "__getitem__",
+    "__len__",
+    "_path",
+    "_drv",
+    "_root",
+    "_tail",
+)
+_NATIVE_PATH_PARENTS_HOOKS = tuple(
+    (
+        parent_class,
+        tuple(
+            (name, parent_class.__dict__.get(name))
+            for name in _PARENT_SEQUENCE_HOOK_NAMES
+        ),
+    )
+    for parent_class in _NATIVE_PATH_PARENTS_TYPE.__mro__
+    if parent_class is not object
+)
 # Path.__str__ reads a mutable cached slot and, on a fresh path, mutable
 # pathlib parser descriptors. A late class-hook replacement must not redirect
 # the filesystem tree selected by source-pin verification.
@@ -108,6 +140,12 @@ _PATH_STRING_DEPENDENCIES: Final = (
     "_parse_path",
     "_format_parsed_parts",
     "parser",
+    "parents",
+    "__eq__",
+    "_str_normcase",
+    "_str_normcase_cached",
+    "_from_parsed_parts",
+    "_from_parsed_string",
 )
 _NATIVE_PATH_STRING_HOOKS: Final = tuple(
     (
@@ -143,9 +181,36 @@ def _native_path_lstat(path: Path) -> os.stat_result:
 _NATIVE_PATH_LSTAT = _native_path_lstat
 
 
+def _require_native_relative_label_hooks() -> None:
+    """Reject late aliases used inside the original Path.relative_to."""
+    if (
+        builtins.hasattr is not _NATIVE_HASATTR
+        or builtins.enumerate is not _NATIVE_ENUMERATE
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.len is not _NATIVE_LEN
+        or builtins.str is not _NATIVE_STR
+        or pathlib.__dict__.get("chain") is not _NATIVE_PATH_CHAIN
+        or pathlib.__dict__.get("_PathParents") is not _NATIVE_PATH_PARENTS_TYPE
+        or _NATIVE_ANY(
+            cls.__dict__.get(name) is not original
+            for cls, hooks in _NATIVE_PATH_STRING_HOOKS
+            for name, original in hooks
+        )
+        or _NATIVE_ANY(
+            cls.__dict__.get(name) is not original
+            for cls, hooks in _NATIVE_PATH_PARENTS_HOOKS
+            for name, original in hooks
+        )
+    ):
+        message = "pinned source relative path hooks changed"
+        raise SourcePinError(message)
+
+
 def _native_relative_label(path: Path, root: Path) -> str:
     """Bind discovered paths to unambiguous portable relative labels."""
+    _require_native_relative_label_hooks()
     relative = _NATIVE_RELATIVE_TO(path, root)
+    _require_native_relative_label_hooks()
     spelling = _NATIVE_PATH_STRING(relative)
     # On POSIX a backslash is a literal filename byte, not a separator.
     # Replacing it with '/' could make an unrelated file certify a pin for
