@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import shutil
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast, override
@@ -376,6 +377,10 @@ def test_protected_path_metadata_rejects_unserializable_text(
         "nested\\windows.bin",
         "C:/windows.bin",
         "C:drive-relative.bin",
+        "CON",
+        "src/COM1/child.bin",
+        "src/trailing.",
+        "src/stream:fork",
     ],
 )
 def test_protected_paths_are_canonical_before_serialization(
@@ -397,6 +402,36 @@ def test_protected_paths_are_canonical_before_serialization(
             target=TreeSnapshot(files=()),
             instructions=(),
             passthrough_roots=(invalid,),
+        )
+
+
+@pytest.mark.parametrize(
+    "reserved_path", ["CON", "src/COM1/child.bin", "src/trailing."]
+)
+def test_protected_path_policy_ignores_mutable_host_reserved_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_path: str,
+) -> None:
+    """Runtime domain changes cannot reclassify authenticated path labels."""
+
+    def forged_isreserved(path: str) -> bool:
+        del path
+        return False
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
+    with pytest.raises(ProtectedPlanError, match="canonical relative"):
+        _ = ProtectedInstruction(
+            output_path=reserved_path,
+            kind=ProtectedInstructionKind.COPY_SOURCE,
+            expected_sha256="0" * 64,
+            source_path="src.bin",
+        )
+    with pytest.raises(ProtectedPlanError, match="canonical relative"):
+        _ = ProtectedMetadata(
+            source=TreeSnapshot(files=()),
+            target=TreeSnapshot(files=()),
+            instructions=(),
+            passthrough_roots=(reserved_path,),
         )
 
 
