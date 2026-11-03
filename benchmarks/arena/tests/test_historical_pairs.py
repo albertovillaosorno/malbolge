@@ -68,6 +68,109 @@ SOURCE_REPORTED = "source-reported-not-reverified"
 HISTORICAL_SOURCE_INCONSISTENT = "historical paired source inconsistent"
 
 
+@pytest.mark.parametrize(
+    "providers", ("cached-encoder", "writer", "cached-encoder-and-writer")
+)
+def test_historical_report_rejects_substituted_json_timing(
+    monkeypatch: pytest.MonkeyPatch,
+    providers: str,
+) -> None:
+    """Admitted original historical timing cannot be replaced in JSON."""
+    baseline = _result(REUSE)
+    assert baseline["study_id"] == "classic-verified-block-reuse-linux-2026-09-04"
+    native_encoder = json.JSONEncoder()
+    native_dumps = json.dumps
+
+    def changed(value: object) -> object:
+        if type(value) is dict and "study" in value and "observations" in value:
+            rows = list(value["observations"])
+            first = dict(rows[0])
+            metrics = dict(first["metrics"])
+            metrics["elapsed_ns"] += 100_000_000
+            first["metrics"] = metrics
+            rows[0] = first
+            return {**value, "observations": rows}
+        return value
+
+    def altered(value: object, **kwargs: object) -> str:
+        return native_dumps(changed(value), **kwargs)
+
+    class ForgedCachedEncoder:
+        def encode(self, value: object) -> str:
+            return native_encoder.encode(changed(value))
+
+    with monkeypatch.context() as patch:
+        if providers != "writer":
+            patch.setattr(json, "_default_encoder", ForgedCachedEncoder())
+        if providers != "cached-encoder":
+            patch.setattr(json, "dumps", altered)
+        with pytest.raises(
+            historical_pairs.HistoricalEvidenceError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = _result(REUSE)
+
+
+class _ForeignReportJson(str):
+    """A substituted receipt cannot define arbitrary equality behavior."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign historical JSON equality invoked")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize("receipt", (None, b"{}", _ForeignReportJson("{}")))
+def test_historical_report_rejects_foreign_json_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: object,
+) -> None:
+    """Only native source-identical text can reach historical analysis."""
+    relative = BASE + REUSE
+    sources = historical_pairs._load_source(REPO, relative)
+    document = historical_pairs._admitted_document(sources, relative)
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda *_args, **_kwargs: receipt)
+        with pytest.raises(
+            historical_pairs.HistoricalEvidenceError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = historical_pairs._admitted_report_json(document)
+
+
+def test_historical_report_contains_json_writer_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign serializer errors remain typed with the exact native cause."""
+    failure = RuntimeError("untrusted external details")
+
+    def broken(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    relative = BASE + REUSE
+    sources = historical_pairs._load_source(REPO, relative)
+    document = historical_pairs._admitted_document(sources, relative)
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", broken)
+        with pytest.raises(
+            historical_pairs.HistoricalEvidenceError,
+            match="JSON serializer failed: RuntimeError",
+        ) as caught:
+            _ = historical_pairs._admitted_report_json(document)
+        assert caught.value.__cause__ is failure
+
+
+def test_historical_report_accepts_equivalent_cached_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent cached encoders retain original source-backed values."""
+    baseline = _result(REUSE)
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "_default_encoder", json.JSONEncoder())
+        assert _result(REUSE) == baseline
+
+
 def _result(name: str) -> dict:
     return historical_pairs.build_report(REPO, BASE + name)
 

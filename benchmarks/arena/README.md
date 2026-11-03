@@ -173,6 +173,13 @@ nonbinary/overlong chunks and read-stream failures reject without a report.
 These checks defend against observed races but do not provide a filesystem
 snapshot or authenticate the source. The caller must establish provenance.
 
+Historical paired-study imports also bind the admitted study/measurement
+JSON with an import-bound standard-library encoder, requiring exact native
+text agreement from the mutable public writer before analysis. Cached-encoder
+or writer substitution cannot silently alter reported elapsed costs while
+retaining original input fingerprints; original measurements are still
+source-reported, not independently verified.
+
 Arena raw CSV and historical paired CSV admit only headers whose first
 physical line is at most 512 characters with no unterminated quoted field.
 Before parsing either CSV, a second constant-memory delimiter scan limits

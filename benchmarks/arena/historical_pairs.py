@@ -56,8 +56,9 @@ if TYPE_CHECKING:
 from benchmarks.arena import analyze, csv_admission, evidence, report_output
 from scripts.validate import benchmark_protocol, experiment_manifest
 
-# Preserve source parsing even if a mutable provider is replaced by a caller.
+# Preserve source parsing and report encoding despite mutable providers.
 _SOURCE_TOML_LOADS = tomllib.loads
+_SOURCE_JSON_ENCODER = json.JSONEncoder
 
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
 MAX_CSV_HEADER_CHARS = 512
@@ -723,6 +724,20 @@ def _admitted_document(
     }
 
 
+def _admitted_report_json(document: dict[str, Any]) -> str:
+    """Seal historical source-backed report bytes before public serialization."""
+    try:
+        # The public dumps function can consult a replaced cached encoder.
+        source = _SOURCE_JSON_ENCODER().encode(document)
+        observed = json.dumps(document)
+    except Exception as error:
+        message = f"historical paired JSON serializer failed: {type(error).__name__}"
+        raise HistoricalEvidenceError(message) from error
+    if type(observed) is not str or observed != source:
+        _fail("historical paired JSON serializer disagrees with source")
+    return source
+
+
 def _build_report(root: Path, relative: str) -> dict[str, Any]:
     sources = _load_source(root, relative)
     _source_identity(
@@ -733,7 +748,7 @@ def _build_report(root: Path, relative: str) -> dict[str, Any]:
     )
     baseline, candidate = _declared_strategies(sources)
     document = _admitted_document(sources, relative)
-    report = analyze.analyze(analyze.parse_document(json.dumps(document)))
+    report = analyze.analyze(analyze.parse_document(_admitted_report_json(document)))
     report["historical_evidence"] = {
         "source": relative,
         "evidence_status": "source-reported-not-reverified",
