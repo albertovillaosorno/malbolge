@@ -1214,6 +1214,28 @@ def _write_retained_text(path: Path, content: str) -> None:
     _confirm_retained_bytes(path, encoded)
 
 
+def _rss_json_bytes(receipt: dict[str, object]) -> bytes:
+    """Corroborate exact RSS evidence before hashing or retaining any bytes."""
+    try:
+        # Import-bound json.dumps still resolves a replaceable public class.
+        # Capture source-owned bytes before consulting the public JSON writer.
+        source = _SOURCE_JSON_ENCODER(
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode(receipt)
+        observed = json.dumps(
+            receipt,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except Exception as error:
+        message = f"target echo RSS JSON serializer failed: {type(error).__name__}"
+        raise TargetEchoStudyError(message) from error
+    if type(observed) is not str or observed != source:
+        _fail("target echo RSS JSON serializer disagrees with source")
+    return (source + "\n").encode("utf-8")
+
+
 def _write_rss_stages(
     context: _Context,
     row: dict[str, Any],
@@ -1245,14 +1267,7 @@ def _write_rss_stages(
                 strict=True,
             )
         )
-    content = (
-        json.dumps(
-            receipt,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
-        + "\n"
-    ).encode("utf-8")
+    content = _rss_json_bytes(receipt)
     stem = f"{row['algorithm']}-pairs-{case['difficulty']}-trial-{row['trial']}"
     path = context.directory / "rss" / f"{stem}.json"
     digest = _checked_sha256(content, source="RSS sidecar")

@@ -656,6 +656,11 @@ receipts between cohorts cannot silently preserve a matching peak. The
 per-trial TOML adds
 `[arena_rss]` with schema version and SHA-256 of the **exact JSON bytes**;
 failed trials carry neither a successful RSS cost nor an RSS receipt link.
+The RSS producer independently encodes this canonical JSON with its
+import-bound standard-library encoder before accepting exact matching native
+text from the mutable public writer. Forged or mutating writer output cannot
+silently relabel the receipt and its digest; this still does not authenticate
+physical readings or compromised Python JSON internals.
 
 The read-only target auditor admits the exact expected receipt filenames,
 checks their digests and canonical JSON bytes, and recomputes the reported

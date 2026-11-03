@@ -313,6 +313,134 @@ def _invoke_target_rss(context: target_echo_reference._Context) -> object:
     )
 
 
+@pytest.mark.parametrize(
+    "providers", ("encoder-only", "writer-only", "encoder-and-writer")
+)
+def test_target_rss_json_rejects_forged_serializer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    providers: str,
+) -> None:
+    """Forged JSON cannot replace retained measured RSS identity bytes."""
+    context = _synthetic_target_context(tmp_path, site=TARGET_RSS)
+    forged = '{"schema_version":999}'
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _value: object) -> str:
+            return forged
+
+    with monkeypatch.context() as patch:
+        if providers != "writer-only":
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if providers != "encoder-only":
+            patch.setattr(json, "dumps", lambda *_args, **_kwargs: forged)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="RSS JSON serializer disagrees with source",
+        ):
+            _ = _invoke_target_rss(context)
+    assert not (tmp_path / TARGET_RSS / "direct-pairs-1-trial-0.json").exists()
+
+
+class _ForeignRssJson(str):
+    """Foreign JSON receipt comparison must not invoke user-defined hooks."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("foreign RSS JSON text compared")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize("receipt", (None, b"{}", _ForeignRssJson("{}")))
+def test_target_rss_json_rejects_non_native_writer_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    receipt: object,
+) -> None:
+    """Native exact JSON text is required before receipt bytes are retained."""
+    context = _synthetic_target_context(tmp_path, site=TARGET_RSS)
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda *_args, **_kwargs: receipt)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="RSS JSON serializer disagrees with source",
+        ):
+            _ = _invoke_target_rss(context)
+    assert not (tmp_path / TARGET_RSS / "direct-pairs-1-trial-0.json").exists()
+
+
+def test_target_rss_json_contains_provider_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """RSS writer failure remains typed, with its exact cause retained."""
+    context = _synthetic_target_context(tmp_path, site=TARGET_RSS)
+    failure = RuntimeError("outside RSS writer failed")
+
+    def broken(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", broken)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="RSS JSON serializer failed: RuntimeError",
+        ) as caught:
+            _ = _invoke_target_rss(context)
+        assert caught.value.__cause__ is failure
+
+
+def test_target_rss_json_rejects_mutating_public_writer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A writer cannot relabel measured stages after independent encoding."""
+    context = _synthetic_target_context(tmp_path, site=TARGET_RSS)
+    native_dumps = json.dumps
+
+    def mutate(value: dict[str, object], **kwargs: object) -> str:
+        value["stages"] = {"emitter": 1, "primary_vm": 1, "verifier_vm": 1}
+        return native_dumps(value, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", mutate)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="RSS JSON serializer disagrees with source",
+        ):
+            _ = _invoke_target_rss(context)
+
+
+def test_target_rss_json_accepts_equivalent_public_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Equivalent native public JSON writers retain identical RSS evidence."""
+    context = _synthetic_target_context(tmp_path, site=TARGET_RSS)
+    encoder = json.JSONEncoder
+
+    class EquivalentEncoder(encoder):
+        pass
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONEncoder", EquivalentEncoder)
+        digest = _invoke_target_rss(context)
+    path = tmp_path / TARGET_RSS / "direct-pairs-1-trial-0.json"
+    raw = path.read_bytes()
+    assert digest == sha256(raw).hexdigest()
+    document = json.loads(raw)
+    assert document["schema_version"] == 1
+    assert document["stages"] == {
+        "emitter": 1024,
+        "primary_vm": 2048,
+        "verifier_vm": 4096,
+    }
+
+
 def _invoke_target_attempt(
     monkeypatch: pytest.MonkeyPatch,
     context: target_echo_reference._Context,
