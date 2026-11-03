@@ -38,6 +38,7 @@ import builtins
 import ntpath
 import os
 from dataclasses import replace
+from hashlib import sha256
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
@@ -59,6 +60,7 @@ if TYPE_CHECKING:
 
 
 _HASH = "0" * 64
+_LITERAL_FIELD = "data"
 
 type ModelRecord = (
     FileRecord | TreeSnapshot | SourceSlice | OracleLiteral
@@ -214,6 +216,91 @@ def test_model_rejects_late_len_spoofed_patch_output(
         except TreeModelError:
             rejected = True
     assert rejected, "late len hook admitted a short exact patch"
+
+
+@pytest.mark.parametrize(
+    ("segments", "expected_digest", "error_match"),
+    [
+        (
+            (OracleLiteral(b"tar"), OracleLiteral(b"get")),
+            _HASH,
+            "patch-source digest differs",
+        ),
+        (
+            (OracleLiteral(b"tar"), OracleLiteral(b"get")),
+            sha256(b"target").hexdigest(),
+            None,
+        ),
+        ((SourceSlice(0, 1), OracleLiteral(b"arget")), _HASH, None),
+    ],
+)
+def test_model_checks_fully_known_patch_digest(
+    segments: tuple[SourceSlice | OracleLiteral, ...],
+    expected_digest: str,
+    error_match: str | None,
+) -> None:
+    """A fully literal patch must agree with its known output digest."""
+    source = TreeSnapshot((FileRecord("source", _HASH, 1),))
+    target = TreeSnapshot((FileRecord("target", expected_digest, 6),))
+    instruction = ExactInstruction(
+        output_path="target",
+        kind=ExactInstructionKind.PATCH_SOURCE,
+        expected_sha256=expected_digest,
+        source_path="source",
+        segments=segments,
+    )
+    if error_match is None:
+        plan = ExactAuthoringPlan(source, target, (instruction,))
+        assert plan.target is target
+    else:
+        with pytest.raises(TreeModelError, match=error_match):
+            _ = ExactAuthoringPlan(source, target, (instruction,))
+
+
+@pytest.mark.parametrize("hook", ["descriptor", "getattribute"])
+def test_model_literal_patch_digest_ignores_late_literal_getter(
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """A late class hook cannot forge the bytes used in a patch digest."""
+    original = OracleLiteral(b"wrong!")
+    target_hash = sha256(b"right!").hexdigest()
+    source = TreeSnapshot((FileRecord("source", _HASH, 1),))
+    target = TreeSnapshot((FileRecord("target", target_hash, 6),))
+    instruction = ExactInstruction(
+        "target",
+        ExactInstructionKind.PATCH_SOURCE,
+        target_hash,
+        source_path="source",
+        segments=(original,),
+    )
+    calls = 0
+    descriptor_hook = "descriptor"
+    native_attribute = object.__getattribute__
+
+    def forged_attribute(instance: OracleLiteral, name: str) -> object:
+        nonlocal calls
+        if name == _LITERAL_FIELD:
+            calls += 1
+            return b"right!"
+        return native_attribute(instance, name)
+
+    def forged_descriptor(instance: OracleLiteral) -> bytes:
+        nonlocal calls
+        _ = instance
+        calls += 1
+        return b"right!"
+
+    with monkeypatch.context() as patch:
+        if hook == descriptor_hook:
+            patch.setattr(
+                OracleLiteral, _LITERAL_FIELD, property(forged_descriptor)
+            )
+        else:
+            patch.setattr(OracleLiteral, "__getattribute__", forged_attribute)
+        with pytest.raises(TreeModelError, match="patch-source digest differs"):
+            _ = ExactAuthoringPlan(source, target, (instruction,))
+    assert calls == 0, "a late literal getter was consulted for the target hash"
 
 
 def test_model_rejects_late_range_spoofed_file_ancestor(

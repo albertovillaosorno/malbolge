@@ -728,6 +728,27 @@ def _require_literal_output_consistency(
         raise TreeModelError(message)
 
 
+def _require_literal_patch_digest(
+    segments: tuple[ExactSegment, ...],
+    target_path: str,
+    target_digest: str,
+) -> None:
+    """Check a patch's digest when no source bytes are needed.
+
+    Raises:
+        TreeModelError: Literal-only output disagrees with its target hash.
+
+    """
+    if _native_any(_native_type(item) is SourceSlice for item in segments):
+        return
+    digest = _native_sha256()
+    for segment in segments:
+        digest.update(_oracle_literal_data(cast("OracleLiteral", segment)))
+    if digest.hexdigest() != target_digest:
+        message = f"exact plan patch-source digest differs: {target_path}"
+        raise TreeModelError(message)
+
+
 def _require_exact_output_consistency(
     instruction: ExactInstruction,
     target: FileRecord,
@@ -739,7 +760,7 @@ def _require_exact_output_consistency(
 
     """
     _, kind, _, _, literal, segments = _instruction_fields(instruction)
-    target_path, _, target_size = _file_fields(target)
+    target_path, target_digest, target_size = _file_fields(target)
     if kind is ExactInstructionKind.PATCH_SOURCE:
         reconstructed_size = _native_sum(
             _exact_segment_length(segment) for segment in segments
@@ -747,6 +768,7 @@ def _require_exact_output_consistency(
         if reconstructed_size != target_size:
             message = f"exact plan patch-source size differs: {target_path}"
             raise TreeModelError(message)
+        _require_literal_patch_digest(segments, target_path, target_digest)
     _require_literal_output_consistency(literal, target)
 
 
