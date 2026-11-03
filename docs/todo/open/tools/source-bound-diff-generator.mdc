@@ -344,6 +344,21 @@ format.
   five reproduced red before the repairs. All 132 focused tests and 2,252
   integrated tests excluding concurrent probe WIP passed. Direct trusted
   module mutation and external filesystem races remain outside these guards.
+- Linux no-replace publication now catches native `ctypes.ArgumentError`
+  during both renameat2 loader setup and the native invocation, preserving its
+  typed `OSError` failure contract instead of leaking an ABI exception. The
+  original exception class is pinned against late ctypes alias swaps.
+  A red-first invocation regression and loader/alias cases passed with all
+  67 publication tests in DCO `fb8c2583b`; 2,257 other diff tests passed
+  while a peer edited portable process probes.
+- Exact-plan staging now uses import-pinned `io.open` with exclusive `xb`
+  creation, native `os.mkdir`, and original `Path` name/parent/joinpath readers.
+  Three red-first regressions reproduced redirected writes, spoofed parent
+  creation, and substituted staging roots. Further tests cover late native
+  open/mkdir hooks and non-overwriting staged files. DCO `5d32765f5` passed
+  223 focused and 2,421 integrated diff tests excluding concurrent relocatable
+  edits. This blocks late class/module-hook substitution; direct modification
+  of private bindings and concurrent filesystem writers remain outside scope.
 - The no-replace directory publisher now rejects foreign `pathlib.Path`
   subclasses for both staging and destination before any path conversion or
   filesystem method can run. Two red-first regressions preserve exact native

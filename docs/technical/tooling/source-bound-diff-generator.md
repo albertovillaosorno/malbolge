@@ -304,6 +304,18 @@ excluding a concurrently edited probe suite passed. These measures cannot
 make path checks atomic against external filesystem races or isolate arbitrary
 trusted consumer code that directly mutates module bindings.
 
+The exact Python materializer now opens staging files through an
+import-pinned native `io.open` in exclusive `xb` mode; a pre-existing staging
+file cannot be silently truncated. Original `Path.parent` and `Path.name`
+readers, pinned joinpath, and native `os.mkdir` isolate staging placement and
+directory creation from late consumer class/host hooks. Three regressions
+reproduced redirection before the repair; additional cases cover late
+`io.open`, `Path.mkdir`, `os.mkdir`, basename spoofing and duplicate staged
+files. The signed `5d32765f5` change passed 223 exact tests and 2,421 diff
+tests excluding concurrently edited relocatable tests. Direct mutation of
+trusted module internals and concurrent filesystem writers remain separate,
+non-atomic boundaries.
+
 The same publisher admits only the running host's exact native `pathlib.Path`
 type for both staging and destination before querying filesystem methods.
 Caller-defined `Path` subclasses may override path resolution, file status, or
@@ -318,6 +330,12 @@ reports unsuccessful confirmation without deleting an already moved directory.
 Staging/destination identity uses pinned native path spellings rather than
 mutable `Path.__eq__` methods. Two red-first regressions show that late equality
 overrides cannot falsely equate distinct roots or admit an identical pair.
+Linux renameat2 errors also normalize the native `ctypes.ArgumentError`
+raised by ABI setup or invocation to their typed `OSError` outcomes rather
+than leaking a ctypes exception. The original exception type is pinned
+against later alias substitution. DCO `fb8c2583b` adds a red-first call
+failure and loader/alias regressions; all 67 publication tests passed, as
+did 2,257 other diff tests excluding live probe edits.
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.
