@@ -529,6 +529,230 @@ def test_semantic_public_boundaries_reject_boolean_and_foreign_inputs() -> None:
         )
 
 
+@pytest.mark.parametrize("group", ["source", "before", "after"])
+def test_semantic_rejects_late_tuple_alias_for_mutable_locator_groups(
+    monkeypatch: pytest.MonkeyPatch, group: str
+) -> None:
+    """A late tuple alias cannot certify mutable source-lineage evidence."""
+    digest = b"a" * 32
+    mutable = cast("tuple[bytes, ...]", cast("object", [digest]))
+    empty = cast("tuple[bytes, ...]", cast("object", []))
+    source = mutable if group == "source" else empty
+    before = mutable if group == "before" else empty
+    after = mutable if group == "after" else empty
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        try:
+            _ = SemanticLocator(source, before, after)
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, f"late tuple alias admitted mutable {group} locator"
+
+
+@pytest.mark.parametrize("field", ["replacement", "digests", "plan"])
+def test_semantic_rejects_late_native_alias_for_mutable_edits(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Late bytes/tuple aliases cannot admit mutable edit or plan payloads."""
+    digest = b"a" * 32
+    locator = SemanticLocator((digest,), (), ())
+    edit = SemanticEdit(locator, b"new", (digest,))
+    rejected = False
+    with monkeypatch.context() as patch:
+        if field == "replacement":
+            patch.setattr(builtins, "bytes", bytearray)
+        else:
+            patch.setattr(builtins, "tuple", list)
+        try:
+            if field == "replacement":
+                _ = SemanticEdit(
+                    locator,
+                    cast("bytes", cast("object", bytearray(b"new"))),
+                    (),
+                )
+            elif field == "digests":
+                _ = SemanticEdit(
+                    locator,
+                    b"new",
+                    cast("tuple[bytes, ...]", cast("object", [digest])),
+                )
+            else:
+                _ = SemanticAuthoringPlan(
+                    cast("tuple[SemanticEdit, ...]", cast("object", [edit]))
+                )
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, f"late native alias admitted mutable {field}"
+
+
+def test_semantic_context_rejects_late_int_alias_for_boolean_width(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Boolean context width is never admitted as native integer metadata."""
+    view = _map(b"alpha old beta")
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            _ = build_semantic_plan(view, view, context_units=True)
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late int alias admitted Boolean context width"
+
+
+def test_semantic_valid_records_resist_late_type_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Real immutable evidence remains valid under late consumer aliases."""
+    digest = b"a" * 32
+    locator = SemanticLocator((digest,), (), ())
+    view = _map(b"alpha")
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        patch.setattr(builtins, "bytes", bytearray)
+        patch.setattr(builtins, "int", bool)
+        assert SemanticLocator((digest,), (), ()) == locator
+        edit = SemanticEdit(locator, b"new", (digest,))
+        assert SemanticAuthoringPlan((edit,)).edits == (edit,)
+        assert build_semantic_plan(view, view).edits == ()
+
+
+def test_semantic_position_seeds_ignore_late_enumerate_filter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host iterator hooks cannot erase a duplicated candidate position."""
+    digest = b"a" * 32
+    candidate = (digest, digest)
+    locator = SemanticLocator((digest,), (), ())
+    position_seeds = cast(
+        "Callable[[tuple[bytes, ...], SemanticLocator], tuple[int, ...]]",
+        cast("object", semantic_module.__dict__["_position_seeds"]),
+    )
+    expected = position_seeds(candidate, locator)
+    assert expected == (0, 1)
+    calls = 0
+    native_enumerate = builtins.enumerate
+
+    def hide_duplicate(values: tuple[bytes, ...]) -> enumerate[bytes]:
+        nonlocal calls
+        if values is candidate:
+            calls += 1
+            return native_enumerate(candidate[:1])
+        return native_enumerate(values)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "enumerate", hide_duplicate)
+        observed = position_seeds(candidate, locator)
+    assert observed == expected, (
+        "late enumerate removed ambiguous source positions"
+    )
+    assert calls == 0, "host enumerate hook controlled source-position evidence"
+
+
+def test_semantic_unique_windows_ignore_late_range_filter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host range hooks cannot remove canonical anchor windows."""
+    data = (b"a", b"b", b"c")
+    unique_windows = cast(
+        "Callable[..., dict[tuple[bytes, ...], int]]",
+        cast("object", semantic_module.__dict__["_unique_windows"]),
+    )
+    expected = unique_windows(data, 0, 3, width=2)
+    assert len(expected) == 2
+    calls = 0
+    native_range = builtins.range
+
+    def erase_windows(*_args: int) -> range:
+        nonlocal calls
+        calls += 1
+        return native_range(0)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "range", erase_windows)
+        observed = unique_windows(data, 0, 3, width=2)
+    assert observed == expected, "late range erased canonical matching windows"
+    assert calls == 0, "host range hook controlled anchor-window evidence"
+
+
+def test_semantic_context_rejects_late_bool_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A swapped Boolean constructor cannot forge missing context evidence."""
+    source = _map(b"a ; old ; b")
+    target = _map(b"a ; new ; b")
+    candidate = _map(b"x ; old ; y")
+    plan = build_semantic_plan(source, target, context_units=2)
+    with pytest.raises(SemanticPlacementError, match="missing or ambiguous"):
+        _ = apply_semantic_plan(candidate, plan, _map)
+    rejected = False
+
+    def always_true(_value: object) -> bool:
+        return True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bool", always_true)
+        try:
+            _ = apply_semantic_plan(candidate, plan, _map)
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late bool override forged source-context compatibility"
+
+
+class _ForeignInsertionSet:
+    """Hostile set that never retains seen insertion boundaries."""
+
+    def __contains__(self, _value: object) -> bool:
+        return False
+
+    def add(self, _value: int) -> None:
+        return
+
+
+def test_semantic_duplicate_insertion_rejects_late_set_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Duplicate zero-width edits stay invalid under a changed set factory."""
+    source = _map(b"a ; b")
+    target = _map(b"a ; x ; b")
+    plan = build_semantic_plan(source, target, context_units=2)
+    assert len(plan.edits) == 1
+    duplicate = SemanticAuthoringPlan((plan.edits[0], plan.edits[0]))
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "set", _ForeignInsertionSet)
+        try:
+            _ = apply_semantic_plan(source, duplicate, _map)
+        except SemanticPlacementError:
+            rejected = True
+    assert rejected, "late set override admitted duplicate insertion"
+
+
+def test_semantic_output_rejects_late_reversed_edit_erasure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Host reversed cannot silently remove edits from output verification."""
+    source = _map(b"a ; old ; b")
+    target = _map(b"a ; new ; b")
+    plan = build_semantic_plan(source, target)
+    expected = apply_semantic_plan(source, plan, _map)
+    assert expected == target.raw
+
+    def erase_edits(_value: object) -> tuple[()]:
+        return ()
+
+    native_reversed = builtins.reversed
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "reversed", erase_edits)
+        try:
+            observed = apply_semantic_plan(source, plan, _map)
+        finally:
+            # MonkeyPatch.undo itself uses reversed; restore before its teardown.
+            patch.setattr(builtins, "reversed", native_reversed)
+    assert observed == expected, "late reversed skipped authenticated edits"
+
+
 @pytest.mark.parametrize("foreign", [bytearray(b"replacement"), b"short"])
 def test_semantic_late_type_or_len_rejects_foreign_digest_or_bytes(
     monkeypatch: pytest.MonkeyPatch,

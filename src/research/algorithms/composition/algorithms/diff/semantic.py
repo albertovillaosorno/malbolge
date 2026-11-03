@@ -56,6 +56,14 @@ _NATIVE_MIN = builtins.min
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TUPLE = builtins.tuple
 _NATIVE_TYPE = builtins.type
+_NATIVE_BYTES = builtins.bytes
+_NATIVE_INT = builtins.int
+_NATIVE_ENUMERATE = builtins.enumerate
+_NATIVE_RANGE = builtins.range
+_NATIVE_BOOL = builtins.bool
+_NATIVE_SET = builtins.set
+_NATIVE_REVERSED = builtins.reversed
+_NATIVE_LIST = builtins.list
 # Verify placement using a constructor pinned before host hooks can replace it.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -89,12 +97,12 @@ class SemanticLocator:
             self.after_digests,
         )
         for group in groups:
-            if _NATIVE_TYPE(group) is not tuple:
+            if _NATIVE_TYPE(group) is not _NATIVE_TUPLE:
                 message = "semantic locator digests must use immutable tuples"
                 raise SemanticPlacementError(message)
             items = cast("tuple[object, ...]", group)
             if _NATIVE_ANY(
-                _NATIVE_TYPE(digest) is not bytes
+                _NATIVE_TYPE(digest) is not _NATIVE_BYTES
                 or _NATIVE_LEN(digest) != _SHA256_BYTES
                 for digest in items
             ):
@@ -123,15 +131,15 @@ class SemanticEdit:
         if _NATIVE_TYPE(self.locator) is not SemanticLocator:
             message = "semantic edit locator must use the exact locator type"
             raise SemanticPlacementError(message)
-        if _NATIVE_TYPE(self.replacement) is not bytes:
+        if _NATIVE_TYPE(self.replacement) is not _NATIVE_BYTES:
             message = "semantic replacement must use exact bytes"
             raise SemanticPlacementError(message)
-        if _NATIVE_TYPE(self.replacement_digests) is not tuple:
+        if _NATIVE_TYPE(self.replacement_digests) is not _NATIVE_TUPLE:
             message = "semantic replacement digests must use an immutable tuple"
             raise SemanticPlacementError(message)
         items = cast("tuple[object, ...]", self.replacement_digests)
         if _NATIVE_ANY(
-            _NATIVE_TYPE(digest) is not bytes
+            _NATIVE_TYPE(digest) is not _NATIVE_BYTES
             or _NATIVE_LEN(digest) != _SHA256_BYTES
             for digest in items
         ):
@@ -152,7 +160,7 @@ class SemanticAuthoringPlan:
             SemanticPlacementError: Plan records are mutable or foreign.
 
         """
-        if _NATIVE_TYPE(self.edits) is not tuple:
+        if _NATIVE_TYPE(self.edits) is not _NATIVE_TUPLE:
             message = "semantic edits must use the exact immutable tuple type"
             raise SemanticPlacementError(message)
         if _NATIVE_ANY(
@@ -289,7 +297,7 @@ def _unique_windows(
 ) -> dict[tuple[bytes, ...], int]:
     positions: dict[tuple[bytes, ...], int | None] = {}
     final_start = end - width
-    for offset in range(start, final_start + _ONE):
+    for offset in _NATIVE_RANGE(start, final_start + _ONE):
         window = values[offset : offset + width]
         if window in positions:
             positions[window] = None
@@ -322,7 +330,7 @@ def _lis_pairs(pairs: tuple[_AnchorPair, ...]) -> tuple[_AnchorPair, ...]:
     tail_targets: list[int] = []
     tail_indices: list[int] = []
     predecessors = [-_ONE] * _NATIVE_LEN(pairs)
-    for index, pair in enumerate(pairs):
+    for index, pair in _NATIVE_ENUMERATE(pairs):
         position = bisect_left(tail_targets, pair.target_start)
         if position == _NATIVE_LEN(tail_targets):
             tail_targets.append(pair.target_start)
@@ -591,7 +599,7 @@ def build_semantic_plan(
     ):
         message = "semantic build inputs must use exact MappedView records"
         raise SemanticPlacementError(message)
-    if _NATIVE_TYPE(context_units) is not int or context_units < _ONE:
+    if _NATIVE_TYPE(context_units) is not _NATIVE_INT or context_units < _ONE:
         message = "semantic placement context_units must be a positive integer"
         raise SemanticPlacementError(message)
     source_digests = _view_digests(source)
@@ -628,7 +636,7 @@ def _context_matches(
         source_matches
         and candidate[start - before_count : start] == locator.before_digests
     )
-    return bool(
+    return _NATIVE_BOOL(
         before_matches
         and candidate[source_end : source_end + after_count]
         == locator.after_digests
@@ -642,18 +650,22 @@ def _position_seeds(
     if locator.source_digests:
         first = locator.source_digests[0]
         return _NATIVE_TUPLE(
-            index for index, digest in enumerate(candidate) if digest == first
+            index
+            for index, digest in _NATIVE_ENUMERATE(candidate)
+            if digest == first
         )
     if locator.before_digests:
         final_before = locator.before_digests[-_ONE]
         return _NATIVE_TUPLE(
             index + _ONE
-            for index, digest in enumerate(candidate)
+            for index, digest in _NATIVE_ENUMERATE(candidate)
             if digest == final_before
         )
     first_after = locator.after_digests[0]
     return _NATIVE_TUPLE(
-        index for index, digest in enumerate(candidate) if digest == first_after
+        index
+        for index, digest in _NATIVE_ENUMERATE(candidate)
+        if digest == first_after
     )
 
 
@@ -721,7 +733,7 @@ def _locate_edits(
 
 def _require_nonoverlapping_edits(ordered: tuple[_LocatedEdit, ...]) -> None:
     previous: _LocatedEdit | None = None
-    insertion_boundaries: set[int] = set()
+    insertion_boundaries: set[int] = _NATIVE_SET()
     for item in ordered:
         if item.unit_start == item.unit_end:
             if item.unit_start in insertion_boundaries:
@@ -741,7 +753,7 @@ def _require_nonoverlapping_edits(ordered: tuple[_LocatedEdit, ...]) -> None:
 
 def _apply_raw_edits(raw: bytes, edits: tuple[_LocatedEdit, ...]) -> bytes:
     output = raw
-    for item in reversed(edits):
+    for item in _NATIVE_REVERSED(edits):
         output = (
             output[: item.raw_start]
             + item.edit.replacement
@@ -754,8 +766,8 @@ def _expected_digests(
     candidate: MappedView,
     edits: tuple[_LocatedEdit, ...],
 ) -> tuple[bytes, ...]:
-    expected = list(_view_digests(candidate))
-    for item in reversed(edits):
+    expected = _NATIVE_LIST(_view_digests(candidate))
+    for item in _NATIVE_REVERSED(edits):
         expected[item.unit_start : item.unit_end] = (
             item.edit.replacement_digests
         )
