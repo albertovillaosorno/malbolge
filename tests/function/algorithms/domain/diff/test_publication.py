@@ -85,6 +85,39 @@ def test_publication_rejects_foreign_path_subclasses_before_host_calls(
     assert not destination.exists()
 
 
+def test_publication_rejects_native_status_spoofed_after_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mutable host status hook cannot publish a regular file as a tree."""
+    if os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM:
+        pytest.skip("requires native Linux directory publication")
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    _ = staging.write_bytes(_OURS)
+    native_lstat = Path.lstat
+    status_calls = 0
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        nonlocal status_calls
+        actual = native_lstat(path)
+        if path in {staging, destination}:
+            status_calls += 1
+            values = list(actual)
+            values[stat.ST_MODE] = stat.S_IFDIR | 0o755
+            return os.stat_result(values)
+        return actual
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "lstat", forged_lstat)
+        with pytest.raises(
+            OSError, match="staging must be an existing directory"
+        ):
+            publication.publish_directory_no_replace(staging, destination)
+    assert status_calls == 0
+    assert staging.read_bytes() == _OURS
+    assert not destination.exists()
+
+
 def test_publication_rejects_foreign_or_aliased_inputs() -> None:
     """Validate path and host metadata before any platform rename primitive."""
     staging = Path("staging")
@@ -136,7 +169,7 @@ def test_nul_paths_fail_before_any_rename(
         calls.append((source, target))
         return target
 
-    monkeypatch.setattr(Path, "rename", record_rename)
+    monkeypatch.setattr(publication, "_NATIVE_PATH_RENAME", record_rename)
     monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
     with pytest.raises(OSError, match="NUL") as invalid:
         publication.publish_directory_no_replace(
@@ -174,7 +207,7 @@ def test_unencodable_paths_fail_before_any_rename(
         calls.append((source, target))
         return target
 
-    monkeypatch.setattr(Path, "rename", record_rename)
+    monkeypatch.setattr(publication, "_NATIVE_PATH_RENAME", record_rename)
     monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
     os_name, platform = host
     with pytest.raises(OSError, match="filesystem-encodable") as invalid:
@@ -199,7 +232,7 @@ def test_windows_route_uses_path_rename(
         calls.append((path, target))
         return native_rename(path, target)
 
-    monkeypatch.setattr(Path, "rename", record_rename)
+    monkeypatch.setattr(publication, "_NATIVE_PATH_RENAME", record_rename)
     monkeypatch.setattr(
         publication,
         "os",
@@ -210,6 +243,39 @@ def test_windows_route_uses_path_rename(
         staging, destination, os_name=_WINDOWS_OS_NAME, platform="win32"
     )
     assert calls == [(staging, destination)]
+
+
+def test_windows_publication_ignores_post_import_rename_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hostile host hook cannot redirect Windows publication."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    redirected = tmp_path / "redirected"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    native_rename = Path.rename
+    calls = 0
+
+    def forged_rename(path: Path, _target: Path) -> Path:
+        nonlocal calls
+        _ = _target
+        calls += 1
+        return native_rename(path, redirected)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "rename", forged_rename)
+        patched.setattr(
+            publication, "os", SimpleNamespace(name="nt", fsencode=os.fsencode)
+        )
+        patched.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+        publication.publish_directory_no_replace(
+            staging, destination, os_name="nt", platform="win32"
+        )
+    assert calls == 0
+    assert not staging.exists()
+    assert (destination / "payload").read_bytes() == _OURS
+    assert not redirected.exists()
 
 
 @pytest.mark.parametrize("failure_type", [TypeError, ValueError, RuntimeError])
@@ -227,7 +293,7 @@ def test_windows_publication_wraps_unexpected_rename_failure(
         message = "unusable host rename"
         raise failure_type(message)
 
-    monkeypatch.setattr(Path, "rename", fail_rename)
+    monkeypatch.setattr(publication, "_NATIVE_PATH_RENAME", fail_rename)
     monkeypatch.setattr(
         publication,
         "os",
@@ -256,7 +322,7 @@ def test_windows_publication_preserves_native_collision_error(
     def fail_rename(_source: Path, _target: Path) -> Path:
         raise native_failure
 
-    monkeypatch.setattr(Path, "rename", fail_rename)
+    monkeypatch.setattr(publication, "_NATIVE_PATH_RENAME", fail_rename)
     monkeypatch.setattr(
         publication,
         "os",
@@ -462,7 +528,7 @@ def test_staging_status_errors_fail_closed_as_os_error(
     def record_rename(source: Path, target: Path) -> None:
         rename_calls.append((source, target))
 
-    monkeypatch.setattr(Path, "lstat", fail_staging_stat)
+    monkeypatch.setattr(publication, "_NATIVE_PATH_LSTAT", fail_staging_stat)
     monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
     with pytest.raises(OSError, match="staging directory status failed") as rejected:
         publication.publish_directory_no_replace(staging, destination)
@@ -498,7 +564,7 @@ def test_publication_rejects_foreign_staging_stat_before_rename(
     def record_rename(source: Path, target: Path) -> None:
         calls.append((source, target))
 
-    monkeypatch.setattr(Path, "lstat", forged_staging_stat)
+    monkeypatch.setattr(publication, "_NATIVE_PATH_LSTAT", forged_staging_stat)
     monkeypatch.setattr(publication, "_linux_rename_noreplace", record_rename)
     with pytest.raises(OSError, match="native filesystem status") as rejected:
         publication.publish_directory_no_replace(staging, destination)
@@ -536,7 +602,9 @@ def test_publication_rejects_foreign_destination_attestation(
             )
         return native
 
-    monkeypatch.setattr(Path, "lstat", forged_destination_stat)
+    monkeypatch.setattr(
+        publication, "_NATIVE_PATH_LSTAT", forged_destination_stat
+    )
     with pytest.raises(OSError, match=r"publication.*not completed") as rejected:
         publication.publish_directory_no_replace(staging, destination)
     assert rejected.value.errno == errno.EIO
@@ -736,7 +804,7 @@ def test_publication_rejects_foreign_success_without_rename(
         def pretend_rename(_source: Path, _target: Path) -> Path:
             return destination
 
-        monkeypatch.setattr(Path, "rename", pretend_rename)
+        monkeypatch.setattr(publication, "_NATIVE_PATH_RENAME", pretend_rename)
         monkeypatch.setattr(
             publication,
             "os",

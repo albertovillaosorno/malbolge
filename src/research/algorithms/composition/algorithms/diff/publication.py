@@ -51,6 +51,8 @@ _NUL: Final = "\x00"
 _NATIVE_STAT_RESULT: Final = os.stat_result
 # Keep syscall path encoding outside mutable process-global os path hooks.
 _NATIVE_PATH_STRING: Final = Path.__str__
+_NATIVE_PATH_LSTAT: Final = Path.lstat
+_NATIVE_PATH_RENAME: Final = Path.rename
 _FILESYSTEM_ENCODING: Final = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS: Final = sys.getfilesystemencodeerrors()
 _NATIVE_GET_ERRNO: Final = ctypes.get_errno
@@ -163,7 +165,7 @@ def _require_staging_directory(staging: Path) -> tuple[int, int]:
 
     """
     try:
-        receipt = staging.lstat()
+        receipt = _NATIVE_PATH_LSTAT(staging)
     except (TypeError, ValueError, RuntimeError) as error:
         raise OSError(
             errno.EINVAL,
@@ -243,7 +245,7 @@ def _require_completed_publication(
     """Reject a success-looking rename without the original staged inode."""
     message = "directory publication was not completed with the staged directory"
     try:
-        result = destination.lstat()
+        result = _NATIVE_PATH_LSTAT(destination)
     except (OSError, ValueError, RuntimeError, TypeError) as error:
         raise OSError(errno.EIO, message, destination) from error
     if (
@@ -253,7 +255,7 @@ def _require_completed_publication(
     ):
         raise OSError(errno.EIO, message, destination)
     try:
-        _ = staging.lstat()
+        _ = _NATIVE_PATH_LSTAT(staging)
     except FileNotFoundError:
         return
     except (OSError, ValueError, RuntimeError, TypeError) as error:
@@ -283,7 +285,7 @@ def publish_directory_no_replace(
     )
     if os_name == _WINDOWS_OS_NAME:
         try:
-            _ = staging.rename(destination)
+            _ = _NATIVE_PATH_RENAME(staging, destination)
         except (TypeError, ValueError, RuntimeError) as error:
             raise OSError(
                 errno.EIO,
