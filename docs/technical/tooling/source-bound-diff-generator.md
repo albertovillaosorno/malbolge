@@ -682,6 +682,21 @@ Direct instance-storage mutation and trusted module internals remain outside
 this guard. `jig doctor` reports degraded and the global `jig check` timed
 out after 120 seconds in native validation, so no green Jig verdict is claimed.
 
+The public transform gate now revalidates exact native source-lineage and
+behavior receipts through captured original validators (`3e4a58b83`).
+Constructor bypasses that install an empty `reasons` slot into otherwise
+uninitialized or inconsistent evidence can no longer certify admission; the
+gate reports a typed `AdmissionError`. Direct reads of
+`TransformAdmissionEvidence.admitted` also rerun the original combined
+validator (`451e81a09`), rejecting fabricated gate records and inconsistent
+verdicts despite late class-validator substitutions. Nineteen red-first
+regression cases cover both repairs; all 62 focused gate and 2,994 integrated
+diff tests passed after implementation, with scoped Ruff, strict
+BasedPyright, and Git diff checks clean. The repository-wide Jig check has
+no new green verdict; direct mutation of trusted stored fields, trusted
+module internals, and concurrent filesystem writers remain outside this
+process-level guard.
+
 ### Portable Behavior Programs
 
 The generic execution layer now has a process-program representation designed to

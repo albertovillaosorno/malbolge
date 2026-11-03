@@ -221,6 +221,15 @@ format.
   before it, and scoped Ruff and source BasedPyright had no errors. Jig doctor
   was degraded, and global Jig check timed out at 120 seconds. Direct stored
   instance mutation and arbitrary trusted module edits remain outside scope.
+- The gate now revalidates exact native source and behavior receipts using
+  captured original validators (`3e4a58b83`), and the public `admitted`
+  property validates raw combined receipts before trusting stored reasons
+  (`451e81a09`). Nineteen red-first constructor-bypass, forged-reason,
+  incomplete-record, and late-validator cases passed. All 62 focused gate and
+  2,994 integrated diff tests passed, with scoped Ruff, strict BasedPyright,
+  and diff checks clean. Jig remains without a green global verdict; direct
+  stored-instance edits, trusted module mutation, and external writers are
+  not isolated.
 - Positive timeout integers too large for a host monotonic deadline now
   reject with a typed probe error before process spawn, rather than leaking
   an integer-to-float overflow outside the execution boundary.
