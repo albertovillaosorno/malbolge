@@ -59,6 +59,8 @@ _STRUCTURAL_POLICY = AnchorPolicy(window_bytes=16, selection_modulus=8)
 _ANCHOR_POLICY = AnchorPolicy(window_bytes=32, selection_modulus=64)
 # Domain-loaded hooks cannot redefine Windows reserved-path admission.
 _NATIVE_IS_RESERVED = ntpath.isreserved
+_NATIVE_FSUM = math.fsum
+_NATIVE_ISFINITE = math.isfinite
 
 
 class AdmissionPolicyError(ValueError):
@@ -203,7 +205,7 @@ class AdmissionPolicy:
 
 
 def _require_evidence_fraction(value: object, context: str) -> float:
-    if type(value) is not float or not math.isfinite(value):
+    if type(value) is not float or not _NATIVE_ISFINITE(value):
         message = f"{context} must use a finite exact float"
         raise AdmissionPolicyError(message)
     if value < _ZERO or value > _ONE:
@@ -306,13 +308,13 @@ def _tree_file_aggregates(
     files: tuple[FileAdmissionEvidence, ...],
 ) -> tuple[float, float, int]:
     source_values = tuple(item.structural_similarity for item in files)
-    source = math.fsum(source_values) / len(source_values)
+    source = _NATIVE_FSUM(source_values) / len(source_values)
     covered = tuple(
         item.anchor_coverage
         for item in files
         if item.anchor_coverage is not None
     )
-    anchor = math.fsum(covered) / len(covered) if covered else 0.0
+    anchor = _NATIVE_FSUM(covered) / len(covered) if covered else 0.0
     return source, anchor, len(covered)
 
 
@@ -483,7 +485,7 @@ def _validate_fraction(name: str, value: object) -> None:
         if _ZERO <= value <= _ONE:
             return
     elif type(value) is float:
-        if math.isfinite(value) and _ZERO <= value <= _ONE:
+        if _NATIVE_ISFINITE(value) and _ZERO <= value <= _ONE:
             return
     else:
         message = f"{name} must be a finite numeric fraction in [0, 1]"
@@ -546,7 +548,7 @@ def _file_evidence(
 def _mean(values: tuple[float, ...]) -> float:
     if not values:
         return 0.0
-    return math.fsum(values) / len(values)
+    return _NATIVE_FSUM(values) / len(values)
 
 
 @dataclass(frozen=True, slots=True)

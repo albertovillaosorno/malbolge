@@ -103,6 +103,64 @@ def _candidate_with_first_insertion() -> tuple[IdentityTree, IdentityTree]:
     return identity_tree(reference_files), identity_tree(candidate_files)
 
 
+def test_admission_rejects_post_import_math_fsum_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late global summation hook cannot forge source-lineage admission."""
+    file = FileAdmissionEvidence("source.c", 0.0, 1.0, 1, 1)
+    policy = AdmissionPolicy(
+        minimum_source_similarity=0.75,
+        minimum_anchor_coverage=0.5,
+        minimum_anchor_files=1,
+        minimum_anchors_per_file=1,
+    )
+    native_fsum = math.fsum
+    calls = 0
+
+    def forged_fsum(values: object) -> float:
+        nonlocal calls
+        values_tuple = tuple(cast("tuple[float, ...]", values))
+        if values_tuple == (0.0,):
+            calls += 1
+            return 1.0
+        return native_fsum(values_tuple)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(math, "fsum", forged_fsum)
+        with pytest.raises(
+            AdmissionPolicyError, match="source similarity does not match"
+        ):
+            _ = TreeAdmissionEvidence(
+                source_similarity=1.0,
+                anchor_coverage=1.0,
+                eligible_anchor_files=1,
+                satisfied_anchor_files=1,
+                files=(file,),
+                reasons=(),
+                policy=policy,
+            )
+    assert calls == 0
+
+
+def test_admission_rejects_post_import_math_isfinite_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late finite-value hook cannot admit invalid lineage evidence."""
+    calls = 0
+
+    def forged_finite(value: float) -> bool:
+        nonlocal calls
+        del value
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(math, "isfinite", forged_finite)
+        with pytest.raises(AdmissionPolicyError, match="finite exact float"):
+            _ = FileAdmissionEvidence("source.c", float("nan"), None, 0, 0)
+    assert calls == 0
+
+
 def test_admission_evidence_rejects_incoherent_direct_construction() -> None:
     """Per-file and aggregate evidence cannot contradict their local counts."""
     with pytest.raises(AdmissionPolicyError, match="cannot exceed reference"):
