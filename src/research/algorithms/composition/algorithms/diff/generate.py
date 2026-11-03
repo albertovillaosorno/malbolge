@@ -87,6 +87,8 @@ _NATIVE_INT = builtins.int
 _NATIVE_FLOAT = builtins.float
 _NATIVE_STR = builtins.str
 _NATIVE_BOOL = builtins.bool
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_PATH_RAW_SLOT = cast(
@@ -782,7 +784,11 @@ def _require_source_provenance_evidence(value: object) -> None:
         raise DomainContractError(message)
     try:
         _NATIVE_SOURCE_EVIDENCE_VALIDATOR(value)
-    except (SourcePinError, AttributeError, TypeError) as error:
+    except (
+        SourcePinError,
+        _NATIVE_ATTRIBUTE_ERROR,
+        _NATIVE_TYPE_ERROR,
+    ) as error:
         message = "domain source provenance evidence is invalid"
         raise DomainContractError(message) from error
 

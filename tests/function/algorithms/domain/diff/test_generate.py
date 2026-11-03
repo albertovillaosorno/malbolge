@@ -1554,6 +1554,28 @@ def test_domain_preflight_revalidates_native_source_pin_evidence(
     assert not recipe.output_algorithm.exists()
 
 
+@pytest.mark.parametrize("alias", ["AttributeError", "TypeError"])
+def test_domain_receipt_error_catches_ignore_late_builtin_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+) -> None:
+    """A domain callback cannot substitute exception catch types at runtime."""
+    invalid = object.__new__(SourcePinEvidence)
+    validator = cast(
+        "Callable[[object], None]",
+        vars(generate_module)["_require_source_provenance_evidence"],
+    )
+    rejected = False
+    native_errors = (DomainContractError, AttributeError, TypeError)
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, alias, str)
+        try:
+            validator(invalid)
+        except native_errors as error:
+            rejected = type(error) is DomainContractError
+    assert rejected, "late catch-type alias bypassed native evidence rejection"
+
+
 @pytest.mark.parametrize("hook", ["validator", "attribute", "slot"])
 def test_domain_source_evidence_revalidation_ignores_late_class_hooks(
     monkeypatch: pytest.MonkeyPatch, hook: str
