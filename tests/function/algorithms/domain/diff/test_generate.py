@@ -68,6 +68,7 @@ _SOURCE_TREE = "source"
 _ORACLE_TREE = "oracle"
 _STD_MARKER = b"use std::"
 _LITERAL_MARKER = b"target-only"
+_OUTPUT_ALGORITHM = "output_algorithm"
 
 
 def _blocks(label: str) -> bytes:
@@ -316,6 +317,61 @@ def test_generator_recipe_resolution_failures_are_typed(
     ):
         write_algorithm(recipe)
     _expect(not recipe.output_algorithm.exists(), "blocked recipe wrote output")
+
+
+class _ForgedResolvedRecipePath(type(Path())):
+    """A foreign resolved receipt can lie about destination containment."""
+
+    @override
+    def is_relative_to(self, other: str | os.PathLike[str]) -> bool:
+        del other
+        return False
+
+
+@pytest.mark.parametrize(
+    "field", ["source_root", "oracle_root", "output_algorithm", "domain_module"]
+)
+def test_generator_rejects_foreign_resolved_path_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Resolve must not let a foreign path authorize recipe preflight."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    module = _domain_module(tmp_path)
+    recipe = replace(recipe, domain_module=module)
+    if field == _OUTPUT_ALGORITHM:
+        recipe = replace(
+            recipe, output_algorithm=recipe.source_root / "nested" / "main.rs"
+        )
+    target = {
+        "source_root": recipe.source_root,
+        "oracle_root": recipe.oracle_root,
+        "output_algorithm": recipe.output_algorithm,
+        "domain_module": module,
+    }[field]
+    native_resolve = Path.resolve
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        resolved = native_resolve(path, strict=strict)
+        if path == target:
+            return _ForgedResolvedRecipePath(resolved)
+        return resolved
+
+    def unexpected_preflight(ignored_recipe: DiffRecipe) -> None:
+        del ignored_recipe
+        message = "foreign resolved path entered domain preflight"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(
+        generate_module, "_preflight_domain", unexpected_preflight
+    )
+    with pytest.raises(
+        ValueError, match=f"{field} could not be resolved safely"
+    ):
+        write_algorithm(recipe)
+    assert not recipe.output_algorithm.exists()
 
 
 @pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])
