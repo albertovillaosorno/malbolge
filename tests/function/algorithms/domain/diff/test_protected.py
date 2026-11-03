@@ -1647,3 +1647,124 @@ def test_protected_records_preserve_valid_after_validator_swap(
             accepted_plan = replace(protected)
             assert accepted_plan.context == protected.context
     assert calls == 0, "late protected record hook rejected valid evidence"
+
+
+@pytest.mark.parametrize("record", ["slice", "instruction", "metadata", "plan"])
+def test_protected_constructor_rejects_forged_field_setter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+) -> None:
+    """Class property setters cannot repair invalid authenticated evidence."""
+    protected = _protected(tmp_path)[-1]
+    record_type, field, replacement = {
+        "slice": (PayloadSlice, "offset", 0),
+        "instruction": (ProtectedInstruction, "output_path", "safe.bin"),
+        "metadata": (ProtectedMetadata, "instructions", protected.instructions),
+        "plan": (protected_module.ProtectedExactPlan, "context", _CONTEXT),
+    }[record]
+    slot = record_type.__dict__[field]
+    calls = 0
+
+    def forged_setter(value: object, _ignored: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(value, replacement)
+
+    # The getter remains authentic so dataclasses.replace can read the input;
+    # only construction is permitted to choose the trusted stored value.
+    def original_getter(value: object) -> object:
+        return slot.__get__(value, record_type)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            record_type, field, property(original_getter, forged_setter)
+        )
+        with pytest.raises(ProtectedPlanError):
+            if record == "slice":
+                _ = PayloadSlice(offset=-1, length=2)
+            elif record == "instruction":
+                _ = ProtectedInstruction(
+                    output_path="../unsafe.bin",
+                    kind=ProtectedInstructionKind.COPY_SOURCE,
+                    expected_sha256="0" * 64,
+                    source_path="source.bin",
+                )
+            else:
+                if record == "metadata":
+                    _ = ProtectedMetadata(
+                        source=protected.source,
+                        target=protected.target,
+                        instructions=cast(
+                            "tuple[ProtectedInstruction, ...]",
+                            cast("object", []),
+                        ),
+                    )
+                else:
+                    _ = replace(protected, context=b"")
+    assert calls == 0, f"forged {record}.{field} setter reached construction"
+
+
+@pytest.mark.parametrize(
+    ("record_type", "field"),
+    [
+        (PayloadSlice, "offset"),
+        (PayloadSlice, "length"),
+        (ProtectedInstruction, "output_path"),
+        (ProtectedInstruction, "kind"),
+        (ProtectedInstruction, "expected_sha256"),
+        (ProtectedInstruction, "source_path"),
+        (ProtectedInstruction, "payload_slice"),
+        (ProtectedInstruction, "segments"),
+        (ProtectedMetadata, "source"),
+        (ProtectedMetadata, "target"),
+        (ProtectedMetadata, "instructions"),
+        (ProtectedMetadata, "passthrough_roots"),
+        (protected_module.ProtectedExactPlan, "source"),
+        (protected_module.ProtectedExactPlan, "target"),
+        (protected_module.ProtectedExactPlan, "instructions"),
+        (protected_module.ProtectedExactPlan, "passthrough_roots"),
+        (protected_module.ProtectedExactPlan, "context"),
+        (protected_module.ProtectedExactPlan, "nonce"),
+        (protected_module.ProtectedExactPlan, "payload"),
+        (protected_module.ProtectedExactPlan, "binding"),
+    ],
+)
+def test_protected_valid_constructor_uses_original_field_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type,
+    field: str,
+) -> None:
+    """Authenticated records do not dispatch attacker-controlled setters."""
+    protected = _protected(tmp_path)[-1]
+    plan_fields = protected_module._plan_fields(protected)
+    calls = 0
+
+    def forbidden_setter(_self: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("forged setter reached construction")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, field, property(fset=forbidden_setter))
+        if record_type is PayloadSlice:
+            value = PayloadSlice(offset=0, length=1)
+        elif record_type is ProtectedInstruction:
+            value = ProtectedInstruction(
+                output_path="output.bin",
+                kind=ProtectedInstructionKind.COPY_SOURCE,
+                expected_sha256="0" * 64,
+                source_path="source.bin",
+            )
+        elif record_type is ProtectedMetadata:
+            value = ProtectedMetadata(
+                source=protected.source,
+                target=protected.target,
+                instructions=protected.instructions,
+                passthrough_roots=protected.passthrough_roots,
+            )
+        else:
+            value = protected_module.ProtectedExactPlan(*plan_fields)
+    assert type(value) is record_type
+    assert calls == 0, f"valid {record_type.__name__}.{field} ran forged setter"

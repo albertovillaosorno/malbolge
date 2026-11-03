@@ -104,7 +104,6 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_BYTEARRAY = builtins.bytearray
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_ISINSTANCE = builtins.isinstance
 
 
@@ -198,8 +197,8 @@ class PayloadSlice:
 
     def __init__(self, offset: int, length: int) -> None:
         """Validate literal ranges with the captured original guard."""
-        _NATIVE_OBJECT_SETATTR(self, "offset", offset)
-        _NATIVE_OBJECT_SETATTR(self, "length", length)
+        _PAYLOAD_SLICE_OFFSET_SLOT.__set__(self, offset)
+        _PAYLOAD_SLICE_LENGTH_SLOT.__set__(self, length)
         _PAYLOAD_SLICE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -267,12 +266,12 @@ class ProtectedInstruction:
         segments: tuple[ProtectedSegment, ...] = (),
     ) -> None:
         """Validate instruction shape through the original guard."""
-        _NATIVE_OBJECT_SETATTR(self, "output_path", output_path)
-        _NATIVE_OBJECT_SETATTR(self, "kind", kind)
-        _NATIVE_OBJECT_SETATTR(self, "expected_sha256", expected_sha256)
-        _NATIVE_OBJECT_SETATTR(self, "source_path", source_path)
-        _NATIVE_OBJECT_SETATTR(self, "payload_slice", payload_slice)
-        _NATIVE_OBJECT_SETATTR(self, "segments", segments)
+        _INSTRUCTION_OUTPUT_SLOT.__set__(self, output_path)
+        _INSTRUCTION_KIND_SLOT.__set__(self, kind)
+        _INSTRUCTION_SHA256_SLOT.__set__(self, expected_sha256)
+        _INSTRUCTION_SOURCE_SLOT.__set__(self, source_path)
+        _INSTRUCTION_PAYLOAD_SLOT.__set__(self, payload_slice)
+        _INSTRUCTION_SEGMENTS_SLOT.__set__(self, segments)
         _PROTECTED_INSTRUCTION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -464,10 +463,10 @@ class ProtectedMetadata:
         passthrough_roots: tuple[str, ...] = (),
     ) -> None:
         """Admit metadata with the original immutable-record validator."""
-        _NATIVE_OBJECT_SETATTR(self, "source", source)
-        _NATIVE_OBJECT_SETATTR(self, "target", target)
-        _NATIVE_OBJECT_SETATTR(self, "instructions", instructions)
-        _NATIVE_OBJECT_SETATTR(self, "passthrough_roots", passthrough_roots)
+        _METADATA_SOURCE_SLOT.__set__(self, source)
+        _METADATA_TARGET_SLOT.__set__(self, target)
+        _METADATA_INSTRUCTIONS_SLOT.__set__(self, instructions)
+        _METADATA_ROOTS_SLOT.__set__(self, passthrough_roots)
         _PROTECTED_METADATA_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -564,14 +563,14 @@ class ProtectedExactPlan:
         binding: ThresholdBinding,
     ) -> None:
         """Admit the authenticated envelope with the original guard."""
-        _NATIVE_OBJECT_SETATTR(self, "source", source)
-        _NATIVE_OBJECT_SETATTR(self, "target", target)
-        _NATIVE_OBJECT_SETATTR(self, "instructions", instructions)
-        _NATIVE_OBJECT_SETATTR(self, "passthrough_roots", passthrough_roots)
-        _NATIVE_OBJECT_SETATTR(self, "context", context)
-        _NATIVE_OBJECT_SETATTR(self, "nonce", nonce)
-        _NATIVE_OBJECT_SETATTR(self, "payload", payload)
-        _NATIVE_OBJECT_SETATTR(self, "binding", binding)
+        _PLAN_SOURCE_SLOT.__set__(self, source)
+        _PLAN_TARGET_SLOT.__set__(self, target)
+        _PLAN_INSTRUCTIONS_SLOT.__set__(self, instructions)
+        _PLAN_ROOTS_SLOT.__set__(self, passthrough_roots)
+        _PLAN_CONTEXT_SLOT.__set__(self, context)
+        _PLAN_NONCE_SLOT.__set__(self, nonce)
+        _PLAN_PAYLOAD_SLOT.__set__(self, payload)
+        _PLAN_BINDING_SLOT.__set__(self, binding)
         _PROTECTED_EXACT_PLAN_VALIDATOR(self)
 
     def __post_init__(self) -> None:
