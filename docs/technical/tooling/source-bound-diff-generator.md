@@ -551,6 +551,20 @@ scoped Ruff and BasedPyright reported zero errors (three older type warnings).
 This isolates class-hook redirection, not direct record storage mutation or
 concurrent source writers. Repository-wide Jig has no clean verdict.
 
+Public anchor selection and coverage now also revalidate the original stored
+`AnchorPolicy` and `StableAnchor` invariants (`e245d7ee3`), even for exact native
+objects allocated without their constructors. Forged zero or boolean window
+sizes, invalid selection moduli, malformed digests and offsets, and missing
+native slots now fail with `FingerprintPolicyError` before selecting windows or
+crediting lineage coverage. Fifteen red-first tests cover both reference and
+candidate records. All 73 fingerprint tests and 2,953 integrated diff tests
+passed before publication; 211 fingerprint/admission tests passed after commit,
+with scoped Ruff, strict BasedPyright, and Git diff checks clean. This is input
+admission, not protection against direct stored-instance mutation, arbitrary
+consumer execution, or concurrent external writers. Jig doctor remains degraded
+with no generated graph; a bounded 105-second `jig check` attempt timed out
+(exit 124) at native-validator scheduling, without a clean Jig verdict.
+
 ### Implemented Tree-Level Admission
 
 The generic admission layer accepts only consumer-selected canonical identity

@@ -167,6 +167,16 @@ format.
   BasedPyright zero-error checks were also green. Three older type warnings
   remain, and the repository-wide Jig verdict is still unavailable. This
   does not guard direct record storage mutation or concurrent source writes.
+- Public anchor extraction/coverage now reruns pinned original validators for
+  exact native policy and anchor inputs (`e245d7ee3`). Fifteen red-first forged
+  slot and missing-slot cases reject invalid window sizes, moduli, digests,
+  and offsets with `FingerprintPolicyError` rather than crediting malformed
+  lineage. All 73 fingerprint and 2,953 integrated diff tests passed before
+  commit; 211 fingerprint/admission tests passed after commit. Scoped Ruff,
+  strict BasedPyright, and diff checks were clean. This does not isolate
+  direct stored-instance edits or concurrent writers. Jig doctor was degraded
+  (graph absent); a 105-second global `jig check` timed out (exit 124) during
+  native-validator scheduling, without a clean Jig verdict.
 - Source-binding anchor materials, masked shares, binding envelopes, and
   recovered shares now use pinned native allocation/original initializers
   (`b6d41a9ea`): eight red-first hook regressions, 147 focused tests, and
