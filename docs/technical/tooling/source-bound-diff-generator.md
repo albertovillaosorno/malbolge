@@ -205,6 +205,17 @@ strict BasedPyright, and diff checks passed. The guard does not make
 filesystem resolution atomic against external writers or concurrent host
 mutation; direct descriptor-bound reads remain independent of these hooks.
 
+The same native path operations also dispatch through mutable
+`PurePath.with_segments`, `Path.with_segments`, and concrete `Path` allocation
+and initialization hooks. Exact resolution now checks those class hooks before
+and after resolution (`94613c2cc`); eight red-first factory substitutions
+and three mid-resolution cases fail closed, while descriptor-bound file reads
+still work with an unrelated late factory. All 295 postcommit exact tests,
+scoped Ruff, strict source BasedPyright, and diff checks pass. One integrated
+run reached 3,426 passes and six failures in concurrently edited behavior
+context tests; a subsequent independent stable-snapshot run passed 3,432 diff
+tests. The checks are not atomic against external host or filesystem races.
+
 Even a pinned `Path.walk` delegates to mutable host `os.walk` and `os.scandir`,
 while `os.walk` resolves nested children through `os.path.join`. Exact tree
 snapshots now require the import-original identities of all three hooks

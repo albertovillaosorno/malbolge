@@ -110,6 +110,13 @@ format.
   mid-resolution cases pass; 283 postcommit exact and 3,398 integrated diff
   tests, scoped Ruff, strict source BasedPyright, and diff checks pass. This
   does not isolate concurrent external host or filesystem mutations.
+- Exact path resolution now guards `with_segments` and native `Path`
+  constructor hooks before and after `resolve`/`joinpath` (`94613c2cc`).
+  Eight red-first and three mid-call variants reject foreign path factories;
+  descriptor-bound reads remain available. All 295 postcommit exact tests,
+  scoped Ruff, source strict BasedPyright, and diff checks pass. A shared run
+  had 3,426 passes and six failures in concurrent behavior WIP; a later
+  independent stable run passed 3,432 diff tests. External races remain.
 - Exact tree enumeration now checks original `os.walk`, `os.scandir`, and
   `os.path.join` (`dccb70b71`) before full or passthrough-excluded snapshots.
   Six red-first omitted-file cases now fail closed; 276 focused exact tests
