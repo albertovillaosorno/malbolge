@@ -3471,3 +3471,54 @@ def test_compatible_exact_patch_ignores_late_segment_getters(
         materialized = compatible_module._exact_bytes(b"alpha", exact)
     assert materialized == expected
     assert calls == 0, "late segment getter redirected exact patch bytes"
+
+
+def test_compatible_postcondition_cannot_forge_tree_equality(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late snapshot equality cannot mask candidate mutation before publication."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "out"
+    request = _request(candidate, plan, output)
+    original = (candidate / "identity.txt").read_bytes()
+
+    def mutate_candidate(_staging: Path) -> bool:
+        (candidate / "identity.txt").write_bytes(original + b"changed")
+        return True
+
+    request = replace(request, postcondition=mutate_candidate)
+    with monkeypatch.context() as patch:
+        patch.setattr(compatible_module.TreeSnapshot, "__eq__", lambda *_: True)
+        with pytest.raises(CompatiblePlanError, match="candidate tree changed"):
+            _ = materialize_compatible_plan(request)
+    assert not output.exists(), "forged snapshot equality published mutated tree"
+
+
+def test_compatible_authoring_cannot_forge_tree_equality(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late snapshot equality cannot skip post-plan source revision checks."""
+    source, oracle = _roots(tmp_path)
+    mutated = False
+
+    def mutating_mapper(path: str, data: bytes) -> MappedView | None:
+        nonlocal mutated
+        if path == "code.src" and not mutated:
+            mutated = True
+            (source / "identity.txt").write_bytes(_LINEAGE + b"changed")
+        return _mapper(path, data)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(compatible_module.TreeSnapshot, "__eq__", lambda *_: True)
+        with pytest.raises(CompatiblePlanError, match="source tree changed"):
+            _ = build_compatible_plan(
+                CompatibleBuildRequest(
+                    source_root=source,
+                    oracle_root=oracle,
+                    reference_identity=_identity(source),
+                    admission_policy=_policy(),
+                    mapper=mutating_mapper,
+                )
+            )
+    assert mutated, "authoring fixture did not change a source file"

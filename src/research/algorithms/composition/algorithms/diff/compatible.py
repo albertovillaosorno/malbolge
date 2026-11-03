@@ -66,6 +66,7 @@ from algorithms.diff.model import (
     TreeSnapshot,
     _file_fields,
     _oracle_literal_data,
+    _snapshot_files,
     _source_slice_fields,
     reserved_windows_component,
 )
@@ -1645,7 +1646,15 @@ def _require_tree_unchanged(
         detail = _safe_compatible_error_detail(error)
         message = f"compatible {context} tree changed during {phase}: {detail}"
         raise CompatiblePlanError(message) from error
-    if current != baseline:
+    # Dataclass equality is a mutable class hook. Compare original stored
+    # identity fields rather than calling an overridden TreeSnapshot.__eq__.
+    current_fields = _NATIVE_TUPLE(
+        _file_fields(record) for record in _snapshot_files(current)
+    )
+    baseline_fields = _NATIVE_TUPLE(
+        _file_fields(record) for record in _snapshot_files(baseline)
+    )
+    if current_fields != baseline_fields:
         message = f"compatible {context} tree changed during {phase}"
         raise CompatiblePlanError(message)
 
