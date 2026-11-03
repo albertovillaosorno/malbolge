@@ -47,7 +47,7 @@ import time
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from stat import S_ISREG
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from sys import getfilesystemencoding as _get_filesystem_encoding
@@ -532,7 +532,7 @@ def _rooted_path(
     scratch_root: Path,
 ) -> Path:
     root = _root_path(argument.root, context, scratch_root)
-    candidate = root.joinpath(*PurePosixPath(argument.relative_path).parts)
+    candidate = root.joinpath(*argument.relative_path.split("/"))
     try:
         resolved = _NATIVE_PATH_RESOLVE(candidate)
     except (OSError, ValueError, RuntimeError) as error:

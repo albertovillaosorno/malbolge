@@ -2382,6 +2382,43 @@ def test_rooted_probe_paths_reject_reserved_windows_components(
         _ = RootedExecutable(ProbeRoot.REPOSITORY, unsafe)
 
 
+@pytest.mark.parametrize("kind", ["argv-path", "executable"])
+def test_probe_rooted_execution_ignores_late_posix_parts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Accepted rooted paths cannot be redirected to a different file."""
+    from pathlib import PurePosixPath
+
+    source = tmp_path / "source"
+    nested = source / "nested"
+    nested.mkdir(parents=True)
+    _ = (nested / "admitted.bin").write_bytes(b"admitted")
+    _ = (source / "decoy.bin").write_bytes(b"decoy")
+    context = _context(source, tmp_path)
+    argument = (
+        PathArgument(ProbeRoot.SOURCE, "nested/admitted.bin")
+        if kind == "argv-path"
+        else RootedExecutable(ProbeRoot.SOURCE, "nested/admitted.bin")
+    )
+    native_parts = PurePosixPath.parts
+
+    def forged_parts(value: PurePosixPath) -> tuple[str, ...]:
+        if type(value) is PurePosixPath:
+            return ("decoy.bin",)
+        return cast("tuple[str, ...]", native_parts.__get__(value))
+
+    resolved = cast(
+        "Callable[[PathArgument | RootedExecutable, "
+        "ProbeRunContext, Path], Path]",
+        vars(probe_exec_module)["_rooted_path"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(PurePosixPath, "parts", property(forged_parts))
+        assert resolved(argument, context, tmp_path) == nested / "admitted.bin"
+
+
 @pytest.mark.parametrize("unsafe", ["C:relative", "C:/outside"])
 def test_rooted_probe_paths_ignore_late_ntpath_splitroot_spoof(
     unsafe: str,
