@@ -83,6 +83,15 @@ format.
   symlink-alias regressions pass, with 160 focused emitter and 3,348 integrated
   diff tests green; scoped Ruff, strict BasedPyright, and diff checks pass.
   Checks remain non-atomic against concurrent host/filesystem mutations.
+- Relocatable output and nested source path resolution now checks pinned
+  host realpath, `os.fspath`/`os.lstat`/`os.readlink`/`os.getcwd`/`stat.S_ISLNK`,
+  and native `Path` factories before and after trusted resolution (`57870f21c`).
+  A late host realpath previously laundered a candidate-contained output;
+  ten regressions cover changed dependencies and mid-resolution mutation.
+  All 229 postcommit relocatable tests passed, and 3,357 integrated diff tests
+  passed before the final added test. Ruff, strict BasedPyright and diff checks
+  passed. Jig doctor was degraded (absent graph); 120-second global Jig check
+  timed out. This does not isolate external filesystem races.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused

@@ -1473,6 +1473,21 @@ as their cause; unchecked host exception hooks cannot authorize publication.
 Concurrent filesystem writers can still race a non-atomic input snapshot or
 path check and require coordination.
 
+The relocatable materializer now pins the native host `os.path.realpath`,
+`os.fspath`, `os.lstat`, `os.readlink`, `os.getcwd`, and `stat.S_ISLNK`
+dependencies and original `Path` resolution/constructor hooks (`57870f21c`).
+It checks these before path conversion and around each source or output
+`Path.resolve`, including after the resolver returns. A forged host realpath
+previously admitted an output inside the candidate tree; another late host
+hook executed before path admission. Ten new tests cover the bypass, five
+host dependencies, three path factories, and mid-resolution mutation.
+All 229 focused relocatable tests passed postcommit. The shared diff suite
+passed 3,357 tests before the final additional mutation test; scoped Ruff,
+strict BasedPyright, and diff checks passed. Jig doctor was degraded because
+the generated graph was absent, and a 120-second `jig check` timed out with
+no clean verdict. External path races and direct trusted-state mutation
+remain outside this guard.
+
 Relocatable authoring now creates internal `RangeLocator`,
 `RelocatableSourceRange`, `RelocatableInstruction`, and
 `RelocatableAuthoringPlan` records using captured native allocation and the
