@@ -158,3 +158,51 @@ def test_canonicalization_text_entry_requires_exact_bytes() -> None:
             cast("bytes", cast("object", "not-bytes")),
             ignore_formatting=False,
         )
+
+
+@pytest.mark.parametrize(
+    "identity_helper",
+    [normalize_line_endings, collapse_ascii_whitespace],
+)
+def test_canonicalization_rejects_late_type_spoofed_buffer(
+    monkeypatch: pytest.MonkeyPatch,
+    identity_helper: Callable[[bytes], bytes],
+) -> None:
+    """A forged exact-type verdict cannot admit mutable source bytes."""
+    foreign = bytearray(b"alpha  beta\r\n")
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = identity_helper(cast("bytes", cast("object", foreign)))
+        except CanonicalIdentityError:
+            rejected = True
+    assert rejected, "late type hook admitted mutable source bytes"
+
+
+def test_formatting_policy_rejects_late_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-bool policy cannot select canonical source identity mode."""
+    foreign = 1
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bool if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = canonicalize_text_identity(
+                b"alpha  beta",
+                ignore_formatting=cast("bool", cast("object", foreign)),
+            )
+        except CanonicalIdentityError:
+            rejected = True
+    assert rejected, "late type hook admitted an integer formatting policy"

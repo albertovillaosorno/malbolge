@@ -34,6 +34,8 @@
 
 from __future__ import annotations
 
+import builtins
+
 _ASCII_WHITESPACE = frozenset(b" \t\n\r\v\f")
 _CRLF = b"\r\n"
 _CR = b"\r"
@@ -42,6 +44,7 @@ _SPACE = 0x20
 _NATIVE_BYTEARRAY = bytearray
 _NATIVE_BOOL = bool
 _NATIVE_BYTES = bytes
+_NATIVE_TYPE = builtins.type
 
 
 class CanonicalIdentityError(ValueError):
@@ -58,7 +61,7 @@ def normalize_line_endings(data: bytes) -> bytes:
         CanonicalIdentityError: Input does not use exact bytes.
 
     """
-    if type(data) is not _NATIVE_BYTES:
+    if _NATIVE_TYPE(data) is not _NATIVE_BYTES:
         message = "canonical identity input must use exact bytes"
         raise CanonicalIdentityError(message)
     return data.replace(_CRLF, _LF).replace(_CR, _LF)
@@ -92,7 +95,7 @@ def collapse_ascii_whitespace(data: bytes) -> bytes:
 
 
 def _require_formatting_policy(value: object) -> bool:
-    if type(value) is not _NATIVE_BOOL:
+    if _NATIVE_TYPE(value) is not _NATIVE_BOOL:
         message = "identity formatting policy must use exact bool"
         raise CanonicalIdentityError(message)
     return value
