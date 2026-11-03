@@ -454,6 +454,41 @@ def test_domain_loader_rejects_symlink_under_post_import_status_spoof(
     assert forged_calls == 0
 
 
+@pytest.mark.parametrize("linked_role", [_STAGE_MODULE, _STAGE_PARENT])
+def test_domain_loader_rejects_symlink_under_post_import_os_lstat_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, linked_role: str
+) -> None:
+    """A replaced OS syscall cannot certify a linked local policy module."""
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    real_module = real_parent / "domain.py"
+    _write(real_module, _COMPLETE)
+    alias = tmp_path / "alias"
+    linked = alias if linked_role == _STAGE_MODULE else alias / "domain.py"
+    target = real_module if linked_role == _STAGE_MODULE else real_parent
+    alias.symlink_to(target, target_is_directory=linked_role != _STAGE_MODULE)
+    native_status = target.stat()
+    native_lstat = os.lstat
+    forged_calls = 0
+
+    def forged_lstat(
+        path: Path | str | bytes, *args: object, **kwargs: object
+    ) -> os.stat_result:
+        nonlocal forged_calls
+        if path == alias:
+            forged_calls += 1
+            return native_status
+        return native_lstat(path, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "lstat", forged_lstat)
+        with pytest.raises(
+            DomainContractError, match=r"regular file|linked parent"
+        ):
+            _ = load_diff_domain(linked)
+    assert forged_calls == 0
+
+
 def test_domain_loader_ignores_post_import_native_resolver_redirection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

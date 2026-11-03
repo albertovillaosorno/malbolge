@@ -66,7 +66,7 @@ if TYPE_CHECKING:
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_PATH_TYPE = type(Path())
-_NATIVE_PATH_LSTAT = Path.lstat
+_NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
 _SHA256_FACTORY = hashlib.sha256
