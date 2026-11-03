@@ -248,6 +248,31 @@ def test_pinned_snapshot_accepts_exact_selected_tree(tmp_path: Path) -> None:
     )
 
 
+def test_pinned_snapshot_ignores_replaced_relative_path_labels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign path formatter cannot change file identity in a pin digest."""
+    _write(tmp_path, "src/a.c", b"int a;\n")
+    baseline = source_snapshot_evidence(tmp_path, ("src",))
+    target = tmp_path / "src/a.c"
+    native_relative = Path.relative_to
+    calls = 0
+
+    def forged_relative(
+        path: Path, other: Path, *, walk_up: bool = False
+    ) -> Path:
+        nonlocal calls
+        if path == target and other == tmp_path:
+            calls += 1
+            return Path("src/forged.c")
+        return native_relative(path, other, walk_up=walk_up)
+
+    monkeypatch.setattr(Path, "relative_to", forged_relative)
+    actual = source_snapshot_evidence(tmp_path, ("src",))
+    assert calls == 0
+    assert actual == baseline
+
+
 def test_pinned_snapshots_ignore_replaced_global_sha256(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

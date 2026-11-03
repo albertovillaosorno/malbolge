@@ -56,6 +56,7 @@ _COMMIT_HEX_LENGTH = 40
 _SHA256_HEX_LENGTH = 64
 _LOWER_HEX = frozenset("0123456789abcdef")
 _NATIVE_STAT_RESULT: Final = os.stat_result
+_NATIVE_RELATIVE_TO = Path.relative_to
 
 
 class SourcePinError(RuntimeError):
@@ -235,7 +236,7 @@ def _require_unlinked_parent_components(root: Path, relative: str) -> None:
     current = root
     for component in PurePosixPath(relative).parts[:-1]:
         current /= component
-        label = current.relative_to(root).as_posix()
+        label = _NATIVE_RELATIVE_TO(current, root).as_posix()
         mode = _source_mode(current, label)
         if mode is None or not S_ISDIR(mode):
             message = f"pinned source parent must be a directory: {label}"
@@ -278,7 +279,7 @@ def _directory_paths(selected: Path) -> tuple[Path, ...]:
 def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
     files: list[Path] = []
     for path in _directory_paths(selected):
-        relative = path.relative_to(root).as_posix()
+        relative = _NATIVE_RELATIVE_TO(path, root).as_posix()
         mode = _source_mode(path, relative)
         if mode is None:
             message = f"pinned source entry disappeared: {relative}"
@@ -301,11 +302,11 @@ def _collect_root(root: Path, relative_root: str) -> tuple[Path, ...]:
 
 def _pinned_files(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
     files = tuple(path for relative in roots for path in _collect_root(root, relative))
-    unique = {path.relative_to(root).as_posix() for path in files}
+    unique = {_NATIVE_RELATIVE_TO(path, root).as_posix() for path in files}
     if len(unique) != len(files):
         message = "pinned source roots overlap"
         raise SourcePinError(message)
-    return tuple(sorted(files, key=lambda path: path.relative_to(root).as_posix()))
+    return tuple(sorted(files, key=lambda path: _NATIVE_RELATIVE_TO(path, root).as_posix()))
 
 
 def _validate_root_path(root: object) -> None:
@@ -391,7 +392,7 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
     digest.update(_u64(len(files)))
     receipts: list[tuple[int, ...]] = []
     for path in files:
-        relative_text = path.relative_to(resolved_root).as_posix()
+        relative_text = _NATIVE_RELATIVE_TO(path, resolved_root).as_posix()
         relative = _utf8_pinned_path(relative_text)
         receipts.append(_pinned_file_receipt(path, relative_text))
         data = _read_pinned_source(resolved_root, path, relative_text)
@@ -403,7 +404,7 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
         message = "pinned source file set changed during snapshot"
         raise SourcePinError(message)
     for path, before in zip(files, receipts, strict=True):
-        relative_text = path.relative_to(resolved_root).as_posix()
+        relative_text = _NATIVE_RELATIVE_TO(path, resolved_root).as_posix()
         if _pinned_file_receipt(path, relative_text) != before:
             message = f"pinned source file changed during snapshot: {relative_text}"
             raise SourcePinError(message)
