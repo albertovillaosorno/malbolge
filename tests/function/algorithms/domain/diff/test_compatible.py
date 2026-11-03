@@ -1506,7 +1506,7 @@ def test_compatible_host_faults_do_not_format_foreign_errors(
     ("operation", "expected"),
     [
         ("path_resolve", "path resolution failed"),
-        ("linked_ancestor", "candidate snapshot failed"),
+        ("linked_ancestor", "ancestor inspection failed"),
         ("tree_recheck", "staging tree changed during staging"),
     ],
 )

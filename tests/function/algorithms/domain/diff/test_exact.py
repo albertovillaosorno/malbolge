@@ -1165,7 +1165,7 @@ def test_exact_staging_status_failure_is_not_reported_missing(
             raise PermissionError(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_LSTAT", fail_lstat)
     with pytest.raises(ExactTreeError, match="staging root status failed"):
         materialize_exact_plan(source, plan, output)
     _expect(not output.exists(), "status failure published output")
@@ -1218,7 +1218,7 @@ def test_snapshot_root_status_error_fails_closed(
             raise PermissionError(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_status)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_LSTAT", fail_status)
     with pytest.raises(ExactTreeError, match="tree root status failed"):
         _ = snapshot_tree(root)
 
@@ -1245,7 +1245,7 @@ def test_exact_snapshot_rejects_non_native_path_status(
             return SimpleNamespace(st_mode=original_lstat(path).st_mode)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", forge_status)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_LSTAT", forge_status)
     with pytest.raises(ExactTreeError, match="native filesystem status"):
         _ = snapshot_tree(root)
     _expect(forged, "the forged stat receipt was not consumed")
@@ -1273,7 +1273,9 @@ def test_exact_snapshot_rejects_foreign_junction_verdict(
             return 0
         return native_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", forged_verdict)
+    monkeypatch.setattr(
+        exact_module, "_NATIVE_PATH_IS_JUNCTION", forged_verdict
+    )
     with pytest.raises(ExactTreeError, match="native boolean"):
         _ = snapshot_tree(root)
     _expect(checked, "foreign junction verdict was not reached")
@@ -1338,9 +1340,15 @@ def test_exact_snapshot_rejects_hostile_host_errors_without_formatting(
     _ = (root / "leaf").write_bytes(b"trusted")
     fault = _HostileExactHostError("host refused")
     methods = {
-        "status": (Path, "lstat", "tree root status failed"),
-        "junction": (Path, "is_junction", "tree redirect status failed"),
-        "walk": (Path, "walk", "tree traversal failed"),
+        "status": (
+            exact_module, "_NATIVE_PATH_LSTAT", "tree root status failed"
+        ),
+        "junction": (
+            exact_module,
+            "_NATIVE_PATH_IS_JUNCTION",
+            "tree redirect status failed",
+        ),
+        "walk": (exact_module, "_NATIVE_PATH_WALK", "tree traversal failed"),
         "resolve": (
             exact_module, "_NATIVE_PATH_RESOLVE", "tree root resolution failed"
         ),
@@ -1372,6 +1380,78 @@ def test_snapshot_rejects_linked_root_when_supported(tmp_path: Path) -> None:
         _ = snapshot_tree(linked)
 
 
+def test_exact_snapshot_rejects_linked_root_under_post_import_status_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged directory status cannot hide a linked source tree root."""
+    real = tmp_path / "real"
+    _write(real, "payload", b"oracle")
+    linked = tmp_path / "linked"
+    linked.symlink_to(real, target_is_directory=True)
+    native_lstat = Path.lstat
+    real_status = real.stat()
+    calls = 0
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        nonlocal calls
+        if path == linked:
+            calls += 1
+            return real_status
+        return native_lstat(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "lstat", forged_lstat)
+        with pytest.raises(
+            ExactTreeError, match="tree root must not be linked"
+        ):
+            _ = snapshot_tree(linked)
+    assert calls == 0
+
+
+def test_exact_snapshot_ignores_post_import_tree_walk_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced walker cannot erase source files from the digest tree."""
+    root = tmp_path / "source"
+    _write(root, "source.txt", b"identity")
+    baseline = snapshot_tree(root)
+    calls = 0
+
+    def forged_walk(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        del _args, _kwargs
+        calls += 1
+        return iter(())
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "walk", forged_walk)
+        observed = snapshot_tree(root)
+    assert calls == 0
+    assert observed == baseline
+
+
+def test_exact_snapshot_ignores_post_import_junction_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An injected junction verdict cannot reject an ordinary source tree."""
+    root = tmp_path / "source"
+    _write(root, "source.txt", b"identity")
+    baseline = snapshot_tree(root)
+    calls = 0
+
+    def forged_junction(_path: Path) -> bool:
+        nonlocal calls
+        del _path
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "is_junction", forged_junction)
+        observed = snapshot_tree(root)
+    assert calls == 0
+    assert observed == baseline
+
+
 def test_snapshot_walk_errors_fail_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1392,7 +1472,7 @@ def test_snapshot_walk_errors_fail_closed(
         _ = on_error(PermissionError("blocked exact tree"))
         return iter(())
 
-    monkeypatch.setattr(Path, "walk", fail_walk)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_WALK", fail_walk)
     with pytest.raises(ExactTreeError, match="tree traversal failed"):
         _ = snapshot_tree(root)
 
@@ -1414,7 +1494,7 @@ def test_snapshot_entry_status_errors_fail_closed(
             raise PermissionError(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_status)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_LSTAT", fail_status)
     with pytest.raises(ExactTreeError, match="tree entry status failed"):
         _ = snapshot_tree(root)
 
@@ -1442,7 +1522,7 @@ def test_snapshot_host_status_exceptions_fail_typed(
             raise failure_type(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_status)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_LSTAT", fail_status)
     context = "tree root" if is_root else "tree entry"
     with pytest.raises(ExactTreeError, match=f"{context} status failed"):
         _ = snapshot_tree(root)
@@ -1473,7 +1553,7 @@ def test_snapshot_host_walk_exceptions_fail_typed(
         message = "host tree walker broke"
         raise failure_type(message)
 
-    monkeypatch.setattr(Path, "walk", fail_walk)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_WALK", fail_walk)
 
     def run_snapshot() -> TreeSnapshot:
         if excluded:
@@ -1501,7 +1581,7 @@ def test_snapshot_host_junction_exceptions_fail_typed(
             raise failure_type(message)
         return original_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", fail_junction)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_IS_JUNCTION", fail_junction)
     with pytest.raises(ExactTreeError, match="tree redirect status failed"):
         _ = snapshot_tree(root)
 
@@ -1710,7 +1790,9 @@ def test_exact_reader_rejects_foreign_junction_verdict(
     def foreign_verdict(path: Path) -> object:
         return 0 if path == leaf else native_junction(path)
 
-    monkeypatch.setattr(Path, "is_junction", foreign_verdict)
+    monkeypatch.setattr(
+        exact_module, "_NATIVE_PATH_IS_JUNCTION", foreign_verdict
+    )
     with pytest.raises(ExactTreeError, match="native boolean"):
         _ = exact_module.read_exact_regular_file(leaf, "tree entry")
 
@@ -1754,7 +1836,7 @@ def test_exact_reader_rejects_forged_postclose_status(
                 return SimpleNamespace(st_mode=native_lstat(path).st_mode)
         return native_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", forged_final_status)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_LSTAT", forged_final_status)
     with pytest.raises(ExactTreeError, match="native filesystem status"):
         _ = exact_module.read_exact_regular_file(leaf, "tree entry")
     _expect(
@@ -1832,7 +1914,7 @@ def test_snapshot_rejects_file_swapped_to_symlink_after_status(
             swapped = True
         return observed
 
-    monkeypatch.setattr(Path, "lstat", swap_after_status)
+    monkeypatch.setattr(exact_module, "_NATIVE_PATH_LSTAT", swap_after_status)
     with pytest.raises(ExactTreeError, match="tree entry"):
         _ = snapshot_tree(root)
     _expect(swapped, "regular-file admission race did not execute")
@@ -1852,6 +1934,7 @@ def test_snapshot_rejects_writerless_fifo_swap_without_blocking(
         import os
         import sys
         from pathlib import Path
+        from algorithms.diff import exact as exact_module
         from algorithms.diff.exact import ExactTreeError, snapshot_tree
 
         root = Path(sys.argv[1])
@@ -1867,7 +1950,7 @@ def test_snapshot_rejects_writerless_fifo_swap_without_blocking(
                 os.mkfifo(leaf)
             return status
 
-        Path.lstat = swap
+        exact_module._NATIVE_PATH_LSTAT = swap
         try:
             snapshot_tree(root)
         except ExactTreeError:

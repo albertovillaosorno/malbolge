@@ -77,6 +77,9 @@ _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_PATH_LSTAT = Path.lstat
+_NATIVE_PATH_WALK = Path.walk
+_NATIVE_PATH_IS_JUNCTION = Path.is_junction
 
 
 class ExactTreeError(RuntimeError):
@@ -206,7 +209,7 @@ def _walk_tree(
     root: Path,
 ) -> Iterator[tuple[Path, list[str], list[str]]]:
     try:
-        yield from root.walk(on_error=_raise_tree_walk_error)
+        yield from _NATIVE_PATH_WALK(root, on_error=_raise_tree_walk_error)
     except ExactTreeError:
         raise
     except (OSError, ValueError, RuntimeError) as error:
@@ -271,7 +274,7 @@ def _tree_paths_excluding(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...
 
 def _entry_mode(path: Path, context: str) -> int | None:
     try:
-        receipt = path.lstat()
+        receipt = _NATIVE_PATH_LSTAT(path)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
@@ -285,7 +288,7 @@ def _is_redirect(path: Path, mode: int) -> bool:
     try:
         if S_ISLNK(mode):
             return True
-        is_junction = path.is_junction()
+        is_junction = _NATIVE_PATH_IS_JUNCTION(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_host_error_detail(error)
         message = f"tree redirect status failed: {path}: {detail}"
@@ -324,7 +327,7 @@ def _file_identity(status: os.stat_result) -> tuple[int, ...]:
 
 def _admit_opened_file(descriptor: int, path: Path, context: str) -> os.stat_result:
     opened = _require_native_status(os.fstat(descriptor), context)
-    named = _require_native_status(path.lstat(), context)
+    named = _require_native_status(_NATIVE_PATH_LSTAT(path), context)
     regular_identity = (
         S_ISREG(opened.st_mode)
         and S_ISREG(named.st_mode)
@@ -397,7 +400,7 @@ def _verify_closed_source(
     """
     # Finalizers may change or replace the named file after the last fstat.
     try:
-        final = path.lstat()
+        final = _NATIVE_PATH_LSTAT(path)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} status failed after descriptor close: {path}"
         raise ExactTreeError(message) from error
