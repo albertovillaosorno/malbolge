@@ -35,11 +35,12 @@
 from __future__ import annotations
 
 import builtins
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
-from typing import TYPE_CHECKING, Callable, cast
+from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import IdentityTree
 from algorithms.diff.exact import (
@@ -680,9 +681,13 @@ def _plan_fields(plan: ProtectedExactPlan) -> tuple[
     )
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, init=False)
 class _PayloadBuilder:
     data: bytearray
+
+    def __init__(self, data: bytearray) -> None:
+        """Store the literal buffer without class-level setter dispatch."""
+        _PAYLOAD_BUILDER_DATA_SLOT.__set__(self, data)
 
     def append(self, literal: bytes) -> PayloadSlice:
         """Append literal bytes.
@@ -691,9 +696,24 @@ class _PayloadBuilder:
             Deterministic range of the appended bytes.
 
         """
-        start = _NATIVE_LEN(self.data)
-        self.data.extend(literal)
+        buffer = cast(
+            "bytearray", _PAYLOAD_BUILDER_DATA_SLOT.__get__(self, _PayloadBuilder)
+        )
+        start = _NATIVE_LEN(buffer)
+        buffer.extend(literal)
         return PayloadSlice(offset=start, length=_NATIVE_LEN(literal))
+
+
+_PAYLOAD_BUILDER_DATA_SLOT = cast(
+    "MemberDescriptorType", _PayloadBuilder.__dict__["data"]
+)
+
+
+def _payload_builder_bytes(builder: _PayloadBuilder) -> bytes:
+    """Snapshot the original stored literal buffer after collection."""
+    return _NATIVE_BYTES(
+        cast("bytearray", _PAYLOAD_BUILDER_DATA_SLOT.__get__(builder, _PayloadBuilder))
+    )
 
 
 def _frame_bytes(value: bytes) -> bytes:
@@ -941,7 +961,7 @@ def protect_exact_plan(
         _protect_instruction(instruction, builder)
         for instruction in plan.instructions
     )
-    plaintext = _NATIVE_BYTES(builder.data)
+    plaintext = _payload_builder_bytes(builder)
     metadata = _metadata(
         plan.source,
         plan.target,

@@ -1768,3 +1768,48 @@ def test_protected_valid_constructor_uses_original_field_slots(
             value = protected_module.ProtectedExactPlan(*plan_fields)
     assert type(value) is record_type
     assert calls == 0, f"valid {record_type.__name__}.{field} ran forged setter"
+
+
+def test_protected_payload_builder_ignores_late_buffer_setter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A class setter cannot replace the internal authenticated literal buffer."""
+    buffer = bytearray(b"initial")
+    builder_type = protected_module._PayloadBuilder  # pyright: ignore[reportPrivateUsage]
+    calls = 0
+
+    def forbidden_setter(_record: object, _buffer: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("foreign builder buffer setter executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builder_type, "data", property(fset=forbidden_setter))
+        builder = builder_type(buffer)
+    assert builder.data is buffer
+    assert calls == 0
+
+
+def test_protected_payload_builder_ignores_late_buffer_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A class getter cannot redirect protected literal writes or output."""
+    builder_type = protected_module._PayloadBuilder  # pyright: ignore[reportPrivateUsage]
+    stored = bytearray()
+    builder = builder_type(stored)
+    calls = 0
+
+    def forged_getter(_record: object) -> bytearray:
+        nonlocal calls
+        calls += 1
+        return bytearray()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builder_type, "data", property(forged_getter))
+        location = builder.append(b"authenticated literal")
+        observed = protected_module._payload_builder_bytes(  # pyright: ignore[reportPrivateUsage]
+            builder
+        )
+    assert (location.offset, location.length) == (0, len(b"authenticated literal"))
+    assert observed == b"authenticated literal"
+    assert calls == 0
