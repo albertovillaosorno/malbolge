@@ -56,6 +56,7 @@ from algorithms.diff.behavior import (
 )
 from algorithms.diff.exact import ExactTreeError, snapshot_tree
 from algorithms.diff.probe_exec import (
+    ProbeCommand,
     ProbeExecutionError,
     ProbeProgram,
     ProbeRunContext,
@@ -81,6 +82,7 @@ _NATIVE_TUPLE = builtins.tuple
 _NATIVE_LEN = builtins.len
 _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
+_NATIVE_BOOL = builtins.bool
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
 _NATIVE_OBJECT_NEW = object.__new__
@@ -102,6 +104,15 @@ _NATIVE_PATH_RESOLVE = _native_path_resolve
 # consumer replaces late class properties or __getattribute__ methods.
 _PROGRAM_ID_SLOT = cast(
     "MemberDescriptorType", ProbeProgram.__dict__["probe_id"]
+)
+_PROGRAM_COMMANDS_SLOT = cast(
+    "MemberDescriptorType", ProbeProgram.__dict__["commands"]
+)
+_COMMAND_STDOUT_SLOT = cast(
+    "MemberDescriptorType", ProbeCommand.__dict__["digest_stdout"]
+)
+_COMMAND_EXIT_SLOT = cast(
+    "MemberDescriptorType", ProbeCommand.__dict__["digest_exit_code"]
 )
 _TRANSCRIPT_ID_SLOT = cast(
     "MemberDescriptorType", ProbeTranscript.__dict__["probe_id"]
@@ -154,10 +165,41 @@ def _require_selected_program(program: ProbeProgram, context: str) -> None:
         BehaviorProgramError: No command selects stdout or exit status.
 
     """
-    if not _NATIVE_ANY(
-        command.digest_stdout or command.digest_exit_code
-        for command in program.commands
-    ):
+    # Original slotted storage, not replaceable program/command class getters,
+    # is the authority for whether a probe actually selects evidence.
+    if _NATIVE_TYPE(program) is not ProbeProgram:
+        message = f"{context} program must use an exact ProbeProgram"
+        raise BehaviorProgramError(message)
+    try:
+        commands = cast(
+            "tuple[ProbeCommand, ...]",
+            _PROGRAM_COMMANDS_SLOT.__get__(program, ProbeProgram),
+        )
+    except AttributeError as error:
+        message = f"{context} program lacks native command evidence"
+        raise BehaviorProgramError(message) from error
+    if _NATIVE_TYPE(commands) is not _NATIVE_TUPLE or not commands:
+        message = f"{context} program requires native commands"
+        raise BehaviorProgramError(message)
+    selected = False
+    for command in commands:
+        if _NATIVE_TYPE(command) is not ProbeCommand:
+            message = f"{context} program has a foreign probe command"
+            raise BehaviorProgramError(message)
+        try:
+            stdout = _COMMAND_STDOUT_SLOT.__get__(command, ProbeCommand)
+            exit_code = _COMMAND_EXIT_SLOT.__get__(command, ProbeCommand)
+        except AttributeError as error:
+            message = f"{context} program has incomplete command selectors"
+            raise BehaviorProgramError(message) from error
+        if (
+            _NATIVE_TYPE(stdout) is not _NATIVE_BOOL
+            or _NATIVE_TYPE(exit_code) is not _NATIVE_BOOL
+        ):
+            message = f"{context} program requires native boolean selectors"
+            raise BehaviorProgramError(message)
+        selected = selected or stdout or exit_code
+    if not selected:
         message = f"{context} program requires a selected observation"
         raise BehaviorProgramError(message)
 

@@ -1644,7 +1644,7 @@ def test_behavior_record_validator_reads_original_fields(
         patched.setattr(record_type, field, property(spoof))
         with pytest.raises(BehaviorProgramError):
             validator = cast(
-                "Callable[[object], None]", getattr(record_type, "__post_init__")
+                "Callable[[object], None]", vars(record_type)["__post_init__"]
             )
             validator(valid)
     assert calls == 0, "late class getter spoofed the stored field"
@@ -1753,7 +1753,10 @@ def test_behavior_constructor_rejects_forged_field_setter(
     invalid: object,
 ) -> None:
     """A substituted setter cannot launder an invalid program record."""
-    valid = _valid_behavior_record(record_type, tmp_path)
+    valid = cast(
+        "BugProgram | BehaviorPrograms | AuthoredBugProgram | AuthoredBehaviorPrograms",
+        _valid_behavior_record(record_type, tmp_path),
+    )
     original_slot = record_type.__dict__[field]
     repaired = getattr(valid, field)
     calls = 0
@@ -1779,7 +1782,10 @@ def test_behavior_constructor_writes_original_slots(
     _: object,
 ) -> None:
     """Valid program metadata construction never calls late setters."""
-    valid = _valid_behavior_record(record_type, tmp_path)
+    valid = cast(
+        "BugProgram | BehaviorPrograms | AuthoredBugProgram | AuthoredBehaviorPrograms",
+        _valid_behavior_record(record_type, tmp_path),
+    )
     original_field = getattr(valid, field)
     calls = 0
 
@@ -2275,3 +2281,93 @@ def test_observation_rejects_native_authored_bundle_before_source_access(
         BehaviorProgramError, match=r"authored|identity|profile"
     ):
         _ = observe_behavior_programs(forged, _context(source, tmp_path))
+
+
+@pytest.mark.parametrize("owner", ["identity", "bug", "authored-bug"])
+@pytest.mark.parametrize("hook", ["commands", "selector", "exit-selector"])
+@pytest.mark.parametrize("selected", [False, True])
+def test_behavior_selector_ignores_late_probe_class_getters(
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str,
+    hook: str,
+    *,
+    selected: bool,
+) -> None:
+    """Selected observations must reflect the stored probe, not late getters."""
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "print('status')"),
+        digest_stdout=selected if hook != "exit-selector" else False,
+        digest_exit_code=selected if hook == "exit-selector" else False,
+    )
+    program = ProbeProgram("identity", (command,))
+    forged_command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "print('foreign')"),
+        digest_stdout=not selected,
+    )
+    getter_calls = 0
+
+    def forged_commands(_program: ProbeProgram) -> tuple[ProbeCommand, ...]:
+        nonlocal getter_calls
+        getter_calls += 1
+        return (forged_command,)
+
+    def forged_selector(_command: ProbeCommand) -> bool:
+        nonlocal getter_calls
+        getter_calls += 1
+        return not selected
+
+    def author() -> object:
+        if owner == "identity":
+            return BehaviorPrograms((program,), (), ())
+        if owner == "bug":
+            return BugProgram(program, "fix")
+        return AuthoredBugProgram(program, "fix", b"present", b"fixed")
+
+    with monkeypatch.context() as patched:
+        if hook == "commands":
+            patched.setattr(ProbeProgram, "commands", property(forged_commands))
+        elif hook == "selector":
+            patched.setattr(ProbeCommand, "digest_stdout", property(forged_selector))
+        else:
+            patched.setattr(ProbeCommand, "digest_exit_code", property(forged_selector))
+        if selected:
+            assert author() is not None
+        else:
+            with pytest.raises(BehaviorProgramError, match="selected observation"):
+                _ = author()
+    assert getter_calls == 0, "late probe getter influenced selector admission"
+
+
+@pytest.mark.parametrize("stored_selector", [1, "selected", None])
+def test_behavior_selector_rejects_fabricated_nonboolean_evidence(
+    stored_selector: object,
+) -> None:
+    """A constructor-bypassed exact probe cannot use truthy selector aliases."""
+    command = object.__new__(ProbeCommand)
+    stdout_slot = cast(
+        "MemberDescriptorType", ProbeCommand.__dict__["digest_stdout"]
+    )
+    exit_slot = cast(
+        "MemberDescriptorType", ProbeCommand.__dict__["digest_exit_code"]
+    )
+    stdout_slot.__set__(command, stored_selector)
+    exit_slot.__set__(command, False)
+    program = ProbeProgram("identity", (command,))
+    with pytest.raises(BehaviorProgramError, match="native boolean selectors"):
+        _ = BehaviorPrograms((program,), (), ())
+
+
+@pytest.mark.parametrize("missing", ["digest_stdout", "digest_exit_code"])
+def test_behavior_selector_rejects_uninitialized_probe_slots(missing: str) -> None:
+    """A missing selector field must fail through the typed behavior boundary."""
+    command = object.__new__(ProbeCommand)
+    for name in ("digest_stdout", "digest_exit_code"):
+        if name == missing:
+            continue
+        slot = cast("MemberDescriptorType", ProbeCommand.__dict__[name])
+        slot.__set__(command, True)
+    program = ProbeProgram("identity", (command,))
+    with pytest.raises(BehaviorProgramError, match="incomplete command selectors"):
+        _ = BehaviorPrograms((program,), (), ())
