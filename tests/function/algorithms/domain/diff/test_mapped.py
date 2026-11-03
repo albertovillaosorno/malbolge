@@ -32,12 +32,11 @@
 
 """Synthetic invariants for canonical units mapped to raw source spans."""
 
+import builtins
 from typing import cast
 
-from algorithms.diff.mapped import MappedUnit
-from algorithms.diff.mapped import MappedView
-from algorithms.diff.mapped import MappedViewError
 import pytest
+from algorithms.diff.mapped import MappedUnit, MappedView, MappedViewError
 
 _CANONICAL_PAIR = b"AB"
 _CANONICAL_WITH_MARKER = b"AE"
@@ -58,9 +57,7 @@ def test_mapped_view_concatenates_canonical_units() -> None:
         ),
     )
 
-    _expect(
-        view.canonical == _CANONICAL_PAIR, "mapped canonical stream changed"
-    )
+    _expect(view.canonical == _CANONICAL_PAIR, "mapped canonical stream changed")
     _expect(view.keys == (b"A", b"B"), "mapped unit sequence changed")
 
 
@@ -95,6 +92,18 @@ def test_overlapping_or_escaping_units_fail_closed() -> None:
             raw=b"abc",
             units=(MappedUnit(canonical=b"A", raw_start=0, raw_end=4),),
         )
+
+
+def test_mapped_view_rejects_overlap_after_late_builtin_max_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumer hooks cannot rewrite the raw span ordering check."""
+    first = MappedUnit(canonical=b"A", raw_start=0, raw_end=2)
+    overlapping = MappedUnit(canonical=b"B", raw_start=1, raw_end=3)
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "max", lambda *_values: 0)
+        with pytest.raises(MappedViewError, match="overlap"):
+            _ = MappedView(raw=b"abc", units=(first, overlapping))
 
 
 def test_mapped_records_reject_foreign_runtime_metadata() -> None:

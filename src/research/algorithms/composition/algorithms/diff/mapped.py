@@ -78,7 +78,7 @@ def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
         if unit.raw_start < previous_end:
             message = "mapped units overlap or reorder raw source spans"
             raise MappedViewError(message)
-        previous_end = max(previous_end, unit.raw_end)
+        previous_end = unit.raw_end
 
 
 @dataclass(frozen=True, slots=True)
