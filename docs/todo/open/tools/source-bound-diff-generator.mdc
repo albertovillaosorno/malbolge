@@ -1640,6 +1640,23 @@ format.
   These changes were DCO signed and pushed. External filesystem writers,
   direct trusted-state mutation, and a green global Jig gate remain open.
 
+
+- Python Rust emitter trust-boundary error handling now pins original native
+  exception classes (`ecdec0613`). Seven red-first cases prevent late aliases
+  from masking filesystem permission denials, cleanup failures, missing-file
+  checks, and template/path codec failures. All 177 focused emitter and 3,979
+  integrated diff tests passed; strict source typing is now zero errors and
+  scoped Ruff/diff checks passed. This DCO commit was pushed SHA-exact.
+- Exact-tree authoring now similarly pins native filesystem, Unicode, and
+  validation catches (`2282887bc`). Four red-first regressions prevent false
+  missing-entry/cleanup outcomes and spurious recursive mkdir after native
+  permission errors. All 343 focused exact tests and 3,988 integrated diff
+  tests passed; strict source typing is zero errors, while 51 older test
+  typing findings remain. Scoped Ruff/diff checks passed. This DCO commit
+  was pushed SHA-exact. The non-mutating `jig doctor` remains degraded because
+  graph state is absent; the current global `jig check` reached native
+  validation but timed out after 95 seconds without a final verdict.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
