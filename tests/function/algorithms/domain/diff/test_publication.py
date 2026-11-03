@@ -35,6 +35,7 @@
 
 from __future__ import annotations
 
+import builtins
 import ctypes
 import errno
 import os
@@ -91,6 +92,105 @@ def test_publication_rejects_foreign_path_subclasses_before_host_calls(
     assert invalid.value.errno == errno.EINVAL
     assert staging.is_dir()
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("foreign_staging", [False, True])
+def test_publication_rejects_late_type_spoof_of_foreign_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, foreign_staging: bool
+) -> None:
+    """Replacing builtins.type cannot admit a custom Path before publishing."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    foreign = _ForeignPath(staging if foreign_staging else destination)
+    candidate_staging = foreign if foreign_staging else staging
+    candidate_destination = destination if foreign_staging else foreign
+    native_type = type
+    native_path_type = type(Path())
+    calls = 0
+
+    def spoof_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is foreign:
+            calls += 1
+            return native_path_type
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", spoof_type)
+        try:
+            publication.publish_directory_no_replace(
+                candidate_staging, candidate_destination
+            )
+        except OSError as error:
+            rejected = error.errno == errno.EINVAL
+    assert rejected, "late type hook admitted a foreign publication path"
+    assert calls == 0, "mutable type hook was consulted for source admission"
+    assert staging.is_dir() and not destination.exists()
+
+
+@pytest.mark.parametrize("nul_staging", [False, True])
+def test_publication_rejects_late_str_spoof_of_nul_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, nul_staging: bool
+) -> None:
+    """NUL-bearing roots must reject before any filesystem status is read."""
+    staging = tmp_path / ("staging\x00extra" if nul_staging else "staging")
+    destination = tmp_path / ("output" if nul_staging else "output\x00extra")
+    original_str = str
+    calls = 0
+
+    def spoof_str(value: object) -> str:
+        if value is staging or value is destination:
+            return ""
+        return original_str(value)
+
+    def fail_lstat(value: Path) -> os.stat_result:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late str bypass reached filesystem status")
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(publication, "_NATIVE_PATH_LSTAT", fail_lstat)
+        patched.setattr(builtins, "str", spoof_str)
+        try:
+            publication.publish_directory_no_replace(staging, destination)
+        except OSError as error:
+            rejected = (
+                error.errno == errno.EINVAL
+                and error.strerror
+                == "directory publication paths must not contain NUL bytes"
+            )
+    assert rejected, "late str hook bypassed NUL path preflight"
+    assert calls == 0, "filesystem status reached before preflight"
+
+
+def test_publication_rejects_late_type_spoof_of_stat_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign filesystem status cannot become a trusted inode receipt."""
+    status = SimpleNamespace(st_mode=stat.S_IFDIR | 0o755, st_dev=1, st_ino=1)
+    native_type = type
+    calls = 0
+
+    def spoof_type(value: object) -> type[object]:
+        nonlocal calls
+        if value is status:
+            calls += 1
+            return os.stat_result
+        return native_type(value)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(publication, "_NATIVE_PATH_LSTAT", lambda path: status)
+        patched.setattr(builtins, "type", spoof_type)
+        try:
+            _ = publication._require_staging_directory(tmp_path / "staging")
+        except OSError as error:
+            rejected = error.errno == errno.EINVAL
+    assert rejected, "late type hook admitted a foreign inode receipt"
+    assert calls == 0, "mutable type hook was consulted for receipt admission"
 
 
 def test_publication_rejects_native_status_spoofed_after_import(

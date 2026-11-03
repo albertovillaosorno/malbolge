@@ -35,6 +35,7 @@
 
 from __future__ import annotations
 
+import builtins
 import ctypes
 import errno
 import os
@@ -50,6 +51,11 @@ _HOST_PLATFORM: Final = sys.platform
 _AT_FDCWD: Final = -100
 _RENAME_NOREPLACE: Final = 1
 _NUL: Final = "\x00"
+# Admission must not trust process-global builtins replaced by consumers.
+_NATIVE_TYPE: Final = builtins.type
+_NATIVE_STR_TYPE: Final = builtins.str
+_NATIVE_INT_TYPE: Final = builtins.int
+_NATIVE_PATH_TYPE: Final = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_IS_DIR: Final = stat.S_ISDIR
 # Keep syscall path encoding outside mutable process-global os path hooks.
@@ -146,7 +152,7 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
             "Linux renameat2 invocation failed",
             destination,
         ) from error
-    if type(result) is not int:
+    if _NATIVE_TYPE(result) is not _NATIVE_INT_TYPE:
         raise OSError(
             errno.EINVAL,
             "Linux renameat2 returned an invalid status",
@@ -155,7 +161,7 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
     if result != 0:
         error_number = _NATIVE_GET_ERRNO()
         if (
-            type(error_number) is not int
+            _NATIVE_TYPE(error_number) is not _NATIVE_INT_TYPE
             or error_number < 1
             or error_number > _MAX_LINUX_ERRNO
         ):
@@ -197,7 +203,7 @@ def _require_staging_directory(staging: Path) -> tuple[int, int]:
             "staging directory status failed",
             staging,
         ) from error
-    if type(receipt) is not _NATIVE_STAT_RESULT:
+    if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         raise OSError(
             errno.EINVAL,
             "staging directory requires native filesystem status",
@@ -231,16 +237,19 @@ def _validate_publication_inputs(
     # A Path subclass can override __fspath__, lstat or rename and redirect
     # the publication operation. Admit only the host's exact native Path type
     # before calling any path or filesystem method.
-    native_path_type = type(Path())
+    native_path_type = _NATIVE_PATH_TYPE
     if (
-        type(staging) is not native_path_type
-        or type(destination) is not native_path_type
+        _NATIVE_TYPE(staging) is not native_path_type
+        or _NATIVE_TYPE(destination) is not native_path_type
     ):
         raise OSError(
             errno.EINVAL,
             "directory publication paths must use exact pathlib Path",
         )
-    if _NUL in str(staging) or _NUL in str(destination):
+    if (
+        _NUL in _NATIVE_PATH_STRING(staging)
+        or _NUL in _NATIVE_PATH_STRING(destination)
+    ):
         raise OSError(
             errno.EINVAL,
             "directory publication paths must not contain NUL bytes",
@@ -248,7 +257,10 @@ def _validate_publication_inputs(
         )
     _require_fs_encodable_path(staging)
     _require_fs_encodable_path(destination)
-    if type(os_name) is not str or type(platform) is not str:
+    if (
+        _NATIVE_TYPE(os_name) is not _NATIVE_STR_TYPE
+        or _NATIVE_TYPE(platform) is not _NATIVE_STR_TYPE
+    ):
         raise OSError(
             errno.EINVAL,
             "directory publication host selectors must use exact strings",
@@ -274,7 +286,7 @@ def _require_completed_publication(
     except (OSError, ValueError, RuntimeError, TypeError) as error:
         raise OSError(errno.EIO, message, destination) from error
     if (
-        type(result) is not _NATIVE_STAT_RESULT
+        _NATIVE_TYPE(result) is not _NATIVE_STAT_RESULT
         or not _NATIVE_IS_DIR(result.st_mode)
         or (result.st_dev, result.st_ino) != identity
     ):
