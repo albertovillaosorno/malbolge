@@ -526,6 +526,32 @@ def test_direct_exact_plan_rejects_impossible_output_lengths_and_digest(
         )
 
 
+def test_snapshot_digests_ignore_replaced_global_sha256(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced global hash cannot give different exact trees equal receipts."""
+    original = tmp_path / "original"
+    changed = tmp_path / "changed"
+    _write(original, "src/file.bin", b"trusted")
+    _write(changed, "src/file.bin", b"altered")
+    calls = 0
+
+    class _CollidingHash:
+        def hexdigest(self) -> str:
+            return "0" * 64
+
+    def fake_sha256(_data: bytes) -> _CollidingHash:
+        nonlocal calls
+        calls += 1
+        return _CollidingHash()
+
+    monkeypatch.setattr(hashlib, "sha256", fake_sha256)
+    first = snapshot_tree(original)
+    second = snapshot_tree(changed)
+    assert first.files[0].sha256 != second.files[0].sha256
+    assert calls == 0
+
+
 def test_exact_plan_literal_digest_ignores_replaced_global_sha256(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -34,28 +34,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import hashlib
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
 import shutil
-from stat import S_ISDIR
-from stat import S_ISLNK
-from stat import S_ISREG
 import sys
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from hashlib import sha256 as _native_sha256
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from stat import S_ISDIR, S_ISLNK, S_ISREG
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.model import ExactAuthoringPlan
-from algorithms.diff.model import ExactInstruction
-from algorithms.diff.model import ExactInstructionKind
-from algorithms.diff.model import FileRecord
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import SourceSlice
-from algorithms.diff.model import TreeModelError
-from algorithms.diff.model import TreeSnapshot
+from algorithms.diff.model import (
+    ExactAuthoringPlan,
+    ExactInstruction,
+    ExactInstructionKind,
+    FileRecord,
+    OracleLiteral,
+    SourceSlice,
+    TreeModelError,
+    TreeSnapshot,
+)
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
@@ -103,7 +100,7 @@ class _PlanningContext:
 
 
 def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    return _native_sha256(data).hexdigest()
 
 
 def _require_portable_path_label(value: object) -> str:
@@ -143,11 +140,7 @@ def _validate_relative_path(relative_path: str) -> str:
     admitted = _require_portable_path_label(relative_path)
     candidate = PurePosixPath(admitted)
     unsafe_part = any(part in _UNSAFE_PATH_PARTS for part in candidate.parts)
-    if (
-        candidate.is_absolute()
-        or PureWindowsPath(admitted).drive
-        or unsafe_part
-    ):
+    if candidate.is_absolute() or PureWindowsPath(admitted).drive or unsafe_part:
         message = f"unsafe relative path: {admitted!r}"
         raise TreeModelError(message)
     normalized = candidate.as_posix()
@@ -251,15 +244,11 @@ def _admitted_files(
     )
 
 
-def _tree_paths_excluding(
-    root: Path, roots: tuple[str, ...]
-) -> tuple[Path, ...]:
+def _tree_paths_excluding(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
     paths: list[Path] = []
     for directory, directories, filenames in _walk_tree(root):
         paths.extend(
-            _prune_excluded_directories(
-                root, directory, directories, roots=roots
-            )
+            _prune_excluded_directories(root, directory, directories, roots=roots)
         )
         paths.extend(_admitted_files(root, directory, filenames, roots=roots))
     return tuple(sorted(paths))
@@ -318,9 +307,7 @@ def _file_identity(status: os.stat_result) -> tuple[int, ...]:
     )
 
 
-def _admit_opened_file(
-    descriptor: int, path: Path, context: str
-) -> os.stat_result:
+def _admit_opened_file(descriptor: int, path: Path, context: str) -> os.stat_result:
     opened = _require_native_status(os.fstat(descriptor), context)
     named = _require_native_status(path.lstat(), context)
     regular_identity = (
@@ -351,9 +338,7 @@ def _read_native_chunk(descriptor: int, count: int, context: str) -> bytes:
     return chunk
 
 
-def _read_admitted_descriptor(
-    descriptor: int, length: int, context: str
-) -> bytes:
+def _read_admitted_descriptor(descriptor: int, length: int, context: str) -> bytes:
     payload = bytearray()
     while len(payload) < length:
         requested = min(_FILE_READ_CHUNK_BYTES, length - len(payload))
@@ -431,16 +416,13 @@ def _read_bound_file(path: Path, context: str) -> bytes:
             # an overridden primary.add_note hook while reporting the failure.
             BaseException.add_note(
                 primary,
-                "file descriptor close also failed: "
-                + _safe_host_error_detail(error),
+                "file descriptor close also failed: " + _safe_host_error_detail(error),
             )
     _verify_closed_source(path, context, after)
     return payload
 
 
-def _copy_native_failure_notes(
-    error: BaseException, failure: ExactTreeError
-) -> None:
+def _copy_native_failure_notes(error: BaseException, failure: ExactTreeError) -> None:
     """Copy trusted notes without invoking foreign exception accessors."""
     try:
         notes = cast(
@@ -637,8 +619,7 @@ def _extend_match_backward(
     while (
         source_offset > _ZERO
         and target_offset > literal_start
-        and context.source[source_offset - 1]
-        == context.target[target_offset - 1]
+        and context.source[source_offset - 1] == context.target[target_offset - 1]
     ):
         source_offset -= 1
         target_offset -= 1
@@ -694,9 +675,7 @@ def _append_literal(
         segments.append(OracleLiteral(target[start:end]))
 
 
-def _build_patch_segments(
-    source: bytes, target: bytes
-) -> tuple[ExactSegment, ...]:
+def _build_patch_segments(source: bytes, target: bytes) -> tuple[ExactSegment, ...]:
     context = _MatchContext(
         source=source,
         target=target,
@@ -766,9 +745,7 @@ def _instruction_for_target(
     candidates = context.source_by_content.get(key, ())
     if candidates:
         source_path = (
-            target_record.path
-            if target_record.path in candidates
-            else candidates[0]
+            target_record.path if target_record.path in candidates else candidates[0]
         )
         return ExactInstruction(
             output_path=target_record.path,
@@ -856,12 +833,8 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        resolved_path = _require_native_resolved_path(
-            path.resolve(), "tree path"
-        )
-        resolved_root = _require_native_resolved_path(
-            root.resolve(), "tree root"
-        )
+        resolved_path = _require_native_resolved_path(path.resolve(), "tree path")
+        resolved_root = _require_native_resolved_path(root.resolve(), "tree root")
     except (OSError, ValueError, RuntimeError) as error:
         message = (
             "tree path resolution failed: "
@@ -915,9 +888,7 @@ def _write_output_file(path: Path, data: bytes, context: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         written = path.write_bytes(data)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} write failed: {path}: " + _safe_host_error_detail(
-            error
-        )
+        message = f"{context} write failed: {path}: " + _safe_host_error_detail(error)
         raise ExactTreeError(message) from error
     if type(written) is not int or written != len(data):
         message = f"{context} short or invalid byte count: {path}"
@@ -991,9 +962,7 @@ def _copy_passthrough_file(source: Path, target: Path) -> None:
     _write_output_file(target, data, "passthrough output")
 
 
-def _copy_passthrough_entry(
-    staging_root: Path, path: Path, relative: str
-) -> None:
+def _copy_passthrough_entry(staging_root: Path, path: Path, relative: str) -> None:
     mode = _entry_mode(path, "passthrough entry")
     if mode is None:
         message = f"passthrough entry disappeared: {relative}"
@@ -1038,9 +1007,7 @@ def _copy_passthrough_root(
         message = f"missing passthrough root: {relative_root}"
         raise ExactTreeError(message)
     if _is_redirect(source, mode):
-        message = (
-            f"symlink is not supported in passthrough root: {relative_root}"
-        )
+        message = f"symlink is not supported in passthrough root: {relative_root}"
         raise ExactTreeError(message)
     if S_ISREG(mode):
         _copy_passthrough_file(source, target)
@@ -1118,8 +1085,7 @@ def _cleanup_exact_staging(path: Path) -> str | None:
 
 def _raise_exact_cleanup_failure(error: Exception, cleanup_error: str) -> None:
     message = (
-        _safe_host_error_detail(error)
-        + f"; staging cleanup failed: {cleanup_error}"
+        _safe_host_error_detail(error) + f"; staging cleanup failed: {cleanup_error}"
     )
     raise ExactTreeError(message) from error
 
@@ -1128,9 +1094,7 @@ def _publish_exact_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
     except OSError as error:
-        message = "exact output publication failed: " + _safe_host_error_detail(
-            error
-        )
+        message = "exact output publication failed: " + _safe_host_error_detail(error)
         raise ExactTreeError(message) from error
 
 
