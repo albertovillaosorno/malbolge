@@ -37,7 +37,7 @@ from __future__ import annotations
 import hashlib
 import ntpath
 import os
-from pathlib import Path
+from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from stat import S_IFDIR
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
@@ -145,6 +145,64 @@ def test_source_pin_rejects_windows_drive_roots_before_traversal(
         _ = SourcePin("repo", _COMMIT, (path,), 1, "0" * 64)
     with pytest.raises(SourcePinError, match="unsafe pinned source path"):
         _ = source_snapshot_evidence(tmp_path, (path,))
+
+
+def _forged_absolute(path: PurePosixPath) -> bool:
+    del path
+    return False
+
+
+def _forged_parts(path: PurePosixPath) -> tuple[str, ...]:
+    del path
+    return ("src", "safe.c")
+
+
+def _forged_as_posix(path: PurePosixPath) -> str:
+    del path
+    return "src//unsafe.c"
+
+
+def _forged_drive(path: PureWindowsPath) -> str:
+    del path
+    return ""
+
+
+def _forged_parents(path: PurePosixPath) -> tuple[PurePosixPath, ...]:
+    del path
+    return ()
+
+
+@pytest.mark.parametrize(
+    ("unsafe_path", "owner", "method", "replacement"),
+    [
+        ("/absolute.c", PurePosixPath, "is_absolute", _forged_absolute),
+        ("src/../unsafe.c", PurePosixPath, "parts", property(_forged_parts)),
+        ("src//unsafe.c", PurePosixPath, "as_posix", _forged_as_posix),
+        ("C:unsafe.c", PureWindowsPath, "drive", property(_forged_drive)),
+    ],
+)
+def test_source_pin_rejects_post_import_path_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_path: str,
+    owner: type[PurePath],
+    method: str,
+    replacement: object,
+) -> None:
+    """Late pathlib hooks cannot certify malformed pin labels."""
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, method, replacement)
+        with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+            _ = SourcePin("repo", _COMMIT, (unsafe_path,), 1, "0" * 64)
+
+
+def test_source_pin_rejects_post_import_parent_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late pathlib parent hooks cannot hide overlapping root selections."""
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePosixPath, "parents", property(_forged_parents))
+        with pytest.raises(SourcePinError, match="must not overlap"):
+            _ = SourcePin("repo", _COMMIT, ("src", "src/child.c"), 1, "0" * 64)
 
 
 @pytest.mark.parametrize(

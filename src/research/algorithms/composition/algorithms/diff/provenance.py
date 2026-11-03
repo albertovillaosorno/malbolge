@@ -38,7 +38,8 @@ import os
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
 from ntpath import isreserved as _native_isreserved
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from ntpath import splitdrive as _native_splitdrive
+from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import Final, cast
 
@@ -140,10 +141,13 @@ def _require_disjoint_roots(roots: tuple[str, ...]) -> None:
     selected: set[str] = set()
     for root in roots:
         _ = _validate_relative_path(root)
-        parents = PurePosixPath(root).parents
-        if any(parent.as_posix() in selected for parent in parents):
-            message = "source pin roots must not overlap"
-            raise SourcePinError(message)
+        components = root.split("/")
+        parent = components[0]
+        for component in components[1:]:
+            if parent in selected:
+                message = "source pin roots must not overlap"
+                raise SourcePinError(message)
+            parent += "/" + component
         selected.add(root)
 
 
@@ -180,17 +184,16 @@ def _validate_relative_path(relative_path: object) -> str:
     if type(relative_path) is not str:
         message = "pinned source path must use the exact string type"
         raise SourcePinError(message)
-    candidate = PurePosixPath(relative_path)
+    # Root labels are lexical evidence, not mutable pathlib method results.
+    # Empty/dot/parent components also reject repeated or trailing slashes.
     unsafe = (
         not relative_path
         or _BACKSLASH in relative_path
         or _NUL in relative_path
-        or relative_path == _DOT
-        or candidate.is_absolute()
-        or bool(PureWindowsPath(relative_path).drive)
+        or relative_path.startswith("/")
+        or bool(_native_splitdrive(relative_path)[0])
         or _native_isreserved(relative_path)
-        or _PARENT in candidate.parts
-        or candidate.as_posix() != relative_path
+        or any(part in {"", _DOT, _PARENT} for part in relative_path.split("/"))
     )
     if unsafe:
         message = f"unsafe pinned source path: {relative_path!r}"
@@ -235,7 +238,7 @@ def _source_mode(path: Path, relative: str) -> int | None:
 
 def _require_unlinked_parent_components(root: Path, relative: str) -> None:
     current = root
-    for component in PurePosixPath(relative).parts[:-1]:
+    for component in relative.split("/")[:-1]:
         current /= component
         label = _NATIVE_RELATIVE_TO(current, root).as_posix()
         mode = _source_mode(current, label)
@@ -246,7 +249,7 @@ def _require_unlinked_parent_components(root: Path, relative: str) -> None:
 
 def _selected_root(root: Path, relative_root: str) -> tuple[Path, int]:
     _require_unlinked_parent_components(root, relative_root)
-    selected = root.joinpath(*PurePosixPath(relative_root).parts)
+    selected = root.joinpath(*relative_root.split("/"))
     mode = _source_mode(selected, relative_root)
     if mode is None:
         message = f"missing pinned source root: {relative_root}"
