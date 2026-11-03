@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
 from secrets import token_hex
@@ -78,6 +79,17 @@ def _native_path_lstat(path: Path) -> os.stat_result:
 
 
 _NATIVE_PATH_LSTAT = _native_path_lstat
+_NATIVE_IO_OPEN = io.open
+
+
+def _native_template_read(path: Path) -> str:
+    with _NATIVE_IO_OPEN(
+        _NATIVE_PATH_STRING(path), encoding="utf-8"
+    ) as stream:
+        return stream.read()
+
+
+_NATIVE_TEMPLATE_READ = _native_template_read
 
 
 class RustEmissionError(ValueError):
@@ -214,7 +226,7 @@ _GENERATED_HEADER = (
 
 def _runtime_template_text() -> str:
     try:
-        return _RUNTIME_TEMPLATE.read_text(encoding="utf-8")
+        return _NATIVE_TEMPLATE_READ(_RUNTIME_TEMPLATE)
     except (OSError, UnicodeError) as error:
         message = (
             f"Rust runtime template read failed: {_RUNTIME_TEMPLATE}: {error}"

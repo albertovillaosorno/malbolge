@@ -608,6 +608,34 @@ def test_emitted_rust_preserves_late_empty_output_collision(
     )
 
 
+def test_emitter_ignores_post_import_template_reader_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late pathlib reader cannot inject unreviewed Rust source."""
+    _, _, _, protected = _fixture(tmp_path)
+    trusted = emit_rust_transform(protected, _PROFILE)
+    original_read = Path.read_text
+    template = cast("Path", vars(emit_rust_module)["_RUNTIME_TEMPLATE"])
+    injected = "// UNTRUSTED-RUST-TEMPLATE\n"
+    calls = 0
+
+    def forged_read(path: Path, *, encoding: str | None = None) -> str:
+        nonlocal calls
+        contents = original_read(path, encoding=encoding)
+        if path == template:
+            calls += 1
+            marker = "// BEGIN GENERATED CONSTANTS"
+            return contents.replace(marker, injected + marker)
+        return contents
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "read_text", forged_read)
+        generated = emit_rust_transform(protected, _PROFILE)
+    assert calls == 0
+    assert generated == trusted
+    assert injected not in generated
+
+
 def test_emitter_wraps_runtime_template_read_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -615,24 +643,15 @@ def test_emitter_wraps_runtime_template_read_failure(
     _, _, _, protected = _fixture(tmp_path)
     original_read = Path.read_text
 
-    def fail_template_read(
-        path: Path,
-        *,
-        encoding: str | None = None,
-        errors: str | None = None,
-        newline: str | None = None,
-    ) -> str:
+    def fail_template_read(path: Path) -> str:
         if path.name == _RUNTIME_TEMPLATE_NAME:
             message = "blocked runtime template"
             raise PermissionError(message)
-        return original_read(
-            path,
-            encoding=encoding,
-            errors=errors,
-            newline=newline,
-        )
+        return original_read(path, encoding="utf-8")
 
-    monkeypatch.setattr(Path, "read_text", fail_template_read)
+    monkeypatch.setattr(
+        emit_rust_module, "_NATIVE_TEMPLATE_READ", fail_template_read
+    )
     with pytest.raises(RustEmissionError, match="runtime template read failed"):
         _ = emit_rust_transform(protected, _PROFILE)
 
