@@ -53,6 +53,7 @@ _ONE = 1
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
 _NATIVE_POW = builtins.pow
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TYPE = builtins.type
 _NATIVE_INT = builtins.int
@@ -384,7 +385,7 @@ def stable_anchors(
     try:
         _ANCHOR_POLICY_VALIDATOR(policy)
         window_bytes, selection_modulus = _policy_fields(policy)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "stable anchor policy has incomplete native metadata"
         raise FingerprintPolicyError(message) from error
     if _NATIVE_LEN(data) < window_bytes:
@@ -429,7 +430,7 @@ def anchor_coverage(
         # though its class identity passes the public admission gate.
         try:
             _STABLE_ANCHOR_VALIDATOR(anchor)
-        except AttributeError as error:
+        except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "anchor coverage input has incomplete native anchor metadata"
             raise FingerprintPolicyError(message) from error
     reference_digests = {_anchor_fields(anchor)[0] for anchor in reference}

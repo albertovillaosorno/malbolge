@@ -541,6 +541,32 @@ def test_anchor_coverage_revalidates_fabricated_native_anchor(
         _ = anchor_coverage(reference, candidate)
 
 
+@pytest.mark.parametrize("entrypoint", ["policy", "reference", "candidate"])
+def test_incomplete_fingerprint_receipt_rejects_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A global exception alias must not disable native missing-slot guards."""
+    native_attribute_error = builtins.AttributeError
+    caught: FingerprintPolicyError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if entrypoint == "policy":
+                policy = object.__new__(AnchorPolicy)
+                _ = stable_anchors(b"lineage source", policy)
+            else:
+                anchor = object.__new__(StableAnchor)
+                reference = (anchor,) if entrypoint == "reference" else ()
+                candidate = (anchor,) if entrypoint == "candidate" else ()
+                _ = anchor_coverage(reference, candidate)
+        except FingerprintPolicyError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(caught) is FingerprintPolicyError, caught
+    assert "incomplete" in str(caught)
+
+
 @pytest.mark.parametrize("role", ["reference", "candidate"])
 def test_anchor_coverage_rejects_uninitialized_native_anchor(role: str) -> None:
     """A missing digest/offset cannot leak a raw AttributeError."""
