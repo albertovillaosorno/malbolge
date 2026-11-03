@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import os
 import shutil
 from collections.abc import Callable
@@ -85,6 +86,7 @@ _SHA256_BYTES = _SHA256_FACTORY().digest_size
 _NATIVE_PATH_TYPE = type(Path())
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 _NATIVE_IS_RELATIVE_TO = _NATIVE_PATH_TYPE.is_relative_to
+_NATIVE_ISRESERVED = ntpath.isreserved
 
 Mapper = Callable[[str, bytes], MappedView | None]
 Postcondition = Callable[[Path], bool]
@@ -666,6 +668,7 @@ def _validate_relative_path(relative_path: str) -> str:
         or relative_path == _DOT
         or candidate.is_absolute()
         or bool(PureWindowsPath(relative_path).drive)
+        or _NATIVE_ISRESERVED(relative_path)
         or _PARENT in candidate.parts
         or candidate.as_posix() != relative_path
     )

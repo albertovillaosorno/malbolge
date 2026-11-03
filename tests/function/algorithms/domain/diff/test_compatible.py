@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import re
 import shutil
 from dataclasses import replace
@@ -561,6 +562,10 @@ def test_compatible_ancestor_inspection_errors_are_typed(
         "code\ud800shadow.src",
         "C:/target.src",
         "D:rel.src",
+        "CON",
+        "aux.txt",
+        "nested/NUL.bin",
+        "COM1",
     ],
 )
 def test_compatible_metadata_rejects_nonportable_paths_before_placement(
@@ -581,6 +586,24 @@ def test_compatible_metadata_rejects_nonportable_paths_before_placement(
         )
     with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
         _ = CompatibleCorrectionBinding(bad_path, 0, "fix")
+
+
+def test_compatible_reserved_names_ignore_forged_host_predicate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Domain callbacks cannot authorize Windows device labels as file paths."""
+
+    def forged_isreserved(path: str) -> bool:
+        _ = path
+        return False
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
+    with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
+        _ = CompatibleInstruction(
+            output_path="nested/CON.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=b"target",
+        )
 
 
 def test_compatible_instruction_rejects_foreign_metadata() -> None:
