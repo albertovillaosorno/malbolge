@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 from stat import S_IFDIR
@@ -213,6 +214,42 @@ def test_pinned_snapshot_accepts_exact_selected_tree(tmp_path: Path) -> None:
         observed.file_count == _EXPECTED_FILE_COUNT,
         "pinned source count changed",
     )
+
+
+def test_pinned_snapshots_ignore_replaced_global_sha256(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced global hash cannot pin two different trees as identical."""
+    first_root = tmp_path / "original"
+    second_root = tmp_path / "changed"
+    _write(first_root, "src/code.c", b"trusted")
+    _write(second_root, "src/code.c", b"altered")
+    calls = 0
+
+    class _CollidingHash:
+        def update(self, _data: bytes) -> None:
+            _ = _data
+
+        def digest(self) -> bytes:
+            return bytes(32)
+
+        def hexdigest(self) -> str:
+            return bytes(32).hex()
+
+    def forged_sha256(_data: bytes = b"") -> _CollidingHash:
+        nonlocal calls
+        calls += 1
+        return _CollidingHash()
+
+    monkeypatch.setattr(hashlib, "sha256", forged_sha256)
+    original = source_snapshot_evidence(first_root, ("src",))
+    changed = source_snapshot_evidence(second_root, ("src",))
+    _expect(original.file_count == changed.file_count, "fixture count diverged")
+    _expect(
+        original.snapshot_sha256 != changed.snapshot_sha256,
+        "foreign hash gave distinct source trees the same pin",
+    )
+    _expect(calls == 0, "mutable process-global SHA-256 was consulted")
 
 
 def test_pinned_snapshot_rejects_byte_or_path_change(tmp_path: Path) -> None:

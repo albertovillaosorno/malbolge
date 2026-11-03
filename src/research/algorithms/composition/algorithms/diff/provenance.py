@@ -34,9 +34,9 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 from dataclasses import dataclass
+from hashlib import sha256 as _native_sha256
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import Final, cast
@@ -382,7 +382,7 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
     """
     _validate_root_path(root)
     _validate_roots(roots)
-    digest = hashlib.sha256()
+    digest = _native_sha256()
     digest.update(_DOMAIN)
     resolved_root = _resolved_source_root(root)
     files = _pinned_files(resolved_root, roots)
@@ -394,7 +394,7 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
         receipts.append(_pinned_file_receipt(path, relative_text))
         data = _read_pinned_source(resolved_root, path, relative_text)
         digest.update(_frame(relative))
-        digest.update(_frame(hashlib.sha256(data).digest()))
+        digest.update(_frame(_native_sha256(data).digest()))
     # Entries added or removed after discovery must not be absent from the
     # returned pin just because all initially enumerated bytes were stable.
     if _pinned_files(resolved_root, roots) != files:
