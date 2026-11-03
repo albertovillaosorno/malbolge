@@ -358,6 +358,14 @@ format.
   exact/model and 2,799 integrated diff tests. Scoped Ruff and source
   BasedPyright had zero errors (three existing warnings). This guards late
   class hooks, not direct instance mutation or external filesystem races.
+- Exact full/excluded snapshot ordering now keys stable native
+  path labels and stored `FileRecord` fields, not late `PurePath.__lt__`
+  or `FileRecord.__lt__` hooks (`9cb900e6b`). Four red-first callback
+  escapes are closed; 313 focused and 1,385 adjacent tests passed.
+  Ruff, strict source BasedPyright, and diff checks passed; one old
+  exact-test typing diagnostic and global Jig remain unresolved. The
+  last full-suite green 3,735 predates this fix. External source
+  writer races and direct trusted-state edits remain outside scope.
 - Exact-tree root, snapshot, source-read, and output-staging admission now
   rejects late `Path` cache/getter/formatter substitution (`6b230250e`). A
   real red-first snapshot read another source tree after `_str` getter
@@ -734,6 +742,13 @@ format.
 - Protected-plan metadata and recovery now revalidate exact native nested
   evidence (`fbbbe62ac`): 18 new cases, ten red-first, 184 postcommit focused
   tests and 3,136 integrated tests before final validator-hook cases.
+- Protected key derivation now validates exact native source identity
+  trees and nested files before processing source paths (`e103ed5b2`).
+  Six red-first malformed native-record cases previously reached the
+  key schedule; all reject as typed protected-plan errors. All 220
+  protected and 590 adjacent tests passed, with scoped Ruff, strict
+  source/test typing, and diff checks clean. Direct stored-record edits
+  and racing external source writers remain outside scope.
 - The Rust emitter reruns the import-captured protected-plan validator before
   loading its template or staging output (`c02bb9626`). Four red-first and
   thirteen total negative cases cover malformed native plans, missing slots,

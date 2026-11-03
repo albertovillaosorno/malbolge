@@ -214,6 +214,16 @@ source BasedPyright reported zero errors (three older warnings). As with the
 other guards, direct instance mutation and external writer races remain
 outside this protection.
 
+Exact tree snapshot discovery now sorts by stable native path labels and
+original `FileRecord` fields instead of invoking mutable `PurePath.__lt__`
+or `FileRecord.__lt__` (`9cb900e6b`). Four red-first full/excluded
+snapshot comparator escapes now fail closed or bypass the replaced hooks;
+313 focused and 1,385 adjacent tests passed postchange. Scoped Ruff,
+strict source typing, and diff checks passed, with one inherited
+exact-test typing diagnostic. The full integrated diff baseline of
+3,735 tests predates this change. Concurrent filesystem writers remain
+outside this in-process boundary.
+
 Exact tree roots, snapshot traversal, source reads, and staged writes now reject
 late native `pathlib` formatter/cache substitution (`6b230250e`). Previously a
 replaced `Path.__getattribute__` for the `_str` cache could turn a requested
@@ -1822,6 +1832,15 @@ tests passed postcommit; the integrated diff suite passed 3,145 tests before
 commit and 3,148 on the live postcommit checkout. Scoped Ruff and strict
 source BasedPyright reported zero errors. Both guards protect in-process
 admission, not external filesystem races or direct trusted-state mutation.
+
+Protected-plan authoring now revalidates the exact native source tree
+and nested identity files before deriving the payload key (`e103ed5b2`).
+Previously six constructor-bypassed malformed source records reached
+key derivation and could leak untyped attribute errors. Six red-first
+rejection cases now pass, along with 220 protected and 590 adjacent
+protected/source-binding/admission tests. Scoped Ruff, strict
+source/test BasedPyright, and diff checks passed. Direct trusted-record
+mutation and concurrent external writers are not excluded by this guard.
 
 `protected.py` now combines key binding and authenticated encryption for exact
 authoring plans. Every `OracleLiteral` is moved into one deterministic plaintext
