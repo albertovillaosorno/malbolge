@@ -47,6 +47,16 @@ _NUL = "\x00"
 _NATIVE_ISFINITE = math.isfinite
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
+_NATIVE_TYPE = builtins.type
+_NATIVE_ANY = builtins.any
+_NATIVE_LEN = builtins.len
+_NATIVE_TUPLE = builtins.tuple
+_NATIVE_LIST = builtins.list
+_NATIVE_STR = builtins.str
+_NATIVE_BYTES = builtins.bytes
+_NATIVE_BOOL = builtins.bool
+_NATIVE_INT = builtins.int
+_NATIVE_FLOAT = builtins.float
 
 
 class BehaviorPolicyError(ValueError):
@@ -66,7 +76,7 @@ class BugState(StrEnum):
 
 
 def _require_identifier(value: object, context: str) -> str:
-    if type(value) is not str or not value:
+    if _NATIVE_TYPE(value) is not _NATIVE_STR or not value:
         message = f"{context} must be a non-empty string"
         raise BehaviorPolicyError(message)
     if _NUL in value:
@@ -81,7 +91,7 @@ def _require_identifier(value: object, context: str) -> str:
 
 
 def _require_digest(value: object, context: str) -> bytes:
-    if type(value) is not bytes or not value:
+    if _NATIVE_TYPE(value) is not _NATIVE_BYTES or not value:
         message = f"{context} must be non-empty exact bytes"
         raise BehaviorPolicyError(message)
     return value
@@ -129,24 +139,24 @@ def _probe_ids(
     | tuple[CompatibilityProbe, ...]
     | tuple[BugProbe, ...],
 ) -> tuple[str, ...]:
-    identifiers = tuple(item.probe_id for item in probes)
-    if any(not identifier for identifier in identifiers):
+    identifiers = _NATIVE_TUPLE(item.probe_id for item in probes)
+    if _NATIVE_ANY(not identifier for identifier in identifiers):
         message = "behavior probe identifiers must be non-empty"
         raise BehaviorPolicyError(message)
-    if identifiers != tuple(_NATIVE_SORTED(identifiers)):
+    if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(identifiers)):
         message = "behavior probes must be sorted by probe_id"
         raise BehaviorPolicyError(message)
     return identifiers
 
 
 def _validate_unique(values: tuple[str, ...], message: str) -> None:
-    if len(values) != len(_NATIVE_SET(values)):
+    if _NATIVE_LEN(values) != _NATIVE_LEN(_NATIVE_SET(values)):
         raise BehaviorPolicyError(message)
 
 
 def _validate_correction_ids(bugs: tuple[BugProbe, ...]) -> None:
-    correction_ids = tuple(item.correction_id for item in bugs)
-    if any(not correction_id for correction_id in correction_ids):
+    correction_ids = _NATIVE_TUPLE(item.correction_id for item in bugs)
+    if _NATIVE_ANY(not correction_id for correction_id in correction_ids):
         message = "bug probes require non-empty correction identifiers"
         raise BehaviorPolicyError(message)
     _validate_unique(
@@ -159,11 +169,11 @@ def _require_probe_tuple(
     item_type: type[IdentityProbe | CompatibilityProbe | BugProbe],
     context: str,
 ) -> None:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = f"{context} must use the exact immutable tuple type"
         raise BehaviorPolicyError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(item) is not item_type for item in items):
+    if _NATIVE_ANY(_NATIVE_TYPE(item) is not item_type for item in items):
         message = f"{context} contains a foreign probe record"
         raise BehaviorPolicyError(message)
 
@@ -198,7 +208,9 @@ class BehaviorProfile:
             _probe_ids(self.compatibility),
             _probe_ids(self.bugs),
         )
-        all_ids = tuple(identifier for group in groups for identifier in group)
+        all_ids = _NATIVE_TUPLE(
+            identifier for group in groups for identifier in group
+        )
         _validate_unique(
             all_ids, "behavior probe identifiers must be globally unique"
         )
@@ -234,7 +246,10 @@ class CompatibilityObservation:
 
         """
         _ = _require_identifier(self.probe_id, "compatibility observation ID")
-        if self.compatible is not None and type(self.compatible) is not bool:
+        if (
+            self.compatible is not None
+            and _NATIVE_TYPE(self.compatible) is not _NATIVE_BOOL
+        ):
             message = "compatibility observation must be bool or None"
             raise BehaviorPolicyError(message)
 
@@ -254,7 +269,7 @@ class BugObservation:
 
         """
         _ = _require_identifier(self.probe_id, "bug observation ID")
-        if type(self.state) is not BugState:
+        if _NATIVE_TYPE(self.state) is not BugState:
             message = "bug observation state must use the exact BugState type"
             raise BehaviorPolicyError(message)
 
@@ -266,11 +281,11 @@ def _require_observation_tuple(
     ),
     context: str,
 ) -> None:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = f"{context} must use the exact immutable tuple type"
         raise BehaviorPolicyError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(item) is not item_type for item in items):
+    if _NATIVE_ANY(_NATIVE_TYPE(item) is not item_type for item in items):
         message = f"{context} contains a foreign observation record"
         raise BehaviorPolicyError(message)
 
@@ -299,7 +314,7 @@ class BehaviorObservations:
 
 
 def _require_evidence_similarity(value: object) -> float:
-    if type(value) is not float or not _NATIVE_ISFINITE(value):
+    if _NATIVE_TYPE(value) is not _NATIVE_FLOAT or not _NATIVE_ISFINITE(value):
         message = "behavior evidence similarity must use a finite exact float"
         raise BehaviorPolicyError(message)
     if value < _ZERO or value > _ONE:
@@ -309,18 +324,20 @@ def _require_evidence_similarity(value: object) -> float:
 
 
 def _require_evidence_count(value: object, context: str, minimum: int) -> int:
-    if type(value) is not int or value < minimum:
+    if _NATIVE_TYPE(value) is not _NATIVE_INT or value < minimum:
         message = f"{context} must use an exact integer >= {minimum}"
         raise BehaviorPolicyError(message)
     return value
 
 
 def _require_string_tuple(value: object, context: str) -> tuple[str, ...]:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = f"{context} must use the exact immutable tuple type"
         raise BehaviorPolicyError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(item) is not str or not item for item in items):
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(item) is not _NATIVE_STR or not item for item in items
+    ):
         message = f"{context} must contain non-empty exact strings"
         raise BehaviorPolicyError(message)
     return cast("tuple[str, ...]", value)
@@ -352,10 +369,9 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
         evidence.corrections_to_skip,
         "corrections to skip",
     )
-    if (
-        len(apply) != len(_NATIVE_SET(apply))
-        or len(skip) != len(_NATIVE_SET(skip))
-    ):
+    if _NATIVE_LEN(apply) != _NATIVE_LEN(_NATIVE_SET(apply)) or _NATIVE_LEN(
+        skip
+    ) != _NATIVE_LEN(_NATIVE_SET(skip)):
         message = "behavior correction routes must not contain duplicates"
         raise BehaviorPolicyError(message)
     if _NATIVE_SET(apply) & _NATIVE_SET(skip):
@@ -395,12 +411,12 @@ class BehaviorEvidence:
 
 
 def _validate_fraction(name: str, value: object) -> float:
-    if type(value) is int:
+    if _NATIVE_TYPE(value) is _NATIVE_INT:
         # Reject out-of-range integers before float conversion; arbitrary-sized
         # values can otherwise overflow or fail decimal diagnostic formatting.
         if _ZERO <= value <= _ONE:
-            return float(value)
-    elif type(value) is float:
+            return _NATIVE_FLOAT(value)
+    elif _NATIVE_TYPE(value) is _NATIVE_FLOAT:
         if _NATIVE_ISFINITE(value) and _ZERO <= value <= _ONE:
             return value
     else:
@@ -415,11 +431,10 @@ def _observation_map(
     | tuple[CompatibilityObservation, ...]
     | tuple[BugObservation, ...],
 ) -> dict[str, IdentityObservation | CompatibilityObservation | BugObservation]:
-    identifiers = tuple(item.probe_id for item in observations)
-    if (
-        identifiers != tuple(_NATIVE_SORTED(identifiers))
-        or len(identifiers) != len(_NATIVE_SET(identifiers))
-    ):
+    identifiers = _NATIVE_TUPLE(item.probe_id for item in observations)
+    if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(identifiers)) or _NATIVE_LEN(
+        identifiers
+    ) != _NATIVE_LEN(_NATIVE_SET(identifiers)):
         message = (
             "behavior observations must have unique sorted probe identifiers"
         )
@@ -444,8 +459,10 @@ def _identity_evidence(
     observations: BehaviorObservations,
 ) -> tuple[int, tuple[str, ...]]:
     observed = _observation_map(observations.identity)
-    expected_ids = tuple(item.probe_id for item in profile.identity)
-    _require_observation_shape(expected_ids, tuple(observed), "identity")
+    expected_ids = _NATIVE_TUPLE(item.probe_id for item in profile.identity)
+    _require_observation_shape(
+        expected_ids, _NATIVE_TUPLE(observed), "identity"
+    )
     matched = 0
     reasons: list[str] = []
     for probe in profile.identity:
@@ -457,7 +474,7 @@ def _identity_evidence(
             reasons.append(f"identity probe unavailable: {probe.probe_id}")
             continue
         matched += observation.digest == probe.expected_digest
-    return matched, tuple(reasons)
+    return matched, _NATIVE_TUPLE(reasons)
 
 
 def _compatibility_reasons(
@@ -465,8 +482,12 @@ def _compatibility_reasons(
     observations: BehaviorObservations,
 ) -> tuple[str, ...]:
     observed = _observation_map(observations.compatibility)
-    expected_ids = tuple(item.probe_id for item in profile.compatibility)
-    _require_observation_shape(expected_ids, tuple(observed), "compatibility")
+    expected_ids = _NATIVE_TUPLE(
+        item.probe_id for item in profile.compatibility
+    )
+    _require_observation_shape(
+        expected_ids, _NATIVE_TUPLE(observed), "compatibility"
+    )
     reasons: list[str] = []
     for probe in profile.compatibility:
         observation = observed[probe.probe_id]
@@ -475,7 +496,7 @@ def _compatibility_reasons(
             raise BehaviorPolicyError(message)
         if observation.compatible is not True:
             reasons.append(f"compatibility probe failed: {probe.probe_id}")
-    return tuple(reasons)
+    return _NATIVE_TUPLE(reasons)
 
 
 def _bug_routing(
@@ -483,8 +504,8 @@ def _bug_routing(
     observations: BehaviorObservations,
 ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     observed = _observation_map(observations.bugs)
-    expected_ids = tuple(item.probe_id for item in profile.bugs)
-    _require_observation_shape(expected_ids, tuple(observed), "bug")
+    expected_ids = _NATIVE_TUPLE(item.probe_id for item in profile.bugs)
+    _require_observation_shape(expected_ids, _NATIVE_TUPLE(observed), "bug")
     apply: list[str] = []
     skip: list[str] = []
     reasons: list[str] = []
@@ -499,7 +520,7 @@ def _bug_routing(
             skip.append(probe.correction_id)
         else:
             reasons.append(f"bug probe unresolved: {probe.probe_id}")
-    return tuple(apply), tuple(skip), tuple(reasons)
+    return _NATIVE_TUPLE(apply), _NATIVE_TUPLE(skip), _NATIVE_TUPLE(reasons)
 
 
 def _behavior_decision(
@@ -508,20 +529,20 @@ def _behavior_decision(
     minimum_similarity: float,
 ) -> tuple[int, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     matched, identity_reasons = _identity_evidence(profile, observations)
-    reasons = list(identity_reasons)
-    if matched / len(profile.identity) < minimum_similarity:
+    reasons = _NATIVE_LIST(identity_reasons)
+    if matched / _NATIVE_LEN(profile.identity) < minimum_similarity:
         reasons.append("insufficient behavior identity similarity")
     reasons.extend(_compatibility_reasons(profile, observations))
     apply, skip, bug_reasons = _bug_routing(profile, observations)
     reasons.extend(bug_reasons)
-    return matched, apply, skip, tuple(reasons)
+    return matched, apply, skip, _NATIVE_TUPLE(reasons)
 
 
 def _require_behavior_evidence_sources(evidence: BehaviorEvidence) -> None:
-    if type(evidence.profile) is not BehaviorProfile:
+    if _NATIVE_TYPE(evidence.profile) is not BehaviorProfile:
         message = "behavior evidence requires exact BehaviorProfile"
         raise BehaviorPolicyError(message)
-    if type(evidence.observations) is not BehaviorObservations:
+    if _NATIVE_TYPE(evidence.observations) is not BehaviorObservations:
         message = "behavior evidence requires exact BehaviorObservations"
         raise BehaviorPolicyError(message)
 
@@ -536,7 +557,8 @@ def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
     )
     if (
         matched != evidence.matched_identity_probes
-        or len(evidence.profile.identity) != evidence.total_identity_probes
+        or _NATIVE_LEN(evidence.profile.identity)
+        != evidence.total_identity_probes
     ):
         message = "behavior evidence probe counts do not match observations"
         raise BehaviorPolicyError(message)
@@ -572,10 +594,10 @@ def evaluate_behavior(
         BehaviorPolicyError: Profile, observations, or threshold is invalid.
 
     """
-    if type(profile) is not BehaviorProfile:
+    if _NATIVE_TYPE(profile) is not BehaviorProfile:
         message = "behavior profile must use the exact BehaviorProfile type"
         raise BehaviorPolicyError(message)
-    if type(observations) is not BehaviorObservations:
+    if _NATIVE_TYPE(observations) is not BehaviorObservations:
         message = (
             "behavior observations must use the exact BehaviorObservations type"
         )
@@ -586,7 +608,7 @@ def evaluate_behavior(
     matched, apply, skip, reasons = _behavior_decision(
         profile, observations, validated_minimum
     )
-    total = len(profile.identity)
+    total = _NATIVE_LEN(profile.identity)
     return BehaviorEvidence(
         similarity=matched / total,
         matched_identity_probes=matched,

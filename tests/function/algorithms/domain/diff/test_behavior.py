@@ -33,6 +33,7 @@
 """Synthetic tests for generic behavior-probe admission semantics."""
 
 import builtins
+from collections import UserString
 from dataclasses import replace
 import math
 from typing import cast
@@ -54,6 +55,7 @@ from algorithms.diff.behavior import require_behavior
 import pytest
 
 _MINIMUM_BEHAVIOR_SIMILARITY = 0.80
+_FOREIGN_PROBE = "probe"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -538,3 +540,231 @@ def test_behavior_evaluation_rejects_boolean_threshold_and_foreign_inputs() -> (
             cast("BehaviorObservations", object()),
             _MINIMUM_BEHAVIOR_SIMILARITY,
         )
+
+
+def test_behavior_rejects_late_type_spoofed_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged type verdict cannot admit mutable identity digests."""
+    foreign = bytearray(b"digest")
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = IdentityProbe(
+                "identity", cast("bytes", cast("object", foreign))
+            )
+        except BehaviorPolicyError:
+            rejected = True
+    assert rejected, "late type hook admitted mutable behavior digest"
+
+
+@pytest.mark.parametrize("record_kind", [_FOREIGN_PROBE, "observation"])
+def test_behavior_rejects_late_any_spoofed_record(
+    monkeypatch: pytest.MonkeyPatch,
+    record_kind: str,
+) -> None:
+    """A false native-any verdict cannot admit foreign evidence records."""
+
+    class ForeignIdentity:
+        probe_id: str = "identity"
+        expected_digest: bytes = b"digest"
+        digest: bytes = b"digest"
+
+    def forged_any(values: object) -> bool:
+        del values
+        return False
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", forged_any)
+        try:
+            if record_kind == _FOREIGN_PROBE:
+                _ = BehaviorProfile(
+                    identity=(
+                        cast(
+                            "IdentityProbe", cast("object", ForeignIdentity())
+                        ),
+                    ),
+                    compatibility=(),
+                    bugs=(),
+                )
+            else:
+                _ = BehaviorObservations(
+                    identity=(
+                        cast(
+                            "IdentityObservation",
+                            cast("object", ForeignIdentity()),
+                        ),
+                    ),
+                    compatibility=(),
+                    bugs=(),
+                )
+        except BehaviorPolicyError:
+            rejected = True
+    assert rejected, "late any hook admitted foreign behavior record"
+
+
+def test_behavior_rejects_late_len_similarity_inflation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged identity count cannot inflate the admission score."""
+    profile = _profile()
+    observations = _observations(identity_matches=3)
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        if value is profile.identity:
+            return 3
+        return native_len(cast("tuple[object, ...]", value))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        try:
+            _ = require_behavior(
+                profile, observations, _MINIMUM_BEHAVIOR_SIMILARITY
+            )
+        except BehaviorAdmissionError:
+            rejected = True
+    assert rejected, "late len hook inflated identity similarity"
+
+
+def test_behavior_rejection_preserves_type_under_late_tuple_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late tuple replacement cannot erase a compatibility rejection."""
+    profile = _profile()
+    observations = _observations(compatible=False)
+    native_tuple = tuple
+    caught = None
+    expected_reason = "compatibility probe failed: can-transform"
+
+    def forged_tuple(values: object = ()) -> tuple[object, ...]:
+        recorded = native_tuple(cast("list[object]", values))
+        if recorded == (expected_reason,):
+            return ()
+        return recorded
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "tuple", forged_tuple)
+        try:
+            _ = require_behavior(
+                profile, observations, _MINIMUM_BEHAVIOR_SIMILARITY
+            )
+        except BehaviorAdmissionError as error:
+            caught = str(error)
+    assert caught == expected_reason
+
+
+def test_behavior_rejects_late_string_type_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A string-compatible foreign identifier cannot masquerade as str."""
+    rejected = False
+    foreign = cast("str", cast("object", UserString("identity")))
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "str", UserString)
+        try:
+            _ = IdentityProbe(foreign, b"digest")
+        except BehaviorPolicyError:
+            rejected = True
+    assert rejected, "late str hook admitted a foreign identifier"
+
+
+def test_behavior_rejects_late_bytes_type_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing the bytes class cannot admit a mutable digest."""
+    foreign = cast("bytes", cast("object", bytearray(b"digest")))
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = IdentityProbe("identity", foreign)
+        except BehaviorPolicyError:
+            rejected = True
+    assert rejected, "late bytes hook admitted mutable evidence"
+
+
+def test_behavior_rejects_late_bool_type_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing bool with int cannot admit integer compatibility evidence."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", int)
+        try:
+            _ = CompatibilityObservation(
+                "compat", cast("bool | None", cast("object", 1))
+            )
+        except BehaviorPolicyError:
+            rejected = True
+    assert rejected, "late bool hook admitted integer compatibility state"
+
+
+def test_behavior_keeps_integral_threshold_under_late_int_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing int cannot invalidate a genuine native integral threshold."""
+    profile = _profile()
+    observations = _observations()
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", bool)
+        evidence = require_behavior(profile, observations, 1)
+    assert evidence.admitted
+
+
+def test_behavior_preserves_threshold_under_late_float_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged float conversion cannot lower an integral threshold."""
+    profile = _profile()
+    observations = _observations(identity_matches=3)
+    expected_reason = "insufficient behavior identity"
+    rejected = False
+
+    def forged_float(value: object) -> float:
+        del value
+        return 0.0
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "float", forged_float)
+        try:
+            _ = require_behavior(profile, observations, 1)
+        except BehaviorAdmissionError as error:
+            rejected = expected_reason in str(error)
+    assert rejected, "late float hook lowered minimum similarity"
+
+
+def test_behavior_rejects_late_list_erasure_of_unavailable_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced list constructor cannot erase unavailable probe evidence."""
+    profile = _profile()
+    observations = _observations()
+    unavailable = replace(
+        observations,
+        identity=(
+            IdentityObservation("identity-0", None),
+            *observations.identity[1:],
+        ),
+    )
+    rejected = False
+
+    def forged_list(values: object) -> list[object]:
+        del values
+        return []
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "list", forged_list)
+        try:
+            _ = require_behavior(profile, unavailable, 0.0)
+        except BehaviorAdmissionError:
+            rejected = True
+    assert rejected, "late list hook erased unavailable identity rejection"
