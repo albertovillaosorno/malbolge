@@ -695,6 +695,39 @@ def test_public_mapped_readers_reject_uninitialized_native_records(
             _ = read_mapped_view(object.__new__(MappedView))
 
 
+@pytest.mark.parametrize(
+    "entrypoint",
+    ["unit-reader", "view-unit", "view-reader", "canonical", "keys"],
+)
+def test_mapped_incomplete_receipts_reject_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A late exception alias cannot leak raw missing-slot exceptions."""
+    native_attribute_error = builtins.AttributeError
+    caught: MappedViewError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if entrypoint == "unit-reader":
+                _ = read_mapped_unit(object.__new__(MappedUnit))
+            elif entrypoint == "view-unit":
+                _ = MappedView(b"raw", (object.__new__(MappedUnit),))
+            else:
+                view = object.__new__(MappedView)
+                if entrypoint == "view-reader":
+                    _ = read_mapped_view(view)
+                elif entrypoint == "canonical":
+                    _ = view.canonical
+                else:
+                    _ = view.keys
+        except MappedViewError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(caught) is MappedViewError, caught
+    assert "incomplete" in str(caught)
+
+
 @pytest.mark.parametrize("record", ["unit", "view"])
 def test_public_mapped_readers_ignore_late_validator_override(
     monkeypatch: pytest.MonkeyPatch, record: str

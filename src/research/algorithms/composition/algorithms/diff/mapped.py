@@ -43,6 +43,7 @@ from typing import cast
 _ZERO = 0
 # Preserve exact-record admission after untrusted domain callback execution.
 _NATIVE_ANY = builtins.any
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE = builtins.type
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_INT = builtins.int
@@ -124,7 +125,7 @@ def read_mapped_unit(unit: MappedUnit) -> tuple[bytes, int, int]:
         raise MappedViewError(message)
     try:
         _MAPPED_UNIT_VALIDATOR(unit)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "mapped unit reader has incomplete native metadata"
         raise MappedViewError(message) from error
     return _stored_mapped_unit(unit)
@@ -136,7 +137,7 @@ def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
         # Exact unit type does not prove its native constructor was invoked.
         try:
             _MAPPED_UNIT_VALIDATOR(unit)
-        except AttributeError as error:
+        except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "mapped view contains an incomplete native unit"
             raise MappedViewError(message) from error
         _, start, end = _stored_mapped_unit(unit)
@@ -214,7 +215,7 @@ def _revalidate_view(view: MappedView) -> None:
         raise MappedViewError(message)
     try:
         _MAPPED_VIEW_VALIDATOR(view)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "mapped view has incomplete native metadata"
         raise MappedViewError(message) from error
 
