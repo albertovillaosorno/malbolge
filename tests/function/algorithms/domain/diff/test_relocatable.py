@@ -41,6 +41,7 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import fields
 from pathlib import Path
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast, override
@@ -3112,3 +3113,149 @@ def test_relocation_materialize_revalidates_raw_native_plan_before_staging(
         materialize_relocatable_plan(tmp_path / "candidate", plan, destination)
     assert not destination.exists()
     assert not (tmp_path / "output.relocatable-staging").exists()
+
+
+
+def _raw_exact_clone(
+    original: object,
+    updates: dict[str, object],
+    *,
+    missing: tuple[str, ...] = (),
+) -> object:
+    """Clone actual native slots without running model constructors.
+
+    Returns:
+        The caller-specified native class with original storage values.
+
+    """
+    owner = type(original)
+    slots = {
+        field.name: cast(
+            "MemberDescriptorType", owner.__dict__[field.name]
+        ).__get__(original, owner)
+        for field in fields(original)
+        if field.name not in missing
+    }
+    slots.update(updates)
+    return _raw_relocatable_record(owner, slots)
+
+
+def _replace_exact_instruction(
+    plan: ExactAuthoringPlan,
+    original: ExactInstruction,
+    replacement: ExactInstruction,
+) -> ExactAuthoringPlan:
+    instructions = tuple(
+        replacement if item is original else item for item in plan.instructions
+    )
+    return cast(
+        "ExactAuthoringPlan",
+        _raw_exact_clone(plan, {"instructions": instructions}),
+    )
+
+
+def _plan_with_tampered_literal(plan: ExactAuthoringPlan) -> ExactAuthoringPlan:
+    original = next(
+        item for item in plan.instructions if item.literal is not None
+    )
+    forged = cast(
+        "ExactInstruction",
+        _raw_exact_clone(original, {"literal": b"forged-target-only-output"}),
+    )
+    return _replace_exact_instruction(plan, original, forged)
+
+
+def _plan_without_target_slot(plan: ExactAuthoringPlan) -> ExactAuthoringPlan:
+    return cast(
+        "ExactAuthoringPlan", _raw_exact_clone(plan, {}, missing=("target",))
+    )
+
+
+def _plan_with_reordered_instructions(
+    plan: ExactAuthoringPlan,
+) -> ExactAuthoringPlan:
+    return cast(
+        "ExactAuthoringPlan",
+        _raw_exact_clone(
+            plan, {"instructions": tuple(reversed(plan.instructions))}
+        ),
+    )
+
+
+def _plan_with_boolean_source_slice(
+    plan: ExactAuthoringPlan,
+) -> ExactAuthoringPlan:
+    original = next(item for item in plan.instructions if item.segments)
+    source_slice = next(
+        item for item in original.segments if type(item) is SourceSlice
+    )
+    forged_slice = cast(
+        "SourceSlice", _raw_exact_clone(source_slice, {"offset": True})
+    )
+    segments = tuple(
+        forged_slice if item is source_slice else item
+        for item in original.segments
+    )
+    forged = cast(
+        "ExactInstruction", _raw_exact_clone(original, {"segments": segments})
+    )
+    return _replace_exact_instruction(plan, original, forged)
+
+
+@pytest.mark.parametrize(
+    "fabricate",
+    [
+        _plan_with_tampered_literal,
+        _plan_without_target_slot,
+        _plan_with_reordered_instructions,
+        _plan_with_boolean_source_slice,
+    ],
+)
+def test_relocation_authoring_revalidates_raw_native_exact_plan_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fabricate: Callable[[ExactAuthoringPlan], ExactAuthoringPlan],
+) -> None:
+    """A constructor-bypassed exact plan must not authorize relocation."""
+    source, oracle, _ = _fixture(tmp_path)
+    forged_plan = fabricate(build_exact_plan(source, oracle))
+
+    def forbidden_snapshot(*args: object, **kwargs: object) -> None:
+        _ = args, kwargs
+        raise AssertionError
+
+    monkeypatch.setattr(
+        relocatable_module, "snapshot_tree_excluding", forbidden_snapshot
+    )
+    with pytest.raises(RelocationError, match="exact plan"):
+        _ = build_relocatable_plan(source, forged_plan)
+
+
+def test_relocation_authoring_accepts_valid_raw_native_exact_plan(
+    tmp_path: Path,
+) -> None:
+    """Native storage admission preserves valid authoring plans."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    baseline = build_relocatable_plan(source, exact)
+    raw_plan = cast("ExactAuthoringPlan", _raw_exact_clone(exact, {}))
+    assert build_relocatable_plan(source, raw_plan) == baseline
+
+
+def test_relocation_authoring_pins_original_exact_plan_validator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late __post_init__ substitution cannot skip nested source validation."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    baseline = build_relocatable_plan(source, exact)
+    forged = _plan_with_tampered_literal(exact)
+
+    def reject_late_call(plan: ExactAuthoringPlan) -> None:
+        _ = plan
+        raise AssertionError
+
+    monkeypatch.setattr(ExactAuthoringPlan, "__post_init__", reject_late_call)
+    assert build_relocatable_plan(source, exact) == baseline
+    with pytest.raises(RelocationError, match="exact plan"):
+        _ = build_relocatable_plan(source, forged)

@@ -117,6 +117,12 @@ _NATIVE_OBJECT_NEW = object.__new__
 _ORACLE_LITERAL_VALIDATOR = cast(
     "Callable[[OracleLiteral], None]", OracleLiteral.__dict__["__post_init__"]
 )
+# Exact-class plans may be allocated without the model constructor. Validate
+# their original nested snapshots, instructions and target binding before I/O.
+_EXACT_PLAN_VALIDATOR = cast(
+    "Callable[[ExactAuthoringPlan], None]",
+    ExactAuthoringPlan.__dict__["__post_init__"],
+)
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -938,6 +944,11 @@ def build_relocatable_plan(
             "relocatable source plan must use the exact authoring-plan type"
         )
         raise RelocationError(message)
+    try:
+        _EXACT_PLAN_VALIDATOR(exact_plan)
+    except (AttributeError, TreeModelError, TypeError) as error:
+        message = "relocatable exact plan has invalid native metadata"
+        raise RelocationError(message) from error
     _require_exact_source_snapshot(source_root, exact_plan)
     instructions = _NATIVE_TUPLE(
         _instruction(source_root, instruction)
