@@ -214,6 +214,14 @@ format.
   `__init__`/`__new__` replacement; 149 focused and 2,685 integrated diff
   tests passed. Ruff and diff checks were clean; six older strict source typing
   diagnostics remain, with direct record mutation still outside this guard.
+- Nested native probe/observation children now rerun pinned validators at
+  behavior profile and observation admission (`d87bd34c4`). Public behavior
+  evaluation, direct evidence construction, and `.admitted` verdict reads
+  also reject raw exact records with forged digest, probe, or reason fields.
+  Eighteen red-first cases passed with 167 focused behavior and 3,033
+  integrated diff tests; Ruff, strict BasedPyright, and diff checks had zero
+  errors. Jig remains unverified, and direct stored-field mutations or
+  concurrent external writers remain outside this process-level boundary.
 - Gate report creation now uses original native allocation and validating
   initialization (`7b8038188`) rather than late class `__new__`/`__init__`.
   Four red-first cases preserve accepted and rejected conjunctive reports.

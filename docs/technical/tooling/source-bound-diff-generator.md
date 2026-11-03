@@ -684,6 +684,20 @@ focused behavior tests and 2,685 integrated diff tests passed; scoped Ruff
 and diff checks were clean. Source strict type checking retains six unrelated
 existing diagnostics. This does not defend against direct stored-record edits.
 
+Behavior profile and observation containers now validate each exact native
+nested probe/observation with its captured original validator (`d87bd34c4`).
+Public behavior evaluation and direct evidence construction also rerun the
+original outer profile/observation validators, while direct reads of
+`BehaviorEvidence.admitted` validate the entire receipt before trusting its
+rejection reasons. This closes constructor-bypass paths that previously let
+empty or foreign digest bytes, missing fields, and forged compatibility or
+bug results count as passing behavior. Eighteen red-first nested, raw-outer,
+and public-verdict cases pass. All 167 focused behavior and 3,033 integrated
+diff tests passed; scoped Ruff, strict BasedPyright, and diff checks reported
+zero errors. Direct mutation of trusted records after checks, trusted module
+internals, and concurrent writers remain outside this process-level boundary;
+the global Jig verdict remains unavailable.
+
 Internal `combine_admission()` now creates its `TransformAdmissionEvidence`
 report through captured native allocation and the original validating
 initializer instead of replaceable class `__new__`/`__init__` hooks
