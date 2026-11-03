@@ -80,6 +80,8 @@ _OUTPUT_ALGORITHM = "output_algorithm"
 _HOST_PATH_HOOKS_CHANGED = "host path hooks changed"
 _EXACT_STRING_TYPE = "exact string type"
 _STRING_CALLBACK_REPLACEMENT = "callable"
+_SNAPSHOT_FIELD_GETTER = "field"
+_SNAPSHOT_HOOKS_CHANGED = "recipe snapshot hooks changed"
 _RAW_PATH_SLOT_NAME = "_raw_paths"
 _RAW_GETATTRIBUTE_MODE = "getattribute"
 _RAW_SLOT_MODE = "slot"
@@ -873,6 +875,73 @@ def test_generator_rejects_late_string_alias_after_domain_preflight(
             rejected = _HOST_PATH_HOOKS_CHANGED in error.args[0]
     assert rejected, "post-domain builtin string replacement was admitted"
     assert not emitted, "post-domain mutable string hook reached emission"
+
+
+def _spoof_recipe_snapshot_output(
+    patched: pytest.MonkeyPatch,
+    snapshot_cls: type[object],
+    redirected_output: Path,
+    *,
+    getter: str,
+) -> None:
+    """Install one late snapshot accessor without touching native storage."""
+    original_getattribute = object.__getattribute__
+
+    def forged_field(snapshot: object) -> Path:
+        del snapshot
+        return redirected_output
+
+    def forged_getattribute(snapshot: object, name: str) -> object:
+        if name == _OUTPUT_ALGORITHM:
+            return redirected_output
+        return cast("object", original_getattribute(snapshot, name))
+
+    if getter == _SNAPSHOT_FIELD_GETTER:
+        patched.setattr(
+            snapshot_cls, _OUTPUT_ALGORITHM, property(forged_field)
+        )
+    else:
+        patched.setattr(
+            snapshot_cls, "__getattribute__", forged_getattribute
+        )
+
+
+@pytest.mark.parametrize("getter", ["field", "getattribute"])
+def test_generator_rejects_late_snapshot_getter_after_domain_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    getter: str,
+) -> None:
+    """An untrusted callback cannot redirect a validated recipe snapshot."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    recipe = replace(recipe, domain_module=_domain_module(tmp_path))
+    inside_source = recipe.source_root / "hijacked.rs"
+    snapshot_cls = cast(
+        "type[object]", vars(generate_module)["_RecipeSnapshot"]
+    )
+    emitted: list[Path] = []
+
+    def after_preflight(_recipe: object) -> None:
+        del _recipe
+        _spoof_recipe_snapshot_output(
+            patched, snapshot_cls, inside_source, getter=getter
+        )
+
+    def capture_emission(snapshot: object) -> None:
+        emitted.append(cast("Path", getattr(snapshot, _OUTPUT_ALGORITHM)))
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "_preflight_domain", after_preflight)
+        patched.setattr(
+            generate_module, "_write_exact_algorithm", capture_emission
+        )
+        try:
+            write_algorithm(recipe)
+        except ValueError as error:
+            rejected = _SNAPSHOT_HOOKS_CHANGED in error.args[0]
+    assert rejected, "late snapshot getter bypassed validated recipe fields"
+    assert not emitted, "unvalidated source-contained output reached emission"
 
 
 @pytest.mark.parametrize(
@@ -2967,6 +3036,54 @@ with TemporaryDirectory() as directory:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_generator_rejects_snapshot_getter_changed_during_protection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late snapshot field change cannot redirect protected publication."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    snapshot_cls = cast(
+        "type[object]", vars(generate_module)["_RecipeSnapshot"]
+    )
+    redirected_output = recipe.source_root / "forged-output.rs"
+    emitted: list[Path] = []
+
+    def replace_output_after_protection(
+        _exact: ExactAuthoringPlan,
+        _identity: IdentityTree,
+        *,
+        binding_policy: SourceBindingPolicy,
+        context: bytes,
+    ) -> ProtectedExactPlan:
+        del _exact, _identity, binding_policy, context
+        _spoof_recipe_snapshot_output(
+            patched,
+            snapshot_cls,
+            redirected_output,
+            getter=_SNAPSHOT_FIELD_GETTER,
+        )
+        return cast("ProtectedExactPlan", object())
+
+    def capture_emission(
+        protected: ProtectedExactPlan, profile: str, path: Path
+    ) -> None:
+        del protected, profile
+        emitted.append(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            generate_module,
+            "protect_exact_plan",
+            replace_output_after_protection,
+        )
+        patched.setattr(
+            generate_module, "write_rust_transform", capture_emission
+        )
+        with pytest.raises(ValueError, match=_SNAPSHOT_HOOKS_CHANGED):
+            write_algorithm(recipe)
+    assert not emitted, "late snapshot getter redirected output publication"
 
 
 @pytest.mark.parametrize("field", ["source", "target"])

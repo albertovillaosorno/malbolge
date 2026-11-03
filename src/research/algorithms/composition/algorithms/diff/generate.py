@@ -300,9 +300,36 @@ class _RecipeSnapshot(NamedTuple):
 # A validated recipe snapshot must not dispatch class allocation or
 # initialization hooks installed after the public module was imported.
 _RECIPE_SNAPSHOT_NEW = _RecipeSnapshot.__new__
+# Consumer callbacks may replace the namedtuple's field descriptors or
+# __getattribute__ after initial recipe validation. Pin their identities so
+# a later field read cannot redirect source/oracle identity or publication.
+_NATIVE_RECIPE_SNAPSHOT_HOOKS = _NATIVE_TUPLE(
+    (name, _RecipeSnapshot.__dict__.get(name))
+    for name in (
+        "__getattribute__",
+        "__getattr__",
+        "__getitem__",
+        *_RecipeSnapshot._fields,
+    )
+)
 
 
 type _RecipeLike = DiffRecipe | _RecipeSnapshot
+
+
+def _require_native_recipe_snapshot_hooks() -> None:
+    """Reject mutable accessors on the validated recipe snapshot.
+
+    Raises:
+        ValueError: Original snapshot field accessors have changed.
+
+    """
+    if _NATIVE_ANY(
+        _RecipeSnapshot.__dict__.get(name) is not original
+        for name, original in _NATIVE_RECIPE_SNAPSHOT_HOOKS
+    ):
+        message = "recipe snapshot hooks changed after validation"
+        raise ValueError(message)
 
 
 def _snapshot_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
@@ -621,6 +648,7 @@ def _validate_identity_flags(recipe: _RecipeLike) -> None:
 
 
 def _validate_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
+    _require_native_recipe_snapshot_hooks()
     if _NATIVE_TYPE(recipe) is not DiffRecipe:
         message = "diff recipe must use the exact DiffRecipe type"
         raise TypeError(message)
@@ -690,16 +718,19 @@ def _raw_exact_identity(
 
 
 def _write_exact_algorithm(recipe: _RecipeLike) -> None:
+    _require_native_recipe_snapshot_hooks()
     exact = build_exact_plan(
         recipe.source_root,
         recipe.oracle_root,
         passthrough_roots=recipe.passthrough_roots,
     )
+    _require_native_recipe_snapshot_hooks()
     # Domain callbacks can replace ExactAuthoringPlan class getters after
     # creation; only the original plan slots can authorize post-protection
     # input drift checks and source-bound key material.
     planned_source, planned_target, _, _ = _plan_fields(exact)
     identity = _raw_exact_identity(recipe, planned_source)
+    _require_native_recipe_snapshot_hooks()
     replayed_source = snapshot_tree_excluding(
         recipe.source_root, recipe.passthrough_roots
     )
@@ -719,6 +750,7 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
         binding_policy=policy,
         context=context,
     )
+    _require_native_recipe_snapshot_hooks()
     # Protection can take time; reject persistent input drift before emitting
     # a distributable transform bound to a stale source or oracle snapshot.
     for name, root, expected in (
@@ -730,6 +762,7 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
         ):
             message = f"exact {name} tree changed during payload protection"
             raise ExactTreeError(message)
+    _require_native_recipe_snapshot_hooks()
     write_rust_transform(
         protected,
         f"{recipe.profile}-exact-baseline-v1",
@@ -759,6 +792,7 @@ def _preflight_domain(recipe: _RecipeLike) -> None:
         message = "domain preflight requires a domain module"
         raise DiffGeneratorUnavailableError(message)
     domain = load_diff_domain(recipe.domain_module)
+    _require_native_recipe_snapshot_hooks()
     if _NATIVE_TYPE(domain) is not DiffDomain:
         message = "domain loader must return exact DiffDomain"
         raise DomainContractError(message)
@@ -771,7 +805,9 @@ def _preflight_domain(recipe: _RecipeLike) -> None:
         _DOMAIN_ORACLE_HOOK_SLOT.__get__(domain, DiffDomain),
     )
     _require_source_provenance_evidence(source_hook(recipe.source_root))
+    _require_native_recipe_snapshot_hooks()
     oracle_result = oracle_hook(recipe.oracle_root)
+    _require_native_recipe_snapshot_hooks()
     if oracle_result is not None:
         message = "domain oracle preflight hook must return None"
         raise DomainContractError(message)
@@ -794,6 +830,7 @@ def write_algorithm(recipe: DiffRecipe) -> None:
     recipe_view = _validate_recipe(recipe)
     if recipe_view.domain_module is not None:
         _preflight_domain(recipe_view)
+        _require_native_recipe_snapshot_hooks()
     elif recipe_view.mode is TransformMode.COMPATIBLE:
         message = "compatible generation requires a domain module"
         raise DiffGeneratorUnavailableError(message)
