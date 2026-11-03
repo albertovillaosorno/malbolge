@@ -143,7 +143,7 @@ class _HostileRelocatableReadError(ExactTreeError):
         ("creation", "staging root creation failed"),
         ("write", "relocatable output write failed"),
         ("publication", "output publication failed"),
-        ("root_resolve", "path resolution failed"),
+        ("root_resolve", "root resolution failed"),
         ("read", "candidate read failed"),
         ("snapshot", "source snapshot failed"),
     ],
@@ -172,7 +172,9 @@ def test_relocatable_host_failures_do_not_invoke_foreign_formatters(
                 raise _HostileRelocatableError("foreign status")
             return native_lstat(path)
 
-        monkeypatch.setattr(Path, "lstat", fail_status)
+        monkeypatch.setattr(
+            relocatable_module, "_NATIVE_PATH_LSTAT", fail_status
+        )
     elif operation == "creation":
         native_mkdir = Path.mkdir
 
@@ -214,7 +216,7 @@ def test_relocatable_host_failures_do_not_invoke_foreign_formatters(
                 raise _HostileRelocatableError("foreign resolution")
             return native_resolve(path, strict=strict)
 
-        monkeypatch.setattr(Path, "resolve", fail_resolve)
+        monkeypatch.setattr(relocatable_module, "_NATIVE_RESOLVE", fail_resolve)
     elif operation == "read":
         native_read = cast(
             "Callable[[Path, str], bytes]",
@@ -267,7 +269,6 @@ def test_relocatable_nested_path_errors_do_not_format_foreign_failures(
     ))
     guard = candidate / ("nested/file.bin" if method == "resolve" else "nested")
     original_resolve = Path.resolve
-    original_symlink = Path.is_symlink
     original_junction = Path.is_junction
 
     def fail_resolve(path: Path, *, strict: bool = False) -> Path:
@@ -275,10 +276,9 @@ def test_relocatable_nested_path_errors_do_not_format_foreign_failures(
             raise _HostileRelocatableError("foreign nested resolution")
         return original_resolve(path, strict=strict)
 
-    def fail_symlink(path: Path) -> bool:
-        if path == guard:
-            raise _HostileRelocatableError("foreign symlink status")
-        return original_symlink(path)
+    def fail_symlink(mode: int) -> bool:
+        _ = mode
+        raise _HostileRelocatableError("foreign symlink status")
 
     def fail_junction(path: Path) -> bool:
         if path == guard:
@@ -286,11 +286,12 @@ def test_relocatable_nested_path_errors_do_not_format_foreign_failures(
         return original_junction(path)
 
     replacements = {
-        "resolve": fail_resolve,
-        "is_symlink": fail_symlink,
-        "is_junction": fail_junction,
+        "resolve": ("_NATIVE_RESOLVE", fail_resolve),
+        "is_symlink": ("_NATIVE_IS_SYMLINK", fail_symlink),
+        "is_junction": ("_NATIVE_IS_JUNCTION", fail_junction),
     }
-    monkeypatch.setattr(Path, method, replacements[method])
+    hook, failure = replacements[method]
+    monkeypatch.setattr(relocatable_module, hook, failure)
     expected = (
         "path resolution failed"
         if method == "resolve"
@@ -447,7 +448,7 @@ def test_relocatable_rejects_foreign_nested_resolution_receipt(
             return ForgedResolvedPath(resolved)
         return resolved
 
-    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(relocatable_module, "_NATIVE_RESOLVE", forged_resolve)
     with pytest.raises(RelocationError, match="native resolved Path"):
         materialize_relocatable_plan(candidate, plan, output)
     assert not output.exists()
@@ -601,7 +602,7 @@ def test_relocatable_materialization_wraps_path_resolution_error(
             raise PermissionError(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(relocatable_module, "_NATIVE_RESOLVE", fail_resolve)
     output = tmp_path / "out"
     with pytest.raises(RelocationError, match="path resolution failed"):
         materialize_relocatable_plan(candidate, plan, output)
@@ -688,7 +689,7 @@ def test_relocatable_materialization_normalizes_resolution_failures(
             raise error_type()
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(relocatable_module, "_NATIVE_RESOLVE", fail_resolve)
     output = tmp_path / "out"
     with pytest.raises(RelocationError, match="resolution failed"):
         materialize_relocatable_plan(candidate, plan, output)
@@ -793,7 +794,7 @@ def test_relocatable_staging_status_error_fails_closed(
             raise failure_type(message)
         return original_lstat(path)
 
-    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    monkeypatch.setattr(relocatable_module, "_NATIVE_PATH_LSTAT", fail_lstat)
     with pytest.raises(RelocationError, match="staging root status failed"):
         materialize_relocatable_plan(candidate, plan, output)
     _expect(not output.exists(), "status failure published relocatable output")
@@ -1020,6 +1021,124 @@ def test_relocatable_rejects_linked_authoring_directory(
         _ = build_relocatable_plan(source, exact)
 
 
+def _relocatable_safe_path(root: Path, relative: str) -> Path:
+    safe_path = cast(
+        "Callable[[Path, str], Path]", vars(relocatable_module)["_safe_path"]
+    )
+    return safe_path(root, relative)
+
+
+def test_relocatable_path_rejects_post_import_resolver_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late resolver cannot hide a source file alias outside its tree."""
+    root = tmp_path / "root"
+    _write(root, "ordinary.bin", b"internal")
+    external = tmp_path / "external.bin"
+    _ = external.write_bytes(b"outside")
+    alias = root / "alias.bin"
+    try:
+        alias.symlink_to(external)
+    except OSError:
+        pytest.skip("file symlinks unavailable")
+    original = Path.resolve
+    calls = 0
+
+    def forged(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        if path == alias:
+            calls += 1
+            return root / "ordinary.bin"
+        return original(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", forged)
+    with pytest.raises(RelocationError, match="escapes tree root"):
+        _ = _relocatable_safe_path(root, "alias.bin")
+    assert calls == 0
+
+
+def test_relocatable_path_rejects_post_import_containment_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late relative_to hook cannot admit an external source file."""
+    root = tmp_path / "root"
+    root.mkdir()
+    external = tmp_path / "external.bin"
+    _ = external.write_bytes(b"outside")
+    alias = root / "alias.bin"
+    try:
+        alias.symlink_to(external)
+    except OSError:
+        pytest.skip("file symlinks unavailable")
+    original = Path.relative_to
+    calls = 0
+
+    def forged(path: Path, *other: Path) -> Path:
+        nonlocal calls
+        if path == external and other == (root,):
+            calls += 1
+            return Path("alias.bin")
+        return original(path, *other)
+
+    monkeypatch.setattr(Path, "relative_to", forged)
+    with pytest.raises(RelocationError, match="escapes tree root"):
+        _ = _relocatable_safe_path(root, "alias.bin")
+    assert calls == 0
+
+
+def _relocatable_linked_ancestor(tmp_path: Path) -> tuple[Path, Path]:
+    root = tmp_path / "root"
+    _write(root, "real/file.bin", b"inside")
+    alias = root / "alias"
+    try:
+        alias.symlink_to(root / "real", target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    return root, alias
+
+
+def test_relocatable_path_rejects_post_import_link_inspection_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late path inspectors cannot hide in-tree linked ancestors."""
+    root, alias = _relocatable_linked_ancestor(tmp_path)
+    calls = 0
+
+    def forged(path: Path) -> bool:
+        nonlocal calls
+        if path == alias:
+            calls += 1
+            return False
+        return False
+
+    monkeypatch.setattr(Path, "is_symlink", forged)
+    monkeypatch.setattr(Path, "is_junction", forged)
+    with pytest.raises(RelocationError, match="linked path component"):
+        _ = _relocatable_safe_path(root, "alias/file.bin")
+    assert calls == 0
+
+
+def test_relocatable_path_rejects_post_import_missing_ancestor_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late lstat hook cannot hide a linked path component."""
+    root, alias = _relocatable_linked_ancestor(tmp_path)
+    original = Path.lstat
+    calls = 0
+
+    def forged(path: Path) -> os.stat_result:
+        nonlocal calls
+        if path == alias:
+            calls += 1
+            raise FileNotFoundError
+        return original(path)
+
+    monkeypatch.setattr(Path, "lstat", forged)
+    with pytest.raises(RelocationError, match="linked path component"):
+        _ = _relocatable_safe_path(root, "alias/file.bin")
+    assert calls == 0
+
+
 def test_relocatable_rejects_linked_candidate_directory(
     tmp_path: Path,
 ) -> None:
@@ -1068,17 +1187,22 @@ def test_relocatable_ancestor_inspection_errors_are_typed(
         ),
     ))
     guarded = candidate / "nested"
-    original = (
-        Path.is_symlink if method == _SYMLINK_METHOD else Path.is_junction
+    hook = (
+        "_NATIVE_IS_SYMLINK"
+        if method == _SYMLINK_METHOD
+        else "_NATIVE_IS_JUNCTION"
+    )
+    original = cast(
+        "Callable[[Path | int], bool]", vars(relocatable_module)[hook]
     )
 
-    def broken_inspection(path: Path) -> bool:
-        if path == guarded:
+    def broken_inspection(value: Path | int) -> bool:
+        if method == _SYMLINK_METHOD or value == guarded:
             message = "host inspection failed"
             raise failure(message)
-        return original(path)
+        return original(value)
 
-    monkeypatch.setattr(Path, method, broken_inspection)
+    monkeypatch.setattr(relocatable_module, hook, broken_inspection)
     with pytest.raises(RelocationError, match="ancestor inspection failed"):
         materialize_relocatable_plan(candidate, plan, output)
     _expect(not output.exists(), "failed admission published output")
@@ -1110,16 +1234,21 @@ def test_relocatable_rejects_nonboolean_ancestor_status(
             copy_candidate_file=True,
         ),
     ))
-    original = (
-        Path.is_symlink if method == _SYMLINK_METHOD else Path.is_junction
+    hook = (
+        "_NATIVE_IS_SYMLINK"
+        if method == _SYMLINK_METHOD
+        else "_NATIVE_IS_JUNCTION"
+    )
+    original = cast(
+        "Callable[[Path | int], bool]", vars(relocatable_module)[hook]
     )
 
-    def forged_status(path: Path) -> bool:
-        if path == nested:
+    def forged_status(value: Path | int) -> bool:
+        if method == _SYMLINK_METHOD or value == nested:
             return cast("bool", cast("object", 0))
-        return original(path)
+        return original(value)
 
-    monkeypatch.setattr(Path, method, forged_status)
+    monkeypatch.setattr(relocatable_module, hook, forged_status)
     output = tmp_path / "out"
     with pytest.raises(RelocationError, match="ancestor inspection failed"):
         materialize_relocatable_plan(candidate, plan, output)

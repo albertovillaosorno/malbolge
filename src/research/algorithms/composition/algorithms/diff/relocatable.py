@@ -47,6 +47,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from stat import S_ISLNK
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.exact import (
@@ -79,6 +80,20 @@ _NATIVE_ISRESERVED = ntpath.isreserved
 _NATIVE_PATH_TYPE = type(Path())
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 _NATIVE_IS_RELATIVE_TO = _NATIVE_PATH_TYPE.is_relative_to
+_NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
+_NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
+_NATIVE_OS_LSTAT = os.lstat
+_NATIVE_PATH_STRING = Path.__str__
+_NATIVE_STAT_RESULT = os.stat_result
+_NATIVE_IS_SYMLINK = S_ISLNK
+
+
+def _native_path_lstat(path: Path) -> os.stat_result:
+    # Do not delegate to mutable pathlib or os status hooks after import.
+    return _NATIVE_OS_LSTAT(_NATIVE_PATH_STRING(path))
+
+
+_NATIVE_PATH_LSTAT = _native_path_lstat
 _STAGING_SUFFIX = ".relocatable-staging"
 _BACKSLASH = "\\"
 _NUL = "\x00"
@@ -351,16 +366,23 @@ def _instruction(
     )
 
 
-def _path_present(path: Path, context: str) -> bool:
+def _path_status(path: Path, context: str) -> os.stat_result | None:
     try:
-        _ = path.lstat()
+        status = _NATIVE_PATH_LSTAT(path)
     except FileNotFoundError:
-        return False
+        return None
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"{context} status failed: {path}: {detail}"
         raise RelocationError(message) from error
-    return True
+    if type(status) is not _NATIVE_STAT_RESULT:
+        message = f"{context} requires native filesystem status: {path}"
+        raise RelocationError(message)
+    return status
+
+
+def _path_present(path: Path, context: str) -> bool:
+    return _path_status(path, context) is not None
 
 
 def _read_relocatable_bytes(path: Path, context: str) -> bytes:
@@ -497,29 +519,26 @@ def _validate_relative_path(relative_path: object) -> str:
     return relative_path
 
 
+def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
+    try:
+        symlink = _NATIVE_IS_SYMLINK(status.st_mode)
+        junction = _NATIVE_IS_JUNCTION(path) if not symlink else False
+    except (OSError, ValueError, RuntimeError) as error:
+        detail = _host_error_detail(error)
+        message = f"ancestor inspection failed: {path}: {detail}"
+        raise RelocationError(message) from error
+    if type(symlink) is not bool or type(junction) is not bool:
+        message = f"ancestor inspection failed: {path}: non-native verdict"
+        raise RelocationError(message)
+    return symlink or junction
+
+
 def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
     current = root
     for component in PurePosixPath(relative_path).parts[:-1]:
         current /= component
-        if not _path_present(current, "relocatable path ancestor"):
-            continue
-        try:
-            symlink = current.is_symlink()
-            junction = (
-                current.is_junction()
-                if type(symlink) is bool and not symlink
-                else False
-            )
-        except (OSError, ValueError, RuntimeError) as error:
-            detail = _host_error_detail(error)
-            message = f"ancestor inspection failed: {current}: {detail}"
-            raise RelocationError(message) from error
-        if type(symlink) is not bool or type(junction) is not bool:
-            message = (
-                f"ancestor inspection failed: {current}: non-native verdict"
-            )
-            raise RelocationError(message)
-        if symlink or junction:
+        status = _path_status(current, "relocatable path ancestor")
+        if status is not None and _is_linked_ancestor(current, status):
             message = (
                 f"relocatable linked path component is not supported: {current}"
             )
@@ -530,8 +549,8 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
     path = root.joinpath(*PurePosixPath(normalized).parts)
     try:
-        resolved_path = path.resolve()
-        resolved_root = root.resolve()
+        resolved_path = _NATIVE_RESOLVE(path)
+        resolved_root = _NATIVE_RESOLVE(root)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = (
@@ -544,7 +563,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
         message = "relocatable path resolution requires native resolved Path"
         raise RelocationError(message)
     try:
-        _ = resolved_path.relative_to(resolved_root)
+        _ = _NATIVE_RELATIVE_TO(resolved_path, resolved_root)
     except ValueError as error:
         message = f"relocatable path escapes tree root: {relative_path!r}"
         raise RelocationError(message) from error
