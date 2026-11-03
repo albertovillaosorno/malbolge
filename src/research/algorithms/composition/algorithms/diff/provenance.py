@@ -36,14 +36,15 @@ from __future__ import annotations
 
 import builtins
 import os
+from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
-from pathlib import Path
+from pathlib import Path, PurePath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from sys import getfilesystemencoding as _get_filesystem_encoding
 from types import MemberDescriptorType
-from typing import Callable, Final, cast
+from typing import Final, cast
 
 from algorithms.diff.exact import ExactTreeError, read_exact_regular_file
 from algorithms.diff.model import reserved_windows_component
@@ -80,6 +81,34 @@ _NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
+# Path.__str__ reads a mutable cached slot and, on a fresh path, mutable
+# pathlib parser descriptors. A late class-hook replacement must not redirect
+# the filesystem tree selected by source-pin verification.
+_PATH_STRING_DEPENDENCIES: Final = (
+    "__getattribute__",
+    "__str__",
+    "__fspath__",
+    "_str",
+    "_raw_paths",
+    "_drv",
+    "_root",
+    "_tail_cached",
+    "_raw_path",
+    "_tail",
+    "drive",
+    "root",
+    "_parse_path",
+    "_format_parsed_parts",
+    "parser",
+)
+_NATIVE_PATH_STRING_HOOKS: Final = tuple(
+    (
+        cls,
+        tuple((name, cls.__dict__.get(name)) for name in _PATH_STRING_DEPENDENCIES),
+    )
+    for cls in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(cls, PurePath)
+)
 # Match os.fsencode's host codec without late os.fspath/fsencode lookups.
 _FILESYSTEM_ENCODING = _get_filesystem_encoding()
 _FILESYSTEM_ERRORS = _get_filesystem_encode_errors()
@@ -471,6 +500,13 @@ def _validate_root_path(root: object) -> None:
     # A foreign Path subclass can override source pin status and byte reads.
     if _NATIVE_TYPE(root) is not _NATIVE_PATH_TYPE:
         message = "pinned source root must use exact pathlib Path"
+        raise SourcePinError(message)
+    if _NATIVE_ANY(
+        cls.__dict__.get(name) is not original
+        for cls, hooks in _NATIVE_PATH_STRING_HOOKS
+        for name, original in hooks
+    ):
+        message = "pinned source root path hooks changed"
         raise SourcePinError(message)
     raw = _NATIVE_PATH_STRING(root)
     if _NUL in raw:

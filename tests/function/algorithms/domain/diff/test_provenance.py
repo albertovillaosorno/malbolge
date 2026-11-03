@@ -59,7 +59,7 @@ from algorithms.diff.provenance import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterator, Sized
+    from collections.abc import Callable, Generator, Iterable, Iterator, Sized
 
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _EXPECTED_FILE_COUNT = 3
@@ -1762,3 +1762,126 @@ with TemporaryDirectory() as directory:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+@pytest.mark.parametrize("cached_root", [False, True])
+@pytest.mark.parametrize("hook_owner", ["base", "native", "native_pure"])
+def test_source_pin_rejects_late_root_string_getter_redirection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    cached_root: bool,
+    hook_owner: str,
+) -> None:
+    """Late native or base Path getters cannot attest a different root."""
+    source = tmp_path / "source"
+    foreign = tmp_path / "foreign"
+    _write(source, "README", b"requested source")
+    _write(foreign, "README", b"foreign source")
+    foreign_evidence = source_snapshot_evidence(foreign, ("README",))
+    foreign_pin = SourcePin(
+        "repository",
+        _COMMIT,
+        ("README",),
+        foreign_evidence.file_count,
+        foreign_evidence.snapshot_sha256,
+    )
+    if cached_root:
+        _ = str(source)
+    owner = {
+        "base": Path,
+        "native": type(source),
+        "native_pure": type(source).__mro__[2],
+    }[hook_owner]
+    original_getattribute = cast("Callable[[Path, str], object]", owner.__getattribute__)
+    calls = 0
+
+    def redirect_string(path: Path, field: str) -> object:
+        nonlocal calls
+        if path is source and field == "_str":
+            calls += 1
+            return str(foreign)
+        return original_getattribute(path, field)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__getattribute__", redirect_string)
+        with pytest.raises(SourcePinError, match="path.*hook"):
+            if operation == "require":
+                _ = require_source_pin(source, foreign_pin)
+            else:
+                _ = source_snapshot_evidence(source, ("README",))
+    assert calls == 0, "late path getter redirected source pin evidence"
+    assert (source / "README").read_bytes() == b"requested source"
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_late_path_cache_descriptor_redirection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """Replacing native PurePath storage cannot spoof source provenance."""
+    source = tmp_path / "source"
+    foreign = tmp_path / "foreign"
+    _write(source, "README", b"requested source")
+    _write(foreign, "README", b"foreign source")
+    foreign_evidence = source_snapshot_evidence(foreign, ("README",))
+    foreign_pin = SourcePin(
+        "repository",
+        _COMMIT,
+        ("README",),
+        foreign_evidence.file_count,
+        foreign_evidence.snapshot_sha256,
+    )
+    _ = str(source)
+    original_slot = cast("MemberDescriptorType", PurePath.__dict__["_str"])
+    calls = 0
+
+    def redirect_cached_string(path: PurePath) -> str:
+        nonlocal calls
+        if path is source:
+            calls += 1
+            return str(foreign)
+        return cast("str", original_slot.__get__(path, PurePath))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_str", property(redirect_cached_string))
+        with pytest.raises(SourcePinError, match="path.*hook"):
+            if operation == "require":
+                _ = require_source_pin(source, foreign_pin)
+            else:
+                _ = source_snapshot_evidence(source, ("README",))
+    assert calls == 0, "late path descriptor redirected source pin evidence"
+
+
+def test_source_pin_hook_guard_ignores_late_builtin_any(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late boolean-reduction hook cannot disable root-string isolation."""
+    source = tmp_path / "source"
+    foreign = tmp_path / "foreign"
+    _write(source, "README", b"requested source")
+    _write(foreign, "README", b"foreign source")
+    original_getattribute = cast(
+        "Callable[[Path, str], object]", Path.__getattribute__
+    )
+    calls = 0
+
+    def redirect_string(path: Path, field: str) -> object:
+        nonlocal calls
+        if path is source and field == "_str":
+            calls += 1
+            return str(foreign)
+        return original_getattribute(path, field)
+
+    def forged_any(values: Iterable[object]) -> bool:
+        del values
+        return False
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", forged_any)
+        patched.setattr(Path, "__getattribute__", redirect_string)
+        with pytest.raises(SourcePinError, match="path.*hook"):
+            _ = source_snapshot_evidence(source, ("README",))
+    assert calls == 0, "mutable builtin bypassed root-string hook guard"
