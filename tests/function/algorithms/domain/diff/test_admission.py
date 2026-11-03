@@ -32,24 +32,27 @@
 
 """Tests for tree-level structural and distributed-anchor admission."""
 
-from dataclasses import replace
+import builtins
 import hashlib
 import math
 import ntpath
+from dataclasses import replace
 from pathlib import PurePosixPath
 from typing import cast
 
-from algorithms.diff.admission import AdmissionError
-from algorithms.diff.admission import AdmissionPolicy
-from algorithms.diff.admission import AdmissionPolicyError
-from algorithms.diff.admission import FileAdmissionEvidence
-from algorithms.diff.admission import IdentityFile
-from algorithms.diff.admission import IdentityTree
-from algorithms.diff.admission import TreeAdmissionEvidence
-from algorithms.diff.admission import evaluate_admission
-from algorithms.diff.admission import identity_tree
-from algorithms.diff.admission import require_admission
 import pytest
+from algorithms.diff.admission import (
+    AdmissionError,
+    AdmissionPolicy,
+    AdmissionPolicyError,
+    FileAdmissionEvidence,
+    IdentityFile,
+    IdentityTree,
+    TreeAdmissionEvidence,
+    evaluate_admission,
+    identity_tree,
+    require_admission,
+)
 
 _FILE_COUNT = 4
 _BLOCKS_PER_FILE = 128
@@ -229,6 +232,72 @@ def test_direct_admission_evidence_requires_exact_policy() -> None:
         _ = replace(evidence, policy=cast("AdmissionPolicy", object()))
 
 
+
+@pytest.mark.parametrize("invalid_order", ["unsorted", "duplicate"])
+def test_identity_tree_ignores_late_sort_and_set_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_order: str,
+) -> None:
+    """A late hook cannot admit unordered or duplicated source identities."""
+    reference = identity_tree({"first.c": b"first", "second.c": b"second"})
+    first, second = reference.files
+    records = (
+        (second, first) if invalid_order == "unsorted" else (first, first)
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "sorted", lambda values: list(values))
+        patch.setattr(builtins, "set", lambda values: list(values))
+        try:
+            _ = IdentityTree(files=records)
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "late hooks admitted malformed source identity records"
+
+
+
+def test_identity_tree_builder_ignores_late_sort_and_set_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The identity-tree constructor preserves native path sorting."""
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "sorted", lambda values: list(values))
+        patch.setattr(builtins, "set", lambda values: list(values))
+        identity = identity_tree({"z.c": b"z", "a.c": b"a"})
+    assert tuple(item.path for item in identity.files) == ("a.c", "z.c")
+
+
+def test_tree_evidence_ignores_late_sort_and_set_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unordered evidence cannot pass under mutated process-wide hooks."""
+    policy = AdmissionPolicy(
+        minimum_source_similarity=0.0,
+        minimum_anchor_coverage=0.5,
+        minimum_anchor_files=1,
+        minimum_anchors_per_file=1,
+    )
+    first = FileAdmissionEvidence("a.c", 1.0, 1.0, 1, 1)
+    second = FileAdmissionEvidence("z.c", 1.0, 1.0, 1, 1)
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "sorted", lambda values: list(values))
+        patch.setattr(builtins, "set", lambda values: list(values))
+        try:
+            _ = TreeAdmissionEvidence(
+                source_similarity=1.0,
+                anchor_coverage=1.0,
+                eligible_anchor_files=2,
+                satisfied_anchor_files=2,
+                files=(second, first),
+                reasons=(),
+                policy=policy,
+            )
+        except AdmissionPolicyError:
+            rejected = True
+    assert rejected, "late hooks admitted unordered file evidence"
+
+
 def test_identity_tree_rejects_file_ancestor_overlap() -> None:
     """File identities cannot also act as containing directories."""
     ancestor = IdentityFile(path="src/file", canonical=b"A")
@@ -325,6 +394,49 @@ def test_unrelated_source_fails_closed() -> None:
     })
     with pytest.raises(AdmissionError, match="structural source similarity"):
         _ = require_admission(reference, unrelated, _policy())
+
+
+def test_require_admission_ignores_late_admitted_descriptor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing a public descriptor cannot approve rejected source lineage."""
+    reference = identity_tree(_reference_files())
+    unrelated = identity_tree({
+        f"src/file-{index}.txt": _content("unrelated", index)
+        for index in range(_FILE_COUNT)
+    })
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            TreeAdmissionEvidence, "admitted", property(lambda evidence: True)
+        )
+        with pytest.raises(AdmissionError, match="structural source similarity"):
+            _ = require_admission(reference, unrelated, _policy())
+
+
+def test_admission_distribution_ignores_late_sum_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late sum override cannot forge enough satisfied source files."""
+    files = _reference_files()
+    candidate = dict(files)
+    candidate["src/file-0.txt"] = _content("unrelated", 0)
+    reference = identity_tree(files)
+    changed = identity_tree(candidate)
+    policy = AdmissionPolicy(
+        minimum_source_similarity=0.0,
+        minimum_anchor_coverage=0.50,
+        minimum_anchor_files=_FILE_COUNT,
+        minimum_anchors_per_file=1,
+    )
+    baseline = evaluate_admission(reference, changed, policy)
+    assert baseline.eligible_anchor_files == _FILE_COUNT
+    assert baseline.satisfied_anchor_files == _FILE_COUNT - 1
+    assert _DISTRIBUTION_REASON in baseline.reasons
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "sum", lambda values: _FILE_COUNT)
+        with pytest.raises(AdmissionError, match="sufficiently distributed"):
+            _ = require_admission(reference, changed, policy)
 
 
 def test_structural_threshold_boundary_is_fail_closed() -> None:

@@ -34,15 +34,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import builtins
 import math
 import ntpath
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.fingerprints import AnchorPolicy
-from algorithms.diff.fingerprints import anchor_coverage
-from algorithms.diff.fingerprints import stable_anchors
+from algorithms.diff.fingerprints import AnchorPolicy, anchor_coverage, stable_anchors
 
 if TYPE_CHECKING:
     from algorithms.diff.fingerprints import StableAnchor
@@ -60,6 +58,10 @@ _NATIVE_IS_RESERVED = ntpath.isreserved
 _NATIVE_SPLITDRIVE = ntpath.splitdrive
 _NATIVE_FSUM = math.fsum
 _NATIVE_ISFINITE = math.isfinite
+# Source-lineage verdicts cannot trust post-import mutable sum hooks.
+_NATIVE_SUM = builtins.sum
+_NATIVE_SORTED = builtins.sorted
+_NATIVE_SET = builtins.set
 
 
 class AdmissionPolicyError(ValueError):
@@ -97,7 +99,7 @@ def _require_file_path_topology(paths: tuple[str, ...]) -> None:
         AdmissionPolicyError: A file path is the ancestor of another file.
 
     """
-    file_paths = set(paths)
+    file_paths = _NATIVE_SET(paths)
     for path in paths:
         components = path.split("/")
         ancestor = components[0]
@@ -155,7 +157,7 @@ class IdentityTree:
             message = "identity tree contains a foreign file record"
             raise AdmissionPolicyError(message)
         paths = tuple(item.path for item in self.files)
-        if paths != tuple(sorted(set(paths))):
+        if paths != tuple(_NATIVE_SORTED(_NATIVE_SET(paths))):
             message = "identity tree paths must be unique and sorted"
             raise AdmissionPolicyError(message)
         _require_file_path_topology(paths)
@@ -298,7 +300,7 @@ def _require_file_evidence_tuple(
         message = "tree admission evidence requires at least one file"
         raise AdmissionPolicyError(message)
     paths = tuple(item.path for item in files)
-    if paths != tuple(sorted(set(paths))):
+    if paths != tuple(_NATIVE_SORTED(_NATIVE_SET(paths))):
         message = "tree admission file paths must be unique and sorted"
         raise AdmissionPolicyError(message)
     _require_file_path_topology(paths)
@@ -363,7 +365,7 @@ def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
     if satisfied > eligible:
         message = "satisfied anchor file count cannot exceed eligible files"
         raise AdmissionPolicyError(message)
-    matched_eligible = sum(
+    matched_eligible = _NATIVE_SUM(
         item.anchor_coverage is not None and item.matched_anchor_count > _ZERO
         for item in files
     )
@@ -390,7 +392,7 @@ def _validate_policy_bound_evidence(
     ):
         message = "file anchor eligibility does not match admission policy"
         raise AdmissionPolicyError(message)
-    expected_satisfied = sum(
+    expected_satisfied = _NATIVE_SUM(
         item.matched_anchor_count > _ZERO
         and item.anchor_coverage is not None
         and item.anchor_coverage >= policy.minimum_anchor_coverage
@@ -474,7 +476,7 @@ def identity_tree(files: dict[str, bytes]) -> IdentityTree:
             raise AdmissionPolicyError(message)
     records = tuple(
         IdentityFile(path=path, canonical=canonical)
-        for path, canonical in sorted(files.items())
+        for path, canonical in _NATIVE_SORTED(files.items())
     )
     return IdentityTree(files=records)
 
@@ -621,7 +623,7 @@ def evaluate_admission(
     anchor_average = _mean(
         tuple(item.anchor_coverage or 0.0 for item in eligible)
     )
-    satisfied = sum(
+    satisfied = _NATIVE_SUM(
         item.matched_anchor_count > _ZERO
         and (item.anchor_coverage or 0.0) >= policy.minimum_anchor_coverage
         for item in eligible
@@ -659,7 +661,7 @@ def require_admission(
 
     """
     evidence = evaluate_admission(reference, candidate, policy)
-    if not evidence.admitted:
+    if evidence.reasons:
         message = "; ".join(evidence.reasons)
         raise AdmissionError(message)
     return evidence
