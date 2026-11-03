@@ -40,7 +40,11 @@ from bisect import bisect_left
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.mapped import MappedView
+from algorithms.diff.mapped import (
+    MappedView,
+    read_mapped_unit,
+    read_mapped_view,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -231,15 +235,19 @@ def _unit_digest(canonical: bytes) -> bytes:
 
 
 def _view_digests(view: MappedView) -> tuple[bytes, ...]:
-    return _NATIVE_TUPLE(_unit_digest(unit.canonical) for unit in view.units)
+    return _NATIVE_TUPLE(
+        _unit_digest(read_mapped_unit(unit)[0])
+        for unit in read_mapped_view(view)[1]
+    )
 
 
 def _replacement_bytes(view: MappedView, start: int, end: int) -> bytes:
     if start == end:
         return b""
-    raw_start = view.units[start].raw_start
-    raw_end = view.units[end - _ONE].raw_end
-    return view.raw[raw_start:raw_end]
+    raw, units = read_mapped_view(view)
+    raw_start = read_mapped_unit(units[start])[1]
+    raw_end = read_mapped_unit(units[end - _ONE])[2]
+    return raw[raw_start:raw_end]
 
 
 def _locator(
@@ -695,14 +703,18 @@ def _unique_position(
 
 
 def _raw_span(view: MappedView, start: int, end: int) -> tuple[int, int]:
+    raw, units = read_mapped_view(view)
     if start == end:
         offset = (
-            view.units[start].raw_start
-            if start < _NATIVE_LEN(view.units)
-            else _NATIVE_LEN(view.raw)
+            read_mapped_unit(units[start])[1]
+            if start < _NATIVE_LEN(units)
+            else _NATIVE_LEN(raw)
         )
         return offset, offset
-    return view.units[start].raw_start, view.units[end - _ONE].raw_end
+    return (
+        read_mapped_unit(units[start])[1],
+        read_mapped_unit(units[end - _ONE])[2],
+    )
 
 
 def _locate_edits(
@@ -793,7 +805,7 @@ def _map_semantic_output(
     if _NATIVE_TYPE(mapped) is not MappedView:
         message = "semantic mapper must return the exact MappedView type"
         raise SemanticPlacementError(message)
-    if mapped.raw != output:
+    if read_mapped_view(mapped)[0] != output:
         message = "semantic mapper must describe the actual output bytes"
         raise SemanticPlacementError(message)
     return mapped
@@ -822,10 +834,10 @@ def apply_semantic_plan(
         raise SemanticPlacementError(message)
     _validate_mapper(mapper)
     if not plan.edits:
-        return candidate.raw
+        return read_mapped_view(candidate)[0]
     located = _locate_edits(candidate, plan)
     expected = _expected_digests(candidate, located)
-    output = _apply_raw_edits(candidate.raw, located)
+    output = _apply_raw_edits(read_mapped_view(candidate)[0], located)
     observed = _view_digests(_map_semantic_output(mapper, output))
     if observed != expected:
         message = "semantic edit changed canonical units at a replacement seam"

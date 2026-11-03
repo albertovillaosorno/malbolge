@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import builtins
 from dataclasses import dataclass
+from types import MemberDescriptorType
+from typing import cast
 
 _ZERO = 0
 # Preserve exact-record admission after untrusted domain callback execution.
@@ -66,33 +68,52 @@ class MappedUnit:
             MappedViewError: Canonical bytes or raw coordinates are invalid.
 
         """
-        if (
-            _NATIVE_TYPE(self.canonical) is not _NATIVE_BYTES
-            or not self.canonical
-        ):
+        canonical, start, end = read_mapped_unit(self)
+        if _NATIVE_TYPE(canonical) is not _NATIVE_BYTES or not canonical:
             message = "mapped canonical unit must be non-empty exact bytes"
             raise MappedViewError(message)
         if (
-            _NATIVE_TYPE(self.raw_start) is not _NATIVE_INT
-            or _NATIVE_TYPE(self.raw_end) is not _NATIVE_INT
+            _NATIVE_TYPE(start) is not _NATIVE_INT
+            or _NATIVE_TYPE(end) is not _NATIVE_INT
         ):
             message = "mapped raw coordinates must use exact integers"
             raise MappedViewError(message)
-        if self.raw_start < _ZERO or self.raw_end < self.raw_start:
+        if start < _ZERO or end < start:
             message = "mapped raw span is invalid"
             raise MappedViewError(message)
+
+
+# Slotted frozen records still expose mutable class descriptors to callbacks.
+# Preserve the initial storage readers before domain code can replace them.
+_UNIT_CANONICAL_SLOT = cast(
+    "MemberDescriptorType", MappedUnit.__dict__["canonical"]
+)
+_UNIT_START_SLOT = cast(
+    "MemberDescriptorType", MappedUnit.__dict__["raw_start"]
+)
+_UNIT_END_SLOT = cast("MemberDescriptorType", MappedUnit.__dict__["raw_end"])
+
+
+def read_mapped_unit(unit: MappedUnit) -> tuple[bytes, int, int]:
+    """Read canonical bytes and coordinates from original unit storage."""
+    return (
+        cast("bytes", _UNIT_CANONICAL_SLOT.__get__(unit, MappedUnit)),
+        cast("int", _UNIT_START_SLOT.__get__(unit, MappedUnit)),
+        cast("int", _UNIT_END_SLOT.__get__(unit, MappedUnit)),
+    )
 
 
 def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
     previous_end = _ZERO
     for unit in units:
-        if unit.raw_end > _NATIVE_LEN(raw):
+        _, start, end = read_mapped_unit(unit)
+        if end > _NATIVE_LEN(raw):
             message = "mapped unit escapes raw source bytes"
             raise MappedViewError(message)
-        if unit.raw_start < previous_end:
+        if start < previous_end:
             message = "mapped units overlap or reorder raw source spans"
             raise MappedViewError(message)
-        previous_end = unit.raw_end
+        previous_end = end
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,25 +130,45 @@ class MappedView:
             MappedViewError: A unit escapes raw bytes or overlaps a prior unit.
 
         """
-        if _NATIVE_TYPE(self.raw) is not _NATIVE_BYTES:
+        raw, units = read_mapped_view(self)
+        if _NATIVE_TYPE(raw) is not _NATIVE_BYTES:
             message = "mapped raw source must use exact bytes"
             raise MappedViewError(message)
-        if _NATIVE_TYPE(self.units) is not _NATIVE_TUPLE:
+        if _NATIVE_TYPE(units) is not _NATIVE_TUPLE:
             message = "mapped units must use the exact immutable tuple type"
             raise MappedViewError(message)
         if _NATIVE_ANY(
-            _NATIVE_TYPE(unit) is not MappedUnit for unit in self.units
+            _NATIVE_TYPE(unit) is not MappedUnit for unit in units
         ):
             message = "mapped view contains a foreign unit record"
             raise MappedViewError(message)
-        _validate_view_units(self.raw, self.units)
+        _validate_view_units(raw, units)
 
     @property
     def canonical(self) -> bytes:
         """Concatenated canonical identity stream."""
-        return b"".join(unit.canonical for unit in self.units)
+        return b"".join(
+            read_mapped_unit(unit)[0] for unit in read_mapped_view(self)[1]
+        )
 
     @property
     def keys(self) -> tuple[bytes, ...]:
         """Canonical unit sequence for placement matching."""
-        return _NATIVE_TUPLE(unit.canonical for unit in self.units)
+        return _NATIVE_TUPLE(
+            read_mapped_unit(unit)[0] for unit in read_mapped_view(self)[1]
+        )
+
+
+_VIEW_RAW_SLOT = cast("MemberDescriptorType", MappedView.__dict__["raw"])
+_VIEW_UNITS_SLOT = cast("MemberDescriptorType", MappedView.__dict__["units"])
+
+
+def read_mapped_view(view: MappedView) -> tuple[bytes, tuple[MappedUnit, ...]]:
+    """Read raw bytes and units without invoking mutable class getters."""
+    return (
+        cast("bytes", _VIEW_RAW_SLOT.__get__(view, MappedView)),
+        cast(
+            "tuple[MappedUnit, ...]",
+            _VIEW_UNITS_SLOT.__get__(view, MappedView),
+        ),
+    )

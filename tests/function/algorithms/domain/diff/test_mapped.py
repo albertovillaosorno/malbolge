@@ -33,6 +33,7 @@
 """Synthetic invariants for canonical units mapped to raw source spans."""
 
 import builtins
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import cast
 
@@ -318,3 +319,128 @@ def test_mapped_native_metadata_survives_late_builtin_aliases(
         patched.setattr(builtins, "bytes", bytearray)
         view = MappedView(b"a", (MappedUnit(b"A", 0, 1),))
     assert view.canonical == _CANONICAL_PAIR[:1]
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "forged"),
+    [
+        ("canonical", bytearray(b"A"), b"A"),
+        ("raw_start", True, 0),
+        ("raw_end", True, 1),
+    ],
+)
+def test_mapped_unit_constructor_ignores_late_class_getter(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+    forged: object,
+) -> None:
+    """Malformed stored unit evidence cannot be laundered by class hooks."""
+    values: dict[str, object] = {
+        "canonical": b"A", "raw_start": 0, "raw_end": 1
+    }
+    values[field] = invalid
+    original = MappedUnit.__getattribute__
+    calls = 0
+
+    def getter(value: MappedUnit, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(MappedUnit, "__getattribute__", getter)
+        with pytest.raises(MappedViewError):
+            constructor = cast("Callable[..., MappedUnit]", MappedUnit)
+            _ = constructor(**values)
+    assert calls == 0, "late class getter hid malformed unit storage"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "forged"),
+    [
+        ("raw", bytearray(b"a"), b"a"),
+        ("units", [MappedUnit(b"A", 0, 1)], (MappedUnit(b"A", 0, 1),)),
+    ],
+)
+def test_mapped_view_constructor_ignores_late_class_getter(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+    forged: object,
+) -> None:
+    """A late mapped-view hook must not conceal a mutable input container."""
+    values: dict[str, object] = {
+        "raw": b"a", "units": (MappedUnit(b"A", 0, 1),)
+    }
+    values[field] = invalid
+    original = MappedView.__getattribute__
+    calls = 0
+
+    def getter(value: MappedView, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(MappedView, "__getattribute__", getter)
+        with pytest.raises(MappedViewError):
+            constructor = cast("Callable[..., MappedView]", MappedView)
+            _ = constructor(**values)
+    assert calls == 0, "late class getter hid malformed mapped-view storage"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_mapped_keys_ignore_late_unit_canonical_hook(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Placement identity reads the original unit's immutable bytes."""
+    view = MappedView(b"a", (MappedUnit(b"A", 0, 1),))
+    original = MappedUnit.__getattribute__
+    calls = 0
+
+    def getter(value: MappedUnit, name: str) -> object:
+        nonlocal calls
+        if name == "canonical":
+            calls += 1
+            return b"FORGED"
+        return cast("object", original(value, name))
+
+    def forged_property(_value: MappedUnit) -> bytes:
+        return b"FORGED"
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(MappedUnit, "canonical", property(forged_property))
+        else:
+            patched.setattr(MappedUnit, "__getattribute__", getter)
+        assert view.canonical == b"A"
+        assert view.keys == (b"A",)
+    assert calls == 0, "late canonical getter forged placement evidence"
+
+
+@pytest.mark.parametrize("field", ["raw", "units"])
+def test_mapped_keys_ignore_late_view_field_getter(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """The original mapped-unit tuple remains the only identity evidence."""
+    view = MappedView(b"a", (MappedUnit(b"A", 0, 1),))
+    original = MappedView.__getattribute__
+    calls = 0
+
+    def getter(value: MappedView, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return () if field == "units" else b"z"
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(MappedView, "__getattribute__", getter)
+        assert view.canonical == b"A"
+        assert view.keys == (b"A",)
+    assert calls == 0, "late mapped view getter changed placement identity"

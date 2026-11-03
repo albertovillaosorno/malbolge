@@ -861,3 +861,95 @@ def test_semantic_late_type_rejects_forged_mapper_receipt(
         except SemanticPlacementError:
             rejected = True
     assert rejected, "late type hook admitted foreign mapped evidence"
+
+
+@pytest.mark.parametrize("hook", ["unit", "view"])
+def test_semantic_candidate_locator_ignores_late_record_getter(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A forged canonical mapping cannot turn unrelated source into a match."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    candidate = _map(b"alpha = bad ; omega")
+    plan = build_semantic_plan(source, target)
+    target_unit = candidate.units[2]
+    original_unit = MappedUnit.__getattribute__
+    original_view = MappedView.__getattribute__
+    calls = 0
+
+    def unit_getter(value: MappedUnit, name: str) -> object:
+        nonlocal calls
+        if value is target_unit and name == "canonical":
+            calls += 1
+            return b"old"
+        return cast("object", original_unit(value, name))
+
+    def view_getter(value: MappedView, name: str) -> object:
+        nonlocal calls
+        if value is candidate and name == "units":
+            calls += 1
+            return source.units
+        return cast("object", original_view(value, name))
+
+    with monkeypatch.context() as patched:
+        if hook == "unit":
+            patched.setattr(MappedUnit, "__getattribute__", unit_getter)
+        else:
+            patched.setattr(MappedView, "__getattribute__", view_getter)
+        with pytest.raises(
+            SemanticPlacementError, match="missing or ambiguous"
+        ):
+            _ = apply_semantic_plan(candidate, plan, _map)
+    assert calls == 0, "late class getter forged a matching source locator"
+
+
+@pytest.mark.parametrize("field", ["raw_start", "raw_end"])
+def test_semantic_placement_ignores_late_unit_span_getter(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Canonical matches must be replaced at their original raw positions."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    plan = build_semantic_plan(source, target)
+    candidate = _map(b"alpha = old ; omega")
+    edited_unit = candidate.units[2]
+    original = MappedUnit.__getattribute__
+    calls = 0
+
+    def getter(value: MappedUnit, name: str) -> object:
+        nonlocal calls
+        if value is edited_unit and name == field:
+            calls += 1
+            return 0 if field == "raw_start" else len(candidate.raw)
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(MappedUnit, "__getattribute__", getter)
+        result = apply_semantic_plan(candidate, plan, _map)
+    assert result == b"alpha = new ; omega"
+    assert calls == 0, "late span hook redirected semantic replacement"
+
+
+def test_semantic_mapper_output_comparison_ignores_late_raw_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mapper cannot certify the wrong output bytes with a class getter."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    plan = build_semantic_plan(source, target)
+    forged = MappedView(raw=b"alpha = bad ; omega", units=target.units)
+    original = MappedView.__getattribute__
+    calls = 0
+
+    def getter(value: MappedView, name: str) -> object:
+        nonlocal calls
+        if value is forged and name == "raw":
+            calls += 1
+            return b"alpha = new ; omega"
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(MappedView, "__getattribute__", getter)
+        with pytest.raises(SemanticPlacementError, match="actual output bytes"):
+            _ = apply_semantic_plan(source, plan, lambda _: forged)
+    assert calls == 0, "late raw getter certified a foreign mapper response"
