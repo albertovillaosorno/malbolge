@@ -59,14 +59,15 @@ from algorithms.diff.exact import snapshot_tree_excluding
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstruction
 from algorithms.diff.model import ExactInstructionKind
+from algorithms.diff.model import FileRecord
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
+from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
     from algorithms.diff.model import ExactSegment
-    from algorithms.diff.model import TreeSnapshot
 
 _ZERO = 0
 _ONE = 1
@@ -458,6 +459,40 @@ _EXACT_PLAN_PASSTHROUGH_SLOT = cast(
     "MemberDescriptorType", ExactAuthoringPlan.__dict__["passthrough_roots"]
 )
 
+# Tree/file dataclass comparisons and getters remain replaceable after import.
+_SNAPSHOT_FILES_SLOT = cast(
+    "MemberDescriptorType", TreeSnapshot.__dict__["files"]
+)
+_FILE_PATH_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["path"])
+_FILE_DIGEST_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["sha256"])
+_FILE_SIZE_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["size"])
+
+
+def _snapshot_evidence(
+    snapshot: TreeSnapshot,
+) -> tuple[tuple[str, str, int], ...]:
+    """Compare stored path, digest and size without late record hooks."""
+    if _NATIVE_TYPE(snapshot) is not TreeSnapshot:
+        message = "relocatable snapshot must use exact tree evidence"
+        raise RelocationError(message)
+    files = cast(
+        "tuple[FileRecord, ...]",
+        _SNAPSHOT_FILES_SLOT.__get__(snapshot, TreeSnapshot),
+    )
+    if _NATIVE_TYPE(files) is not _NATIVE_TUPLE or _NATIVE_ANY(
+        _NATIVE_TYPE(item) is not FileRecord for item in files
+    ):
+        message = "relocatable snapshot contains foreign file evidence"
+        raise RelocationError(message)
+    return _NATIVE_TUPLE(
+        (
+            _FILE_PATH_SLOT.__get__(item, FileRecord),
+            _FILE_DIGEST_SLOT.__get__(item, FileRecord),
+            _FILE_SIZE_SLOT.__get__(item, FileRecord),
+        )
+        for item in files
+    )
+
 
 def _source_slice_fields(segment: SourceSlice) -> tuple[int, int]:
     return (
@@ -658,7 +693,7 @@ def _require_exact_source_snapshot(
         detail = _host_error_detail(error)
         message = f"relocatable source snapshot failed: {detail}"
         raise RelocationError(message) from error
-    if current != source:
+    if _snapshot_evidence(current) != _snapshot_evidence(source):
         message = "relocatable source snapshot differs from exact plan"
         raise RelocationError(message)
 

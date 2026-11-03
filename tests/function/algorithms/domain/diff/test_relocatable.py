@@ -51,9 +51,11 @@ from algorithms.diff.exact import read_exact_regular_file
 from algorithms.diff.exact import snapshot_tree_excluding
 from algorithms.diff.model import ExactAuthoringPlan
 from algorithms.diff.model import ExactInstruction
+from algorithms.diff.model import FileRecord
 from algorithms.diff.model import OracleLiteral
 from algorithms.diff.model import SourceSlice
 from algorithms.diff.model import TreeModelError
+from algorithms.diff.model import TreeSnapshot
 from algorithms.diff.relocatable import RangeLocator
 from algorithms.diff.relocatable import RelocatableInstruction
 from algorithms.diff.relocatable import RelocatableSourceRange
@@ -2598,3 +2600,82 @@ def test_relocation_authoring_ignores_late_exact_plan_getter(
         else:
             assert build_relocatable_plan(source, exact) == expected
     assert calls == 0, "late exact plan getter substituted authoring evidence"
+
+
+@pytest.mark.parametrize(
+    "spoof", ["snapshot-equality", "file-equality", "files", "digest"]
+)
+def test_relocation_source_attestation_ignores_late_snapshot_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spoof: str
+) -> None:
+    """A changed byte tree cannot be certified by mutable record hooks."""
+    source, oracle, base = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    _write(source, "code.bin", b"z" + base[1:])
+    changed = snapshot_tree_excluding(source, ())
+    original_snapshot = TreeSnapshot.__getattribute__
+    original_file = FileRecord.__getattribute__
+    source_file = next(
+        item for item in exact.source.files if item.path == "code.bin"
+    )
+    changed_file = next(
+        item for item in changed.files if item.path == "code.bin"
+    )
+    calls = 0
+
+    def forged_equal(_left: object, _right: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return True
+
+    def snapshot_getter(value: TreeSnapshot, name: str) -> object:
+        nonlocal calls
+        if value is exact.source and name == "files":
+            calls += 1
+            return changed.files
+        return cast("object", original_snapshot(value, name))
+
+    def file_getter(value: FileRecord, name: str) -> object:
+        nonlocal calls
+        if value is source_file and name == "sha256":
+            calls += 1
+            return changed_file.sha256
+        return cast("object", original_file(value, name))
+
+    with monkeypatch.context() as patched:
+        if spoof == "snapshot-equality":
+            patched.setattr(TreeSnapshot, "__eq__", forged_equal)
+        elif spoof == "file-equality":
+            patched.setattr(FileRecord, "__eq__", forged_equal)
+        elif spoof == "files":
+            patched.setattr(TreeSnapshot, "__getattribute__", snapshot_getter)
+        else:
+            patched.setattr(FileRecord, "__getattribute__", file_getter)
+        with pytest.raises(RelocationError, match="differs from exact plan"):
+            _ = build_relocatable_plan(source, exact)
+    assert calls == 0, "late equality or getter forged unchanged source"
+
+
+@pytest.mark.parametrize("spoof", ["snapshot", "file"])
+def test_relocation_snapshot_attestation_ignores_false_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, spoof: str
+) -> None:
+    """Late equality rejection cannot deny an unchanged admitted source."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    expected = build_relocatable_plan(source, exact)
+    calls = 0
+
+    def rejected_comparison(_left: object, _right: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    with monkeypatch.context() as patched:
+        if spoof == "snapshot":
+            patched.setattr(TreeSnapshot, "__eq__", rejected_comparison)
+        else:
+            patched.setattr(FileRecord, "__eq__", rejected_comparison)
+        actual = build_relocatable_plan(source, exact)
+    assert actual == expected
+    assert calls == 0, "late equality denied unchanged source evidence"
