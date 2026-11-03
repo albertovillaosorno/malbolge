@@ -108,7 +108,12 @@ backend's 32-bit memory-index item bound. The resulting item sizes are 236,260;
 
 On the same 128 MiB synthetic snapshot, the first chunk admits 532, 177, 59, 19,
 and 6 complete VMs. This isolates capacity scaling only; no throughput or
-runtime width-selection claim follows from the synthetic sweep.
+runtime width-selection claim follows from the synthetic sweep. The
+hardware-free N10-N14 CRAZY geometry failure-policy JSON report now verifies
+canonical serialization against an import-bound encoder before publication and
+requires exact text write and completed flush receipts. Replaced public JSON
+writers cannot forge resource-policy measurements; failed delivery cannot claim
+report success. The underlying Python encoder remains a trust dependency.
 
 Existing RTX 4060 classic resident differential tests continue to pass after the
 planner is inserted into the real allocation path. Post-commit resource evidence
@@ -1204,4 +1209,3 @@ throughput reaches about 93.68 VMs/s. Median batch-32 host construction is
 about 13.39 ms and result decode/materialization about 163.34 ms; the
 remaining roughly 97.97 ms D-to-H phase is the requested complete snapshot
 transfer itself rather than a redundant second copy.
-

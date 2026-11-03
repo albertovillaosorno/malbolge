@@ -34,17 +34,18 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
 import sys
+from dataclasses import asdict, dataclass
 from typing import Final
 
 from accelerator.cuda.profile_run import cuda_profile_resident_footprint
-from accelerator.resource_budget import AcceleratorResources
-from accelerator.resource_budget import MINIMUM_RESERVE_BYTES
-from accelerator.resource_budget import ResourceBudgetError
-from accelerator.resource_budget import plan_resident_batches
+from accelerator.resource_budget import (
+    MINIMUM_RESERVE_BYTES,
+    AcceleratorResources,
+    ResourceBudgetError,
+    plan_resident_batches,
+)
 
 from benchmarks.accelerator import profile_width_crazy_throughput as baseline
 
@@ -58,6 +59,7 @@ WIDTHS: Final = baseline.WIDTHS
 WORKLOAD_ID: Final = baseline.WORKLOAD_ID
 FAILURE_POLICY: Final = "planner-fail-closed-before-allocation"
 PRODUCT_FALLBACK_POLICY: Final = "optional-backend-unavailable-safe-rust"
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +88,49 @@ def failure_boundaries() -> tuple[CrazyGeometryFailureBoundary, ...]:
     return tuple(_boundary(word_trits) for word_trits in WIDTHS)
 
 
+class FailurePolicyReportError(ValueError):
+    """Canonical resource-policy evidence could not be delivered safely."""
+
+
+def _render_report(payload: object) -> str:
+    """Return source-bound JSON, rejecting altered public serializer output.
+
+    Returns:
+        Exact canonical pretty JSON text with one terminating newline.
+
+    """
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"failure-policy JSON writer failed: {type(error).__name__}"
+        raise FailurePolicyReportError(message) from error
+    if type(observed) is not str or observed != source:
+        message = "failure-policy JSON writer differs from source"
+        raise FailurePolicyReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require complete write and flush receipts before claiming success."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"failure-policy stdout write failed: {type(error).__name__}"
+        raise FailurePolicyReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "failure-policy stdout write incomplete"
+        raise FailurePolicyReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"failure-policy stdout flush failed: {type(error).__name__}"
+        raise FailurePolicyReportError(message) from error
+    if flushed is not None:
+        message = "failure-policy stdout flush incomplete"
+        raise FailurePolicyReportError(message)
+
+
 def main() -> int:
     """Emit the deterministic failure-policy matrix as JSON.
 
@@ -102,7 +147,7 @@ def main() -> int:
         "widths": WIDTHS,
         "workload_id": WORKLOAD_ID,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
