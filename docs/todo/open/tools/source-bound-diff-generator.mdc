@@ -49,6 +49,12 @@ format.
   NUL/surrogate components or reject valid paths. Six red-first cases, 219
   focused generator tests, and 3,190 integrated diff tests passed; direct
   storage tampering and external path races remain out of scope.
+- Generator path containment now pins import-original `os.path.realpath` and
+  verifies its identity before and after native `Path.resolve`, plus after
+  consumer-domain preflight before exact generation (`b60e927dc`). Four
+  red-first source/oracle containment, false-denial and callback-mutation
+  regressions and 223 focused generator tests pass. The check cannot isolate
+  concurrent host changes or external filesystem races.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode

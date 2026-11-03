@@ -79,6 +79,15 @@ patches. All 219 focused generator and 3,190 integrated diff tests passed after
 publication. Original-slot path admission does not prevent direct stored-object
 mutation or racing external filesystem writers.
 
+Even the captured original `Path.resolve` delegates to the mutable host
+`os.path.realpath`. Recipe output containment now requires the import-original
+realpath function before and after each path resolution and rechecks it after
+consumer-domain preflight, before exact generation (`b60e927dc`). Four red-first
+regressions cover false source/oracle containment verdicts, false denial, and a
+consumer callback replacing the resolver. All 223 focused generator tests pass;
+this fail-closed hook check does not provide atomic protection against concurrent
+host mutations or filesystem writers.
+
 All implemented public metadata boundaries now admit exact runtime types before
 using them as evidence or touching output. Numeric thresholds and counts reject
 boolean aliases. Identity trees, anchors, behavior observations, probe programs,
