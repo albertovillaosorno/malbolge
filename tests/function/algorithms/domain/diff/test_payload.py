@@ -235,7 +235,8 @@ def test_encrypt_ignores_late_chacha_word_tuple_factory(
             _RFC_KEY, _RFC_NONCE, _RFC_PLAINTEXT, aad=_RFC_AAD
         )
 
-    _expect(payload.ciphertext == _RFC_CIPHERTEXT, "ChaCha words were reordered")
+    matches_rfc = payload.ciphertext == _RFC_CIPHERTEXT
+    _expect(matches_rfc, "ChaCha words were reordered")
     _expect(calls == 0, "mutable process-global tuple was consulted")
 
 
@@ -354,7 +355,8 @@ def test_encrypt_ignores_late_mutable_output_buffer_factory(
             _RFC_KEY, _RFC_NONCE, _RFC_PLAINTEXT, aad=_RFC_AAD
         )
 
-    _expect(payload.ciphertext == _RFC_CIPHERTEXT, "ciphertext buffer corrupted")
+    matches_rfc = payload.ciphertext == _RFC_CIPHERTEXT
+    _expect(matches_rfc, "ciphertext buffer corrupted")
     _expect(payload.tag == _RFC_TAG, "ciphertext tag was changed")
     _expect(calls == 0, "mutable process-global bytearray was consulted")
 
@@ -363,6 +365,7 @@ class _ForgedInt:
     """Simulate a domain callback replacing the ambient integer namespace."""
 
     @staticmethod
+    # jig-ignore-next-line: native int.from_bytes signature is Ruff-indivisible
     def from_bytes(data: bytes, byteorder: str = "big", *, signed: bool = False) -> int:
         """Return a zero even for nonzero inputs.
 
