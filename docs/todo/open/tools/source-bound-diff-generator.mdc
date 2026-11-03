@@ -408,6 +408,13 @@ format.
   passes and one concurrent behavior-context WIP test failure; no integrated
   green verdict is claimed. No new edited-line lint/typing findings; existing
   file diagnostics and external races remain out of scope.
+- Probe native resolution now checks `Path.__new__`, `PurePath.__init__`,
+  and all native platform-class constructor hooks (`db51f0c54`). A forged
+  constructor could previously redirect a resolved root to a different
+  native path. Eight base/concrete red-first root/tool cases fail closed;
+  398 postcommit focused probe and 3,468 precommit shared diff tests passed.
+  Ruff and diff checks are clean; strict typing has unchanged file findings,
+  Jig has no global passing verdict, and external races remain out of scope.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.

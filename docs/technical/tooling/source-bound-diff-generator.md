@@ -1167,6 +1167,20 @@ verdict is claimed for this revision. New probe lines introduce no additional
 Ruff or strict BasedPyright diagnostics; existing file findings persist.
 Path-hook identity remains non-atomic against host and filesystem races.
 
+Native probe root and tool resolution also checks the original `Path.__new__`
+and `PurePath.__init__`, plus `__new__`/`__init__` along the concrete native
+path class hierarchy (`db51f0c54`). A replaced path constructor could have
+returned an unrelated, still-native path after `Path.resolve`, bypassing exact
+type admission. Four original base-hook cases and four newly reproduced
+concrete-platform cases now reject before consulting the substituted hook.
+All 398 probe tests passed after the code commit; a shared precommit diff run
+passed 3,468 tests. Scoped Ruff and diff checks passed. Strict probe-source
+typing still reports three findings on unchanged lines, while the test file
+has pre-existing unrelated findings; no new constructor-test diagnostics were
+observed. Jig doctor remains degraded and the global check has no passing
+verdict. Process-global changes during a check and external filesystem races
+remain outside this in-process identity guard.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record
