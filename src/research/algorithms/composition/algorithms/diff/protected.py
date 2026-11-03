@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Callable, cast
 
 from algorithms.diff.admission import IdentityTree
 from algorithms.diff.exact import (
@@ -104,6 +104,7 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_BYTEARRAY = builtins.bytearray
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_ISINSTANCE = builtins.isinstance
 
 
@@ -188,12 +189,18 @@ def _validate_protected_segments(value: object) -> None:
         raise ProtectedPlanError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class PayloadSlice:
     """A byte range inside the authenticated literal plaintext stream."""
 
     offset: int
     length: int
+
+    def __init__(self, offset: int, length: int) -> None:
+        """Validate literal ranges with the captured original guard."""
+        _NATIVE_OBJECT_SETATTR(self, "offset", offset)
+        _NATIVE_OBJECT_SETATTR(self, "length", length)
+        _PAYLOAD_SLICE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Reject negative protected-payload ranges.
@@ -214,6 +221,12 @@ class PayloadSlice:
             raise ProtectedPlanError(message)
 
 
+# Generated dataclass constructors dispatch post-init through mutable class
+# attributes; capture native guards before consumer code can replace them.
+_PAYLOAD_SLICE_VALIDATOR = cast(
+    "Callable[[PayloadSlice], None]", PayloadSlice.__dict__["__post_init__"]
+)
+
 # The authenticated byte ranges are stored slots, never late class getters.
 _PAYLOAD_SLICE_OFFSET_SLOT = cast(
     "MemberDescriptorType", PayloadSlice.__dict__["offset"]
@@ -233,7 +246,7 @@ def _payload_slice_fields(reference: PayloadSlice) -> tuple[int, int]:
 ProtectedSegment = SourceSlice | PayloadSlice
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ProtectedInstruction:
     """One exact output instruction with no plaintext oracle bytes."""
 
@@ -243,6 +256,24 @@ class ProtectedInstruction:
     source_path: str | None = None
     payload_slice: PayloadSlice | None = None
     segments: tuple[ProtectedSegment, ...] = ()
+
+    def __init__(
+        self,
+        output_path: str,
+        kind: ProtectedInstructionKind,
+        expected_sha256: str,
+        source_path: str | None = None,
+        payload_slice: PayloadSlice | None = None,
+        segments: tuple[ProtectedSegment, ...] = (),
+    ) -> None:
+        """Validate instruction shape through the original guard."""
+        _NATIVE_OBJECT_SETATTR(self, "output_path", output_path)
+        _NATIVE_OBJECT_SETATTR(self, "kind", kind)
+        _NATIVE_OBJECT_SETATTR(self, "expected_sha256", expected_sha256)
+        _NATIVE_OBJECT_SETATTR(self, "source_path", source_path)
+        _NATIVE_OBJECT_SETATTR(self, "payload_slice", payload_slice)
+        _NATIVE_OBJECT_SETATTR(self, "segments", segments)
+        _PROTECTED_INSTRUCTION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Reject foreign metadata or fields inconsistent with the kind.
@@ -326,6 +357,11 @@ class ProtectedInstruction:
             and not segments
         )
 
+
+_PROTECTED_INSTRUCTION_VALIDATOR = cast(
+    "Callable[[ProtectedInstruction], None]",
+    ProtectedInstruction.__dict__["__post_init__"],
+)
 
 # The instruction record is part of authenticated metadata. Preserve the
 # original storage descriptors before a consumer can replace class accessors.
@@ -411,7 +447,7 @@ def _require_instructions_match_target(
         raise ProtectedPlanError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ProtectedMetadata:
     """Authenticated static metadata for one protected exact plan."""
 
@@ -419,6 +455,20 @@ class ProtectedMetadata:
     target: TreeSnapshot
     instructions: tuple[ProtectedInstruction, ...]
     passthrough_roots: tuple[str, ...] = ()
+
+    def __init__(
+        self,
+        source: TreeSnapshot,
+        target: TreeSnapshot,
+        instructions: tuple[ProtectedInstruction, ...],
+        passthrough_roots: tuple[str, ...] = (),
+    ) -> None:
+        """Admit metadata with the original immutable-record validator."""
+        _NATIVE_OBJECT_SETATTR(self, "source", source)
+        _NATIVE_OBJECT_SETATTR(self, "target", target)
+        _NATIVE_OBJECT_SETATTR(self, "instructions", instructions)
+        _NATIVE_OBJECT_SETATTR(self, "passthrough_roots", passthrough_roots)
+        _PROTECTED_METADATA_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require exact immutable authenticated metadata records.
@@ -455,6 +505,10 @@ class ProtectedMetadata:
         _require_static_target_outside_passthrough(target, roots)
 
 
+_PROTECTED_METADATA_VALIDATOR = cast(
+    "Callable[[ProtectedMetadata], None]", ProtectedMetadata.__dict__["__post_init__"]
+)
+
 # Store original metadata descriptors before later consumer code can replace
 # class getters used by framing or the direct-construction trust boundary.
 _METADATA_SOURCE_SLOT = cast(
@@ -485,7 +539,7 @@ def _metadata_fields(metadata: ProtectedMetadata) -> tuple[
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ProtectedExactPlan:
     """Exact metadata with authenticated source-bound literals."""
 
@@ -497,6 +551,28 @@ class ProtectedExactPlan:
     nonce: bytes
     payload: AuthenticatedPayload
     binding: ThresholdBinding
+
+    def __init__(
+        self,
+        source: TreeSnapshot,
+        target: TreeSnapshot,
+        instructions: tuple[ProtectedInstruction, ...],
+        passthrough_roots: tuple[str, ...],
+        context: bytes,
+        nonce: bytes,
+        payload: AuthenticatedPayload,
+        binding: ThresholdBinding,
+    ) -> None:
+        """Admit the authenticated envelope with the original guard."""
+        _NATIVE_OBJECT_SETATTR(self, "source", source)
+        _NATIVE_OBJECT_SETATTR(self, "target", target)
+        _NATIVE_OBJECT_SETATTR(self, "instructions", instructions)
+        _NATIVE_OBJECT_SETATTR(self, "passthrough_roots", passthrough_roots)
+        _NATIVE_OBJECT_SETATTR(self, "context", context)
+        _NATIVE_OBJECT_SETATTR(self, "nonce", nonce)
+        _NATIVE_OBJECT_SETATTR(self, "payload", payload)
+        _NATIVE_OBJECT_SETATTR(self, "binding", binding)
+        _PROTECTED_EXACT_PLAN_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require exact immutable protected-plan envelope types.
@@ -550,6 +626,10 @@ class ProtectedExactPlan:
             message = f"protected plan binding is invalid: {detail}"
             raise ProtectedPlanError(message) from error
 
+
+_PROTECTED_EXACT_PLAN_VALIDATOR = cast(
+    "Callable[[ProtectedExactPlan], None]", ProtectedExactPlan.__dict__["__post_init__"]
+)
 
 # Read the original plan storage slots across authoring and recovery. Mutable
 # class getters and descriptors must not replace authenticated plan evidence.

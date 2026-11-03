@@ -1557,3 +1557,93 @@ def test_protected_aad_ignores_late_metadata_descriptor(
         actual = protected_plan_aad(metadata, context=_CONTEXT)
     assert actual == expected
     assert calls == 0, "late descriptor altered protected metadata framing"
+
+
+@pytest.mark.parametrize("record", ["slice", "instruction", "metadata", "plan"])
+def test_protected_records_reject_invalid_after_validator_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """A late class post-init cannot bypass authenticated record admission."""
+    _, _, _, _, protected = _protected(tmp_path)
+    record_type = {
+        "slice": PayloadSlice,
+        "instruction": ProtectedInstruction,
+        "metadata": ProtectedMetadata,
+        "plan": protected_module.ProtectedExactPlan,
+    }[record]
+    calls = 0
+
+    def skip_validation(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__post_init__", skip_validation)
+        with pytest.raises(ProtectedPlanError):
+            if record == "slice":
+                _ = PayloadSlice(offset=-1, length=2)
+            elif record == "instruction":
+                _ = ProtectedInstruction(
+                    output_path="../unsafe.bin",
+                    kind=ProtectedInstructionKind.COPY_SOURCE,
+                    expected_sha256="0" * 64,
+                    source_path="source.bin",
+                )
+            elif record == "metadata":
+                _ = ProtectedMetadata(
+                    source=protected.source,
+                    target=protected.target,
+                    instructions=cast(
+                        "tuple[ProtectedInstruction, ...]", cast("object", [])
+                    ),
+                    passthrough_roots=(),
+                )
+            else:
+                _ = replace(protected, context=b"")
+    assert calls == 0, "late protected record hook accepted invalid evidence"
+
+
+@pytest.mark.parametrize("record", ["slice", "instruction", "metadata", "plan"])
+def test_protected_records_preserve_valid_after_validator_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """A late post-init cannot reject otherwise valid authenticated records."""
+    _, _, _, _, protected = _protected(tmp_path)
+    record_type = {
+        "slice": PayloadSlice,
+        "instruction": ProtectedInstruction,
+        "metadata": ProtectedMetadata,
+        "plan": protected_module.ProtectedExactPlan,
+    }[record]
+    calls = 0
+
+    def reject_any(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise ProtectedPlanError("forged validator rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__post_init__", reject_any)
+        if record == "slice":
+            accepted = PayloadSlice(offset=0, length=2)
+            assert accepted.length == 2
+        elif record == "instruction":
+            instruction = ProtectedInstruction(
+                output_path="safe.bin",
+                kind=ProtectedInstructionKind.COPY_SOURCE,
+                expected_sha256="0" * 64,
+                source_path="source.bin",
+            )
+            assert instruction.output_path == "safe.bin"
+        elif record == "metadata":
+            metadata = ProtectedMetadata(
+                source=protected.source,
+                target=protected.target,
+                instructions=protected.instructions,
+                passthrough_roots=protected.passthrough_roots,
+            )
+            assert metadata.instructions == protected.instructions
+        else:
+            accepted_plan = replace(protected)
+            assert accepted_plan.context == protected.context
+    assert calls == 0, "late protected record hook rejected valid evidence"
