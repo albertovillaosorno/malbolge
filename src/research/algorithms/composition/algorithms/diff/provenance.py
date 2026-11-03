@@ -57,6 +57,7 @@ _DOMAIN = b"malbolge-pinned-source-v1\0"
 _PARENT = ".."
 _DOT = "."
 _BACKSLASH = "\\"
+_HOST_PATH_SEPARATOR: Final = os.sep
 _NUL = "\x00"
 _COMMIT_HEX_LENGTH = 40
 _SHA256_HEX_LENGTH = 64
@@ -83,6 +84,7 @@ _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_READLINK = os.readlink
 _NATIVE_OS_GETCWD = os.getcwd
 _NATIVE_STAT_ISLNK = stat.S_ISLNK
+_NATIVE_STAT_ISDIR = stat.S_ISDIR
 _NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_STRING = Path.__str__
@@ -142,9 +144,15 @@ _NATIVE_PATH_LSTAT = _native_path_lstat
 
 
 def _native_relative_label(path: Path, root: Path) -> str:
-    """Bind canonical relative labels without mutable pathlib formatters."""
+    """Bind discovered paths to unambiguous portable relative labels."""
     relative = _NATIVE_RELATIVE_TO(path, root)
-    return _NATIVE_PATH_STRING(relative).replace(_BACKSLASH, "/")
+    spelling = _NATIVE_PATH_STRING(relative)
+    # On POSIX a backslash is a literal filename byte, not a separator.
+    # Replacing it with '/' could make an unrelated file certify a pin for
+    # a different directory tree when the alias's parent also exists.
+    if _HOST_PATH_SEPARATOR == _BACKSLASH:
+        spelling = spelling.replace(_BACKSLASH, "/")
+    return _validate_relative_path(spelling)
 
 
 class SourcePinError(RuntimeError):
@@ -552,6 +560,7 @@ def _require_native_root_resolver() -> None:
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
         or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
     ):
         message = "pinned source root native host resolver dependencies changed"
         raise SourcePinError(message)

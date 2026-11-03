@@ -38,6 +38,7 @@ import builtins
 import hashlib
 import ntpath
 import os
+import stat
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -2242,3 +2243,71 @@ def test_source_pin_rejects_late_path_factory_redirect(
             else:
                 _ = source_snapshot_evidence(source, ("README",))
     assert calls == 0, "mutable path factory retargeted source provenance"
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+@pytest.mark.parametrize("replacement", [False, True])
+def test_source_pin_rejects_late_realpath_directory_classifier(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    replacement: bool,
+) -> None:
+    """The original resolver must not consult a replaced host S_ISDIR guard."""
+    source = tmp_path / "source"
+    _write(source, "README", b"requested source")
+    baseline = source_snapshot_evidence(source, ("README",))
+    pin = SourcePin(
+        "source-repository", _COMMIT, ("README",),
+        baseline.file_count, baseline.snapshot_sha256,
+    )
+    calls = 0
+
+    def forged_directory(_mode: int) -> bool:
+        nonlocal calls
+        calls += 1
+        return replacement
+
+    with monkeypatch.context() as patched:
+        patched.setattr(stat, "S_ISDIR", forged_directory)
+        with pytest.raises(SourcePinError, match="host resolver dependencies changed"):
+            if operation == "require":
+                _ = require_source_pin(source, pin)
+            else:
+                _ = source_snapshot_evidence(source, ("README",))
+    assert calls == 0, "original realpath used a late directory classifier"
+
+
+@pytest.mark.skipif(os.sep == "\\", reason="POSIX literal-backslash path alias")
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_posix_backslash_alias_to_different_tree(
+    tmp_path: Path, operation: str
+) -> None:
+    """A literal backslash filename cannot certify a slash-delimited pin."""
+    canonical = tmp_path / "canonical"
+    aliased = tmp_path / "aliased"
+    _write(canonical, "src/subdir/file.c", b"identical source bytes")
+    _write(aliased, "src/subdir\\file.c", b"identical source bytes")
+    # The alias also supplies an empty directory to satisfy parent checks.
+    (aliased / "src" / "subdir").mkdir()
+    baseline = source_snapshot_evidence(canonical, ("src",))
+    pin = SourcePin(
+        "source-repository", _COMMIT, ("src",),
+        baseline.file_count, baseline.snapshot_sha256,
+    )
+    with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+        if operation == "require":
+            _ = require_source_pin(aliased, pin)
+        else:
+            _ = source_snapshot_evidence(aliased, ("src",))
+
+
+@pytest.mark.skipif(os.sep == "\\", reason="POSIX-only Windows-reserved file names")
+@pytest.mark.parametrize("unsafe_name", ["CON", "name:fork", "trailing."])
+def test_source_pin_rejects_nonportable_discovered_file_names(
+    tmp_path: Path, unsafe_name: str
+) -> None:
+    """Discovered nested paths must satisfy the same lexical policy as roots."""
+    _write(tmp_path, f"src/{unsafe_name}", b"canonical source bytes")
+    with pytest.raises(SourcePinError, match="unsafe pinned source path"):
+        _ = source_snapshot_evidence(tmp_path, ("src",))
