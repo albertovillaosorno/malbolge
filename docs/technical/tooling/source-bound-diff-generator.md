@@ -86,7 +86,15 @@ consumer-domain preflight, before exact generation (`b60e927dc`). Four red-first
 regressions cover false source/oracle containment verdicts, false denial, and a
 consumer callback replacing the resolver. All 223 focused generator tests pass;
 this fail-closed hook check does not provide atomic protection against concurrent
-host mutations or filesystem writers.
+host mutations or filesystem writers. A postcommit diff-suite rerun passed
+all 3,205 tests.
+
+The Rust source emitter protects its own runtime template from output overwrite
+with the same import-original `os.path.realpath` identity requirement before
+and after resolving the template and destination (`f15620ff7`). Two red-first
+cases prove that a forged host resolver can otherwise hide a collision or
+execute an untrusted denial callback. All 152 focused emitter tests pass;
+external writers still require coordination.
 
 All implemented public metadata boundaries now admit exact runtime types before
 using them as evidence or touching output. Numeric thresholds and counts reject
