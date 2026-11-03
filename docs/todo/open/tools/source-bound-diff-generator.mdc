@@ -116,6 +116,13 @@ format.
   stable-anchor primitive uses rolling-content-selected sliding windows plus
   SHA-256
   fingerprints that survive offset shifts from insertions.
+- Internal stable-anchor and coverage records now bypass late class `__new__`
+  and `__init__` substitutions (`926581d03`), preventing spoofed source
+  digests or unrelated-source coverage. Five focused regressions and all 58
+  fingerprint tests passed; 2,656 integrated diff tests and scoped Ruff and
+  BasedPyright zero-error checks were also green. Three older type warnings
+  remain, and the repository-wide Jig verdict is still unavailable. This
+  does not guard direct record storage mutation or concurrent source writes.
 - Tree-level admission now separates symmetric structural similarity from
   asymmetric anchor survival, weights reference files equally, requires
   distributed

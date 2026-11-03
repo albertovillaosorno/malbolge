@@ -413,6 +413,15 @@ layer. Anchor digests are evidence only and must not be treated as
 source-binding
 secrets.
 
+Internal `StableAnchor` and `AnchorCoverage` construction now uses captured
+native allocation and original record initializers rather than late class
+`__new__`/`__init__` hooks (`926581d03`). Five regressions cover short and
+scanned source windows, unrelated coverage, and isolated class allocation
+substitutions. All 58 fingerprint tests and 2,656 integrated diff tests passed;
+scoped Ruff and BasedPyright reported zero errors (three older type warnings).
+This isolates class-hook redirection, not direct record storage mutation or
+concurrent source writers. Repository-wide Jig has no clean verdict.
+
 ### Implemented Tree-Level Admission
 
 The generic admission layer accepts only consumer-selected canonical identity
