@@ -489,6 +489,96 @@ def test_domain_loader_rejects_symlink_under_post_import_os_lstat_spoof(
     assert forged_calls == 0
 
 
+@pytest.mark.parametrize("linked_role", [_STAGE_MODULE, _STAGE_PARENT])
+def test_domain_loader_rejects_linked_input_after_fspath_status_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, linked_role: str
+) -> None:
+    """Late native-path conversion must not certify an executable symlink."""
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    real_module = real_parent / "domain.py"
+    _write(real_module, _COMPLETE)
+    alias = tmp_path / "alias"
+    linked = alias if linked_role == _STAGE_MODULE else alias / "domain.py"
+    target = real_module if linked_role == _STAGE_MODULE else real_parent
+    try:
+        alias.symlink_to(target, target_is_directory=linked_role != _STAGE_MODULE)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    native_fspath = Path.__fspath__
+    forged_calls = 0
+
+    def forged_fspath(path: Path) -> str:
+        nonlocal forged_calls
+        if path == alias:
+            forged_calls += 1
+            if forged_calls == 1:
+                return native_fspath(target)
+        return native_fspath(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__fspath__", forged_fspath)
+        with pytest.raises(
+            DomainContractError, match=r"regular file|linked parent"
+        ):
+            _ = load_diff_domain(linked)
+    assert forged_calls == 0
+
+
+def test_domain_loader_ignores_post_import_fspath_import_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A validated module cannot be replaced at import via Path conversion."""
+    admitted = tmp_path / "admitted.py"
+    redirected = tmp_path / "redirected.py"
+    _write(admitted, _COMPLETE.replace("return None", "return 'admitted'"))
+    _write(redirected, _COMPLETE.replace("return None", "return 'redirected'"))
+    native_fspath = Path.__fspath__
+    forged_calls = 0
+
+    def forged_fspath(path: Path) -> str:
+        nonlocal forged_calls
+        if path == admitted:
+            forged_calls += 1
+            return native_fspath(redirected)
+        return native_fspath(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__fspath__", forged_fspath)
+        domain = load_diff_domain(admitted)
+    assert forged_calls == 0
+    assert domain.build_behavior_programs() == "admitted"
+
+
+def test_domain_loader_rejects_link_after_late_str_status_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late Path.__str__ hook cannot certify a linked input as regular."""
+    regular = tmp_path / "regular.py"
+    _write(regular, _COMPLETE)
+    linked = tmp_path / "linked.py"
+    try:
+        linked.symlink_to(regular)
+    except OSError:
+        pytest.skip("symlinks unavailable")
+    native_string = Path.__str__
+    linked_label = native_string(linked)
+    forged_calls = 0
+
+    def forged_string(path: Path) -> str:
+        nonlocal forged_calls
+        if native_string(path) == linked_label:
+            forged_calls += 1
+            return native_string(regular)
+        return native_string(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "__str__", forged_string)
+        with pytest.raises(DomainContractError, match="regular file"):
+            _ = load_diff_domain(linked)
+    assert forged_calls == 0
+
+
 def test_domain_loader_ignores_post_import_native_resolver_redirection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
