@@ -87,6 +87,7 @@ _NATIVE_ALL = builtins.all
 _NATIVE_BOOL = builtins.bool
 _NATIVE_LEN = builtins.len
 _NATIVE_FROZENSET = builtins.frozenset
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_OBJECT_NEW = object.__new__
 _ORIGINAL_ANCHOR_POLICY_VALIDATOR = cast(
     "Callable[[AnchorPolicy], None]", AnchorPolicy.__dict__["__post_init__"]
@@ -278,7 +279,7 @@ def _require_valid_identity_files(files: tuple[IdentityFile, ...]) -> None:
     try:
         for item in files:
             _IDENTITY_FILE_VALIDATOR(item)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "identity tree has incomplete native file metadata"
         raise AdmissionPolicyError(message) from error
 
@@ -369,7 +370,7 @@ def _require_valid_anchor_policies(
     try:
         _ORIGINAL_ANCHOR_POLICY_VALIDATOR(structural)
         _ORIGINAL_ANCHOR_POLICY_VALIDATOR(anchors)
-    except (AttributeError, FingerprintPolicyError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, FingerprintPolicyError) as error:
         message = "admission policy has invalid native anchor metadata"
         raise AdmissionPolicyError(message) from error
 
@@ -434,7 +435,7 @@ def _require_valid_admission_policy(policy: AdmissionPolicy) -> None:
         raise AdmissionPolicyError(message)
     try:
         _ADMISSION_POLICY_VALIDATOR(policy)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "admission policy has incomplete native metadata"
         raise AdmissionPolicyError(message) from error
 
@@ -527,7 +528,7 @@ def _require_valid_file_evidence(
     try:
         for item in files:
             _FILE_ADMISSION_VALIDATOR(item)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "tree admission has incomplete native file evidence"
         raise AdmissionPolicyError(message) from error
 
@@ -815,7 +816,7 @@ class TreeAdmissionEvidence:
         # Rerun the original decision validator before exposing acceptance.
         try:
             _TREE_ADMISSION_VALIDATOR(self)
-        except AttributeError as error:
+        except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "tree admission evidence has incomplete native metadata"
             raise AdmissionPolicyError(message) from error
         return not _TREE_REASONS_SLOT.__get__(self, TreeAdmissionEvidence)
@@ -1170,7 +1171,7 @@ def _require_valid_evaluation_inputs(
     try:
         _IDENTITY_TREE_VALIDATOR(reference)
         _IDENTITY_TREE_VALIDATOR(candidate)
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "admission identity tree has incomplete native metadata"
         raise AdmissionPolicyError(message) from error
     _require_valid_admission_policy(policy)

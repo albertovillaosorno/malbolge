@@ -2241,3 +2241,74 @@ def test_tree_admitted_rejects_foreign_verdict_receiver(receiver_kind: str) -> N
             getter = cast("property", TreeAdmissionEvidence.__dict__["admitted"]).fget
             assert getter is not None
             _ = getter(object())
+
+
+@pytest.mark.parametrize(
+    ("route", "detail"),
+    [
+        ("nested-identity-file", "native file metadata"),
+        ("nested-anchor-policy", "native anchor metadata"),
+        ("admission-policy", "incomplete native metadata"),
+        ("nested-file-evidence", "native file evidence"),
+        ("receipt-policy", "incomplete native metadata"),
+        ("self-certifying-receipt", "incomplete native metadata"),
+        ("identity-tree", "incomplete native metadata"),
+    ],
+)
+def test_incomplete_native_admission_receipt_rejects_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str, detail: str
+) -> None:
+    """Malformed native receipts must not leak through a replaced builtin."""
+    source = identity_tree({"source.c": b"source evidence"})
+    policy = AdmissionPolicy(0.0, 0.0, 1, 1)
+    native_attribute_error = builtins.AttributeError
+    caught: AdmissionPolicyError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if route == "nested-identity-file":
+                file = cast("IdentityFile", object.__new__(IdentityFile))
+                _ = IdentityTree((file,))
+            elif route == "nested-anchor-policy":
+                anchor_policy = cast("AnchorPolicy", object.__new__(AnchorPolicy))
+                _ = AdmissionPolicy(
+                    0.0, 0.0, 1, 1, structural_policy=anchor_policy
+                )
+            elif route == "admission-policy":
+                malformed_policy = cast(
+                    "AdmissionPolicy", object.__new__(AdmissionPolicy)
+                )
+                _ = evaluate_admission(source, source, malformed_policy)
+            elif route == "nested-file-evidence":
+                file_evidence = cast(
+                    "FileAdmissionEvidence", object.__new__(FileAdmissionEvidence)
+                )
+                _ = TreeAdmissionEvidence(
+                    1.0, 1.0, 1, 1, (file_evidence,), (), policy
+                )
+            elif route == "receipt-policy":
+                malformed_policy = cast(
+                    "AdmissionPolicy", object.__new__(AdmissionPolicy)
+                )
+                file_evidence = FileAdmissionEvidence(
+                    "source.c", 1.0, None, 0, 0
+                )
+                _ = TreeAdmissionEvidence(
+                    1.0, 0.0, 0, 0, (file_evidence,), (), malformed_policy
+                )
+            elif route == "self-certifying-receipt":
+                evidence = cast(
+                    "TreeAdmissionEvidence", object.__new__(TreeAdmissionEvidence)
+                )
+                _ = evidence.admitted
+            else:
+                malformed_tree = cast(
+                    "IdentityTree", object.__new__(IdentityTree)
+                )
+                _ = evaluate_admission(malformed_tree, source, policy)
+        except AdmissionPolicyError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(caught) is AdmissionPolicyError, (route, caught)
+    assert detail in str(caught)
