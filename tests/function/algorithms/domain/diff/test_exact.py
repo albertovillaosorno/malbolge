@@ -830,6 +830,62 @@ def test_exact_materialization_rejects_output_inside_source_tree(
     )
 
 
+def test_exact_output_containment_ignores_mutated_path_is_relative_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Post-load pathlib hooks cannot allow output staging inside source."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = source / "nested-output"
+    native_check = Path.is_relative_to
+
+    def forged_check(path: Path, other: Path) -> bool:
+        if path == output and other == source:
+            return False
+        return native_check(path, other)
+
+    def reject_verification(*_args: object) -> None:
+        message = "unsafe output reached source verification"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(Path, "is_relative_to", forged_check)
+    monkeypatch.setattr(exact_module, "_verify_source", reject_verification)
+    with pytest.raises(ExactTreeError, match="inside the source tree"):
+        materialize_exact_plan(source, plan, output)
+    assert not output.exists()
+
+
+def test_exact_tree_containment_ignores_mutated_path_relative_to(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged relative_to verdict cannot make a symlinked path contained."""
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    _ = (outside / "secret.txt").write_bytes(b"external bytes")
+    try:
+        (root / "alias").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    native_relative = Path.relative_to
+
+    def forged_relative(
+        path: Path, other: Path, *, walk_up: bool = False
+    ) -> Path:
+        if path == outside / "secret.txt":
+            return Path(".")
+        return native_relative(path, other, walk_up=walk_up)
+
+    monkeypatch.setattr(Path, "relative_to", forged_relative)
+    safe_path = cast(
+        "Callable[[Path, str], Path]",
+        vars(exact_module)["_safe_tree_path"],
+    )
+    with pytest.raises(ExactTreeError, match="path escapes tree root"):
+        _ = safe_path(root, "alias/secret.txt")
+
+
 def test_exact_materialization_rejects_linked_source_root_when_supported(
     tmp_path: Path,
 ) -> None:

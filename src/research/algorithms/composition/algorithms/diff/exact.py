@@ -74,6 +74,7 @@ _FILE_READ_FLAGS = (
 _ZERO = 0
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
+_NATIVE_RELATIVE_TO = Path.relative_to
 
 
 class ExactTreeError(RuntimeError):
@@ -97,6 +98,15 @@ class _PlanningContext:
     oracle_root: Path
     source_by_path: dict[str, FileRecord]
     source_by_content: dict[tuple[str, int], tuple[str, ...]]
+
+
+def _native_path_inside(path: Path, root: Path) -> bool:
+    """Check containment with the import-native pathlib method."""
+    try:
+        _ = _NATIVE_RELATIVE_TO(path, root)
+    except ValueError:
+        return False
+    return True
 
 
 def _sha256(data: bytes) -> str:
@@ -207,7 +217,7 @@ def _tree_paths(root: Path) -> tuple[Path, ...]:
 
 
 def _walk_relative_path(root: Path, path: Path) -> str:
-    return path.relative_to(root).as_posix()
+    return _NATIVE_RELATIVE_TO(path, root).as_posix()
 
 
 def _prune_excluded_directories(
@@ -475,7 +485,7 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
     if not S_ISREG(mode):
         message = f"special filesystem entry is not supported: {path}"
         raise ExactTreeError(message)
-    relative = path.relative_to(root).as_posix()
+    relative = _NATIVE_RELATIVE_TO(path, root).as_posix()
     relative_path = _validate_relative_path(relative)
     data = read_exact_regular_file(path, "tree entry")
     return FileRecord(path=relative_path, sha256=_sha256(data), size=len(data))
@@ -842,7 +852,7 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
         )
         raise ExactTreeError(message) from error
     try:
-        _ = resolved_path.relative_to(resolved_root)
+        _ = _NATIVE_RELATIVE_TO(resolved_path, resolved_root)
     except ValueError as error:
         message = f"path escapes tree root: {relative_path!r}"
         raise ExactTreeError(message) from error
@@ -991,7 +1001,7 @@ def _copy_passthrough_directory(
     source: Path,
 ) -> None:
     for path in _tree_paths(source):
-        relative = path.relative_to(source_root).as_posix()
+        relative = _NATIVE_RELATIVE_TO(path, source_root).as_posix()
         _copy_passthrough_entry(staging_root, path, relative)
 
 
@@ -1114,7 +1124,7 @@ def materialize_exact_plan(
     """
     resolved_source = _resolved_tree_root(source_root)
     resolved_output = _resolved_output_root(output_root)
-    if resolved_output.is_relative_to(resolved_source):
+    if _native_path_inside(resolved_output, resolved_source):
         message = "exact output root must not be inside the source tree"
         raise ExactTreeError(message)
     _verify_source(resolved_source, plan)
