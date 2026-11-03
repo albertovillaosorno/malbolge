@@ -494,3 +494,57 @@ def test_decrypt_rejects_foreign_payload_before_field_access() -> None:
             payload,
             aad=cast("bytes", cast("object", bytearray())),
         )
+
+
+def test_authenticated_payload_rejects_late_type_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late type hook cannot admit mutable authenticated ciphertext."""
+    foreign = bytearray(b"x")
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = AuthenticatedPayload(
+                cast("bytes", cast("object", foreign)), bytes(16)
+            )
+        except PayloadCryptoError:
+            rejected = True
+    assert rejected, "late type hook admitted mutable ciphertext"
+
+
+def test_decrypt_rejects_late_type_foreign_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A lookalike payload cannot borrow the authority of a verified record."""
+    key = bytes(32)
+    nonce = bytes(12)
+    authentic = chacha20_poly1305_encrypt(key, nonce, b"payload")
+
+    class ForeignPayload:
+        ciphertext: bytes = authentic.ciphertext
+        tag: bytes = authentic.tag
+
+    foreign = ForeignPayload()
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return AuthenticatedPayload if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = chacha20_poly1305_decrypt(
+                key,
+                nonce,
+                cast("AuthenticatedPayload", cast("object", foreign)),
+            )
+        except PayloadCryptoError:
+            rejected = True
+    assert rejected, "late type hook admitted foreign authenticated payload"

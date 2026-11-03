@@ -51,6 +51,7 @@ from hmac import compare_digest as _native_compare_digest
 
 # Keep AEAD input identity and byte operations independent of late
 # consumer hooks that change process-global Python builtins.
+_NATIVE_TYPE = type
 _NATIVE_BYTES = bytes
 _NATIVE_LIST = list
 _NATIVE_TUPLE = tuple
@@ -78,7 +79,7 @@ class PayloadCryptoError(ValueError):
 
 
 def _require_bytes(value: object, context: str) -> bytes:
-    if type(value) is not _NATIVE_BYTES:
+    if _NATIVE_TYPE(value) is not _NATIVE_BYTES:
         message = f"{context} must use exact bytes"
         raise PayloadCryptoError(message)
     return value
@@ -285,7 +286,7 @@ def chacha20_poly1305_decrypt(
 
     """
     _require_key_nonce(key, nonce)
-    if type(payload) is not AuthenticatedPayload:
+    if _NATIVE_TYPE(payload) is not AuthenticatedPayload:
         message = "ChaCha20-Poly1305 payload must use the exact authenticated type"
         raise PayloadCryptoError(message)
     _ = _require_bytes(payload.ciphertext, "ChaCha20-Poly1305 ciphertext")
