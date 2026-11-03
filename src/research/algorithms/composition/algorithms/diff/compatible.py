@@ -445,13 +445,17 @@ _COMPATIBLE_RECORD_SLOT_MAP = {
 
 
 def _pinned_validation_view(record: object, record_type: type) -> SimpleNamespace:
-    """Read original immutable slots before construction admission."""
-    return SimpleNamespace(
-        **{
-            name: descriptor.__get__(record, record_type)
-            for name, descriptor in _COMPATIBLE_RECORD_SLOTS[record_type]
-        }
-    )
+    """Read native slots, rejecting uninitialized records at admission."""
+    try:
+        return SimpleNamespace(
+            **{
+                name: descriptor.__get__(record, record_type)
+                for name, descriptor in _COMPATIBLE_RECORD_SLOTS[record_type]
+            }
+        )
+    except AttributeError as error:
+        message = "compatible native record is missing required fields"
+        raise CompatiblePlanError(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -980,6 +984,10 @@ def _validate_plan_instruction_binding(
 
 def _validate_authoring_plan(plan: CompatibleAuthoringPlan) -> None:
     _validate_plan_records(plan)
+    # An exact native child may be allocated without its constructor; the
+    # outer plan's exact-type check does not authenticate its stored metadata.
+    for instruction in plan.instructions:
+        _INSTRUCTION_VALIDATOR(_original_instruction_view(instruction))
     _validate_plan_topology(plan)
     source_records = {record.path: record for record in plan.source.files}
     target_records = {record.path: record for record in plan.target.files}
@@ -1013,10 +1021,16 @@ def _validate_correction_bindings(
     ):
         message = "compatible correction bindings contain a foreign record"
         raise CompatiblePlanError(message)
-    admitted = _NATIVE_TUPLE(
-        _original_correction_view(item)
-        for item in cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
-    )
+    try:
+        for item in cast("tuple[CompatibleCorrectionBinding, ...]", bindings):
+            _CORRECTION_VALIDATOR(item)
+        admitted = _NATIVE_TUPLE(
+            _original_correction_view(item)
+            for item in cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
+        )
+    except AttributeError as error:
+        message = "compatible correction binding is missing native fields"
+        raise CompatiblePlanError(message) from error
     locations = _NATIVE_TUPLE(
         (item.output_path, item.edit_index) for item in admitted
     )
@@ -1093,6 +1107,7 @@ def bind_compatible_corrections(
         "CompatibleAuthoringPlan",
         cast("object", _pinned_validation_view(plan, CompatibleAuthoringPlan)),
     )
+    _AUTHORING_PLAN_VALIDATOR(fields)
     admitted = _validate_correction_bindings(bindings)
     by_path: dict[str, list[CompatibleCorrectionBinding]] = {}
     for binding in admitted:
@@ -1446,6 +1461,18 @@ def _admitted_plan_view(plan: CompatibleAuthoringPlan) -> CompatibleAuthoringPla
     original_instructions = cast(
         "tuple[CompatibleInstruction, ...]", view.instructions
     )
+    if _NATIVE_TYPE(original_instructions) is not _NATIVE_TUPLE:
+        message = "compatible plan instructions must use an immutable tuple"
+        raise CompatiblePlanError(message)
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(item) is not CompatibleInstruction
+        for item in original_instructions
+    ):
+        message = "compatible plan instructions must be exact immutable records"
+        raise CompatiblePlanError(message)
+    _AUTHORING_PLAN_VALIDATOR(
+        cast("CompatibleAuthoringPlan", cast("object", view))
+    )
     view.instructions = _NATIVE_TUPLE(
         cast(
             "CompatibleInstruction",
@@ -1461,6 +1488,9 @@ def _admitted_materialize_view(
 ) -> CompatibleMaterializeRequest:
     """Freeze original request and nested plan values before callbacks."""
     view = _pinned_validation_view(request, CompatibleMaterializeRequest)
+    _MATERIALIZE_REQUEST_VALIDATOR(
+        cast("CompatibleMaterializeRequest", cast("object", view))
+    )
     plan = cast("CompatibleAuthoringPlan", view.plan)
     if _NATIVE_TYPE(plan) is not CompatibleAuthoringPlan:
         message = "compatible plan must use exact CompatibleAuthoringPlan"
@@ -1473,10 +1503,12 @@ def _require_build_request(value: object) -> CompatibleBuildRequest:
     if _NATIVE_TYPE(value) is not CompatibleBuildRequest:
         message = "compatible authoring requires exact CompatibleBuildRequest"
         raise CompatiblePlanError(message)
-    return cast(
+    admitted = cast(
         "CompatibleBuildRequest",
         cast("object", _pinned_validation_view(value, CompatibleBuildRequest)),
     )
+    _BUILD_REQUEST_VALIDATOR(admitted)
+    return admitted
 
 
 def _require_materialize_request(

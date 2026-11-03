@@ -43,7 +43,7 @@ import shutil
 import subprocess
 import sys
 from contextlib import ExitStack, contextmanager
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
@@ -4375,3 +4375,115 @@ def test_compatible_authoring_uses_stored_exact_plan_for_valid_tree(
         plan = build_compatible_plan(request)
     assert getter_calls == 0, "late exact-plan getter altered valid authoring"
     assert len(plan.instructions) > 0
+
+
+def _forged_compatible_native(
+    record: object,
+    changes: dict[str, object],
+    *,
+    missing: tuple[str, ...] = (),
+) -> object:
+    """Allocate exact native record storage without its original initializer."""
+    owner = type(record)
+    forged = object.__new__(owner)
+    for field in fields(record):
+        name = field.name
+        if name in missing:
+            continue
+        slot = cast("MemberDescriptorType", owner.__dict__[name])
+        value = changes[name] if name in changes else slot.__get__(record, owner)
+        slot.__set__(forged, value)
+    return forged
+
+
+@pytest.mark.parametrize("forgery", ["boolean", "missing"])
+def test_compatible_authoring_revalidates_native_request_before_io(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Raw native build requests cannot bypass policy or missing-slot guards."""
+    source, oracle = _roots(tmp_path)
+    baseline = CompatibleBuildRequest(
+        source, oracle, _identity(source), _policy(), _mapper
+    )
+    forged = _forged_compatible_native(
+        baseline,
+        {"preserve_candidate_only": 1} if forgery == "boolean" else {},
+        missing=("mapper",) if forgery == "missing" else (),
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("forged native build request accessed source")
+
+    monkeypatch.setattr(compatible_module, "build_exact_plan", forbidden)
+    with pytest.raises(CompatiblePlanError):
+        _ = build_compatible_plan(cast("CompatibleBuildRequest", forged))
+
+
+@pytest.mark.parametrize("forgery", ["foreign", "missing"])
+def test_compatible_materialization_revalidates_native_request_before_admission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Raw native materialization cannot enter gates with invalid destinations."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    baseline = _request(candidate, plan, tmp_path / "output")
+    forged = _forged_compatible_native(
+        baseline,
+        {"output_root": "foreign"} if forgery == "foreign" else {},
+        missing=("output_root",) if forgery == "missing" else (),
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("forged native materialize request entered admission")
+
+    monkeypatch.setattr(compatible_module, "_admit", forbidden)
+    with pytest.raises(CompatiblePlanError):
+        _ = materialize_compatible_plan(cast("CompatibleMaterializeRequest", forged))
+
+
+@pytest.mark.parametrize("forgery", ["dropped", "literal", "nested"])
+def test_compatible_materialization_revalidates_native_plan_before_publish(
+    tmp_path: Path, forgery: str
+) -> None:
+    """A forged native plan cannot drop or replace target-only output bytes."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "output"
+    creations = [
+        item for item in plan.instructions
+        if item.kind is CompatibleFileKind.CREATE_LITERAL
+    ]
+    assert creations
+    original = creations[0]
+    if forgery == "dropped":
+        instructions = tuple(
+            item for item in plan.instructions if item is not original
+        )
+    else:
+        child = _forged_compatible_native(
+            original,
+            {"literal": b"forged-output"} if forgery == "literal"
+            else {"source_path": "identity.txt"},
+        )
+        instructions = tuple(
+            cast("CompatibleInstruction", child) if item is original else item
+            for item in plan.instructions
+        )
+    forged = _forged_compatible_native(plan, {"instructions": instructions})
+    request = _request(candidate, cast("CompatibleAuthoringPlan", forged), output)
+    with pytest.raises(CompatiblePlanError):
+        _ = materialize_compatible_plan(request)
+    assert not output.exists(), "forged compatible plan was published"
+
+
+def test_compatible_binding_revalidates_native_negative_edit_index(
+    tmp_path: Path,
+) -> None:
+    """A forged negative index cannot silently route to the last edit."""
+    plan = _plan(tmp_path)
+    baseline = CompatibleCorrectionBinding("code.src", 0, "fix")
+    forged = _forged_compatible_native(baseline, {"edit_index": -1})
+    with pytest.raises(CompatiblePlanError, match="edit index"):
+        _ = bind_compatible_corrections(
+            plan, (cast("CompatibleCorrectionBinding", forged),)
+        )
