@@ -41,6 +41,7 @@ import io
 import os
 import shutil
 import signal
+import stat
 import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
@@ -3203,6 +3204,95 @@ def test_probe_rejects_host_resolver_mutation_during_native_resolution(
             _ = require_root(source, "source")
     assert changed, "native resolution hook was not exercised"
     assert os.path.realpath is native_realpath
+
+
+def _probe_host_alias(tmp_path: Path) -> tuple[Path, Path]:
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    return alias, outside
+
+
+@pytest.mark.parametrize(
+    "dependency", ["lstat", "readlink", "getcwd", "symlink-classifier"]
+)
+def test_probe_rejects_late_host_resolver_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """Original realpath still calls replaceable host filesystem helpers."""
+    alias, outside = _probe_host_alias(tmp_path)
+    native_lstat = os.lstat
+
+    def forged_lstat(path: str | os.PathLike[str]) -> os.stat_result:
+        selected = tmp_path if os.fspath(path) == os.fspath(alias) else path
+        return native_lstat(selected)
+
+    def forged_readlink(path: str | os.PathLike[str]) -> str:
+        return f"missing-{os.fspath(path)}"
+
+    def forged_getcwd() -> str:
+        return os.fspath(outside)
+
+    def forged_islink(mode: int) -> bool:
+        return mode < 0
+
+    owner, attribute, replacement = {
+        "lstat": (os, "lstat", forged_lstat),
+        "readlink": (os, "readlink", forged_readlink),
+        "getcwd": (os, "getcwd", forged_getcwd),
+        "symlink-classifier": (stat, "S_ISLNK", forged_islink),
+    }[dependency]
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, attribute, replacement)
+        require_root = cast(
+            "Callable[[Path, str], Path]",
+            vars(probe_exec_module)["_resolved_root"],
+        )
+        with pytest.raises(
+            ProbeExecutionError, match="native host resolver changed"
+        ):
+            _ = require_root(alias, "repository")
+    assert alias.resolve() == outside
+
+
+def test_probe_rejects_host_dependency_mutation_during_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dependency replaced while native Path.resolve runs fails closed."""
+    root = tmp_path / "root"
+    root.mkdir()
+    native_resolve = Path.resolve
+    native_readlink = os.readlink
+    changed = False
+
+    def forged_readlink(path: str | os.PathLike[str]) -> str:
+        return f"forged-{os.fspath(path)}"
+
+    def replace_readlink(path: Path, *, strict: bool = False) -> Path:
+        nonlocal changed
+        result = native_resolve(path, strict=strict)
+        patch.setattr(os, "readlink", forged_readlink)
+        changed = True
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            probe_exec_module, "_NATIVE_PATH_RESOLVE", replace_readlink
+        )
+        require_root = cast(
+            "Callable[[Path, str], Path]",
+            vars(probe_exec_module)["_resolved_root"],
+        )
+        with pytest.raises(
+            ProbeExecutionError, match="native host resolver changed"
+        ):
+            _ = require_root(root, "repository")
+    assert changed, "native resolve was not exercised"
+    assert os.readlink is native_readlink
 
 
 @pytest.mark.parametrize("hook", ["getattribute", "cached-descriptor"])

@@ -38,6 +38,7 @@ import builtins
 import os
 import shutil
 import signal
+import stat
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - no shell; resolved executables only.
@@ -79,6 +80,10 @@ _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_HOST_REALPATH = os.path.realpath
+_NATIVE_HOST_LSTAT = os.lstat
+_NATIVE_HOST_READLINK = os.readlink
+_NATIVE_HOST_GETCWD = os.getcwd
+_NATIVE_HOST_ISLINK = stat.S_ISLNK
 # Inode disjointness and executable admission cannot trust late host hooks.
 _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
@@ -836,7 +841,17 @@ def _require_native_host_resolver() -> None:
     ):
         message = "probe native path hooks changed"
         raise ProbeExecutionError(message)
-    if os.path.realpath is not _NATIVE_HOST_REALPATH:
+    if (
+        os.path.realpath is not _NATIVE_HOST_REALPATH
+        or os.lstat is not _NATIVE_HOST_LSTAT
+        or os.readlink is not _NATIVE_HOST_READLINK
+    ):
+        message = "probe native host resolver changed"
+        raise ProbeExecutionError(message)
+    if (
+        os.getcwd is not _NATIVE_HOST_GETCWD
+        or stat.S_ISLNK is not _NATIVE_HOST_ISLINK
+    ):
         message = "probe native host resolver changed"
         raise ProbeExecutionError(message)
 
