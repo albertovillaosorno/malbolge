@@ -34,12 +34,14 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import ntpath
 import re
 import shutil
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -78,7 +80,7 @@ from algorithms.diff.mapped import MappedUnit, MappedView
 from algorithms.diff.model import ExactInstruction, ExactInstructionKind
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior import BehaviorEvidence
@@ -835,6 +837,137 @@ def test_compatible_correction_binding_rejects_foreign_metadata() -> None:
         )
     with pytest.raises(CompatiblePlanError, match="correction ID"):
         _ = CompatibleCorrectionBinding("code.src", 0, "")
+
+
+def test_compatible_instruction_rejects_late_any_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Untrusted callbacks cannot hide forbidden copy or digest metadata."""
+    exact = ExactInstruction(
+        output_path="file.bin",
+        kind=ExactInstructionKind.COPY_SOURCE,
+        expected_sha256="0" * 64,
+        source_path="file.bin",
+    )
+    attempts = (
+        lambda: CompatibleInstruction(
+            output_path="file.bin",
+            kind=CompatibleFileKind.COPY_CANDIDATE,
+            source_path="file.bin",
+            source_sha256="0" * 64,
+        ),
+        lambda: CompatibleInstruction(
+            output_path="file.bin",
+            kind=CompatibleFileKind.EXACT_GATED,
+            source_path="file.bin",
+            source_sha256="g" * 64,
+            exact=exact,
+        ),
+        lambda: CompatibleInstruction(
+            output_path="file.bin",
+            kind=CompatibleFileKind.COPY_CANDIDATE,
+            source_path="file.bin",
+            correction_ids=cast("tuple[str | None, ...]", (12,)),
+        ),
+    )
+    rejected: list[bool] = []
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        for attempt in attempts:
+            try:
+                _ = attempt()
+            except CompatiblePlanError:
+                rejected.append(True)
+            else:
+                rejected.append(False)
+    assert rejected == [True, True, True], "late any hook admitted bad evidence"
+
+
+def test_compatible_bindings_reject_late_any_foreign_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Foreign but shape-compatible correction records cannot be admitted."""
+    plan = _plan(tmp_path)
+    foreign = cast(
+        "CompatibleCorrectionBinding",
+        cast(
+            "object",
+            SimpleNamespace(output_path="code.src", edit_index=0, correction_id="fix"),
+        ),
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        try:
+            _ = bind_compatible_corrections(plan, (foreign,))
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late any hook admitted a foreign correction binding"
+
+
+def test_compatible_bindings_reject_late_sorted_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected order function cannot admit unsorted correction bindings."""
+    validate = cast(
+        "Callable[[object], object]",
+        vars(compatible_module)["_validate_correction_bindings"],
+    )
+    bindings = (
+        CompatibleCorrectionBinding("z.src", 0, "fix-z"),
+        CompatibleCorrectionBinding("a.src", 0, "fix-a"),
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "sorted", lambda values: values)
+        try:
+            _ = validate(bindings)
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late sorted hook admitted unordered bindings"
+
+
+def test_compatible_bindings_reject_late_set_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected uniqueness function cannot admit duplicate edit targets."""
+    validate = cast(
+        "Callable[[object], object]",
+        vars(compatible_module)["_validate_correction_bindings"],
+    )
+    binding = CompatibleCorrectionBinding("code.src", 0, "fix")
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "set", lambda values: {0, 1})
+        try:
+            _ = validate((binding, binding))
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late set hook admitted duplicate edit targets"
+
+
+def test_compatible_binding_unknown_path_rejects_late_set_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An injected set constructor cannot omit unknown correction targets."""
+    plan = _plan(tmp_path)
+    native_set = builtins.set
+
+    def omitted_paths(values: Iterable[object]) -> set[object]:
+        if type(values) is dict:
+            return native_set()
+        return native_set(values)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "set", omitted_paths)
+        try:
+            _ = bind_compatible_corrections(
+                plan, (CompatibleCorrectionBinding("unknown.src", 0, "fix"),)
+            )
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "late set hook ignored an unknown correction target"
 
 
 def test_compatible_request_envelopes_reject_foreign_fields(

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import ntpath
 import os
@@ -80,6 +81,10 @@ _DOT = "."
 _BACKSLASH = "\\"
 _NUL = "\x00"
 _HEX_DIGITS = frozenset("0123456789abcdef")
+# Preserve metadata admission against late process-global builtin replacements.
+_NATIVE_ANY = builtins.any
+_NATIVE_SET = builtins.set
+_NATIVE_SORTED = builtins.sorted
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -323,7 +328,7 @@ def _require_source(instruction: CompatibleInstruction) -> None:
 
 def _validate_copy(instruction: CompatibleInstruction) -> None:
     _require_source(instruction)
-    if any(
+    if _NATIVE_ANY(
         value is not None
         for value in (
             instruction.source_sha256,
@@ -347,7 +352,7 @@ def _validate_semantic(instruction: CompatibleInstruction) -> None:
     ):
         message = "compatible correction IDs must align with semantic edits"
         raise CompatiblePlanError(message)
-    if any(
+    if _NATIVE_ANY(
         value is not None
         for value in (
             instruction.source_sha256,
@@ -377,7 +382,7 @@ def _validate_literal(instruction: CompatibleInstruction) -> None:
     if instruction.literal is None or instruction.source_path is not None:
         message = "compatible literal creation has invalid source state"
         raise CompatiblePlanError(message)
-    if any(
+    if _NATIVE_ANY(
         value is not None
         for value in (
             instruction.source_sha256,
@@ -417,7 +422,7 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None: 
         if (
             type(value) is not str
             or len(value) != _SHA256_BYTES * 2
-            or any(char not in _HEX_DIGITS for char in value)
+            or _NATIVE_ANY(char not in _HEX_DIGITS for char in value)
         ):
             message = "compatible source sha256 must be 64 lowercase hex digits"
             raise CompatiblePlanError(message)
@@ -444,7 +449,7 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None: 
     if type(instruction.correction_ids) is not tuple:
         message = "compatible correction IDs must use an immutable tuple"
         raise CompatiblePlanError(message)
-    if any(
+    if _NATIVE_ANY(
         value is not None and (type(value) is not str or not value)
         for value in instruction.correction_ids
     ):
@@ -481,7 +486,7 @@ def _validate_plan_records(plan: CompatibleAuthoringPlan) -> None:  # ruff: igno
             "compatible plan policy must use the exact AdmissionPolicy type"
         )
         raise CompatiblePlanError(message)
-    if type(plan.instructions) is not tuple or any(
+    if type(plan.instructions) is not tuple or _NATIVE_ANY(
         type(item) is not CompatibleInstruction for item in plan.instructions
     ):
         message = "compatible plan instructions must be exact immutable records"
@@ -588,17 +593,17 @@ def _validate_correction_bindings(
         message = "compatible correction bindings must use an immutable tuple"
         raise CompatiblePlanError(message)
     items = cast("tuple[object, ...]", bindings)
-    if any(type(item) is not CompatibleCorrectionBinding for item in items):
+    if _NATIVE_ANY(type(item) is not CompatibleCorrectionBinding for item in items):
         message = "compatible correction bindings contain a foreign record"
         raise CompatiblePlanError(message)
     admitted = cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
     locations = tuple((item.output_path, item.edit_index) for item in admitted)
-    if locations != tuple(sorted(locations)):
+    if locations != tuple(_NATIVE_SORTED(locations)):
         message = (
             "compatible correction bindings must be sorted by edit location"
         )
         raise CompatiblePlanError(message)
-    if len(locations) != len(set(locations)):
+    if len(locations) != len(_NATIVE_SET(locations)):
         message = (
             "compatible correction bindings must use unique edit locations"
         )
@@ -657,7 +662,7 @@ def bind_compatible_corrections(
     for binding in admitted:
         by_path.setdefault(binding.output_path, []).append(binding)
     known_paths = {instruction.output_path for instruction in plan.instructions}
-    if set(by_path) - known_paths:
+    if _NATIVE_SET(by_path) - known_paths:
         message = "compatible correction binding targets an unknown output path"
         raise CompatiblePlanError(message)
     instructions = tuple(
