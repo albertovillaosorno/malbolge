@@ -69,6 +69,7 @@ _NATIVE_C_INT: Final = ctypes.c_int
 _NATIVE_C_CHAR_P: Final = ctypes.c_char_p
 _NATIVE_C_UINT: Final = ctypes.c_uint
 _NATIVE_CDLL: Final = ctypes.CDLL
+_NATIVE_C_ARGUMENT_ERROR: Final = ctypes.ArgumentError
 _NATIVE_GET_ERRNO: Final = ctypes.get_errno
 _NATIVE_STRERROR: Final = os.strerror
 _MAX_LINUX_ERRNO: Final = 4095
@@ -136,6 +137,7 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
         TypeError,
         ValueError,
         RuntimeError,
+        _NATIVE_C_ARGUMENT_ERROR,
     ) as error:
         raise OSError(
             errno.ENOTSUP,
@@ -150,7 +152,7 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
             _native_fsencode_path(destination),
             _RENAME_NOREPLACE,
         )
-    except (TypeError, ValueError, RuntimeError) as error:
+    except (TypeError, ValueError, RuntimeError, _NATIVE_C_ARGUMENT_ERROR) as error:
         raise OSError(
             errno.EINVAL,
             "Linux renameat2 invocation failed",

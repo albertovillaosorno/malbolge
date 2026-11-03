@@ -1099,7 +1099,9 @@ def test_linux_publication_rejects_invalid_native_errno(
     assert not destination.exists()
 
 
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize(
+    "failure_type", [ValueError, RuntimeError, ctypes.ArgumentError]
+)
 def test_linux_publication_contains_native_loader_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1124,7 +1126,9 @@ def test_linux_publication_contains_native_loader_errors(
     assert not destination.exists()
 
 
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError, TypeError])
+@pytest.mark.parametrize(
+    "failure_type", [ValueError, RuntimeError, TypeError, ctypes.ArgumentError]
+)
 def test_linux_publication_contains_native_call_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1150,6 +1154,32 @@ def test_linux_publication_contains_native_call_errors(
     _fake_linux_host(monkeypatch)
     with pytest.raises(OSError, match="invocation failed") as rejected:
         publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.EINVAL
+    assert native.call_count == 1
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
+def test_linux_publication_pins_ctypes_argument_error_after_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A consumer cannot hide a native argument failure by swapping its alias."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    original_argument_error = ctypes.ArgumentError
+    native = Mock(side_effect=original_argument_error("invalid native arguments"))
+
+    def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+        _ = (_name, _options)
+        return SimpleNamespace(renameat2=native)
+
+    monkeypatch.setattr(publication, "_NATIVE_CDLL", fake_cdll)
+    _fake_linux_host(monkeypatch)
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes, "ArgumentError", LookupError)
+        with pytest.raises(OSError, match="invocation failed") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
     assert rejected.value.errno == errno.EINVAL
     assert native.call_count == 1
     assert staging.is_dir()
