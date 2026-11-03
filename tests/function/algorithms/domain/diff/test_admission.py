@@ -2342,3 +2342,49 @@ def test_admission_unicode_path_keeps_typed_error_after_late_alias(
         finally:
             builtins.__dict__["UnicodeEncodeError"] = original
     assert type(caught) is AdmissionPolicyError, caught
+
+
+@pytest.mark.parametrize("field", ["structural_policy", "anchor_policy"])
+@pytest.mark.parametrize("route", ["constructor", "evaluation"])
+def test_native_anchor_error_ignores_late_imported_policy_alias(
+    monkeypatch: pytest.MonkeyPatch, field: str, route: str
+) -> None:
+    """Nested invalid anchor policies must fail with typed admission errors."""
+    malformed = cast(
+        "AnchorPolicy",
+        _fabricate_admission_slots(
+            AnchorPolicy, {"window_bytes": 0, "selection_modulus": 1}
+        ),
+    )
+    good = AdmissionPolicy(0.0, 0.0, 1, 1)
+    with monkeypatch.context() as patched:
+        patched.setattr(admission_module, "FingerprintPolicyError", LookupError)
+        with pytest.raises(
+            AdmissionPolicyError, match="invalid native anchor metadata"
+        ):
+            if route == "constructor":
+                _ = AdmissionPolicy(
+                    0.0,
+                    0.0,
+                    1,
+                    1,
+                    structural_policy=(
+                        malformed if field == "structural_policy" else AnchorPolicy()
+                    ),
+                    anchor_policy=(
+                        malformed if field == "anchor_policy" else AnchorPolicy()
+                    ),
+                )
+            else:
+                slots = {
+                    name: cast(
+                        "MemberDescriptorType", AdmissionPolicy.__dict__[name]
+                    ).__get__(good, AdmissionPolicy)
+                    for name in AdmissionPolicy.__slots__
+                }
+                slots[field] = malformed
+                policy = cast(
+                    "AdmissionPolicy", _fabricate_admission_slots(AdmissionPolicy, slots)
+                )
+                source = identity_tree({"source.c": b"original source"})
+                _ = evaluate_admission(source, source, policy)

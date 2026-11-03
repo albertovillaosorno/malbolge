@@ -89,6 +89,8 @@ _NATIVE_LEN = builtins.len
 _NATIVE_FROZENSET = builtins.frozenset
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
+# Nested validator failures must retain their imported native error class.
+_NATIVE_FINGERPRINT_POLICY_ERROR = FingerprintPolicyError
 _NATIVE_OBJECT_NEW = object.__new__
 _ORIGINAL_ANCHOR_POLICY_VALIDATOR = cast(
     "Callable[[AnchorPolicy], None]", AnchorPolicy.__dict__["__post_init__"]
@@ -371,7 +373,7 @@ def _require_valid_anchor_policies(
     try:
         _ORIGINAL_ANCHOR_POLICY_VALIDATOR(structural)
         _ORIGINAL_ANCHOR_POLICY_VALIDATOR(anchors)
-    except (_NATIVE_ATTRIBUTE_ERROR, FingerprintPolicyError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_FINGERPRINT_POLICY_ERROR) as error:
         message = "admission policy has invalid native anchor metadata"
         raise AdmissionPolicyError(message) from error
 
