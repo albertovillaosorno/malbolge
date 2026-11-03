@@ -366,6 +366,22 @@ format.
   223 focused and 2,421 integrated diff tests excluding concurrent relocatable
   edits. This blocks late class/module-hook substitution; direct modification
   of private bindings and concurrent filesystem writers remain outside scope.
+- Compatible-plan staging now independently pins native `io.open` in
+  exclusive `xb` mode, native `os.mkdir`, and original `Path` parent/name and
+  joinpath methods. Three red-first regressions reproduced mutable
+  write/parent/staging hooks; later tests cover opened streams, directory
+  builders and existing/symlink staged files. Signed `6e08a186a` passed
+  243 focused and 2,250 integrated diff tests excluding live peer work.
+  Static typing retains thirteen older compatible-model diagnostics outside
+  this staging change; trusted module internals and external writers are not
+  isolated by the host-hook repair.
+- Generator exact replay now compares stored native snapshot/file fields and
+  binds output ancestry to original path operations (`28dc8284d`,
+  `a15eccef2`). Twelve red-first replay, equality, and path-hook cases
+  passed with 184 generator tests and 2,619 integrated diff tests. The global
+  Jig check timed out after 90 seconds and has no green verdict. Direct
+  mutations of trusted private internals and external filesystem races remain
+  outside these guards.
 - The no-replace directory publisher now rejects foreign `pathlib.Path`
   subclasses for both staging and destination before any path conversion or
   filesystem method can run. Two red-first regressions preserve exact native

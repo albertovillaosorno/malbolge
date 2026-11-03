@@ -316,6 +316,27 @@ tests excluding concurrently edited relocatable tests. Direct mutation of
 trusted module internals and concurrent filesystem writers remain separate,
 non-atomic boundaries.
 
+Compatible Python materialization also protects its own staging writes,
+parent creation and output basename from late host hooks. Its import-pinned
+`io.open` uses exclusive `xb`, with native `os.mkdir` and original
+`Path.parent`/`Path.name`/joinpath operations preserving the staging identity.
+Three reproductions first failed under write, parent, and staging-root
+redirection. Additional regression cases cover late `io.open`, `os.mkdir`,
+`Path.mkdir`, and linked or pre-existing staged leaves. The signed
+`6e08a186a` change passed 243 compatible tests and 2,250 integrated tests
+excluding active peer suites. Direct mutation of trusted module bindings and
+external concurrent filesystem writers remain separate risks. Standalone
+BasedPyright still reports thirteen older compatible-model diagnostics outside
+these staging changes.
+
+Generator exact replay separately reads stored native file and snapshot
+fields, and its output checks use original path-ancestry comparisons rather
+than late class equality or parent hooks. Signed generator commits
+`28dc8284d` and `a15eccef2` introduced twelve red-first cases, passed 184
+focused and 2,619 integrated diff tests, and left direct private-instance
+mutation and concurrent external filesystem writers outside the guard. A
+global Jig check exceeded 90 seconds without a conclusive pass.
+
 The same publisher admits only the running host's exact native `pathlib.Path`
 type for both staging and destination before querying filesystem methods.
 Caller-defined `Path` subclasses may override path resolution, file status, or
