@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import io
 import os
 import stat
@@ -80,6 +81,7 @@ _NATIVE_TYPE = type
 _NATIVE_STR_TYPE = str
 _NATIVE_INT_TYPE = int
 _NATIVE_BOOL_TYPE = bool
+_NATIVE_ANY = builtins.any
 _NATIVE_LEN = len
 _NATIVE_TUPLE = tuple
 _NATIVE_RANGE = range
@@ -129,7 +131,7 @@ _NATIVE_PATH_STRING_HOOKS = tuple(
 
 def _native_path_string(path: Path) -> str:
     """Reject late path formatter substitution before any filesystem access."""
-    if os.fspath is not _NATIVE_OS_FSPATH or any(
+    if os.fspath is not _NATIVE_OS_FSPATH or _NATIVE_ANY(
         path_class.__dict__.get(name) is not original
         for path_class, hooks in _NATIVE_PATH_STRING_HOOKS
         for name, original in hooks
@@ -731,7 +733,7 @@ def _require_native_host_realpath() -> None:
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
         or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
-        or any(
+        or _NATIVE_ANY(
             path_class.__dict__.get(name) is not original
             for path_class, hooks in _NATIVE_PATH_RESOLUTION_HOOKS
             for name, original in hooks

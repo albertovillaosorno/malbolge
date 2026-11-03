@@ -1528,6 +1528,34 @@ def test_writer_template_resolution_rejects_late_host_dependencies(
     assert calls == 0
 
 
+@pytest.mark.parametrize("guard", ["string", "resolution"])
+def test_emitter_path_guards_reject_late_any_suppression(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, guard: str
+) -> None:
+    """Late any() must not hide a substituted native path dependency."""
+    target = tmp_path / "output.rs"
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted path hook invoked")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "any", lambda _items: False)
+        if guard == "string":
+            patch.setattr(Path, "_tail", property(forbidden))
+            with pytest.raises(RustEmissionError, match="path hooks changed"):
+                _ = emit_rust_module._native_path_string(target)
+        else:
+            patch.setattr(Path, "with_segments", forbidden)
+            with pytest.raises(
+                RustEmissionError, match="path resolution hooks changed"
+            ):
+                emit_rust_module._require_output_not_runtime_template(target)
+    assert calls == 0
+
+
 @pytest.mark.parametrize("hook", ["with_segments", "__new__", "__init__"])
 def test_writer_template_resolution_rejects_late_path_factories(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
