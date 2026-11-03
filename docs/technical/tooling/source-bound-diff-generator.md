@@ -548,7 +548,9 @@ alias, `pathlib.chain`, and the original builtin `hasattr`, `enumerate`,
 previously executed late callbacks before source snapshot admission. The
 source-label guard rejects those changes before and after relative derivation;
 all 185 provenance and 484 combined provenance/compatible tests pass
-postcommit. Scoped Ruff, source strict BasedPyright, and diff checks are
+postcommit.
+
+Scoped Ruff, source strict BasedPyright, and diff checks are
 clean, while 51 previously existing provenance-test typing errors remain.
 External filesystem races, direct trusted-state mutation, and global Jig
 verification are not closed by this in-process guard.
