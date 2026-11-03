@@ -38,11 +38,13 @@ import builtins
 import hashlib
 import ntpath
 import os
+import subprocess
+import sys
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from stat import S_IFDIR
-from types import SimpleNamespace
+from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -1676,3 +1678,87 @@ def test_pin_valid_constructor_writes_original_field_slots(
             result = SourcePinEvidence(1, "0" * 64)
     assert type(result) is record_type
     assert calls == 0, f"valid {record_type.__name__}.{field} used setter"
+
+
+@pytest.mark.parametrize("field", ["file_count", "snapshot_sha256"])
+def test_snapshot_evidence_ignores_late_initializer_forgery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Late record initializers cannot replace measured source snapshots."""
+    _write(tmp_path, "src/main.c", b"int main(void) { return 0; }\n")
+    baseline = source_snapshot_evidence(tmp_path, ("src",))
+    original_init = SourcePinEvidence.__init__
+    original_slot = cast("MemberDescriptorType", SourcePinEvidence.__dict__[field])
+    calls = 0
+
+    def forged_init(
+        self: SourcePinEvidence, file_count: int, snapshot_sha256: str
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        original_init(self, file_count, snapshot_sha256)
+        original_slot.__set__(self, 999 if field == "file_count" else "0" * 64)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SourcePinEvidence, "__init__", forged_init)
+        observed = source_snapshot_evidence(tmp_path, ("src",))
+    assert observed == baseline, "late class initializer changed source evidence"
+    assert calls == 0, "late evidence initializer was consulted"
+
+
+def test_source_pin_rejects_forged_evidence_initializer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late initializer cannot match a deliberately incorrect source pin."""
+    _write(tmp_path, "src/main.c", b"int main(void) { return 0; }\n")
+    actual = source_snapshot_evidence(tmp_path, ("src",))
+    bad_digest = "0" * 64 if actual.snapshot_sha256 != "0" * 64 else "1" * 64
+    pin = SourcePin("repository", _COMMIT, ("src",), actual.file_count, bad_digest)
+    digest_slot = cast(
+        "MemberDescriptorType", SourcePinEvidence.__dict__["snapshot_sha256"]
+    )
+    native_init = SourcePinEvidence.__init__
+    calls = 0
+
+    def forge_matching_evidence(
+        self: SourcePinEvidence, file_count: int, snapshot_sha256: str
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        native_init(self, file_count, snapshot_sha256)
+        digest_slot.__set__(self, bad_digest)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SourcePinEvidence, "__init__", forge_matching_evidence)
+        with pytest.raises(SourcePinError, match="snapshot mismatch"):
+            _ = require_source_pin(tmp_path, pin)
+    assert calls == 0, "late class initializer promoted mismatched source pin"
+
+
+def test_pinned_snapshot_ignores_late_evidence_new_in_isolated_process() -> None:
+    """A late allocator cannot forge observed source digest/count evidence."""
+    script = """
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from algorithms.diff.provenance import SourcePinEvidence, source_snapshot_evidence
+with TemporaryDirectory() as directory:
+    root = Path(directory)
+    (root / "src").mkdir()
+    (root / "src" / "main.c").write_bytes(b"int x;\\n")
+    expected = source_snapshot_evidence(root, ("src",))
+    def forbidden_new(cls, *args, **kwargs):
+        raise AssertionError("late SourcePinEvidence.__new__ was consulted")
+    SourcePinEvidence.__new__ = staticmethod(forbidden_new)
+    assert source_snapshot_evidence(root, ("src",)) == expected
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr

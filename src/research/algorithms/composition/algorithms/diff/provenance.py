@@ -43,7 +43,7 @@ from stat import S_ISDIR, S_ISLNK, S_ISREG
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from sys import getfilesystemencoding as _get_filesystem_encoding
 from types import MemberDescriptorType
-from typing import Final, cast
+from typing import Callable, Final, cast
 
 from algorithms.diff.exact import ExactTreeError, read_exact_regular_file
 from algorithms.diff.model import reserved_windows_component
@@ -72,6 +72,7 @@ _NATIVE_STR = builtins.str
 _NATIVE_ZIP = builtins.zip
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
+_NATIVE_OBJECT_NEW: Final = object.__new__
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_OS_LSTAT = os.lstat
@@ -264,6 +265,17 @@ _EVIDENCE_COUNT_SLOT = cast(
 _EVIDENCE_DIGEST_SLOT = cast(
     "MemberDescriptorType", SourcePinEvidence.__dict__["snapshot_sha256"]
 )
+_SOURCE_EVIDENCE_INIT = cast(
+    "Callable[[SourcePinEvidence, int, str], None]",
+    SourcePinEvidence.__dict__["__init__"],
+)
+
+
+def _new_source_evidence(count: int, digest: str) -> SourcePinEvidence:
+    """Preserve observed source identity across late evidence class hooks."""
+    observed = _NATIVE_OBJECT_NEW(SourcePinEvidence)
+    _SOURCE_EVIDENCE_INIT(observed, count, digest)
+    return observed
 
 
 def _source_evidence_fields(evidence: SourcePinEvidence) -> tuple[int, str]:
@@ -554,9 +566,9 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
         if _pinned_file_receipt(path, relative_text) != before:
             message = f"pinned source file changed during snapshot: {relative_text}"
             raise SourcePinError(message)
-    return SourcePinEvidence(
-        file_count=_NATIVE_LEN(files),
-        snapshot_sha256=digest.hexdigest(),
+    return _new_source_evidence(
+        count=_NATIVE_LEN(files),
+        digest=digest.hexdigest(),
     )
 
 
