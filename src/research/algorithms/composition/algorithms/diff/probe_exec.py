@@ -117,6 +117,8 @@ _NATIVE_ALL = builtins.all
 _NATIVE_MIN = builtins.min
 _NATIVE_MAX = builtins.max
 _NATIVE_ENUMERATE = builtins.enumerate
+# Exact native platform identity must not construct a Path during admission.
+_NATIVE_PLATFORM_PATH_TYPE = _NATIVE_TYPE(Path())
 # Path.__str__ still reads replaceable Python path metadata, even when its
 # method itself was captured at import time. Freeze path metadata hooks and
 # constructors inherited or overridden at the native platform class.
@@ -135,8 +137,20 @@ _NATIVE_PATH_CACHE_HOOKS = tuple(
         cls,
         tuple((name, cls.__dict__.get(name)) for name in _PATH_CACHE_HOOK_NAMES),
     )
-    for cls in _NATIVE_TYPE(Path()).__mro__
+    for cls in _NATIVE_PLATFORM_PATH_TYPE.__mro__
     if issubclass(cls, PurePath)
+)
+
+
+# Resolve and command argv need additional dispatch hooks that admission
+# intentionally tolerates until execution (for example a late Path.__str__).
+_RESOLVER_HOOK_NAMES = ("__str__", "with_segments", "joinpath")
+_NATIVE_RESOLVER_HOOKS = tuple(
+    (
+        cls,
+        tuple((name, cls.__dict__.get(name)) for name in _RESOLVER_HOOK_NAMES),
+    )
+    for cls, _ in _NATIVE_PATH_CACHE_HOOKS
 )
 
 
@@ -148,12 +162,28 @@ def _native_path_hooks_changed() -> bool:
     )
 
 
+def _native_resolver_hooks_changed() -> bool:
+    return _NATIVE_ANY(
+        cls.__dict__.get(name) is not original
+        for cls, hooks in _NATIVE_RESOLVER_HOOKS
+        for name, original in hooks
+    )
+
+
 def _native_path_stat(path: Path) -> os.stat_result:
-    if _native_path_hooks_changed() or Path.__str__ is not _NATIVE_PATH_STRING:
+    if (
+        _native_path_hooks_changed()
+        or _native_resolver_hooks_changed()
+        or Path.__str__ is not _NATIVE_PATH_STRING
+    ):
         message = "probe native path hooks changed"
         raise ProbeExecutionError(message)
     result = _NATIVE_OS_STAT(_NATIVE_PATH_STRING(path))
-    if _native_path_hooks_changed() or Path.__str__ is not _NATIVE_PATH_STRING:
+    if (
+        _native_path_hooks_changed()
+        or _native_resolver_hooks_changed()
+        or Path.__str__ is not _NATIVE_PATH_STRING
+    ):
         message = "probe native path hooks changed"
         raise ProbeExecutionError(message)
     return result
@@ -509,7 +539,7 @@ _PROBE_PROGRAM_VALIDATOR = cast(
 def _validate_path(value: object, context: str) -> None:
     # Path subclasses can override conversion, resolution or status checks.
     # The probe execution authority must use an exact native host path.
-    if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
+    if _NATIVE_TYPE(value) is not _NATIVE_PLATFORM_PATH_TYPE:
         message = f"{context} must use exact pathlib Path"
         raise ProbeProgramError(message)
     if _native_path_hooks_changed():
@@ -830,7 +860,7 @@ def _native_path_inside(path: Path, root: Path) -> bool:
 
 def _native_resolved_path(result: Path, description: str) -> Path:
     """Reject a foreign Path subtype before containment or process use."""
-    if _NATIVE_TYPE(result) is not _NATIVE_TYPE(Path()):
+    if _NATIVE_TYPE(result) is not _NATIVE_PLATFORM_PATH_TYPE:
         message = f"probe {description} requires native resolved Path"
         raise ProbeExecutionError(message)
     return result
@@ -840,6 +870,7 @@ def _require_native_host_resolver() -> None:
     """Reject late host realpath hooks beneath the original Path.resolve."""
     if (
         _native_path_hooks_changed()
+        or _native_resolver_hooks_changed()
         or os.fspath is not _NATIVE_OS_FSPATH
         or Path.__str__ is not _NATIVE_PATH_STRING
         or Path.with_segments is not _NATIVE_PATH_WITH_SEGMENTS

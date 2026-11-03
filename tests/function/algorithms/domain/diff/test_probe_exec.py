@@ -3440,6 +3440,104 @@ def test_probe_rejects_late_platform_path_constructors(
     assert calls == 0, "late concrete Path constructor was consulted"
 
 
+@pytest.mark.parametrize(
+    "owner,method",
+    [
+        ("base", "__new__"),
+        ("base", "__init__"),
+        ("platform", "__new__"),
+        ("platform", "__init__"),
+    ],
+)
+def test_probe_context_rejects_native_constructor_before_allocation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str,
+    method: str,
+) -> None:
+    """Exact native type admission must not instantiate a foreign factory."""
+    source = tmp_path / "source"
+    source.mkdir()
+    native_init = PurePath.__init__
+    calls = 0
+
+    def forged_new(path_type: type[Path], *args: object, **kwargs: object) -> Path:
+        nonlocal calls
+        _ = (path_type, args, kwargs)
+        calls += 1
+        return source
+
+    def forged_init(path: PurePath, *args: object) -> None:
+        nonlocal calls
+        _ = args
+        calls += 1
+        native_init(path, source)
+
+    target = (
+        Path if owner == "base" and method == "__new__"
+        else PurePath if owner == "base"
+        else type(source)
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            target, method,
+            forged_new if method == "__new__" else forged_init,
+        )
+        with pytest.raises(ProbeProgramError, match="native path hooks changed"):
+            _ = ProbeRunContext(source, tmp_path, ())
+    assert calls == 0, "context admission invoked a changed Path constructor"
+
+
+@pytest.mark.parametrize("method", ["__str__", "with_segments"])
+@pytest.mark.parametrize("root", [True, False])
+def test_probe_rejects_late_platform_path_resolution_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    root: bool,
+) -> None:
+    """Concrete Path string and segment hooks cannot launder resolved roots."""
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    outside_text = str(outside)
+    native_str = Path.__str__
+    calls = 0
+
+    def forged_str(path: Path) -> str:
+        nonlocal calls
+        if path is source:
+            calls += 1
+            return outside_text
+        return native_str(path)
+
+    def forged_segments(path: Path, *segments: str) -> Path:
+        nonlocal calls
+        _ = segments
+        if path is source:
+            calls += 1
+            return outside
+        return Path.with_segments(path, *segments)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            type(source), method,
+            forged_str if method == "__str__" else forged_segments,
+        )
+        resolve = cast(
+            "Callable[..., Path]",
+            vars(probe_exec_module)[
+                "_resolved_root" if root else "_resolved_tool_path"
+            ],
+        )
+        with pytest.raises(
+            ProbeExecutionError, match="native path hooks changed"
+        ):
+            _ = resolve(source, "source") if root else resolve(source)
+    assert calls == 0, "late platform Path hook was consulted"
+
+
 @pytest.mark.parametrize("hook", ["getattribute", "cached-descriptor"])
 def test_probe_context_rejects_late_path_cache_spoof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
