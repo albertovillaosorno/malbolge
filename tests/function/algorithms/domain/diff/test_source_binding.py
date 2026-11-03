@@ -228,6 +228,71 @@ def test_binding_threshold_ignores_late_str_spoof(
     assert observed.threshold == expected.threshold
 
 
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [
+        ("threshold_fraction", 0.6),
+        ("maximum_anchors", 4),
+        ("minimum_anchor_files", 1),
+        ("anchor_policy", AnchorPolicy(window_bytes=32, selection_modulus=8)),
+    ],
+)
+def test_binding_policy_ignores_late_field_forgery(
+    monkeypatch: pytest.MonkeyPatch, hook: str, field: str, forged: object
+) -> None:
+    """A consumer cannot relax the binding policy via a mutable class hook."""
+    reference = _reference()
+    policy = _policy(threshold_fraction=0.8)
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    original_getattribute = SourceBindingPolicy.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: SourceBindingPolicy, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return original_getattribute(value, name)
+
+    def forged_slot(_value: SourceBindingPolicy) -> object:
+        nonlocal calls
+        calls += 1
+        return forged
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(SourceBindingPolicy, field, property(forged_slot))
+        else:
+            patched.setattr(
+                SourceBindingPolicy, "__getattribute__", forged_attribute
+            )
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+    assert observed == expected
+    assert calls == 0, "late policy hook participated in source binding"
+
+
+def test_binding_policy_validation_rejects_late_getattribute_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Constructor validation must inspect raw numeric policy slots."""
+    original_getattribute = SourceBindingPolicy.__getattribute__
+
+    def forged_attribute(value: SourceBindingPolicy, name: str) -> object:
+        if name == "maximum_anchors":
+            return 5
+        return original_getattribute(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            SourceBindingPolicy, "__getattribute__", forged_attribute
+        )
+        with pytest.raises(SourceBindingPolicyError, match="positive integer"):
+            _ = SourceBindingPolicy(threshold_fraction=0.6, maximum_anchors=True)
+
+
 def test_hkdf_expand_ignores_late_range_spoof(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

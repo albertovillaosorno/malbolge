@@ -50,7 +50,8 @@ import math
 from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256 as _native_sha256
-from typing import TYPE_CHECKING
+from types import MemberDescriptorType
+from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import IdentityTree
 from algorithms.diff.fingerprints import AnchorPolicy, stable_anchors
@@ -159,19 +160,49 @@ class SourceBindingPolicy:
             SourceBindingPolicyError: One policy value is outside its domain.
 
         """
-        _ = _binding_fraction(self.threshold_fraction)
+        fraction, maximum_anchors, minimum_files, anchor_policy = (
+            _policy_fields(self)
+        )
+        _ = _binding_fraction(fraction)
         maximum = _binding_positive_int(
-            self.maximum_anchors, "maximum_anchors", _MAX_SHARES
+            maximum_anchors, "maximum_anchors", _MAX_SHARES
         )
         minimum = _binding_positive_int(
-            self.minimum_anchor_files, "minimum_anchor_files", None
+            minimum_files, "minimum_anchor_files", None
         )
         if minimum > maximum:
             message = "minimum_anchor_files cannot exceed maximum_anchors"
             raise SourceBindingPolicyError(message)
-        if _NATIVE_TYPE(self.anchor_policy) is not AnchorPolicy:
+        if _NATIVE_TYPE(anchor_policy) is not AnchorPolicy:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise SourceBindingPolicyError(message)
+
+
+# A consumer may replace dataclass class descriptors after this module loads.
+# Read the original stored policy slots for both validation and key binding.
+_POLICY_FRACTION_SLOT = cast(
+    "MemberDescriptorType", SourceBindingPolicy.__dict__["threshold_fraction"]
+)
+_POLICY_MAXIMUM_SLOT = cast(
+    "MemberDescriptorType", SourceBindingPolicy.__dict__["maximum_anchors"]
+)
+_POLICY_MINIMUM_SLOT = cast(
+    "MemberDescriptorType", SourceBindingPolicy.__dict__["minimum_anchor_files"]
+)
+_POLICY_ANCHORS_SLOT = cast(
+    "MemberDescriptorType", SourceBindingPolicy.__dict__["anchor_policy"]
+)
+
+
+def _policy_fields(
+    policy: SourceBindingPolicy,
+) -> tuple[float, int, int, AnchorPolicy]:
+    return (
+        _POLICY_FRACTION_SLOT.__get__(policy, SourceBindingPolicy),
+        _POLICY_MAXIMUM_SLOT.__get__(policy, SourceBindingPolicy),
+        _POLICY_MINIMUM_SLOT.__get__(policy, SourceBindingPolicy),
+        _POLICY_ANCHORS_SLOT.__get__(policy, SourceBindingPolicy),
+    )
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -511,12 +542,13 @@ def _select_anchor_materials(
     reference: IdentityTree,
     policy: SourceBindingPolicy,
 ) -> tuple[_AnchorMaterial, ...]:
-    per_file = _per_file_anchor_materials(reference, policy.anchor_policy)
+    _, maximum, minimum, anchors = _policy_fields(policy)
+    per_file = _per_file_anchor_materials(reference, anchors)
     if not per_file:
         message = "reference identity tree contains no bindable anchor material"
         raise SourceBindingPolicyError(message)
-    selected = _round_robin_materials(per_file, policy.maximum_anchors)
-    _require_distributed_materials(selected, policy.minimum_anchor_files)
+    selected = _round_robin_materials(per_file, maximum)
+    _require_distributed_materials(selected, minimum)
     return selected
 
 
@@ -624,10 +656,11 @@ def bind_secret(
     """
     _validate_bind_inputs(reference, secret, policy=policy, context=context)
     materials = _select_anchor_materials(reference, policy)
+    fraction, _, minimum_files, anchor_policy = _policy_fields(policy)
     # Interpret the configured float's canonical decimal as the policy value.
     # A float product can round a fraction just above k/N back to k and admit
     # fewer shares than required. Integer arithmetic keeps the ceiling exact.
-    fraction_value = _binding_fraction(policy.threshold_fraction)
+    fraction_value = _binding_fraction(fraction)
     fraction = Decimal(_NATIVE_STR(fraction_value))
     fraction_numerator, fraction_denominator = fraction.as_integer_ratio()
     numerator = _NATIVE_LEN(materials) * fraction_numerator
@@ -635,7 +668,7 @@ def bind_secret(
         _ONE,
         (numerator + fraction_denominator - _ONE) // fraction_denominator,
     )
-    if threshold < policy.minimum_anchor_files:
+    if threshold < minimum_files:
         message = "source-binding threshold must reach minimum anchor files"
         raise SourceBindingPolicyError(message)
     raw_shares = _split_secret(
@@ -665,10 +698,10 @@ def bind_secret(
     return ThresholdBinding(
         context=context,
         threshold=threshold,
-        minimum_anchor_files=policy.minimum_anchor_files,
+        minimum_anchor_files=minimum_files,
         secret_length=_NATIVE_LEN(secret),
         secret_commitment=_secret_commitment(context, secret),
-        anchor_policy=policy.anchor_policy,
+        anchor_policy=anchor_policy,
         shares=bound_shares,
     )
 
