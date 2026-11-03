@@ -2056,6 +2056,21 @@ also passed 845 tests together. The bounded repository-wide Jig check
 exceeded 75 seconds without a green verdict; direct trusted-state mutation
 and external host/filesystem races remain open.
 
+Relocatable path composition now also pins original `Path.joinpath` and
+inherited `PurePath.joinpath` together with `__truediv__` and `__itruediv__`
+on all native path classes (`89d92c1c5`). Before this guard, a late
+`joinpath` replacement could change the source file read or output file
+published to a different in-root path without violating root containment.
+Replacing forward or in-place division could hide a symlinked ancestor
+from the linked-path preflight. Eight red-first regressions reject these
+substitutions before invoking their callbacks. All 287 focused relocatable
+tests pass postcommit, and 1,015 adjacent exact, compatible, model, and
+relocatable tests passed precommit. Scoped Ruff, strict source/test typing,
+and diff checks were clean. The global Jig check failed on existing
+repository text/version findings and doctor reports an absent graph.
+Direct trusted-state mutation and concurrent filesystem writers remain
+outside this process guard.
+
 Relocatable authoring now creates internal `RangeLocator`,
 `RelocatableSourceRange`, `RelocatableInstruction`, and
 `RelocatableAuthoringPlan` records using captured native allocation and the

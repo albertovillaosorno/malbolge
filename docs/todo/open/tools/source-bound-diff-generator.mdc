@@ -198,6 +198,16 @@ format.
   combined changed-domain suite passed 845 tests. Scoped Ruff, strict
   source/test typing, and diff checks pass. Global Jig check timed out at
   75 seconds; host and filesystem races remain outside this guard.
+- Relocatable path composition now pins original `Path.joinpath`, inherited
+  `PurePath.joinpath`, and both forward and in-place division operators on
+  concrete and inherited path classes (`89d92c1c5`). Late joinpath hooks
+  previously redirected source reads or output writes within accepted roots;
+  mutable division concealed linked ancestors. Eight red-first cases now
+  reject before running foreign callbacks. All 287 postcommit relocatable and
+  1,015 precommit adjacent tests pass, with scoped Ruff, strict source/test
+  typing, and diff checks clean. Global Jig still fails on repository-wide
+  text/version findings and doctor reports an absent graph. Filesystem races
+  remain outside this in-process guard.
 - Exact tree path resolution also checks import-original host `os.path`
   parser, `builtins.bytes`/`isinstance`/`len`, and `stat.S_ISDIR`
   (`a3069e595`). Nine red-first forged-parser/alias cases and 309 postcommit
