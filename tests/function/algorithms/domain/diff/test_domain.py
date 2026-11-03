@@ -1130,3 +1130,35 @@ def test_domain_loader_rejects_foreign_exec_completion(
         _ = load_diff_domain(module)
     added = frozenset(sys.modules) - previous_names
     assert not any(name.startswith("_malbolge_diff_domain_") for name in added)
+
+
+@pytest.mark.parametrize("reload_existing", [False, True])
+@pytest.mark.parametrize(
+    "changed_name", ["__name__ = 'foreign_alias'\n", "__name__ = []\n"]
+)
+def test_domain_failed_hook_validation_uses_original_registration_key(
+    tmp_path: Path,
+    changed_name: str,
+    reload_existing: bool,
+) -> None:
+    """Consumer __name__ mutation cannot defeat rejected-module rollback."""
+    module = tmp_path / "mutable_name.py"
+    name = domain_module._module_name(module.resolve())
+    assert name not in sys.modules
+    _write(module, _COMPLETE)
+    previous = None
+    try:
+        if reload_existing:
+            _ = load_diff_domain(module)
+            previous = sys.modules[name]
+        missing = _COMPLETE.replace(
+            "def build_behavior_programs():", "def invalid_hook():"
+        )
+        _write(module, missing + changed_name)
+        with pytest.raises(
+            DomainContractError, match="build_behavior_programs"
+        ):
+            _ = load_diff_domain(module)
+        assert sys.modules.get(name) is previous
+    finally:
+        _ = sys.modules.pop(name, None)

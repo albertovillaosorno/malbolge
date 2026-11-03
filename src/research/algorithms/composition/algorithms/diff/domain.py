@@ -315,7 +315,7 @@ def _prepare_module(
     return module, loader.exec_module
 
 
-def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
+def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None, str]:
     resolved = _regular_module_path(path)
     name = _module_name(resolved)
     module, exec_module = _prepare_module(resolved, name)
@@ -337,7 +337,7 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
             f"{_NATIVE_PATH_STRING(resolved)}"
         )
         raise DomainContractError(message)
-    return module, previous
+    return module, previous, name
 
 
 def _callable(module: ModuleType, name: str) -> Callable[..., object]:
@@ -366,11 +366,11 @@ def load_diff_domain(path: object) -> DiffDomain:
     if _NATIVE_TYPE(path) is not _NATIVE_PATH_TYPE:
         message = "diff domain module path must use exact pathlib Path"
         raise DomainContractError(message)
-    module, previous = _load_module(path)
+    module, previous, name = _load_module(path)
     try:
         return _validated_domain(module)
     except Exception:
-        _restore_domain_registration(module.__name__, module, previous)
+        _restore_domain_registration(name, module, previous)
         raise
 
 
