@@ -134,6 +134,15 @@ format.
   path parsing or host resolution. Two red-first cases and 175 postcommit
   emitter tests passed; scoped Ruff, strict BasedPyright, and diff checks
   are clean. External host and filesystem races remain outside this guard.
+- Emitter junction checks now guard the late `os.path.isjunction` dispatch
+  that the captured `Path.is_junction` still consults (`577f4bc09`). Two
+  red-first file/parent cases and 177 postcommit emitter tests passed;
+  scoped Ruff, strict typing, and diff checks are clean. External races remain.
+- Emitter diagnostic rendering now uses the original `BaseException` args
+  accessor (`bd601871c`) instead of a mutable builtin class alias. One
+  red-first forged-message case and 178 postcommit emitter tests passed;
+  Ruff, strict typing, and diff checks are clean. Direct state mutation and
+  concurrent host changes are outside this guard.
 - Rust emitter parent-directory staging now uses import-original
   `reversed()` (`e7ec05dca`). A forged post-import iterator previously
   silently skipped nested directory creation; one red-first regression and

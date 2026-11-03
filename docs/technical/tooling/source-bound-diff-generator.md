@@ -834,6 +834,20 @@ regressions and all 175 postcommit emitter tests pass, with scoped Ruff,
 strict BasedPyright, and diff checks clean. The guard does not prevent
 external host or filesystem races.
 
+The captured `Path.is_junction` still looks up the mutable host
+`os.path.isjunction` when classifying output files and parent directories.
+The emitter now rejects changes to that native dependency (`577f4bc09`)
+before a foreign callback can run. Two red-first cases and all 177 postcommit
+emitter tests pass, with scoped Ruff, strict typing, and diff checks clean.
+This does not close external filesystem or host mutation races.
+
+Emitter native diagnostic formatting now also captures the original
+`BaseException.__getattribute__` (`bd601871c`). A late builtins alias
+previously rewrote trusted error arguments through an attacker-defined
+accessor. The red-first forged-message test and all 178 postcommit emitter
+tests pass; scoped Ruff, strict typing, and diff checks remain clean. This
+is not isolation against direct trusted instance mutation or host races.
+
 Emitter parent-directory staging now also pins the import-original
 `reversed()` (`e7ec05dca`). A late replacement previously erased the parent
 walk, silently leaving a nested output stage uncreated. One red-first
