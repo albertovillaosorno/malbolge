@@ -106,6 +106,13 @@ _NATIVE_OS_FSPATH = os.fspath
 _NATIVE_OS_READLINK = os.readlink
 _NATIVE_OS_GETCWD = os.getcwd
 _NATIVE_STAT_ISLNK = stat.S_ISLNK
+_NATIVE_STAT_ISDIR = stat.S_ISDIR
+_NATIVE_HOST_PARSER = os.path
+_NATIVE_HOST_SPLITROOT = os.path.splitroot
+_NATIVE_HOST_SPLITDRIVE = os.path.splitdrive
+_NATIVE_HOST_JOIN = os.path.join
+_NATIVE_HOST_SEP = os.path.sep
+_NATIVE_HOST_ALTSEP = os.path.altsep
 # Path.resolve retains mutable host conversion, symlink, and Path factory
 # dependencies even when the resolver method itself is captured at import.
 # The original __str__ also calls lazy PurePath parser and tail descriptors;
@@ -215,6 +222,15 @@ def _require_native_host_resolution() -> None:
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
         or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
+        or os.path is not _NATIVE_HOST_PARSER
+        or os.path.splitroot is not _NATIVE_HOST_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_HOST_SPLITDRIVE
+        or os.path.join is not _NATIVE_HOST_JOIN
+        or os.path.sep is not _NATIVE_HOST_SEP
+        or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or builtins.bytes is not _NATIVE_BYTES
+        or builtins.len is not _NATIVE_LEN
         or builtins.isinstance is not _NATIVE_ISINSTANCE
         or builtins.hasattr is not _NATIVE_HASATTR
         or pathlib.__dict__.get("_PathParents") is not _NATIVE_PATH_PARENTS_TYPE

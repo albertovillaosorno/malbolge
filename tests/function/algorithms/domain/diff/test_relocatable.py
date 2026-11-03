@@ -1156,6 +1156,66 @@ def test_relocatable_path_rejects_post_import_resolver_spoof(
     assert calls == 0
 
 
+@pytest.mark.parametrize(
+    ("provider", "helper"),
+    [
+        ("host", "splitroot"),
+        ("host", "splitdrive"),
+        ("host", "join"),
+        ("builtins", "isinstance"),
+        ("builtins", "len"),
+        ("stat", "S_ISDIR"),
+    ],
+)
+def test_relocatable_resolve_rejects_late_host_parser_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    helper: str,
+) -> None:
+    """Original realpath must not invoke replaced parser or builtin hooks."""
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    module = {
+        "host": os.path,
+        "builtins": builtins,
+        "stat": relocatable_module.stat,
+    }[provider]
+    original = cast("Callable[..., object]", getattr(module, helper))
+    calls = 0
+
+    def watched(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(module, helper, watched)
+        try:
+            _ = relocatable_module._trusted_resolve(selected)
+        except RelocationError:
+            rejected = True
+    assert rejected, f"late {provider}.{helper} callback admitted"
+    assert calls == 0, f"late {provider}.{helper} callback executed"
+
+
+def test_relocatable_resolve_rejects_late_bytes_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced builtin bytes type cannot change realpath dispatch."""
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytes", str)
+        try:
+            _ = relocatable_module._trusted_resolve(selected)
+        except RelocationError:
+            rejected = True
+    assert rejected, "late bytes alias reached host realpath"
+
+
 def test_relocatable_output_rejects_late_host_realpath_redirection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
