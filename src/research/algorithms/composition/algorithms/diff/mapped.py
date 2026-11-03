@@ -208,7 +208,10 @@ _VIEW_UNITS_SLOT = cast("MemberDescriptorType", MappedView.__dict__["units"])
 
 
 def _revalidate_view(view: MappedView) -> None:
-    """Verify native view storage before serving canonical identity."""
+    """Verify exact native view storage before serving canonical identity."""
+    if _NATIVE_TYPE(view) is not MappedView:
+        message = "mapped view requires the exact MappedView type"
+        raise MappedViewError(message)
     try:
         _MAPPED_VIEW_VALIDATOR(view)
     except AttributeError as error:

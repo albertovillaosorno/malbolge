@@ -738,3 +738,28 @@ def test_public_mapped_readers_require_exact_record_types(record: str) -> None:
     else:
         with pytest.raises(MappedViewError, match="exact MappedView"):
             _ = read_mapped_view(cast("MappedView", object()))
+
+
+@pytest.mark.parametrize("property_name", ["canonical", "keys"])
+def test_mapped_identity_properties_reject_foreign_native_view_subclass(
+    property_name: str,
+) -> None:
+    """Inherited identity getters must not admit foreign mapped-view types."""
+
+    class ForeignMappedView(MappedView):
+        pass
+
+    foreign = ForeignMappedView(b"a", (MappedUnit(b"A", 0, 1),))
+    with pytest.raises(MappedViewError, match="exact MappedView"):
+        _ = foreign.canonical if property_name == "canonical" else foreign.keys
+
+
+@pytest.mark.parametrize("property_name", ["canonical", "keys"])
+def test_mapped_identity_properties_reject_foreign_unbound_receiver(
+    property_name: str,
+) -> None:
+    """Unbound native getters reject unrelated receivers with owned errors."""
+    getter = cast("property", MappedView.__dict__[property_name]).fget
+    assert getter is not None
+    with pytest.raises(MappedViewError, match="exact MappedView"):
+        _ = getter(object())
