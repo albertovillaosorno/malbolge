@@ -124,6 +124,30 @@ class ExactTreeError(RuntimeError):
     """Raised when exact planning or materialization cannot proceed safely."""
 
 
+# Snapshot receipts are created after filesystem reads and selection callbacks.
+# Reuse the model validators without consulting mutable class allocation hooks.
+_FILE_RECORD_INIT = cast(
+    "Callable[[FileRecord, str, str, int], None]",
+    FileRecord.__dict__["__init__"],
+)
+_TREE_SNAPSHOT_INIT = cast(
+    "Callable[[TreeSnapshot, tuple[FileRecord, ...]], None]",
+    TreeSnapshot.__dict__["__init__"],
+)
+
+
+def _new_file_record(path: str, sha256: str, size: int) -> FileRecord:
+    record = _NATIVE_OBJECT_NEW(FileRecord)
+    _FILE_RECORD_INIT(record, path, sha256, size)
+    return record
+
+
+def _new_tree_snapshot(files: tuple[FileRecord, ...]) -> TreeSnapshot:
+    snapshot = _NATIVE_OBJECT_NEW(TreeSnapshot)
+    _TREE_SNAPSHOT_INIT(snapshot, files)
+    return snapshot
+
+
 # Reconstruct the exact plan only with its original validating initializer.
 # Class hooks remain mutable even on frozen slotted model records.
 _EXACT_PLAN_INIT = cast(
@@ -448,7 +472,7 @@ def _filter_snapshot(
     *,
     inside: bool,
 ) -> TreeSnapshot:
-    return TreeSnapshot(
+    return _new_tree_snapshot(
         files=_NATIVE_TUPLE(
             record
             for record in _snapshot_files(snapshot)
@@ -785,7 +809,7 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
     relative = _NATIVE_RELATIVE_TO(path, root).as_posix()
     relative_path = _validate_relative_path(relative)
     data = read_exact_regular_file(path, "tree entry")
-    return FileRecord(
+    return _new_file_record(
         path=relative_path, sha256=_sha256(data), size=_NATIVE_LEN(data)
     )
 
@@ -860,7 +884,7 @@ def snapshot_tree(root: Path) -> TreeSnapshot:
         for path in _tree_paths(resolved_root)
         if (record := _record_file(resolved_root, path)) is not None
     )
-    return TreeSnapshot(files=_NATIVE_TUPLE(_NATIVE_SORTED(records)))
+    return _new_tree_snapshot(files=_NATIVE_TUPLE(_NATIVE_SORTED(records)))
 
 
 def snapshot_tree_excluding(
@@ -880,7 +904,7 @@ def snapshot_tree_excluding(
         for path in _tree_paths_excluding(resolved_root, roots)
         if (record := _record_file(resolved_root, path)) is not None
     )
-    return TreeSnapshot(files=_NATIVE_TUPLE(_NATIVE_SORTED(records)))
+    return _new_tree_snapshot(files=_NATIVE_TUPLE(_NATIVE_SORTED(records)))
 
 
 def _source_paths_by_content(

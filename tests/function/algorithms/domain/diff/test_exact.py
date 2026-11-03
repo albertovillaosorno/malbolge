@@ -3626,3 +3626,88 @@ with TemporaryDirectory() as directory:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+_SNAPSHOT_CONSTRUCTION_CASES = (
+    ("file", "normal"),
+    ("file", "excluded"),
+    ("tree", "normal"),
+    ("tree", "excluded"),
+    ("tree", "filtered"),
+)
+
+
+@pytest.mark.parametrize(("record", "entrypoint"), _SNAPSHOT_CONSTRUCTION_CASES)
+def test_exact_snapshot_ignores_late_record_init_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+    entrypoint: str,
+) -> None:
+    """Tree scans and passthrough filtering cannot forge snapshot metadata."""
+    source, _ = _synthetic_pair(tmp_path)
+    baseline = snapshot_tree(source)
+
+    def snapshot() -> TreeSnapshot:
+        if entrypoint == "excluded":
+            return snapshot_tree_excluding(source, ("assets",))
+        if entrypoint == "filtered":
+            return exact_module._filter_snapshot(baseline, ("assets",), inside=False)
+        return snapshot_tree(source)
+
+    expected = snapshot()
+    owner = FileRecord if record == "file" else TreeSnapshot
+    calls = 0
+
+    def forbidden_init(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late snapshot initializer executed")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__init__", forbidden_init)
+        assert snapshot() == expected
+    assert calls == 0
+
+
+@pytest.mark.parametrize(("record", "entrypoint"), _SNAPSHOT_CONSTRUCTION_CASES)
+def test_exact_snapshot_ignores_late_record_new_hook(
+    record: str,
+    entrypoint: str,
+) -> None:
+    """Test native snapshot allocation after class mutation in a child."""
+    script = f'''
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from test_exact import _synthetic_pair
+from algorithms.diff.exact import snapshot_tree, snapshot_tree_excluding, _filter_snapshot
+from algorithms.diff.model import FileRecord, TreeSnapshot
+with TemporaryDirectory() as directory:
+    source, _ = _synthetic_pair(Path(directory))
+    baseline = snapshot_tree(source)
+    def snapshot():
+        if {entrypoint!r} == "excluded":
+            return snapshot_tree_excluding(source, ("assets",))
+        if {entrypoint!r} == "filtered":
+            return _filter_snapshot(baseline, ("assets",), inside=False)
+        return snapshot_tree(source)
+    expected = snapshot()
+    owner = FileRecord if {record!r} == "file" else TreeSnapshot
+    def forbidden_new(*args, **kwargs):
+        raise AssertionError("late snapshot allocation executed")
+    owner.__new__ = staticmethod(forbidden_new)
+    assert snapshot() == expected
+'''
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
