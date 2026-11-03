@@ -509,6 +509,14 @@ format.
   tests passed; scoped Ruff and source BasedPyright reported zero errors
   (nine existing type warnings). Direct stored-record mutation and
   concurrent filesystem writers are not isolated; Jig remains unverified.
+- Observed behavior mirrors now preserve original `ProbeRunContext` source,
+  repository, and tool slots across copy callbacks and use the captured
+  initializer plus native allocation (`b7f2df5f9`), not `dataclasses.replace`.
+  Five red-first constructor/getter/source-drift forgeries pass with 149
+  postcommit behavior tests and 2,804 precommit integrated diff tests; scoped
+  Ruff and source BasedPyright report zero errors (nine older type warnings).
+  External filesystem races and direct stored-record edits are not solved;
+  Jig doctor is degraded and full check timed out after 110 seconds.
 - Source/oracle behavior authoring uses pinned host realpath resolution and
   canonical native path text to compare repository/tool bindings, so late path
   equality or resolution overrides cannot start a mismatched probe. Four

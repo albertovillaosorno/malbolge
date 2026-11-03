@@ -777,6 +777,21 @@ reported zero errors (nine existing type warnings). The boundary is late
 class-hook substitution, not directly rewritten record storage or races
 with external filesystem writers. Repository-wide Jig is not verified.
 
+Behavior mirror creation also now pins the admitted `ProbeRunContext`
+source, repository, and tool-binding slots and builds the derived mirror
+context with its original initializer and native allocation (`b7f2df5f9`).
+This replaces `dataclasses.replace` after mirror-copy callbacks, preventing
+late `__init__`/`__new__` or getter hooks from redirecting the mirrored
+process authority. The original candidate root is retained for each
+post-copy source-drift check, even when a class getter points instead to
+the unchanged mirror. Five red-first regressions cover these boundaries.
+All 149 behavior-program tests passed after commit; 2,804 integrated diff
+tests passed before commit. Scoped Ruff and source BasedPyright reported
+zero errors (nine existing type warnings). Direct private-state mutation
+and non-atomic external filesystem writes remain outside this guard.
+Repository-wide Jig doctor is degraded (cached graph absent); the full
+check did not finish within a 110-second bound.
+
 ### First DOOM Executable Identity Probe
 
 The first consumer program is
