@@ -38,7 +38,7 @@ import builtins
 import hashlib
 from dataclasses import dataclass
 from types import MemberDescriptorType
-from typing import cast
+from typing import Callable, cast
 
 _DEFAULT_WINDOW_BYTES = 32
 _DEFAULT_SELECTION_MODULUS = 64
@@ -60,18 +60,29 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_LEN = len
 _NATIVE_RANGE = range
 _NATIVE_TUPLE = tuple
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 
 class FingerprintPolicyError(ValueError):
     """Raised when stable-anchor policy is internally invalid."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class AnchorPolicy:
     """Deterministic content-defined anchor selection policy."""
 
     window_bytes: int = _DEFAULT_WINDOW_BYTES
     selection_modulus: int = _DEFAULT_SELECTION_MODULUS
+
+    def __init__(
+        self,
+        window_bytes: int = _DEFAULT_WINDOW_BYTES,
+        selection_modulus: int = _DEFAULT_SELECTION_MODULUS,
+    ) -> None:
+        """Validate anchor parameters with the captured original guard."""
+        _NATIVE_OBJECT_SETATTR(self, "window_bytes", window_bytes)
+        _NATIVE_OBJECT_SETATTR(self, "selection_modulus", selection_modulus)
+        _ANCHOR_POLICY_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Reject unusable anchor parameters.
@@ -94,6 +105,12 @@ class AnchorPolicy:
             raise FingerprintPolicyError(message)
 
 
+# Generated dataclass constructors resolve class validators late. Pin the
+# originals so consumer hooks cannot suppress or forge evidence admission.
+_ANCHOR_POLICY_VALIDATOR = cast(
+    "Callable[[AnchorPolicy], None]", AnchorPolicy.__dict__["__post_init__"]
+)
+
 # Preserve original slotted storage access across consumer-controlled hooks.
 _POLICY_WINDOW_SLOT = cast(
     "MemberDescriptorType", AnchorPolicy.__dict__["window_bytes"]
@@ -113,12 +130,18 @@ def _policy_fields(policy: AnchorPolicy) -> tuple[int, int]:
 _DEFAULT_POLICY = AnchorPolicy()
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class StableAnchor:
     """One selected source-content fingerprint and its authoring offset."""
 
     digest: bytes
     offset: int
+
+    def __init__(self, digest: bytes, offset: int) -> None:
+        """Validate source digest and offset with the original guard."""
+        _NATIVE_OBJECT_SETATTR(self, "digest", digest)
+        _NATIVE_OBJECT_SETATTR(self, "offset", offset)
+        _STABLE_ANCHOR_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require one exact SHA-256 digest and non-negative byte offset.
@@ -136,6 +159,10 @@ class StableAnchor:
             message = "stable anchor offset must be a non-negative integer"
             raise FingerprintPolicyError(message)
 
+
+_STABLE_ANCHOR_VALIDATOR = cast(
+    "Callable[[StableAnchor], None]", StableAnchor.__dict__["__post_init__"]
+)
 
 _ANCHOR_DIGEST_SLOT = cast(
     "MemberDescriptorType", StableAnchor.__dict__["digest"]
@@ -186,7 +213,7 @@ def _validate_anchor_coverage(coverage: AnchorCoverage) -> None:
         raise FingerprintPolicyError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class AnchorCoverage:
     """Measured overlap between reference and candidate stable anchors."""
 
@@ -194,10 +221,21 @@ class AnchorCoverage:
     total: int
     ratio: float
 
+    def __init__(self, matched: int, total: int, ratio: float) -> None:
+        """Validate coverage counts and ratio using the original guard."""
+        _NATIVE_OBJECT_SETATTR(self, "matched", matched)
+        _NATIVE_OBJECT_SETATTR(self, "total", total)
+        _NATIVE_OBJECT_SETATTR(self, "ratio", ratio)
+        _ANCHOR_COVERAGE_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require coverage counts and ratio to describe the same overlap."""
         _validate_anchor_coverage(self)
 
+
+_ANCHOR_COVERAGE_VALIDATOR = cast(
+    "Callable[[AnchorCoverage], None]", AnchorCoverage.__dict__["__post_init__"]
+)
 
 _COVERAGE_MATCHED_SLOT = cast(
     "MemberDescriptorType", AnchorCoverage.__dict__["matched"]

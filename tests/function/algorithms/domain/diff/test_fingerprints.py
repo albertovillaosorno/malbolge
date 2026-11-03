@@ -33,17 +33,20 @@
 """Tests for deterministic content-defined stable anchors."""
 
 import builtins
-from collections.abc import Iterable, Sized
 import hashlib
+from collections.abc import Iterable, Sized
+from dataclasses import replace
 from typing import cast
 
-from algorithms.diff.fingerprints import AnchorCoverage
-from algorithms.diff.fingerprints import AnchorPolicy
-from algorithms.diff.fingerprints import FingerprintPolicyError
-from algorithms.diff.fingerprints import StableAnchor
-from algorithms.diff.fingerprints import anchor_coverage
-from algorithms.diff.fingerprints import stable_anchors
 import pytest
+from algorithms.diff.fingerprints import (
+    AnchorCoverage,
+    AnchorPolicy,
+    FingerprintPolicyError,
+    StableAnchor,
+    anchor_coverage,
+    stable_anchors,
+)
 
 _BLOCK_COUNT = 256
 _INSERTION = b"target-only insertion that shifts all later offsets"
@@ -480,6 +483,93 @@ def test_anchor_functions_reject_foreign_runtime_types() -> None:
         )
     with pytest.raises(FingerprintPolicyError, match="foreign anchor"):
         _ = anchor_coverage((cast("StableAnchor", object()),), ())
+
+
+@pytest.mark.parametrize("record", ["policy", "anchor", "coverage"])
+def test_fingerprint_record_rejects_invalid_data_after_validator_swap(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """A late class hook cannot skip required fingerprint evidence checks."""
+    record_type = {
+        "policy": AnchorPolicy,
+        "anchor": StableAnchor,
+        "coverage": AnchorCoverage,
+    }[record]
+    calls = 0
+
+    def skip_validation(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__post_init__", skip_validation)
+        with pytest.raises(FingerprintPolicyError):
+            if record == "policy":
+                _ = AnchorPolicy(window_bytes=0)
+            elif record == "anchor":
+                _ = StableAnchor(digest=b"short", offset=0)
+            else:
+                _ = AnchorCoverage(matched=2, total=1, ratio=1.0)
+    assert calls == 0, "late validator admitted invalid source lineage evidence"
+
+
+@pytest.mark.parametrize("record", ["policy", "anchor", "coverage"])
+def test_fingerprint_record_preserves_valid_data_after_validator_swap(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """A late class hook cannot reject valid fingerprint evidence records."""
+    record_type = {
+        "policy": AnchorPolicy,
+        "anchor": StableAnchor,
+        "coverage": AnchorCoverage,
+    }[record]
+    calls = 0
+
+    def reject_every_record(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise FingerprintPolicyError("forged validator rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__post_init__", reject_every_record)
+        if record == "policy":
+            result = AnchorPolicy(window_bytes=16)
+            assert result.window_bytes == 16
+        elif record == "anchor":
+            anchor = StableAnchor(digest=b"x" * 32, offset=7)
+            assert anchor.offset == 7
+        else:
+            coverage = AnchorCoverage(matched=1, total=2, ratio=0.5)
+            assert coverage.ratio == 0.5
+    assert calls == 0, "late validator rejected valid source lineage evidence"
+
+
+@pytest.mark.parametrize("record", ["policy", "anchor", "coverage"])
+def test_fingerprint_dataclass_replace_keeps_native_validation(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Replacing immutable records cannot skip their original validators."""
+    original = {
+        "policy": AnchorPolicy(),
+        "anchor": StableAnchor(b"x" * 32, 0),
+        "coverage": AnchorCoverage(matched=1, total=2, ratio=0.5),
+    }[record]
+    calls = 0
+
+    def ignore_invalid(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(original), "__post_init__", ignore_invalid)
+        with pytest.raises(FingerprintPolicyError):
+            if record == "policy":
+                _ = replace(original, window_bytes=0)
+            elif record == "anchor":
+                _ = replace(original, digest=b"short")
+            else:
+                _ = replace(original, matched=3)
+    assert calls == 0, "dataclass replacement bypassed native validation"
 
 
 def test_anchor_coverage_rejects_incoherent_direct_construction() -> None:
