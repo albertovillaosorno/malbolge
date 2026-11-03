@@ -44,6 +44,7 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - bounded no-shell FIFO regression.
 import sys
 import textwrap
+from contextlib import nullcontext
 from dataclasses import fields, replace
 from pathlib import Path, PurePosixPath
 from types import MemberDescriptorType, SimpleNamespace
@@ -4096,3 +4097,91 @@ def test_exact_bound_reader_does_not_use_late_host_realpath(
         patched.setattr(os.path, "realpath", unused_realpath)
         actual = exact_module.read_exact_regular_file(source, "source")
     assert actual == b"admitted bytes"
+
+
+@pytest.mark.parametrize("hook", ["walk", "scandir"])
+@pytest.mark.parametrize("excluded", [False, True])
+def test_exact_snapshot_rejects_late_native_tree_traversal_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+    *,
+    excluded: bool,
+) -> None:
+    """Host traversal replacements cannot silently erase source-tree files."""
+    root = tmp_path / "source"
+    _write(root, "keep.bin", b"identity bytes")
+    _write(root, "runtime/dynamic.bin", b"runtime data")
+    baseline = (
+        snapshot_tree_excluding(root, ("runtime",))
+        if excluded
+        else snapshot_tree(root)
+    )
+    assert len(baseline.files) > 0
+    calls = 0
+
+    def forged_walk(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return iter(())
+
+    def forged_scandir(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return nullcontext(iter(()))
+
+    with monkeypatch.context() as patched:
+        if hook == "walk":
+            patched.setattr(os, "walk", forged_walk)
+        else:
+            patched.setattr(os, "scandir", forged_scandir)
+        with pytest.raises(ExactTreeError, match="traversal hooks changed"):
+            if excluded:
+                _ = snapshot_tree_excluding(root, ("runtime",))
+            else:
+                _ = snapshot_tree(root)
+    assert calls == 0, "late host traversal hooks erased source identity"
+    assert (
+        snapshot_tree_excluding(root, ("runtime",))
+        if excluded
+        else snapshot_tree(root)
+    ) == baseline
+
+
+@pytest.mark.parametrize("excluded", [False, True])
+def test_exact_snapshot_rejects_late_host_walk_join_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, excluded: bool
+) -> None:
+    """A late os.walk join dependency cannot erase an included subtree."""
+    root = tmp_path / "source"
+    _write(root, "nested/evidence.bin", b"source evidence")
+    (root / "empty").mkdir()
+    _write(root, "runtime/dynamic.bin", b"dynamic bytes")
+    baseline = (
+        snapshot_tree_excluding(root, ("runtime",))
+        if excluded
+        else snapshot_tree(root)
+    )
+    native_join = os.path.join
+    redirects = 0
+
+    def forged_join(*parts: str) -> str:
+        nonlocal redirects
+        if len(parts) == 2 and parts[0] == str(root) and parts[1] == "nested":
+            redirects += 1
+            return str(root / "empty")
+        return native_join(*parts)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "join", forged_join)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if excluded:
+                _ = snapshot_tree_excluding(root, ("runtime",))
+            else:
+                _ = snapshot_tree(root)
+    assert redirects == 0, "host walker redirected an included subtree"
+    assert (
+        snapshot_tree_excluding(root, ("runtime",))
+        if excluded
+        else snapshot_tree(root)
+    ) == baseline

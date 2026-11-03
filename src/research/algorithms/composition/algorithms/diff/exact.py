@@ -107,6 +107,8 @@ _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
+_NATIVE_OS_WALK = os.walk
+_NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
@@ -120,6 +122,7 @@ _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_RMTREE = shutil.rmtree
 _NATIVE_OS_FSPATH = os.fspath
 _NATIVE_OS_REALPATH = os.path.realpath
+_NATIVE_OS_PATH_JOIN = os.path.join
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Capturing Path.__str__ is insufficient: it reads a mutable cached slot,
 # and original filesystem operations call late Path.__fspath__ dispatch.
@@ -162,6 +165,7 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
             and (
                 os.fspath is not _NATIVE_OS_FSPATH
                 or os.path.realpath is not _NATIVE_OS_REALPATH
+                or os.path.join is not _NATIVE_OS_PATH_JOIN
             )
         )
         or _NATIVE_ANY(
@@ -560,6 +564,11 @@ def _walk_tree(
     root: Path,
 ) -> Iterator[tuple[Path, list[str], list[str]]]:
     _require_native_path_hooks()
+    # Path.walk is pinned, but it still calls mutable os.walk/os.scandir.
+    # Neither may be replaced by an earlier consumer of this module.
+    if os.walk is not _NATIVE_OS_WALK or os.scandir is not _NATIVE_OS_SCANDIR:
+        message = "exact tree traversal hooks changed"
+        raise ExactTreeError(message)
     try:
         yield from _NATIVE_PATH_WALK(root, on_error=_raise_tree_walk_error)
     except ExactTreeError:
