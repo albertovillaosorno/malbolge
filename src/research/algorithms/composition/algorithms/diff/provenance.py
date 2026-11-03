@@ -85,6 +85,8 @@ _NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
 _NATIVE_OS_ERROR = builtins.OSError
 _NATIVE_VALUE_ERROR = builtins.ValueError
 _NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+# Keep delegated exact-reader failures typed after consumer alias mutation.
+_NATIVE_EXACT_TREE_ERROR = ExactTreeError
 _NATIVE_ZIP = builtins.zip
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
@@ -477,7 +479,7 @@ def _host_error_detail(error: BaseException) -> str:
         _NATIVE_OS_ERROR,
         _NATIVE_VALUE_ERROR,
         _NATIVE_RUNTIME_ERROR,
-        ExactTreeError,
+        _NATIVE_EXACT_TREE_ERROR,
     ):
         arguments = cast(
             "tuple[object, ...]",
@@ -706,11 +708,11 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
     _require_unlinked_parent_components(root, relative)
     try:
         return read_exact_regular_file(path, "pinned source")
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _host_error_detail(error)
         message = f"pinned source read failed for {relative}: {detail}"
         failure = SourcePinError(message)
-        if _NATIVE_TYPE(error) is ExactTreeError:
+        if _NATIVE_TYPE(error) is _NATIVE_EXACT_TREE_ERROR:
             # Native note access bypasses late exact-error class getters.
             try:
                 notes = cast(

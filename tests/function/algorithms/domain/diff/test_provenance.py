@@ -2698,3 +2698,45 @@ def test_source_pin_utf8_rejection_survives_unicode_error_alias(
             builtins.__dict__["UnicodeError"] = original
     assert caught is not None, route
     assert type(caught.__cause__) is UnicodeEncodeError
+
+
+@pytest.mark.parametrize("with_note", [False, True])
+def test_source_pin_keeps_imported_exact_error_identity_after_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, with_note: bool
+) -> None:
+    """Late reader-error aliases cannot leak exact failures or erase diagnostics."""
+    _write(tmp_path, "README", b"trusted source")
+    failure = ExactTreeError("native pinned file denied")
+    if with_note:
+        BaseException.add_note(failure, "native provenance note")
+
+    def fail_read(_path: Path, _label: str) -> bytes:
+        raise failure
+
+    read_pinned = cast(
+        "Callable[[Path, Path, str], bytes]",
+        cast("object", vars(provenance_module)["_read_pinned_source"]),
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(provenance_module, "read_exact_regular_file", fail_read)
+        patched.setattr(provenance_module, "ExactTreeError", LookupError)
+        with pytest.raises(SourcePinError, match="native pinned file denied") as caught:
+            _ = read_pinned(tmp_path, tmp_path / "README", "README")
+    assert caught.value.__cause__ is failure
+    assert getattr(caught.value, "__notes__", []) == (
+        ["native provenance note"] if with_note else []
+    )
+
+
+def test_source_pin_error_detail_keeps_native_exact_type_after_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native delegated error messages remain available under late aliases."""
+    detail = cast(
+        "Callable[[BaseException], str]",
+        cast("object", vars(provenance_module)["_host_error_detail"]),
+    )
+    failure = ExactTreeError("native exact source failed")
+    with monkeypatch.context() as patched:
+        patched.setattr(provenance_module, "ExactTreeError", LookupError)
+        assert detail(failure) == "native exact source failed"
