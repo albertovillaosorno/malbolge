@@ -92,6 +92,9 @@ class MappedUnit:
             raise MappedViewError(message)
 
 
+# Keep exact record identities independent of later consumer module aliases.
+_NATIVE_UNIT_TYPE = MappedUnit
+
 # Dataclass-generated initializers look up ``__post_init__`` on the class.
 # Pin the original validation method so later class hooks cannot skip it.
 _MAPPED_UNIT_VALIDATOR = cast(
@@ -112,15 +115,15 @@ _UNIT_END_SLOT = cast("MemberDescriptorType", MappedUnit.__dict__["raw_end"])
 def _stored_mapped_unit(unit: MappedUnit) -> tuple[bytes, int, int]:
     """Read raw original slots only inside an already validating boundary."""
     return (
-        cast("bytes", _UNIT_CANONICAL_SLOT.__get__(unit, MappedUnit)),
-        cast("int", _UNIT_START_SLOT.__get__(unit, MappedUnit)),
-        cast("int", _UNIT_END_SLOT.__get__(unit, MappedUnit)),
+        cast("bytes", _UNIT_CANONICAL_SLOT.__get__(unit, _NATIVE_UNIT_TYPE)),
+        cast("int", _UNIT_START_SLOT.__get__(unit, _NATIVE_UNIT_TYPE)),
+        cast("int", _UNIT_END_SLOT.__get__(unit, _NATIVE_UNIT_TYPE)),
     )
 
 
 def read_mapped_unit(unit: MappedUnit) -> tuple[bytes, int, int]:
     """Validate native unit storage before exposing canonical span evidence."""
-    if _NATIVE_TYPE(unit) is not MappedUnit:
+    if _NATIVE_TYPE(unit) is not _NATIVE_UNIT_TYPE:
         message = "mapped unit reader requires the exact MappedUnit type"
         raise MappedViewError(message)
     try:
@@ -178,7 +181,7 @@ class MappedView:
             message = "mapped units must use the exact immutable tuple type"
             raise MappedViewError(message)
         if _NATIVE_ANY(
-            _NATIVE_TYPE(unit) is not MappedUnit for unit in units
+            _NATIVE_TYPE(unit) is not _NATIVE_UNIT_TYPE for unit in units
         ):
             message = "mapped view contains a foreign unit record"
             raise MappedViewError(message)
@@ -201,6 +204,8 @@ class MappedView:
         )
 
 
+_NATIVE_VIEW_TYPE = MappedView
+
 _MAPPED_VIEW_VALIDATOR = cast(
     "Callable[[MappedView], None]", MappedView.__dict__["__post_init__"]
 )
@@ -210,7 +215,7 @@ _VIEW_UNITS_SLOT = cast("MemberDescriptorType", MappedView.__dict__["units"])
 
 def _revalidate_view(view: MappedView) -> None:
     """Verify exact native view storage before serving canonical identity."""
-    if _NATIVE_TYPE(view) is not MappedView:
+    if _NATIVE_TYPE(view) is not _NATIVE_VIEW_TYPE:
         message = "mapped view requires the exact MappedView type"
         raise MappedViewError(message)
     try:
@@ -223,17 +228,17 @@ def _revalidate_view(view: MappedView) -> None:
 def _stored_mapped_view(view: MappedView) -> tuple[bytes, tuple[MappedUnit, ...]]:
     """Read original slots only inside a validating mapped-view boundary."""
     return (
-        cast("bytes", _VIEW_RAW_SLOT.__get__(view, MappedView)),
+        cast("bytes", _VIEW_RAW_SLOT.__get__(view, _NATIVE_VIEW_TYPE)),
         cast(
             "tuple[MappedUnit, ...]",
-            _VIEW_UNITS_SLOT.__get__(view, MappedView),
+            _VIEW_UNITS_SLOT.__get__(view, _NATIVE_VIEW_TYPE),
         ),
     )
 
 
 def read_mapped_view(view: MappedView) -> tuple[bytes, tuple[MappedUnit, ...]]:
     """Validate a native view before exposing its source and canonical units."""
-    if _NATIVE_TYPE(view) is not MappedView:
+    if _NATIVE_TYPE(view) is not _NATIVE_VIEW_TYPE:
         message = "mapped view reader requires the exact MappedView type"
         raise MappedViewError(message)
     _revalidate_view(view)

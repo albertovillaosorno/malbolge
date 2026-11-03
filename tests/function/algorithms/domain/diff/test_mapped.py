@@ -39,6 +39,7 @@ from types import MemberDescriptorType, SimpleNamespace
 from typing import cast
 
 import pytest
+from algorithms.diff import mapped as mapped_module
 from algorithms.diff.mapped import (
     MappedUnit,
     MappedView,
@@ -796,3 +797,43 @@ def test_mapped_identity_properties_reject_foreign_unbound_receiver(
     assert getter is not None
     with pytest.raises(MappedViewError, match="exact MappedView"):
         _ = getter(object())
+
+
+@pytest.mark.parametrize(
+    "entrypoint", ["unit-reader", "view-constructor", "view-reader", "canonical", "keys"]
+)
+def test_mapped_valid_native_receipts_ignore_late_module_class_aliases(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """Late module type aliases cannot falsely reject native mapped evidence."""
+    unit = MappedUnit(b"A", 0, 1)
+    view = MappedView(b"a", (unit,))
+    with monkeypatch.context() as patched:
+        patched.setattr(mapped_module, "MappedUnit", dict)
+        patched.setattr(mapped_module, "MappedView", dict)
+        if entrypoint == "unit-reader":
+            assert read_mapped_unit(unit) == (b"A", 0, 1)
+        elif entrypoint == "view-constructor":
+            assert read_mapped_view(MappedView(b"a", (unit,))) == (b"a", (unit,))
+        elif entrypoint == "view-reader":
+            assert read_mapped_view(view) == (b"a", (unit,))
+        elif entrypoint == "canonical":
+            assert view.canonical == b"A"
+        else:
+            assert view.keys == (b"A",)
+
+
+@pytest.mark.parametrize("record", ["unit", "view"])
+def test_mapped_foreign_receipts_reject_after_module_class_aliases(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Foreign dict records cannot exploit a replaceable module type alias."""
+    with monkeypatch.context() as patched:
+        patched.setattr(mapped_module, "MappedUnit", dict)
+        patched.setattr(mapped_module, "MappedView", dict)
+        if record == "unit":
+            with pytest.raises(MappedViewError, match="foreign unit"):
+                _ = MappedView(b"a", (cast("MappedUnit", cast("object", {})),))
+        else:
+            with pytest.raises(MappedViewError, match="exact MappedView"):
+                _ = read_mapped_view(cast("MappedView", cast("object", {})))
