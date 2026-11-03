@@ -73,6 +73,7 @@ _NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TUPLE = builtins.tuple
+_NATIVE_LIST = builtins.list
 _NATIVE_TYPE = builtins.type
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
@@ -680,7 +681,7 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
                 )
             except AttributeError:
                 notes = None
-            if _NATIVE_TYPE(notes) is list:
+            if _NATIVE_TYPE(notes) is _NATIVE_LIST:
                 for note in cast("list[object]", notes):
                     if _NATIVE_TYPE(note) is _NATIVE_STR:
                         BaseException.add_note(failure, note)

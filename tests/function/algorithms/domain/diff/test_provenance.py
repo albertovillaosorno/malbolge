@@ -590,6 +590,27 @@ def test_source_pin_native_error_fields_ignore_late_class_getter(
     )
 
 
+@pytest.mark.parametrize("replacement", [tuple, dict])
+def test_pinned_source_preserves_notes_after_builtin_list_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: type[object]
+) -> None:
+    """A consumer's list alias must not erase admitted native error notes."""
+    _write(tmp_path, "README", b"trusted")
+    native_error = ExactTreeError("native read blocked")
+    BaseException.add_note(native_error, "trusted reader note")
+
+    def fail_read(path: Path, context: str) -> bytes:
+        del path, context
+        raise native_error
+
+    with monkeypatch.context() as patched:
+        patched.setattr(provenance_module, "read_exact_regular_file", fail_read)
+        patched.setattr(builtins, "list", replacement)
+        with pytest.raises(SourcePinError, match="read failed") as caught:
+            provenance_module._read_pinned_source(tmp_path, tmp_path / "README", "README")
+    assert getattr(caught.value, "__notes__", []) == ["trusted reader note"]
+
+
 class _HostileExactError(ExactTreeError):
     """A delegated byte reader must not control failure formatting."""
 

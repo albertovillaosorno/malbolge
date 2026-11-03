@@ -91,6 +91,7 @@ _NATIVE_STR = builtins.str
 _NATIVE_LEN = builtins.len
 _NATIVE_BOOL = builtins.bool
 _NATIVE_TUPLE = builtins.tuple
+_NATIVE_LIST = builtins.list
 _NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_HASATTR = builtins.hasattr
 # Keep output containment independent of post-load pathlib hook swaps.
@@ -953,7 +954,7 @@ def _read_relocatable_bytes(path: Path, context: str) -> bytes:
                 )
             except AttributeError:
                 notes = None
-            if _NATIVE_TYPE(notes) is list:
+            if _NATIVE_TYPE(notes) is _NATIVE_LIST:
                 for note in cast("list[object]", notes):
                     if _NATIVE_TYPE(note) is _NATIVE_STR:
                         BaseException.add_note(failure, note)

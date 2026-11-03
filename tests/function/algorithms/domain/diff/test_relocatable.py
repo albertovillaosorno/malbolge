@@ -295,6 +295,26 @@ def test_relocatable_exact_reader_notes_ignore_late_class_getter(
     )
 
 
+@pytest.mark.parametrize("replacement", [tuple, dict])
+def test_relocatable_reader_preserves_notes_after_builtin_list_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: type[object]
+) -> None:
+    """A late list alias must not strip native exact-reader failure notes."""
+    native_error = ExactTreeError("native read failed")
+    BaseException.add_note(native_error, "trusted reader note")
+
+    def fail_read(path: Path, context: str) -> bytes:
+        del path, context
+        raise native_error
+
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "read_exact_regular_file", fail_read)
+        patched.setattr(builtins, "list", replacement)
+        with pytest.raises(RelocationError, match="read failed") as caught:
+            relocatable_module._read_relocatable_bytes(tmp_path / "missing.bin", "source")
+    assert getattr(caught.value, "__notes__", []) == ["trusted reader note"]
+
+
 @pytest.mark.parametrize(
     "method", ["is_symlink", "is_junction", "resolve"]
 )

@@ -2569,6 +2569,20 @@ def test_exact_regular_reader_cannot_dispatch_foreign_host_error_hooks(
     )
 
 
+@pytest.mark.parametrize("replacement", [tuple, dict])
+def test_exact_reader_preserves_native_notes_after_builtin_list_swap(
+    monkeypatch: pytest.MonkeyPatch, replacement: type[object]
+) -> None:
+    """Native file error-note propagation cannot trust a replaced list alias."""
+    native_error = OSError("native read failed")
+    BaseException.add_note(native_error, "trusted host note")
+    failure = ExactTreeError("typed read failed")
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "list", replacement)
+        exact_module._copy_native_failure_notes(native_error, failure)
+    assert getattr(failure, "__notes__", []) == ["trusted host note"]
+
+
 @pytest.mark.parametrize("forgery", ["raise", "replace"])
 def test_exact_host_detail_ignores_late_native_error_getter(
     monkeypatch: pytest.MonkeyPatch, forgery: str

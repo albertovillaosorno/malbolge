@@ -94,6 +94,7 @@ _NATIVE_SORTED = builtins.sorted
 _NATIVE_TYPE = builtins.type
 _NATIVE_LEN = builtins.len
 _NATIVE_TUPLE = builtins.tuple
+_NATIVE_LIST = builtins.list
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_BOOL = builtins.bool
 _NATIVE_STR = builtins.str
@@ -865,7 +866,7 @@ def _copy_native_failure_notes(
         )
     except AttributeError:
         return
-    if _NATIVE_TYPE(notes) is list:
+    if _NATIVE_TYPE(notes) is _NATIVE_LIST:
         for note in cast("list[object]", notes):
             if _NATIVE_TYPE(note) is _NATIVE_STR:
                 BaseException.add_note(failure, note)
