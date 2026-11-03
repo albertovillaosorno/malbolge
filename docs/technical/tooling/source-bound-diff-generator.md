@@ -986,6 +986,19 @@ consumer commands, prevent direct stored-object mutation, or make filesystem
 snapshots atomic against external writers. A repository-wide Jig pass remains
 unverified.
 
+The portable probe executor now verifies import-original `os.path.realpath`
+identity before and after all five native path resolution sites (`802787e78`).
+Previously a late replacement could redirect the probe source root or tool,
+launder a rooted symlink escape, or hide a repository alias to the source.
+Four post-import replacements and one mid-resolution mutation failed red-first
+and now reject with `ProbeExecutionError`.
+
+All 371 focused probe tests and 3,289 integrated diff tests passed. Scoped
+Ruff and strict source BasedPyright were clean; the test file retains six
+pre-existing type errors outside the new tests. Repository-wide Jig check
+reported unrelated hard failures and remains unverified. The resolver identity
+guard is not atomic against concurrent host mutation or filesystem writers.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record

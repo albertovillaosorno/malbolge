@@ -314,6 +314,14 @@ format.
   3,201 integrated diff tests passed. Scoped Ruff, strict source typing, and
   diff checks were clean. No claim is made for direct memory mutation,
   consumer command sandboxing, filesystem races, or full Jig validation.
+- Native probe path resolution now pins the import-original host
+  `os.path.realpath` before and after each of five sensitive resolves
+  (`802787e78`). Four red-first redirection/escape/alias cases plus one
+  mid-resolution mutation now fail closed; 371 focused and 3,289 integrated
+  diff tests passed, with scoped Ruff and strict source typing clean. The test
+  file still has six inherited typing errors, and the broader Jig check
+  reported unrelated hard failures. Host mutation races and concurrent
+  filesystem writers remain outside this hook-identity guarantee.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.
