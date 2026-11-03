@@ -59,7 +59,7 @@ from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sized
+    from collections.abc import Callable, Iterator, Sized
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.domain import DiffDomain
@@ -301,6 +301,81 @@ def test_generator_rejects_nonportable_recipe_paths_before_work(
             not recipe.output_algorithm.exists(),
             "invalid path created a transform",
         )
+
+
+@pytest.mark.parametrize(
+    ("unsafe_fragment", "spoofed_host_function"),
+    [("bad\x00path", "fspath"), ("bad\ud800path", "fsencode")],
+)
+@pytest.mark.parametrize(
+    "field", ["source_root", "oracle_root", "output_algorithm", "domain_module"]
+)
+def test_generator_path_rejects_late_host_encoding_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    unsafe_fragment: str,
+    spoofed_host_function: str,
+    field: str,
+) -> None:
+    """A late host conversion alias must not erase unsafe recipe path text."""
+    path = tmp_path / unsafe_fragment
+    fake = (
+        (lambda _: "harmless")
+        if spoofed_host_function == "fspath"
+        else (lambda _: b"harmless")
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(os, spoofed_host_function, fake)
+        try:
+            generate_module._validate_path(path, field)
+        except ValueError:
+            rejected = True
+    assert rejected, "late host path conversion admitted an unsafe recipe path"
+
+
+def test_generator_path_ignores_late_host_encoding_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid native authoring path is independent of late host aliases."""
+    valid = tmp_path / "native-path"
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "fspath", lambda _: "bad\x00path")
+        patched.setattr(os, "fsencode", lambda _: b"bad\x00path")
+        generate_module._validate_path(valid, "source_root")
+
+
+class _ForeignRawRecipeComponent:
+    """A crafted native Path component with executable membership hooks."""
+
+    def __contains__(self, value: object) -> bool:
+        del value
+        message = "foreign path component executed during preflight"
+        raise AssertionError(message)
+
+
+class _SkippingRawRecipeComponents(list[str]):
+    """A foreign collector that hides all paths during preflight."""
+
+    @override
+    def __iter__(self) -> Iterator[str]:
+        return iter(())
+
+
+@pytest.mark.parametrize("foreign_collector", [False, True])
+def test_generator_path_rejects_foreign_internal_components(
+    *, foreign_collector: bool
+) -> None:
+    """Native Path evidence cannot delegate validation to foreign records."""
+    candidate = Path("safe")
+    if foreign_collector:
+        candidate._raw_paths = _SkippingRawRecipeComponents(["bad\x00path"])
+    else:
+        candidate._raw_paths = [
+            cast("str", cast("object", _ForeignRawRecipeComponent()))
+        ]
+    with pytest.raises(TypeError, match="native.*component"):
+        generate_module._validate_path(candidate, "source_root")
 
 
 @pytest.mark.parametrize("profile", ["bad\x00profile", "bad\ud800profile"])

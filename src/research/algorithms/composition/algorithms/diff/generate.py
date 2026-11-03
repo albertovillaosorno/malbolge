@@ -37,7 +37,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 import math
-import os
+import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from ntpath import isreserved as _native_isreserved
@@ -68,6 +68,7 @@ _NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TUPLE = builtins.tuple
+_NATIVE_LIST = builtins.list
 _NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_TYPE = builtins.type
 _NATIVE_INT = builtins.int
@@ -75,6 +76,8 @@ _NATIVE_FLOAT = builtins.float
 _NATIVE_STR = builtins.str
 _NATIVE_BOOL = builtins.bool
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
+_FILESYSTEM_ENCODING = sys.getfilesystemencoding()
+_FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 # Domain callbacks cannot redefine the host path containment verdict.
 _NATIVE_IS_RELATIVE_TO = Path.is_relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
@@ -178,14 +181,27 @@ def _validate_path(value: object, name: str) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{name} must use exact pathlib Path"
         raise TypeError(message)
-    if _NUL in os.fspath(value):
-        message = f"{name} must be a usable path without NUL"
-        raise ValueError(message)
-    try:
-        _ = os.fsencode(value)
-    except UnicodeError as error:
-        message = f"{name} must be a usable path on this host"
-        raise ValueError(message) from error
+    # Python 3.14 Path may format its stored raw strings lazily through
+    # os.fspath. Check the native raw components directly: a later module
+    # hook cannot turn an unsafe path into benign preflight evidence.
+    components = value._raw_paths
+    if _NATIVE_TYPE(components) is not _NATIVE_LIST:
+        message = f"{name} must use a native path component list"
+        raise TypeError(message)
+    for component in components:
+        if _NATIVE_TYPE(component) is not _NATIVE_STR:
+            message = f"{name} must use native string path components"
+            raise TypeError(message)
+        if _NUL in component:
+            message = f"{name} must be a usable path without NUL"
+            raise ValueError(message)
+        try:
+            _ = component.encode(
+                _FILESYSTEM_ENCODING, errors=_FILESYSTEM_ERRORS
+            )
+        except UnicodeError as error:
+            message = f"{name} must be a usable path on this host"
+            raise ValueError(message) from error
 
 
 def _resolve_recipe_path(path: Path, name: str) -> Path:
