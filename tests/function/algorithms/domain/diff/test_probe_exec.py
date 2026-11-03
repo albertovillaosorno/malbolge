@@ -5215,3 +5215,129 @@ def test_probe_batch_rejects_missing_native_program_slots(
         _ = run_probe_program(
             cast("ProbeProgram", forged), _context(tmp_path / "source", tmp_path)
         )
+
+
+@pytest.mark.parametrize("record", ["snapshot", "file"])
+@pytest.mark.parametrize("phase", ["copy", "mirror", "original"])
+def test_probe_source_attestation_ignores_late_snapshot_comparators(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+    phase: str,
+) -> None:
+    """Consumer equality hooks cannot hide changed source or mirrored bytes."""
+    from algorithms.diff.model import FileRecord, TreeSnapshot
+
+    source = tmp_path / "source"
+    source.mkdir()
+    source_file = source / "input.txt"
+    _ = source_file.write_bytes(_ADMITTED_INPUT)
+    baseline = probe_exec_module._snapshot_probe_tree(source, "source")
+    calls = 0
+
+    def forged_equality(_left: object, _right: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            TreeSnapshot if record == "snapshot" else FileRecord,
+            "__eq__",
+            forged_equality,
+        )
+        if phase == "copy":
+            native_copytree = shutil.copytree
+
+            def corrupt_copy(
+                root: Path, target: Path, *, symlinks: bool = False
+            ) -> Path:
+                copied = native_copytree(root, target, symlinks=symlinks)
+                _ = (copied / "input.txt").write_bytes(b"injected")
+                return copied
+
+            patched.setattr(probe_exec_module, "_NATIVE_COPYTREE", corrupt_copy)
+            context = replace(
+                _context(source, tmp_path), enforce_source_immutable=False
+            )
+            with pytest.raises(
+                ProbeExecutionError, match="changed while creating"
+            ):
+                _ = run_probe_program(
+                    _program("copy-equality", "print('unreachable')"), context
+                )
+        else:
+            _ = source_file.write_bytes(b"changed")
+            if phase == "mirror":
+                with pytest.raises(
+                    ProbeExecutionError, match="isolated source mirror"
+                ):
+                    probe_exec_module._require_mirror_unchanged(
+                        source, baseline
+                    )
+            else:
+                with pytest.raises(
+                    ProbeExecutionError, match="candidate source tree"
+                ):
+                    probe_exec_module._require_original_source_unchanged(
+                        _context(source, tmp_path), baseline
+                    )
+    assert calls == 0, "source attestation consulted a mutable equality hook"
+
+
+@pytest.mark.parametrize("hook", ["path-division", "file-getter", "tree-files"])
+def test_probe_source_inode_identity_ignores_late_path_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Repository hardlink admission must stat the actual source-file inode."""
+    from algorithms.diff.model import FileRecord, TreeSnapshot
+
+    source = tmp_path / "source"
+    source.mkdir()
+    source_file = source / "input.txt"
+    _ = source_file.write_bytes(_ADMITTED_INPUT)
+    outside = tmp_path / "outside"
+    _ = outside.write_bytes(b"unrelated")
+    expected = (source_file.stat().st_dev, source_file.stat().st_ino)
+    foreign = (outside.stat().st_dev, outside.stat().st_ino)
+    assert expected != foreign
+    calls = 0
+    native_division = Path.__truediv__
+
+    def forged_division(root: Path, part: str) -> Path:
+        nonlocal calls
+        if root is source and part == "input.txt":
+            calls += 1
+            return outside
+        return native_division(root, part)
+
+    def forged_file_path(_record: FileRecord) -> str:
+        nonlocal calls
+        calls += 1
+        return "../outside"
+
+    def forged_file_list(_snapshot: TreeSnapshot) -> tuple[FileRecord, ...]:
+        nonlocal calls
+        calls += 1
+        return ()
+
+    with monkeypatch.context() as patched:
+        if hook == "path-division":
+            patched.setattr(Path, "__truediv__", forged_division)
+            with pytest.raises(ProbeExecutionError, match="path hooks changed"):
+                probe_exec_module._source_file_inode_keys(source)
+        else:
+            if hook == "file-getter":
+                patched.setattr(FileRecord, "path", property(forged_file_path))
+            else:
+                patched.setattr(
+                    TreeSnapshot, "files", property(forged_file_list)
+                )
+            observed = probe_exec_module._source_file_inode_keys(source)
+            assert expected in observed, "source inode identity was redirected"
+            assert foreign not in observed, (
+                "unrelated inode replaced actual source"
+            )
+    assert calls == 0, (
+        "untrusted path dispatch executed during inode validation"
+    )

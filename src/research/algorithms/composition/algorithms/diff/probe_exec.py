@@ -58,7 +58,15 @@ from types import MemberDescriptorType
 from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from algorithms.diff.exact import ExactTreeError, snapshot_tree
-from algorithms.diff.model import reserved_windows_component
+from algorithms.diff.model import (
+    _file_fields as _native_file_fields,
+)
+from algorithms.diff.model import (
+    _snapshot_files as _native_snapshot_files,
+)
+from algorithms.diff.model import (
+    reserved_windows_component,
+)
 
 if TYPE_CHECKING:
     from algorithms.diff.model import TreeSnapshot
@@ -2019,14 +2027,17 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
         ProbeExecutionError: Source identity changed during preflight.
 
     """
-    files = _snapshot_probe_tree(source, "source").files
+    files = _native_snapshot_files(_snapshot_probe_tree(source, "source"))
     try:
         return _NATIVE_FROZENSET(
             (status.st_dev, status.st_ino)
             for record in files
             for status in (
                 _native_inode_status(
-                    _NATIVE_PATH_STAT(source / record.path), "source"
+                    _NATIVE_PATH_STAT(
+                        source / _native_file_fields(record)[0]
+                    ),
+                    "source",
                 ),
             )
         )
@@ -2136,6 +2147,17 @@ def _require_repository_paths_disjoint(
                 _require_repository_argument_disjoint(argument, context, source)
 
 
+def _snapshots_match_native(left: TreeSnapshot, right: TreeSnapshot) -> bool:
+    """Compare native file slots without mutable dataclass equality hooks."""
+    left_fields = _NATIVE_TUPLE(
+        _native_file_fields(record) for record in _native_snapshot_files(left)
+    )
+    right_fields = _NATIVE_TUPLE(
+        _native_file_fields(record) for record in _native_snapshot_files(right)
+    )
+    return left_fields == right_fields
+
+
 def _require_mirror_unchanged(root: Path, baseline: TreeSnapshot) -> None:
     """Reject a persistent mirror change after every executed command.
 
@@ -2143,7 +2165,9 @@ def _require_mirror_unchanged(root: Path, baseline: TreeSnapshot) -> None:
         ProbeExecutionError: The isolated source mirror no longer matches.
 
     """
-    if _snapshot_probe_tree(root, "isolated source mirror") != baseline:
+    if not _snapshots_match_native(
+        _snapshot_probe_tree(root, "isolated source mirror"), baseline
+    ):
         message = "behavior probe modified its isolated source mirror"
         raise ProbeExecutionError(message)
 
@@ -2200,7 +2224,7 @@ def _run_isolated_batch(
             enforce_source_immutable=False,
         )
         baseline = _snapshot_probe_tree(mirror_root, "isolated source mirror")
-        if baseline != source:
+        if not _snapshots_match_native(baseline, source):
             message = "probe source tree changed while creating its mirror"
             raise ProbeExecutionError(message)
         transcripts: list[ProbeTranscript] = []
@@ -2221,13 +2245,13 @@ def _require_original_source_unchanged(
         ProbeExecutionError: The original source has changed or is unreadable.
 
     """
-    if (
-        baseline is not None
-        and _snapshot_probe_tree(
-            cast("Path", _probe_field(context, ProbeRunContext, "source_root")),
-            "source",
-        )
-        != baseline
+    if baseline is None:
+        return
+    source_root = cast(
+        "Path", _probe_field(context, ProbeRunContext, "source_root")
+    )
+    if not _snapshots_match_native(
+        _snapshot_probe_tree(source_root, "source"), baseline
     ):
         message = "behavior probe modified candidate source tree"
         raise ProbeExecutionError(message)
