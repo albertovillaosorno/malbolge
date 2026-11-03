@@ -74,6 +74,16 @@ _MIN_HARDLINK_COUNT = 2
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
+# Inode disjointness and executable admission cannot trust late host hooks.
+_NATIVE_OS_STAT = os.stat
+_NATIVE_PATH_STRING = Path.__str__
+
+
+def _native_path_stat(path: Path) -> os.stat_result:
+    return _NATIVE_OS_STAT(_NATIVE_PATH_STRING(path))
+
+
+_NATIVE_PATH_STAT = _native_path_stat
 # Native stream adapters can raise non-I/O ordinary exceptions as well.
 _PIPE_DEPENDENCY_ERRORS = (
     OSError,
@@ -510,7 +520,7 @@ def _native_executable_status(receipt: object) -> os.stat_result:
 
 def _require_executable(path: Path) -> None:
     try:
-        receipt = path.stat()
+        receipt = _NATIVE_PATH_STAT(path)
     except FileNotFoundError as error:
         message = "probe executable is unavailable"
         raise ProbeExecutionError(message) from error
@@ -1227,7 +1237,9 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
             (status.st_dev, status.st_ino)
             for record in files
             for status in (
-                _native_inode_status((source / record.path).stat(), "source"),
+                _native_inode_status(
+                    _NATIVE_PATH_STAT(source / record.path), "source"
+                ),
             )
         )
     except (OSError, ValueError, RuntimeError) as error:
@@ -1247,7 +1259,7 @@ def _repository_inode_status(path: Path) -> os.stat_result | None:
 
     """
     try:
-        return _native_inode_status(path.stat(), "repository")
+        return _native_inode_status(_NATIVE_PATH_STAT(path), "repository")
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:

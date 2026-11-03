@@ -441,7 +441,9 @@ def test_tool_executable_status_error_fails_closed(
             raise failure_type(message)
         return original_stat(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "stat", fail_stat)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_PATH_STAT", fail_stat
+    )
     with pytest.raises(ProbeExecutionError, match="status failed"):
         _ = run_probe_program(_program("blocked-tool", "pass"), context)
 
@@ -1682,7 +1684,9 @@ def test_repository_path_status_failure_is_typed(
             raise failure_type(message)
         return original_stat(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "stat", fail_stat)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_PATH_STAT", fail_stat
+    )
     program = ProbeProgram(
         "repository-inode-failure",
         (
@@ -1724,7 +1728,9 @@ def test_source_inode_status_failure_is_typed(
             raise failure_type(message)
         return original_stat(path, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "stat", fail_stat)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_PATH_STAT", fail_stat
+    )
     program = ProbeProgram(
         "source-inode-failure",
         (
@@ -2278,6 +2284,72 @@ def test_probe_context_rejects_foreign_path_subclasses_before_conversion(
         _ = build_context(foreign)
 
 
+def _hardlink_spoof_fixture(tmp_path: Path) -> tuple[Path, Path, Path, Path]:
+    source = tmp_path / "source"
+    source.mkdir()
+    original = source / "input.txt"
+    _ = original.write_text(_ORIGINAL_TEXT, encoding="utf-8")
+    alias = tmp_path / "alias.txt"
+    try:
+        os.link(original, alias)
+    except OSError, NotImplementedError:
+        pytest.skip("hard links unavailable")
+    decoy = tmp_path / "decoy.txt"
+    _ = decoy.write_text("unrelated", encoding="utf-8")
+    return source, original, alias, decoy
+
+
+def _assert_hardlink_disjoint(source: Path, alias: Path) -> None:
+    check = cast(
+        "Callable[[Path, Path], None]",
+        vars(probe_exec_module)["_require_disjoint_source_inode"],
+    )
+    with pytest.raises(
+        ProbeExecutionError, match="aliases original source inode"
+    ):
+        check(source, alias)
+
+
+def test_probe_disjoint_inode_rejects_post_import_path_stat_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late pathlib hook cannot conceal a source hardlink."""
+    source, original, alias, decoy = _hardlink_spoof_fixture(tmp_path)
+    native_stat = Path.stat
+
+    def forged_stat(
+        path: Path, *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if path == alias:
+            return native_stat(decoy)
+        return native_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "stat", forged_stat)
+        _assert_hardlink_disjoint(source, alias)
+    assert original.read_text(encoding="utf-8") == _ORIGINAL_TEXT
+
+
+def test_probe_disjoint_inode_rejects_post_import_os_stat_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late os.stat hook cannot conceal a source hardlink."""
+    source, original, alias, decoy = _hardlink_spoof_fixture(tmp_path)
+    native_stat = os.stat
+
+    def forged_stat(
+        path: str | os.PathLike[str], *, follow_symlinks: bool = True
+    ) -> os.stat_result:
+        if Path(path) == alias:
+            return native_stat(decoy)
+        return native_stat(path, follow_symlinks=follow_symlinks)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "stat", forged_stat)
+        _assert_hardlink_disjoint(source, alias)
+    assert original.read_text(encoding="utf-8") == _ORIGINAL_TEXT
+
+
 def test_probe_executable_rejects_foreign_status_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2293,7 +2365,9 @@ def test_probe_executable_rejects_foreign_status_receipt(
             return cast("os.stat_result", cast("object", foreign))
         return original_stat(path, follow_symlinks=follow_symlinks)
 
-    monkeypatch.setattr(Path, "stat", forged_stat)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_PATH_STAT", forged_stat
+    )
     require_executable = cast(
         "Callable[[Path], None]",
         vars(probe_exec_module)["_require_executable"],
@@ -2330,7 +2404,9 @@ def test_probe_inode_status_rejects_forged_foreign_receipts(
             return cast("os.stat_result", cast("object", forged))
         return original_stat(path, follow_symlinks=follow_symlinks)
 
-    monkeypatch.setattr(Path, "stat", fake_stat)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_PATH_STAT", fake_stat
+    )
     if role == "source":
         source_inodes = cast(
             "Callable[[Path], frozenset[tuple[int, int]]]",
@@ -2490,7 +2566,9 @@ def test_probe_host_boundaries_reject_foreign_formatters(
                 raise failure
             return original_stat(path, follow_symlinks=follow_symlinks)
 
-        monkeypatch.setattr(Path, "stat", fail_stat)
+        monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_PATH_STAT", fail_stat
+    )
         if operation == "source_inode":
             source_inodes = cast(
                 "Callable[[Path], frozenset[tuple[int, int]]]",
@@ -2554,7 +2632,9 @@ def test_probe_executable_status_error_does_not_format_foreign_exception(
             raise failure
         return original_stat(path, follow_symlinks=follow_symlinks)
 
-    monkeypatch.setattr(Path, "stat", fail_stat)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_PATH_STAT", fail_stat
+    )
     require_executable = cast(
         "Callable[[Path], None]",
         vars(probe_exec_module)["_require_executable"],
