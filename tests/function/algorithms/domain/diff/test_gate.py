@@ -35,9 +35,10 @@
 from __future__ import annotations
 
 import builtins
-from collections.abc import Iterable
 import hashlib
+from collections.abc import Iterable
 from dataclasses import replace
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, Self, cast
 
 import pytest
@@ -396,3 +397,96 @@ def test_gate_accepts_native_reasons_after_late_string_alias(
         patched.setattr(builtins, "str", _ForeignReason)
         evidence = combine_admission(source, behavior)
     assert evidence.reasons == ("source lineage admission failed",)
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "source_foreign",
+        "source_rejected",
+        "behavior_foreign",
+        "behavior_rejected",
+        "reasons_foreign_text",
+        "reasons_foreign_tuple",
+    ],
+)
+def test_gate_constructor_rejects_late_field_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    hook: str,
+) -> None:
+    """Direct gate construction must validate stored evidence and reasons."""
+    valid_source = _source_evidence("reference")
+    rejected_source = _source_evidence("unrelated")
+    valid_behavior = _behavior_evidence()
+    rejected_behavior = _behavior_evidence(compatible=False)
+    source = valid_source
+    behavior = valid_behavior
+    reasons: tuple[str, ...] = ()
+
+    if case == "source_foreign":
+        source = cast("TreeAdmissionEvidence", object())
+    elif case == "source_rejected":
+        source = rejected_source
+    elif case == "behavior_foreign":
+        behavior = cast("BehaviorEvidence", object())
+    elif case == "behavior_rejected":
+        behavior = rejected_behavior
+    elif case == "reasons_foreign_text":
+        source = rejected_source
+        reasons = (_ForeignReason("source lineage admission failed"),)
+    else:
+        class ForeignReasons(tuple[str, ...]):
+            pass
+
+        reasons = ForeignReasons(())
+
+    field = "reasons" if case.startswith("reasons_") else case.split("_")[0]
+    forged: object = {
+        "source": valid_source,
+        "behavior": valid_behavior,
+        "reasons": (
+            ("source lineage admission failed",)
+            if case == "reasons_foreign_text"
+            else ()
+        ),
+    }[field]
+    calls = 0
+
+    def forged_attribute(
+        value: TransformAdmissionEvidence, name: str
+    ) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", object.__getattribute__(value, name))
+
+    def forged_property(value: TransformAdmissionEvidence) -> object:
+        return forged_attribute(value, field)
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            original_slot = cast(
+                "MemberDescriptorType",
+                TransformAdmissionEvidence.__dict__[field],
+            )
+
+            def store(
+                value: TransformAdmissionEvidence, stored: object
+            ) -> None:
+                original_slot.__set__(value, stored)
+
+            patch.setattr(
+                TransformAdmissionEvidence,
+                field,
+                property(forged_property, store),
+            )
+        else:
+            patch.setattr(
+                TransformAdmissionEvidence, "__getattribute__", forged_attribute
+            )
+        with pytest.raises(AdmissionError):
+            _ = TransformAdmissionEvidence(source, behavior, reasons)
+    assert calls == 0, "late gate getter participated in admission"

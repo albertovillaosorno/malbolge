@@ -72,16 +72,22 @@ class TransformAdmissionEvidence:
             AdmissionError: Evidence records or reasons are inconsistent.
 
         """
-        source = _require_source_evidence(self.source)
-        behavior = _require_behavior_evidence(self.behavior)
-        if _NATIVE_TYPE(self.reasons) is not _NATIVE_TUPLE or _NATIVE_ANY(
-            _NATIVE_TYPE(reason) is not _NATIVE_STR for reason in self.reasons
+        owner = TransformAdmissionEvidence
+        source = _require_source_evidence(
+            cast("object", _GATE_SOURCE_SLOT.__get__(self, owner))
+        )
+        behavior = _require_behavior_evidence(
+            cast("object", _GATE_BEHAVIOR_SLOT.__get__(self, owner))
+        )
+        reasons = cast(
+            "tuple[object, ...]", _GATE_REASONS_SLOT.__get__(self, owner)
+        )
+        if _NATIVE_TYPE(reasons) is not _NATIVE_TUPLE or _NATIVE_ANY(
+            _NATIVE_TYPE(reason) is not _NATIVE_STR for reason in reasons
         ):
             message = "transform admission reasons must use exact strings"
             raise AdmissionError(message)
-        if _GATE_REASONS_SLOT.__get__(
-            self, TransformAdmissionEvidence
-        ) != _canonical_reasons(source, behavior):
+        if reasons != _canonical_reasons(source, behavior):
             message = "transform admission reasons do not match evidence"
             raise AdmissionError(message)
 
@@ -98,6 +104,12 @@ class TransformAdmissionEvidence:
 
 _GATE_REASONS_SLOT = cast(
     "MemberDescriptorType", TransformAdmissionEvidence.__dict__["reasons"]
+)
+_GATE_SOURCE_SLOT = cast(
+    "MemberDescriptorType", TransformAdmissionEvidence.__dict__["source"]
+)
+_GATE_BEHAVIOR_SLOT = cast(
+    "MemberDescriptorType", TransformAdmissionEvidence.__dict__["behavior"]
 )
 
 
