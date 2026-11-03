@@ -35,27 +35,32 @@
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.admission import AdmissionError
-from algorithms.diff.admission import AdmissionPolicy
-from algorithms.diff.admission import evaluate_admission
-from algorithms.diff.admission import identity_tree
-from algorithms.diff.behavior import BehaviorObservations
-from algorithms.diff.behavior import BehaviorProfile
-from algorithms.diff.behavior import BugObservation
-from algorithms.diff.behavior import BugProbe
-from algorithms.diff.behavior import BugState
-from algorithms.diff.behavior import CompatibilityObservation
-from algorithms.diff.behavior import CompatibilityProbe
-from algorithms.diff.behavior import IdentityObservation
-from algorithms.diff.behavior import IdentityProbe
-from algorithms.diff.behavior import evaluate_behavior
-from algorithms.diff.gate import TransformAdmissionEvidence
-from algorithms.diff.gate import combine_admission
-from algorithms.diff.gate import require_transform_admission
 import pytest
+from algorithms.diff.admission import (
+    AdmissionError,
+    AdmissionPolicy,
+    evaluate_admission,
+    identity_tree,
+)
+from algorithms.diff.behavior import (
+    BehaviorObservations,
+    BehaviorProfile,
+    BugObservation,
+    BugProbe,
+    BugState,
+    CompatibilityObservation,
+    CompatibilityProbe,
+    IdentityObservation,
+    IdentityProbe,
+    evaluate_behavior,
+)
+from algorithms.diff.gate import (
+    TransformAdmissionEvidence,
+    combine_admission,
+    require_transform_admission,
+)
 
 if TYPE_CHECKING:
     from algorithms.diff.admission import TreeAdmissionEvidence
@@ -73,9 +78,7 @@ def _expect(condition: object, message: str) -> None:
 def _tree(label: str) -> dict[str, bytes]:
     return {
         f"src/file-{file_index}.c": b"".join(
-            hashlib.sha256(
-                f"{label}:{file_index}:{block_index}".encode()
-            ).digest()
+            hashlib.sha256(f"{label}:{file_index}:{block_index}".encode()).digest()
             for block_index in range(_BLOCK_COUNT)
         )
         for file_index in range(_FILE_COUNT)
@@ -98,16 +101,12 @@ def _source_evidence(candidate_label: str) -> TreeAdmissionEvidence:
 
 def _behavior_evidence(*, compatible: bool = True) -> BehaviorEvidence:
     profile = BehaviorProfile(
-        identity=(
-            IdentityProbe(probe_id="identity", expected_digest=b"expected"),
-        ),
+        identity=(IdentityProbe(probe_id="identity", expected_digest=b"expected"),),
         compatibility=(CompatibilityProbe(probe_id="compatible"),),
         bugs=(BugProbe(probe_id="bug", correction_id="fix"),),
     )
     observations = BehaviorObservations(
-        identity=(
-            IdentityObservation(probe_id="identity", digest=b"expected"),
-        ),
+        identity=(IdentityObservation(probe_id="identity", digest=b"expected"),),
         compatibility=(
             CompatibilityObservation(
                 probe_id="compatible",
@@ -138,9 +137,7 @@ def test_source_lineage_cannot_replace_failed_compatibility() -> None:
     _expect(source.admitted, "exact source lineage unexpectedly failed")
     _expect(not behavior.admitted, "failed compatibility passed behavior")
     combined = combine_admission(source, behavior)
-    _expect(
-        not combined.admitted, "failed behavior was offset by source lineage"
-    )
+    _expect(not combined.admitted, "failed behavior was offset by source lineage")
     _expect(
         combined.reasons == ("behavior admission failed",),
         "combined gate reported the wrong failure family",
@@ -169,6 +166,34 @@ def test_gate_rejects_foreign_and_forged_evidence_records() -> None:
             behavior=behavior,
             reasons=(),
         )
+
+
+@pytest.mark.parametrize("failing_family", ["source", "behavior"])
+def test_gate_rejects_failed_evidence_after_admitted_descriptor_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    failing_family: str,
+) -> None:
+    """A domain callback cannot redefine the conjunctive decision property."""
+    source = _source_evidence(
+        "unrelated" if failing_family == "source" else "reference"
+    )
+    behavior = _behavior_evidence(compatible=failing_family != "behavior")
+    spoofed_type = type(source) if failing_family == "source" else type(behavior)
+
+    def forged_admitted(_: object) -> bool:
+        return True
+
+    failure = (
+        "source lineage admission failed"
+        if failing_family == "source"
+        else "behavior admission failed"
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(spoofed_type, "admitted", property(forged_admitted))
+        with pytest.raises(AdmissionError, match=failure):
+            _ = require_transform_admission(source, behavior)
+        with pytest.raises(AdmissionError, match="do not match evidence"):
+            _ = TransformAdmissionEvidence(source, behavior, reasons=())
 
 
 def test_combined_gate_accepts_only_when_both_families_pass() -> None:

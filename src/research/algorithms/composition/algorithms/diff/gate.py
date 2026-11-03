@@ -36,8 +36,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from algorithms.diff.admission import AdmissionError
-from algorithms.diff.admission import TreeAdmissionEvidence
+from algorithms.diff.admission import AdmissionError, TreeAdmissionEvidence
 from algorithms.diff.behavior import BehaviorEvidence
 
 
@@ -97,9 +96,11 @@ def _canonical_reasons(
     behavior: BehaviorEvidence,
 ) -> tuple[str, ...]:
     reasons: list[str] = []
-    if not source.admitted:
+    # Evidence records validate their immutable rejection reasons at creation.
+    # Do not delegate gate authority to late-bound consumer-visible properties.
+    if source.reasons:
         reasons.append("source lineage admission failed")
-    if not behavior.admitted:
+    if behavior.reasons:
         reasons.append("behavior admission failed")
     return tuple(reasons)
 
