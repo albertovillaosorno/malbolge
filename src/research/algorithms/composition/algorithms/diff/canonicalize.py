@@ -39,6 +39,9 @@ _CRLF = b"\r\n"
 _CR = b"\r"
 _LF = b"\n"
 _SPACE = 0x20
+_NATIVE_BYTEARRAY = bytearray
+_NATIVE_BOOL = bool
+_NATIVE_BYTES = bytes
 
 
 class CanonicalIdentityError(ValueError):
@@ -55,7 +58,7 @@ def normalize_line_endings(data: bytes) -> bytes:
         CanonicalIdentityError: Input does not use exact bytes.
 
     """
-    if type(data) is not bytes:
+    if type(data) is not _NATIVE_BYTES:
         message = "canonical identity input must use exact bytes"
         raise CanonicalIdentityError(message)
     return data.replace(_CRLF, _LF).replace(_CR, _LF)
@@ -75,21 +78,21 @@ def collapse_ascii_whitespace(data: bytes) -> bytes:
 
     """
     normalized = normalize_line_endings(data)
-    output = bytearray()
+    output = _NATIVE_BYTEARRAY()
     pending_space = False
     for value in normalized:
         if value in _ASCII_WHITESPACE:
-            pending_space = bool(output)
+            pending_space = _NATIVE_BOOL(output)
             continue
         if pending_space:
             output.append(_SPACE)
         output.append(value)
         pending_space = False
-    return bytes(output)
+    return _NATIVE_BYTES(output)
 
 
 def _require_formatting_policy(value: object) -> bool:
-    if type(value) is not bool:
+    if type(value) is not _NATIVE_BOOL:
         message = "identity formatting policy must use exact bool"
         raise CanonicalIdentityError(message)
     return value

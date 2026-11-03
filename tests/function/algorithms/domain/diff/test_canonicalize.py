@@ -34,17 +34,19 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-from typing import cast
+import builtins
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from algorithms.diff.canonicalize import CanonicalIdentityError
-from algorithms.diff.canonicalize import canonicalize_text_identity
-from algorithms.diff.canonicalize import collapse_ascii_whitespace
-from algorithms.diff.canonicalize import normalize_line_endings
 import pytest
+from algorithms.diff.canonicalize import (
+    CanonicalIdentityError,
+    canonicalize_text_identity,
+    collapse_ascii_whitespace,
+    normalize_line_endings,
+)
 
 _NORMALIZED_LINES = b"alpha\nbeta\ngamma\n"
 _PRESERVED_SPACING = b"alpha  beta\n"
@@ -77,6 +79,51 @@ def test_formatting_preservation_mode_keeps_spacing() -> None:
     source = b"alpha  beta\r\n"
     observed = canonicalize_text_identity(source, ignore_formatting=False)
     _expect(observed == _PRESERVED_SPACING, "formatting changed unexpectedly")
+
+
+class _DiscardedCanonicalBuffer:
+    """Simulate a consumer-controlled byte accumulator."""
+
+    def append(self, value: int) -> None:
+        _ = value
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __bytes__(self) -> bytes:
+        return b""
+
+
+def test_canonicalization_ignores_late_bytearray_collector_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late builtin mutation cannot erase canonical source identity."""
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bytearray", _DiscardedCanonicalBuffer)
+        observed = collapse_ascii_whitespace(b"alpha   beta")
+    _expect(observed == b"alpha beta", "forged collector erased identity")
+
+
+def test_canonicalization_ignores_late_bool_space_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late builtin mutation cannot remove meaningful token boundaries."""
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", lambda _: False)
+        observed = collapse_ascii_whitespace(b"alpha  beta")
+    _expect(observed == b"alpha beta", "forged bool removed token boundary")
+
+
+def test_late_bool_substitution_cannot_reclassify_formatting_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-boolean policy value cannot become a boolean by builtin swap."""
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", int)
+        with pytest.raises(CanonicalIdentityError, match="exact bool"):
+            _ = canonicalize_text_identity(
+                b"alpha", ignore_formatting=cast("bool", cast("object", 1))
+            )
 
 
 @pytest.mark.parametrize(
