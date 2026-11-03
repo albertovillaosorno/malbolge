@@ -2248,6 +2248,20 @@ generator tests passed 65 with one skip. Global Jig checks remain degraded or
 failing on broader text/version rules; no clean repository-wide Jig verdict is
 claimed. External filesystem races and trusted direct mutations remain open.
 
+Probe native exception reporting now reads exact `ExactTreeError` and
+`ProbeExecutionError` arguments through `BaseException` rather than late class
+getters (`ad3a4a6f3`). Three red-first direct/snapshot cases reject hostile
+accessors; all 418 probe tests passed postcommit, with scoped Ruff, strict
+source typing, and diff checks clean. Six inherited test typing diagnostics
+remain outside changed lines.
+
+Rust emission failure reporting applies the same native slot read to exact
+`RustEmissionError` instances (`424ea47b1`). Two red-first direct/output-status
+cases verify original error detail and cause without executing late class
+getters; all 165 emitter tests passed postcommit. Scoped Ruff, strict
+source/test BasedPyright, and diff checks are clean. Neither guard prevents
+external filesystem races or direct trusted storage mutation.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:
