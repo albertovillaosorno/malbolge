@@ -318,6 +318,20 @@ tests rechecked after publication. The integrated diff suite previously passed
 source BasedPyright remained error-free. This protects in-process class-hook
 substitution, not direct stored-instance edits or external filesystem races.
 
+The public `require_source_pin()` boundary now revalidates both the exact
+native `SourcePin` revision record and the resulting `SourcePinEvidence`
+snapshot receipt using the original captured validators (`30bcce4c5`).
+A constructor-bypassed pin with an empty revision label, incomplete fields,
+or foreign numeric/digest subclasses could previously certify a matching
+filesystem snapshot despite invalid revision metadata. Forged exact snapshot
+receipts with equality-compatible foreign values are now also rejected before
+comparison. Ten initial red-first cases exposed the bypass and four further
+cases cover equality-compatible foreign types; all 154 provenance and 3,074
+integrated diff tests passed. Scoped Ruff, strict BasedPyright, and diff checks
+were clean. This does not provide concurrent writer exclusion or isolation
+from trusted direct stored-instance mutation, and global Jig validation still
+lacks a green result.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from

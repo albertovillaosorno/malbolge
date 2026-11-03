@@ -708,6 +708,14 @@ format.
   integrated diff suite had passed 2,840 tests before the provenance commit.
   Scoped Ruff and source BasedPyright were error-free. Direct private record
   edits and external concurrent filesystem writes remain outside this guard.
+- Public source-pin admission now reruns captured `SourcePin` and
+  `SourcePinEvidence` validators before trusting exact revision/snapshot
+  receipts (`30bcce4c5`). Ten initial red-first cases exposed forged native
+  records; four further cases cover equality-compatible foreign count/digest
+  types. All 154 focused provenance and 3,074 integrated diff tests passed;
+  scoped Ruff, strict BasedPyright, and diff checks were clean. Global Jig
+  still lacks a green verdict; direct stored-instance mutation and external
+  filesystem writers remain outside this process boundary.
 
 - Source-binding policies now verify original stored `AnchorPolicy`
   dimensions, and bind/recover preflight rejects incomplete native binding,
