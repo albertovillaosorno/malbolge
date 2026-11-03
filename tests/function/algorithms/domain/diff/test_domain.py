@@ -165,7 +165,9 @@ def test_domain_loader_rejects_late_native_path_format_redirect(
         return native_format(drive, root, tail)
 
     with monkeypatch.context() as patched:
-        patched.setattr(PurePath, "_format_parsed_parts", classmethod(forged_format))
+        patched.setattr(
+            PurePath, "_format_parsed_parts", classmethod(forged_format)
+        )
         with pytest.raises(DomainContractError, match="path hooks changed"):
             _ = load_diff_domain(selected)
     assert calls == 0, "late pathname formatting reached module selection"
@@ -209,7 +211,7 @@ def test_domain_loader_rejects_late_native_parent_factory_bypass(
 def test_domain_loader_rejects_late_host_splitroot_redirection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An uncached Path cannot import an unselected source through host parsing."""
+    """An uncached Path cannot import another source through host parsing."""
     admitted = tmp_path / "admitted.py"
     redirected = tmp_path / "redirected.py"
     _write(admitted, _COMPLETE.replace("return None", "return 'admitted'"))
@@ -265,7 +267,9 @@ def test_domain_loader_rejects_path_factory_swap_after_module_execution(
         with pytest.raises(DomainContractError, match="path hooks changed"):
             _ = load_diff_domain(module)
     new_modules = set(sys.modules) - before
-    assert not any(name.startswith("_malbolge_diff_domain_") for name in new_modules)
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in new_modules
+    )
 
 
 def test_domain_path_hook_guard_ignores_late_any_override(

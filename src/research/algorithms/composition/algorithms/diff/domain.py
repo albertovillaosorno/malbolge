@@ -135,7 +135,9 @@ _PATH_HOOK_NAMES = (
 _NATIVE_PATH_HOOKS = _NATIVE_TUPLE(
     (
         cls,
-        _NATIVE_TUPLE((name, cls.__dict__.get(name)) for name in _PATH_HOOK_NAMES),
+        _NATIVE_TUPLE(
+            (name, cls.__dict__.get(name)) for name in _PATH_HOOK_NAMES
+        ),
     )
     for cls in _NATIVE_PATH_TYPE.__mro__
     if issubclass(cls, PurePath)

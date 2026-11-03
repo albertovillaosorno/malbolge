@@ -316,7 +316,9 @@ uncached path normalization (`32caad32e`). A substituted splitter previously
 redirected an admitted module path to unrelated code. Two red-first cases and
 all 120 focused domain tests pass postcommit; scoped Ruff, strict source/test
 BasedPyright and diff checks are clean. Later shared validation passed 3,616
-diff tests. This hook guard is not an atomic external path snapshot.
+diff tests.
+
+This hook guard is not an atomic external path snapshot.
 
 The guard does not sandbox authorized consumer code, prevent direct trusted
 object mutations, or make host filesystem checks atomic. Global Jig remains
