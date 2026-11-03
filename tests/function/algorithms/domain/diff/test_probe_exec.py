@@ -740,6 +740,31 @@ def test_successful_probe_ignores_late_os_kill_hook(
     assert not intercepted, "untrusted host kill controlled group cleanup"
 
 
+@pytest.mark.skipif(os.name != _POSIX_OS_NAME, reason="POSIX group cleanup")
+@pytest.mark.parametrize("replacement", [0, signal.SIGTERM])
+def test_successful_probe_ignores_late_signal_enum_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: int
+) -> None:
+    """A late signal-enum replacement cannot turn SIGKILL into a no-op."""
+    source = tmp_path / "source"
+    source.mkdir()
+    observed_signals: list[int] = []
+
+    def capture_signal(pid: int, signum: int) -> None:
+        del pid
+        observed_signals.append(signum)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(signal, "Signals", {"SIGKILL": replacement})
+        patched.setattr(probe_exec_module, "_NATIVE_OS_KILL", capture_signal)
+        observed = run_probe_program(
+            _program("immutable-group-signal", "print('complete')"),
+            _context(source, tmp_path),
+        )
+    assert isinstance(observed, ProbeTranscript)
+    assert observed_signals == [int(signal.Signals["SIGKILL"])]
+
+
 def _reject_group_kill_for_test(
     monkeypatch: pytest.MonkeyPatch,
 ) -> tuple[list[int], Callable[[int, int], None]]:

@@ -131,6 +131,12 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_BOOL = builtins.bool
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_INT = builtins.int
+# A late signal enum alias must not downgrade process-group termination.
+_NATIVE_GROUP_SIGNAL = (
+    _NATIVE_INT(signal.Signals["SIGKILL"])
+    if os.name == _POSIX_OS_NAME
+    else _ZERO
+)
 _NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_ZIP = builtins.zip
 _NATIVE_ALL = builtins.all
@@ -1369,7 +1375,7 @@ def _signal_probe_group(process: subprocess.Popen[bytes]) -> OSError | None:
 
     """
     try:
-        _NATIVE_OS_KILL(-process.pid, _NATIVE_INT(signal.Signals["SIGKILL"]))
+        _NATIVE_OS_KILL(-process.pid, _NATIVE_GROUP_SIGNAL)
     except ProcessLookupError:
         return None
     except OSError as error:
