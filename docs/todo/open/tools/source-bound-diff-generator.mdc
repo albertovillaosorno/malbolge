@@ -671,6 +671,14 @@ format.
   passed; 180 source-binding tests passed postcommit with scoped Ruff and
   strict BasedPyright at zero errors. Instance-storage edits and external
   source-tree races remain out of scope.
+- Source-bound key authoring and recovery now revalidate original native
+  `IdentityTree`/`IdentityFile` invariants, rejecting constructor-bypassing
+  noncanonical paths, unsorted trees, foreign files, and mutable nested
+  identities (`09dec4c43`). Four red-first path/tree bypasses and ten more
+  shape/late-validator cases passed; 194 focused and 2,938 integrated diff
+  tests passed, with scoped Ruff, strict BasedPyright, and diff checks clean.
+  Jig doctor remains degraded (graph absent), and its global check timed out;
+  external writers and direct instance mutation are still out of scope.
 - `passthrough_roots` are authenticated plan metadata. Source/oracle must match
   there
   during authoring, but later runtime bytes and candidate-only files under those

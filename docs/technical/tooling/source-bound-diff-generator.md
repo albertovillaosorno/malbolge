@@ -986,6 +986,18 @@ All 180 postcommit source-binding tests passed, along with scoped Ruff and
 strict BasedPyright at zero errors. Direct instance mutation and external
 source writers remain outside this guard.
 
+Source identity admission now also reruns import-pinned original
+`IdentityTree` and `IdentityFile` validators at both key-binding and recovery
+entry points (`09dec4c43`). Constructor-bypassing native records with an unsafe
+relative path, unsorted file tree, foreign file, or mutable nested evidence
+cannot reach anchor selection. Four red-first unsafe-path/tree cases and ten
+additional shape/late-validator cases pass. The source-binding suite passed
+194 tests postcommit and the integrated diff suite passed 2,938 tests before
+commit; scoped Ruff, strict BasedPyright, and diff checks were clean. Jig
+doctor remains degraded with a missing graph, and a bounded global check timed
+out with no passing verdict. This is a record-admission boundary, not isolation
+from deliberate direct instance mutation or concurrent filesystem writers.
+
 The authenticated-encryption primitive itself is now implemented separately
 using
 RFC 8439 ChaCha20-Poly1305. Its Section 2.8.2 test vector matches exactly,
