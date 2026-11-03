@@ -51,13 +51,14 @@ from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from algorithms.diff.admission import IdentityFile, IdentityTree
-from algorithms.diff.fingerprints import AnchorPolicy, stable_anchors
-
-if TYPE_CHECKING:
-    from algorithms.diff.fingerprints import StableAnchor
+from algorithms.diff.fingerprints import (
+    AnchorPolicy,
+    StableAnchor,
+    stable_anchors,
+)
 
 _SHA256_BYTES = 32
 _SHA256_BLOCK_BYTES = 64
@@ -239,6 +240,30 @@ class _RecoveredShare:
     source_path: str
     x: int
     value: bytes
+
+
+# Imported fingerprint records and the window policy are also evidence.
+_STABLE_ANCHOR_DIGEST_SLOT = cast(
+    "MemberDescriptorType", StableAnchor.__dict__["digest"]
+)
+_STABLE_ANCHOR_OFFSET_SLOT = cast(
+    "MemberDescriptorType", StableAnchor.__dict__["offset"]
+)
+_ANCHOR_POLICY_WINDOW_SLOT = cast(
+    "MemberDescriptorType", AnchorPolicy.__dict__["window_bytes"]
+)
+
+
+def _stable_anchor_digest(value: StableAnchor) -> bytes:
+    return _STABLE_ANCHOR_DIGEST_SLOT.__get__(value, StableAnchor)
+
+
+def _stable_anchor_offset(value: StableAnchor) -> int:
+    return _STABLE_ANCHOR_OFFSET_SLOT.__get__(value, StableAnchor)
+
+
+def _anchor_policy_window(value: AnchorPolicy) -> int:
+    return _ANCHOR_POLICY_WINDOW_SLOT.__get__(value, AnchorPolicy)
 
 
 # Private intermediate evidence cannot be reinterpreted by consumer hooks.
@@ -626,10 +651,12 @@ def _anchor_window(
     anchor: StableAnchor,
     policy: AnchorPolicy,
 ) -> bytes:
-    if _NATIVE_LEN(_identity_canonical(identity_file)) < policy.window_bytes:
+    window_bytes = _anchor_policy_window(policy)
+    if _NATIVE_LEN(_identity_canonical(identity_file)) < window_bytes:
         return _identity_canonical(identity_file)
-    end = anchor.offset + policy.window_bytes
-    return _identity_canonical(identity_file)[anchor.offset : end]
+    offset = _stable_anchor_offset(anchor)
+    end = offset + window_bytes
+    return _identity_canonical(identity_file)[offset:end]
 
 
 def _file_anchor_materials(
@@ -638,12 +665,12 @@ def _file_anchor_materials(
 ) -> tuple[_AnchorMaterial, ...]:
     anchors = _NATIVE_SORTED(
         stable_anchors(_identity_canonical(identity_file), policy),
-        key=lambda anchor: anchor.digest,
+        key=lambda anchor: _stable_anchor_digest(anchor),
     )
     return _NATIVE_TUPLE(
         _AnchorMaterial(
             source_path=_identity_path(identity_file),
-            digest=anchor.digest,
+            digest=_stable_anchor_digest(anchor),
             window=_anchor_window(identity_file, anchor, policy),
         )
         for anchor in anchors

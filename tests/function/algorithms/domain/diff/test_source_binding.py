@@ -47,7 +47,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 from algorithms.diff import source_binding as binding_module
 from algorithms.diff.admission import AdmissionPolicyError, IdentityTree, identity_tree
-from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.fingerprints import AnchorPolicy, StableAnchor
 from algorithms.diff.source_binding import (
     SourceBindingError,
     SourceBindingPolicy,
@@ -398,6 +398,39 @@ def test_recovered_share_ignores_late_getter_forgery(
     with monkeypatch.context() as patched:
         patched.setattr(recovered_type, "__getattribute__", forged_getattr)
         assert recover_secret(binding, reference) == _SECRET
+
+
+@pytest.mark.parametrize(
+    ("role", "field", "forged"),
+    [
+        ("anchor", "digest", b"forged"),
+        ("anchor", "offset", 0),
+        ("policy", "window_bytes", 1),
+    ],
+)
+def test_anchor_windows_ignore_late_class_getters(
+    monkeypatch: pytest.MonkeyPatch, role: str, field: str, forged: object
+) -> None:
+    """Imported anchor records cannot redirect authenticated source windows."""
+    reference = _reference()
+    policy = _policy()
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    if role == "anchor":
+        owner = StableAnchor
+    else:
+        owner = AnchorPolicy
+
+    def forged_getattr(value: object, name: str) -> object:
+        if name == field:
+            return forged
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__getattribute__", forged_getattr)
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+    assert observed == expected
 
 
 def test_binding_policy_validation_rejects_late_getattribute_forgery(
