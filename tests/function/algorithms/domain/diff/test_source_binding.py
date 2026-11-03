@@ -1585,3 +1585,49 @@ def test_recovery_rejects_malformed_share_metadata() -> None:
             replace(binding, shares=(first, duplicate_anchor, *binding.shares[2:])),
             reference,
         )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("threshold_fraction", 0.0),
+        ("maximum_anchors", 0),
+        ("minimum_anchor_files", 256),
+        ("anchor_policy", object()),
+    ],
+)
+def test_binding_policy_rejects_invalid_after_validator_override(
+    monkeypatch: pytest.MonkeyPatch, field: str, invalid: object
+) -> None:
+    """Policy construction cannot bypass the original quorum checker."""
+    policy = _policy()
+    calls = 0
+
+    def allow_any(_value: SourceBindingPolicy) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(SourceBindingPolicy, "__post_init__", allow_any)
+        with pytest.raises(SourceBindingPolicyError):
+            _ = replace(policy, **{field: invalid})
+    assert calls == 0, "late validator hook admitted unsafe quorum metadata"
+
+
+def test_binding_policy_keeps_valid_data_after_validator_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late class checker cannot reject valid binding policy dimensions."""
+    calls = 0
+
+    def reject_any(_value: SourceBindingPolicy) -> None:
+        nonlocal calls
+        calls += 1
+        raise SourceBindingPolicyError("forged rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(SourceBindingPolicy, "__post_init__", reject_any)
+        policy = SourceBindingPolicy(0.6, maximum_anchors=5, minimum_anchor_files=3)
+    assert policy.threshold_fraction == 0.6
+    assert policy.maximum_anchors == 5
+    assert calls == 0, "late class checker rejected a valid binding policy"

@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
-from typing import cast
+from typing import Callable, cast
 
 from algorithms.diff.admission import IdentityFile, IdentityTree
 from algorithms.diff.fingerprints import (
@@ -105,6 +105,7 @@ _NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_ISFINITE = math.isfinite
 _NATIVE_CEIL = math.ceil
 _NATIVE_ZIP = builtins.zip
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
     selection_modulus=64,
@@ -144,7 +145,7 @@ def _binding_positive_int(value: object, context: str, maximum: int | None) -> i
     return value
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SourceBindingPolicy:
     """Deterministic threshold and anchor-selection policy."""
 
@@ -152,6 +153,20 @@ class SourceBindingPolicy:
     maximum_anchors: int = 127
     minimum_anchor_files: int = 3
     anchor_policy: AnchorPolicy = _DEFAULT_BINDING_ANCHOR_POLICY
+
+    def __init__(
+        self,
+        threshold_fraction: float,
+        maximum_anchors: int = 127,
+        minimum_anchor_files: int = 3,
+        anchor_policy: AnchorPolicy = _DEFAULT_BINDING_ANCHOR_POLICY,
+    ) -> None:
+        """Validate source quorum policy through the captured native guard."""
+        _NATIVE_OBJECT_SETATTR(self, "threshold_fraction", threshold_fraction)
+        _NATIVE_OBJECT_SETATTR(self, "maximum_anchors", maximum_anchors)
+        _NATIVE_OBJECT_SETATTR(self, "minimum_anchor_files", minimum_anchor_files)
+        _NATIVE_OBJECT_SETATTR(self, "anchor_policy", anchor_policy)
+        _SOURCE_BINDING_POLICY_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Reject invalid threshold or anchor-distribution policy.
@@ -177,6 +192,13 @@ class SourceBindingPolicy:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise SourceBindingPolicyError(message)
 
+
+# Generated dataclass constructors resolve post-init through mutable class
+# attributes. Preserve its original guard against later consumer overrides.
+_SOURCE_BINDING_POLICY_VALIDATOR = cast(
+    "Callable[[SourceBindingPolicy], None]",
+    SourceBindingPolicy.__dict__["__post_init__"],
+)
 
 # A consumer may replace dataclass class descriptors after this module loads.
 # Read the original stored policy slots for both validation and key binding.
