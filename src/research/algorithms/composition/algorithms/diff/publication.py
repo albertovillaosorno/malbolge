@@ -111,6 +111,41 @@ _NATIVE_C_ARGUMENT_ERROR: Final = ctypes.ArgumentError
 _NATIVE_GET_ERRNO: Final = ctypes.get_errno
 _NATIVE_STRERROR: Final = os.strerror
 _MAX_LINUX_ERRNO: Final = 4095
+# ctypes.CDLL is a mutable Python class even when its module alias is pinned.
+# A consumer must not replace its symbol lookup with overwriting os.rename.
+_CDLL_DISPATCH_HOOK_NAMES: Final = (
+    "__init__",
+    "__getattribute__",
+    "__getattr__",
+    "__getitem__",
+    "__setattr__",
+    "_load_library",
+    "_FuncPtr",
+    "_func_flags_",
+    "_func_restype_",
+    "renameat2",
+)
+_NATIVE_CDLL_CLASS_HOOKS: Final = tuple(
+    (
+        cdll_class,
+        tuple(
+            (name, cdll_class.__dict__.get(name)) for name in _CDLL_DISPATCH_HOOK_NAMES
+        ),
+    )
+    for cdll_class in _NATIVE_CDLL.__mro__
+    if cdll_class is not object
+)
+# CDLL.__init__ also reads these module globals on every construction.
+_CTYPES_CDLL_GLOBAL_NAMES: Final = (
+    "_dlopen",
+    "_CFuncPtr",
+    "_FUNCFLAG_USE_ERRNO",
+    "_FUNCFLAG_USE_LASTERROR",
+)
+_NATIVE_CTYPES_CDLL_GLOBALS: Final = tuple(
+    (name, cast("object", ctypes.__dict__[name]))
+    for name in _CTYPES_CDLL_GLOBAL_NAMES
+)
 
 
 class _RenameAt2(Protocol):
@@ -207,7 +242,28 @@ _NATIVE_PATH_LSTAT: Final = _native_path_lstat
 _NATIVE_PATH_RENAME: Final = _native_path_rename
 
 
+def _require_native_cdll_dispatch(destination: Path) -> None:
+    """Fail closed when late ctypes class hooks could redirect renameat2."""
+    if (
+        any(
+            cdll_class.__dict__.get(name) is not original
+            for cdll_class, hooks in _NATIVE_CDLL_CLASS_HOOKS
+            for name, original in hooks
+        )
+        or any(
+            ctypes.__dict__.get(name) is not original
+            for name, original in _NATIVE_CTYPES_CDLL_GLOBALS
+        )
+    ):
+        raise OSError(
+            errno.ENOTSUP,
+            "Linux renameat2(RENAME_NOREPLACE) is unavailable: native loader changed",
+            destination,
+        )
+
+
 def _linux_rename_noreplace(source: Path, destination: Path) -> None:
+    _require_native_cdll_dispatch(destination)
     try:
         library = _NATIVE_CDLL(None, use_errno=True)
         renameat2 = cast("_RenameAt2", cast("object", library.renameat2))

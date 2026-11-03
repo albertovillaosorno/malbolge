@@ -1455,3 +1455,161 @@ def test_publication_rejects_platform_specific_path_getter_overrides(
     assert calls == 0
     assert (staging / "payload").read_bytes() == _OURS
     assert not destination.exists() and not redirected.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux no-replace directory semantics",
+)
+@pytest.mark.parametrize("hook", ["__getattr__", "__getitem__", "renameat2"])
+def test_linux_publication_rejects_late_cdll_class_symbol_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A mutated CDLL class cannot downgrade renameat2 to overwriting rename."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    calls = 0
+
+    def unsafe_rename(*_args: object) -> int:
+        nonlocal calls
+        calls += 1
+        os.rename(staging, destination)
+        return 0
+
+    false_symbol = Mock(side_effect=unsafe_rename)
+
+    def forged_getattr(_library: ctypes.CDLL, name: str) -> object:
+        assert name == "renameat2"
+        return false_symbol
+
+    def forged_getitem(_library: ctypes.CDLL, name: str) -> object:
+        assert name == "renameat2"
+        return false_symbol
+
+    replacement = (
+        forged_getattr
+        if hook == "__getattr__"
+        else forged_getitem
+        if hook == "__getitem__"
+        else false_symbol
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes.CDLL, hook, replacement, raising=False)
+        with pytest.raises(OSError, match="unavailable") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.ENOTSUP
+    assert calls == 0, "late CDLL class symbol replaced an existing destination"
+    assert (staging / "payload").read_bytes() == _OURS
+    assert list(destination.iterdir()) == []
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux renameat2",
+)
+@pytest.mark.parametrize(
+    "hook",
+    [
+        "__init__",
+        "__getattribute__",
+        "__setattr__",
+        "_load_library",
+        "_FuncPtr",
+        "_func_flags_",
+        "_func_restype_",
+    ],
+)
+def test_linux_publication_rejects_late_cdll_class_dispatch_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Constructor, loader, and function-pointer class hooks are immutable ABI."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    replacement = Mock(side_effect=AssertionError("foreign CDLL hook executed"))
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes.CDLL, hook, replacement)
+        with pytest.raises(OSError, match="unavailable") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.ENOTSUP
+    assert replacement.call_count == 0
+    assert staging.is_dir() and not destination.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux renameat2",
+)
+def test_linux_publication_rejects_late_ctypes_dlopen_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The CDLL constructor cannot delegate to a replaced module loader."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    replacement = Mock(side_effect=AssertionError("foreign dlopen executed"))
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes, "_dlopen", replacement)
+        with pytest.raises(OSError, match="unavailable") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.ENOTSUP
+    assert replacement.call_count == 0
+    assert staging.is_dir() and not destination.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux no-replace directory semantics",
+)
+def test_linux_publication_rejects_late_ctypes_function_pointer_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CDLL cannot derive its rename function from a replaced base pointer type."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    calls = 0
+
+    class ForeignFunctionPointer:
+        def __init__(self, _symbol: object) -> None:
+            pass
+
+        def __call__(self, *_args: object) -> int:
+            nonlocal calls
+            calls += 1
+            os.rename(staging, destination)
+            return 0
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes, "_CFuncPtr", ForeignFunctionPointer)
+        with pytest.raises(OSError, match="unavailable") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.ENOTSUP
+    assert calls == 0, "foreign function pointer replaced an occupied target"
+    assert (staging / "payload").read_bytes() == _OURS
+    assert list(destination.iterdir()) == []
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux renameat2",
+)
+@pytest.mark.parametrize("flag", ["_FUNCFLAG_USE_ERRNO", "_FUNCFLAG_USE_LASTERROR"])
+def test_linux_publication_rejects_late_ctypes_function_pointer_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, flag: str
+) -> None:
+    """A foreign ctypes ABI flag cannot change the loaded function signature."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes, flag, object())
+        with pytest.raises(OSError, match="unavailable") as rejected:
+            publication.publish_directory_no_replace(staging, destination)
+    assert rejected.value.errno == errno.ENOTSUP
+    assert staging.is_dir() and not destination.exists()
