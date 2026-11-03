@@ -40,6 +40,9 @@ from dataclasses import dataclass
 _ZERO = 0
 # Preserve exact-record admission after untrusted domain callback execution.
 _NATIVE_ANY = builtins.any
+_NATIVE_TYPE = builtins.type
+_NATIVE_LEN = builtins.len
+_NATIVE_TUPLE = builtins.tuple
 
 
 class MappedViewError(ValueError):
@@ -61,10 +64,13 @@ class MappedUnit:
             MappedViewError: Canonical bytes or raw coordinates are invalid.
 
         """
-        if type(self.canonical) is not bytes or not self.canonical:
+        if _NATIVE_TYPE(self.canonical) is not bytes or not self.canonical:
             message = "mapped canonical unit must be non-empty exact bytes"
             raise MappedViewError(message)
-        if type(self.raw_start) is not int or type(self.raw_end) is not int:
+        if (
+            _NATIVE_TYPE(self.raw_start) is not int
+            or _NATIVE_TYPE(self.raw_end) is not int
+        ):
             message = "mapped raw coordinates must use exact integers"
             raise MappedViewError(message)
         if self.raw_start < _ZERO or self.raw_end < self.raw_start:
@@ -75,7 +81,7 @@ class MappedUnit:
 def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
     previous_end = _ZERO
     for unit in units:
-        if unit.raw_end > len(raw):
+        if unit.raw_end > _NATIVE_LEN(raw):
             message = "mapped unit escapes raw source bytes"
             raise MappedViewError(message)
         if unit.raw_start < previous_end:
@@ -98,13 +104,15 @@ class MappedView:
             MappedViewError: A unit escapes raw bytes or overlaps a prior unit.
 
         """
-        if type(self.raw) is not bytes:
+        if _NATIVE_TYPE(self.raw) is not bytes:
             message = "mapped raw source must use exact bytes"
             raise MappedViewError(message)
-        if type(self.units) is not tuple:
+        if _NATIVE_TYPE(self.units) is not _NATIVE_TUPLE:
             message = "mapped units must use the exact immutable tuple type"
             raise MappedViewError(message)
-        if _NATIVE_ANY(type(unit) is not MappedUnit for unit in self.units):
+        if _NATIVE_ANY(
+            _NATIVE_TYPE(unit) is not MappedUnit for unit in self.units
+        ):
             message = "mapped view contains a foreign unit record"
             raise MappedViewError(message)
         _validate_view_units(self.raw, self.units)
@@ -117,4 +125,4 @@ class MappedView:
     @property
     def keys(self) -> tuple[bytes, ...]:
         """Canonical unit sequence for placement matching."""
-        return tuple(unit.canonical for unit in self.units)
+        return _NATIVE_TUPLE(unit.canonical for unit in self.units)

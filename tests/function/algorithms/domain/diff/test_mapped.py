@@ -125,6 +125,115 @@ def test_mapped_view_rejects_foreign_unit_after_late_any_override(
     assert rejected, "late any hook admitted a foreign canonical unit"
 
 
+def test_mapped_bytes_reject_late_type_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable bytes cannot masquerade as immutable canonical or raw data."""
+    foreign = bytearray(b"a")
+    native_type = type
+    unit_rejected = False
+    view_rejected = False
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = MappedUnit(cast("bytes", cast("object", foreign)), 0, 1)
+        except MappedViewError:
+            unit_rejected = True
+        try:
+            _ = MappedView(
+                cast("bytes", cast("object", foreign)),
+                (MappedUnit(b"A", 0, 1),),
+            )
+        except MappedViewError:
+            view_rejected = True
+    assert unit_rejected, "late type admitted mutable canonical bytes"
+    assert view_rejected, "late type admitted mutable raw bytes"
+
+
+def test_mapped_coordinates_reject_late_type_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Boolean offsets must not be admitted as exact raw coordinates."""
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return int if value is True else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = MappedUnit(b"A", True, 1)
+        except MappedViewError:
+            rejected = True
+    assert rejected, "late type admitted a boolean source offset"
+
+
+def test_mapped_view_rejects_foreign_unit_after_late_type_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged type verdict cannot admit a fake canonical unit record."""
+    foreign = SimpleNamespace(canonical=b"A", raw_start=0, raw_end=1)
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return MappedUnit if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = MappedView(
+                b"a", (cast("MappedUnit", cast("object", foreign)),)
+            )
+        except MappedViewError:
+            rejected = True
+    assert rejected, "late type admitted a foreign canonical unit"
+
+
+def test_mapped_view_rejects_late_len_escape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing len cannot move a mapped span past true source length."""
+    source = b"a"
+    unit = MappedUnit(b"A", 0, 2)
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        if value is source:
+            return 2
+        return native_len(cast("bytes", value))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        try:
+            _ = MappedView(source, (unit,))
+        except MappedViewError:
+            rejected = True
+    assert rejected, "late len admitted an escaping source span"
+
+
+def test_mapped_keys_ignore_late_tuple_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Canonical placement keys cannot be erased by a consumer hook."""
+    view = MappedView(b"a", (MappedUnit(b"A", 0, 1),))
+
+    def forged_tuple(values: object) -> tuple[bytes, ...]:
+        del values
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "tuple", forged_tuple)
+        keys = view.keys
+    assert keys == (b"A",)
+
+
 def test_mapped_records_reject_foreign_runtime_metadata() -> None:
     """Mapped bytes, coordinates, and unit collections require exact types."""
     with pytest.raises(MappedViewError, match="exact bytes"):
