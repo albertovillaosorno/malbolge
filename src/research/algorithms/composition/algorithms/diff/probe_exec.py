@@ -80,6 +80,7 @@ _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_ANY = builtins.any
 _NATIVE_SET = builtins.set
+_NATIVE_FROZENSET = builtins.frozenset
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TYPE = builtins.type
 _NATIVE_LEN = builtins.len
@@ -1319,7 +1320,7 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
     """
     files = _snapshot_probe_tree(source, "source").files
     try:
-        return frozenset(
+        return _NATIVE_FROZENSET(
             (status.st_dev, status.st_ino)
             for record in files
             for status in (

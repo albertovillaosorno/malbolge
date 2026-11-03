@@ -2432,6 +2432,27 @@ def _assert_hardlink_disjoint(source: Path, alias: Path) -> None:
         check(source, alias)
 
 
+def test_probe_source_inode_set_ignores_late_frozenset_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late set hooks cannot hide source hardlinks during probe preflight."""
+    source, original, alias, _ = _hardlink_spoof_fixture(tmp_path)
+    native_frozenset = frozenset
+    rejected = False
+    guard = cast(
+        "Callable[[Path, Path], None]",
+        vars(probe_exec_module)["_require_disjoint_source_inode"],
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "frozenset", lambda _: native_frozenset())
+        try:
+            guard(source, alias)
+        except ProbeExecutionError:
+            rejected = True
+    assert rejected, "late frozenset hook hid source inode alias"
+    assert original.read_text(encoding="utf-8") == _ORIGINAL_TEXT
+
+
 def test_probe_disjoint_inode_rejects_post_import_path_stat_spoof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
