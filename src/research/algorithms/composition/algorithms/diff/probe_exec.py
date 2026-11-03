@@ -73,6 +73,7 @@ _POSIX_OS_NAME = "posix"
 _MIN_HARDLINK_COUNT = 2
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
+_NATIVE_PATH_RESOLVE = Path.resolve
 # Native stream adapters can raise non-I/O ordinary exceptions as well.
 _PIPE_DEPENDENCY_ERRORS = (
     OSError,
@@ -435,7 +436,7 @@ def _native_resolved_path(result: Path, description: str) -> Path:
 
 def _resolved_root(path: Path, description: str) -> Path:
     try:
-        resolved = path.resolve()
+        resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe {description} root resolution failed: {path}: {detail}"
@@ -463,7 +464,7 @@ def _rooted_path(
     root = _root_path(argument.root, context, scratch_root)
     candidate = root.joinpath(*PurePosixPath(argument.relative_path).parts)
     try:
-        resolved = candidate.resolve()
+        resolved = _NATIVE_PATH_RESOLVE(candidate)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe path resolution failed: {candidate}: {detail}"
@@ -479,7 +480,7 @@ def _rooted_path(
 
 def _resolved_tool_path(path: Path) -> Path:
     try:
-        resolved = path.resolve()
+        resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe tool resolution failed: {path}: {detail}"
@@ -1289,7 +1290,7 @@ def _require_repository_argument_disjoint(
         return
     path = _rooted_path(argument, context, original_source)
     try:
-        resolved = path.resolve()
+        resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe repository argument resolution failed: {detail}"
@@ -1332,7 +1333,7 @@ def _run_isolated_batch(
     # A host TMPDIR inside the source would copy the new batch directory into
     # itself recursively. Reject before creating any temporary directories.
     try:
-        temporary_parent = Path(tempfile.gettempdir()).resolve()
+        temporary_parent = _NATIVE_PATH_RESOLVE(Path(tempfile.gettempdir()))
     except (OSError, ValueError, RuntimeError) as error:
         message = "probe temporary parent resolution failed"
         raise ProbeExecutionError(message) from error

@@ -306,7 +306,7 @@ def test_repository_root_resolution_error_fails_closed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     program = ProbeProgram(
         "root-resolution",
         (
@@ -342,7 +342,7 @@ def test_rooted_argument_resolution_error_fails_closed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     program = ProbeProgram(
         "argument-resolution",
         (
@@ -382,7 +382,7 @@ def test_repository_alias_second_resolution_failure_is_typed(
                 raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_second_resolve)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_PATH_RESOLVE", fail_second_resolve)
     program = ProbeProgram(
         "alias-resolution",
         (
@@ -466,7 +466,7 @@ def test_tool_resolution_error_fails_closed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_PATH_RESOLVE", fail_resolve)
     with pytest.raises(ProbeExecutionError, match="tool resolution failed"):
         _ = run_probe_program(_program("blocked-resolution", "pass"), context)
 
@@ -1116,7 +1116,9 @@ def test_probe_reap_unexpected_host_fault_remains_typed(
             raise primary
 
     monkeypatch.setattr(probe_exec_module, "_signal_probe_group", lambda *_: None)
-    monkeypatch.setattr(probe_exec_module, "_kill_direct_probe_child", lambda *_: None)
+    monkeypatch.setattr(
+        probe_exec_module, "_kill_direct_probe_child", lambda *_: None
+    )
     with pytest.raises(ProbeExecutionError, match="reaping failed") as caught:
         probe_exec_module._stop_child(
             cast("Popen[bytes]", cast("object", FakeProcess()))
@@ -1572,6 +1574,55 @@ def test_repository_rooted_argument_cannot_modify_original_source(
         target.read_text(encoding="utf-8") == _ORIGINAL_TEXT,
         "repository-rooted argument modified original source",
     )
+
+
+@pytest.mark.parametrize("via_directory", [False, True])
+def test_repository_alias_rejects_forged_native_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, via_directory: bool
+) -> None:
+    """A post-import resolver swap cannot launder a source symlink alias."""
+    source = tmp_path / "source"
+    source.mkdir()
+    leaf = source / "input.txt"
+    _ = leaf.write_bytes(b"private source bytes")
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(
+            source if via_directory else leaf,
+            target_is_directory=via_directory,
+        )
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    relative = "alias/input.txt" if via_directory else "alias"
+    aliased_leaf = alias / "input.txt" if via_directory else alias
+    original_resolve = Path.resolve
+    calls = 0
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        if path == aliased_leaf:
+            calls += 1
+            return path
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    program = ProbeProgram(
+        "forged-repository-alias",
+        (
+            ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=(
+                    "-c",
+                    _READ_BYTES_CODE,
+                    PathArgument(ProbeRoot.REPOSITORY, relative),
+                ),
+                digest_stdout=True,
+            ),
+        ),
+    )
+    with pytest.raises(ProbeExecutionError, match="overlaps original source"):
+        _ = run_probe_program(program, _context(source, tmp_path))
+    _expect(calls == 0, "mutable host resolver was consulted")
 
 
 @pytest.mark.parametrize("as_executable", [False, True])
@@ -2371,7 +2422,9 @@ def test_probe_host_boundaries_reject_foreign_formatters(
                     raise failure
             return original(path, strict=strict)
 
-        monkeypatch.setattr(Path, "resolve", fail_resolve)
+        monkeypatch.setattr(
+            probe_exec_module, "_NATIVE_PATH_RESOLVE", fail_resolve
+        )
         if operation == "root":
             require_root = cast(
                 "Callable[[Path, str], Path]",
@@ -2646,7 +2699,9 @@ def test_probe_rejects_foreign_resolved_receipt(
                 return ForgedResolvedPath(result)
         return result
 
-    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(
+        probe_exec_module, "_NATIVE_PATH_RESOLVE", forged_resolve
+    )
     if role == "root":
         require_root = cast(
             "Callable[[Path, str], Path]",
