@@ -98,6 +98,7 @@ _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_PATH_EQ = Path.__eq__
 _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_REALPATH = os.path.realpath
 _MAX_SHARES = 255
 _NUL = "\x00"
 _PARENT = ".."
@@ -359,12 +360,26 @@ def _validate_path(value: object, name: str) -> None:
             raise ValueError(message) from error
 
 
+def _require_native_host_realpath(name: str) -> None:
+    """Fail before invoking a host resolver replaced by consumer code.
+
+    Raises:
+        ValueError: Native host resolution no longer has its original identity.
+
+    """
+    if os.path.realpath is not _NATIVE_REALPATH:
+        message = f"{name} could not be resolved safely: host realpath changed"
+        raise ValueError(message)
+
+
 def _resolve_recipe_path(path: Path, name: str) -> Path:
+    _require_native_host_realpath(name)
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"{name} could not be resolved safely"
         raise ValueError(message) from error
+    _require_native_host_realpath(name)
     if _NATIVE_TYPE(resolved) is not _NATIVE_TYPE(path):
         message = f"{name} could not be resolved safely"
         raise ValueError(message)
@@ -661,6 +676,8 @@ def write_algorithm(recipe: DiffRecipe) -> None:
         message = "compatible generation requires a domain module"
         raise DiffGeneratorUnavailableError(message)
     if recipe_view.mode is TransformMode.EXACT_BASELINE:
+        # Domain code runs after recipe preflight and may replace host hooks.
+        _require_native_host_realpath("output_algorithm")
         _write_exact_algorithm(recipe_view)
         return
     message = (

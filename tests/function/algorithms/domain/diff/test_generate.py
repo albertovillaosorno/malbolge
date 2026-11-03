@@ -512,6 +512,93 @@ def test_generator_recipe_resolution_failures_are_typed(
     _expect(not recipe.output_algorithm.exists(), "blocked recipe wrote output")
 
 
+def _validate_realpath_recipe(recipe: DiffRecipe) -> None:
+    generate_module._validate_recipe_paths(recipe)
+
+
+@pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])
+def test_generator_rejects_replaced_host_realpath_containment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, input_name: str
+) -> None:
+    """The original Path resolver cannot trust a late host realpath alias."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    root = {
+        "source_root": recipe.source_root,
+        "oracle_root": recipe.oracle_root,
+    }[input_name]
+    recipe = replace(recipe, output_algorithm=root / "nested" / "main.rs")
+    calls = 0
+    diverted = {
+        str(recipe.output_algorithm): str(tmp_path / "unrelated-output"),
+        str(recipe.source_root): str(tmp_path / "unrelated-source"),
+        str(recipe.oracle_root): str(tmp_path / "unrelated-oracle"),
+    }
+
+    def forged_realpath(path: object, *, strict: bool = False) -> str:
+        nonlocal calls
+        del strict
+        calls += 1
+        return diverted[str(path)]
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0
+
+
+def test_generator_rejects_replaced_host_realpath_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late host path resolution cannot reject an otherwise valid recipe."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    calls = 0
+
+    def blocked_realpath(path: object, *, strict: bool = False) -> str:
+        nonlocal calls
+        del path, strict
+        calls += 1
+        message = "unexpected mutable host resolver"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "realpath", blocked_realpath)
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0
+
+
+def test_generator_rechecks_host_realpath_after_domain_preflight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Consumer code cannot replace host resolution before emitting."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    recipe = replace(recipe, domain_module=_domain_module(tmp_path))
+    emitted: list[bool] = []
+
+    def forged_realpath(path: object, *, strict: bool = False) -> str:
+        del path, strict
+        message = "consumer host resolver reached"
+        raise AssertionError(message)
+
+    def unexpected_emission(_recipe: object) -> None:
+        del _recipe
+        emitted.append(True)
+
+    with monkeypatch.context() as patched:
+        def replace_realpath(_recipe: object) -> None:
+            del _recipe
+            patched.setattr(os.path, "realpath", forged_realpath)
+
+        patched.setattr(generate_module, "_preflight_domain", replace_realpath)
+        patched.setattr(
+            generate_module, "_write_exact_algorithm", unexpected_emission
+        )
+        with pytest.raises(ValueError, match="could not be resolved safely"):
+            write_algorithm(recipe)
+    assert not emitted
+
+
 class _ForgedResolvedRecipePath(type(Path())):
     """A foreign resolved receipt can lie about destination containment."""
 
