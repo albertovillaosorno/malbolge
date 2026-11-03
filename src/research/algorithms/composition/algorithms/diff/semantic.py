@@ -337,6 +337,22 @@ class _MatchBlock:
     length: int
 
 
+_MATCH_BLOCK_SLOTS = (
+    cast("MemberDescriptorType", _MatchBlock.__dict__["source_start"]),
+    cast("MemberDescriptorType", _MatchBlock.__dict__["target_start"]),
+    cast("MemberDescriptorType", _MatchBlock.__dict__["length"]),
+)
+
+
+def _match_block_fields(block: _MatchBlock) -> tuple[int, int, int]:
+    """Keep matched source/target ranges independent of late class hooks."""
+    return (
+        cast("int", _MATCH_BLOCK_SLOTS[0].__get__(block, _MatchBlock)),
+        cast("int", _MATCH_BLOCK_SLOTS[1].__get__(block, _MatchBlock)),
+        cast("int", _MATCH_BLOCK_SLOTS[2].__get__(block, _MatchBlock)),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _EditRange:
     source_start: int
@@ -365,6 +381,45 @@ class _SemanticBuildContext:
     target_digests: tuple[bytes, ...]
     target: MappedView
     context_units: int
+
+
+# Context and range records are internal, but later class getter changes must
+# not redirect source binding or replacement authoring at this boundary.
+_EDIT_RANGE_SLOTS = (
+    cast("MemberDescriptorType", _EditRange.__dict__["source_start"]),
+    cast("MemberDescriptorType", _EditRange.__dict__["source_end"]),
+    cast("MemberDescriptorType", _EditRange.__dict__["target_start"]),
+    cast("MemberDescriptorType", _EditRange.__dict__["target_end"]),
+)
+_BUILD_CONTEXT_SLOTS = (
+    cast("MemberDescriptorType", _SemanticBuildContext.__dict__["source_digests"]),
+    cast("MemberDescriptorType", _SemanticBuildContext.__dict__["target_digests"]),
+    cast("MemberDescriptorType", _SemanticBuildContext.__dict__["target"]),
+    cast("MemberDescriptorType", _SemanticBuildContext.__dict__["context_units"]),
+)
+
+
+def _edit_range_fields(edit: _EditRange) -> tuple[int, int, int, int]:
+    """Read admitted source/target edit offsets from their initial slots."""
+    return (
+        cast("int", _EDIT_RANGE_SLOTS[0].__get__(edit, _EditRange)),
+        cast("int", _EDIT_RANGE_SLOTS[1].__get__(edit, _EditRange)),
+        cast("int", _EDIT_RANGE_SLOTS[2].__get__(edit, _EditRange)),
+        cast("int", _EDIT_RANGE_SLOTS[3].__get__(edit, _EditRange)),
+    )
+
+
+def _build_context_fields(
+    context: _SemanticBuildContext,
+) -> tuple[tuple[bytes, ...], tuple[bytes, ...], MappedView, int]:
+    """Read the original semantic authoring context, not replaced getters."""
+    source_slot, digests_slot, target_slot, width_slot = _BUILD_CONTEXT_SLOTS
+    return (
+        cast("tuple[bytes, ...]", source_slot.__get__(context, _SemanticBuildContext)),
+        cast("tuple[bytes, ...]", digests_slot.__get__(context, _SemanticBuildContext)),
+        cast("MappedView", target_slot.__get__(context, _SemanticBuildContext)),
+        cast("int", width_slot.__get__(context, _SemanticBuildContext)),
+    )
 
 
 def _frame(value: bytes) -> bytes:
@@ -559,15 +614,19 @@ def _merge_blocks(blocks: list[_MatchBlock]) -> list[_MatchBlock]:
     merged = [blocks[0]]
     for block in blocks[1:]:
         previous = merged[-_ONE]
+        previous_source, previous_target, previous_length = _match_block_fields(
+            previous
+        )
+        source_start, target_start, length = _match_block_fields(block)
         contiguous = (
-            previous.source_start + previous.length == block.source_start
-            and previous.target_start + previous.length == block.target_start
+            previous_source + previous_length == source_start
+            and previous_target + previous_length == target_start
         )
         if contiguous:
             merged[-_ONE] = _MatchBlock(
-                source_start=previous.source_start,
-                target_start=previous.target_start,
-                length=previous.length + block.length,
+                source_start=previous_source,
+                target_start=previous_target,
+                length=previous_length + length,
             )
         else:
             merged.append(block)
@@ -673,21 +732,16 @@ def _edit_ranges(
     source_cursor = _ZERO
     target_cursor = _ZERO
     for block in _matching_blocks(source, target):
-        has_gap = (
-            source_cursor != block.source_start
-            or target_cursor != block.target_start
-        )
+        source_start, target_start, length = _match_block_fields(block)
+        has_gap = source_cursor != source_start or target_cursor != target_start
         if has_gap:
             edits.append(
                 _EditRange(
-                    source_cursor,
-                    block.source_start,
-                    target_cursor,
-                    block.target_start,
+                    source_cursor, source_start, target_cursor, target_start
                 )
             )
-        source_cursor = block.source_start + block.length
-        target_cursor = block.target_start + block.length
+        source_cursor = source_start + length
+        target_cursor = target_start + length
     if (
         source_cursor != _NATIVE_LEN(source)
         or target_cursor != _NATIVE_LEN(target)
@@ -707,21 +761,17 @@ def _semantic_edit(
     context: _SemanticBuildContext,
     edit: _EditRange,
 ) -> SemanticEdit:
+    source_digests, target_digests, target, context_units = _build_context_fields(
+        context
+    )
+    source_start, source_end, target_start, target_end = _edit_range_fields(edit)
     return SemanticEdit(
         locator=_locator(
-            context.source_digests,
-            edit.source_start,
-            edit.source_end,
-            context_units=context.context_units,
+            source_digests, source_start, source_end,
+            context_units=context_units,
         ),
-        replacement=_replacement_bytes(
-            context.target,
-            edit.target_start,
-            edit.target_end,
-        ),
-        replacement_digests=context.target_digests[
-            edit.target_start : edit.target_end
-        ],
+        replacement=_replacement_bytes(target, target_start, target_end),
+        replacement_digests=target_digests[target_start:target_end],
     )
 
 

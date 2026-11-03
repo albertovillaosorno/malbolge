@@ -1247,3 +1247,67 @@ def test_semantic_overlap_check_ignores_late_located_edit_getters(
         with pytest.raises(SemanticPlacementError, match="overlap or reorder"):
             validate((first, second))
     assert calls == 0, "late getter hid overlapping candidate edits"
+
+
+@pytest.mark.parametrize(
+    ("record_name", "field"),
+    [
+        ("_EditRange", "source_start"),
+        ("_EditRange", "source_end"),
+        ("_EditRange", "target_start"),
+        ("_EditRange", "target_end"),
+        ("_SemanticBuildContext", "source_digests"),
+        ("_SemanticBuildContext", "target_digests"),
+        ("_SemanticBuildContext", "target"),
+        ("_SemanticBuildContext", "context_units"),
+    ],
+)
+def test_semantic_authoring_ignores_late_range_and_context_getters(
+    monkeypatch: pytest.MonkeyPatch, record_name: str, field: str
+) -> None:
+    """Temporary authoring records cannot change source binding or payload."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    expected = build_semantic_plan(source, target)
+    record_type = cast("type[object]", vars(semantic_module)[record_name])
+    original = record_type.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return 1000 if record_name == "_EditRange" else None
+        return cast("object", original(record, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__getattribute__", forged_getter)
+        plan = build_semantic_plan(source, target)
+    assert plan == expected
+    assert calls == 0, "late range/context getter changed authored edit evidence"
+
+
+@pytest.mark.parametrize("field", ["source_start", "target_start", "length"])
+def test_semantic_authoring_ignores_late_matching_block_getters(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A mutable matching-block getter cannot erase an authored source edit."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    expected = build_semantic_plan(source, target)
+    record_type = cast("type[object]", vars(semantic_module)["_MatchBlock"])
+    original = record_type.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return 1000
+        return cast("object", original(record, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__getattribute__", forged_getter)
+        plan = build_semantic_plan(source, target)
+    assert plan == expected
+    assert calls == 0, "late match-block getter changed source edit ranges"
