@@ -382,6 +382,28 @@ def _run(
     )
 
 
+def test_emitter_parent_creation_ignores_late_reversed_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late reversal hook cannot suppress staged parent creation."""
+    target = tmp_path / "nested" / "generated" / "main.rs"
+    calls = 0
+    native_reversed = builtins.reversed
+
+    def skip_parents(values: object) -> object:
+        nonlocal calls
+        if isinstance(values, list) and str(target.parent) in values:
+            calls += 1
+            return iter(())
+        return native_reversed(cast("list[object]", values))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "reversed", skip_parents)
+        emit_rust_module._output_mkdir(target.parent)
+    assert target.parent.is_dir(), "emitter did not create its nested parent"
+    assert calls == 0, "mutable reversed hook ran in output path creation"
+
+
 def test_emitter_rejects_foreign_public_inputs(tmp_path: Path) -> None:
     """Validate plan, profile, and output path before template processing."""
     _, _, _, protected = _fixture(tmp_path)

@@ -82,6 +82,7 @@ _NATIVE_STR_TYPE = str
 _NATIVE_INT_TYPE = int
 _NATIVE_BOOL_TYPE = bool
 _NATIVE_ANY = builtins.any
+_NATIVE_REVERSED = builtins.reversed
 _NATIVE_LEN = len
 _NATIVE_TUPLE = tuple
 _NATIVE_RANGE = range
@@ -272,7 +273,7 @@ def _output_mkdir(path: Path) -> None:
         if _NATIVE_PATH_STRING(parent) == spelling:
             break
         current = parent
-    for spelling in reversed(chain):
+    for spelling in _NATIVE_REVERSED(chain):
         try:
             _NATIVE_OS_MKDIR(spelling)
         except FileExistsError:
