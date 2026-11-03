@@ -50,7 +50,7 @@ from collections import UserString
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, Protocol, cast, override
 
 import pytest
@@ -3748,3 +3748,113 @@ def test_probe_command_result_ignores_late_class_field_hooks(
         observed = run_probe_program(program, context)
     assert observed == baseline
     assert calls == 0, f"late _CommandResult.{field} {hook} changed transcript"
+
+
+@pytest.mark.parametrize("hook", ("getter", "setter"))
+@pytest.mark.parametrize(
+    ("record", "field"),
+    [
+        *(
+            ("capture", name)
+            for name in ("limit", "fragments", "size", "exceeded", "error", "finished")
+        ),
+        *(
+            ("running", name)
+            for name in (
+                "process",
+                "stdout",
+                "stderr",
+                "readers",
+                "writer",
+                "stdin_errors",
+                "stdin_complete",
+            )
+        ),
+    ],
+)
+def test_probe_transient_runtime_ignores_late_class_field_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+    field: str,
+    hook: str,
+) -> None:
+    """Capture quotas and worker observations must use original state slots."""
+    source = tmp_path / "source"
+    source.mkdir()
+    command = ProbeCommand(
+        ToolExecutable(_PYTHON_TOOL),
+        arguments=(
+            "-c",
+            "import sys; data=sys.stdin.buffer.read(); "
+            + "sys.stdout.buffer.write(data); sys.stderr.buffer.write(b'err')",
+        ),
+        stdin=b"trusted",
+        max_stdout_bytes=7,
+        max_stderr_bytes=3,
+        digest_stdout=True,
+        digest_exit_code=True,
+    )
+    program = ProbeProgram("transient-slots", (command,))
+    context = _context(source, tmp_path)
+    baseline = run_probe_program(program, context)
+    owner = cast(
+        "type[object]",
+        vars(probe_exec_module)[
+            "_PipeCapture" if record == "capture" else "_RunningProbe"
+        ],
+    )
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    calls = 0
+
+    def forged_getter(obj: object) -> object:
+        nonlocal calls
+        if hook == "getter":
+            calls += 1
+            raise AssertionError("late transient getter controlled probe runtime")
+        return cast("object", slot.__get__(obj, owner))
+
+    def forged_setter(obj: object, value: object) -> None:
+        nonlocal calls
+        if hook == "setter":
+            calls += 1
+            raise AssertionError("late transient setter controlled probe runtime")
+        slot.__set__(obj, value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, field, property(forged_getter, forged_setter))
+        observed = run_probe_program(program, context)
+    assert observed == baseline
+    assert calls == 0, f"late {record}.{field} {hook} changed probe runtime"
+
+
+def test_probe_capture_quota_ignores_late_limit_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged quota getter must not retain bytes above the original limit."""
+    capture_type = cast("Callable[[int], object]", vars(probe_exec_module)["_PipeCapture"])
+    capture = capture_type(2)
+    original_limit = cast("MemberDescriptorType", type(capture).__dict__["limit"])
+    fragment = cast(
+        "Callable[[IO[bytes], object], bool]",
+        vars(probe_exec_module)["_capture_fragment"],
+    )
+
+    def forged_limit(_record: object) -> int:
+        return 100
+
+    with tempfile.TemporaryFile() as stream:
+        _ = stream.write(b"12345")
+        _ = stream.seek(0)
+        with monkeypatch.context() as patched:
+            patched.setattr(type(capture), "limit", property(forged_limit))
+            assert not fragment(stream, capture)
+    assert original_limit.__get__(capture, type(capture)) == 2
+
+    def original_value(name: str) -> object:
+        slot = cast("MemberDescriptorType", type(capture).__dict__[name])
+        return cast("object", slot.__get__(capture, type(capture)))
+
+    assert original_value("exceeded") is True
+    assert original_value("size") == 0
+    assert original_value("fragments") == []

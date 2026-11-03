@@ -45,7 +45,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
 from pathlib import Path
@@ -877,19 +877,37 @@ def _command_argv(
     return [_NATIVE_STR(executable), *arguments]
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, init=False)
 class _PipeCapture:
     """Quota-guarded bytes from one child output pipe."""
 
     limit: int
-    fragments: list[bytes] = field(default_factory=list)
-    size: int = 0
-    exceeded: bool = False
-    error: Exception | None = None
-    finished: bool = False
+    fragments: list[bytes]
+    size: int
+    exceeded: bool
+    error: Exception | None
+    finished: bool
+
+    def __init__(
+        self,
+        limit: int,
+        fragments: list[bytes] | None = None,
+        size: int = 0,
+        exceeded: bool = False,
+        error: Exception | None = None,
+        finished: bool = False,
+    ) -> None:
+        """Store quota and worker state without late class setter hooks."""
+        slots = _TRANSIENT_SLOTS[_PipeCapture]
+        slots["limit"].__set__(self, limit)
+        slots["fragments"].__set__(self, [] if fragments is None else fragments)
+        slots["size"].__set__(self, size)
+        slots["exceeded"].__set__(self, exceeded)
+        slots["error"].__set__(self, error)
+        slots["finished"].__set__(self, finished)
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, init=False)
 class _RunningProbe:
     """One subprocess and its independently monitored pipe workers."""
 
@@ -901,6 +919,59 @@ class _RunningProbe:
     stdin_errors: list[Exception]
     stdin_complete: threading.Event
 
+    def __init__(
+        self,
+        process: subprocess.Popen[bytes],
+        stdout: _PipeCapture,
+        stderr: _PipeCapture,
+        readers: tuple[threading.Thread, threading.Thread],
+        writer: threading.Thread | None,
+        stdin_errors: list[Exception],
+        stdin_complete: threading.Event,
+    ) -> None:
+        """Bind worker identities before observation, bypassing late setters."""
+        slots = _TRANSIENT_SLOTS[_RunningProbe]
+        for name, value in (
+            ("process", process),
+            ("stdout", stdout),
+            ("stderr", stderr),
+            ("readers", readers),
+            ("writer", writer),
+            ("stdin_errors", stdin_errors),
+            ("stdin_complete", stdin_complete),
+        ):
+            slots[name].__set__(self, value)
+
+
+# Transient process/pipe state is an execution authority: a substituted class
+# getter must not relax quotas or turn incomplete worker output into evidence.
+_TRANSIENT_SLOTS: dict[type, dict[str, MemberDescriptorType]] = {
+    owner: {
+        name: cast("MemberDescriptorType", owner.__dict__[name])
+        for name in owner.__slots__
+    }
+    for owner in (_PipeCapture, _RunningProbe)
+}
+
+
+def _capture_read(capture: _PipeCapture, name: str) -> object:
+    """Read the original output-capture slot."""
+    return cast(
+        "object", _TRANSIENT_SLOTS[_PipeCapture][name].__get__(capture, _PipeCapture)
+    )
+
+
+def _capture_write(capture: _PipeCapture, name: str, value: object) -> None:
+    """Write the original output-capture slot."""
+    _TRANSIENT_SLOTS[_PipeCapture][name].__set__(capture, value)
+
+
+def _running_read(running: _RunningProbe, name: str) -> object:
+    """Read the original running-worker slot."""
+    return cast(
+        "object", _TRANSIENT_SLOTS[_RunningProbe][name].__get__(running, _RunningProbe)
+    )
+
 
 def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
     """Store at most the remaining quota and one overflow sentinel.
@@ -909,7 +980,9 @@ def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
         Whether more data can be read from the pipe.
 
     """
-    remaining = capture.limit - capture.size
+    remaining = cast("int", _capture_read(capture, "limit")) - cast(
+        "int", _capture_read(capture, "size")
+    )
     amount = _NATIVE_MAX(_ONE, _NATIVE_MIN(_READ_CHUNK_BYTES, remaining + _ONE))
     descriptor = stream.fileno()
     if (
@@ -920,19 +993,20 @@ def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
         message = "probe raw read descriptor must be a native C int"
         raise ValueError(message)
     fragment = os.read(descriptor, amount)
-    if (
-        _NATIVE_TYPE(fragment) is not _NATIVE_BYTES
-        or _NATIVE_LEN(fragment) > amount
-    ):
+    if _NATIVE_TYPE(fragment) is not _NATIVE_BYTES or _NATIVE_LEN(fragment) > amount:
         message = "probe raw read reported non-native or overlong bytes"
         raise ValueError(message)
     if not fragment:
         return False
     if _NATIVE_LEN(fragment) > remaining:
-        capture.exceeded = True
+        _capture_write(capture, "exceeded", True)
         return False
-    capture.fragments.append(fragment)
-    capture.size += _NATIVE_LEN(fragment)
+    cast("list[bytes]", _capture_read(capture, "fragments")).append(fragment)
+    _capture_write(
+        capture,
+        "size",
+        cast("int", _capture_read(capture, "size")) + _NATIVE_LEN(fragment),
+    )
     return True
 
 
@@ -950,21 +1024,22 @@ def _drain_pipe(stream: IO[bytes], capture: _PipeCapture) -> None:
         while again:
             again = _capture_fragment(stream, capture)
     except _PIPE_DEPENDENCY_ERRORS as error:
-        capture.error = error
+        _capture_write(capture, "error", error)
     finally:
         try:
             _close_probe_pipe(stream, "capture pipe")
         except _PIPE_DEPENDENCY_ERRORS as error:
-            if capture.error is None:
-                capture.error = error
+            original = cast("Exception | None", _capture_read(capture, "error"))
+            if original is None:
+                _capture_write(capture, "error", error)
             else:
                 BaseException.add_note(
-                    capture.error,
+                    original,
                     "probe capture pipe close also failed: "
                     + _safe_probe_error_detail(error),
                 )
     # A BaseException escaping the worker must remain visibly incomplete.
-    capture.finished = True
+    _capture_write(capture, "finished", True)
 
 
 def _write_complete_probe_stdin(stream: IO[bytes], data: bytes) -> None:
@@ -1263,16 +1338,18 @@ def _require_healthy_pipes(running: _RunningProbe) -> None:
         ProbeExecutionError: A stream exceeded its quota or failed.
 
     """
-    if running.stdout.exceeded:
+    stdout = cast("_PipeCapture", _running_read(running, "stdout"))
+    stderr = cast("_PipeCapture", _running_read(running, "stderr"))
+    if cast("bool", _capture_read(stdout, "exceeded")):
         message = "probe command exceeded stdout limit"
         raise ProbeExecutionError(message)
-    if running.stderr.exceeded:
+    if cast("bool", _capture_read(stderr, "exceeded")):
         message = "probe command exceeded stderr limit"
         raise ProbeExecutionError(message)
     if (
-        running.stdout.error is not None
-        or running.stderr.error is not None
-        or running.stdin_errors
+        _capture_read(stdout, "error") is not None
+        or _capture_read(stderr, "error") is not None
+        or cast("list[Exception]", _running_read(running, "stdin_errors"))
     ):
         message = "probe command pipe communication failed"
         raise ProbeExecutionError(message)
@@ -1286,18 +1363,28 @@ def _require_finished_workers(running: _RunningProbe) -> None:
         ProbeExecutionError: A worker quit without reporting its outcome.
 
     """
-    captures = (running.stdout, running.stderr)
+    captures = (
+        cast("_PipeCapture", _running_read(running, "stdout")),
+        cast("_PipeCapture", _running_read(running, "stderr")),
+    )
     reader_failed = _NATIVE_ANY(
-        not reader.is_alive() and not capture.finished
+        not reader.is_alive() and not cast("bool", _capture_read(capture, "finished"))
         for reader, capture in _NATIVE_ZIP(
-            running.readers, captures, strict=True
+            cast(
+                "tuple[threading.Thread, threading.Thread]",
+                _running_read(running, "readers"),
+            ),
+            captures,
+            strict=True,
         )
     )
-    writer = running.writer
+    writer = cast("threading.Thread | None", _running_read(running, "writer"))
     writer_failed = (
         writer is not None
         and not writer.is_alive()
-        and not running.stdin_complete.is_set()
+        and not cast(
+            "threading.Event", _running_read(running, "stdin_complete")
+        ).is_set()
     )
     if reader_failed or writer_failed:
         message = "probe command pipe communication failed"
@@ -1305,10 +1392,14 @@ def _require_finished_workers(running: _RunningProbe) -> None:
 
 
 def _capture_complete(running: _RunningProbe) -> bool:
-    writer = running.writer
+    writer = cast("threading.Thread | None", _running_read(running, "writer"))
+    process = cast("subprocess.Popen[bytes]", _running_read(running, "process"))
+    readers = cast(
+        "tuple[threading.Thread, threading.Thread]", _running_read(running, "readers")
+    )
     return (
-        running.process.poll() is not None
-        and _NATIVE_ALL(not reader.is_alive() for reader in running.readers)
+        process.poll() is not None
+        and _NATIVE_ALL(not reader.is_alive() for reader in readers)
         and (writer is None or not writer.is_alive())
     )
 
@@ -1351,14 +1442,21 @@ def _start_capture_checked(
         raise ProbeExecutionError(message) from error
 
 
-def _close_failed_running_pipes(
-    running: _RunningProbe, failure: Exception
-) -> None:
+def _close_failed_running_pipes(running: _RunningProbe, failure: Exception) -> None:
     """Reclaim pipes from workers that aborted before their normal close."""
-    process = running.process
-    _close_unowned_pipe(process.stdin, running.writer, failure)
+    process = cast("subprocess.Popen[bytes]", _running_read(running, "process"))
+    _close_unowned_pipe(
+        process.stdin,
+        cast("threading.Thread | None", _running_read(running, "writer")),
+        failure,
+    )
     for pipe, reader in _NATIVE_ZIP(
-        (process.stdout, process.stderr), running.readers, strict=True
+        (process.stdout, process.stderr),
+        cast(
+            "tuple[threading.Thread, threading.Thread]",
+            _running_read(running, "readers"),
+        ),
+        strict=True,
     ):
         _close_unowned_pipe(pipe, reader, failure)
 
@@ -1400,8 +1498,24 @@ def _launch_command(
         completed = subprocess.CompletedProcess(
             argv,
             process.wait(),
-            stdout=b"".join(running.stdout.fragments),
-            stderr=b"".join(running.stderr.fragments),
+            stdout=b"".join(
+                cast(
+                    "list[bytes]",
+                    _capture_read(
+                        cast("_PipeCapture", _running_read(running, "stdout")),
+                        "fragments",
+                    ),
+                )
+            ),
+            stderr=b"".join(
+                cast(
+                    "list[bytes]",
+                    _capture_read(
+                        cast("_PipeCapture", _running_read(running, "stderr")),
+                        "fragments",
+                    ),
+                )
+            ),
         )
     except Exception as error:
         try:
