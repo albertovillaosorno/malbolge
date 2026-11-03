@@ -621,8 +621,13 @@ placement
 evidence rejects transactionally. Before staging, the relocatable materializer
 also resolves candidate and output roots and rejects output paths inside the
 candidate tree, including linked-parent aliases. This prevents ordinary output
-publication from mutating its source. Concurrent filesystem writers can still
-race a non-atomic input snapshot or path check and require coordination.
+publication from mutating its source. Status, resolution, linked-ancestor,
+source snapshot, read, write, staging creation, publication, and cleanup
+failures remain typed even when a foreign callback overrides exception
+formatting or notes. Secondary cleanup failures preserve the original error
+as their cause; unchecked host exception hooks cannot authorize publication.
+Concurrent filesystem writers can still race a non-atomic input snapshot or
+path check and require coordination.
 Direct relocatable plan construction rejects output file paths that also name
 ancestor directories of other output files. Source and output instruction
 labels reject Windows drive-absolute and drive-relative forms before placement.

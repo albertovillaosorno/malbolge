@@ -41,28 +41,31 @@ compatible-plan layer is implemented.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import os
-from pathlib import Path
-from pathlib import PurePosixPath
-from pathlib import PureWindowsPath
 import shutil
-from typing import TYPE_CHECKING
-from typing import cast
+from dataclasses import dataclass
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import read_exact_regular_file
-from algorithms.diff.exact import snapshot_tree_excluding
-from algorithms.diff.model import ExactAuthoringPlan
-from algorithms.diff.model import ExactInstructionKind
-from algorithms.diff.model import OracleLiteral
+from algorithms.diff.exact import (
+    ExactTreeError,
+    read_exact_regular_file,
+    snapshot_tree_excluding,
+)
+from algorithms.diff.model import (
+    ExactAuthoringPlan,
+    ExactInstructionKind,
+    OracleLiteral,
+)
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
-    from algorithms.diff.model import ExactInstruction
-    from algorithms.diff.model import ExactSegment
-    from algorithms.diff.model import SourceSlice
+    from algorithms.diff.model import (
+        ExactInstruction,
+        ExactSegment,
+        SourceSlice,
+    )
 
 _ZERO = 0
 _ONE = 1
@@ -76,6 +79,21 @@ _PARENT = ".."
 
 class RelocationError(RuntimeError):
     """Raised when compatible source placement is unsafe or ambiguous."""
+
+
+def _host_error_detail(error: BaseException) -> str:
+    """Contain untrusted exception formatting within typed host failures."""
+    if type(error) in (
+        OSError,
+        ValueError,
+        RuntimeError,
+        ExactTreeError,
+        RelocationError,
+    ):
+        arguments = cast("tuple[object, ...]", error.args)
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+    return type(error).__name__
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,7 +348,8 @@ def _path_present(path: Path, context: str) -> bool:
     except FileNotFoundError:
         return False
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} status failed: {path}: {error}"
+        detail = _host_error_detail(error)
+        message = f"{context} status failed: {path}: {detail}"
         raise RelocationError(message) from error
     return True
 
@@ -339,10 +358,12 @@ def _read_relocatable_bytes(path: Path, context: str) -> bytes:
     try:
         return read_exact_regular_file(path, context)
     except ExactTreeError as error:
-        message = f"{context} read failed: {path}: {error}"
+        detail = _host_error_detail(error)
+        message = f"{context} read failed: {path}: {detail}"
         failure = RelocationError(message)
-        for note in cast("list[str]", getattr(error, "__notes__", [])):
-            failure.add_note(note)
+        if type(error) is ExactTreeError:
+            for note in cast("list[str]", getattr(error, "__notes__", [])):
+                failure.add_note(note)
         raise failure from error
 
 
@@ -351,7 +372,8 @@ def _write_relocatable_bytes(path: Path, data: bytes, context: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         written = path.write_bytes(data)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} write failed: {path}: {error}"
+        detail = _host_error_detail(error)
+        message = f"{context} write failed: {path}: {detail}"
         raise RelocationError(message) from error
     if type(written) is not int or written != len(data):
         message = f"{context} short or invalid byte count: {path}"
@@ -368,7 +390,8 @@ def _make_relocatable_directory(
     try:
         path.mkdir(parents=parents, exist_ok=exist_ok)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"{context} creation failed: {path}: {error}"
+        detail = _host_error_detail(error)
+        message = f"{context} creation failed: {path}: {detail}"
         raise RelocationError(message) from error
 
 
@@ -402,7 +425,8 @@ def _require_exact_source_snapshot(
             source_root, exact_plan.passthrough_roots
         )
     except ExactTreeError as error:
-        message = f"relocatable source snapshot failed: {error}"
+        detail = _host_error_detail(error)
+        message = f"relocatable source snapshot failed: {detail}"
         raise RelocationError(message) from error
     if current != exact_plan.source:
         message = "relocatable source snapshot differs from exact plan"
@@ -472,7 +496,8 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
         try:
             linked = current.is_symlink() or current.is_junction()
         except (OSError, ValueError, RuntimeError) as error:
-            message = f"ancestor inspection failed: {current}: {error}"
+            detail = _host_error_detail(error)
+            message = f"ancestor inspection failed: {current}: {detail}"
             raise RelocationError(message) from error
         if linked:
             message = (
@@ -488,8 +513,9 @@ def _safe_path(root: Path, relative_path: str) -> Path:
         resolved_path = path.resolve()
         resolved_root = root.resolve()
     except (OSError, ValueError, RuntimeError) as error:
+        detail = _host_error_detail(error)
         message = (
-            f"relocatable path resolution failed: {relative_path!r}: {error}"
+            f"relocatable path resolution failed: {relative_path!r}: {detail}"
         )
         raise RelocationError(message) from error
     try:
@@ -597,14 +623,15 @@ def _cleanup_relocatable_staging(path: Path) -> str | None:
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
-        return str(error)
+        return _host_error_detail(error)
     return None
 
 
 def _raise_relocatable_cleanup_failure(
     error: Exception, cleanup_error: str
 ) -> None:
-    message = f"{error}; relocatable staging cleanup failed: {cleanup_error}"
+    detail = _host_error_detail(error)
+    message = f"{detail}; relocatable staging cleanup failed: {cleanup_error}"
     raise RelocationError(message) from error
 
 
@@ -612,7 +639,8 @@ def _publish_relocatable_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"relocatable output publication failed: {error}"
+        detail = _host_error_detail(error)
+        message = f"relocatable output publication failed: {detail}"
         raise RelocationError(message) from error
 
 
@@ -629,7 +657,8 @@ def _require_external_output_root(
         candidate = candidate_root.resolve()
         output = output_root.resolve()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"relocatable root resolution failed: {error}"
+        detail = _host_error_detail(error)
+        message = f"relocatable root resolution failed: {detail}"
         raise RelocationError(message) from error
     if output.is_relative_to(candidate):
         message = "relocatable output must not be inside the candidate source"

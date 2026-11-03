@@ -36,26 +36,30 @@ from __future__ import annotations
 
 import hashlib
 import os
-from pathlib import Path
 import shutil
-from typing import TYPE_CHECKING
-from typing import cast
+from pathlib import Path
+from typing import TYPE_CHECKING, cast, override
 
-from algorithms.diff import relocatable as relocatable_module
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.exact import read_exact_regular_file
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import SourceSlice
-from algorithms.diff.model import TreeModelError
-from algorithms.diff.relocatable import RangeLocator
-from algorithms.diff.relocatable import RelocatableInstruction
-from algorithms.diff.relocatable import RelocatableSourceRange
-from algorithms.diff.relocatable import RelocationError
-from algorithms.diff.relocatable import build_relocatable_plan
-from algorithms.diff.relocatable import materialize_relocatable_plan
 import pytest
+from algorithms.diff import relocatable as relocatable_module
+from algorithms.diff.exact import (
+    ExactTreeError,
+    build_exact_plan,
+    read_exact_regular_file,
+)
+from algorithms.diff.model import OracleLiteral, SourceSlice, TreeModelError
+from algorithms.diff.relocatable import (
+    RangeLocator,
+    RelocatableInstruction,
+    RelocatableSourceRange,
+    RelocationError,
+    build_relocatable_plan,
+    materialize_relocatable_plan,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.relocatable import RelocatableAuthoringPlan
 
@@ -101,9 +105,252 @@ def _fixture(tmp_path: Path) -> tuple[Path, Path, bytes]:
     return source, oracle, base
 
 
+class _HostileRelocatableError(OSError):
+    """Foreign host exceptions may not execute their own display hooks."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile relocatable error formatter executed"
+        raise AssertionError(message)
+
+    @override
+    def __repr__(self) -> str:
+        message = "hostile relocatable error repr executed"
+        raise AssertionError(message)
+
+
+class _HostileRelocatableReadError(ExactTreeError):
+    """Delegated exact reads must not format foreign errors."""
+
+    @override
+    def __str__(self) -> str:
+        message = "hostile exact reader formatter executed"
+        raise AssertionError(message)
+
+    @override
+    def __getattribute__(self, name: str) -> object:
+        if name == "__notes__":
+            message = "hostile exact reader notes executed"
+            raise AssertionError(message)
+        return cast("object", super().__getattribute__(name))
+
+
+@pytest.mark.parametrize(
+    ("operation", "expected"),
+    [
+        ("status", "staging root status failed"),
+        ("creation", "staging root creation failed"),
+        ("write", "relocatable output write failed"),
+        ("publication", "output publication failed"),
+        ("root_resolve", "root resolution failed"),
+        ("read", "candidate read failed"),
+        ("snapshot", "source snapshot failed"),
+    ],
+)
+def test_relocatable_host_failures_do_not_invoke_foreign_formatters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+    expected: str,
+) -> None:
+    """Host callback errors must retain typed failures and never publish."""
+    source, oracle, base = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    plan = build_relocatable_plan(source, exact)
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    staging = tmp_path / ".out.relocatable-staging"
+    output = tmp_path / "out"
+
+    if operation == "status":
+        native_lstat = Path.lstat
+
+        def fail_status(path: Path) -> os.stat_result:
+            if path == staging:
+                raise _HostileRelocatableError("foreign status")
+            return native_lstat(path)
+
+        monkeypatch.setattr(Path, "lstat", fail_status)
+    elif operation == "creation":
+        native_mkdir = Path.mkdir
+
+        def fail_mkdir(
+            path: Path,
+            mode: int = 0o777,
+            *,
+            parents: bool = False,
+            exist_ok: bool = False,
+        ) -> None:
+            if path == staging:
+                raise _HostileRelocatableError("foreign mkdir")
+            native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+        monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    elif operation == "write":
+        native_write = Path.write_bytes
+
+        def fail_write(path: Path, data: bytes) -> int:
+            if path == staging / "created.bin":
+                raise _HostileRelocatableError("foreign write")
+            return native_write(path, data)
+
+        monkeypatch.setattr(Path, "write_bytes", fail_write)
+    elif operation == "publication":
+
+        def fail_publication(staged: Path, destination: Path) -> None:
+            _ = staged, destination
+            raise _HostileRelocatableError("foreign publication")
+
+        monkeypatch.setattr(
+            relocatable_module, "publish_directory_no_replace", fail_publication
+        )
+    elif operation == "root_resolve":
+        native_resolve = Path.resolve
+
+        def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+            if path == candidate:
+                raise _HostileRelocatableError("foreign resolution")
+            return native_resolve(path, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", fail_resolve)
+    elif operation == "read":
+        native_read = cast(
+            "Callable[[Path, str], bytes]",
+            vars(relocatable_module)["read_exact_regular_file"],
+        )
+
+        def fail_read(path: Path, context: str) -> bytes:
+            if path == candidate / "code.bin":
+                raise _HostileRelocatableReadError("foreign read")
+            return native_read(path, context)
+
+        monkeypatch.setattr(
+            relocatable_module, "read_exact_regular_file", fail_read
+        )
+    elif operation == "snapshot":
+
+        def fail_snapshot(root: Path, roots: tuple[str, ...]) -> object:
+            _ = root, roots
+            raise _HostileRelocatableReadError("foreign snapshot")
+
+        monkeypatch.setattr(
+            relocatable_module, "snapshot_tree_excluding", fail_snapshot
+        )
+
+    with pytest.raises(RelocationError, match=expected):
+        if operation == "snapshot":
+            _ = build_relocatable_plan(source, exact)
+        else:
+            materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "a foreign host error published output")
+    _expect(not staging.exists(), "a foreign host error left owned staging")
+
+
+@pytest.mark.parametrize(
+    "method", ["is_symlink", "is_junction", "resolve"]
+)
+def test_relocatable_nested_path_errors_do_not_format_foreign_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    """Reject hostile nested path inspection and normalization callbacks."""
+    candidate = tmp_path / "candidate"
+    _write(candidate, "nested/file.bin", b"candidate bytes")
+    output = tmp_path / "out"
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            output_path="copy.bin",
+            source_path="nested/file.bin",
+            copy_candidate_file=True,
+        ),
+    ))
+    guard = candidate / ("nested/file.bin" if method == "resolve" else "nested")
+    original_resolve = Path.resolve
+    original_symlink = Path.is_symlink
+    original_junction = Path.is_junction
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == guard:
+            raise _HostileRelocatableError("foreign nested resolution")
+        return original_resolve(path, strict=strict)
+
+    def fail_symlink(path: Path) -> bool:
+        if path == guard:
+            raise _HostileRelocatableError("foreign symlink status")
+        return original_symlink(path)
+
+    def fail_junction(path: Path) -> bool:
+        if path == guard:
+            raise _HostileRelocatableError("foreign junction status")
+        return original_junction(path)
+
+    replacements = {
+        "resolve": fail_resolve,
+        "is_symlink": fail_symlink,
+        "is_junction": fail_junction,
+    }
+    monkeypatch.setattr(Path, method, replacements[method])
+    expected = (
+        "path resolution failed"
+        if method == "resolve"
+        else "ancestor inspection failed"
+    )
+    with pytest.raises(RelocationError, match=expected):
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(not output.exists(), "nested path failure published output")
+    _expect(
+        not (tmp_path / ".out.relocatable-staging").exists(),
+        "nested path failure retained staging",
+    )
+
+
+@pytest.mark.parametrize("hostile_primary", [False, True])
+def test_relocatable_cleanup_preserves_failure_without_foreign_formatter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    hostile_primary: bool,
+) -> None:
+    """Secondary failures cannot execute primary or cleanup formatters."""
+    source, oracle, base = _fixture(tmp_path)
+    plan = build_relocatable_plan(source, build_exact_plan(source, oracle))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", base)
+    _write(candidate, "copy.bin", _blocks("copy"))
+    staging = tmp_path / ".out.relocatable-staging"
+    output = tmp_path / "out"
+    native_write = Path.write_bytes
+
+    def fail_write(path: Path, data: bytes) -> int:
+        if path == staging / "created.bin":
+            if hostile_primary:
+                raise _HostileRelocatableError("foreign primary")
+            raise PermissionError("primary write failed")
+        return native_write(path, data)
+
+    def fail_cleanup(path: Path) -> None:
+        _ = path
+        if hostile_primary:
+            raise PermissionError("cleanup failed")
+        raise _HostileRelocatableError("foreign cleanup")
+
+    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    with pytest.raises(
+        RelocationError, match="staging cleanup failed"
+    ) as failure:
+        materialize_relocatable_plan(candidate, plan, output)
+    _expect(
+        type(failure.value.__cause__) is RelocationError,
+        "staging cleanup failure did not preserve the original typed error",
+    )
+    _expect(not output.exists(), "failed cleanup published relocation output")
+
+
 class _ForeignRelocatableRoot(type(Path())):
     """Overridable root paths cannot authorize relocatable placement."""
 
+    @override
     def __str__(self) -> str:
         message = "foreign relocatable root path conversion executed"
         raise AssertionError(message)
