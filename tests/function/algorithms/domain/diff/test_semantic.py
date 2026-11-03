@@ -1311,3 +1311,68 @@ def test_semantic_authoring_ignores_late_matching_block_getters(
         plan = build_semantic_plan(source, target)
     assert plan == expected
     assert calls == 0, "late match-block getter changed source edit ranges"
+
+
+@pytest.mark.parametrize(
+    ("record_name", "field"),
+    [
+        ("_MatchContext", "source"),
+        ("_MatchContext", "target"),
+        ("_Region", "source_start"),
+        ("_Region", "source_end"),
+        ("_Region", "target_start"),
+        ("_Region", "target_end"),
+    ],
+)
+def test_semantic_authoring_ignores_late_match_region_getters(
+    monkeypatch: pytest.MonkeyPatch, record_name: str, field: str
+) -> None:
+    """The matched unit sequences and region bounds remain source-bound."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    expected = build_semantic_plan(source, target)
+    record_type = cast("type[object]", vars(semantic_module)[record_name])
+    original = record_type.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return None if record_name == "_MatchContext" else 1000
+        return cast("object", original(record, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__getattribute__", forged_getter)
+        plan = build_semantic_plan(source, target)
+    assert plan == expected
+    assert calls == 0, "late matching region getter changed authored source evidence"
+
+
+@pytest.mark.parametrize("field", ["source_start", "target_start"])
+def test_semantic_anchor_selection_ignores_late_pair_getters(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Anchor selection never trusts a late getter for matched positions."""
+    record_type = cast("type[object]", vars(semantic_module)["_AnchorPair"])
+    constructor = cast("Callable[[int, int], object]", record_type)
+    pairs = (constructor(0, 0), constructor(2, 2))
+    select = cast(
+        "Callable[[tuple[object, ...], int], tuple[object, ...]]",
+        vars(semantic_module)["_non_overlapping_pairs"],
+    )
+    original = record_type.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return 1000
+        return cast("object", original(record, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__getattribute__", forged_getter)
+        selected = select(pairs, 1)
+    assert selected == pairs
+    assert calls == 0, "late anchor getter rewrote matched unit positions"

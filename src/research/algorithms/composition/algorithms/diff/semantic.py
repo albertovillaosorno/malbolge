@@ -383,6 +383,52 @@ class _SemanticBuildContext:
     context_units: int
 
 
+# All transient matching roles bind original slots, not later class hooks.
+_ANCHOR_SLOTS = (
+    cast("MemberDescriptorType", _AnchorPair.__dict__["source_start"]),
+    cast("MemberDescriptorType", _AnchorPair.__dict__["target_start"]),
+)
+_MATCH_CONTEXT_SLOTS = (
+    cast("MemberDescriptorType", _MatchContext.__dict__["source"]),
+    cast("MemberDescriptorType", _MatchContext.__dict__["target"]),
+)
+_REGION_SLOTS = (
+    cast("MemberDescriptorType", _Region.__dict__["source_start"]),
+    cast("MemberDescriptorType", _Region.__dict__["source_end"]),
+    cast("MemberDescriptorType", _Region.__dict__["target_start"]),
+    cast("MemberDescriptorType", _Region.__dict__["target_end"]),
+)
+
+
+def _anchor_fields(pair: _AnchorPair) -> tuple[int, int]:
+    """Read anchored source and target offsets from initial slot storage."""
+    return (
+        cast("int", _ANCHOR_SLOTS[0].__get__(pair, _AnchorPair)),
+        cast("int", _ANCHOR_SLOTS[1].__get__(pair, _AnchorPair)),
+    )
+
+
+def _match_context_fields(
+    context: _MatchContext,
+) -> tuple[tuple[bytes, ...], tuple[bytes, ...]]:
+    """Preserve the source and target hash streams during matching."""
+    source_slot, target_slot = _MATCH_CONTEXT_SLOTS
+    return (
+        cast("tuple[bytes, ...]", source_slot.__get__(context, _MatchContext)),
+        cast("tuple[bytes, ...]", target_slot.__get__(context, _MatchContext)),
+    )
+
+
+def _region_fields(region: _Region) -> tuple[int, int, int, int]:
+    """Preserve the region bounds used to authorize matching and edits."""
+    return (
+        cast("int", _REGION_SLOTS[0].__get__(region, _Region)),
+        cast("int", _REGION_SLOTS[1].__get__(region, _Region)),
+        cast("int", _REGION_SLOTS[2].__get__(region, _Region)),
+        cast("int", _REGION_SLOTS[3].__get__(region, _Region)),
+    )
+
+
 # Context and range records are internal, but later class getter changes must
 # not redirect source binding or replacement authoring at this boundary.
 _EDIT_RANGE_SLOTS = (
@@ -463,30 +509,34 @@ def _locator(
 
 
 def _common_prefix_length(context: _MatchContext, region: _Region) -> int:
+    source, target = _match_context_fields(context)
+    source_start, source_end, target_start, target_end = _region_fields(region)
     limit = _NATIVE_MIN(
-        region.source_end - region.source_start,
-        region.target_end - region.target_start,
+        source_end - source_start,
+        target_end - target_start,
     )
     length = _ZERO
     while (
         length < limit
-        and context.source[region.source_start + length]
-        == context.target[region.target_start + length]
+        and source[source_start + length]
+        == target[target_start + length]
     ):
         length += _ONE
     return length
 
 
 def _common_suffix_length(context: _MatchContext, region: _Region) -> int:
+    source, target = _match_context_fields(context)
+    source_start, source_end, target_start, target_end = _region_fields(region)
     limit = _NATIVE_MIN(
-        region.source_end - region.source_start,
-        region.target_end - region.target_start,
+        source_end - source_start,
+        target_end - target_start,
     )
     length = _ZERO
     while (
         length < limit
-        and context.source[region.source_end - length - _ONE]
-        == context.target[region.target_end - length - _ONE]
+        and source[source_end - length - _ONE]
+        == target[target_end - length - _ONE]
     ):
         length += _ONE
     return length
@@ -535,12 +585,13 @@ def _lis_pairs(pairs: tuple[_AnchorPair, ...]) -> tuple[_AnchorPair, ...]:
     tail_indices: list[int] = []
     predecessors = [-_ONE] * _NATIVE_LEN(pairs)
     for index, pair in _NATIVE_ENUMERATE(pairs):
-        position = bisect_left(tail_targets, pair.target_start)
+        target_start = _anchor_fields(pair)[1]
+        position = bisect_left(tail_targets, target_start)
         if position == _NATIVE_LEN(tail_targets):
-            tail_targets.append(pair.target_start)
+            tail_targets.append(target_start)
             tail_indices.append(index)
         else:
-            tail_targets[position] = pair.target_start
+            tail_targets[position] = target_start
             tail_indices[position] = index
         if position > _ZERO:
             predecessors[index] = tail_indices[position - _ONE]
@@ -555,11 +606,12 @@ def _non_overlapping_pairs(
     source_end = -_ONE
     target_end = -_ONE
     for pair in pairs:
-        if pair.source_start < source_end or pair.target_start < target_end:
+        source_start, target_start = _anchor_fields(pair)
+        if source_start < source_end or target_start < target_end:
             continue
         selected.append(pair)
-        source_end = pair.source_start + width
-        target_end = pair.target_start + width
+        source_end = source_start + width
+        target_end = target_start + width
     return _NATIVE_TUPLE(selected)
 
 
@@ -568,16 +620,18 @@ def _window_pairs(
     region: _Region,
     width: int,
 ) -> tuple[_AnchorPair, ...]:
+    source, target = _match_context_fields(context)
+    source_start, source_end, target_start, target_end = _region_fields(region)
     source_windows = _unique_windows(
-        context.source,
-        region.source_start,
-        region.source_end,
+        source,
+        source_start,
+        source_end,
         width=width,
     )
     target_windows = _unique_windows(
-        context.target,
-        region.target_start,
-        region.target_end,
+        target,
+        target_start,
+        target_end,
         width=width,
     )
     return _NATIVE_TUPLE(
@@ -587,7 +641,7 @@ def _window_pairs(
                 for window, source_offset in source_windows.items()
                 if window in target_windows
             ),
-            key=lambda pair: (pair.source_start, pair.target_start),
+            key=_anchor_fields,
         )
     )
 
@@ -596,8 +650,9 @@ def _anchor_pairs(
     context: _MatchContext,
     region: _Region,
 ) -> tuple[int, tuple[_AnchorPair, ...]]:
-    source_length = region.source_end - region.source_start
-    target_length = region.target_end - region.target_start
+    source_start, source_end, target_start, target_end = _region_fields(region)
+    source_length = source_end - source_start
+    target_length = target_end - target_start
     for width in _ANCHOR_WIDTHS:
         if width > source_length or width > target_length:
             continue
@@ -634,27 +689,30 @@ def _merge_blocks(blocks: list[_MatchBlock]) -> list[_MatchBlock]:
 
 
 def _prefix_block(region: _Region, length: int) -> _MatchBlock | None:
+    source_start, _, target_start, _ = _region_fields(region)
     if not length:
         return None
-    return _MatchBlock(region.source_start, region.target_start, length)
+    return _MatchBlock(source_start, target_start, length)
 
 
 def _suffix_block(region: _Region, length: int) -> _MatchBlock | None:
+    _, source_end, _, target_end = _region_fields(region)
     if not length:
         return None
     return _MatchBlock(
-        region.source_end - length,
-        region.target_end - length,
+        source_end - length,
+        target_end - length,
         length,
     )
 
 
 def _core_region(region: _Region, prefix: int, suffix: int) -> _Region:
+    source_start, source_end, target_start, target_end = _region_fields(region)
     return _Region(
-        source_start=region.source_start + prefix,
-        source_end=region.source_end - suffix,
-        target_start=region.target_start + prefix,
-        target_end=region.target_end - suffix,
+        source_start=source_start + prefix,
+        source_end=source_end - suffix,
+        target_start=target_start + prefix,
+        target_end=target_end - suffix,
     )
 
 
@@ -662,30 +720,32 @@ def _anchored_core_blocks(
     context: _MatchContext,
     region: _Region,
 ) -> list[_MatchBlock]:
+    source_start, source_end, target_start, target_end = _region_fields(region)
     width, anchors = _anchor_pairs(context, region)
     if not anchors:
         return []
     blocks: list[_MatchBlock] = []
-    previous_source = region.source_start
-    previous_target = region.target_start
+    previous_source = source_start
+    previous_target = target_start
     for anchor in anchors:
+        anchor_source, anchor_target = _anchor_fields(anchor)
         gap = _Region(
             previous_source,
-            anchor.source_start,
+            anchor_source,
             previous_target,
-            anchor.target_start,
+            anchor_target,
         )
         blocks.extend(_region_blocks(context, gap))
         blocks.append(
-            _MatchBlock(anchor.source_start, anchor.target_start, width)
+            _MatchBlock(anchor_source, anchor_target, width)
         )
-        previous_source = anchor.source_start + width
-        previous_target = anchor.target_start + width
+        previous_source = anchor_source + width
+        previous_target = anchor_target + width
     trailing = _Region(
         previous_source,
-        region.source_end,
+        source_end,
         previous_target,
-        region.target_end,
+        target_end,
     )
     blocks.extend(_region_blocks(context, trailing))
     return blocks
@@ -695,12 +755,13 @@ def _region_blocks(
     context: _MatchContext,
     region: _Region,
 ) -> list[_MatchBlock]:
+    source_start, source_end, target_start, target_end = _region_fields(region)
     prefix = _common_prefix_length(context, region)
     after_prefix = _Region(
-        region.source_start + prefix,
-        region.source_end,
-        region.target_start + prefix,
-        region.target_end,
+        source_start + prefix,
+        source_end,
+        target_start + prefix,
+        target_end,
     )
     suffix = _common_suffix_length(context, after_prefix)
     core = _core_region(region, prefix, suffix)
