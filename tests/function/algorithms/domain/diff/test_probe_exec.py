@@ -938,6 +938,60 @@ def _hostile_primary_probe_fault() -> RuntimeError:
     return foreign("original probe operation failed")
 
 
+@pytest.mark.parametrize("error_type", [ExactTreeError, ProbeExecutionError])
+def test_safe_probe_error_detail_ignores_late_native_class_getter(
+    monkeypatch: pytest.MonkeyPatch, error_type: type[Exception]
+) -> None:
+    """Native exception detail must bypass mutable class accessors."""
+    failure = error_type("trusted probe detail")
+    original = error_type.__getattribute__
+    calls = 0
+
+    def reject_args(error: Exception, name: str) -> object:
+        nonlocal calls
+        if name == "args":
+            calls += 1
+            raise AssertionError("late exception args getter executed")
+        return cast("object", original(error, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(error_type, "__getattribute__", reject_args)
+        assert (
+            probe_exec_module._safe_probe_error_detail(failure)
+            == "trusted probe detail"
+        )
+    assert calls == 0, "error detail consulted a late exception getter"
+
+
+def test_probe_snapshot_failure_preserves_native_detail_without_late_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Snapshot failure keeps native message/cause without class dispatch."""
+    failure = ExactTreeError("trusted probe snapshot failure")
+    original = ExactTreeError.__getattribute__
+    calls = 0
+
+    def fail_snapshot(_root: Path) -> object:
+        raise failure
+
+    def reject_args(error: ExactTreeError, name: str) -> object:
+        nonlocal calls
+        if name == "args":
+            calls += 1
+            raise AssertionError("late snapshot args getter executed")
+        return cast("object", original(error, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(probe_exec_module, "snapshot_tree", fail_snapshot)
+        patch.setattr(ExactTreeError, "__getattribute__", reject_args)
+        with pytest.raises(
+            ProbeExecutionError, match="trusted probe snapshot failure"
+        ) as caught:
+            _ = probe_exec_module._snapshot_probe_tree(tmp_path, "source")
+    assert caught.value.__cause__ is failure
+    assert calls == 0, "snapshot error bridge consulted a late getter"
+
+
 @pytest.mark.parametrize("cleanup_kind", ["native", "foreign", "hostile-args"])
 def test_unowned_probe_pipe_close_keeps_foreign_primary(
     cleanup_kind: str,

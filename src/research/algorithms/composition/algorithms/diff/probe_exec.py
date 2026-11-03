@@ -1496,7 +1496,14 @@ def _safe_probe_error_detail(error: BaseException) -> str:
         ExactTreeError,
         ProbeExecutionError,
     ):
-        arguments = cast("tuple[object, ...]", error.args)
+        # Exact native error classes can still acquire late class getters.
+        # Fetch the BaseException slot without dispatching through those hooks.
+        arguments = cast(
+            "tuple[object, ...]",
+            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                error, "args"
+            ),
+        )
         if (
             _NATIVE_LEN(arguments) == 1
             and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR
