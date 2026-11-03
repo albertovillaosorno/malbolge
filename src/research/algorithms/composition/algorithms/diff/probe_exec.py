@@ -946,6 +946,7 @@ def _require_native_host_resolver() -> None:
         or os.path.sep is not _NATIVE_HOST_SEP
         or os.path.altsep is not _NATIVE_HOST_ALTSEP
         or builtins.len is not _NATIVE_LEN
+        or builtins.bytes is not _NATIVE_BYTES
         or builtins.isinstance is not _NATIVE_ISINSTANCE
     ):
         message = "probe native host resolver changed"

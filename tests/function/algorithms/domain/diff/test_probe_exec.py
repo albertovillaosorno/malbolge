@@ -3344,6 +3344,38 @@ def test_probe_rejects_late_builtin_len_used_by_native_realpath(
     assert not intercepted, "late realpath length hook was consulted"
 
 
+def test_probe_rejects_late_bytes_type_alias_in_native_realpath(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Host realpath must not see a forged global byte-string type."""
+    source = tmp_path / "source"
+    source.mkdir()
+    consulted = False
+    native_bytes = builtins.bytes
+
+    class _ByteAliasMeta(type):
+        def __instancecheck__(cls, value: object) -> bool:
+            nonlocal consulted
+            consulted = True
+            return type(value) is str
+
+    class _ByteAlias(metaclass=_ByteAliasMeta):
+        pass
+
+    require_root = cast(
+        "Callable[[Path, str], Path]",
+        vars(probe_exec_module)["_resolved_root"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", _ByteAlias)
+        with pytest.raises(
+            ProbeExecutionError, match="native host resolver changed"
+        ):
+            _ = require_root(source, "source")
+    assert not consulted, "late realpath type alias was consulted"
+    assert builtins.bytes is native_bytes
+
+
 @pytest.mark.parametrize("dependency", ["splitroot", "parse_path"])
 def test_probe_rejects_late_native_path_parser_redirect(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
