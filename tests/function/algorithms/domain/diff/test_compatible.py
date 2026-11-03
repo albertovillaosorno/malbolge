@@ -841,6 +841,68 @@ def test_compatible_output_cannot_be_nested_inside_candidate(
     )
 
 
+def _forge_nested_output_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+    output: Path,
+    outside: Path,
+) -> None:
+    """Replace a path resolution receipt with an unrelated native Path."""
+    native_resolve = Path.resolve
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        if path == output:
+            return outside
+        return native_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+
+
+def _forge_nested_output_containment(
+    monkeypatch: pytest.MonkeyPatch,
+    output: Path,
+) -> None:
+    """Replace a containment receipt with a false negative."""
+    native_is_relative_to = Path.is_relative_to
+
+    def forged_is_relative_to(path: Path, base: Path) -> bool:
+        if path == output:
+            return False
+        return native_is_relative_to(path, base)
+
+    monkeypatch.setattr(Path, "is_relative_to", forged_is_relative_to)
+
+
+@pytest.mark.parametrize("forge_resolution", [False, True])
+def test_compatible_nested_output_rejects_forged_host_path_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    forge_resolution: bool,
+) -> None:
+    """A replaced pathlib primitive cannot authorize staging in the source."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    original = snapshot_tree(candidate)
+    output = candidate / "nested" / "out"
+    if forge_resolution:
+        _forge_nested_output_resolution(
+            monkeypatch, output, tmp_path / "outside"
+        )
+    else:
+        _forge_nested_output_containment(monkeypatch, output)
+
+    with pytest.raises(CompatiblePlanError, match=r"output root.*candidate"):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(snapshot_tree(candidate) == original, "host hook mutated candidate")
+    _expect(
+        not output.exists(), "host hook published candidate-contained output"
+    )
+    _expect(
+        not (candidate / "nested/.out.compatible-staging").exists(),
+        "host hook left staging inside candidate",
+    )
+
+
 def test_compatible_output_alias_cannot_target_candidate(
     tmp_path: Path,
 ) -> None:
@@ -1310,7 +1372,7 @@ class _HostileExactCompatibleError(ExactTreeError):
 @pytest.mark.parametrize(
     ("operation", "expected"),
     [
-        ("root_resolve", "candidate root resolution failed"),
+        ("root_resolve", "candidate snapshot failed"),
         ("staging_status", "staging root status failed"),
         ("staging_create", "staging root creation failed"),
         ("write", "instruction output write failed"),

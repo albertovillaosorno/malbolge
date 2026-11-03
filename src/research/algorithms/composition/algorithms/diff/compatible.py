@@ -81,6 +81,10 @@ _HEX_DIGITS = frozenset("0123456789abcdef")
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
+# Domain callbacks cannot replace host path preflight after module load.
+_NATIVE_PATH_TYPE = type(Path())
+_NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
+_NATIVE_IS_RELATIVE_TO = _NATIVE_PATH_TYPE.is_relative_to
 
 Mapper = Callable[[str, bytes], MappedView | None]
 Postcondition = Callable[[Path], bool]
@@ -230,11 +234,15 @@ def _validate_request_path(value: object, context: str) -> None:
 
 def _resolve_request_root(path: Path, context: str) -> Path:
     try:
-        return path.resolve()
+        resolved = _NATIVE_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"compatible {context} root resolution failed: {detail}"
         raise CompatiblePlanError(message) from error
+    if type(resolved) is not _NATIVE_PATH_TYPE:
+        message = f"compatible {context} root requires native resolved Path"
+        raise CompatiblePlanError(message)
+    return resolved
 
 
 def _require_output_outside_candidate(
@@ -242,7 +250,7 @@ def _require_output_outside_candidate(
 ) -> None:
     candidate = _resolve_request_root(request.candidate_root, "candidate")
     output = _resolve_request_root(request.output_root, "output")
-    if output.is_relative_to(candidate):
+    if _NATIVE_IS_RELATIVE_TO(output, candidate):
         message = "compatible output root must remain outside candidate tree"
         raise CompatiblePlanError(message)
 
