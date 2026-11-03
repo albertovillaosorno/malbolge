@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import math
 import shutil
 import sys
@@ -573,6 +574,90 @@ def test_authored_behavior_records_reject_foreign_incoherent_inputs(
             compatibility=authored.compatibility,
             bugs=authored.bugs,
         )
+
+
+@pytest.mark.parametrize("authored", [False, True])
+def test_bug_program_selector_rejects_late_any_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    authored: bool,
+) -> None:
+    """Late host truth hooks cannot admit a selector-free bug probe."""
+    command = ProbeCommand(
+        executable=ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "print('unselected')"),
+    )
+    unselected = ProbeProgram("historical-bug", (command,))
+
+    def construct_after_hook_swap() -> None:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "any", lambda values: True)
+            if authored:
+                _ = AuthoredBugProgram(unselected, "fix", b"old", b"new")
+            else:
+                _ = BugProgram(unselected, "fix")
+
+    with pytest.raises(BehaviorProgramError, match="selected observation"):
+        construct_after_hook_swap()
+
+
+def test_behavior_programs_reject_late_sort_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A global sorter cannot approve noncanonical program ordering."""
+    programs = (
+        _read_program("identity-z", "identity.txt"),
+        _read_program("identity-a", "identity.txt"),
+    )
+    native_sorted = builtins.sorted
+
+    def forged_sorted(values: set[str]) -> list[str]:
+        observed = tuple(values)
+        if frozenset(observed) == frozenset(("identity-a", "identity-z")):
+            return ["identity-z", "identity-a"]
+        return list(native_sorted(observed))
+
+    def construct_after_hook_swap() -> BehaviorPrograms:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "sorted", forged_sorted)
+            return BehaviorPrograms(
+                identity=programs, compatibility=(), bugs=()
+            )
+
+    with pytest.raises(BehaviorProgramError, match="unique sorted identifiers"):
+        _ = construct_after_hook_swap()
+
+
+@pytest.mark.parametrize("duplicate_kind", ["probe", "correction"])
+def test_behavior_programs_reject_late_set_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    duplicate_kind: str,
+) -> None:
+    """A global set shim cannot approve duplicate program or correction IDs."""
+    identity = (_read_program("identity-a", "identity.txt"),)
+    compatibility: tuple[ProbeProgram, ...] = ()
+    bugs: tuple[BugProgram, ...] = ()
+    if duplicate_kind == "probe":
+        compatibility = (_read_program("identity-a", "identity.txt"),)
+        message = "globally unique"
+    else:
+        bugs = (
+            BugProgram(_read_program("bug-a", "bug.txt"), "shared-fix"),
+            BugProgram(_read_program("bug-b", "bug.txt"), "shared-fix"),
+        )
+        message = "correction identifiers must be unique"
+
+    def construct_after_hook_swap() -> BehaviorPrograms:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "set", lambda values: list(values))
+            return BehaviorPrograms(
+                identity=identity,
+                compatibility=compatibility,
+                bugs=bugs,
+            )
+
+    with pytest.raises(BehaviorProgramError, match=message):
+        _ = construct_after_hook_swap()
 
 
 def test_identity_and_bug_programs_require_selected_transcripts(

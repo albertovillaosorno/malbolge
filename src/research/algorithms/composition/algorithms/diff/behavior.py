@@ -352,7 +352,10 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
         evidence.corrections_to_skip,
         "corrections to skip",
     )
-    if len(apply) != len(_NATIVE_SET(apply)) or len(skip) != len(_NATIVE_SET(skip)):
+    if (
+        len(apply) != len(_NATIVE_SET(apply))
+        or len(skip) != len(_NATIVE_SET(skip))
+    ):
         message = "behavior correction routes must not contain duplicates"
         raise BehaviorPolicyError(message)
     if _NATIVE_SET(apply) & _NATIVE_SET(skip):
@@ -413,8 +416,9 @@ def _observation_map(
     | tuple[BugObservation, ...],
 ) -> dict[str, IdentityObservation | CompatibilityObservation | BugObservation]:
     identifiers = tuple(item.probe_id for item in observations)
-    if identifiers != tuple(_NATIVE_SORTED(identifiers)) or len(identifiers) != len(
-        _NATIVE_SET(identifiers)
+    if (
+        identifiers != tuple(_NATIVE_SORTED(identifiers))
+        or len(identifiers) != len(_NATIVE_SET(identifiers))
     ):
         message = (
             "behavior observations must have unique sorted probe identifiers"

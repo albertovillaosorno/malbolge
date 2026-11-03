@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import shutil
 import tempfile
 from dataclasses import dataclass, replace
@@ -70,6 +71,9 @@ if TYPE_CHECKING:
 # Bind native path operations before domain hooks can replace them.
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_PATH_STR = Path.__str__
+_NATIVE_ANY = builtins.any
+_NATIVE_SORTED = builtins.sorted
+_NATIVE_SET = builtins.set
 _NUL = "\x00"
 
 
@@ -101,7 +105,7 @@ def _require_selected_program(program: ProbeProgram, context: str) -> None:
         BehaviorProgramError: No command selects stdout or exit status.
 
     """
-    if not any(
+    if not _NATIVE_ANY(
         command.digest_stdout or command.digest_exit_code
         for command in program.commands
     ):
@@ -135,7 +139,7 @@ def _require_program_tuple(value: object, context: str) -> None:
         message = f"{context} must use the exact immutable tuple type"
         raise BehaviorProgramError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(item) is not ProbeProgram for item in items):
+    if _NATIVE_ANY(type(item) is not ProbeProgram for item in items):
         message = f"{context} contains a foreign probe program"
         raise BehaviorProgramError(message)
 
@@ -152,7 +156,7 @@ def _require_bug_program_tuple(value: object) -> None:
         message = "bug behavior programs must use the exact immutable tuple type"
         raise BehaviorProgramError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(item) is not BugProgram for item in items):
+    if _NATIVE_ANY(type(item) is not BugProgram for item in items):
         message = "bug behavior programs contain a foreign bug record"
         raise BehaviorProgramError(message)
 
@@ -187,11 +191,11 @@ class BehaviorPrograms:
             _program_ids(self.compatibility),
         )
         identifiers = tuple(item for group in groups for item in group)
-        if len(identifiers) != len(set(identifiers)):
+        if len(identifiers) != len(_NATIVE_SET(identifiers)):
             message = "behavior program identifiers must be globally unique"
             raise BehaviorProgramError(message)
         correction_ids = tuple(item.correction_id for item in self.bugs)
-        if len(correction_ids) != len(set(correction_ids)):
+        if len(correction_ids) != len(_NATIVE_SET(correction_ids)):
             message = "bug behavior correction identifiers must be unique"
             raise BehaviorProgramError(message)
 
@@ -290,7 +294,7 @@ def _require_authored_bug_tuple(value: object) -> None:
         message = "authored bugs must use the exact immutable tuple type"
         raise BehaviorProgramError(message)
     items = cast("tuple[object, ...]", value)
-    if any(type(item) is not AuthoredBugProgram for item in items):
+    if _NATIVE_ANY(type(item) is not AuthoredBugProgram for item in items):
         message = "authored bugs contain a foreign authored bug record"
         raise BehaviorProgramError(message)
 
@@ -327,7 +331,7 @@ def _require_run_context(value: object, context: str) -> ProbeRunContext:
 
 
 def _sorted_unique(identifiers: tuple[str, ...], kind: str) -> tuple[str, ...]:
-    if identifiers != tuple(sorted(set(identifiers))):
+    if identifiers != tuple(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = f"{kind} behavior programs must have unique sorted identifiers"
         raise BehaviorProgramError(message)
     return identifiers
@@ -349,7 +353,7 @@ def _all_programs(programs: BehaviorPrograms) -> tuple[ProbeProgram, ...]:
         *programs.compatibility,
         *(item.program for item in programs.bugs),
     )
-    return tuple(sorted(flattened, key=lambda item: item.probe_id))
+    return tuple(_NATIVE_SORTED(flattened, key=lambda item: item.probe_id))
 
 
 def _transcript_map(
@@ -357,7 +361,7 @@ def _transcript_map(
     programs: tuple[ProbeProgram, ...],
 ) -> dict[str, ProbeTranscript]:
     """Require exactly one native receipt for every requested probe."""
-    if type(transcripts) is not tuple or any(
+    if type(transcripts) is not tuple or _NATIVE_ANY(
         type(item) is not ProbeTranscript for item in transcripts
     ):
         message = "behavior transcript batch must use exact immutable records"

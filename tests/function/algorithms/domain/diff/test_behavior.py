@@ -420,7 +420,11 @@ def test_behavior_profile_rejects_unsorted_ids_after_sort_hook_swap(
 ) -> None:
     """Late global sort hooks cannot authorize unordered probe metadata."""
     profile = _profile()
-    unordered = (profile.identity[1], profile.identity[0], *profile.identity[2:])
+    unordered = (
+        profile.identity[1],
+        profile.identity[0],
+        *profile.identity[2:],
+    )
 
     with monkeypatch.context() as patch:
         patch.setattr(builtins, "sorted", lambda values: list(values))
