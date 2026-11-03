@@ -3340,3 +3340,51 @@ def test_compatible_materialization_uses_original_admitted_record_slots(
     assert (output / "code.src").read_bytes() == _EXPECTED_CODE
     assert not forged_output.exists()
     assert calls == 0, "compatible replay consulted late record getter"
+
+
+@pytest.mark.parametrize(
+    ("record_kind", "field", "forged"),
+    [
+        ("binding", "output_path", "blob.bin"),
+        ("binding", "edit_index", 99),
+        ("binding", "correction_id", "other-fix"),
+        ("plan", "instructions", ()),
+        ("instruction", "output_path", "blob.bin"),
+    ],
+)
+def test_compatible_binding_uses_original_record_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_kind: str,
+    field: str,
+    forged: object,
+) -> None:
+    """Routing cannot shift edits or paths using replaceable class getters."""
+    plan = _plan(tmp_path)
+    binding = CompatibleCorrectionBinding("code.src", 0, "fix")
+    if record_kind == "plan":
+        cls = type(plan)
+    elif record_kind == "instruction":
+        cls = CompatibleInstruction
+    else:
+        cls = CompatibleCorrectionBinding
+    original = cls.__getattribute__
+    calls = 0
+
+    def late_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return original(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(cls, "__getattribute__", late_getter)
+        bound = bind_compatible_corrections(plan, (binding,))
+    semantic = next(
+        item
+        for item in bound.instructions
+        if item.kind is CompatibleFileKind.SEMANTIC_PATCH
+    )
+    assert semantic.correction_ids == ("fix",)
+    assert calls == 0, "late getter redirected compatible correction binding"

@@ -40,7 +40,7 @@ import os
 import shutil
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from stat import S_ISLNK
@@ -711,7 +711,7 @@ def _validate_plan_records(plan: CompatibleAuthoringPlan) -> None:  # ruff: igno
 def _validate_plan_topology(plan: CompatibleAuthoringPlan) -> None:
     target_paths = _NATIVE_TUPLE(record.path for record in plan.target.files)
     instruction_paths = _NATIVE_TUPLE(
-        item.output_path for item in plan.instructions
+        _original_instruction_view(item).output_path for item in plan.instructions
     )
     if instruction_paths != target_paths:
         message = "compatible plan instructions must exactly cover target paths"
@@ -784,7 +784,7 @@ def _validate_authoring_plan(plan: CompatibleAuthoringPlan) -> None:
     target_records = {record.path: record for record in plan.target.files}
     for instruction in plan.instructions:
         _validate_plan_instruction_binding(
-            instruction,
+            _original_instruction_view(instruction),
             source_records,
             target_records,
         )
@@ -812,7 +812,10 @@ def _validate_correction_bindings(
     ):
         message = "compatible correction bindings contain a foreign record"
         raise CompatiblePlanError(message)
-    admitted = cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
+    admitted = _NATIVE_TUPLE(
+        _original_correction_view(item)
+        for item in cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
+    )
     locations = _NATIVE_TUPLE(
         (item.output_path, item.edit_index) for item in admitted
     )
@@ -848,15 +851,25 @@ def _bind_instruction_corrections(
 ) -> CompatibleInstruction:
     if not bindings:
         return instruction
-    if instruction.semantic is None:
+    fields = _original_instruction_view(instruction)
+    if fields.semantic is None:
         message = (
             "compatible correction binding requires a semantic instruction"
         )
         raise CompatiblePlanError(message)
-    correction_ids = _NATIVE_LIST(_normalized_correction_ids(instruction))
+    correction_ids = _NATIVE_LIST(_normalized_correction_ids(fields))
     for binding in bindings:
         _apply_correction_binding(correction_ids, binding)
-    return replace(instruction, correction_ids=_NATIVE_TUPLE(correction_ids))
+    return CompatibleInstruction(
+        output_path=fields.output_path,
+        kind=fields.kind,
+        source_path=fields.source_path,
+        source_sha256=fields.source_sha256,
+        semantic=fields.semantic,
+        exact=fields.exact,
+        literal=fields.literal,
+        correction_ids=_NATIVE_TUPLE(correction_ids),
+    )
 
 
 def bind_compatible_corrections(
@@ -875,22 +888,35 @@ def bind_compatible_corrections(
     if _NATIVE_TYPE(plan) is not CompatibleAuthoringPlan:
         message = "compatible correction binding requires the exact plan type"
         raise CompatiblePlanError(message)
+    fields = cast(
+        "CompatibleAuthoringPlan",
+        cast("object", _pinned_validation_view(plan, CompatibleAuthoringPlan)),
+    )
     admitted = _validate_correction_bindings(bindings)
     by_path: dict[str, list[CompatibleCorrectionBinding]] = {}
     for binding in admitted:
         by_path.setdefault(binding.output_path, []).append(binding)
-    known_paths = {instruction.output_path for instruction in plan.instructions}
+    instruction_views = _NATIVE_TUPLE(
+        (item, _original_instruction_view(item)) for item in fields.instructions
+    )
+    known_paths = {view.output_path for _, view in instruction_views}
     if _NATIVE_SET(by_path) - known_paths:
         message = "compatible correction binding targets an unknown output path"
         raise CompatiblePlanError(message)
     instructions = _NATIVE_TUPLE(
         _bind_instruction_corrections(
-            instruction,
-            _NATIVE_TUPLE(by_path.get(instruction.output_path, ())),
+            item, _NATIVE_TUPLE(by_path.get(view.output_path, ()))
         )
-        for instruction in plan.instructions
+        for item, view in instruction_views
     )
-    return replace(plan, instructions=instructions)
+    return CompatibleAuthoringPlan(
+        source=fields.source,
+        target=fields.target,
+        reference_identity=fields.reference_identity,
+        admission_policy=fields.admission_policy,
+        instructions=instructions,
+        preserve_candidate_only=fields.preserve_candidate_only,
+    )
 
 
 def _record_map(snapshot: TreeSnapshot) -> dict[str, FileRecord]:
@@ -1145,6 +1171,37 @@ def _compatible_instruction(
     if mapped is not None:
         return _mapped_instruction(instruction, source_path, mapped)
     return _exact_instruction(context, instruction, source_path)
+
+
+def _original_instruction_view(
+    instruction: CompatibleInstruction,
+) -> CompatibleInstruction:
+    return cast(
+        "CompatibleInstruction",
+        cast("object", _pinned_validation_view(instruction, CompatibleInstruction)),
+    )
+
+
+def _original_correction_view(
+    binding: CompatibleCorrectionBinding,
+) -> CompatibleCorrectionBinding:
+    return cast(
+        "CompatibleCorrectionBinding",
+        cast(
+            "object",
+            SimpleNamespace(
+                output_path=_CORRECTION_PATH_SLOT.__get__(
+                    binding, CompatibleCorrectionBinding
+                ),
+                edit_index=_CORRECTION_INDEX_SLOT.__get__(
+                    binding, CompatibleCorrectionBinding
+                ),
+                correction_id=_CORRECTION_ID_SLOT.__get__(
+                    binding, CompatibleCorrectionBinding
+                ),
+            ),
+        ),
+    )
 
 
 def _admitted_plan_view(plan: CompatibleAuthoringPlan) -> CompatibleAuthoringPlan:
