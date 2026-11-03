@@ -95,6 +95,8 @@ _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_HOST_REALPATH = os.path.realpath
 _NATIVE_HOST_PATH_MODULE = os.path
+_NATIVE_HOST_ISJUNCTION = os.path.isjunction
+_NATIVE_PATHLIB_OS_MODULE = pathlib.__dict__.get("os")
 _NATIVE_HOST_SPLITROOT = os.path.splitroot
 _NATIVE_HOST_SPLITDRIVE = os.path.splitdrive
 _NATIVE_HOST_JOIN = os.path.join
@@ -495,7 +497,19 @@ def _host_error_detail(error: BaseException) -> str:
     return _NATIVE_TYPE(error).__name__
 
 
+def _require_native_junction_classifier() -> None:
+    """Reject replaced globals read by native Path.is_junction."""
+    if (
+        pathlib.__dict__.get("os") is not _NATIVE_PATHLIB_OS_MODULE
+        or os.path is not _NATIVE_HOST_PATH_MODULE
+        or _NATIVE_HOST_PATH_MODULE.isjunction is not _NATIVE_HOST_ISJUNCTION
+    ):
+        message = "pinned source host junction classifier changed"
+        raise SourcePinError(message)
+
+
 def _source_mode(path: Path, relative: str) -> int | None:
+    _require_native_junction_classifier()
     try:
         receipt = _NATIVE_PATH_LSTAT(path)
     except _NATIVE_FILE_NOT_FOUND_ERROR:
@@ -653,6 +667,7 @@ def _validate_root_path(root: object) -> None:
 
 def _require_native_root_resolver() -> None:
     """Reject late host hooks consulted by the original pathlib resolver."""
+    _require_native_junction_classifier()
     if os.path.realpath is not _NATIVE_HOST_REALPATH:
         message = "pinned source root native host resolver changed"
         raise SourcePinError(message)

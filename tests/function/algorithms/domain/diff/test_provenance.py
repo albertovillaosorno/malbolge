@@ -38,6 +38,7 @@ import builtins
 import hashlib
 import ntpath
 import os
+import pathlib
 import stat
 import subprocess
 import sys
@@ -2740,3 +2741,72 @@ def test_source_pin_error_detail_keeps_native_exact_type_after_alias(
     with monkeypatch.context() as patched:
         patched.setattr(provenance_module, "ExactTreeError", LookupError)
         assert detail(failure) == "native exact source failed"
+
+
+@pytest.mark.parametrize("foreign_result", [False, True])
+def test_source_pin_rejects_late_host_junction_classifier_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, foreign_result: bool
+) -> None:
+    """The captured Path method must not invoke a foreign host classifier."""
+    _write(tmp_path, "README", b"trusted source")
+    calls = 0
+
+    def foreign_junction(_path: Path) -> bool:
+        nonlocal calls
+        calls += 1
+        return foreign_result
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "isjunction", foreign_junction)
+        with pytest.raises(SourcePinError, match="junction classifier changed"):
+            _ = source_snapshot_evidence(tmp_path, ("README",))
+    assert calls == 0, "foreign junction classifier executed before source pin"
+
+
+def test_source_pin_rechecks_host_junction_classifier_after_reader(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reader-induced host alias change must not affect the second scan."""
+    _write(tmp_path, "README", b"trusted source")
+    native_reader = provenance_module.read_exact_regular_file
+    calls = 0
+
+    def foreign_junction(_path: Path) -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    with monkeypatch.context() as patched:
+
+        def change_after_read(path: Path, label: str) -> bytes:
+            data = native_reader(path, label)
+            patched.setattr(os.path, "isjunction", foreign_junction)
+            return data
+
+        patched.setattr(provenance_module, "read_exact_regular_file", change_after_read)
+        with pytest.raises(SourcePinError, match="junction classifier changed"):
+            _ = source_snapshot_evidence(tmp_path, ("README",))
+    assert calls == 0, "foreign junction classifier executed on repeated scan"
+
+
+def test_source_pin_rejects_late_pathlib_os_junction_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Captured Path.is_junction must not consult replaced pathlib globals."""
+    _write(tmp_path, "README", b"trusted source")
+    calls = 0
+
+    def foreign_junction(_path: Path) -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    foreign_path = SimpleNamespace(**vars(os.path))
+    foreign_path.isjunction = foreign_junction
+    foreign_os = SimpleNamespace(**vars(os))
+    foreign_os.path = foreign_path
+    with monkeypatch.context() as patched:
+        patched.setattr(pathlib, "os", foreign_os)
+        with pytest.raises(SourcePinError, match="junction classifier changed"):
+            _ = source_snapshot_evidence(tmp_path, ("README",))
+    assert calls == 0, "foreign pathlib module executed during source pin"
