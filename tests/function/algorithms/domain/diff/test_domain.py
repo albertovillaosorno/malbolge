@@ -45,7 +45,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePath
 from types import CodeType, MemberDescriptorType, ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
@@ -138,6 +138,118 @@ def test_domain_loader_rejects_foreign_path_subclass_before_methods() -> None:
         DomainContractError, match="must use exact pathlib Path"
     ):
         _ = load_diff_domain(_ForeignDomainModulePath("unsafe-domain.py"))
+
+
+def test_domain_loader_rejects_late_native_path_format_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late pathlib formatting cannot select a different consumer module."""
+    selected = tmp_path / "selected.py"
+    redirected = tmp_path / "redirected.py"
+    _write(selected, _COMPLETE)
+    _write(redirected, _COMPLETE)
+    native_format = cast(
+        "Callable[[str, str, list[str]], str]",
+        PurePath.__dict__["_format_parsed_parts"].__get__(None, PurePath),
+    )
+    redirected_name = str(redirected)
+    calls = 0
+
+    def forged_format(
+        cls: type[PurePath], drive: str, root: str, tail: list[str]
+    ) -> str:
+        nonlocal calls
+        if tail and tail[-1] == "selected.py":
+            calls += 1
+            return redirected_name
+        return native_format(drive, root, tail)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_format_parsed_parts", classmethod(forged_format))
+        with pytest.raises(DomainContractError, match="path hooks changed"):
+            _ = load_diff_domain(selected)
+    assert calls == 0, "late pathname formatting reached module selection"
+
+
+def test_domain_loader_rejects_late_native_parent_factory_bypass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged parsed-parent factory cannot conceal linked directories."""
+    physical = tmp_path / "physical"
+    physical.mkdir()
+    _write(physical / "domain.py", _COMPLETE)
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(physical, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    selected = alias / "domain.py"
+    native_factory = cast(
+        "Callable[[PurePath, str, str, list[str]], PurePath]",
+        PurePath.__dict__["_from_parsed_parts"],
+    )
+    calls = 0
+
+    def forged_factory(
+        self: PurePath, drive: str, root: str, tail: list[str]
+    ) -> PurePath:
+        nonlocal calls
+        if self is selected:
+            calls += 1
+            return tmp_path
+        return native_factory(self, drive, root, tail)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_from_parsed_parts", forged_factory)
+        with pytest.raises(DomainContractError, match="path hooks changed"):
+            _ = load_diff_domain(selected)
+    assert calls == 0, "late parent factory skipped symlink admission"
+
+
+def test_domain_loader_rejects_path_factory_swap_after_module_execution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A consumer import cannot leave native path factories modified."""
+    module = tmp_path / "mutates_pathlib.py"
+    _write(
+        module,
+        _COMPLETE
+        + "\nfrom pathlib import PurePath\n"
+        + "PurePath._format_parsed_parts = "
+        + "classmethod(lambda cls, drive, root, tail: '/')\n",
+    )
+    original_format = PurePath.__dict__["_format_parsed_parts"]
+    before = set(sys.modules)
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_format_parsed_parts", original_format)
+        with pytest.raises(DomainContractError, match="path hooks changed"):
+            _ = load_diff_domain(module)
+    new_modules = set(sys.modules) - before
+    assert not any(name.startswith("_malbolge_diff_domain_") for name in new_modules)
+
+
+def test_domain_path_hook_guard_ignores_late_any_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A domain hook cannot suppress the native path hook integrity scan."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    original_factory = PurePath.__dict__["_from_parsed_parts"]
+    calls = 0
+
+    def forged_factory(
+        self: PurePath, drive: str, root: str, tail: list[str]
+    ) -> PurePath:
+        nonlocal calls
+        calls += 1
+        return cast("PurePath", original_factory(self, drive, root, tail))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePath, "_from_parsed_parts", forged_factory)
+        patched.setattr(builtins, "any", lambda values: False)
+        with pytest.raises(DomainContractError, match="path hooks changed"):
+            _ = load_diff_domain(module)
+    assert calls == 0, "mutable any bypassed the native path hook guard"
 
 
 def test_domain_rejects_late_type_spoofed_module_path(

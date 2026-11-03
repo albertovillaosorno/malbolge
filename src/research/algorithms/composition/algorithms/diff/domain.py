@@ -41,7 +41,7 @@ import importlib.util
 import os
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePath
 from stat import S_ISLNK, S_ISREG
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
@@ -69,6 +69,8 @@ if TYPE_CHECKING:
 _NUL = "\x00"
 # Domain validation must not trust builtins replaced by imported consumers.
 _NATIVE_CALLABLE = builtins.callable
+_NATIVE_ANY = builtins.any
+_NATIVE_TUPLE = tuple
 _NATIVE_GETATTR = builtins.getattr
 _NATIVE_TYPE = builtins.type
 _NATIVE_BOOL_TYPE = builtins.bool
@@ -100,6 +102,50 @@ _NATIVE_SOURCE_LOADER_INIT = importlib.machinery.SourceFileLoader.__init__
 _NATIVE_SOURCE_LOADER_CREATE_MODULE = importlib.machinery.SourceFileLoader.create_module
 _NATIVE_SOURCE_LOADER_PATH_STATS = importlib.machinery.SourceFileLoader.path_stats
 _NATIVE_OBJECT_NEW = object.__new__
+_NATIVE_OS_PATH_JOIN = os.path.join
+# Original Path.__str__ and Path.parent still dispatch through mutable
+# pathlib factories and descriptors. An untrusted module path must not be
+# redirected or have linked ancestors hidden by a late class hook.
+_PATH_HOOK_NAMES = (
+    "__new__",
+    "__init__",
+    "__getattribute__",
+    "__getattr__",
+    "__setattr__",
+    "_str",
+    "_raw_paths",
+    "_drv",
+    "_root",
+    "_tail_cached",
+    "_raw_path",
+    "_tail",
+    "drive",
+    "root",
+    "_parse_path",
+    "_from_parsed_parts",
+    "_from_parsed_string",
+    "_format_parsed_parts",
+    "parser",
+)
+_NATIVE_PATH_HOOKS = _NATIVE_TUPLE(
+    (
+        cls,
+        _NATIVE_TUPLE((name, cls.__dict__.get(name)) for name in _PATH_HOOK_NAMES),
+    )
+    for cls in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(cls, PurePath)
+)
+
+
+def _require_native_path_hooks() -> None:
+    """Reject mutable native pathlib hooks before trusting module selection."""
+    if _NATIVE_ANY(
+        cls.__dict__.get(name) is not original
+        for cls, hooks in _NATIVE_PATH_HOOKS
+        for name, original in hooks
+    ):
+        message = "diff domain module path hooks changed"
+        raise DomainContractError(message)
 
 
 def _native_path_parent(path: Path) -> Path:
@@ -119,6 +165,7 @@ def _native_path_resolve(path: Path, *, strict: bool = False) -> Path:
         or os.getcwd is not _NATIVE_OS_GETCWD
         or os.lstat is not _NATIVE_OS_LSTAT
         or os.readlink is not _NATIVE_OS_READLINK
+        or os.path.join is not _NATIVE_OS_PATH_JOIN
     ):
         message = "diff domain module resolution requires native path helpers"
         raise DomainContractError(message)
@@ -458,6 +505,11 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None, str]:
             f"{_NATIVE_PATH_STRING(resolved)}"
         )
         raise DomainContractError(message) from error
+    try:
+        _require_native_path_hooks()
+    except DomainContractError:
+        _restore_domain_registration(name, previous)
+        raise
     if completion is not None:
         _restore_domain_registration(name, previous)
         message = (
@@ -498,9 +550,11 @@ def load_diff_domain(path: object) -> DiffDomain:
     if _NATIVE_TYPE(path) is not _NATIVE_PATH_TYPE:
         message = "diff domain module path must use exact pathlib Path"
         raise DomainContractError(message)
+    _require_native_path_hooks()
     module, previous, name = _load_module(path)
     try:
         domain = _validated_domain(module)
+        _require_native_path_hooks()
         if sys.modules.get(name) is not module:
             message = (
                 "diff domain module registration changed during validation"
