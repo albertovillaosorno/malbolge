@@ -50,7 +50,7 @@ from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
 
 import pytest
 from algorithms.diff import exact as exact_module
@@ -361,6 +361,70 @@ def test_exact_passthrough_roots_ignore_host_reserved_policy_mutation(
     with pytest.raises(TreeModelError, match="relative path"):
         _ = build_exact_plan(source, oracle, passthrough_roots=(reserved_root,))
 
+
+def _forge_exact_ntpath_any(patched: pytest.MonkeyPatch, root: str) -> None:
+    del root
+    native_any = builtins.any
+
+    def forged_any(values: Iterable[object]) -> bool:
+        frame = getattr(values, "gi_frame", None)
+        if getattr(frame, "f_globals", None) is vars(ntpath):
+            return False
+        return native_any(values)
+
+    patched.setattr(builtins, "any", forged_any)
+
+
+def _forge_exact_ntpath_reversed(
+    patched: pytest.MonkeyPatch, root: str
+) -> None:
+    native_reversed = builtins.reversed
+
+    def forged_reversed(values: list[str]) -> object:
+        if values == [root]:
+            return ()
+        return native_reversed(values)
+
+    patched.setattr(builtins, "reversed", forged_reversed)
+
+
+def _forge_exact_ntpath_splitroot(
+    patched: pytest.MonkeyPatch, root: str
+) -> None:
+    native_splitroot = ntpath.splitroot
+
+    def forged_splitroot(path: str) -> tuple[str, str, str]:
+        if path == root:
+            return "", "", "safe.c"
+        return native_splitroot(path)
+
+    patched.setattr(ntpath, "splitroot", forged_splitroot)
+
+
+@pytest.mark.parametrize(
+    "forge",
+    [
+        _forge_exact_ntpath_any,
+        _forge_exact_ntpath_reversed,
+        _forge_exact_ntpath_splitroot,
+    ],
+)
+def test_exact_passthrough_rejects_late_ntpath_dependency_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forge: Callable[[pytest.MonkeyPatch, str], None],
+) -> None:
+    """No host hook may turn a DOS-device passthrough into a valid root."""
+    source, _ = _synthetic_pair(tmp_path)
+    reserved_root = "NUL"
+    rejected = False
+    with monkeypatch.context() as patched:
+        forge(patched, reserved_root)
+        try:
+            _ = snapshot_tree_excluding(source, (reserved_root,))
+        except TreeModelError:
+            rejected = True
+    assert rejected, "mutable ntpath dependency admitted DOS-device root"
 
 
 @pytest.mark.parametrize(

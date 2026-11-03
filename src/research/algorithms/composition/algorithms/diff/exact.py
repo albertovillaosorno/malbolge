@@ -40,8 +40,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
-from ntpath import isreserved as _native_isreserved
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path, PurePosixPath
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING, cast
 
@@ -54,6 +53,7 @@ from algorithms.diff.model import (
     SourceSlice,
     TreeModelError,
     TreeSnapshot,
+    reserved_windows_component,
 )
 from algorithms.diff.publication import publish_directory_no_replace
 
@@ -178,21 +178,15 @@ def _validate_relative_path(relative_path: str) -> str:
 
     """
     admitted = _require_portable_path_label(relative_path)
-    candidate = PurePosixPath(admitted)
-    unsafe_part = _NATIVE_ANY(
-        part in _UNSAFE_PATH_PARTS for part in candidate.parts
-    )
-    unsafe_root = candidate.is_absolute() or _NATIVE_BOOL(
-        PureWindowsPath(admitted).drive
-    )
-    if unsafe_root or _native_isreserved(admitted) or unsafe_part:
-        message = f"unsafe relative path: {admitted!r}"
-        raise TreeModelError(message)
-    normalized = candidate.as_posix()
-    if normalized != admitted:
+    # Path metadata must not consult mutable ntpath or pathlib helpers.
+    parts = admitted.split("/")
+    if _NATIVE_ANY(part in _UNSAFE_PATH_PARTS for part in parts):
         message = f"relative path is not canonically normalized: {admitted!r}"
         raise TreeModelError(message)
-    return normalized
+    if _NATIVE_ANY(reserved_windows_component(part) for part in parts):
+        message = f"unsafe relative path: {admitted!r}"
+        raise TreeModelError(message)
+    return admitted
 
 
 def _normalized_roots(roots: tuple[str, ...]) -> tuple[str, ...]:
