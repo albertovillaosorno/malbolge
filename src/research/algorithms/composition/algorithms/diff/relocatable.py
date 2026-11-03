@@ -217,12 +217,12 @@ def _require_native_host_resolution() -> None:
         or builtins.isinstance is not _NATIVE_ISINSTANCE
         or builtins.hasattr is not _NATIVE_HASATTR
         or pathlib.__dict__.get("_PathParents") is not _NATIVE_PATH_PARENTS_TYPE
-        or any(
+        or _NATIVE_ANY(
             parent_class.__dict__.get(name) is not original
             for parent_class, hooks in _NATIVE_PATH_PARENTS_HOOKS
             for name, original in hooks
         )
-        or any(
+        or _NATIVE_ANY(
             path_class.__dict__.get(name) is not original
             for path_class, hooks in _NATIVE_PATH_RESOLUTION_HOOKS
             for name, original in hooks

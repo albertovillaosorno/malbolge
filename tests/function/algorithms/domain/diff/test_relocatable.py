@@ -1284,6 +1284,68 @@ def test_relocatable_path_resolution_rejects_late_path_string_descriptors(
     assert calls == 0, "late pathname descriptor was consulted"
 
 
+@pytest.mark.parametrize("hook", ["with_segments", "parent_membership"])
+def test_relocatable_output_rejects_late_any_suppression(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Late any() cannot hide a substituted native path ancestry hook."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "inside"
+    require_output = cast(
+        "Callable[[Path, Path], None]",
+        vars(relocatable_module)["_require_external_output_root"],
+    )
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted path hook executed")
+
+    def suppress_any(_items: object) -> bool:
+        return False
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", suppress_any)
+        if hook == "with_segments":
+            patched.setattr(Path, "with_segments", forbidden)
+        else:
+            patched.setattr(type(candidate.parents), "__contains__", forbidden)
+        try:
+            require_output(candidate, output)
+        except RelocationError as error:
+            rejected = "path resolution hooks changed" in str(error)
+    assert rejected, "late any suppressed a native path integrity failure"
+    assert calls == 0, "a substituted path hook executed before rejection"
+
+
+def test_relocatable_output_ignores_late_any_false_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late always-true any() must not reject genuine native paths."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = tmp_path / "external"
+    require_output = cast(
+        "Callable[[Path, Path], None]",
+        vars(relocatable_module)["_require_external_output_root"],
+    )
+
+    def force_any(_items: object) -> bool:
+        return True
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", force_any)
+        try:
+            require_output(candidate, output)
+        except RelocationError:
+            rejected = True
+    assert not rejected, "late any falsely denied a valid output root"
+
+
 @pytest.mark.parametrize(
     "hook", ["parents", "__eq__", "_str_normcase", "_from_parsed_parts"]
 )
