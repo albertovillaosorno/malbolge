@@ -43,6 +43,7 @@ from types import MemberDescriptorType
 from typing import cast, override
 
 import pytest
+from algorithms.diff import payload as payload_module
 from algorithms.diff.payload import (
     AuthenticatedPayload,
     PayloadCryptoError,
@@ -840,3 +841,46 @@ assert observed == expected
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+def test_encrypt_keeps_native_payload_class_after_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced public record name cannot redirect authenticated allocation."""
+    with monkeypatch.context() as patched:
+        patched.setattr(payload_module, "AuthenticatedPayload", object)
+        observed = chacha20_poly1305_encrypt(_RFC_KEY, _RFC_NONCE, b"verified literal")
+    assert type(observed) is AuthenticatedPayload
+    assert (
+        chacha20_poly1305_decrypt(_RFC_KEY, _RFC_NONCE, observed) == b"verified literal"
+    )
+
+
+def test_decrypt_keeps_native_payload_class_after_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late public class alias cannot reject an authentic record."""
+    authentic = chacha20_poly1305_encrypt(_RFC_KEY, _RFC_NONCE, b"source bound")
+    with monkeypatch.context() as patched:
+        patched.setattr(payload_module, "AuthenticatedPayload", object)
+        recovered = chacha20_poly1305_decrypt(_RFC_KEY, _RFC_NONCE, authentic)
+    assert recovered == b"source bound"
+
+
+def test_decrypt_rejects_foreign_payload_after_public_class_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign record cannot reach native slot access through a late alias."""
+
+    class ForeignPayload:
+        pass
+
+    foreign = ForeignPayload()
+    with monkeypatch.context() as patched:
+        patched.setattr(payload_module, "AuthenticatedPayload", ForeignPayload)
+        with pytest.raises(PayloadCryptoError, match="exact authenticated type"):
+            _ = chacha20_poly1305_decrypt(
+                _RFC_KEY,
+                _RFC_NONCE,
+                cast("AuthenticatedPayload", cast("object", foreign)),
+            )

@@ -119,6 +119,10 @@ class AuthenticatedPayload:
             raise PayloadCryptoError(message)
 
 
+# The public record name may be rebound by consumers; native authenticated
+# payload allocation, slot reads, and type admission retain this exact class.
+_NATIVE_AUTHENTICATED_PAYLOAD = AuthenticatedPayload
+
 # Generated dataclass initializers resolve __post_init__ through mutable class
 # attributes. Keep its original guard even after consumer class-hook changes.
 _AUTHENTICATED_PAYLOAD_VALIDATOR = cast(
@@ -146,8 +150,8 @@ def _payload_fields(payload: AuthenticatedPayload) -> tuple[bytes, bytes]:
     # Never let an incomplete authenticated receipt escape the crypto boundary.
     try:
         return (
-            _PAYLOAD_CIPHERTEXT_SLOT.__get__(payload, AuthenticatedPayload),
-            _PAYLOAD_TAG_SLOT.__get__(payload, AuthenticatedPayload),
+            _PAYLOAD_CIPHERTEXT_SLOT.__get__(payload, _NATIVE_AUTHENTICATED_PAYLOAD),
+            _PAYLOAD_TAG_SLOT.__get__(payload, _NATIVE_AUTHENTICATED_PAYLOAD),
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "ChaCha20-Poly1305 payload is missing authenticated fields"
@@ -156,7 +160,7 @@ def _payload_fields(payload: AuthenticatedPayload) -> tuple[bytes, bytes]:
 
 def _new_authenticated_payload(ciphertext: bytes, tag: bytes) -> AuthenticatedPayload:
     """Bind computed AEAD bytes to original record allocation and validation."""
-    payload = _NATIVE_OBJECT_NEW(AuthenticatedPayload)
+    payload = _NATIVE_OBJECT_NEW(_NATIVE_AUTHENTICATED_PAYLOAD)
     _PAYLOAD_INIT(payload, ciphertext, tag)
     return payload
 
@@ -341,7 +345,7 @@ def chacha20_poly1305_decrypt(
 
     """
     _require_key_nonce(key, nonce)
-    if _NATIVE_TYPE(payload) is not AuthenticatedPayload:
+    if _NATIVE_TYPE(payload) is not _NATIVE_AUTHENTICATED_PAYLOAD:
         message = "ChaCha20-Poly1305 payload must use the exact authenticated type"
         raise PayloadCryptoError(message)
     ciphertext, tag = _payload_fields(payload)
