@@ -181,6 +181,33 @@ def test_selected_stdout_produces_deterministic_transcript(
     _expect(first.digested_commands == 1, "selected stdout was not digested")
 
 
+def test_selected_commands_ignore_late_enumerate_suppression(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A callback cannot hide authenticated probe commands."""
+    source = tmp_path / "source"
+    source.mkdir()
+    context = _context(source, tmp_path)
+    program = _program("identity", "print('stable')")
+    expected = run_probe_program(program, context)
+    assert expected.digested_commands == 1
+    native_enumerate = builtins.enumerate
+    calls = 0
+
+    def suppress_commands(values: tuple[ProbeCommand, ...]) -> object:
+        nonlocal calls
+        if values is program.commands:
+            calls += 1
+            return ()
+        return native_enumerate(values)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "enumerate", suppress_commands)
+        observed = run_probe_program(program, context)
+    assert observed == expected, "late enumerate omitted an authenticated probe"
+    assert calls == 0, "host enumerate controlled authenticated probe execution"
+
+
 def test_probe_transcripts_ignore_replaced_global_sha256(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

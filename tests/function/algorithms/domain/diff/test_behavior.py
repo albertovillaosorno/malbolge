@@ -768,3 +768,38 @@ def test_behavior_rejects_late_list_erasure_of_unavailable_identity(
         except BehaviorAdmissionError:
             rejected = True
     assert rejected, "late list hook erased unavailable identity rejection"
+
+
+@pytest.mark.parametrize(
+    "record_type",
+    [IdentityObservation, CompatibilityObservation, BugObservation],
+)
+@pytest.mark.parametrize("revalidate", [False, True])
+def test_behavior_native_observation_routing_ignores_late_isinstance(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    revalidate: bool,
+) -> None:
+    """Admitted probe records must not depend on mutable consumer type hooks."""
+    profile = _profile()
+    observations = _observations()
+    evidence = require_behavior(profile, observations, 1.0)
+    native_isinstance = isinstance
+    calls = 0
+
+    def forged_isinstance(value: object, expected: type[object]) -> bool:
+        nonlocal calls
+        if expected is record_type:
+            calls += 1
+            return False
+        return native_isinstance(value, expected)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "isinstance", forged_isinstance)
+        if revalidate:
+            checked = replace(evidence)
+        else:
+            checked = require_behavior(profile, observations, 1.0)
+    assert checked.admitted
+    assert checked.corrections_to_apply == ("fix-bug",)
+    assert calls == 0, "late isinstance hook received admitted probe evidence"

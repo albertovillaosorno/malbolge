@@ -467,7 +467,7 @@ def _identity_evidence(
     reasons: list[str] = []
     for probe in profile.identity:
         observation = observed[probe.probe_id]
-        if not isinstance(observation, IdentityObservation):
+        if _NATIVE_TYPE(observation) is not IdentityObservation:
             message = "internal identity observation type mismatch"
             raise BehaviorPolicyError(message)
         if observation.digest is None:
@@ -491,7 +491,7 @@ def _compatibility_reasons(
     reasons: list[str] = []
     for probe in profile.compatibility:
         observation = observed[probe.probe_id]
-        if not isinstance(observation, CompatibilityObservation):
+        if _NATIVE_TYPE(observation) is not CompatibilityObservation:
             message = "internal compatibility observation type mismatch"
             raise BehaviorPolicyError(message)
         if observation.compatible is not True:
@@ -511,7 +511,7 @@ def _bug_routing(
     reasons: list[str] = []
     for probe in profile.bugs:
         observation = observed[probe.probe_id]
-        if not isinstance(observation, BugObservation):
+        if _NATIVE_TYPE(observation) is not BugObservation:
             message = "internal bug observation type mismatch"
             raise BehaviorPolicyError(message)
         if observation.state is BugState.PRESENT:

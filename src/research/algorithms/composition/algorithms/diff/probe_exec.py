@@ -93,6 +93,7 @@ _NATIVE_ZIP = builtins.zip
 _NATIVE_ALL = builtins.all
 _NATIVE_MIN = builtins.min
 _NATIVE_MAX = builtins.max
+_NATIVE_ENUMERATE = builtins.enumerate
 
 
 def _native_path_stat(path: Path) -> os.stat_result:
@@ -1236,7 +1237,7 @@ def _run_program(
         "diff-probe-", parent=temporary_parent
     ) as scratch:
         scratch_root = Path(scratch)
-        for command_index, command in enumerate(program.commands):
+        for command_index, command in _NATIVE_ENUMERATE(program.commands):
             try:
                 result = _run_command(command, context, scratch_root)
             finally:
