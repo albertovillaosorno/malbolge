@@ -183,29 +183,25 @@ def test_relocatable_host_failures_do_not_invoke_foreign_formatters(
             relocatable_module, "_NATIVE_PATH_LSTAT", fail_status
         )
     elif operation == "creation":
-        native_mkdir = Path.mkdir
+        native_mkdir = relocatable_module._NATIVE_OS_MKDIR
 
-        def fail_mkdir(
-            path: Path,
-            mode: int = 0o777,
-            *,
-            parents: bool = False,
-            exist_ok: bool = False,
-        ) -> None:
-            if path == staging:
+        def fail_mkdir(path: str, mode: int = 0o777) -> None:
+            if Path(path) == staging:
                 raise _HostileRelocatableError("foreign mkdir")
-            native_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+            native_mkdir(path, mode)
 
-        monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+        monkeypatch.setattr(relocatable_module, "_NATIVE_OS_MKDIR", fail_mkdir)
     elif operation == "write":
-        native_write = Path.write_bytes
+        native_write = relocatable_module._NATIVE_WRITE_RELOCATABLE_BYTES
 
         def fail_write(path: Path, data: bytes) -> int:
             if path == staging / "created.bin":
                 raise _HostileRelocatableError("foreign write")
             return native_write(path, data)
 
-        monkeypatch.setattr(Path, "write_bytes", fail_write)
+        monkeypatch.setattr(
+        relocatable_module, "_NATIVE_WRITE_RELOCATABLE_BYTES", fail_write
+    )
     elif operation == "publication":
 
         def fail_publication(staged: Path, destination: Path) -> None:
@@ -354,7 +350,7 @@ def test_relocatable_cleanup_preserves_failure_without_foreign_formatter(
     _write(candidate, "copy.bin", _blocks("copy"))
     staging = tmp_path / ".out.relocatable-staging"
     output = tmp_path / "out"
-    native_write = Path.write_bytes
+    native_write = relocatable_module._NATIVE_WRITE_RELOCATABLE_BYTES
 
     def fail_write(path: Path, data: bytes) -> int:
         if path == staging / "created.bin":
@@ -369,7 +365,9 @@ def test_relocatable_cleanup_preserves_failure_without_foreign_formatter(
             raise PermissionError("cleanup failed")
         raise _HostileRelocatableError("foreign cleanup")
 
-    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(
+        relocatable_module, "_NATIVE_WRITE_RELOCATABLE_BYTES", fail_write
+    )
     monkeypatch.setattr(relocatable_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         RelocationError, match="staging cleanup failed"
@@ -781,7 +779,7 @@ def test_relocatable_cleanup_failure_preserves_primary_error(
     _write(candidate, "copy.bin", _blocks("copy"))
     output = tmp_path / "out"
     blocked = tmp_path / ".out.relocatable-staging" / "created.bin"
-    original_write = Path.write_bytes
+    original_write = relocatable_module._NATIVE_WRITE_RELOCATABLE_BYTES
 
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
@@ -794,7 +792,9 @@ def test_relocatable_cleanup_failure_preserves_primary_error(
         message = "blocked relocatable cleanup"
         raise failure_type(message)
 
-    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(
+        relocatable_module, "_NATIVE_WRITE_RELOCATABLE_BYTES", fail_write
+    )
     monkeypatch.setattr(relocatable_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         RelocationError,
@@ -849,21 +849,15 @@ def test_relocatable_staging_creation_error_fails_closed(
     _write(candidate, "copy.bin", _blocks("copy"))
     output = tmp_path / "out"
     staging = tmp_path / ".out.relocatable-staging"
-    original_mkdir = Path.mkdir
+    original_mkdir = relocatable_module._NATIVE_OS_MKDIR
 
-    def fail_mkdir(
-        path: Path,
-        mode: int = 0o777,
-        *,
-        parents: bool = False,
-        exist_ok: bool = False,
-    ) -> None:
-        if path == staging:
+    def fail_mkdir(path: str, mode: int = 0o777) -> None:
+        if Path(path) == staging:
             message = "blocked relocatable staging creation"
             raise failure_type(message)
-        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        original_mkdir(path, mode)
 
-    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    monkeypatch.setattr(relocatable_module, "_NATIVE_OS_MKDIR", fail_mkdir)
     with pytest.raises(RelocationError, match="staging root creation failed"):
         materialize_relocatable_plan(candidate, plan, output)
     _expect(not output.exists(), "staging creation failure published output")
@@ -886,7 +880,7 @@ def test_relocatable_output_write_error_fails_closed(
     _write(candidate, "copy.bin", _blocks("copy"))
     output = tmp_path / "out"
     blocked = tmp_path / ".out.relocatable-staging" / "created.bin"
-    original_write = Path.write_bytes
+    original_write = relocatable_module._NATIVE_WRITE_RELOCATABLE_BYTES
 
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
@@ -894,7 +888,9 @@ def test_relocatable_output_write_error_fails_closed(
             raise failure_type(message)
         return original_write(path, data)
 
-    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(
+        relocatable_module, "_NATIVE_WRITE_RELOCATABLE_BYTES", fail_write
+    )
     with pytest.raises(
         RelocationError, match="relocatable output write failed"
     ):
@@ -923,7 +919,7 @@ def test_relocatable_short_or_invalid_staging_write_fails_closed(
     _write(candidate, "copy.bin", _blocks("copy"))
     output = tmp_path / "out"
     blocked = tmp_path / ".out.relocatable-staging" / "created.bin"
-    original_write = Path.write_bytes
+    original_write = relocatable_module._NATIVE_WRITE_RELOCATABLE_BYTES
 
     def misreported_write(path: Path, data: bytes) -> int:
         if path == blocked and reported == _SHORT_WRITE:
@@ -933,7 +929,9 @@ def test_relocatable_short_or_invalid_staging_write_fails_closed(
             return cast("int", reported)
         return written
 
-    monkeypatch.setattr(Path, "write_bytes", misreported_write)
+    monkeypatch.setattr(
+        relocatable_module, "_NATIVE_WRITE_RELOCATABLE_BYTES", misreported_write
+    )
     with pytest.raises(RelocationError, match="short or invalid byte count"):
         materialize_relocatable_plan(candidate, plan, output)
     assert not output.exists()
@@ -1944,7 +1942,7 @@ def test_relocation_writer_rejects_late_integer_alias_for_boolean_receipt(
     rejected = False
     with monkeypatch.context() as patch:
         patch.setattr(builtins, "int", bool)
-        patch.setattr(Path, "write_bytes", fake_write)
+        patch.setattr(relocatable_module, "_NATIVE_WRITE_RELOCATABLE_BYTES", fake_write)
         try:
             write_bytes(output, b"x", "relocatable target")
         except RelocationError:
@@ -2796,3 +2794,73 @@ def test_relocatable_constructors_reject_late_property_setters(
         with pytest.raises(RelocationError, match=expected):
             _ = cast("Callable[..., object]", owner)(**values)
     assert not intercepted, "late placement setter intercepted construction"
+
+
+@pytest.mark.parametrize("hook", ("write_bytes", "mkdir", "with_name", "parent"))
+def test_relocatable_output_ignores_late_path_write_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """Late path hooks cannot redirect output or staging outside its binding."""
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            "target.bin", None, copy_candidate_file=False, literal=b"trusted"
+        ),
+    ))
+    output = tmp_path / "out"
+    outside = tmp_path / "unexpected.bin"
+    parent = cast("Callable[[Path], Path]", Path.parent.fget)
+    with_name = Path.with_name
+    mkdir = Path.mkdir
+    write_bytes = Path.write_bytes
+    calls = 0
+
+    def forged_write(path: Path, data: bytes) -> int:
+        nonlocal calls
+        if path.name == "target.bin":
+            calls += 1
+            return write_bytes(outside, data)
+        return write_bytes(path, data)
+
+    def forged_mkdir(
+        path: Path,
+        mode: int = 0o777,
+        *,
+        parents: bool = False,
+        exist_ok: bool = False,
+    ) -> None:
+        nonlocal calls
+        if "relocatable-staging" in str(path):
+            calls += 1
+            raise AssertionError("late mkdir controlled staging")
+        mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+
+    def forged_with_name(path: Path, name: str) -> Path:
+        nonlocal calls
+        if name.endswith(".relocatable-staging"):
+            calls += 1
+            return tmp_path / "unexpected-stage"
+        return with_name(path, name)
+
+    def forged_parent(path: Path) -> Path:
+        nonlocal calls
+        if path.name == "target.bin":
+            calls += 1
+            return tmp_path
+        return parent(path)
+
+    with monkeypatch.context() as patch:
+        if hook == "write_bytes":
+            patch.setattr(Path, "write_bytes", forged_write)
+        elif hook == "mkdir":
+            patch.setattr(Path, "mkdir", forged_mkdir)
+        elif hook == "with_name":
+            patch.setattr(Path, "with_name", forged_with_name)
+        else:
+            patch.setattr(Path, "parent", property(forged_parent))
+        materialize_relocatable_plan(tmp_path / "candidate", plan, output)
+    assert (output / "target.bin").read_bytes() == b"trusted"
+    assert not outside.exists()
+    assert not (tmp_path / "unexpected-stage").exists()
+    assert calls == 0

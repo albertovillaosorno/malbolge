@@ -44,9 +44,11 @@ from __future__ import annotations
 import builtins
 from dataclasses import dataclass
 import hashlib
+import io
 import os
 from pathlib import Path
 import shutil
+from stat import S_ISDIR
 from stat import S_ISLNK
 import sys
 from types import MemberDescriptorType
@@ -92,6 +94,11 @@ _NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
+_NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
+_NATIVE_PATH_WITH_NAME = Path.with_name
+_NATIVE_IO_OPEN = io.open
+_NATIVE_OS_MKDIR = os.mkdir
 _NATIVE_FS_ENCODING = sys.getfilesystemencoding()
 _NATIVE_FS_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_STAT_RESULT = os.stat_result
@@ -693,10 +700,41 @@ def _read_relocatable_bytes(path: Path, context: str) -> bytes:
         raise failure from error
 
 
+def _native_write_relocatable_bytes(path: Path, data: bytes) -> int:
+    """Create a fresh staged file without post-import Path write hooks."""
+    with _NATIVE_IO_OPEN(_NATIVE_PATH_STRING(path), "xb") as stream:
+        return stream.write(data)
+
+
+_NATIVE_WRITE_RELOCATABLE_BYTES = _native_write_relocatable_bytes
+
+
+def _native_make_relocatable_directory(
+    path: Path, *, parents: bool, exist_ok: bool
+) -> None:
+    """Create directories through captured native OS and path operations."""
+    try:
+        _NATIVE_OS_MKDIR(_NATIVE_PATH_STRING(path))
+    except FileNotFoundError:
+        parent = _NATIVE_PATH_PARENT(path)
+        if not parents or _NATIVE_PATH_STRING(parent) == _NATIVE_PATH_STRING(path):
+            raise
+        _native_make_relocatable_directory(parent, parents=True, exist_ok=True)
+        _native_make_relocatable_directory(path, parents=False, exist_ok=exist_ok)
+    except FileExistsError:
+        if not exist_ok:
+            raise
+        status = _path_status(path, "relocatable output directory")
+        if status is None or not S_ISDIR(status.st_mode):
+            raise
+
+
 def _write_relocatable_bytes(path: Path, data: bytes, context: str) -> None:
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        written = path.write_bytes(data)
+        _native_make_relocatable_directory(
+            _NATIVE_PATH_PARENT(path), parents=True, exist_ok=True
+        )
+        written = _NATIVE_WRITE_RELOCATABLE_BYTES(path, data)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"{context} write failed: {path}: {detail}"
@@ -714,7 +752,9 @@ def _make_relocatable_directory(
     exist_ok: bool,
 ) -> None:
     try:
-        path.mkdir(parents=parents, exist_ok=exist_ok)
+        _native_make_relocatable_directory(
+            path, parents=parents, exist_ok=exist_ok
+        )
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
@@ -953,7 +993,9 @@ def _prepare_staging(output_root: Path) -> Path:
     if _path_present(output_root, "relocatable output root"):
         message = f"output root already exists: {output_root}"
         raise RelocationError(message)
-    staging = output_root.with_name(f".{output_root.name}{_STAGING_SUFFIX}")
+    staging = _NATIVE_PATH_WITH_NAME(
+        output_root, f".{_NATIVE_PATH_NAME(output_root)}{_STAGING_SUFFIX}"
+    )
     if _path_present(staging, "relocatable staging root"):
         message = f"relocatable staging root already exists: {staging}"
         raise RelocationError(message)
