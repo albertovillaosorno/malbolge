@@ -5579,3 +5579,41 @@ def test_probe_unicode_encoding_failure_stays_typed_after_alias(
             builtins.__dict__["UnicodeEncodeError"] = native_encode
     assert caught is not None
     assert type(caught.__cause__) is native_encode
+
+
+def test_probe_snapshot_keeps_imported_exact_error_after_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late exact-reader aliases cannot leak a raw probe snapshot failure."""
+    failure = ExactTreeError("native probe snapshot denied")
+
+    def fail_snapshot(_root: Path) -> object:
+        raise failure
+
+    snapshot = cast(
+        "Callable[[Path, str], object]",
+        vars(probe_exec_module)["_snapshot_probe_tree"],
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(probe_exec_module, "snapshot_tree", fail_snapshot)
+        patched.setattr(probe_exec_module, "ExactTreeError", LookupError)
+        with pytest.raises(
+            ProbeExecutionError,
+            match="probe source snapshot rejected: native probe snapshot denied",
+        ) as caught:
+            _ = snapshot(tmp_path, "source")
+    assert caught.value.__cause__ is failure
+
+
+def test_probe_native_exact_error_detail_survives_late_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An imported exact-error rename must not erase the native reason."""
+    detail = cast(
+        "Callable[[BaseException], str]",
+        vars(probe_exec_module)["_safe_probe_error_detail"],
+    )
+    failure = ExactTreeError("native probe detail")
+    with monkeypatch.context() as patched:
+        patched.setattr(probe_exec_module, "ExactTreeError", LookupError)
+        assert detail(failure) == "native probe detail"

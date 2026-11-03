@@ -162,6 +162,8 @@ _NATIVE_BROKEN_PIPE_ERROR = builtins.BrokenPipeError
 _NATIVE_OVERFLOW_ERROR = builtins.OverflowError
 _NATIVE_EXCEPTION = builtins.Exception
 _NATIVE_SUBPROCESS_TIMEOUT = subprocess.TimeoutExpired
+# Preserve delegated tree errors even after consumer module alias changes.
+_NATIVE_EXACT_TREE_ERROR = ExactTreeError
 # Exact native platform identity must not construct a Path during admission.
 _NATIVE_PLATFORM_PATH_TYPE = _NATIVE_TYPE(Path())
 # Path.__str__ still reads replaceable Python path metadata, even when its
@@ -1572,7 +1574,7 @@ def _safe_probe_error_detail(error: BaseException) -> str:
         _NATIVE_OS_ERROR,
         _NATIVE_RUNTIME_ERROR,
         _NATIVE_VALUE_ERROR,
-        ExactTreeError,
+        _NATIVE_EXACT_TREE_ERROR,
         ProbeExecutionError,
     ):
         # Exact native error classes can still acquire late class getters.
@@ -2046,7 +2048,7 @@ def _snapshot_probe_tree(root: Path, context: str) -> TreeSnapshot:
     """
     try:
         return snapshot_tree(root)
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe {context} snapshot rejected: {detail}"
         raise ProbeExecutionError(message) from error
