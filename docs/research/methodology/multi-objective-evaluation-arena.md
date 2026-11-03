@@ -75,6 +75,10 @@ named verifier and an accepted verdict are required to *report* success;
 rejection, exhaustion, no-solution, and tool failures remain visible.
 
 The analyzer does not replay that verifier or authenticate the references yet.
+Retained v6/v7 target RSS stage receipts use source-bound JSON decoding and
+canonical encoding during the offline audit. The auditor does not accept a
+public JSON decoder or writer replacement as evidence that altered RSS bytes
+match the committed study; this check trusts Python's original encoder/decoder.
 
 Curves retain trial counts, exact success fractions, per-outcome counts, and
 cost medians conditional on verified success. Medians are exact integer

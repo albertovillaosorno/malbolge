@@ -63,6 +63,8 @@ from scripts.validate import experiment_manifest
 
 # Keep the source decoder separate from the mutable public TOML entrypoint.
 _SOURCE_TOML_LOADS = tomllib.loads
+_SOURCE_JSON_DECODER = json.JSONDecoder
+_SOURCE_JSON_ENCODER = json.JSONEncoder
 
 _ROOT = Path(__file__).resolve().parents[2]
 MAX_STUDY_BYTES = 16 * 1024 * 1024
@@ -1474,10 +1476,21 @@ def _rss_digest(
 
 def _rss_record(data: bytes, *, raw: bool) -> dict[str, Any]:
     try:
-        record = json.loads(data)
-    except (UnicodeError, ValueError) as error:
+        observed = json.loads(data)
+        source = _SOURCE_JSON_DECODER().decode(data.decode("utf-8"))
+    except Exception as error:
         message = "v6 RSS stage receipt is not canonical JSON"
         raise TargetEchoAuditError(message) from error
+    if type(observed) is not dict or type(source) is not dict:
+        _fail("v6 RSS stage receipt source decoder returned a foreign root")
+    try:
+        same_document = observed == source
+    except Exception as error:
+        message = "v6 RSS receipt JSON decoder comparison failed"
+        raise TargetEchoAuditError(message) from error
+    if type(same_document) is not bool or not same_document:
+        _fail("v6 RSS receipt JSON decoder differs from source")
+    record = source
     expected = {"schema_version", "identity", "stages"}
     if raw:
         expected.add("raw_kib")
@@ -1562,9 +1575,17 @@ def _validate_rss_stage_bytes(
         _fail("v6 RSS stage receipt has invalid measured bytes")
     if raw:
         _validate_original_time_readings(record["raw_kib"], stages)
-    canonical = (
-        json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
-    ).encode("utf-8")
+    try:
+        source_text = _SOURCE_JSON_ENCODER(
+            sort_keys=True, separators=(",", ":")
+        ).encode(record)
+        observed_text = json.dumps(record, sort_keys=True, separators=(",", ":"))
+    except Exception as error:
+        message = "v6 RSS receipt JSON writer failed"
+        raise TargetEchoAuditError(message) from error
+    if type(observed_text) is not str or observed_text != source_text:
+        _fail("v6 RSS receipt JSON writer differs from source")
+    canonical = (source_text + "\n").encode("utf-8")
     if data != canonical or max(stages.values()) != row["metrics"][PEAK_RSS]:
         _fail("v6 RSS stage receipt differs from exact reported peak")
 
@@ -1910,7 +1931,7 @@ def main() -> int:
             ),
         )
         report_output.publish(result, sys.stdout)
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001 - untrusted audit dependencies
         # A failed audit or publisher dependency must never exit successfully
         # or leak a foreign exception formatter into the operator channel.
         parser.exit(2, f"target echo audit: {_safe_error_detail(error)}\n")

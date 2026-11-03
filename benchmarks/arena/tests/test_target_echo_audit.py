@@ -3126,3 +3126,88 @@ def test_audit_git_rejects_mutated_launch_command(
         audit._require_git_commit("a" * 40)  # ruff: ignore[private-member-access]
     assert len(launched) == 1
     assert launched[0][1] in ("rev-parse", "cat-file")
+
+
+def _synthetic_rss_canonicality_inputs() -> tuple[dict[str, Any], dict[str, Any]]:
+    identity = {
+        "algorithm": "direct",
+        "pairs": 1,
+        "trial": 0,
+        "workload_sha256": "a" * 64,
+    }
+    document = {
+        "schema_version": 1,
+        "identity": identity,
+        "stages": {stage: 4096 for stage in audit.RSS_STAGE_NAMES},
+    }
+    row = {
+        "algorithm": "direct",
+        "case": {"difficulty": 1, "workload_sha256": "a" * 64},
+        "trial": 0,
+        "metrics": {audit.PEAK_RSS: 4096},
+    }
+    return document, row
+
+
+@pytest.mark.parametrize("provider", ("writer", "encoder", "joint"))
+def test_rss_receipt_rejects_forged_canonical_json_writer(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """Injected JSON writers cannot validate altered RSS receipt bytes."""
+    document, row = _synthetic_rss_canonicality_inputs()
+    forged = json.dumps(document, sort_keys=True, indent=2)
+    data = (forged + "\n").encode("utf-8")
+
+    class ForgedEncoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def encode(self, _document: object) -> str:
+            return forged
+
+    def forged_writer(*_args: object, **_kwargs: object) -> str:
+        return forged
+
+    with monkeypatch.context() as patch:
+        if provider in ("encoder", "joint"):
+            patch.setattr(json, "JSONEncoder", ForgedEncoder)
+        if provider in ("writer", "joint"):
+            patch.setattr(json, "dumps", forged_writer)
+        with pytest.raises(
+            audit.TargetEchoAuditError,
+            match="RSS receipt JSON writer differs from source",
+        ):
+            audit._validate_rss_stage_bytes(data, row, raw=False)
+
+
+def test_rss_receipt_rejects_substituted_json_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unparseable receipt bytes cannot be laundered by public decoders."""
+    document, row = _synthetic_rss_canonicality_inputs()
+    forged_data = b"{unparseable\n"
+
+    def forged_decoder(_data: object) -> dict[str, Any]:
+        return document
+
+    def forged_writer(*_args: object, **_kwargs: object) -> str:
+        return forged_data.decode("utf-8").removesuffix("\n")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "loads", forged_decoder)
+        patch.setattr(json, "dumps", forged_writer)
+        with pytest.raises(
+            audit.TargetEchoAuditError,
+            match="RSS stage receipt is not canonical JSON",
+        ):
+            audit._validate_rss_stage_bytes(forged_data, row, raw=False)
+
+
+def test_rss_receipt_accepts_original_canonical_source_bytes() -> None:
+    """A normal synthetic v6 receipt maintains exact RSS byte authority."""
+    document, row = _synthetic_rss_canonicality_inputs()
+    data = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode(
+        "utf-8"
+    )
+    audit._validate_rss_stage_bytes(data, row, raw=False)
