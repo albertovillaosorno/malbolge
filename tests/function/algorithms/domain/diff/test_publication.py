@@ -1797,3 +1797,52 @@ def test_linux_publication_rejects_loader_override_after_late_any_swap(
 
     assert caught is not None and caught.errno == errno.ENOTSUP
     assert calls == 0, "replaced ctypes loader was consulted"
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux no-replace directory semantics",
+)
+@pytest.mark.parametrize("alias", ["setattr", "isinstance", "int", "__build_class__"])
+def test_linux_publication_rejects_late_cdll_builtin_dispatch_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Late builtin aliases cannot execute while resolving renameat2."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    (staging / "payload").write_bytes(_OURS)
+    calls = 0
+    original = builtins.__dict__[alias]
+
+    def foreign_builtin(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("foreign builtin reached native symbol lookup")
+
+    class ForeignIntMeta(type):
+        def __instancecheck__(cls, _value: object) -> bool:
+            nonlocal calls
+            calls += 1
+            raise AssertionError("foreign integer class checked a native symbol")
+
+    class ForeignInt(metaclass=ForeignIntMeta):
+        pass
+
+    replacement: object = ForeignInt if alias == "int" else foreign_builtin
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, alias, replacement)
+        try:
+            publication.publish_directory_no_replace(staging, destination)
+        except OSError as error:
+            caught = error
+        finally:
+            # Restore the interpreter builtin before pytest handles assertions.
+            builtins.__dict__[alias] = original
+
+    assert caught is not None and caught.errno == errno.ENOTSUP
+    assert calls == 0, "publication reached substituted builtin dispatch"
+    assert (staging / "payload").read_bytes() == _OURS
+    assert list(destination.iterdir()) == []

@@ -55,6 +55,9 @@ _NUL: Final = "\x00"
 # Admission must not trust process-global builtins replaced by consumers.
 _NATIVE_TYPE: Final = builtins.type
 _NATIVE_ANY: Final = builtins.any
+_NATIVE_ISINSTANCE: Final = builtins.isinstance
+_NATIVE_SETATTR: Final = builtins.setattr
+_NATIVE_BUILD_CLASS: Final = builtins.__build_class__
 _NATIVE_STR_TYPE: Final = builtins.str
 _NATIVE_INT_TYPE: Final = builtins.int
 _NATIVE_LIST_TYPE: Final = builtins.list
@@ -248,7 +251,11 @@ _NATIVE_PATH_RENAME: Final = _native_path_rename
 def _require_native_cdll_dispatch(destination: Path) -> None:
     """Fail closed when late ctypes class hooks could redirect renameat2."""
     if (
-        _NATIVE_ANY(
+        builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.setattr is not _NATIVE_SETATTR
+        or builtins.int is not _NATIVE_INT_TYPE
+        or builtins.__build_class__ is not _NATIVE_BUILD_CLASS
+        or _NATIVE_ANY(
             cdll_class.__dict__.get(name) is not original
             for cdll_class, hooks in _NATIVE_CDLL_CLASS_HOOKS
             for name, original in hooks
