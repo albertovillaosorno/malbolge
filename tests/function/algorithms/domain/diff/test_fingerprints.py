@@ -500,3 +500,169 @@ def test_stable_anchor_rejects_malformed_digest_and_offset() -> None:
         _ = StableAnchor(digest=b"x" * 32, offset=True)
     with pytest.raises(FingerprintPolicyError, match="non-negative integer"):
         _ = StableAnchor(digest=b"x" * 32, offset=-1)
+
+
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [("window_bytes", 4), ("selection_modulus", 1)],
+)
+def test_anchor_selection_ignores_late_policy_field_forgery(
+    monkeypatch: pytest.MonkeyPatch, hook: str, field: str, forged: int
+) -> None:
+    """Mutable policy class accessors cannot redefine source anchor windows."""
+    data = _synthetic_bytes("policy-slot")
+    policy = AnchorPolicy(window_bytes=16, selection_modulus=17)
+    expected = stable_anchors(data, policy)
+    calls = 0
+    original = AnchorPolicy.__getattribute__
+
+    def forged_attribute(value: AnchorPolicy, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original(value, name))
+
+    def forged_property(_value: AnchorPolicy) -> object:
+        nonlocal calls
+        calls += 1
+        return forged
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            patch.setattr(AnchorPolicy, field, property(forged_property))
+        else:
+            patch.setattr(AnchorPolicy, "__getattribute__", forged_attribute)
+        observed = stable_anchors(data, policy)
+    assert observed == expected
+    assert calls == 0, "mutable policy getter was used for source evidence"
+
+
+@pytest.mark.parametrize("field", ["window_bytes", "selection_modulus"])
+def test_anchor_policy_constructor_ignores_late_getattribute_forgery(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A class hook cannot disguise an invalid stored policy dimension."""
+    original = AnchorPolicy.__getattribute__
+
+    def forged_attribute(value: AnchorPolicy, name: str) -> object:
+        if name == field:
+            return 16
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(AnchorPolicy, "__getattribute__", forged_attribute)
+        with pytest.raises(FingerprintPolicyError, match="must be integers"):
+            _ = AnchorPolicy(**{field: True})
+
+
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_anchor_coverage_ignores_late_digest_forgery(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A mutable digest reader cannot promote unrelated source evidence."""
+    reference = StableAnchor(digest=b"r" * 32, offset=0)
+    unrelated = StableAnchor(digest=b"c" * 32, offset=0)
+    original = StableAnchor.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: StableAnchor, name: str) -> object:
+        nonlocal calls
+        if name == "digest":
+            calls += 1
+            return reference.digest if value is unrelated else b"r" * 32
+        return cast("object", original(value, name))
+
+    def forged_property(_value: StableAnchor) -> object:
+        nonlocal calls
+        calls += 1
+        return b"r" * 32
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            patch.setattr(StableAnchor, "digest", property(forged_property))
+        else:
+            patch.setattr(StableAnchor, "__getattribute__", forged_attribute)
+        observed = anchor_coverage((reference,), (unrelated,))
+    assert observed == AnchorCoverage(matched=0, total=1, ratio=0.0)
+    assert calls == 0, "mutable digest getter affected lineage coverage"
+
+
+def test_stable_anchor_constructor_ignores_late_getattribute_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Direct anchor construction validates the stored digest, not a hook."""
+    original = StableAnchor.__getattribute__
+
+    def forged_attribute(value: StableAnchor, name: str) -> object:
+        if name == "digest":
+            return b"r" * 32
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(StableAnchor, "__getattribute__", forged_attribute)
+        with pytest.raises(FingerprintPolicyError, match="exactly 32 bytes"):
+            _ = StableAnchor(digest=b"short", offset=0)
+
+
+def test_anchor_coverage_constructor_ignores_late_getattribute_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late accessor cannot disguise inconsistent matched and total slots."""
+    original = AnchorCoverage.__getattribute__
+
+    def forged_attribute(value: AnchorCoverage, name: str) -> object:
+        if name == "matched":
+            return 1
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(AnchorCoverage, "__getattribute__", forged_attribute)
+        with pytest.raises(FingerprintPolicyError, match="cannot exceed total"):
+            _ = AnchorCoverage(matched=2, total=1, ratio=1.0)
+
+
+def test_anchor_selection_ignores_late_digest_getattribute_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Selected anchors are deduplicated by their stored SHA digests."""
+    data = _synthetic_bytes("digest-deduplication")
+    expected = stable_anchors(data)
+    assert len(expected) > 1
+    original = StableAnchor.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: StableAnchor, name: str) -> object:
+        nonlocal calls
+        if name == "digest":
+            calls += 1
+            return b"x" * 32
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(StableAnchor, "__getattribute__", forged_attribute)
+        observed = stable_anchors(data)
+    assert observed == expected
+    assert calls == 0, "mutable digest getter changed anchor deduplication"
+
+
+@pytest.mark.parametrize("field", ["digest", "offset"])
+def test_stable_anchor_constructor_rejects_forged_invalid_fields(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A late getter cannot hide invalid raw anchor metadata."""
+    original = StableAnchor.__getattribute__
+
+    def forged_attribute(value: StableAnchor, name: str) -> object:
+        if name == field:
+            return 0 if field == "offset" else b"x" * 32
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(StableAnchor, "__getattribute__", forged_attribute)
+        with pytest.raises(FingerprintPolicyError):
+            _ = StableAnchor(
+                digest=b"short" if field == "digest" else b"x" * 32,
+                offset=-1 if field == "offset" else 0,
+            )

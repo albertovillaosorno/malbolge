@@ -35,8 +35,10 @@
 from __future__ import annotations
 
 import builtins
-from dataclasses import dataclass
 import hashlib
+from dataclasses import dataclass
+from types import MemberDescriptorType
+from typing import cast
 
 _DEFAULT_WINDOW_BYTES = 32
 _DEFAULT_SELECTION_MODULUS = 64
@@ -78,17 +80,34 @@ class AnchorPolicy:
             FingerprintPolicyError: A configured integer is not positive.
 
         """
+        window_bytes, selection_modulus = _policy_fields(self)
         if (
-            _NATIVE_TYPE(self.window_bytes) is not _NATIVE_INT
-            or _NATIVE_TYPE(self.selection_modulus) is not _NATIVE_INT
+            _NATIVE_TYPE(window_bytes) is not _NATIVE_INT
+            or _NATIVE_TYPE(selection_modulus) is not _NATIVE_INT
         ):
             message = "anchor window and selection modulus must be integers"
             raise FingerprintPolicyError(message)
-        if self.window_bytes < _ONE or self.selection_modulus < _ONE:
+        if window_bytes < _ONE or selection_modulus < _ONE:
             message = (
                 "anchor window and selection modulus must be positive integers"
             )
             raise FingerprintPolicyError(message)
+
+
+# Preserve original slotted storage access across consumer-controlled hooks.
+_POLICY_WINDOW_SLOT = cast(
+    "MemberDescriptorType", AnchorPolicy.__dict__["window_bytes"]
+)
+_POLICY_MODULUS_SLOT = cast(
+    "MemberDescriptorType", AnchorPolicy.__dict__["selection_modulus"]
+)
+
+
+def _policy_fields(policy: AnchorPolicy) -> tuple[int, int]:
+    return (
+        _POLICY_WINDOW_SLOT.__get__(policy, AnchorPolicy),
+        _POLICY_MODULUS_SLOT.__get__(policy, AnchorPolicy),
+    )
 
 
 _DEFAULT_POLICY = AnchorPolicy()
@@ -108,13 +127,29 @@ class StableAnchor:
             FingerprintPolicyError: Digest or offset metadata is invalid.
 
         """
-        native_bytes = _NATIVE_TYPE(self.digest) is _NATIVE_BYTES
-        if not native_bytes or _NATIVE_LEN(self.digest) != _SHA256_BYTES:
+        digest, offset = _anchor_fields(self)
+        native_bytes = _NATIVE_TYPE(digest) is _NATIVE_BYTES
+        if not native_bytes or _NATIVE_LEN(digest) != _SHA256_BYTES:
             message = "stable anchor digest must be exactly 32 bytes"
             raise FingerprintPolicyError(message)
-        if _NATIVE_TYPE(self.offset) is not _NATIVE_INT or self.offset < _ZERO:
+        if _NATIVE_TYPE(offset) is not _NATIVE_INT or offset < _ZERO:
             message = "stable anchor offset must be a non-negative integer"
             raise FingerprintPolicyError(message)
+
+
+_ANCHOR_DIGEST_SLOT = cast(
+    "MemberDescriptorType", StableAnchor.__dict__["digest"]
+)
+_ANCHOR_OFFSET_SLOT = cast(
+    "MemberDescriptorType", StableAnchor.__dict__["offset"]
+)
+
+
+def _anchor_fields(anchor: StableAnchor) -> tuple[bytes, int]:
+    return (
+        _ANCHOR_DIGEST_SLOT.__get__(anchor, StableAnchor),
+        _ANCHOR_OFFSET_SLOT.__get__(anchor, StableAnchor),
+    )
 
 
 def _require_coverage_count(value: object, context: str) -> int:
@@ -132,18 +167,19 @@ def _require_coverage_ratio(value: object) -> float:
 
 
 def _validate_anchor_coverage(coverage: AnchorCoverage) -> None:
+    matched_value, total_value, ratio_value = _coverage_fields(coverage)
     matched = _require_coverage_count(
-        coverage.matched,
+        matched_value,
         "matched anchor coverage",
     )
     total = _require_coverage_count(
-        coverage.total,
+        total_value,
         "total anchor coverage",
     )
     if matched > total:
         message = "matched anchor coverage cannot exceed total anchors"
         raise FingerprintPolicyError(message)
-    ratio = _require_coverage_ratio(coverage.ratio)
+    ratio = _require_coverage_ratio(ratio_value)
     expected = 1.0 if total == _ZERO else matched / total
     if ratio != expected:
         message = "anchor coverage ratio does not match anchor counts"
@@ -161,6 +197,25 @@ class AnchorCoverage:
     def __post_init__(self) -> None:
         """Require coverage counts and ratio to describe the same overlap."""
         _validate_anchor_coverage(self)
+
+
+_COVERAGE_MATCHED_SLOT = cast(
+    "MemberDescriptorType", AnchorCoverage.__dict__["matched"]
+)
+_COVERAGE_TOTAL_SLOT = cast(
+    "MemberDescriptorType", AnchorCoverage.__dict__["total"]
+)
+_COVERAGE_RATIO_SLOT = cast(
+    "MemberDescriptorType", AnchorCoverage.__dict__["ratio"]
+)
+
+
+def _coverage_fields(coverage: AnchorCoverage) -> tuple[int, int, float]:
+    return (
+        _COVERAGE_MATCHED_SLOT.__get__(coverage, AnchorCoverage),
+        _COVERAGE_TOTAL_SLOT.__get__(coverage, AnchorCoverage),
+        _COVERAGE_RATIO_SLOT.__get__(coverage, AnchorCoverage),
+    )
 
 
 def _digest_window(window: bytes) -> bytes:
@@ -204,26 +259,27 @@ def _selected_anchor(
 
 def _scan_anchor_windows(
     data: bytes,
-    policy: AnchorPolicy,
+    window_bytes: int,
+    selection_modulus: int,
 ) -> tuple[dict[bytes, StableAnchor], int]:
-    last_offset = _NATIVE_LEN(data) - policy.window_bytes
+    last_offset = _NATIVE_LEN(data) - window_bytes
     selected: dict[bytes, StableAnchor] = {}
-    rolling = _initial_rolling_hash(data, policy.window_bytes)
-    leading_power = _rolling_power(policy.window_bytes)
+    rolling = _initial_rolling_hash(data, window_bytes)
+    leading_power = _rolling_power(window_bytes)
     fallback_value = rolling
     fallback_offset = _ZERO
     for offset in _NATIVE_RANGE(last_offset + _ONE):
         if rolling < fallback_value:
             fallback_value = rolling
             fallback_offset = offset
-        if rolling % policy.selection_modulus == _ZERO:
-            anchor = _selected_anchor(data, offset, policy.window_bytes)
-            _ = selected.setdefault(anchor.digest, anchor)
+        if rolling % selection_modulus == _ZERO:
+            anchor = _selected_anchor(data, offset, window_bytes)
+            _ = selected.setdefault(_anchor_fields(anchor)[0], anchor)
         if offset < last_offset:
             rolling = _roll_hash(
                 rolling,
                 data[offset],
-                data[offset + policy.window_bytes],
+                data[offset + window_bytes],
                 leading_power=leading_power,
             )
     return selected, fallback_offset
@@ -256,15 +312,19 @@ def stable_anchors(
     if _NATIVE_TYPE(policy) is not AnchorPolicy:
         message = "stable anchor policy must use the exact AnchorPolicy type"
         raise FingerprintPolicyError(message)
-    if _NATIVE_LEN(data) < policy.window_bytes:
+    window_bytes, selection_modulus = _policy_fields(policy)
+    if _NATIVE_LEN(data) < window_bytes:
         return _small_input_anchor(data)
-    selected, fallback_offset = _scan_anchor_windows(data, policy)
-    if not selected:
-        fallback = _selected_anchor(data, fallback_offset, policy.window_bytes)
-        selected[fallback.digest] = fallback
-    return _NATIVE_TUPLE(
-        _NATIVE_SORTED(selected.values(), key=lambda anchor: anchor.offset)
+    selected, fallback_offset = _scan_anchor_windows(
+        data, window_bytes, selection_modulus
     )
+    if not selected:
+        fallback = _selected_anchor(data, fallback_offset, window_bytes)
+        selected[_anchor_fields(fallback)[0]] = fallback
+    ordered = _NATIVE_SORTED(
+        selected.values(), key=lambda anchor: _anchor_fields(anchor)[1]
+    )
+    return _NATIVE_TUPLE(ordered)
 
 
 def anchor_coverage(
@@ -291,8 +351,8 @@ def anchor_coverage(
         if _NATIVE_TYPE(anchor) is not StableAnchor:
             message = "anchor coverage inputs contain a foreign anchor record"
             raise FingerprintPolicyError(message)
-    reference_digests = {anchor.digest for anchor in reference}
-    candidate_digests = {anchor.digest for anchor in candidate}
+    reference_digests = {_anchor_fields(anchor)[0] for anchor in reference}
+    candidate_digests = {_anchor_fields(anchor)[0] for anchor in candidate}
     total = _NATIVE_LEN(reference_digests)
     if total == _ZERO:
         return AnchorCoverage(matched=_ZERO, total=_ZERO, ratio=1.0)
