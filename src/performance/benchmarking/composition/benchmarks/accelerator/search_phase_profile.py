@@ -34,42 +34,42 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
-from hashlib import sha256
 import json
-from statistics import median
-from statistics import pstdev
 import sys
-from typing import Final
-from typing import TYPE_CHECKING
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from statistics import median, pstdev
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
-from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
-from optimizer.rotate_target import cpu_rotate_target_search_adapter
-from optimizer.rotate_target import rotate_target_search_adapter
-
-from benchmarks.accelerator.search_workload import CORPUS_SIZE
-from benchmarks.accelerator.search_workload import CPU_BACKEND
-from benchmarks.accelerator.search_workload import CUDA_BACKEND
-from benchmarks.accelerator.search_workload import SEED
-from benchmarks.accelerator.search_workload import TARGET
-from benchmarks.accelerator.search_workload import WORKLOAD_ID
-from benchmarks.accelerator.search_workload import (
-    full_domain_rotate_target_workload,
+from optimizer.rotate_target import (
+    ROTATE_TARGET_ALGORITHM_ID,
+    cpu_rotate_target_search_adapter,
+    rotate_target_search_adapter,
 )
+
 from benchmarks.accelerator.search_workload import (
+    CORPUS_SIZE,
+    CPU_BACKEND,
+    CUDA_BACKEND,
+    SEED,
+    TARGET,
+    WORKLOAD_ID,
+    full_domain_rotate_target_workload,
     validate_search_benchmark_result,
 )
 
 if TYPE_CHECKING:
-    from accelerator.evaluated_search import EvaluatedSearchExecutionAdapter
-    from accelerator.evaluated_search import EvaluatedSearchPhaseProfile
+    from accelerator.evaluated_search import (
+        EvaluatedSearchExecutionAdapter,
+        EvaluatedSearchPhaseProfile,
+    )
 
     from benchmarks.accelerator.search_workload import SearchBenchmarkWorkload
 
 SAMPLE_COUNT: Final = 15
 WARMUP_COUNT: Final = 1
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 PHASE_NAMES: Final = (
     "request_validation_ns",
     "batch_build_ns",
@@ -90,6 +90,44 @@ class PhaseTiming:
     min_ns: int
     pstdev_ns: float
     raw_ns: tuple[int, ...]
+
+
+class SearchPhaseReportError(ValueError):
+    """Retained CPU/CUDA search evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Compare public search JSON to source-bound native encoding."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"search phase JSON writer failed: {type(error).__name__}"
+        raise SearchPhaseReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "search phase JSON writer differs from source"
+        raise SearchPhaseReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Reject incomplete native write and nonvoid flush acknowledgements."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"search phase stdout write failed: {type(error).__name__}"
+        raise SearchPhaseReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "search phase stdout write incomplete"
+        raise SearchPhaseReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"search phase stdout flush failed: {type(error).__name__}"
+        raise SearchPhaseReportError(message) from error
+    if flushed is not None:
+        message = "search phase stdout flush incomplete"
+        raise SearchPhaseReportError(message)
 
 
 def main() -> int:
@@ -130,7 +168,7 @@ def main() -> int:
         "cpu": {name: asdict(value) for name, value in cpu_phases.items()},
         "cuda": {name: asdict(value) for name, value in cuda_phases.items()},
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 

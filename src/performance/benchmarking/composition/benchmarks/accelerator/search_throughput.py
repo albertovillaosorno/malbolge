@@ -34,42 +34,39 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
-from hashlib import sha256
 import json
-from statistics import median
-from statistics import pstdev
 import sys
+from dataclasses import asdict, dataclass
+from hashlib import sha256
+from statistics import median, pstdev
 from time import perf_counter_ns
-from typing import Final
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cuda import CudaExactPrimitiveAdapter
-from optimizer.rotate_target import ROTATE_TARGET_ALGORITHM_ID
-from optimizer.rotate_target import cpu_rotate_target_search_adapter
-from optimizer.rotate_target import rotate_target_search_adapter
-
-from benchmarks.accelerator.search_workload import CORPUS_SIZE
-from benchmarks.accelerator.search_workload import CPU_BACKEND
-from benchmarks.accelerator.search_workload import CUDA_BACKEND
-from benchmarks.accelerator.search_workload import SEED
-from benchmarks.accelerator.search_workload import TARGET
-from benchmarks.accelerator.search_workload import WORKLOAD_ID
-from benchmarks.accelerator.search_workload import (
-    full_domain_rotate_target_workload,
+from optimizer.rotate_target import (
+    ROTATE_TARGET_ALGORITHM_ID,
+    cpu_rotate_target_search_adapter,
+    rotate_target_search_adapter,
 )
+
 from benchmarks.accelerator.search_workload import (
+    CORPUS_SIZE,
+    CPU_BACKEND,
+    CUDA_BACKEND,
+    SEED,
+    TARGET,
+    WORKLOAD_ID,
+    full_domain_rotate_target_workload,
     validate_search_benchmark_result,
 )
 
 if TYPE_CHECKING:
-    from accelerator.work_ports import SearchExecutionAdapter
-    from accelerator.work_ports import SearchRequest
+    from accelerator.work_ports import SearchExecutionAdapter, SearchRequest
     from optimizer.rotate_target import RotateTargetVerifier
 
 SAMPLE_COUNT: Final = 15
 WARMUP_COUNT: Final = 1
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +79,44 @@ class SearchTiming:
     min_ns: int
     pstdev_ns: float
     raw_ns: tuple[int, ...]
+
+
+class SearchThroughputReportError(ValueError):
+    """Retained CPU/CUDA search evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Compare public search JSON to source-bound native encoding."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"search throughput JSON writer failed: {type(error).__name__}"
+        raise SearchThroughputReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "search throughput JSON writer differs from source"
+        raise SearchThroughputReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Reject incomplete native write and nonvoid flush acknowledgements."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"search throughput stdout write failed: {type(error).__name__}"
+        raise SearchThroughputReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "search throughput stdout write incomplete"
+        raise SearchThroughputReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"search throughput stdout flush failed: {type(error).__name__}"
+        raise SearchThroughputReportError(message) from error
+    if flushed is not None:
+        message = "search throughput stdout flush incomplete"
+        raise SearchThroughputReportError(message)
 
 
 def main() -> int:
@@ -126,11 +161,9 @@ def main() -> int:
         },
         "cpu": asdict(cpu_timing),
         "cuda": asdict(cuda_timing),
-        "cuda_speedup_at_median": (
-            cpu_timing.median_ns / cuda_timing.median_ns
-        ),
+        "cuda_speedup_at_median": (cpu_timing.median_ns / cuda_timing.median_ns),
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
@@ -155,12 +188,8 @@ def _measure_pair(
     cpu_raw: list[int] = []
     cuda_raw: list[int] = []
     for _ in range(SAMPLE_COUNT):
-        cpu_raw.append(
-            _timed_search(cpu, request, CPU_BACKEND, verifier=verifier)
-        )
-        cuda_raw.append(
-            _timed_search(cuda, request, CUDA_BACKEND, verifier=verifier)
-        )
+        cpu_raw.append(_timed_search(cpu, request, CPU_BACKEND, verifier=verifier))
+        cuda_raw.append(_timed_search(cuda, request, CUDA_BACKEND, verifier=verifier))
     return (
         _timing(CPU_BACKEND, cpu_raw),
         _timing(CUDA_BACKEND, cuda_raw),

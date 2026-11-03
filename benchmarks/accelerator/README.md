@@ -459,6 +459,12 @@ construction, candidate evaluation, and proposal selection. Proposal equality
 and
 independent CPU admission are checked after every timed call.
 
+The retained CPU/CUDA timing report must match the import-bound native JSON
+encoder before publication, preventing replaced public serializers from
+forging raw samples, device identity, or apparent speedups. An exact native
+stdout write and a successful flush receipt are mandatory; hardware-free
+synthetic samples test the reporting boundary.
+
 Run with:
 
 ```powershell
@@ -700,6 +706,10 @@ batch
 validation, backend evaluation, proposal selection, result validation, and total
 wall time separately. It uses the same one-warmup/15-sample policy and validates
 exact proposals plus independent CPU admission after every profile.
+
+The phase report uses the same source-bound JSON and exact stdout delivery
+checks so each raw named-phase sample remains attributable to the measured
+workload and device. Synthetic test samples never claim real CUDA performance.
 
 Run with:
 
