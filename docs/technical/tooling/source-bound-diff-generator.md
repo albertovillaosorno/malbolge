@@ -195,6 +195,16 @@ a direct descriptor-bound file read still works under a replaced resolver.
 All 270 focused exact and 3,240 integrated diff tests passed. This does not
 make filesystem resolution atomic against concurrent writers.
 
+The captured native `Path.resolve` still consults `os.lstat`, `os.readlink`,
+`os.getcwd`, and `stat.S_ISLNK` inside the original host realpath. Exact root,
+output, and nested-file resolution now verifies their import-original identities
+before and after each resolution (`32037e9c3`). Four late-hook symlink-alias
+cases and three mid-resolution substitutions failed red-first, then passed with
+283 postcommit exact tests and 3,398 integrated diff tests. Scoped Ruff, source
+strict BasedPyright, and diff checks passed. The guard does not make
+filesystem resolution atomic against external writers or concurrent host
+mutation; direct descriptor-bound reads remain independent of these hooks.
+
 Even a pinned `Path.walk` delegates to mutable host `os.walk` and `os.scandir`,
 while `os.walk` resolves nested children through `os.path.join`. Exact tree
 snapshots now require the import-original identities of all three hooks

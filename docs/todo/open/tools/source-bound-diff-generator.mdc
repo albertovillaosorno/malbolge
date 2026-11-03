@@ -104,6 +104,12 @@ format.
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused
   exact and 3,240 integrated diff tests pass. External path races remain.
+- Exact root, output, and nested-file resolution now also pins original
+  `os.lstat`, `os.readlink`, `os.getcwd`, and `stat.S_ISLNK` before and after
+  native `Path.resolve` (`32037e9c3`). Seven red-first late-hook and
+  mid-resolution cases pass; 283 postcommit exact and 3,398 integrated diff
+  tests, scoped Ruff, strict source BasedPyright, and diff checks pass. This
+  does not isolate concurrent external host or filesystem mutations.
 - Exact tree enumeration now checks original `os.walk`, `os.scandir`, and
   `os.path.join` (`dccb70b71`) before full or passthrough-excluded snapshots.
   Six red-first omitted-file cases now fail closed; 276 focused exact tests
