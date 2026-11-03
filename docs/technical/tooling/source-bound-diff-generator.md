@@ -110,7 +110,9 @@ functions before and after resolution (`138599216`). Eight additional
 red-first cases pass, bringing focused generator tests to 256; scoped Ruff and
 BasedPyright remain zero-error. Repository-wide `jig doctor` exited cleanly,
 but `jig check` did not complete within the 120-second validation budget.
-Hook identity checks are not atomic under concurrent host or filesystem writes.
+After concurrent probe and admission fixes landed, an independent post-push
+full diff-suite rerun passed all 3,340 tests. Hook identity checks are not
+atomic under concurrent host or filesystem writes.
 
 The Rust source emitter protects its own runtime template from output overwrite
 with the same import-original `os.path.realpath` identity requirement before

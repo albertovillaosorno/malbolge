@@ -71,6 +71,7 @@ format.
   red-first alias/relative-output cases now pass; 256 focused generator tests,
   scoped Ruff and BasedPyright zero-error checks pass. `jig doctor` succeeds;
   the repository-wide `jig check` exceeded 120 seconds and remains unverified.
+  A post-push integrated rerun after peer fixes passed all 3,340 diff tests.
   External host/filesystem races are still outside this guarantee.
 - Rust emitter template-overwrite preflight now pins import-original host
   `os.path.realpath` before and after `Path.resolve` (`f15620ff7`). Two
