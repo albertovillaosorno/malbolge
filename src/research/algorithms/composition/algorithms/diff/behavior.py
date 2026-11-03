@@ -121,7 +121,10 @@ class IdentityProbe:
         """Require canonical probe identity and exact fingerprint bytes."""
         _ = _require_identifier(_probe_identifier(self), "identity probe ID")
         _ = _require_digest(
-            _IDENTITY_PROBE_DIGEST_SLOT.__get__(self, IdentityProbe),
+            cast(
+                "bytes",
+                _IDENTITY_PROBE_DIGEST_SLOT.__get__(self, IdentityProbe),
+            ),
             "identity probe digest",
         )
 
@@ -195,7 +198,7 @@ class BugProbe:
         """Require canonical bug and correction identities."""
         _ = _require_identifier(_probe_identifier(self), "bug probe ID")
         _ = _require_identifier(
-            _BUG_PROBE_CORRECTION_SLOT.__get__(self, BugProbe),
+            cast("str", _BUG_PROBE_CORRECTION_SLOT.__get__(self, BugProbe)),
             "bug correction ID",
         )
 
@@ -235,7 +238,8 @@ def _validate_unique(values: tuple[str, ...], message: str) -> None:
 
 def _validate_correction_ids(bugs: tuple[BugProbe, ...]) -> None:
     correction_ids = _NATIVE_TUPLE(
-        _BUG_PROBE_CORRECTION_SLOT.__get__(item, BugProbe) for item in bugs
+        cast("str", _BUG_PROBE_CORRECTION_SLOT.__get__(item, BugProbe))
+        for item in bugs
     )
     if _NATIVE_ANY(not correction_id for correction_id in correction_ids):
         message = "bug probes require non-empty correction identifiers"
@@ -1008,8 +1012,8 @@ def _identity_evidence(
                 f"identity probe unavailable: {_probe_identifier(probe)}"
             )
             continue
-        matched += digest == _IDENTITY_PROBE_DIGEST_SLOT.__get__(
-            probe, IdentityProbe
+        matched += digest == cast(
+            "bytes", _IDENTITY_PROBE_DIGEST_SLOT.__get__(probe, IdentityProbe)
         )
     return matched, _NATIVE_TUPLE(reasons)
 
@@ -1060,9 +1064,13 @@ def _bug_routing(
             _BUG_OBSERVATION_STATE_SLOT.__get__(observation, BugObservation),
         )
         if state is BugState.PRESENT:
-            apply.append(_BUG_PROBE_CORRECTION_SLOT.__get__(probe, BugProbe))
+            apply.append(
+                cast("str", _BUG_PROBE_CORRECTION_SLOT.__get__(probe, BugProbe))
+            )
         elif state is BugState.FIXED:
-            skip.append(_BUG_PROBE_CORRECTION_SLOT.__get__(probe, BugProbe))
+            skip.append(
+                cast("str", _BUG_PROBE_CORRECTION_SLOT.__get__(probe, BugProbe))
+            )
         else:
             reasons.append(f"bug probe unresolved: {_probe_identifier(probe)}")
     return _NATIVE_TUPLE(apply), _NATIVE_TUPLE(skip), _NATIVE_TUPLE(reasons)
