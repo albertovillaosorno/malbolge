@@ -223,6 +223,15 @@ format.
   checks pass; one old test typing finding and repository-wide Jig
   text/version failures remain. External filesystem races and trusted
   direct state mutations remain outside this check.
+- Exact tree walkers now reject late `PurePath._from_parsed_string` hooks,
+  and junction admission uses the import-captured host classifier with native
+  path text (`c43170b83`). Four red-first snapshot/junction cases and
+  one direct-read preservation case pass without foreign callbacks; all
+  323 postcommit exact and 798 adjacent exact/generator/source-binding tests
+  pass with scoped Ruff clean. One inherited exact-test typing error remains;
+  repository-wide Jig check timed out at 100 seconds during evidence
+  acquisition. Direct descriptor reads remain independent of tree factory
+  hooks. Concurrent host/filesystem races are not excluded.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused
@@ -631,6 +640,14 @@ format.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.
+- Probe output capture now uses the import-captured `os.read` rather than
+  late process-global dispatch (`fb426f5c2`). Two red-first genuine-output
+  and transcript-forgery regressions prove forged same-length pipe bytes
+  cannot replace admitted output; existing failure-injection tests use the
+  explicit internal reader seam. The owning agent recorded 933 postcommit
+  focused and 3,811 precommit integrated diff passes. This protects host
+  callback substitution, not arbitrary direct module-state changes or
+  external process races.
 - Portable process probes now execute without shell interpolation, with
   structured
   roots, bounded time/output, isolated source mirrors, and deterministic

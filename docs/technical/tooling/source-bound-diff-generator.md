@@ -288,6 +288,20 @@ focused exact tests pass with zero scoped Ruff or strict BasedPyright errors.
 The new guards address late hook substitution, not direct module-state
 mutation or concurrent filesystem races.
 
+The exact walker also calls the inherited `PurePath._from_parsed_string`
+factory while turning `os.walk` results into native paths. Commit `c43170b83`
+adds that factory to the original path-hook identity guard for full and
+passthrough-excluded tree snapshots. Direct regular-file reads still bypass
+unrelated tree factory changes. The same fix routes junction classification
+through the captured host `os.path.isjunction` function using original path
+text; a late host classifier can no longer falsely deny a source tree or
+change direct descriptor admission. Four red-first cases plus one direct-
+read preservation case, all 323 focused
+exact tests, 798 adjacent exact/generator/source-binding tests, and scoped
+Ruff pass after commit. One inherited exact-test typing error persists.
+Global Jig check timed out after 100 seconds in evidence acquisition.
+Neither guard is atomic against host mutation or filesystem writers.
+
 This local plan is verification evidence, not a distributable transform. Raw
 `OracleLiteral` bytes must never cross the public emission boundary. A later
 source-binding stage must convert them to recovery material that cannot be
@@ -1308,6 +1322,16 @@ native `None` completion on reader, writer, unused, and empty-stdin pipes;
 foreign completion receipts reject the transcript or remain secondary to the
 original failure. The wall deadline starts before
 process launch and covers reader/writer setup, child and pipe completion.
+
+The pipe reader now also calls the captured original `os.read` instead of
+late process-global `os.read` (`fb426f5c2`). Two red-first tests prove that a
+same-length forged read cannot replace captured stdout or a completed probe
+transcript, even when the forged bytes have a native type and valid length.
+Existing read-failure tests patch an explicit internal seam instead of the
+host module. The owning agent verified 933 focused tests after commit and
+3,811 integrated diff tests before commit. This protects the native pipe
+read boundary against late dispatcher swaps, not concurrent host mutation,
+direct trusted state edits, or external process interference.
 
 Unrepresentably large timeout integers reject through the probe execution
 boundary before spawning, rather than leaking host float-conversion overflow.
