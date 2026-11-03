@@ -45,6 +45,7 @@ from typing import TYPE_CHECKING, TypeVar, cast
 
 from algorithms.diff.behavior import (
     BehaviorObservations,
+    BehaviorPolicyError,
     BehaviorProfile,
     BugObservation,
     BugProbe,
@@ -228,6 +229,28 @@ _TRANSCRIPT_DIGEST_SLOT = cast(
 )
 _TRANSCRIPT_COUNT_SLOT = cast(
     "MemberDescriptorType", ProbeTranscript.__dict__["digested_commands"]
+)
+# A profile may have been instantiated via native allocation, and its public
+# getters are mutable after authoring. Compare original stored probe IDs only.
+_PROFILE_VALIDATOR = cast(
+    "Callable[[BehaviorProfile], None]", BehaviorProfile.__dict__["__post_init__"]
+)
+_PROFILE_IDENTITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorProfile.__dict__["identity"]
+)
+_PROFILE_COMPATIBILITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorProfile.__dict__["compatibility"]
+)
+_PROFILE_BUGS_SLOT = cast("MemberDescriptorType", BehaviorProfile.__dict__["bugs"])
+_IDENTITY_PROBE_ID_SLOT = cast(
+    "MemberDescriptorType", IdentityProbe.__dict__["probe_id"]
+)
+_COMPATIBILITY_PROBE_ID_SLOT = cast(
+    "MemberDescriptorType", CompatibilityProbe.__dict__["probe_id"]
+)
+_BUG_PROBE_ID_SLOT = cast("MemberDescriptorType", BugProbe.__dict__["probe_id"])
+_BUG_PROBE_CORRECTION_SLOT = cast(
+    "MemberDescriptorType", BugProbe.__dict__["correction_id"]
 )
 
 
@@ -657,6 +680,11 @@ class AuthoredBehaviorPrograms:
         if _NATIVE_TYPE(profile) is not BehaviorProfile:
             message = "authored behavior requires an exact BehaviorProfile"
             raise BehaviorProgramError(message)
+        try:
+            _PROFILE_VALIDATOR(profile)
+        except (BehaviorPolicyError, AttributeError, TypeError) as error:
+            message = "authored behavior requires valid native profile evidence"
+            raise BehaviorProgramError(message) from error
         _require_identity_program_tuple(identity, "authored identity programs")
         _require_program_tuple(compatibility, "authored compatibility programs")
         _require_authored_bug_tuple(bugs)
@@ -796,17 +824,34 @@ def _require_authored_profile_alignment(
         authored
     )
     identity_ids = _NATIVE_TUPLE(_program_id(item) for item in identity)
-    profile_identity_ids = _NATIVE_TUPLE(item.probe_id for item in profile.identity)
+    profile_identity_ids = _NATIVE_TUPLE(
+        _IDENTITY_PROBE_ID_SLOT.__get__(item, IdentityProbe)
+        for item in cast(
+            "tuple[IdentityProbe, ...]",
+            _PROFILE_IDENTITY_SLOT.__get__(profile, BehaviorProfile),
+        )
+    )
     compatibility_ids = _NATIVE_TUPLE(_program_id(item) for item in compatibility)
     profile_compatibility_ids = _NATIVE_TUPLE(
-        item.probe_id for item in profile.compatibility
+        _COMPATIBILITY_PROBE_ID_SLOT.__get__(item, CompatibilityProbe)
+        for item in cast(
+            "tuple[CompatibilityProbe, ...]",
+            _PROFILE_COMPATIBILITY_SLOT.__get__(profile, BehaviorProfile),
+        )
     )
     bugs = _NATIVE_TUPLE(
         (_program_id(read_authored_bug(item)[0]), read_authored_bug(item)[1])
         for item in authored_bugs
     )
     profile_bugs = _NATIVE_TUPLE(
-        (item.probe_id, item.correction_id) for item in profile.bugs
+        (
+            _BUG_PROBE_ID_SLOT.__get__(item, BugProbe),
+            _BUG_PROBE_CORRECTION_SLOT.__get__(item, BugProbe),
+        )
+        for item in cast(
+            "tuple[BugProbe, ...]",
+            _PROFILE_BUGS_SLOT.__get__(profile, BehaviorProfile),
+        )
     )
     if identity_ids != profile_identity_ids:
         message = "authored identity programs do not match behavior profile"

@@ -3005,3 +3005,92 @@ def test_behavior_context_rejects_lazy_hook_changed_mid_resolution(
                 repository, "repository"
             )
     assert altered, "the resolver did not reach the post-check"
+
+
+@pytest.mark.parametrize(
+    "forgery",
+    (
+        "identity-id",
+        "compatibility-id",
+        "bug-id",
+        "correction-id",
+        "profile-group",
+    ),
+)
+def test_authored_profile_alignment_ignores_late_evidence_getters(
+    monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """A replaced profile getter must not conceal misaligned probe identity."""
+    programs = _programs()
+    original_identity = "identity-stable"
+    original_compatibility = "runtime-capability"
+    original_bug = "historical-bug"
+    original_correction = "fix-historical-bug"
+    identity_id = (
+        "forged-identity"
+        if forgery in {"identity-id", "profile-group"}
+        else original_identity
+    )
+    compatibility_id = (
+        "forged-compatibility"
+        if forgery == "compatibility-id"
+        else original_compatibility
+    )
+    bug_id = "forged-bug" if forgery == "bug-id" else original_bug
+    correction_id = (
+        "forged-correction" if forgery == "correction-id" else original_correction
+    )
+    profile = BehaviorProfile(
+        identity=(IdentityProbe(identity_id, b"identity-digest"),),
+        compatibility=(CompatibilityProbe(compatibility_id),),
+        bugs=(BugProbe(bug_id, correction_id),),
+    )
+    authored_bug = AuthoredBugProgram(
+        programs.bugs[0].program,
+        original_correction,
+        b"present-digest",
+        b"fixed-digest",
+    )
+    with monkeypatch.context() as patched:
+        if forgery == "identity-id":
+            patched.setattr(
+                IdentityProbe, "probe_id", property(lambda _: original_identity)
+            )
+        elif forgery == "compatibility-id":
+            patched.setattr(
+                CompatibilityProbe,
+                "probe_id",
+                property(lambda _: original_compatibility),
+            )
+        elif forgery == "bug-id":
+            patched.setattr(BugProbe, "probe_id", property(lambda _: original_bug))
+        elif forgery == "correction-id":
+            patched.setattr(
+                BugProbe, "correction_id", property(lambda _: original_correction)
+            )
+        else:
+            patched.setattr(
+                BehaviorProfile,
+                "identity",
+                property(lambda _: (IdentityProbe(original_identity, b"digest"),)),
+            )
+        with pytest.raises(BehaviorProgramError, match="authored"):
+            _ = AuthoredBehaviorPrograms(
+                profile,
+                programs.identity,
+                programs.compatibility,
+                (authored_bug,),
+            )
+
+
+def test_authored_profile_rejects_uninitialized_native_profile() -> None:
+    """Exact native type alone cannot turn incomplete profile into evidence."""
+    programs = _programs()
+    forged = object.__new__(BehaviorProfile)
+    with pytest.raises(BehaviorProgramError, match="profile"):
+        _ = AuthoredBehaviorPrograms(
+            forged,
+            programs.identity,
+            programs.compatibility,
+            (),
+        )
