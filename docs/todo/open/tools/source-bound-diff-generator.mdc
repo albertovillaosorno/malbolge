@@ -192,6 +192,11 @@ format.
   showed that forged source metadata executed bytecode from another file.
   All 100 focused domain and 3,255 integrated diff tests passed, with scoped
   Ruff and strict BasedPyright clean. External filesystem races remain excluded.
+- Domain import now pins native `PurePath` parser dependencies and host
+  `os.path.splitroot`/`splitdrive` (`32caad32e`). Two red-first uncached-path
+  source-swap regressions and 120 postcommit domain tests pass, with Ruff,
+  strict source/test BasedPyright, and diff checks clean. The later shared diff
+  run passed 3,616 tests. External path races remain out of scope.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode
@@ -718,6 +723,16 @@ format.
   3,192 integrated diff tests passed, source strict BasedPyright was clean,
   and no new Ruff or test typing diagnostics appeared. Arbitrary valid plan
   authorship, external writer races, and global Jig remain unproven.
+- Exact-reader failures in relocatable, compatible, and source-pin bridges
+  now obtain exception `args`/`__notes__` via native `BaseException` access
+  (`6107beb77`, `1ced2caf2`). Twelve red-first hook-and-note variants
+  reject late exact-error class getter execution while preserving native
+  diagnostic notes. Postcommit 270 relocatable and 492 combined compatible/
+  provenance tests, scoped Ruff, and diff checks pass. Strict typing reports
+  17 inherited compatible test diagnostics outside new ranges; the fresh
+  post-bridge integrated diff passed 3,616 tests in 103.93 seconds and DOOM
+  generator checks passed 65 with one skip. Global Jig text/version failures,
+  concurrent filesystem changes, and trusted module mutation remain excluded.
 - Relocatable staging now pins `io.open` for exclusive file creation, native
   `os.mkdir`, and original output parent/name/with-name operations. Four
   red-first Path hook regressions (`65c7738a8`) reproduced staging/file

@@ -310,6 +310,14 @@ the guard. All 118 focused domain tests pass postcommit; Ruff, strict
 source/test BasedPyright, and diff checks are clean. An independent combined
 diff run passed 3,602 tests.
 
+Domain module loading additionally checks imported native `PurePath` parser
+components and host `os.path.splitroot`/`splitdrive` helpers before and after
+uncached path normalization (`32caad32e`). A substituted splitter previously
+redirected an admitted module path to unrelated code. Two red-first cases and
+all 120 focused domain tests pass postcommit; scoped Ruff, strict source/test
+BasedPyright and diff checks are clean. Later shared validation passed 3,616
+diff tests. This hook guard is not an atomic external path snapshot.
+
 The guard does not sandbox authorized consumer code, prevent direct trusted
 object mutations, or make host filesystem checks atomic. Global Jig remains
 unverified (`jig doctor` reports the compiled graph absent).
@@ -2219,6 +2227,24 @@ preconditions, or failed output postconditions.
 Source-binding failure occurs before accepted target files are published.
 Partial
 target trees are never treated as accepted output.
+
+Relocatable, compatible, and source-pin exact-reader failure bridges now
+retrieve native exception arguments and optional notes through original
+`BaseException` access rather than late `ExactTreeError` class getters
+(`6107beb77`, `1ced2caf2`). Before these guards, a consumer could replace
+`ExactTreeError.__getattribute__` after import and execute it while a genuine
+exact read failure was converted to the caller's typed failure. Native notes
+are copied only from exact lists containing exact strings, through the base
+exception note method. Four red-first relocation cases and eight compatible/
+source-pin cases now pass; 270 relocation and 492 combined compatible/source-pin
+focused tests passed postcommit, with scoped Ruff and diff checks clean.
+Strict typing has 17 inherited compatible test diagnostics outside changed
+lines; the relocation source/tests are clean. A complete diff run after
+relocation passed 3,606 tests, and fresh validation with both bridge fixes and
+peer domain safeguards passed 3,616 tests in 103.93 seconds. Downstream DOOM
+generator tests passed 65 with one skip. Global Jig checks remain degraded or
+failing on broader text/version rules; no clean repository-wide Jig verdict is
+claimed. External filesystem races and trusted direct mutations remain open.
 
 ## Verification
 
