@@ -940,6 +940,14 @@ format.
   Jig doctor is degraded (graph absent), and a 120-second global check timed
   out without a green verdict. Direct instance mutation and external source
   writers remain outside scope.
+- Provenance root resolution now also pins original `os.fspath`, `os.lstat`,
+  `os.readlink`, `os.getcwd`, `stat.S_ISLNK`, and pathlib result factories
+  (`6379d6e85`). Eight red-first cases block forged source roots or denials
+  in snapshot/pin verification; 168 focused provenance and 3,366 integrated
+  diff tests passed, with scoped Ruff, strict source BasedPyright, and diff
+  checks clean. Existing unrelated test typing errors persist; Jig doctor is
+  degraded and global Jig validation has no green verdict. Host/filesystem
+  races and direct mutation of trusted state remain out of scope.
 
 - Source-binding policies now verify original stored `AnchorPolicy`
   dimensions, and bind/recover preflight rejects incomplete native binding,

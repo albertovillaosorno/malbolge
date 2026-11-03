@@ -449,6 +449,21 @@ writers or isolate trusted direct mutation. Jig doctor remains degraded
 (graph absent), and a bounded 120-second global check timed out without a
 repository-wide green verdict.
 
+The original `Path.resolve` still calls the host resolver's mutable
+`os.fspath`, `os.lstat`, `os.readlink`, `os.getcwd`, and `stat.S_ISLNK` helpers,
+and constructs its result through replaceable pathlib factories. Source-pin
+normalization now checks their import-original identities alongside the
+existing realpath guard before and after resolution (`6379d6e85`). Eight
+red-first cases cover redirected regular-root symlink status, linked parent
+redirection, relative-root working-directory substitution, and
+`Path.with_segments` result replacement for both snapshot and pin-verification
+paths. All 168 postcommit provenance tests and 3,366 integrated diff tests
+passed; scoped Ruff, strict source BasedPyright, and diff checks were clean.
+Existing provenance-test typing diagnostics remain outside this scoped change.
+These checks cannot make filesystem snapshots atomic, isolate external writers,
+or prevent direct mutations of trusted module state. Jig doctor remained
+degraded (cached graph absent), and the repository-wide check was not green.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from
