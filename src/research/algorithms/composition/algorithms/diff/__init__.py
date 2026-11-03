@@ -32,8 +32,6 @@
 
 """Source-bound tree-diff algorithm generation infrastructure."""
 
-from algorithms.diff.generate import DiffRecipe
-from algorithms.diff.generate import TransformMode
-from algorithms.diff.generate import write_algorithm
+from algorithms.diff.generate import DiffRecipe, TransformMode, write_algorithm
 
 __all__ = ["DiffRecipe", "TransformMode", "write_algorithm"]

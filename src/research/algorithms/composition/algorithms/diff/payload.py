@@ -46,10 +46,11 @@ and verification, not as the eventual distributable runtime implementation.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from hmac import compare_digest as _native_compare_digest
 from types import MemberDescriptorType
-from typing import Callable, cast
+from typing import cast
 
 # Keep AEAD input identity and byte operations independent of late
 # consumer hooks that change process-global Python builtins.
