@@ -467,6 +467,14 @@ below both thresholds, concentration in only one file, and candidate-only opaque
 assets. These checks remain necessary but insufficient until behavior and source
 binding also pass.
 
+Internal source admission now constructs `IdentityFile`, `IdentityTree`,
+`FileAdmissionEvidence`, `_AggregateEvidence`, and `TreeAdmissionEvidence`
+using captured native allocation and original validating initializers
+(`aef38184b`). Ten red-first `__init__`/`__new__` regressions cover identity
+creation and per-file/aggregate verdicts; all 138 focused tests and 2,681
+integrated diff tests passed. This prevents class-hook redirection during
+lineage calculation, not direct trusted record edits or concurrent writers.
+
 ### First Language-Aware Consumer Identity
 
 `src/research/algorithms/domain/algorithms/doom/generator/doom.py` provides the
@@ -832,6 +840,17 @@ source anchors. Recovery must unlock that key and authenticate the full payload
 before
 the transactional exact materializer can create its staging output.
 
+Protected exact authoring now pins native allocation and original initializers
+for its `_PayloadBuilder`, `PayloadSlice`, `ProtectedInstruction`,
+`ProtectedMetadata`, and `ProtectedExactPlan` (`d2df13a43`). It also calls the
+original payload-builder append method, so a late class replacement cannot
+rewrite authenticated literal ranges. Eleven red-first regressions cover both
+constructor hooks and buffer interception; all 147 focused tests passed. The
+first integrated run had 2,702 passes and two failures in concurrently
+edited exact-planner tests; the subsequent integrated run passed all 2,724
+tests after that peer's exact-planner fix. This isolates class hooks,
+not direct instance-storage edits or external filesystem races.
+
 A read-only DOOM exact-baseline smoke generated 152 protected instructions and a
 2,116,232-byte ciphertext with a 16-byte tag. The binding contained 127 shares
 with
@@ -1025,6 +1044,15 @@ record fields, authorize changed candidate units, move replacements to a forged
 raw span, skip valid edits, or accept incomplete correction vectors. This is a
 late process-hook isolation boundary, not protection against trusted code that
 directly rewrites private object storage or races an external filesystem writer.
+
+Semantic authoring now additionally constructs `SemanticLocator`,
+`SemanticEdit`, `SemanticAuthoringPlan`, and `_SemanticBuildContext` with
+captured native allocation and original initializer guards (`fa60753bb`).
+Eight red-first `__init__`/`__new__` cases cover late class-hook substitutions
+without altering mapped-source edits. All 127 focused tests passed after
+commit and 2,724 integrated diff tests passed before publication; scoped Ruff
+had no findings, and no new strict type diagnostics appeared. These are
+class-hook guards, not isolation from trusted direct object mutation.
 
 Semantic placement and compatible tree authoring/materialization wrap
 consumer mapper and postcondition failures without evaluating foreign exception

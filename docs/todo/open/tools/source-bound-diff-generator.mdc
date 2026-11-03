@@ -128,6 +128,25 @@ format.
   BasedPyright zero-error checks were also green. Three older type warnings
   remain, and the repository-wide Jig verdict is still unavailable. This
   does not guard direct record storage mutation or concurrent source writes.
+- Source-binding anchor materials, masked shares, binding envelopes, and
+  recovered shares now use pinned native allocation/original initializers
+  (`b6d41a9ea`): eight red-first hook regressions, 147 focused tests, and
+  2,668 integrated diff tests passed. Direct instance edits and concurrent
+  source writers remain outside scope.
+- Identity trees and internal per-file/aggregate admission verdicts now pin
+  their original allocation and validation-backed initializers (`aef38184b`).
+  Ten red-first constructor-hook regressions, all 138 focused tests, and
+  2,681 integrated diff tests passed. No direct instance-mutation guarantee.
+- Protected-plan authoring now pins five record initializers, native record
+  allocation, and the payload-builder append method (`d2df13a43`). Eleven
+  red-first constructor/buffer-hook tests and 147 focused tests passed. An
+  intermediate integrated run had two concurrently failing exact-planner tests;
+  the next integrated run passed 2,724 tests after that peer change stabilized.
+- Semantic authoring now pins original allocation and initializers for
+  locators, edits, plans, and build contexts (`fa60753bb`). Eight red-first
+  constructor-hook tests, all 127 focused tests, and 2,724 integrated diff
+  tests passed, with scoped Ruff clean and no new strict type errors. These
+  measures do not prevent direct trusted storage changes or external races.
 - Tree-level admission now separates symmetric structural similarity from
   asymmetric anchor survival, weights reference files equally, requires
   distributed
