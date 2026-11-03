@@ -44,7 +44,7 @@ import shutil
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - bounded no-shell FIFO regression.
 import sys
 import textwrap
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path, PurePosixPath
 from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
@@ -3888,3 +3888,135 @@ def test_exact_snapshot_rejects_late_path_label_or_child_spoof(
             _ = snapshot_tree_excluding(root, ("excluded",))
     assert late_calls == 0, "late path hook rewrote source identity"
     assert snapshot_tree_excluding(root, ("excluded",)) == original
+
+
+def _unchecked_exact_record[
+    T: FileRecord
+    | TreeSnapshot
+    | ExactAuthoringPlan
+    | ExactInstruction
+    | SourceSlice
+    | OracleLiteral
+](template: T, **changes: object) -> T:
+    """Simulate an exact native slotted record allocated without its validator."""
+    forged = object.__new__(type(template))
+    for field in fields(template):
+        stored = cast("object", getattr(template, field.name))
+        object.__setattr__(forged, field.name, changes.get(field.name, stored))
+    return forged
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    [
+        "source-size-bool",
+        "target-size-bool",
+        "mutable-snapshot-files",
+        "mutable-literal",
+        "mutable-plan-roots",
+        "mutable-instructions",
+        "zero-source-slice",
+        "mutable-segment-literal",
+    ],
+)
+def test_exact_materialization_revalidates_forged_native_plan(
+    tmp_path: Path, corruption: str
+) -> None:
+    """Constructor-bypassed exact records cannot reach tree publication."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    output = tmp_path / "output"
+    source.mkdir()
+    oracle.mkdir()
+    _write(source, "src.bin", b"x")
+    _write(oracle, "out.bin", b"x")
+    plan = build_exact_plan(source, oracle)
+    instruction = plan.instructions[0]
+    if corruption == "source-size-bool":
+        forged_file = _unchecked_exact_record(plan.source.files[0], size=True)
+        forged_source = _unchecked_exact_record(plan.source, files=(forged_file,))
+        plan = _unchecked_exact_record(plan, source=forged_source)
+    elif corruption == "target-size-bool":
+        forged_file = _unchecked_exact_record(plan.target.files[0], size=True)
+        forged_target = _unchecked_exact_record(plan.target, files=(forged_file,))
+        plan = _unchecked_exact_record(plan, target=forged_target)
+    elif corruption == "mutable-snapshot-files":
+        forged_source = _unchecked_exact_record(
+            plan.source, files=list(plan.source.files)
+        )
+        plan = _unchecked_exact_record(plan, source=forged_source)
+    elif corruption == "mutable-literal":
+        forged_instruction = _unchecked_exact_record(
+            instruction,
+            kind=ExactInstructionKind.LITERAL_ORACLE,
+            source_path=None,
+            literal=bytearray(b"x"),
+        )
+        plan = _unchecked_exact_record(plan, instructions=(forged_instruction,))
+    elif corruption == "mutable-plan-roots":
+        plan = _unchecked_exact_record(plan, passthrough_roots=[])
+    elif corruption == "mutable-instructions":
+        plan = _unchecked_exact_record(plan, instructions=list(plan.instructions))
+    elif corruption == "zero-source-slice":
+        zero_slice = _unchecked_exact_record(SourceSlice(0, 1), length=0)
+        forged_instruction = _unchecked_exact_record(
+            instruction,
+            kind=ExactInstructionKind.PATCH_SOURCE,
+            source_path="src.bin",
+            literal=None,
+            segments=(zero_slice, OracleLiteral(b"x")),
+        )
+        plan = _unchecked_exact_record(plan, instructions=(forged_instruction,))
+    else:
+        mutable_literal = _unchecked_exact_record(
+            OracleLiteral(b""), data=bytearray(b"")
+        )
+        forged_instruction = _unchecked_exact_record(
+            instruction,
+            kind=ExactInstructionKind.PATCH_SOURCE,
+            source_path="src.bin",
+            literal=None,
+            segments=(SourceSlice(0, 1), mutable_literal),
+        )
+        plan = _unchecked_exact_record(plan, instructions=(forged_instruction,))
+    with pytest.raises(TreeModelError):
+        materialize_exact_plan(source, plan, output)
+    assert not output.exists()
+
+
+def test_exact_materialization_rejects_incomplete_native_plan_before_tree_reads(
+    tmp_path: Path,
+) -> None:
+    """An uninitialized plan fails with a model error before any staging."""
+    source = tmp_path / "source"
+    source.mkdir()
+    plan = object.__new__(ExactAuthoringPlan)
+    with pytest.raises(TreeModelError, match="incomplete native"):
+        materialize_exact_plan(source, plan, tmp_path / "output")
+    assert not (tmp_path / "output").exists()
+
+
+def test_exact_materialization_ignores_replaced_plan_validator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late class validator cannot forgive malformed exact input storage."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    source.mkdir()
+    oracle.mkdir()
+    _write(source, "src.bin", b"x")
+    _write(oracle, "out.bin", b"x")
+    plan = build_exact_plan(source, oracle)
+    forged = _unchecked_exact_record(plan, instructions=list(plan.instructions))
+    calls = 0
+
+    def replaced_validator(_plan: ExactAuthoringPlan) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ExactAuthoringPlan, "__post_init__", replaced_validator)
+        with pytest.raises(TreeModelError):
+            materialize_exact_plan(source, forged, tmp_path / "output")
+    assert calls == 0
+    assert not (tmp_path / "output").exists()

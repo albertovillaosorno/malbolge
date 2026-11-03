@@ -198,6 +198,10 @@ def _new_tree_snapshot(files: tuple[FileRecord, ...]) -> TreeSnapshot:
 
 # Reconstruct the exact plan only with its original validating initializer.
 # Class hooks remain mutable even on frozen slotted model records.
+_EXACT_PLAN_VALIDATOR = cast(
+    "Callable[[ExactAuthoringPlan], None]",
+    ExactAuthoringPlan.__dict__["__post_init__"],
+)
 _EXACT_PLAN_INIT = cast(
     Callable[
         [
@@ -1561,6 +1565,13 @@ def materialize_exact_plan(
     if _NATIVE_TYPE(plan) is not ExactAuthoringPlan:
         message = "exact materialization requires an exact authoring plan"
         raise ExactTreeError(message)
+    # Native slotted plans can be allocated without construction. Revalidate
+    # their nested immutable evidence before any filesystem or staging access.
+    try:
+        _EXACT_PLAN_VALIDATOR(plan)
+    except AttributeError as error:
+        message = "exact materialization received an incomplete native authoring plan"
+        raise TreeModelError(message) from error
     resolved_source = _resolved_tree_root(source_root)
     resolved_output = _resolved_output_root(output_root)
     if _native_path_inside(resolved_output, resolved_source):
