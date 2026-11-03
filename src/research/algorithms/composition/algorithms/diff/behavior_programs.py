@@ -74,7 +74,6 @@ if TYPE_CHECKING:
 _NATIVE_PATH_STR = Path.__str__
 _NATIVE_OS_REALPATH = os.path.realpath
 _NATIVE_ANY = builtins.any
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 _NATIVE_TYPE = builtins.type
 _NATIVE_TUPLE = builtins.tuple
 _NATIVE_LEN = builtins.len
@@ -144,8 +143,8 @@ class BugProgram:
 
     def __init__(self, program: ProbeProgram, correction_id: str) -> None:
         """Bind original fields and validate the bug program."""
-        _NATIVE_OBJECT_SETATTR(self, "program", program)
-        _NATIVE_OBJECT_SETATTR(self, "correction_id", correction_id)
+        _BUG_PROGRAM_SLOT.__set__(self, program)
+        _BUG_CORRECTION_SLOT.__set__(self, correction_id)
         _BUG_PROGRAM_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -220,9 +219,9 @@ class BehaviorPrograms:
         bugs: tuple[BugProgram, ...],
     ) -> None:
         """Bind original groups before validating program topology."""
-        _NATIVE_OBJECT_SETATTR(self, "identity", identity)
-        _NATIVE_OBJECT_SETATTR(self, "compatibility", compatibility)
-        _NATIVE_OBJECT_SETATTR(self, "bugs", bugs)
+        _BEHAVIOR_IDENTITY_SLOT.__set__(self, identity)
+        _BEHAVIOR_COMPATIBILITY_SLOT.__set__(self, compatibility)
+        _BEHAVIOR_BUGS_SLOT.__set__(self, bugs)
         _BEHAVIOR_PROGRAMS_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -334,10 +333,10 @@ class AuthoredBugProgram:
         fixed_digest: bytes,
     ) -> None:
         """Bind original fields before checking authored bug evidence."""
-        _NATIVE_OBJECT_SETATTR(self, "program", program)
-        _NATIVE_OBJECT_SETATTR(self, "correction_id", correction_id)
-        _NATIVE_OBJECT_SETATTR(self, "present_digest", present_digest)
-        _NATIVE_OBJECT_SETATTR(self, "fixed_digest", fixed_digest)
+        _AUTHORED_BUG_PROGRAM_SLOT.__set__(self, program)
+        _AUTHORED_BUG_CORRECTION_SLOT.__set__(self, correction_id)
+        _AUTHORED_BUG_PRESENT_SLOT.__set__(self, present_digest)
+        _AUTHORED_BUG_FIXED_SLOT.__set__(self, fixed_digest)
         _AUTHORED_BUG_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -409,10 +408,10 @@ class AuthoredBehaviorPrograms:
         bugs: tuple[AuthoredBugProgram, ...],
     ) -> None:
         """Bind original fields before validating the authored profile."""
-        _NATIVE_OBJECT_SETATTR(self, "profile", profile)
-        _NATIVE_OBJECT_SETATTR(self, "identity", identity)
-        _NATIVE_OBJECT_SETATTR(self, "compatibility", compatibility)
-        _NATIVE_OBJECT_SETATTR(self, "bugs", bugs)
+        _AUTHORED_PROFILE_SLOT.__set__(self, profile)
+        _AUTHORED_IDENTITY_SLOT.__set__(self, identity)
+        _AUTHORED_COMPATIBILITY_SLOT.__set__(self, compatibility)
+        _AUTHORED_BUGS_SLOT.__set__(self, bugs)
         _AUTHORED_BEHAVIOR_VALIDATOR(self)
 
     def __post_init__(self) -> None:

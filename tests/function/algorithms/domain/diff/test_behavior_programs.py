@@ -40,6 +40,7 @@ import os
 import shutil
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
@@ -1701,3 +1702,83 @@ def test_all_programs_uses_original_groups_and_bug_record(
         "runtime-capability",
     }
     assert calls == 0, "late getter removed a mandatory identity program"
+
+
+_BEHAVIOR_RECORD_FIELDS: tuple[tuple[type[object], str, object], ...] = (
+    (BugProgram, "program", object()),
+    (BugProgram, "correction_id", ""),
+    (BehaviorPrograms, "identity", []),
+    (BehaviorPrograms, "compatibility", []),
+    (BehaviorPrograms, "bugs", []),
+    (AuthoredBugProgram, "program", object()),
+    (AuthoredBugProgram, "correction_id", ""),
+    (AuthoredBugProgram, "present_digest", bytearray(b"a")),
+    (AuthoredBugProgram, "fixed_digest", b"a"),
+    (AuthoredBehaviorPrograms, "profile", object()),
+    (AuthoredBehaviorPrograms, "identity", []),
+    (AuthoredBehaviorPrograms, "compatibility", []),
+    (AuthoredBehaviorPrograms, "bugs", []),
+)
+
+
+def _valid_behavior_record(record_type: type[object], tmp_path: Path) -> object:
+    program = _read_program("identity-stable", "identity.txt")
+    if record_type is BugProgram:
+        return BugProgram(program, "fix")
+    if record_type is BehaviorPrograms:
+        return BehaviorPrograms((program,), (), ())
+    if record_type is AuthoredBugProgram:
+        return AuthoredBugProgram(program, "fix", b"a", b"b")
+    authored, _, _ = _authored(tmp_path)
+    return authored
+
+
+@pytest.mark.parametrize(("record_type", "field", "invalid"), _BEHAVIOR_RECORD_FIELDS)
+def test_behavior_constructor_rejects_forged_field_setter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    field: str,
+    invalid: object,
+) -> None:
+    """A substituted setter cannot launder an invalid program record."""
+    valid = _valid_behavior_record(record_type, tmp_path)
+    original_slot = record_type.__dict__[field]
+    repaired = getattr(valid, field)
+    calls = 0
+
+    def sanitize(self: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        original_slot.__set__(self, repaired)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(record_type, field, property(fset=sanitize))
+        with pytest.raises(BehaviorProgramError):
+            _ = replace(valid, **{field: invalid})
+    assert calls == 0, "late setter changed trusted behavior program input"
+
+
+@pytest.mark.parametrize(("record_type", "field", "_"), _BEHAVIOR_RECORD_FIELDS)
+def test_behavior_constructor_writes_original_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    field: str,
+    _: object,
+) -> None:
+    """Valid program metadata construction never calls late setters."""
+    valid = _valid_behavior_record(record_type, tmp_path)
+    original_field = getattr(valid, field)
+    calls = 0
+
+    def forbidden_setter(_self: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("behavior constructor invoked foreign setter")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(record_type, field, property(fset=forbidden_setter))
+        reconstructed = replace(valid, **{field: original_field})
+    assert type(reconstructed) is record_type
+    assert calls == 0, "valid behavior constructor invoked late setter"
