@@ -59,7 +59,7 @@ from algorithms.diff.source_binding import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sized
 
     from algorithms.diff.source_binding import BoundShare, ThresholdBinding
 
@@ -158,6 +158,156 @@ def test_binding_rejects_late_type_foreign_records(
         except SourceBindingError:
             rejected = True
     assert rejected, f"late type hook admitted a foreign {foreign_role} record"
+
+
+@pytest.mark.parametrize("field", ["anchor_digest", "masked_share"])
+def test_binding_rejects_late_len_spoof_of_share_bytes(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A late length hook cannot certify undersized source-binding shares."""
+    valid = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    first = valid.shares[0]
+    malformed = cast("bytes", getattr(first, field))[:-1]
+    forged = replace(
+        valid,
+        shares=(replace(first, **{field: malformed}), *valid.shares[1:]),
+    )
+    native_len = builtins.len
+
+    def spoof_len(value: object) -> int:
+        if value is malformed:
+            return native_len(malformed) + 1
+        return native_len(cast("Sized", value))
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", spoof_len)
+        try:
+            _ = validate_threshold_binding(forged)
+        except SourceBindingError:
+            rejected = True
+    assert rejected, f"late len hook admitted undersized {field}"
+
+
+def test_binding_policy_rejects_late_int_spoof_of_boolean_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Boolean source-binding limits must not masquerade as native integers."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", bool)
+        try:
+            _ = SourceBindingPolicy(
+                threshold_fraction=0.6,
+                maximum_anchors=True,
+                minimum_anchor_files=True,
+            )
+        except SourceBindingPolicyError:
+            rejected = True
+    assert rejected, "late int hook admitted boolean anchor limits"
+
+
+def test_binding_threshold_ignores_late_str_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late numeric string hook cannot lower the source quorum."""
+    reference = _reference()
+    policy = _policy(threshold_fraction=0.8)
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    def forged_str(_value: object) -> str:
+        return "0.2"
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "str", forged_str)
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+    assert observed.threshold == expected.threshold
+
+
+def test_hkdf_expand_ignores_late_range_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late loop hook cannot suppress output key-schedule blocks."""
+    expected = hkdf_expand_sha256(b"k" * 32, b"source", 64)
+    def forged_range(*_args: object) -> tuple[()]:
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "range", forged_range)
+        observed = hkdf_expand_sha256(b"k" * 32, b"source", 64)
+    assert observed == expected
+
+
+def test_hkdf_expand_ignores_late_ceil_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An overridden math helper cannot erase HKDF output blocks."""
+    expected = hkdf_expand_sha256(b"k" * 32, b"source", 64)
+    def forged_ceil(_value: object) -> int:
+        return 0
+
+    with monkeypatch.context() as patched:
+        patched.setattr(math, "ceil", forged_ceil)
+        observed = hkdf_expand_sha256(b"k" * 32, b"source", 64)
+    assert observed == expected
+
+
+def test_binding_policy_rejects_late_isfinite_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Nonfinite threshold policies cannot be admitted by a late math hook."""
+    rejected = False
+    def forged_isfinite(_value: object) -> bool:
+        return True
+
+    with monkeypatch.context() as patched:
+        patched.setattr(math, "isfinite", forged_isfinite)
+        try:
+            _ = SourceBindingPolicy(threshold_fraction=float("nan"))
+        except SourceBindingPolicyError:
+            rejected = True
+    assert rejected, "late finite predicate admitted an invalid threshold"
+
+
+def test_binding_shares_ignore_late_enumerate_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late iterator hook cannot erase generated Shamir coefficients."""
+    reference = _reference()
+    policy = _policy()
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+
+    def forged_enumerate(_value: object) -> tuple[()]:
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "enumerate", forged_enumerate)
+        observed = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    assert observed == expected
+
+
+def test_binding_rejects_late_tuple_spoof_of_mutable_shares(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable share list cannot become an authenticated share tuple."""
+    valid = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    forged = replace(
+        valid,
+        shares=cast("tuple[BoundShare, ...]", cast("object", list(valid.shares))),
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "tuple", list)
+        try:
+            _ = validate_threshold_binding(forged)
+        except SourceBindingError:
+            rejected = True
+    assert rejected, "late tuple hook admitted mutable share metadata"
 
 
 def test_binding_share_path_rejects_late_any_override(
