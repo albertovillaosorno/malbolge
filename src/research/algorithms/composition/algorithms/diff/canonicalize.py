@@ -67,6 +67,10 @@ def normalize_line_endings(data: bytes) -> bytes:
     return data.replace(_CRLF, _LF).replace(_CR, _LF)
 
 
+# The exported helper name may be rebound by consumers after import.
+_NATIVE_NORMALIZE_LINE_ENDINGS = normalize_line_endings
+
+
 def collapse_ascii_whitespace(data: bytes) -> bytes:
     """Collapse ASCII whitespace runs after line-ending normalization.
 
@@ -80,7 +84,7 @@ def collapse_ascii_whitespace(data: bytes) -> bytes:
         runs replaced by one ASCII space.
 
     """
-    normalized = normalize_line_endings(data)
+    normalized = _NATIVE_NORMALIZE_LINE_ENDINGS(data)
     output = _NATIVE_BYTEARRAY()
     pending_space = False
     for value in normalized:
@@ -94,11 +98,17 @@ def collapse_ascii_whitespace(data: bytes) -> bytes:
     return _NATIVE_BYTES(output)
 
 
+_NATIVE_COLLAPSE_ASCII_WHITESPACE = collapse_ascii_whitespace
+
+
 def _require_formatting_policy(value: object) -> bool:
     if _NATIVE_TYPE(value) is not _NATIVE_BOOL:
         message = "identity formatting policy must use exact bool"
         raise CanonicalIdentityError(message)
     return value
+
+
+_NATIVE_REQUIRE_FORMATTING_POLICY = _require_formatting_policy
 
 
 def canonicalize_text_identity(
@@ -113,7 +123,7 @@ def canonicalize_text_identity(
         collapsed.
 
     """
-    admitted_formatting = _require_formatting_policy(ignore_formatting)
+    admitted_formatting = _NATIVE_REQUIRE_FORMATTING_POLICY(ignore_formatting)
     if admitted_formatting:
-        return collapse_ascii_whitespace(data)
-    return normalize_line_endings(data)
+        return _NATIVE_COLLAPSE_ASCII_WHITESPACE(data)
+    return _NATIVE_NORMALIZE_LINE_ENDINGS(data)

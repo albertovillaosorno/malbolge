@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 import pytest
+from algorithms.diff import canonicalize as canonicalize_module
 from algorithms.diff.canonicalize import (
     CanonicalIdentityError,
     canonicalize_text_identity,
@@ -206,3 +207,68 @@ def test_formatting_policy_rejects_late_type_spoof(
         except CanonicalIdentityError:
             rejected = True
     assert rejected, "late type hook admitted an integer formatting policy"
+
+
+@pytest.mark.parametrize(
+    ("route", "helper"),
+    [
+        ("collapse", "normalize_line_endings"),
+        ("preserve", "normalize_line_endings"),
+        ("ignore", "collapse_ascii_whitespace"),
+    ],
+)
+def test_canonical_identity_ignores_late_helper_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str, helper: str
+) -> None:
+    """Canonical source bytes cannot be rewritten by a late helper alias."""
+    source = b"  alpha\r\n beta  "
+    if route == "collapse":
+        expected = collapse_ascii_whitespace(source)
+    else:
+        expected = canonicalize_text_identity(
+            source, ignore_formatting=(route == "ignore")
+        )
+    calls = 0
+
+    def forged_helper(_data: bytes) -> bytes:
+        nonlocal calls
+        calls += 1
+        return b""
+
+    with monkeypatch.context() as patch:
+        patch.setattr(canonicalize_module, helper, forged_helper)
+        if route == "collapse":
+            observed = collapse_ascii_whitespace(source)
+        else:
+            observed = canonicalize_text_identity(
+                source, ignore_formatting=(route == "ignore")
+            )
+    assert observed == expected
+    assert calls == 0, "late callback rewrote canonical source identity"
+
+
+@pytest.mark.parametrize("ignore_formatting", [False, True])
+def test_canonical_entry_rejects_foreign_bytes_after_late_helper_alias(
+    monkeypatch: pytest.MonkeyPatch, *, ignore_formatting: bool
+) -> None:
+    """An injected converter cannot certify non-byte source identity."""
+    with monkeypatch.context() as patch:
+        patch.setattr(canonicalize_module, "normalize_line_endings", lambda _: b"")
+        patch.setattr(canonicalize_module, "collapse_ascii_whitespace", lambda _: b"")
+        with pytest.raises(CanonicalIdentityError, match="exact bytes"):
+            _ = canonicalize_text_identity(
+                cast("bytes", cast("object", "not bytes")),
+                ignore_formatting=ignore_formatting,
+            )
+
+
+def test_canonical_policy_ignores_late_validator_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late policy callback cannot admit non-boolean formatting metadata."""
+    with monkeypatch.context() as patch:
+        patch.setattr(canonicalize_module, "_require_formatting_policy", lambda _: True)
+        with pytest.raises(CanonicalIdentityError, match="exact bool"):
+            _ = canonicalize_text_identity(
+                b"source", ignore_formatting=cast("bool", cast("object", 1))
+            )
