@@ -129,6 +129,11 @@ format.
   and realpath resolution (`8150ccf06`). Four red-first callback/alias
   cases and 169 postcommit emitter tests pass; Ruff, strict source/test
   typing, and diff checks pass. External filesystem races remain.
+- Emitter output preflight and template resolution now pin the native
+  `builtins.str` alias (`39c47424f`), rejecting a late replacement before
+  path parsing or host resolution. Two red-first cases and 175 postcommit
+  emitter tests passed; scoped Ruff, strict BasedPyright, and diff checks
+  are clean. External host and filesystem races remain outside this guard.
 - Rust emitter parent-directory staging now uses import-original
   `reversed()` (`e7ec05dca`). A forged post-import iterator previously
   silently skipped nested directory creation; one red-first regression and

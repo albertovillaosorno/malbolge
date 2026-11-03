@@ -826,6 +826,14 @@ with scoped Ruff, strict source/test BasedPyright, and diff checks clean.
 The guard is not isolation against concurrent filesystem writes or direct
 trusted module-state mutation.
 
+Emitter pathname admission and runtime-template resolution now also pin
+`builtins.str` to its import-original type (`39c47424f`). A late replacement
+previously passed output preflight or caused a generic template-resolution
+failure instead of rejecting the changed host dispatch. Two red-first
+regressions and all 175 postcommit emitter tests pass, with scoped Ruff,
+strict BasedPyright, and diff checks clean. The guard does not prevent
+external host or filesystem races.
+
 Emitter parent-directory staging now also pins the import-original
 `reversed()` (`e7ec05dca`). A late replacement previously erased the parent
 walk, silently leaving a nested output stage uncreated. One red-first
