@@ -775,7 +775,14 @@ def _safe_host_error_detail(error: BaseException) -> str:
         ValueError,
         RuntimeError,
     }:
-        arguments = cast("tuple[object, ...]", error.args)
+        # Exact native error classes still allow late class getter swaps.
+        # Read the original exception storage without their dispatch hooks.
+        arguments = cast(
+            "tuple[object, ...]",
+            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                error, "args"
+            ),
+        )
         if (
             _NATIVE_LEN(arguments) == 1
             and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR

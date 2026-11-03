@@ -2569,6 +2569,55 @@ def test_exact_regular_reader_cannot_dispatch_foreign_host_error_hooks(
     )
 
 
+@pytest.mark.parametrize("forgery", ["raise", "replace"])
+def test_exact_host_detail_ignores_late_native_error_getter(
+    monkeypatch: pytest.MonkeyPatch, forgery: str
+) -> None:
+    """Exact reader diagnostics cannot consult class-replaced args getters."""
+    failure = ExactTreeError("trusted native failure")
+    original = ExactTreeError.__getattribute__
+    calls = 0
+
+    def forged_attribute(error: ExactTreeError, name: str) -> object:
+        nonlocal calls
+        if name == "args":
+            calls += 1
+            if forgery == "replace":
+                return ("forged host reason",)
+            raise AssertionError("late exact error getter executed")
+        return cast("object", original(error, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ExactTreeError, "__getattribute__", forged_attribute)
+        assert exact_module._safe_host_error_detail(failure) == "trusted native failure"
+    assert calls == 0, "native error detail consulted a late class getter"
+
+
+def test_exact_cleanup_keeps_native_failure_without_late_error_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cleanup failure reporting preserves original failure text and cause."""
+    failure = ExactTreeError("trusted native read failure")
+    original = ExactTreeError.__getattribute__
+    calls = 0
+
+    def forged_attribute(error: ExactTreeError, name: str) -> object:
+        nonlocal calls
+        if name == "args":
+            calls += 1
+            raise AssertionError("late exact error getter executed")
+        return cast("object", original(error, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ExactTreeError, "__getattribute__", forged_attribute)
+        with pytest.raises(
+            ExactTreeError, match="trusted native read failure; staging cleanup failed"
+        ) as caught:
+            exact_module._raise_exact_cleanup_failure(failure, "recovery denied")
+    assert caught.value.__cause__ is failure
+    assert calls == 0, "native cleanup failure used late error metadata"
+
+
 def test_exact_regular_reader_preserves_native_host_error_detail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
