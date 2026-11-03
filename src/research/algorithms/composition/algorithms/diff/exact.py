@@ -111,6 +111,7 @@ _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_OS_WALK = os.walk
 _NATIVE_OS_SCANDIR = os.scandir
+_NATIVE_SYS_AUDIT = sys.audit
 # The native Path.is_junction still dispatches through mutable os.path.
 # Pass original path text to the pinned host classifier instead.
 _NATIVE_OS_IS_JUNCTION = os.path.isjunction
@@ -209,6 +210,7 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
                 or os.getcwd is not _NATIVE_OS_GETCWD
                 or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
                 or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
+                or sys.audit is not _NATIVE_SYS_AUDIT
             )
         )
         or _NATIVE_ANY(

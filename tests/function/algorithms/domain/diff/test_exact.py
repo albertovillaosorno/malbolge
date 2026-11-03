@@ -4732,3 +4732,48 @@ def test_exact_admission_ignores_late_host_junction_verdict(
                 == b"native evidence"
             )
     assert callbacks == 0, "late host junction classifier affected admission"
+
+
+@pytest.mark.parametrize("entrypoint", ["snapshot", "excluded"])
+def test_exact_tree_walk_rejects_late_host_audit_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """Original Path.walk and os.walk may not enter an injected audit hook."""
+    root = tmp_path / "source"
+    root.mkdir()
+    _ = (root / "file.bin").write_bytes(b"trusted source")
+    calls = 0
+
+    def forged_audit(*_args: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(sys, "audit", forged_audit)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if entrypoint == "snapshot":
+                _ = snapshot_tree(root)
+            else:
+                _ = snapshot_tree_excluding(root, ())
+    assert calls == 0, "late audit hook ran during exact tree traversal"
+
+
+def test_exact_direct_file_reader_does_not_depend_on_python_audit_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Descriptor acquisition need not dispatch through Python sys.audit."""
+    file = tmp_path / "source.bin"
+    _ = file.write_bytes(b"admitted source")
+    calls = 0
+
+    def forged_audit(*_args: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(sys, "audit", forged_audit)
+        assert (
+            exact_module.read_exact_regular_file(file, "source")
+            == b"admitted source"
+        )
+    assert calls == 0
