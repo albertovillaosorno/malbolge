@@ -40,16 +40,13 @@ from bisect import bisect_left
 from collections.abc import Callable
 from dataclasses import dataclass
 from types import MemberDescriptorType
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from algorithms.diff.mapped import (
     MappedView,
     read_mapped_unit,
     read_mapped_view,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 _ZERO = 0
 _ONE = 1
@@ -70,6 +67,7 @@ _NATIVE_BOOL = builtins.bool
 _NATIVE_SET = builtins.set
 _NATIVE_REVERSED = builtins.reversed
 _NATIVE_LIST = builtins.list
+_NATIVE_OBJECT_NEW = object.__new__
 # Verify placement using a constructor pinned before host hooks can replace it.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -527,6 +525,78 @@ _BUILD_CONTEXT_SLOTS = (
 )
 
 
+# Semantic authoring consults mapper and matching callbacks before emitting
+# evidence. Keep class allocation and initializers bound to their original
+# validated slot-writers rather than mutable post-import class attributes.
+_SEMANTIC_LOCATOR_INIT = cast(
+    Callable[
+        [SemanticLocator, tuple[bytes, ...], tuple[bytes, ...], tuple[bytes, ...]],
+        None,
+    ],
+    SemanticLocator.__dict__["__init__"],
+)
+_SEMANTIC_EDIT_INIT = cast(
+    "Callable[[SemanticEdit, SemanticLocator, bytes, tuple[bytes, ...]], None]",
+    SemanticEdit.__dict__["__init__"],
+)
+_SEMANTIC_PLAN_INIT = cast(
+    "Callable[[SemanticAuthoringPlan, tuple[SemanticEdit, ...]], None]",
+    SemanticAuthoringPlan.__dict__["__init__"],
+)
+_SEMANTIC_BUILD_CONTEXT_INIT = cast(
+    Callable[
+        [
+            _SemanticBuildContext,
+            tuple[bytes, ...],
+            tuple[bytes, ...],
+            MappedView,
+            int,
+        ],
+        None,
+    ],
+    _SemanticBuildContext.__dict__["__init__"],
+)
+
+
+def _new_semantic_locator(
+    source_digests: tuple[bytes, ...],
+    before_digests: tuple[bytes, ...],
+    after_digests: tuple[bytes, ...],
+) -> SemanticLocator:
+    locator = _NATIVE_OBJECT_NEW(SemanticLocator)
+    _SEMANTIC_LOCATOR_INIT(locator, source_digests, before_digests, after_digests)
+    return locator
+
+
+def _new_semantic_edit(
+    locator: SemanticLocator,
+    replacement: bytes,
+    replacement_digests: tuple[bytes, ...],
+) -> SemanticEdit:
+    edit = _NATIVE_OBJECT_NEW(SemanticEdit)
+    _SEMANTIC_EDIT_INIT(edit, locator, replacement, replacement_digests)
+    return edit
+
+
+def _new_semantic_plan(edits: tuple[SemanticEdit, ...]) -> SemanticAuthoringPlan:
+    plan = _NATIVE_OBJECT_NEW(SemanticAuthoringPlan)
+    _SEMANTIC_PLAN_INIT(plan, edits)
+    return plan
+
+
+def _new_build_context(
+    source_digests: tuple[bytes, ...],
+    target_digests: tuple[bytes, ...],
+    target: MappedView,
+    context_units: int,
+) -> _SemanticBuildContext:
+    context = _NATIVE_OBJECT_NEW(_SemanticBuildContext)
+    _SEMANTIC_BUILD_CONTEXT_INIT(
+        context, source_digests, target_digests, target, context_units
+    )
+    return context
+
+
 def _edit_range_fields(edit: _EditRange) -> tuple[int, int, int, int]:
     """Read admitted source/target edit offsets from their initial slots."""
     return (
@@ -583,7 +653,7 @@ def _locator(
 ) -> SemanticLocator:
     before_start = _NATIVE_MAX(_ZERO, start - context_units)
     after_end = _NATIVE_MIN(_NATIVE_LEN(source_digests), end + context_units)
-    return SemanticLocator(
+    return _new_semantic_locator(
         source_digests=source_digests[start:end],
         before_digests=source_digests[before_start:start],
         after_digests=source_digests[end:after_end],
@@ -908,7 +978,7 @@ def _semantic_edit(
         context
     )
     source_start, source_end, target_start, target_end = _edit_range_fields(edit)
-    return SemanticEdit(
+    return _new_semantic_edit(
         locator=_locator(
             source_digests, source_start, source_end,
             context_units=context_units,
@@ -946,7 +1016,7 @@ def build_semantic_plan(
         raise SemanticPlacementError(message)
     source_digests = _view_digests(source)
     target_digests = _view_digests(target)
-    context = _SemanticBuildContext(
+    context = _new_build_context(
         source_digests=source_digests,
         target_digests=target_digests,
         target=target,
@@ -956,7 +1026,7 @@ def build_semantic_plan(
         _semantic_edit(context, edit)
         for edit in _edit_ranges(source_digests, target_digests)
     )
-    return SemanticAuthoringPlan(edits=edits)
+    return _new_semantic_plan(edits=edits)
 
 
 def _context_matches(

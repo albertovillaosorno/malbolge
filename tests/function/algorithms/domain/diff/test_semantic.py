@@ -36,7 +36,10 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+import os
 import re
+import subprocess
+import sys
 from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
@@ -1535,3 +1538,79 @@ def test_semantic_transient_constructors_pin_original_slots(
         "late transient setter redirected authoring evidence"
     )
     assert slot.__get__(observed, owner) is records[name][field]
+
+
+@pytest.mark.parametrize("record", ["locator", "edit", "plan", "context"])
+def test_semantic_authoring_pins_internal_initializers(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Authoring evidence must not dispatch post-import class initializers."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    baseline = build_semantic_plan(source, target)
+    assert baseline.edits
+    owners: dict[str, type[object]] = {
+        "locator": SemanticLocator,
+        "edit": SemanticEdit,
+        "plan": SemanticAuthoringPlan,
+        "context": cast(
+            "type[object]", vars(semantic_module)["_SemanticBuildContext"]
+        ),
+    }
+    calls = 0
+
+    def forbidden_init(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        raise AssertionError("semantic source evidence rewritten by class initializer")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owners[record], "__init__", forbidden_init)
+        assert build_semantic_plan(source, target) == baseline
+    assert calls == 0, f"late {record} initializer was consulted"
+
+
+@pytest.mark.parametrize("record", ["locator", "edit", "plan", "context"])
+def test_semantic_authoring_pins_internal_new(record: str) -> None:
+    """Exercise mutable class allocation hooks in an isolated interpreter."""
+    script = """
+import re
+from algorithms.diff import semantic as module
+from algorithms.diff.mapped import MappedUnit, MappedView
+from algorithms.diff.semantic import (
+    SemanticAuthoringPlan, SemanticEdit, SemanticLocator, build_semantic_plan,
+)
+token = re.compile(rb"[A-Za-z_][A-Za-z0-9_]*|[0-9]+|[^\\s]")
+def mapped(raw):
+    units = tuple(
+        MappedUnit(match.group(0), match.start(), match.end())
+        for match in token.finditer(raw)
+    )
+    return MappedView(raw, units)
+source = mapped(b"alpha = old ; omega")
+target = mapped(b"alpha = new ; omega")
+baseline = build_semantic_plan(source, target)
+assert baseline.edits
+owners = {
+    "locator": SemanticLocator,
+    "edit": SemanticEdit,
+    "plan": SemanticAuthoringPlan,
+    "context": module._SemanticBuildContext,
+}
+def forbidden_new(*args, **kwargs):
+    raise AssertionError("late class allocation changed semantic evidence")
+owners[RECORD].__new__ = staticmethod(forbidden_new)
+assert build_semantic_plan(source, target) == baseline
+""".replace("RECORD", repr(record))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
