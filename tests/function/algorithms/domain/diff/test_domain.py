@@ -206,6 +206,46 @@ def test_domain_loader_rejects_late_native_parent_factory_bypass(
     assert calls == 0, "late parent factory skipped symlink admission"
 
 
+def test_domain_loader_rejects_late_host_splitroot_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An uncached Path cannot import an unselected source through host parsing."""
+    admitted = tmp_path / "admitted.py"
+    redirected = tmp_path / "redirected.py"
+    _write(admitted, _COMPLETE.replace("return None", "return 'admitted'"))
+    _write(redirected, _COMPLETE.replace("return None", "return 'redirected'"))
+    admitted_label = str(admitted)
+    redirected_label = str(redirected)
+    selected = Path(admitted_label)  # Keep the native parse cache empty.
+    native_splitroot = os.path.splitroot
+    calls = 0
+
+    def forged_splitroot(raw: str) -> tuple[str, str, str]:
+        nonlocal calls
+        if raw == admitted_label:
+            calls += 1
+            return native_splitroot(redirected_label)
+        return native_splitroot(raw)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "splitroot", forged_splitroot)
+        with pytest.raises(DomainContractError, match="path helpers changed"):
+            _ = load_diff_domain(selected)
+    assert calls == 0, "mutable host splitroot redirected an admitted module"
+
+
+def test_domain_loader_rejects_late_host_path_separator_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A mutable host parser separator cannot control module filenames."""
+    selected = tmp_path / "domain.py"
+    _write(selected, _COMPLETE)
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "sep", "!")
+        with pytest.raises(DomainContractError, match="path helpers changed"):
+            _ = load_diff_domain(selected)
+
+
 def test_domain_loader_rejects_path_factory_swap_after_module_execution(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

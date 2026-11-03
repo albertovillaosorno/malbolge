@@ -102,7 +102,12 @@ _NATIVE_SOURCE_LOADER_INIT = importlib.machinery.SourceFileLoader.__init__
 _NATIVE_SOURCE_LOADER_CREATE_MODULE = importlib.machinery.SourceFileLoader.create_module
 _NATIVE_SOURCE_LOADER_PATH_STATS = importlib.machinery.SourceFileLoader.path_stats
 _NATIVE_OBJECT_NEW = object.__new__
+_NATIVE_OS_PATH_PARSER = os.path
 _NATIVE_OS_PATH_JOIN = os.path.join
+_NATIVE_OS_PATH_SPLITROOT = os.path.splitroot
+_NATIVE_OS_PATH_SPLITDRIVE = os.path.splitdrive
+_NATIVE_OS_PATH_SEP = os.path.sep
+_NATIVE_OS_PATH_ALTSEP = os.path.altsep
 # Original Path.__str__ and Path.parent still dispatch through mutable
 # pathlib factories and descriptors. An untrusted module path must not be
 # redirected or have linked ancestors hidden by a late class hook.
@@ -139,6 +144,17 @@ _NATIVE_PATH_HOOKS = _NATIVE_TUPLE(
 
 def _require_native_path_hooks() -> None:
     """Reject mutable native pathlib hooks before trusting module selection."""
+    # Pinned PurePath methods still read the mutable host parser at runtime.
+    # A forged splitroot or separator can redirect an uncached exact Path.
+    if (
+        os.path is not _NATIVE_OS_PATH_PARSER
+        or os.path.splitroot is not _NATIVE_OS_PATH_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_OS_PATH_SPLITDRIVE
+        or os.path.sep is not _NATIVE_OS_PATH_SEP
+        or os.path.altsep is not _NATIVE_OS_PATH_ALTSEP
+    ):
+        message = "diff domain module path helpers changed"
+        raise DomainContractError(message)
     if _NATIVE_ANY(
         cls.__dict__.get(name) is not original
         for cls, hooks in _NATIVE_PATH_HOOKS
