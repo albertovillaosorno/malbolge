@@ -92,6 +92,10 @@ _SHA256_FACTORY = hashlib.sha256
 _NATIVE_IMPORT_SPEC = importlib.util.spec_from_file_location
 _NATIVE_IMPORT_MODULE = importlib.util.module_from_spec
 _NATIVE_SOURCE_LOADER_EXEC = importlib.machinery.SourceFileLoader.exec_module
+_NATIVE_SOURCE_LOADER_GET_CODE = importlib.machinery.SourceFileLoader.get_code
+_NATIVE_SOURCE_LOADER_GET_DATA = importlib.machinery.SourceFileLoader.get_data
+_NATIVE_SOURCE_LOADER_GET_FILENAME = importlib.machinery.SourceFileLoader.get_filename
+_NATIVE_SOURCE_LOADER_SOURCE_TO_CODE = importlib.machinery.SourceFileLoader.source_to_code
 _NATIVE_OBJECT_NEW = object.__new__
 
 
@@ -400,6 +404,14 @@ def _prepare_module(
     if (
         importlib.machinery.SourceFileLoader.exec_module
         is not _NATIVE_SOURCE_LOADER_EXEC
+        or importlib.machinery.SourceFileLoader.get_code
+        is not _NATIVE_SOURCE_LOADER_GET_CODE
+        or importlib.machinery.SourceFileLoader.get_data
+        is not _NATIVE_SOURCE_LOADER_GET_DATA
+        or importlib.machinery.SourceFileLoader.get_filename
+        is not _NATIVE_SOURCE_LOADER_GET_FILENAME
+        or importlib.machinery.SourceFileLoader.source_to_code
+        is not _NATIVE_SOURCE_LOADER_SOURCE_TO_CODE
     ):
         message = "diff domain module execution reported non-native completion"
         raise DomainContractError(message)

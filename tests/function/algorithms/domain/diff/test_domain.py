@@ -44,7 +44,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
-from types import MemberDescriptorType, ModuleType, SimpleNamespace
+from types import CodeType, MemberDescriptorType, ModuleType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -297,7 +297,16 @@ def test_domain_import_preparation_errors_are_typed(
 
 
 @pytest.mark.parametrize(
-    "replacement", ["spec_from_file_location", "module_from_spec", "exec_module"]
+    "replacement",
+    [
+        "spec_from_file_location",
+        "module_from_spec",
+        "exec_module",
+        "get_code",
+        "get_data",
+        "get_filename",
+        "source_to_code",
+    ],
 )
 def test_domain_rejects_late_native_import_loader_substitution(
     tmp_path: Path,
@@ -315,6 +324,7 @@ def test_domain_rejects_late_native_import_loader_substitution(
     original_spec = importlib.util.spec_from_file_location
     original_module = importlib.util.module_from_spec
     original_exec = importlib.machinery.SourceFileLoader.exec_module
+    original_data = importlib.machinery.SourceFileLoader.get_data
     before = frozenset(sys.modules)
 
     def forged_spec(
@@ -332,14 +342,52 @@ def test_domain_rejects_late_native_import_loader_substitution(
         rogue_loader = importlib.machinery.SourceFileLoader(module.__name__, str(rogue))
         original_exec(rogue_loader, module)
 
+    def forged_get_code(
+        loader: importlib.machinery.SourceFileLoader, fullname: str
+    ) -> CodeType:
+        del loader, fullname
+        return compile(rogue.read_text(encoding="utf-8"), str(rogue), "exec")
+
+    def forged_get_data(
+        loader: importlib.machinery.SourceFileLoader, path: str
+    ) -> bytes:
+        if path == str(trusted):
+            return rogue.read_bytes()
+        return original_data(loader, path)
+
+    def forged_get_filename(
+        loader: importlib.machinery.SourceFileLoader, fullname: str
+    ) -> str:
+        del loader, fullname
+        return str(rogue)
+
+    def forged_source_to_code(
+        loader: importlib.machinery.SourceFileLoader,
+        data: bytes,
+        path: str,
+        *,
+        _optimize: int = -1,
+    ) -> CodeType:
+        del loader, data, path, _optimize
+        return compile(rogue.read_text(encoding="utf-8"), str(rogue), "exec")
+
     with monkeypatch.context() as patched:
         if replacement == "spec_from_file_location":
             patched.setattr(importlib.util, replacement, forged_spec)
         elif replacement == "module_from_spec":
             patched.setattr(importlib.util, replacement, forged_module)
         else:
+            loader_methods = {
+                "exec_module": forged_exec,
+                "get_code": forged_get_code,
+                "get_data": forged_get_data,
+                "get_filename": forged_get_filename,
+                "source_to_code": forged_source_to_code,
+            }
             patched.setattr(
-                importlib.machinery.SourceFileLoader, replacement, forged_exec
+                importlib.machinery.SourceFileLoader,
+                replacement,
+                loader_methods[replacement],
             )
         with pytest.raises(DomainContractError):
             _ = load_diff_domain(trusted)
