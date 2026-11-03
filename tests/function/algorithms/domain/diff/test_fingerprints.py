@@ -99,6 +99,48 @@ def test_unrelated_content_has_low_anchor_coverage() -> None:
     )
 
 
+class _ForgedStableDigest:
+    """Hostile hash callback always returns one identical fingerprint."""
+
+    @staticmethod
+    def digest() -> bytes:
+        """Return one false SHA-256 digest.
+
+        Returns:
+            A constant value of the expected digest length.
+
+        """
+        return b"z" * 32
+
+
+def _forged_sha256(data: bytes = b"") -> _ForgedStableDigest:
+    del data
+    return _ForgedStableDigest()
+
+
+def test_anchor_coverage_resists_post_import_hash_constructor_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A host callback must not make unrelated sources appear lineal."""
+    source = _synthetic_bytes("reference")
+    unrelated = _synthetic_bytes("independent")
+    genuine = anchor_coverage(stable_anchors(source), stable_anchors(unrelated))
+    _expect(
+        genuine.ratio <= _MAXIMUM_UNRELATED_COVERAGE,
+        "unrelated fixture was not sufficiently independent",
+    )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(hashlib, "sha256", _forged_sha256)
+        observed = anchor_coverage(
+            stable_anchors(source), stable_anchors(unrelated)
+        )
+    _expect(
+        observed.ratio <= _MAXIMUM_UNRELATED_COVERAGE,
+        "hostile SHA-256 constructor forged full source lineage",
+    )
+
+
 def test_anchor_policy_controls_sampling_density() -> None:
     """A deterministic denser policy should not yield fewer sampled anchors."""
     source = _synthetic_bytes("source")

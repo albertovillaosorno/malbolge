@@ -45,7 +45,9 @@ _ROLLING_MODULUS = 1 << _ROLLING_BITS
 _ROLLING_MASK = _ROLLING_MODULUS - 1
 _ZERO = 0
 _ONE = 1
-_SHA256_BYTES = hashlib.sha256().digest_size
+# A mutable module-level hashlib symbol must not redefine lineage evidence.
+_SHA256_FACTORY = hashlib.sha256
+_SHA256_BYTES = _SHA256_FACTORY().digest_size
 
 
 class FingerprintPolicyError(ValueError):
@@ -151,7 +153,7 @@ class AnchorCoverage:
 
 
 def _digest_window(window: bytes) -> bytes:
-    return hashlib.sha256(window).digest()
+    return _SHA256_FACTORY(window).digest()
 
 
 def _small_input_anchor(data: bytes) -> tuple[StableAnchor, ...]:
