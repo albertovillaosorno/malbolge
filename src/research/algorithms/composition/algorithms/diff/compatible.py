@@ -445,19 +445,96 @@ def _pinned_validation_view(record: object, record_type: type) -> SimpleNamespac
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class _BuildContext:
     request: CompatibleBuildRequest
     exact: ExactAuthoringPlan
     source_records: dict[str, FileRecord]
 
+    def __init__(
+        self,
+        request: CompatibleBuildRequest,
+        exact: ExactAuthoringPlan,
+        source_records: dict[str, FileRecord],
+    ) -> None:
+        """Keep internal authoring inputs independent of class setters."""
+        _BUILD_CONTEXT_SLOTS["request"].__set__(self, request)
+        _BUILD_CONTEXT_SLOTS["exact"].__set__(self, exact)
+        _BUILD_CONTEXT_SLOTS["source_records"].__set__(self, source_records)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class _MaterializeContext:
     candidate_root: Path
     mapper: Mapper
     corrections_to_apply: frozenset[str]
     corrections_to_skip: frozenset[str]
+
+    def __init__(
+        self,
+        candidate_root: Path,
+        mapper: Mapper,
+        corrections_to_apply: frozenset[str],
+        corrections_to_skip: frozenset[str],
+    ) -> None:
+        """Keep admitted materialization inputs in original native slots."""
+        _MATERIALIZE_CONTEXT_SLOTS["candidate_root"].__set__(self, candidate_root)
+        _MATERIALIZE_CONTEXT_SLOTS["mapper"].__set__(self, mapper)
+        _MATERIALIZE_CONTEXT_SLOTS["corrections_to_apply"].__set__(
+            self, corrections_to_apply
+        )
+        _MATERIALIZE_CONTEXT_SLOTS["corrections_to_skip"].__set__(
+            self, corrections_to_skip
+        )
+
+
+_BUILD_CONTEXT_SLOTS = {
+    name: cast("MemberDescriptorType", _BuildContext.__dict__[name])
+    for name in _BuildContext.__dataclass_fields__
+}
+_MATERIALIZE_CONTEXT_SLOTS = {
+    name: cast("MemberDescriptorType", _MaterializeContext.__dict__[name])
+    for name in _MaterializeContext.__dataclass_fields__
+}
+
+
+def _build_request(context: _BuildContext) -> CompatibleBuildRequest:
+    return cast(
+        "CompatibleBuildRequest",
+        _BUILD_CONTEXT_SLOTS["request"].__get__(context, _BuildContext),
+    )
+
+
+def _build_source_records(context: _BuildContext) -> dict[str, FileRecord]:
+    return cast(
+        "dict[str, FileRecord]",
+        _BUILD_CONTEXT_SLOTS["source_records"].__get__(context, _BuildContext),
+    )
+
+
+def _materialize_candidate_root(context: _MaterializeContext) -> Path:
+    return cast(
+        "Path",
+        _MATERIALIZE_CONTEXT_SLOTS["candidate_root"].__get__(
+            context, _MaterializeContext
+        ),
+    )
+
+
+def _materialize_mapper(context: _MaterializeContext) -> Mapper:
+    return cast(
+        "Mapper",
+        _MATERIALIZE_CONTEXT_SLOTS["mapper"].__get__(context, _MaterializeContext),
+    )
+
+
+def _materialize_apply(context: _MaterializeContext) -> frozenset[str]:
+    return cast(
+        "frozenset[str]",
+        _MATERIALIZE_CONTEXT_SLOTS["corrections_to_apply"].__get__(
+            context, _MaterializeContext
+        ),
+    )
 
 
 def _validate_request_path(value: object, context: str) -> None:
@@ -1106,16 +1183,16 @@ def _mapped_pair(
     instruction: ExactInstruction,
     source_path: str,
 ) -> tuple[MappedView, MappedView] | None:
-    source_bytes = _tree_bytes(context.request.source_root, source_path)
+    source_bytes = _tree_bytes(_build_request(context).source_root, source_path)
     target_bytes = _tree_bytes(
-        context.request.oracle_root,
+        _build_request(context).oracle_root,
         instruction.output_path,
     )
     source_view = _map_compatible_file(
-        context.request.mapper, source_path, source_bytes
+        _build_request(context).mapper, source_path, source_bytes
     )
     target_view = _map_compatible_file(
-        context.request.mapper, instruction.output_path, target_bytes
+        _build_request(context).mapper, instruction.output_path, target_bytes
     )
     if (source_view is None) != (target_view is None):
         message = "compatible mapper disagrees between source and target file"
@@ -1133,7 +1210,7 @@ def _literal_instruction(
         output_path=instruction.output_path,
         kind=CompatibleFileKind.CREATE_LITERAL,
         literal=_tree_bytes(
-            context.request.oracle_root,
+            _build_request(context).oracle_root,
             instruction.output_path,
         ),
     )
@@ -1164,7 +1241,7 @@ def _exact_instruction(
     instruction: ExactInstruction,
     source_path: str,
 ) -> CompatibleInstruction:
-    record = context.source_records[source_path]
+    record = _build_source_records(context)[source_path]
     return CompatibleInstruction(
         output_path=instruction.output_path,
         kind=CompatibleFileKind.EXACT_GATED,
@@ -1178,7 +1255,7 @@ def _compatible_instruction(
     context: _BuildContext,
     instruction: ExactInstruction,
 ) -> CompatibleInstruction:
-    source_path = _source_path(instruction, context.source_records)
+    source_path = _source_path(instruction, _build_source_records(context))
     if source_path is None:
         return _literal_instruction(context, instruction)
     mapped = _mapped_pair(context, instruction, source_path)
@@ -1363,7 +1440,7 @@ def _candidate_bytes(
     if instruction.source_path is None:
         message = "compatible instruction lost candidate source path"
         raise CompatiblePlanError(message)
-    return _tree_bytes(context.candidate_root, instruction.source_path)
+    return _tree_bytes(_materialize_candidate_root(context), instruction.source_path)
 
 
 def _materialize_copy(
@@ -1387,8 +1464,7 @@ def _routed_semantic_plan(
             _normalized_correction_ids(instruction),
             strict=True,
         )
-        if correction_id is None
-        or correction_id in context.corrections_to_apply
+        if correction_id is None or correction_id in _materialize_apply(context)
     )
     return SemanticAuthoringPlan(edits=edits)
 
@@ -1401,12 +1477,14 @@ def _materialize_semantic(
     if instruction.source_path is None or instruction.semantic is None:
         message = "compatible semantic instruction is incomplete"
         raise CompatiblePlanError(message)
-    view = _require_mapped(context.mapper, instruction.source_path, candidate)
+    view = _require_mapped(
+        _materialize_mapper(context), instruction.source_path, candidate
+    )
     return apply_semantic_plan(
         view,
         _routed_semantic_plan(context, instruction),
         lambda data: _require_mapped(
-            context.mapper,
+            _materialize_mapper(context),
             instruction.output_path,
             data,
         ),

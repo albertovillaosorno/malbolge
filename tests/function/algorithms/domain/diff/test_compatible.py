@@ -42,7 +42,7 @@ import re
 import shutil
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -3665,3 +3665,170 @@ def test_compatible_valid_constructor_uses_original_field_slots(
         observed = replace(baseline)
     assert observed == baseline
     assert calls == 0, f"valid {kind}.{field} dispatched forged setter"
+
+
+@pytest.mark.parametrize(
+    ("owner_name", "field"),
+    [
+        ("_BuildContext", "request"),
+        ("_BuildContext", "exact"),
+        ("_BuildContext", "source_records"),
+        ("_MaterializeContext", "candidate_root"),
+        ("_MaterializeContext", "mapper"),
+        ("_MaterializeContext", "corrections_to_apply"),
+        ("_MaterializeContext", "corrections_to_skip"),
+    ],
+)
+def test_compatible_transient_context_constructor_ignores_class_setters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner_name: str,
+    field: str,
+) -> None:
+    """Class setters cannot rewrite transient authoring or routing state."""
+    owner = cast("type[object]", cast("object", vars(compatible_module)[owner_name]))
+    kwargs: dict[str, object] = (
+        {"request": object(), "exact": object(), "source_records": {}}
+        if owner_name == "_BuildContext"
+        else {
+            "candidate_root": tmp_path,
+            "mapper": _mapper,
+            "corrections_to_apply": frozenset({"apply"}),
+            "corrections_to_skip": frozenset({"skip"}),
+        }
+    )
+    native_slot = cast("MemberDescriptorType", owner.__dict__[field])
+    factory = cast("Callable[..., object]", owner)
+    calls = 0
+
+    def forbidden_setter(_record: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late transient context setter executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(fset=forbidden_setter))
+        record = factory(**kwargs)
+        assert cast("object", native_slot.__get__(record, owner)) == kwargs[field]
+    assert calls == 0
+
+
+def test_compatible_transient_context_ignores_late_candidate_root_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late getter cannot redirect candidate bytes to another input tree."""
+    good = tmp_path / "good"
+    bad = tmp_path / "bad"
+    good.mkdir()
+    bad.mkdir()
+    _ = (good / "input.bin").write_bytes(b"trusted bytes")
+    _ = (bad / "input.bin").write_bytes(b"foreign bytes")
+    context_type = cast(
+        "type[object]", cast("object", vars(compatible_module)["_MaterializeContext"])
+    )
+    factory = cast("Callable[..., object]", context_type)
+    context = factory(
+        candidate_root=good,
+        mapper=_mapper,
+        corrections_to_apply=frozenset(),
+        corrections_to_skip=frozenset(),
+    )
+    instruction = CompatibleInstruction(
+        output_path="input.bin",
+        kind=CompatibleFileKind.COPY_CANDIDATE,
+        source_path="input.bin",
+    )
+    calls = 0
+
+    def forged_getter(_record: object) -> Path:
+        nonlocal calls
+        calls += 1
+        return bad
+
+    candidate_bytes = cast(
+        "Callable[[object, CompatibleInstruction], bytes]",
+        cast("object", vars(compatible_module)["_candidate_bytes"]),
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(context_type, "candidate_root", property(forged_getter))
+        actual = candidate_bytes(context, instruction)
+    assert actual == b"trusted bytes"
+    assert calls == 0
+
+
+def test_compatible_transient_build_ignores_late_request_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Authoring must read its stored request after a class getter swap."""
+    source, oracle = _roots(tmp_path)
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    context_type = cast(
+        "type[object]", cast("object", vars(compatible_module)["_BuildContext"])
+    )
+    slot = cast("MemberDescriptorType", context_type.__dict__["request"])
+    calls = 0
+
+    def forged_getter(_record: object) -> object:
+        nonlocal calls
+        calls += 1
+        return object()
+
+    def native_setter(record: object, value: object) -> None:
+        slot.__set__(record, value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(context_type, "request", property(forged_getter, native_setter))
+        plan = build_compatible_plan(request)
+    assert any(item.output_path == "code.src" for item in plan.instructions)
+    assert calls == 0
+
+
+def test_compatible_transient_routing_ignores_late_correction_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An intercepted getter cannot skip a required semantic correction."""
+    plan = bind_compatible_corrections(
+        _plan(tmp_path),
+        (CompatibleCorrectionBinding("code.src", 0, "fix"),),
+    )
+    semantic = next(
+        item
+        for item in plan.instructions
+        if item.kind is CompatibleFileKind.SEMANTIC_PATCH
+    )
+    context_type = cast(
+        "type[object]", cast("object", vars(compatible_module)["_MaterializeContext"])
+    )
+    factory = cast("Callable[..., object]", context_type)
+    context = factory(
+        candidate_root=tmp_path,
+        mapper=_mapper,
+        corrections_to_apply=frozenset({"fix"}),
+        corrections_to_skip=frozenset(),
+    )
+    routed_plan = cast(
+        "Callable[[object, CompatibleInstruction], SemanticAuthoringPlan]",
+        cast("object", vars(compatible_module)["_routed_semantic_plan"]),
+    )
+    calls = 0
+
+    def forged_getter(_record: object) -> frozenset[str]:
+        nonlocal calls
+        calls += 1
+        return frozenset()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(context_type, "corrections_to_apply", property(forged_getter))
+        routed = routed_plan(context, semantic)
+    assert semantic.semantic is not None
+    assert len(routed.edits) == len(semantic.semantic.edits)
+    assert calls == 0
