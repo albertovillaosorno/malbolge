@@ -40,6 +40,7 @@ from builtins import enumerate as _native_enumerate
 from builtins import int as _native_int
 from builtins import isinstance as _native_isinstance
 from builtins import len as _native_len
+from builtins import object as _native_object
 from builtins import range as _native_range
 from builtins import set as _native_set
 from builtins import sorted as _native_sorted
@@ -47,6 +48,7 @@ from builtins import str as _native_str
 from builtins import sum as _native_sum
 from builtins import tuple as _native_tuple
 from builtins import type as _native_type
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
@@ -54,6 +56,7 @@ from types import MemberDescriptorType
 from typing import cast
 
 _ZERO = 0
+_NATIVE_OBJECT_SETATTR = _native_object.__setattr__
 _SHA256_HEX_LENGTH = 64
 _HEX_DIGITS = frozenset("0123456789abcdef")
 _BACKSLASH = "\\"
@@ -127,13 +130,25 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
         raise TreeModelError(message) from error
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class FileRecord:
     """One regular file in a deterministic tree snapshot."""
 
     path: str
     sha256: str
     size: int
+
+    def __init__(
+        self,
+        path: str,
+        sha256: str,
+        size: int,
+    ) -> None:
+        """Admit record fields through the captured original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "path", path)
+        _NATIVE_OBJECT_SETATTR(self, "sha256", sha256)
+        _NATIVE_OBJECT_SETATTR(self, "size", size)
+        _FILE_RECORD_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require exact immutable snapshot metadata types.
@@ -148,6 +163,11 @@ class FileRecord:
         if _native_type(size) is not _native_int or size < _ZERO:
             message = "file record size must be a non-negative integer"
             raise TreeModelError(message)
+
+
+_FILE_RECORD_VALIDATOR = cast(
+    "Callable[[FileRecord], None]", FileRecord.__dict__["__post_init__"]
+)
 
 
 # Exact file metadata must retain its original stored values after consumers
@@ -173,11 +193,19 @@ def _has_file_ancestor(path: str, file_paths: set[str]) -> bool:
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class TreeSnapshot:
     """Sorted regular-file snapshot used for deterministic verification."""
 
     files: tuple[FileRecord, ...]
+
+    def __init__(
+        self,
+        files: tuple[FileRecord, ...],
+    ) -> None:
+        """Admit record fields through the captured original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "files", files)
+        _TREE_SNAPSHOT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require immutable exact records in deterministic path order.
@@ -207,6 +235,11 @@ class TreeSnapshot:
             raise TreeModelError(message)
 
 
+_TREE_SNAPSHOT_VALIDATOR = cast(
+    "Callable[[TreeSnapshot], None]", TreeSnapshot.__dict__["__post_init__"]
+)
+
+
 _SNAPSHOT_FILES_SLOT = cast(
     "MemberDescriptorType", TreeSnapshot.__dict__["files"]
 )
@@ -224,12 +257,22 @@ class ExactInstructionKind(StrEnum):
     LITERAL_ORACLE = "literal-oracle"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class SourceSlice:
     """A byte range reused from an admitted source file."""
 
     offset: int
     length: int
+
+    def __init__(
+        self,
+        offset: int,
+        length: int,
+    ) -> None:
+        """Admit record fields through the captured original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "offset", offset)
+        _NATIVE_OBJECT_SETATTR(self, "length", length)
+        _SOURCE_SLICE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Reject nonsensical source ranges.
@@ -250,6 +293,11 @@ class SourceSlice:
             raise TreeModelError(message)
 
 
+_SOURCE_SLICE_VALIDATOR = cast(
+    "Callable[[SourceSlice], None]", SourceSlice.__dict__["__post_init__"]
+)
+
+
 _SOURCE_SLICE_OFFSET_SLOT = cast(
     "MemberDescriptorType", SourceSlice.__dict__["offset"]
 )
@@ -265,11 +313,19 @@ def _source_slice_fields(segment: SourceSlice) -> tuple[int, int]:
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class OracleLiteral:
     """Target-only bytes retained only inside the local authoring plan."""
 
     data: bytes
+
+    def __init__(
+        self,
+        data: bytes,
+    ) -> None:
+        """Admit record fields through the captured original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "data", data)
+        _ORACLE_LITERAL_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require exact immutable target bytes.
@@ -281,6 +337,11 @@ class OracleLiteral:
         if _native_type(_oracle_literal_data(self)) is not _native_bytes:
             message = "oracle literal must use exact bytes"
             raise TreeModelError(message)
+
+
+_ORACLE_LITERAL_VALIDATOR = cast(
+    "Callable[[OracleLiteral], None]", OracleLiteral.__dict__["__post_init__"]
+)
 
 
 _ORACLE_LITERAL_DATA_SLOT = cast(
@@ -310,31 +371,25 @@ def _validate_exact_segments(value: object) -> None:
 
 
 def _validate_exact_instruction_metadata(instruction: ExactInstruction) -> None:
-    _require_canonical_relative_path(
-        instruction.output_path,
-        "exact instruction output path",
+    path, kind, digest, source, literal, segments = _instruction_fields(
+        instruction
     )
-    if _native_type(instruction.kind) is not ExactInstructionKind:
+    _require_canonical_relative_path(path, "exact instruction output path")
+    if _native_type(kind) is not ExactInstructionKind:
         message = "exact instruction kind must use the exact enum type"
         raise TreeModelError(message)
-    _validate_sha256_hex(
-        instruction.expected_sha256, "exact instruction sha256"
-    )
-    if instruction.source_path is not None:
+    _validate_sha256_hex(digest, "exact instruction sha256")
+    if source is not None:
         _require_canonical_relative_path(
-            instruction.source_path,
-            "exact instruction source path",
+            source, "exact instruction source path"
         )
-    if (
-        instruction.literal is not None
-        and _native_type(instruction.literal) is not _native_bytes
-    ):
+    if literal is not None and _native_type(literal) is not _native_bytes:
         message = "exact instruction literal must use exact bytes or None"
         raise TreeModelError(message)
-    _validate_exact_segments(instruction.segments)
+    _validate_exact_segments(segments)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ExactInstruction:
     """One output-file instruction in a local authoring plan.
 
@@ -350,6 +405,24 @@ class ExactInstruction:
     literal: bytes | None = None
     segments: tuple[ExactSegment, ...] = ()
 
+    def __init__(
+        self,
+        output_path: str,
+        kind: ExactInstructionKind,
+        expected_sha256: str,
+        source_path: str | None = None,
+        literal: bytes | None = None,
+        segments: tuple[ExactSegment, ...] = (),
+    ) -> None:
+        """Admit record fields through the captured original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "output_path", output_path)
+        _NATIVE_OBJECT_SETATTR(self, "kind", kind)
+        _NATIVE_OBJECT_SETATTR(self, "expected_sha256", expected_sha256)
+        _NATIVE_OBJECT_SETATTR(self, "source_path", source_path)
+        _NATIVE_OBJECT_SETATTR(self, "literal", literal)
+        _NATIVE_OBJECT_SETATTR(self, "segments", segments)
+        _EXACT_INSTRUCTION_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject ambiguous or incomplete instruction payloads.
 
@@ -358,47 +431,90 @@ class ExactInstruction:
 
         """
         _validate_exact_instruction_metadata(self)
-        if self.kind is ExactInstructionKind.COPY_SOURCE:
-            self._validate_copy()
+        kind = _instruction_fields(self)[1]
+        if kind is ExactInstructionKind.COPY_SOURCE:
+            _EXACT_COPY_VALIDATOR(self)
             return
-        if self.kind is ExactInstructionKind.PATCH_SOURCE:
-            self._validate_patch()
+        if kind is ExactInstructionKind.PATCH_SOURCE:
+            _EXACT_PATCH_VALIDATOR(self)
             return
-        if self.kind is ExactInstructionKind.LITERAL_ORACLE:
-            self._validate_literal()
+        if kind is ExactInstructionKind.LITERAL_ORACLE:
+            _EXACT_LITERAL_VALIDATOR(self)
             return
-        message = f"unsupported exact instruction kind: {self.kind!r}"
+        message = f"unsupported exact instruction kind: {kind!r}"
         raise TreeModelError(message)
 
     def _validate_copy(self) -> None:
-        if (
-            self.source_path is None
-            or self.literal is not None
-            or self.segments
-        ):
+        _, _, _, source, literal, segments = _instruction_fields(self)
+        if source is None or literal is not None or segments:
             message = "copy-source requires only source_path"
             raise TreeModelError(message)
 
     def _validate_patch(self) -> None:
-        if (
-            self.source_path is None
-            or self.literal is not None
-            or not self.segments
-        ):
+        _, _, _, source, literal, segments = _instruction_fields(self)
+        if source is None or literal is not None or not segments:
             message = "patch-source requires source_path and segments"
             raise TreeModelError(message)
 
     def _validate_literal(self) -> None:
-        if (
-            self.literal is None
-            or self.source_path is not None
-            or self.segments
-        ):
+        _, _, _, source, literal, segments = _instruction_fields(self)
+        if literal is None or source is not None or segments:
             message = "literal-oracle requires only literal bytes"
             raise TreeModelError(message)
 
 
-@dataclass(frozen=True, slots=True)
+_EXACT_INSTRUCTION_VALIDATOR = cast(
+    "Callable[[ExactInstruction], None]",
+    ExactInstruction.__dict__["__post_init__"],
+)
+
+_EXACT_COPY_VALIDATOR = cast(
+    "Callable[[ExactInstruction], None]",
+    ExactInstruction.__dict__["_validate_copy"],
+)
+_EXACT_PATCH_VALIDATOR = cast(
+    "Callable[[ExactInstruction], None]",
+    ExactInstruction.__dict__["_validate_patch"],
+)
+_EXACT_LITERAL_VALIDATOR = cast(
+    "Callable[[ExactInstruction], None]",
+    ExactInstruction.__dict__["_validate_literal"],
+)
+_INSTRUCTION_OUTPUT_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["output_path"]
+)
+_INSTRUCTION_KIND_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["kind"]
+)
+_INSTRUCTION_SHA256_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["expected_sha256"]
+)
+_INSTRUCTION_SOURCE_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["source_path"]
+)
+_INSTRUCTION_LITERAL_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["literal"]
+)
+_INSTRUCTION_SEGMENTS_SLOT = cast(
+    "MemberDescriptorType", ExactInstruction.__dict__["segments"]
+)
+
+
+def _instruction_fields(instruction: ExactInstruction) -> tuple[
+    str, ExactInstructionKind, str, str | None, bytes | None,
+    tuple[ExactSegment, ...]
+]:
+    return (
+        _INSTRUCTION_OUTPUT_SLOT.__get__(instruction, ExactInstruction),
+        _INSTRUCTION_KIND_SLOT.__get__(instruction, ExactInstruction),
+        _INSTRUCTION_SHA256_SLOT.__get__(instruction, ExactInstruction),
+        _INSTRUCTION_SOURCE_SLOT.__get__(instruction, ExactInstruction),
+        _INSTRUCTION_LITERAL_SLOT.__get__(instruction, ExactInstruction),
+        _INSTRUCTION_SEGMENTS_SLOT.__get__(instruction, ExactInstruction),
+    )
+
+
+@dataclass(frozen=True, slots=True, init=False)
 class ExactAuthoringPlan:
     """Local exact plan produced from a source tree and oracle tree."""
 
@@ -407,6 +523,20 @@ class ExactAuthoringPlan:
     instructions: tuple[ExactInstruction, ...]
     passthrough_roots: tuple[str, ...] = ()
 
+    def __init__(
+        self,
+        source: TreeSnapshot,
+        target: TreeSnapshot,
+        instructions: tuple[ExactInstruction, ...],
+        passthrough_roots: tuple[str, ...] = (),
+    ) -> None:
+        """Admit record fields through the captured original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "source", source)
+        _NATIVE_OBJECT_SETATTR(self, "target", target)
+        _NATIVE_OBJECT_SETATTR(self, "instructions", instructions)
+        _NATIVE_OBJECT_SETATTR(self, "passthrough_roots", passthrough_roots)
+        _EXACT_AUTHORING_PLAN_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Require exact snapshots and immutable plan metadata.
 
@@ -414,37 +544,69 @@ class ExactAuthoringPlan:
             TreeModelError: Plan metadata is mutable, foreign, or malformed.
 
         """
+        source, target, instructions, roots = _plan_fields(self)
         if (
-            _native_type(self.source) is not TreeSnapshot
-            or _native_type(self.target) is not TreeSnapshot
+            _native_type(source) is not TreeSnapshot
+            or _native_type(target) is not TreeSnapshot
         ):
             message = "exact plan snapshots must use exact TreeSnapshot records"
             raise TreeModelError(message)
-        if _native_type(self.instructions) is not _native_tuple or _native_any(
+        if _native_type(instructions) is not _native_tuple or _native_any(
             _native_type(item) is not ExactInstruction
-            for item in self.instructions
+            for item in instructions
         ):
             message = "exact plan instructions must be exact immutable records"
             raise TreeModelError(message)
-        paths = _native_tuple(item.output_path for item in self.instructions)
+        paths = _native_tuple(
+            _instruction_fields(item)[0] for item in instructions
+        )
         if _native_len(paths) != _native_len(_native_set(paths)):
             message = "exact plan requires unique output paths"
             raise TreeModelError(message)
         authored_outputs = _native_tuple(
-            (item.output_path, item.expected_sha256)
-            for item in self.instructions
+            (_instruction_fields(item)[0], _instruction_fields(item)[2])
+            for item in instructions
         )
         target_outputs = _native_tuple(
-            (item.path, item.sha256) for item in self.target.files
+            (_file_fields(item)[0], _file_fields(item)[1])
+            for item in _snapshot_files(target)
         )
         if authored_outputs != target_outputs:
             message = "exact plan instructions must match the target snapshot"
             raise TreeModelError(message)
-        _require_passthrough_roots(self.passthrough_roots)
-        _require_static_target_outside_passthrough(
-            self.target, self.passthrough_roots
-        )
+        _require_passthrough_roots(roots)
+        _require_static_target_outside_passthrough(target, roots)
         _require_static_source_references(self)
+
+
+_EXACT_AUTHORING_PLAN_VALIDATOR = cast(
+    "Callable[[ExactAuthoringPlan], None]",
+    ExactAuthoringPlan.__dict__["__post_init__"],
+)
+
+_PLAN_SOURCE_SLOT = cast(
+    "MemberDescriptorType", ExactAuthoringPlan.__dict__["source"]
+)
+_PLAN_TARGET_SLOT = cast(
+    "MemberDescriptorType", ExactAuthoringPlan.__dict__["target"]
+)
+_PLAN_INSTRUCTIONS_SLOT = cast(
+    "MemberDescriptorType", ExactAuthoringPlan.__dict__["instructions"]
+)
+_PLAN_ROOTS_SLOT = cast(
+    "MemberDescriptorType", ExactAuthoringPlan.__dict__["passthrough_roots"]
+)
+
+
+def _plan_fields(plan: ExactAuthoringPlan) -> tuple[
+    TreeSnapshot, TreeSnapshot, tuple[ExactInstruction, ...], tuple[str, ...]
+]:
+    return (
+        _PLAN_SOURCE_SLOT.__get__(plan, ExactAuthoringPlan),
+        _PLAN_TARGET_SLOT.__get__(plan, ExactAuthoringPlan),
+        _PLAN_INSTRUCTIONS_SLOT.__get__(plan, ExactAuthoringPlan),
+        _PLAN_ROOTS_SLOT.__get__(plan, ExactAuthoringPlan),
+    )
 
 
 def _require_static_source_entry(
@@ -482,20 +644,24 @@ def _require_static_instruction_consistency(
         TreeModelError: A copy disagrees or a patch exceeds source size.
 
     """
-    if instruction.kind is ExactInstructionKind.COPY_SOURCE:
-        if instruction.expected_sha256 != source.sha256:
-            message = f"exact plan copy-source digest differs: {source.path}"
+    _, kind, digest, _, _, segments = _instruction_fields(instruction)
+    source_path, source_digest, source_size = _file_fields(source)
+    _, _, target_size = _file_fields(target)
+    if kind is ExactInstructionKind.COPY_SOURCE:
+        if digest != source_digest:
+            message = f"exact plan copy-source digest differs: {source_path}"
             raise TreeModelError(message)
-        if target.size != source.size:
-            message = f"exact plan copy-source size differs: {source.path}"
+        if target_size != source_size:
+            message = f"exact plan copy-source size differs: {source_path}"
             raise TreeModelError(message)
-    if instruction.kind is ExactInstructionKind.PATCH_SOURCE and _native_any(
-        segment.offset + segment.length > source.size
-        for segment in instruction.segments
+    if kind is ExactInstructionKind.PATCH_SOURCE and _native_any(
+        _source_slice_fields(segment)[0] + _source_slice_fields(segment)[1]
+        > source_size
+        for segment in segments
         if _native_type(segment) is SourceSlice
     ):
         message = (
-            f"exact plan source slice exceeds snapshot size: {source.path}"
+            f"exact plan source slice exceeds snapshot size: {source_path}"
         )
         raise TreeModelError(message)
 
@@ -523,11 +689,12 @@ def _require_literal_output_consistency(
     """
     if literal is None:
         return
-    if _native_len(literal) != target.size:
-        message = f"exact plan literal-oracle size differs: {target.path}"
+    path, digest, size = _file_fields(target)
+    if _native_len(literal) != size:
+        message = f"exact plan literal-oracle size differs: {path}"
         raise TreeModelError(message)
-    if _native_sha256(literal).hexdigest() != target.sha256:
-        message = f"exact plan literal-oracle digest differs: {target.path}"
+    if _native_sha256(literal).hexdigest() != digest:
+        message = f"exact plan literal-oracle digest differs: {path}"
         raise TreeModelError(message)
 
 
@@ -541,28 +708,36 @@ def _require_exact_output_consistency(
         TreeModelError: Exact output metadata contradicts literal content.
 
     """
-    if instruction.kind is ExactInstructionKind.PATCH_SOURCE:
+    _, kind, _, _, literal, segments = _instruction_fields(instruction)
+    target_path, _, target_size = _file_fields(target)
+    if kind is ExactInstructionKind.PATCH_SOURCE:
         reconstructed_size = _native_sum(
-            _exact_segment_length(segment) for segment in instruction.segments
+            _exact_segment_length(segment) for segment in segments
         )
-        if reconstructed_size != target.size:
-            message = f"exact plan patch-source size differs: {target.path}"
+        if reconstructed_size != target_size:
+            message = f"exact plan patch-source size differs: {target_path}"
             raise TreeModelError(message)
-    _require_literal_output_consistency(instruction.literal, target)
+    _require_literal_output_consistency(literal, target)
 
 
 def _require_static_source_references(plan: ExactAuthoringPlan) -> None:
     """Reject impossible static copy and byte-slice instructions."""
-    source_by_path = {record.path: record for record in plan.source.files}
-    target_by_path = {record.path: record for record in plan.target.files}
-    for instruction in plan.instructions:
-        target = target_by_path[instruction.output_path]
+    source, target_tree, instructions, roots = _plan_fields(plan)
+    source_by_path = {
+        _file_fields(record)[0]: record for record in _snapshot_files(source)
+    }
+    target_by_path = {
+        _file_fields(record)[0]: record
+        for record in _snapshot_files(target_tree)
+    }
+    for instruction in instructions:
+        target = target_by_path[_instruction_fields(instruction)[0]]
         _require_exact_output_consistency(instruction, target)
-        path = instruction.source_path
+        path = _instruction_fields(instruction)[3]
         if path is None:
             continue
         source = _require_static_source_entry(
-            path, source_by_path, plan.passthrough_roots
+            path, source_by_path, roots
         )
         if source is not None:
             _require_static_instruction_consistency(instruction, source, target)
@@ -572,8 +747,9 @@ def _require_static_target_outside_passthrough(
     target: TreeSnapshot, roots: tuple[str, ...]
 ) -> None:
     if _native_any(
-        record.path == root or record.path.startswith(root + "/")
-        for record in target.files
+        _file_fields(record)[0] == root
+        or _file_fields(record)[0].startswith(root + "/")
+        for record in _snapshot_files(target)
         for root in roots
     ):
         message = "exact plan static target conflicts with passthrough roots"

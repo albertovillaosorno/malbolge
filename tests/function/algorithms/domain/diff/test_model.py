@@ -37,6 +37,7 @@ from __future__ import annotations
 import builtins
 import ntpath
 import os
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -57,6 +58,11 @@ if TYPE_CHECKING:
 
 
 _HASH = "0" * 64
+
+type ModelRecord = (
+    FileRecord | TreeSnapshot | SourceSlice | OracleLiteral
+    | ExactInstruction | ExactAuthoringPlan
+)
 
 
 def test_model_rejects_late_type_spoofed_oracle_bytes(
@@ -501,3 +507,250 @@ def test_model_exact_output_length_ignores_late_segment_getters(
         observed = model_module._exact_segment_length(segment)
     assert observed == 2, "late segment getter inflated planned output length"
     assert calls == 0, "late segment getter influenced output-size admission"
+
+
+_MODEL_VALID_RECORDS = (
+    (FileRecord, lambda: FileRecord("ok.bin", _HASH, 1)),
+    (TreeSnapshot, lambda: TreeSnapshot((FileRecord("ok.bin", _HASH, 1),))),
+    (SourceSlice, lambda: SourceSlice(0, 1)),
+    (OracleLiteral, lambda: OracleLiteral(b"ok")),
+    (
+        ExactInstruction,
+        lambda: ExactInstruction(
+            "ok.bin", ExactInstructionKind.COPY_SOURCE, _HASH,
+            source_path="ok.bin",
+        ),
+    ),
+    (
+        ExactAuthoringPlan,
+        lambda: ExactAuthoringPlan(TreeSnapshot(()), TreeSnapshot(()), ()),
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    ("record_type", "factory", "invalid_field", "invalid_value"),
+    [
+        (FileRecord, _MODEL_VALID_RECORDS[0][1], "size", -1),
+        (TreeSnapshot, _MODEL_VALID_RECORDS[1][1], "files", []),
+        (SourceSlice, _MODEL_VALID_RECORDS[2][1], "length", 0),
+        (OracleLiteral, _MODEL_VALID_RECORDS[3][1], "data", bytearray(b"bad")),
+        (ExactInstruction, _MODEL_VALID_RECORDS[4][1], "source_path", None),
+        (ExactAuthoringPlan, _MODEL_VALID_RECORDS[5][1], "source", object()),
+    ],
+)
+def test_model_constructor_validator_cannot_be_replaced(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    factory: Callable[[], object],
+    invalid_field: str,
+    invalid_value: object,
+) -> None:
+    """Frozen record constructors still validate under late post-init hooks."""
+    valid = factory()
+    calls = 0
+
+    def skip_validator(_record: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__post_init__", skip_validator)
+        with pytest.raises(TreeModelError):
+            _ = replace(
+                cast("ModelRecord", valid), **{invalid_field: invalid_value}
+            )
+    assert calls == 0, "late class validator admitted invalid model evidence"
+
+
+@pytest.mark.parametrize(("record_type", "factory"), _MODEL_VALID_RECORDS)
+def test_model_constructor_preserves_valid_records_after_validator_swap(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    factory: Callable[[], object],
+) -> None:
+    """A foreign late post-init cannot reject admitted model evidence."""
+    valid = factory()
+    calls = 0
+
+    def reject_every_record(_record: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise TreeModelError("forged model validator rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(record_type, "__post_init__", reject_every_record)
+        replaced = replace(cast("ModelRecord", valid))
+    assert replaced == valid
+    assert calls == 0, "late class validator rejected valid model evidence"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "forged"),
+    [
+        ("output_path", "../bad", "good.bin"),
+        ("kind", "copy-source", ExactInstructionKind.COPY_SOURCE),
+        ("expected_sha256", "invalid", _HASH),
+        ("source_path", None, "source.bin"),
+        ("literal", bytearray(b"bad"), None),
+        ("segments", [], ()),
+    ],
+)
+def test_model_exact_instruction_rejects_late_descriptor_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+    forged: object,
+) -> None:
+    """Constructors validate original slots, not class properties."""
+    fields: dict[str, object] = {
+        "output_path": "good.bin",
+        "kind": ExactInstructionKind.COPY_SOURCE,
+        "expected_sha256": _HASH,
+        "source_path": "source.bin",
+        "literal": None,
+        "segments": (),
+    }
+    fields[field] = invalid
+    calls = 0
+
+    original = ExactInstruction.__getattribute__
+
+    def spoof(record: ExactInstruction, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original(record, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ExactInstruction, "__getattribute__", spoof)
+        with pytest.raises(TreeModelError):
+            constructor = cast(
+                "Callable[..., ExactInstruction]", ExactInstruction
+            )
+            _ = constructor(**fields)
+    assert calls == 0, "instruction validation consulted class getter"
+
+
+def test_model_exact_instruction_rejects_late_method_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The original instruction-kind validation cannot be skipped."""
+    calls = 0
+
+    def skip(_record: ExactInstruction) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ExactInstruction, "_validate_copy", skip)
+        with pytest.raises(TreeModelError, match="copy-source"):
+            _ = ExactInstruction(
+                "good.bin", ExactInstructionKind.COPY_SOURCE, _HASH
+            )
+    assert calls == 0, "late instruction validator replaced the original"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "forged"),
+    [
+        ("source", object(), TreeSnapshot(())),
+        ("target", object(), TreeSnapshot(())),
+        ("instructions", [], ()),
+        ("passthrough_roots", [], ()),
+    ],
+)
+def test_model_exact_plan_rejects_late_descriptor_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+    forged: object,
+) -> None:
+    """Plans never admit foreign record fields through patched getters."""
+    fields: dict[str, object] = {
+        "source": TreeSnapshot(()), "target": TreeSnapshot(()),
+        "instructions": (), "passthrough_roots": (),
+    }
+    fields[field] = invalid
+    calls = 0
+
+    original = ExactAuthoringPlan.__getattribute__
+
+    def spoof(record: ExactAuthoringPlan, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original(record, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ExactAuthoringPlan, "__getattribute__", spoof)
+        with pytest.raises(TreeModelError):
+            constructor = cast(
+                "Callable[..., ExactAuthoringPlan]", ExactAuthoringPlan
+            )
+            _ = constructor(**fields)
+    assert calls == 0, "exact plan validation consulted class getter"
+
+
+def test_model_plan_does_not_trust_late_source_digest_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mismatching copy digest cannot be forged to match a target."""
+    source_file = FileRecord("source.bin", _HASH, 1)
+    target_hash = "f" * 64
+    target_file = FileRecord("output.bin", target_hash, 1)
+    instruction = ExactInstruction(
+        "output.bin", ExactInstructionKind.COPY_SOURCE, target_hash,
+        source_path="source.bin",
+    )
+    original = FileRecord.__getattribute__
+    calls = 0
+
+    def spoof(record: FileRecord, field: str) -> object:
+        nonlocal calls
+        if field == "sha256" and record is source_file:
+            calls += 1
+            return target_hash
+        return cast("object", original(record, field))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(FileRecord, "__getattribute__", spoof)
+        with pytest.raises(TreeModelError, match="copy-source digest"):
+            _ = ExactAuthoringPlan(
+                TreeSnapshot((source_file,)),
+                TreeSnapshot((target_file,)), (instruction,),
+            )
+    assert calls == 0, "late source hash getter influenced plan admission"
+
+
+def test_model_plan_does_not_trust_late_source_slice_offset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A source byte slice outside the file remains invalid under late hooks."""
+    source_file = FileRecord("source.bin", _HASH, 1)
+    target_file = FileRecord("output.bin", _HASH, 1)
+    segment = SourceSlice(50, 1)
+    instruction = ExactInstruction(
+        "output.bin", ExactInstructionKind.PATCH_SOURCE, _HASH,
+        source_path="source.bin", segments=(segment,),
+    )
+    original = SourceSlice.__getattribute__
+    calls = 0
+
+    def spoof(record: SourceSlice, field: str) -> object:
+        nonlocal calls
+        if field == "offset":
+            calls += 1
+            return 0
+        return cast("object", original(record, field))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(SourceSlice, "__getattribute__", spoof)
+        with pytest.raises(TreeModelError, match="slice exceeds"):
+            _ = ExactAuthoringPlan(
+                TreeSnapshot((source_file,)),
+                TreeSnapshot((target_file,)), (instruction,),
+            )
+    assert calls == 0, "late slice offset getter influenced plan admission"
