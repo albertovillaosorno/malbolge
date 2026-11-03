@@ -38,6 +38,7 @@ import builtins
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import IdentityTree
@@ -45,7 +46,6 @@ from algorithms.diff.exact import (
     materialize_exact_plan,
     snapshot_tree_excluding,
 )
-from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.model import (
     ExactAuthoringPlan,
     ExactInstruction,
@@ -53,6 +53,7 @@ from algorithms.diff.model import (
     OracleLiteral,
     SourceSlice,
     TreeSnapshot,
+    reserved_windows_component,
 )
 from algorithms.diff.payload import (
     AuthenticatedPayload,
@@ -397,27 +398,37 @@ class ProtectedExactPlan:
             ProtectedPlanError: Plan envelope metadata is foreign or malformed.
 
         """
+        (
+            source,
+            target,
+            instructions,
+            passthrough_roots,
+            context,
+            nonce,
+            payload,
+            binding,
+        ) = _plan_fields(self)
         _ = ProtectedMetadata(
-            source=self.source,
-            target=self.target,
-            instructions=self.instructions,
-            passthrough_roots=self.passthrough_roots,
+            source=source,
+            target=target,
+            instructions=instructions,
+            passthrough_roots=passthrough_roots,
         )
-        if _NATIVE_TYPE(self.context) is not _NATIVE_BYTES or not self.context:
+        if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
             message = "protected plan context must use non-empty exact bytes"
             raise ProtectedPlanError(message)
-        if _NATIVE_TYPE(self.nonce) is not _NATIVE_BYTES or _NATIVE_LEN(
-            self.nonce
+        if _NATIVE_TYPE(nonce) is not _NATIVE_BYTES or _NATIVE_LEN(
+            nonce
         ) != _NATIVE_LEN(_SINGLE_MESSAGE_NONCE):
             message = "protected plan nonce must use exact 12-byte input"
             raise ProtectedPlanError(message)
-        if _NATIVE_TYPE(self.payload) is not AuthenticatedPayload:
+        if _NATIVE_TYPE(payload) is not AuthenticatedPayload:
             message = (
                 "protected plan payload must use the exact authenticated type"
             )
             raise ProtectedPlanError(message)
         try:
-            _ = validate_threshold_binding(self.binding)
+            _ = validate_threshold_binding(binding)
         except SourceBindingError as error:
             # Only the exact known exception may contribute a diagnostic
             # message. A foreign subclass can execute code from __str__.
@@ -431,6 +442,56 @@ class ProtectedExactPlan:
                     detail = arguments[0]
             message = f"protected plan binding is invalid: {detail}"
             raise ProtectedPlanError(message) from error
+
+
+# Read the original plan storage slots across authoring and recovery. Mutable
+# class getters and descriptors must not replace authenticated plan evidence.
+_PLAN_SOURCE_SLOT = cast(
+    "MemberDescriptorType", ProtectedExactPlan.__dict__["source"]
+)
+_PLAN_TARGET_SLOT = cast(
+    "MemberDescriptorType", ProtectedExactPlan.__dict__["target"]
+)
+_PLAN_INSTRUCTIONS_SLOT = cast(
+    "MemberDescriptorType", ProtectedExactPlan.__dict__["instructions"]
+)
+_PLAN_ROOTS_SLOT = cast(
+    "MemberDescriptorType", ProtectedExactPlan.__dict__["passthrough_roots"]
+)
+_PLAN_CONTEXT_SLOT = cast(
+    "MemberDescriptorType", ProtectedExactPlan.__dict__["context"]
+)
+_PLAN_NONCE_SLOT = cast(
+    "MemberDescriptorType", ProtectedExactPlan.__dict__["nonce"]
+)
+_PLAN_PAYLOAD_SLOT = cast(
+    "MemberDescriptorType", ProtectedExactPlan.__dict__["payload"]
+)
+_PLAN_BINDING_SLOT = cast(
+    "MemberDescriptorType", ProtectedExactPlan.__dict__["binding"]
+)
+
+
+def _plan_fields(plan: ProtectedExactPlan) -> tuple[
+    TreeSnapshot,
+    TreeSnapshot,
+    tuple[ProtectedInstruction, ...],
+    tuple[str, ...],
+    bytes,
+    bytes,
+    AuthenticatedPayload,
+    ThresholdBinding,
+]:
+    return (
+        _PLAN_SOURCE_SLOT.__get__(plan, ProtectedExactPlan),
+        _PLAN_TARGET_SLOT.__get__(plan, ProtectedExactPlan),
+        _PLAN_INSTRUCTIONS_SLOT.__get__(plan, ProtectedExactPlan),
+        _PLAN_ROOTS_SLOT.__get__(plan, ProtectedExactPlan),
+        _PLAN_CONTEXT_SLOT.__get__(plan, ProtectedExactPlan),
+        _PLAN_NONCE_SLOT.__get__(plan, ProtectedExactPlan),
+        _PLAN_PAYLOAD_SLOT.__get__(plan, ProtectedExactPlan),
+        _PLAN_BINDING_SLOT.__get__(plan, ProtectedExactPlan),
+    )
 
 
 @dataclass(slots=True)
@@ -796,29 +857,34 @@ def recover_exact_plan(
 
     """
     plan = _require_protected_exact_plan(plan)
+    (
+        source,
+        target,
+        protected_instructions,
+        passthrough_roots,
+        context,
+        nonce,
+        payload,
+        binding,
+    ) = _plan_fields(plan)
     metadata = _metadata(
-        plan.source,
-        plan.target,
-        plan.instructions,
-        passthrough_roots=plan.passthrough_roots,
+        source,
+        target,
+        protected_instructions,
+        passthrough_roots=passthrough_roots,
     )
-    aad = protected_plan_aad(metadata, context=plan.context)
-    key = recover_secret(plan.binding, candidate_identity)
-    plaintext = chacha20_poly1305_decrypt(
-        key,
-        plan.nonce,
-        plan.payload,
-        aad=aad,
-    )
+    aad = protected_plan_aad(metadata, context=context)
+    key = recover_secret(binding, candidate_identity)
+    plaintext = chacha20_poly1305_decrypt(key, nonce, payload, aad=aad)
     instructions = _NATIVE_TUPLE(
         _exact_instruction(instruction, plaintext)
-        for instruction in plan.instructions
+        for instruction in protected_instructions
     )
     return ExactAuthoringPlan(
-        source=plan.source,
-        target=plan.target,
+        source=source,
+        target=target,
         instructions=instructions,
-        passthrough_roots=plan.passthrough_roots,
+        passthrough_roots=passthrough_roots,
     )
 
 
@@ -836,10 +902,8 @@ def materialize_protected_exact_plan(
 
     """
     plan = _require_protected_exact_plan(plan)
-    if (
-        snapshot_tree_excluding(source_root, plan.passthrough_roots)
-        != plan.source
-    ):
+    source, _, _, passthrough_roots, _, _, _, _ = _plan_fields(plan)
+    if snapshot_tree_excluding(source_root, passthrough_roots) != source:
         message = "source tree does not match protected exact source snapshot"
         raise ProtectedPlanError(message)
     exact = recover_exact_plan(plan, candidate_identity)

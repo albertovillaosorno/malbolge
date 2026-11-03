@@ -1148,3 +1148,119 @@ def test_protected_reserved_device_ignores_late_host_hook(
                 expected_sha256="0" * 64,
                 source_path="source.bin",
             )
+
+
+def test_protected_plan_constructor_ignores_late_context_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An envelope with an empty stored context must never be admitted."""
+    _, _, _, _, protected = _protected(tmp_path)
+    plan_type = protected_module.ProtectedExactPlan
+    original_getattribute = plan_type.__getattribute__
+    calls = 0
+
+    def forged_context(value: ProtectedExactPlan, name: str) -> object:
+        nonlocal calls
+        if name == "context":
+            calls += 1
+            return _CONTEXT
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(plan_type, "__getattribute__", forged_context)
+        with pytest.raises(ProtectedPlanError, match="non-empty exact bytes"):
+            _ = plan_type(
+                source=protected.source,
+                target=protected.target,
+                instructions=protected.instructions,
+                passthrough_roots=protected.passthrough_roots,
+                context=b"",
+                nonce=protected.nonce,
+                payload=protected.payload,
+                binding=protected.binding,
+            )
+    assert calls == 0, "late getter concealed an invalid plan context"
+
+
+def test_recover_exact_plan_ignores_late_context_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged plan getter cannot change authenticated metadata at recovery."""
+    _, _, source_files, expected, protected = _protected(tmp_path)
+    plan_type = protected_module.ProtectedExactPlan
+    original_getattribute = plan_type.__getattribute__
+    calls = 0
+
+    def forged_context(value: ProtectedExactPlan, name: str) -> object:
+        nonlocal calls
+        if name == "context":
+            calls += 1
+            return b"untrusted-context"
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(plan_type, "__getattribute__", forged_context)
+        recovered = recover_exact_plan(protected, _identity(source_files))
+    assert recovered == expected
+    assert calls == 0, "late getter changed the authenticated plan context"
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "source",
+        "target",
+        "instructions",
+        "passthrough_roots",
+        "context",
+        "nonce",
+        "payload",
+        "binding",
+    ],
+)
+def test_recovery_ignores_late_envelope_field_forgery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Recover the originally signed envelope, not a later class getter."""
+    _, _, source_files, expected, protected = _protected(tmp_path)
+    plan_type = protected_module.ProtectedExactPlan
+    original_getattribute = plan_type.__getattribute__
+    forged: object = object()
+    calls = 0
+
+    def forged_attribute(value: ProtectedExactPlan, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(plan_type, "__getattribute__", forged_attribute)
+        recovered = recover_exact_plan(protected, _identity(source_files))
+    assert recovered == expected
+    assert calls == 0, "late envelope getter influenced recovery"
+
+
+def test_materialization_ignores_late_envelope_source_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The pre-publication snapshot check must use stored source identity."""
+    source, oracle, source_files, _, protected = _protected(tmp_path)
+    expected = snapshot_tree(oracle)
+    output = tmp_path / "late-source-descriptor-out"
+    plan_type = protected_module.ProtectedExactPlan
+    calls = 0
+
+    def forged_source(_value: ProtectedExactPlan) -> object:
+        nonlocal calls
+        calls += 1
+        return object()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(plan_type, "source", property(forged_source))
+        materialize_protected_exact_plan(
+            source, _identity(source_files), plan=protected, output_root=output
+        )
+    assert snapshot_tree(output) == expected
+    assert calls == 0, "late source descriptor influenced output admission"
