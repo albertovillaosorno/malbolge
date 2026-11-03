@@ -354,6 +354,15 @@ format.
   mirror, DOOM emitted 4,646,568 bytes of Rust and reproduced the intended
   151-file
   tree exactly under Rust GNU 1.97.1.
+- The emitted Rust runtime now rejects a linked candidate source-tree root
+  with no-follow metadata (`e894ca859`), matching Python exact snapshot
+  admission. One compile-and-run regression was reproduced red-first and
+  passed after the change; all 133 Rust emitter tests passed after commit,
+  and 2,823 integrated diff tests passed before commit with peer changes live.
+  Scoped Ruff and strict emitter-source BasedPyright were clean. Standalone
+  `rustfmt --check` reports older template-wide layout drift and Jig doctor
+  lacks a graph, so repository-wide validation remains unverified. External
+  concurrent filesystem writers remain outside this narrow root-link check.
 - Current stable-toolchain revalidation compiles both checked-in DOOM Rust
   transforms with Rust 1.98.1 and `-D warnings`; the synthetic emitted-Rust
   compile/run suite passes 14/14 under the same repository-local rustc.

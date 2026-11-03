@@ -348,6 +348,18 @@ excluding a concurrently edited probe suite passed. These measures cannot
 make path checks atomic against external filesystem races or isolate arbitrary
 trusted consumer code that directly mutates module bindings.
 
+The standalone Rust exact runtime now checks source-root metadata without
+following links before attempting a candidate snapshot (`e894ca859`). A
+compile-and-run regression first reproduced a linked source root passing
+verification and publishing an output tree; the fix rejects that root before
+publication, matching Python exact snapshot policy. All 133 Rust emitter tests
+passed after commit, and 2,823 integrated diff tests passed before commit with
+concurrent peer changes. Scoped Ruff and strict emitter-source BasedPyright had
+zero diagnostics. Standalone `rustfmt --check` still reports broad preexisting
+template-format differences, while Jig doctor reports an absent graph; neither
+is a clean repository-wide verdict. The fix does not prevent parent-directory
+races or source-tree changes by concurrent writers.
+
 The exact Python materializer now opens staging files through an
 import-pinned native `io.open` in exclusive `xb` mode; a pre-existing staging
 file cannot be silently truncated. Original `Path.parent` and `Path.name`
