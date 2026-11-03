@@ -648,6 +648,35 @@ def test_anchor_coverage_rejects_incoherent_direct_construction() -> None:
         _ = AnchorCoverage(matched=True, total=1, ratio=1.0)
 
 
+@pytest.mark.parametrize(
+    ("matched", "total", "rounded_ratio"),
+    [
+        (1 << 54, (1 << 54) + 1, 1.0),
+        (1, 10**400, 0.0),
+    ],
+)
+def test_anchor_coverage_rejects_rounded_endpoint_forgery(
+    matched: int, total: int, rounded_ratio: float
+) -> None:
+    """Float saturation cannot disguise missing or surviving anchors."""
+    assert 0 < matched < total
+    assert matched / total == rounded_ratio
+    with pytest.raises(FingerprintPolicyError, match="does not match"):
+        _ = AnchorCoverage(matched=matched, total=total, ratio=rounded_ratio)
+
+
+@pytest.mark.parametrize(
+    ("matched", "total", "ratio"),
+    [(0, 0, 1.0), (0, 10**400, 0.0), (2**54, 2**54, 1.0)],
+)
+def test_anchor_coverage_preserves_genuine_ratio_endpoints(
+    matched: int, total: int, ratio: float
+) -> None:
+    """Zero, empty, and complete coverage retain their native endpoints."""
+    observed = AnchorCoverage(matched=matched, total=total, ratio=ratio)
+    assert observed.ratio == ratio
+
+
 def test_stable_anchor_rejects_malformed_digest_and_offset() -> None:
     """Direct anchor records require exact SHA-256 bytes and integer offsets."""
     with pytest.raises(FingerprintPolicyError, match="exactly 32 bytes"):

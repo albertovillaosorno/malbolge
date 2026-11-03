@@ -212,7 +212,14 @@ def _validate_anchor_coverage(coverage: AnchorCoverage) -> None:
         raise FingerprintPolicyError(message)
     ratio = _require_coverage_ratio(ratio_value)
     expected = 1.0 if total == _ZERO else matched / total
-    if ratio != expected:
+    # Float rounding can conceal a nonempty difference at the endpoints:
+    # 2**54 / (2**54 + 1) rounds to 1.0, and tiny positive ratios to 0.0.
+    # Do not let those rounded values masquerade as complete/zero coverage.
+    if (
+        ratio != expected
+        or (ratio == 1.0 and matched != total)
+        or (ratio == 0.0 and matched != _ZERO)
+    ):
         message = "anchor coverage ratio does not match anchor counts"
         raise FingerprintPolicyError(message)
 
