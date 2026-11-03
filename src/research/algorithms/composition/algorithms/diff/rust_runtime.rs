@@ -633,7 +633,17 @@ fn collect_files(
     Ok(())
 }
 fn snapshot_tree(root: &Path) -> Result<Snapshot, String> {
-    if !root.is_dir() {
+    let metadata = fs::symlink_metadata(root).map_err(|e| {
+        format!("cannot inspect tree root {}: {e}", root.display())
+    })?;
+    let kind = metadata.file_type();
+    if kind.is_symlink() {
+        return Err(format!(
+            "tree root must not be linked: {}",
+            root.display()
+        ));
+    }
+    if !kind.is_dir() {
         return Err(format!(
             "tree root is not a directory: {}",
             root.display()

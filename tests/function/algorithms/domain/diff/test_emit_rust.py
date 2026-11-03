@@ -2304,6 +2304,33 @@ def test_emitted_rust_rejects_wrong_source_before_output(
     _expect(not output.exists(), "wrong-source output was published")
 
 
+def test_emitted_rust_rejects_linked_source_root(tmp_path: Path) -> None:
+    """The runtime must reject a linked root as Python exact snapshots do."""
+    source, _, _, protected = _fixture(tmp_path)
+    baseline = snapshot_tree(source)
+    linked_source = tmp_path / "linked-source"
+    try:
+        linked_source.symlink_to(source, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlinks unavailable")
+    rust_source = tmp_path / "linked-source.rs"
+    executable = tmp_path / "linked-source.exe"
+    output = tmp_path / "linked-source-out"
+    _ = rust_source.write_text(
+        emit_rust_transform(protected, _PROFILE),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(compiled.returncode == 0, "linked-source fixture did not compile")
+
+    completed = _run(executable, linked_source, output)
+
+    _expect(completed.returncode != 0, "linked source root was admitted")
+    _expect(not output.exists(), "linked-root output was published")
+    _expect(snapshot_tree(source) == baseline, "linked-root source was modified")
+
+
 @pytest.mark.parametrize("linked_parent", [False, True])
 def test_emitted_rust_does_not_publish_inside_candidate_source(
     tmp_path: Path,
