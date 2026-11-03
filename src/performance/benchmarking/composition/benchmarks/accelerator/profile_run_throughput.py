@@ -34,26 +34,23 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
-from statistics import median
-from statistics import pstdev
 import sys
+from dataclasses import asdict, dataclass
+from statistics import median, pstdev
 from time import perf_counter_ns
-from typing import Final
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
 
-from benchmarks.accelerator.profile_workload import GEOMETRY
-from benchmarks.accelerator.profile_workload import PROFILE_TRITS
-from benchmarks.accelerator.profile_workload import PROFILE_WORDS
-from benchmarks.accelerator.profile_workload import STEP_BUDGET
-from benchmarks.accelerator.profile_workload import WORD_BYTES
-from benchmarks.accelerator.profile_workload import WORKLOAD_DESCRIPTION
-from benchmarks.accelerator.profile_workload import profile_noop_request
 from benchmarks.accelerator.profile_workload import (
+    GEOMETRY,
+    PROFILE_TRITS,
+    PROFILE_WORDS,
+    STEP_BUDGET,
+    WORD_BYTES,
+    WORKLOAD_DESCRIPTION,
+    profile_noop_request,
     validate_profile_noop_results,
 )
 
@@ -62,6 +59,7 @@ if TYPE_CHECKING:
 
 BATCH_SIZES: Final = (1, 2, 4, 8, 16, 32)
 SAMPLE_COUNT: Final = 15
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +74,44 @@ class ThroughputRow:
     raw_ns: tuple[int, ...]
     step_budget: int
     vm_steps_per_second_at_median: float
+
+
+class ProfileRunReportError(ValueError):
+    """Retained CUDA throughput evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Compare public JSON to source-bound native evidence serialization."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"profile run JSON writer failed: {type(error).__name__}"
+        raise ProfileRunReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "profile run JSON writer differs from source"
+        raise ProfileRunReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require the native exact stdout write receipt and successful flush."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"profile run stdout write failed: {type(error).__name__}"
+        raise ProfileRunReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "profile run stdout write incomplete"
+        raise ProfileRunReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"profile run stdout flush failed: {type(error).__name__}"
+        raise ProfileRunReportError(message) from error
+    if flushed is not None:
+        message = "profile run stdout flush incomplete"
+        raise ProfileRunReportError(message)
 
 
 def main() -> int:
@@ -112,7 +148,7 @@ def main() -> int:
         "timed_region": "CudaProfileRunAdapter.evaluate",
         "workload": WORKLOAD_DESCRIPTION,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 

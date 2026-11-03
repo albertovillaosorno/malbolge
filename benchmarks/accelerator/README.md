@@ -54,6 +54,12 @@ result. The timed region includes validation/planning, host assembly,
 allocation,
 transfers, kernel execution, full result decode, and release.
 
+The retained JSON is compared with the import-bound native encoder before
+publication; replaced public serializers cannot substitute device resource
+snapshots or raw batch timings. The command requires an exact character-write
+receipt and successful flush before returning success. Hardware-free synthetic
+rows cover the reporting boundary independently of CUDA execution.
+
 Run with:
 
 ```powershell
