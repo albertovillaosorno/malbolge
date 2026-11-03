@@ -3038,7 +3038,9 @@ def test_authored_profile_alignment_ignores_late_evidence_getters(
     )
     bug_id = "forged-bug" if forgery == "bug-id" else original_bug
     correction_id = (
-        "forged-correction" if forgery == "correction-id" else original_correction
+        "forged-correction"
+        if forgery == "correction-id"
+        else original_correction
     )
     profile = BehaviorProfile(
         identity=(IdentityProbe(identity_id, b"identity-digest"),),
@@ -3063,16 +3065,22 @@ def test_authored_profile_alignment_ignores_late_evidence_getters(
                 property(lambda _: original_compatibility),
             )
         elif forgery == "bug-id":
-            patched.setattr(BugProbe, "probe_id", property(lambda _: original_bug))
+            patched.setattr(
+                BugProbe, "probe_id", property(lambda _: original_bug)
+            )
         elif forgery == "correction-id":
             patched.setattr(
-                BugProbe, "correction_id", property(lambda _: original_correction)
+                BugProbe,
+                "correction_id",
+                property(lambda _: original_correction),
             )
         else:
             patched.setattr(
                 BehaviorProfile,
                 "identity",
-                property(lambda _: (IdentityProbe(original_identity, b"digest"),)),
+                property(
+                    lambda _: (IdentityProbe(original_identity, b"digest"),)
+                ),
             )
         with pytest.raises(BehaviorProgramError, match="authored"):
             _ = AuthoredBehaviorPrograms(

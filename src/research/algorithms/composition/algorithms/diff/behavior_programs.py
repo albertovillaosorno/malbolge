@@ -233,7 +233,8 @@ _TRANSCRIPT_COUNT_SLOT = cast(
 # A profile may have been instantiated via native allocation, and its public
 # getters are mutable after authoring. Compare original stored probe IDs only.
 _PROFILE_VALIDATOR = cast(
-    "Callable[[BehaviorProfile], None]", BehaviorProfile.__dict__["__post_init__"]
+    "Callable[[BehaviorProfile], None]",
+    BehaviorProfile.__dict__["__post_init__"],
 )
 _PROFILE_IDENTITY_SLOT = cast(
     "MemberDescriptorType", BehaviorProfile.__dict__["identity"]
@@ -241,7 +242,9 @@ _PROFILE_IDENTITY_SLOT = cast(
 _PROFILE_COMPATIBILITY_SLOT = cast(
     "MemberDescriptorType", BehaviorProfile.__dict__["compatibility"]
 )
-_PROFILE_BUGS_SLOT = cast("MemberDescriptorType", BehaviorProfile.__dict__["bugs"])
+_PROFILE_BUGS_SLOT = cast(
+    "MemberDescriptorType", BehaviorProfile.__dict__["bugs"]
+)
 _IDENTITY_PROBE_ID_SLOT = cast(
     "MemberDescriptorType", IdentityProbe.__dict__["probe_id"]
 )
