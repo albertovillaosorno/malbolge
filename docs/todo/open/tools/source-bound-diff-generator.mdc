@@ -691,6 +691,13 @@ format.
   passed after commit; scoped Ruff, strict BasedPyright, and diff checks were
   clean. Direct object-storage mutation and external races remain out of scope;
   no clean repository-wide Jig verdict is available.
+- Public mapped-unit/view readers now revalidate native records before returning
+  original slots (`528c112ba`); separate internal readers avoid constructor
+  recursion. Ten red-first and four late-hook/foreign-type cases passed, with
+  65 focused and 472 mapped/semantic/compatible postcommit tests passing. The
+  live integrated diff suite passed 3,172 tests; scoped Ruff, strict source/test
+  BasedPyright, and diff checks were clean. Jig doctor remains degraded because
+  its graph is absent.
 - The DOOM C mapper is identity-equivalent to the established canonicalizer
   across a
   read-only 273-file / 549,978-unit source+oracle smoke with zero mismatches.

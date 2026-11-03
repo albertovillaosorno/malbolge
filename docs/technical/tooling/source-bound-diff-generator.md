@@ -1384,6 +1384,17 @@ commit; 145 mapped/model tests passed after commit. Scoped Ruff, strict
 BasedPyright, and diff checks were clean. Direct storage mutation and external
 races are not prevented; the global Jig verdict remains unavailable.
 
+The public `read_mapped_unit` and `read_mapped_view` accessors now revalidate
+original native unit and view slots before exposing evidence to semantic
+consumers (`528c112ba`). Internal constructors and property validators use
+separate original-slot readers to avoid recursive validation. Ten red-first
+forged-native reader cases and four late-hook/foreign-type cases now fail closed;
+65 mapped and 472 mapped/semantic/compatible tests passed after the DCO commit.
+The live integrated diff suite subsequently passed 3,172 tests. Scoped Ruff,
+strict source/test BasedPyright, and diff checks had zero errors. The global Jig
+doctor remains degraded because its graph is absent; no clean global verdict
+was established.
+
 Slotted mapped and semantic records do not make their class getters immutable.
 The mapped unit/view constructor validators, canonical-key extraction, raw
 coordinate readers, and semantic placement now use captured original slot
