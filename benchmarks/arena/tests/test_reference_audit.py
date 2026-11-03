@@ -1950,6 +1950,45 @@ def test_host_c_retained_json_rejects_forged_native_decoder_tree(
     assert not fingerprints
 
 
+@pytest.mark.parametrize("source_kind", ("forged", "invalid-source", "duplicate"))
+def test_host_c_retained_json_rejects_replaced_decoder_class(
+    monkeypatch: pytest.MonkeyPatch, source_kind: str
+) -> None:
+    """Saved json.loads cannot authorize a replaced public JSONDecoder class."""
+    source = {
+        "forged": b'{"schema_version":1,"failures":{"trial":"failed"}}',
+        "invalid-source": b"not JSON",
+        "duplicate": b'{"schema_version":1,"schema_version":2}',
+    }[source_kind]
+    forged = {"schema_version": 1, "failures": {"trial": "accepted"}}
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def decode(self, _source: str) -> dict[str, Any]:
+            return forged
+
+    monkeypatch.setattr(
+        reference_audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: source,
+    )
+    fingerprints: dict[str, bytes | None] = {}
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        with pytest.raises(
+            reference_audit.ReferenceAuditError,
+            match="differs from source|not valid|duplicate",
+        ):
+            _ = reference_audit._read_json(
+                ".temp/arena-host-c-study-test/failures.json",
+                limit=reference_audit.MAX_FAILURES_BYTES,
+                fingerprints=fingerprints,
+            )
+    assert not fingerprints
+
+
 def test_host_c_retained_json_rejects_foreign_nested_key_before_comparison(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

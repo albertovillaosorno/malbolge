@@ -54,8 +54,9 @@ from benchmarks.arena import (
     success_intervals,
 )
 
-# Bind a source decoder before mutable public json.loads can be substituted.
-_SOURCE_JSON_LOADS = json.loads
+# Preserve the source decoder class, not just json.loads (which consults the
+# mutable public JSONDecoder factory for custom object-pair hooks).
+_SOURCE_JSON_DECODER = json.JSONDecoder
 
 SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
@@ -424,11 +425,10 @@ def parse_document(text: str) -> dict[str, Any]:
     # After complete native-shape admission, independent source comparison
     # uses only JSON primitives, so no foreign equality hooks are invoked.
     try:
-        source = _SOURCE_JSON_LOADS(
-            text,
+        source = _SOURCE_JSON_DECODER(
             object_pairs_hook=_pairs,
             parse_constant=_reject_constant,
-        )
+        ).decode(text)
     except ArenaError as error:
         if type(error) is ArenaError:
             raise

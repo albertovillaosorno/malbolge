@@ -1024,6 +1024,11 @@ for `composed-pipeline`, `ternary-fold`, `pointer-walk`, and `alias-walk`, each
 with canonical oracle replay and retained-file immutability assertions. These
 expand the tested generator families, not the scope of performance conclusions.
 
+Both the arena analyzer and the host-C offline sidecar auditor corroborate
+parsed JSON against a decoder class bound when their modules load, not merely
+a saved `json.loads` callable. This prevents a later replacement of the public
+`JSONDecoder` class from certifying changed measurements or policy receipts.
+
 The audit never proves that reported wall-clock
 measurements were authentic, that resource limits were enforced, or that
 candidate Malbolge artifacts were created or verified. File consistency is

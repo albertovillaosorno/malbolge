@@ -476,6 +476,32 @@ def test_direct_json_rejects_substituted_native_forged_study(
         analyze.parse_document(source)
 
 
+@pytest.mark.parametrize("source_kind", ("forged", "invalid-source"))
+def test_direct_json_rejects_replaced_decoder_class(
+    monkeypatch: pytest.MonkeyPatch, source_kind: str
+) -> None:
+    """A saved loads function must not trust the public decoder class."""
+    source = (
+        json.dumps(_document())
+        if source_kind == "forged"
+        else "invalid source bytes, not JSON"
+    )
+    forged = _document()
+    forged["observations"][0]["metrics"]["elapsed_ns"] = 1
+
+    class ForgedDecoder:
+        def __init__(self, **_kwargs: object) -> None:
+            pass
+
+        def decode(self, _source: str) -> dict[str, Any]:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "JSONDecoder", ForgedDecoder)
+        with pytest.raises(analyze.ArenaError, match="source JSON|differs"):
+            _ = analyze.parse_document(source)
+
+
 @pytest.mark.parametrize(
     "source",
     [

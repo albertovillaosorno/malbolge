@@ -61,6 +61,7 @@ from scripts.validate import experiment_manifest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _NATIVE_JSON_LOADS = json.loads
+_NATIVE_JSON_DECODER = json.JSONDecoder
 MAX_ARTIFACT_INDEX_BYTES = 1024 * 1024
 PART_COUNT = 3
 ROOT_PART = ".temp"
@@ -299,16 +300,17 @@ def _read_json(
             object_pairs_hook=_unique_pairs,
             parse_constant=_reject_nonfinite,
         )
-        if decoder is not _NATIVE_JSON_LOADS:
-            original = _NATIVE_JSON_LOADS(
-                source_text,
-                object_pairs_hook=_unique_pairs,
-                parse_constant=_reject_nonfinite,
-            )
-            if not _matches_native_json_tree(parsed, original):
-                _fail(f"host-C retained JSON decoder differs from source: {relative}")
-            # Never return a mutable object still owned by a substituted decoder.
-            parsed = original
+        # Even the saved json.loads function resolves the current mutable
+        # json.JSONDecoder class. Independently decode with the class bound at
+        # import so a forged class cannot certify its own output.
+        original = _NATIVE_JSON_DECODER(
+            object_pairs_hook=_unique_pairs,
+            parse_constant=_reject_nonfinite,
+        ).decode(source_text)
+        if not _matches_native_json_tree(parsed, original):
+            _fail(f"host-C retained JSON decoder differs from source: {relative}")
+        # Never return a mutable object still owned by a substituted decoder.
+        parsed = original
     except ReferenceAuditError:
         raise
     except Exception as error:
