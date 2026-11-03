@@ -32,13 +32,14 @@
 
 """Synthetic tests for deterministic threshold source binding."""
 
+import builtins
 import hashlib
 import hmac
 import itertools
 import math
 import ntpath
-from pathlib import PurePosixPath, PureWindowsPath
 from dataclasses import replace
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -498,6 +499,47 @@ def test_decimal_share_boundaries_keep_expected_quorum(
     )
     binding = bind_secret(_reference(), _SECRET, policy=policy, context=_CONTEXT)
     assert binding.threshold == expected_threshold
+
+
+def test_bound_threshold_ignores_late_max_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late max override must not weaken T-of-N source dependence."""
+    reference = _reference()
+    policy = SourceBindingPolicy(
+        threshold_fraction=0.80,
+        maximum_anchors=_FILE_COUNT,
+        minimum_anchor_files=1,
+        anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "max", lambda *args, **kwargs: 1)
+        binding = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+
+    single_source = _candidate_paths(reference, (binding.shares[0].source_path,))
+    with pytest.raises(SourceBindingError, match="insufficient"):
+        _ = recover_secret(binding, single_source)
+    assert binding.threshold == 4
+
+
+def test_bound_anchors_ignore_late_sorted_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Domain sort hooks cannot change the authored source-binding shares."""
+    reference = _reference()
+    policy = _policy()
+    baseline = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    native_sorted = builtins.sorted
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            builtins,
+            "sorted",
+            lambda values, *, key: list(reversed(native_sorted(values, key=key))),
+        )
+        after_hook = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+
+    assert after_hook == baseline
 
 
 def test_source_binding_policy_rejects_boolean_numeric_fields() -> None:

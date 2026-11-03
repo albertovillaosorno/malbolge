@@ -45,12 +45,13 @@ binding claim, not a claim of information-theoretic perfect secret sharing.
 
 from __future__ import annotations
 
+import builtins
 import math
 import ntpath
-from ntpath import splitdrive as _native_splitdrive
 from dataclasses import dataclass
 from fractions import Fraction
 from hashlib import sha256 as _native_sha256
+from ntpath import splitdrive as _native_splitdrive
 from typing import TYPE_CHECKING
 
 from algorithms.diff.admission import IdentityTree
@@ -76,6 +77,9 @@ _UNSAFE_PATH_COMPONENTS = frozenset(("", ".", ".."))
 _NUL = "\x00"
 # Domain hooks must not redefine the Windows reserved-name verdict.
 _NATIVE_IS_RESERVED = ntpath.isreserved
+# Preserve threshold and selection semantics across domain callback hooks.
+_NATIVE_MAX = builtins.max
+_NATIVE_SORTED = builtins.sorted
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
     selection_modulus=64,
@@ -419,7 +423,7 @@ def _file_anchor_materials(
     identity_file: IdentityFile,
     policy: AnchorPolicy,
 ) -> tuple[_AnchorMaterial, ...]:
-    anchors = sorted(
+    anchors = _NATIVE_SORTED(
         stable_anchors(identity_file.canonical, policy),
         key=lambda anchor: anchor.digest,
     )
@@ -449,7 +453,9 @@ def _round_robin_materials(
     maximum_anchors: int,
 ) -> tuple[_AnchorMaterial, ...]:
     selected: list[_AnchorMaterial] = []
-    maximum_depth = max((len(materials) for materials in per_file), default=_ZERO)
+    maximum_depth = _NATIVE_MAX(
+        (len(materials) for materials in per_file), default=_ZERO
+    )
     for depth in range(maximum_depth):
         for materials in per_file:
             if depth < len(materials):
@@ -565,7 +571,7 @@ def bind_secret(
     # fewer shares than required. Integer arithmetic keeps the ceiling exact.
     fraction = Fraction(str(_binding_fraction(policy.threshold_fraction)))
     numerator = len(materials) * fraction.numerator
-    threshold = max(
+    threshold = _NATIVE_MAX(
         _ONE,
         (numerator + fraction.denominator - _ONE) // fraction.denominator,
     )
