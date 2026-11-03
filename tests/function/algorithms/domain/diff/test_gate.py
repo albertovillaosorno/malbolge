@@ -45,6 +45,7 @@ from types import MemberDescriptorType
 from typing import TYPE_CHECKING, Self, cast
 
 import pytest
+from algorithms.diff import gate as gate_module
 from algorithms.diff.admission import (
     AdmissionError,
     AdmissionPolicy,
@@ -789,6 +790,63 @@ def test_gate_admitted_rejects_foreign_verdict_receiver(receiver_kind: str) -> N
             getter = cast("property", TransformAdmissionEvidence.__dict__["admitted"]).fget
             assert getter is not None
             _ = getter(object())
+
+
+@pytest.mark.parametrize(
+    ("family", "invalid_field"),
+    [
+        ("source", "eligible_anchor_files"),
+        ("behavior", "matched_identity_probes"),
+    ],
+)
+@pytest.mark.parametrize("entrypoint", ["combine", "require", "admitted"])
+def test_gate_retains_typed_policy_failure_after_late_exception_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    family: str,
+    invalid_field: str,
+    entrypoint: str,
+) -> None:
+    """A late error-class alias cannot leak raw invalid source/behavior receipts."""
+    source = _source_evidence("reference")
+    behavior = _behavior_evidence()
+    valid = source if family == "source" else behavior
+    owner = type(valid)
+    forged = object.__new__(owner)
+    for field in owner.__slots__:
+        slot = cast("MemberDescriptorType", owner.__dict__[field])
+        slot.__set__(
+            forged,
+            -1 if field == invalid_field else slot.__get__(valid, owner),
+        )
+    if family == "source":
+        source = cast("TreeAdmissionEvidence", forged)
+    else:
+        behavior = cast("BehaviorEvidence", forged)
+
+    alias = "AdmissionPolicyError" if family == "source" else "BehaviorPolicyError"
+    caught = False
+    with monkeypatch.context() as patch:
+        patch.setattr(gate_module, alias, LookupError)
+        try:
+            if entrypoint == "combine":
+                _ = combine_admission(source, behavior)
+            elif entrypoint == "require":
+                _ = require_transform_admission(source, behavior)
+            else:
+                gate = object.__new__(TransformAdmissionEvidence)
+                for field, value in {
+                    "source": source,
+                    "behavior": behavior,
+                    "reasons": (),
+                }.items():
+                    slot = cast(
+                        "MemberDescriptorType", TransformAdmissionEvidence.__dict__[field]
+                    )
+                    slot.__set__(gate, value)
+                _ = gate.admitted
+        except AdmissionError as error:
+            caught = "evidence is invalid" in str(error)
+    assert caught, "late policy error alias leaked an unwrapped validation failure"
 
 
 @pytest.mark.parametrize("entrypoint", ["source", "behavior", "admitted"])

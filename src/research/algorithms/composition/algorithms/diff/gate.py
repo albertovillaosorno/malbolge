@@ -51,6 +51,9 @@ from algorithms.diff.behavior import BehaviorEvidence, BehaviorPolicyError
 _NATIVE_ANY = builtins.any
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
+# Original policy failures must not be replaced by late module aliases.
+_SOURCE_POLICY_ERROR = AdmissionPolicyError
+_BEHAVIOR_POLICY_ERROR = BehaviorPolicyError
 _NATIVE_TYPE = type
 _NATIVE_STR = builtins.str
 _NATIVE_TUPLE = tuple
@@ -189,7 +192,7 @@ def _require_source_evidence(value: object) -> TreeAdmissionEvidence:
         raise AdmissionError(message)
     try:
         _SOURCE_VALIDATOR(value)
-    except (AdmissionPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
+    except (_SOURCE_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "transform gate source evidence is invalid"
         raise AdmissionError(message) from error
     return value
@@ -201,7 +204,7 @@ def _require_behavior_evidence(value: object) -> BehaviorEvidence:
         raise AdmissionError(message)
     try:
         _BEHAVIOR_VALIDATOR(value)
-    except (BehaviorPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
+    except (_BEHAVIOR_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "transform gate behavior evidence is invalid"
         raise AdmissionError(message) from error
     return value
