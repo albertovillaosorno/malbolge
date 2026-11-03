@@ -49,6 +49,7 @@ from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
+from algorithms.diff import exact as exact_module
 from algorithms.diff import provenance as provenance_module
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.provenance import (
@@ -1124,7 +1125,7 @@ def test_pinned_entry_read_error_fails_closed(
             raise PermissionError(message)
         return original_open(file, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(os, "open", fail_open)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_OPEN", fail_open)
     with pytest.raises(SourcePinError, match="pinned source read failed"):
         _ = source_snapshot_evidence(tmp_path, ("src",))
 

@@ -844,7 +844,7 @@ def test_probe_raw_capture_rejects_non_native_read_evidence(
     else:
         raw = memoryview(b"x")
 
-    monkeypatch.setattr(probe_exec_module.os, "read", lambda *_: raw)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_OS_READ", lambda *_: raw)
     with tempfile.TemporaryFile() as stream:
         capture = probe_exec_module._PipeCapture(limit=1024 * 1024)
         with pytest.raises(ValueError, match="raw read"):
@@ -869,7 +869,7 @@ def test_probe_raw_capture_rejects_foreign_file_descriptors(
         read_calls.append((fd, count))
         return b"synthetic"
 
-    monkeypatch.setattr(probe_exec_module.os, "read", raw_read)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_OS_READ", raw_read)
     capture = probe_exec_module._PipeCapture(limit=32)
     with pytest.raises(ValueError, match="raw read descriptor"):
         _ = probe_exec_module._capture_fragment(
@@ -894,7 +894,7 @@ def test_unexpected_pipe_reader_failure_rejects_probe(
             raise ValueError(message)
         return read(fd, count)
 
-    monkeypatch.setattr(os, "read", crashing_read)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_OS_READ", crashing_read)
     program = _program("failed-output-reader", "pass")
     with pytest.raises(ProbeExecutionError, match="pipe communication failed"):
         _ = run_probe_program(program, _context(source, tmp_path))
@@ -920,7 +920,7 @@ def test_uncaught_reader_thread_failure_rejects_probe(
         return read(fd, count)
 
     monkeypatch.setattr(threading, "excepthook", record_uncaught)
-    monkeypatch.setattr(os, "read", crashing_read)
+    monkeypatch.setattr(probe_exec_module, "_NATIVE_OS_READ", crashing_read)
     program = _program("uncaught-output-reader", "pass")
     with pytest.raises(ProbeExecutionError, match="pipe communication failed"):
         _ = run_probe_program(program, _context(source, tmp_path))
@@ -5341,3 +5341,60 @@ def test_probe_source_inode_identity_ignores_late_path_hooks(
     assert calls == 0, (
         "untrusted path dispatch executed during inode validation"
     )
+
+
+@pytest.mark.parametrize("replacement", ["same_length", "foreign_failure"])
+def test_probe_capture_ignores_late_os_read_hook(
+    monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """Captured probe stdout cannot be supplied by a late host read hook."""
+    actual = b"genuine!"
+    callbacks = 0
+
+    def forged_reader(_descriptor: int, _count: int) -> bytes:
+        nonlocal callbacks
+        callbacks += 1
+        if replacement == "same_length":
+            return b"forged!!"
+        message = "late host reader executed during evidence capture"
+        raise AssertionError(message)
+
+    with tempfile.TemporaryFile() as stream:
+        _ = stream.write(actual)
+        _ = stream.seek(0)
+        capture = probe_exec_module._PipeCapture(limit=64)
+        with monkeypatch.context() as patched:
+            patched.setattr(os, "read", forged_reader)
+            assert probe_exec_module._capture_fragment(stream, capture)
+    assert capture.fragments == [actual]
+    assert capture.size == len(actual)
+    assert callbacks == 0
+
+
+def test_probe_transcript_ignores_late_os_read_forgery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged native-size pipe read cannot change the admitted transcript."""
+    source = tmp_path / "source"
+    source.mkdir()
+    program = _program(
+        "native-output", "import sys;sys.stdout.buffer.write(b'genuine!')"
+    )
+    context = _context(source, tmp_path)
+    expected = run_probe_program(program, context)
+    original_read = os.read
+    callbacks = 0
+
+    def forge_worker_read(descriptor: int, count: int) -> bytes:
+        nonlocal callbacks
+        observed = original_read(descriptor, count)
+        if threading.current_thread() is not threading.main_thread():
+            callbacks += 1
+            return b"altered!" if observed == b"genuine!" else observed
+        return observed
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "read", forge_worker_read)
+        actual = run_probe_program(program, context)
+    assert actual == expected
+    assert callbacks == 0, "untrusted host read entered probe output capture"

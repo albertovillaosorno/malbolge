@@ -47,6 +47,7 @@ from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
+from algorithms.diff import exact as exact_module
 from algorithms.diff import relocatable as relocatable_module
 from algorithms.diff.exact import (
     ExactTreeError,
@@ -1822,7 +1823,7 @@ def test_relocatable_authoring_read_error_fails_closed(
             raise PermissionError(message)
         return original_open(file, flags, mode, dir_fd=dir_fd)
 
-    monkeypatch.setattr(os, "open", fail_open)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_OPEN", fail_open)
     with pytest.raises(
         RelocationError, match="relocatable source snapshot failed"
     ):

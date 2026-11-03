@@ -100,6 +100,8 @@ _NATIVE_HOST_GETCWD = os.getcwd
 _NATIVE_HOST_ISLINK = stat.S_ISLNK
 # Inode disjointness and executable admission cannot trust late host hooks.
 _NATIVE_OS_STAT = os.stat
+# Probe output evidence must be read through the original host descriptor API.
+_NATIVE_OS_READ = os.read
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
 _NATIVE_PATH_JOINPATH = Path.joinpath
@@ -1275,7 +1277,7 @@ def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
     ):
         message = "probe raw read descriptor must be a native C int"
         raise ValueError(message)
-    fragment = os.read(descriptor, amount)
+    fragment = _NATIVE_OS_READ(descriptor, amount)
     if _NATIVE_TYPE(fragment) is not _NATIVE_BYTES or _NATIVE_LEN(fragment) > amount:
         message = "probe raw read reported non-native or overlong bytes"
         raise ValueError(message)
