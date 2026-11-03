@@ -143,6 +143,7 @@ _NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
 _NATIVE_PATH_WITH_NAME = Path.with_name
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
+_NATIVE_OS_REALPATH = os.path.realpath
 
 
 # Capture the native slots while importing the emitter. Late consumer hooks on
@@ -699,6 +700,18 @@ def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
         raise RustEmissionError(message)
 
 
+def _require_native_host_realpath() -> None:
+    """Reject a host resolver replaced after emitter import.
+
+    Raises:
+        RustEmissionError: Native path resolution dependencies changed.
+
+    """
+    if os.path.realpath is not _NATIVE_OS_REALPATH:
+        message = "Rust output path resolution hooks changed"
+        raise RustEmissionError(message)
+
+
 def _require_output_not_runtime_template(output_path: Path) -> None:
     """Protect the source template needed for future deterministic emission.
 
@@ -707,12 +720,14 @@ def _require_output_not_runtime_template(output_path: Path) -> None:
 
     """
     _validate_output_path(output_path)
+    _require_native_host_realpath()
     try:
         output = _NATIVE_RESOLVE(output_path)
         template = _NATIVE_RESOLVE(_RUNTIME_TEMPLATE)
     except (OSError, ValueError, RuntimeError) as error:
         message = "Rust output path resolution failed"
         raise RustEmissionError(message) from error
+    _require_native_host_realpath()
     if (
         _NATIVE_TYPE(output) is not _NATIVE_PATH_TYPE
         or _NATIVE_TYPE(template) is not _NATIVE_PATH_TYPE

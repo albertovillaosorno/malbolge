@@ -101,6 +101,7 @@ _EXCLUSIVE_CREATE_MODE = "x"
 _LATE_OUTPUT_RECHECK = 2
 _LOCATION_LEAF = "leaf"
 _RUNTIME_ALIAS_EXACT = "exact"
+_REALPATH_DENIAL = "deny"
 _LOCATION_PARENT = "parent"
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
@@ -1464,6 +1465,38 @@ def test_writer_template_identity_ignores_late_path_equality(
                 guard(destination)
         else:
             guard(destination)
+
+
+@pytest.mark.parametrize("forged_result", ["launder", _REALPATH_DENIAL])
+def test_writer_template_resolve_rejects_replaced_host_realpath(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forged_result: str,
+) -> None:
+    """The captured Path resolver must not invoke mutable host realpath."""
+    template = tmp_path / "rust_runtime.rs"
+    guard = cast(
+        "Callable[[Path], None]",
+        vars(emit_rust_module)["_require_output_not_runtime_template"],
+    )
+    calls = 0
+
+    def forged_realpath(path: object, *, strict: bool = False) -> str:
+        nonlocal calls
+        del path, strict
+        calls += 1
+        if forged_result == _REALPATH_DENIAL:
+            message = "untrusted host realpath invoked"
+            raise AssertionError(message)
+        label = "forged.rs" if calls == 1 else "rust_runtime.rs"
+        return str(tmp_path / label)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(emit_rust_module, "_RUNTIME_TEMPLATE", template)
+        patch.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(RustEmissionError, match="path resolution"):
+            guard(template)
+    assert calls == 0
 
 
 def test_writer_parent_walk_ignores_late_path_equality(
