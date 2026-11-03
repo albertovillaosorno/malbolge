@@ -3030,6 +3030,47 @@ not isolate external concurrent writers or direct trusted state mutation.
 fresh 75-second global `jig check` timed out (exit 124) at native-validator
 scheduling. No repository-wide green Jig verdict is claimed.
 
+## Publication, payload, and domain identity continuity (2026-11-03)
+
+Linux directory publication now protects the `ctypes` loader against late
+`_os`/`_sys` aliases and changed `sys.platform` (`ccd76d4b7`). Forged host
+platform getters could previously execute an overwriting `os.rename` on an
+occupied empty destination before the no-replace syscall was dispatched.
+Three red-first tests now reject these cases before native loading. All
+123 postcommit publication and 4,072 integrated diff tests passed, with
+scoped Ruff, strict source/test BasedPyright, and diff checks clean.
+
+AEAD record allocation, raw slot reads, and decryption admission now retain
+the native `AuthenticatedPayload` class (`30197101f`). Rebinding the public
+class previously rejected genuine records or leaked raw descriptor errors
+from forged ones. Three red-first regressions pass, with 50 postcommit
+payload tests, 545 adjacent tests, and a shared 4,087-test full diff pass.
+
+Consumer module execution may also rebind the public `DiffDomain` name.
+Native hook-bundle allocation and stored-hook validation now use the original
+record class (`9db0be744`). Three red-first prebound/late-module alias
+cases prevent raw `TypeError` and preserve valid hook bundles. All 149
+postcommit domain and 649 adjacent generator/binding tests passed, together
+with scoped Ruff, strict typing, and diff checks. A concurrent full run
+passed 4,090 cases but failed two red-first probe-exec cases imported
+before their fix; a fresh full run after that fix passed 4,092 tests.
+All three DCOs were pushed SHA-exact to `main`.
+
+Source-pin provenance also preserves its imported native `ExactTreeError`
+(`f8b7211db`), with 219 focused and 4,072 integrated diff tests passing.
+The scanner now checks its host junction classifier before and after
+untrusted reads (`0d8764b35`): four red-first alias cases, 223 focused and
+4,087 full diff tests passed. Probe snapshot and diagnostic rendering now
+retain their import-original `ExactTreeError` (`f5390c47d`), with two
+red-first cases, 455 focused and 4,092 full diff tests passing. Scoped
+Ruff/diff checks were clean, with six inherited probe test-file typing
+errors outside modified lines. These three peer DCOs were also committed
+to `main`.
+
+These in-process checks do not isolate direct trusted-state mutation or
+concurrent external filesystem writes. `jig doctor` still reports an absent
+compiled graph; repository-wide Jig acceptance remains unverified.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

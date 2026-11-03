@@ -1750,6 +1750,41 @@ format.
   and a bounded 75-second global `jig check` timed out (exit 124) during
   native scheduling without a repository-wide acceptance verdict.
 
+- Native no-replace publication now pins the `ctypes` host-module aliases
+  and rejects a changed `sys.platform` before loading libc (`ccd76d4b7`).
+  Three red-first occupied-destination regressions block unsafe callbacks
+  invoked before `renameat2`; 123 postcommit publication and 4,072 full
+  integrated diff tests passed. Scoped Ruff, strict source/test BasedPyright,
+  and diff checks were clean, and the DCO was pushed SHA-exact.
+- AEAD authenticated payload processing now retains the native
+  `AuthenticatedPayload` class for allocation, raw-slot access, and exact
+  receipt admission (`30197101f`). Three red-first public-alias cases prevent
+  raw descriptor errors and false rejection of valid authenticated bytes.
+  All 50 postcommit payload and 545 adjacent protected/admission/gate tests
+  passed; a shared full diff run with this change passed 4,087 tests. Scoped
+  Ruff, strict typing, and diff checks were clean; DCO pushed SHA-exact.
+- Consumer domain loading now retains the original `DiffDomain` class when
+  module code rebinds the public name (`9db0be744`). Three red-first alias
+  and module-execution cases now produce valid native hook bundles instead
+  of raw `TypeError`. All 149 postcommit domain and 649 adjacent generator/
+  binding tests passed, with scoped Ruff, strict typing, and diff checks
+  clean. The DCO was pushed SHA-exact. One concurrent full run passed
+  4,090 cases but failed two uncommitted probe red-first cases; a later
+  stable full diff run passed all 4,092 tests after the probe fix.
+- Source-pin provenance preserves the imported native `ExactTreeError`
+  during snapshot validation (`f8b7211db`). Its red-first exception-alias
+  checks passed with 219 focused and 4,072 integrated diff tests.
+- Source-pin directory scans now guard `os.path.isjunction` dependencies
+  before and after untrusted file reads (`0d8764b35`). Four red-first
+  junction-alias cases, 223 focused, and 4,087 integrated tests passed.
+- Probe snapshot rejection and error-detail rendering now retain the native
+  `ExactTreeError` (`f5390c47d`). Two red-first alias regressions passed
+  with 455 focused and 4,092 integrated diff tests; six older test-file
+  typing diagnostics remain outside changed lines. These peer DCOs were
+  validated with scoped Ruff and diff checks and committed to `main`.
+  External filesystem writers, direct trusted-state mutation, and full
+  repository Jig acceptance remain outside these focused guarantees.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
