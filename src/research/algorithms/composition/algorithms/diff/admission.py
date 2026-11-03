@@ -85,6 +85,7 @@ _NATIVE_ANY = builtins.any
 _NATIVE_ALL = builtins.all
 _NATIVE_LEN = builtins.len
 _NATIVE_FROZENSET = builtins.frozenset
+_NATIVE_OBJECT_NEW = object.__new__
 # Fingerprint receipt classes retain mutable class-level attribute hooks.
 _ANCHOR_DIGEST_SLOT = cast(
     "MemberDescriptorType", StableAnchor.__dict__["digest"]
@@ -577,7 +578,7 @@ def _validate_policy_bound_evidence(
     if satisfied != expected_satisfied:
         message = "satisfied anchor file count does not match admission policy"
         raise AdmissionPolicyError(message)
-    aggregate = _AggregateEvidence(
+    aggregate = _new_aggregate_evidence(
         source_similarity=aggregates[0],
         anchor_average=aggregates[1],
         eligible_files=aggregates[2],
@@ -801,10 +802,10 @@ def identity_tree(files: dict[str, bytes]) -> IdentityTree:
             message = "identity source content must use exact bytes"
             raise AdmissionPolicyError(message)
     records = _NATIVE_TUPLE(
-        IdentityFile(path=path, canonical=canonical)
+        _new_identity_file(path=path, canonical=canonical)
         for path, canonical in _NATIVE_SORTED(files.items())
     )
-    return IdentityTree(files=records)
+    return _new_identity_tree(files=records)
 
 
 def _validate_fraction(name: str, value: object) -> None:
@@ -880,7 +881,7 @@ def _file_evidence(
         "float", _COVERAGE_RATIO_SLOT.__get__(coverage, AnchorCoverage)
     )
     eligible = total >= minimum_per_file
-    return FileAdmissionEvidence(
+    return _new_file_admission_evidence(
         path=reference_path,
         structural_similarity=structural,
         anchor_coverage=ratio if eligible else None,
@@ -938,6 +939,109 @@ def _aggregate_fields(aggregate: _AggregateEvidence) -> tuple[float, float, int,
         cast("int", _AGGREGATE_ELIGIBLE_SLOT.__get__(aggregate, _AggregateEvidence)),
         cast("int", _AGGREGATE_SATISFIED_SLOT.__get__(aggregate, _AggregateEvidence)),
     )
+
+
+# Internal lineage receipts are created after consumer callbacks may have
+# replaced class allocation or initializer hooks. Keep public class construction
+# unchanged while using the captured native allocation/validation path here.
+_IDENTITY_FILE_INIT = cast(
+    "Callable[[IdentityFile, str, bytes], None]", IdentityFile.__dict__["__init__"]
+)
+_IDENTITY_TREE_INIT = cast(
+    "Callable[[IdentityTree, tuple[IdentityFile, ...]], None]",
+    IdentityTree.__dict__["__init__"],
+)
+_FILE_ADMISSION_INIT = cast(
+    "Callable[[FileAdmissionEvidence, str, float, float | None, int, int], None]",
+    FileAdmissionEvidence.__dict__["__init__"],
+)
+_TREE_ADMISSION_INIT = cast(
+    Callable[
+        [
+            TreeAdmissionEvidence,
+            float,
+            float,
+            int,
+            int,
+            tuple[FileAdmissionEvidence, ...],
+            tuple[str, ...],
+            AdmissionPolicy,
+        ],
+        None,
+    ],
+    TreeAdmissionEvidence.__dict__["__init__"],
+)
+_AGGREGATE_INIT = cast(
+    "Callable[[_AggregateEvidence, float, float, int, int], None]",
+    _AggregateEvidence.__dict__["__init__"],
+)
+
+
+def _new_identity_file(path: str, canonical: bytes) -> IdentityFile:
+    record = _NATIVE_OBJECT_NEW(IdentityFile)
+    _IDENTITY_FILE_INIT(record, path, canonical)
+    return record
+
+
+def _new_identity_tree(files: tuple[IdentityFile, ...]) -> IdentityTree:
+    record = _NATIVE_OBJECT_NEW(IdentityTree)
+    _IDENTITY_TREE_INIT(record, files)
+    return record
+
+
+def _new_file_admission_evidence(
+    path: str,
+    structural_similarity: float,
+    anchor_coverage: float | None,
+    reference_anchor_count: int,
+    matched_anchor_count: int,
+) -> FileAdmissionEvidence:
+    record = _NATIVE_OBJECT_NEW(FileAdmissionEvidence)
+    _FILE_ADMISSION_INIT(
+        record,
+        path,
+        structural_similarity,
+        anchor_coverage,
+        reference_anchor_count,
+        matched_anchor_count,
+    )
+    return record
+
+
+def _new_aggregate_evidence(
+    source_similarity: float,
+    anchor_average: float,
+    eligible_files: int,
+    satisfied_files: int,
+) -> _AggregateEvidence:
+    record = _NATIVE_OBJECT_NEW(_AggregateEvidence)
+    _AGGREGATE_INIT(
+        record, source_similarity, anchor_average, eligible_files, satisfied_files
+    )
+    return record
+
+
+def _new_tree_admission_evidence(
+    source_similarity: float,
+    anchor_coverage: float,
+    eligible_anchor_files: int,
+    satisfied_anchor_files: int,
+    files: tuple[FileAdmissionEvidence, ...],
+    reasons: tuple[str, ...],
+    policy: AdmissionPolicy,
+) -> TreeAdmissionEvidence:
+    record = _NATIVE_OBJECT_NEW(TreeAdmissionEvidence)
+    _TREE_ADMISSION_INIT(
+        record,
+        source_similarity,
+        anchor_coverage,
+        eligible_anchor_files,
+        satisfied_anchor_files,
+        files,
+        reasons,
+        policy,
+    )
+    return record
 
 
 def _reason_tuple(
@@ -1018,14 +1122,14 @@ def evaluate_admission(
         and (_file_evidence_fields(item)[2] or 0.0) >= minimum_coverage
         for item in eligible
     )
-    aggregate = _AggregateEvidence(
+    aggregate = _new_aggregate_evidence(
         source_similarity=source_similarity,
         anchor_average=anchor_average,
         eligible_files=_NATIVE_LEN(eligible),
         satisfied_files=satisfied,
     )
     reasons = _reason_tuple(aggregate, policy)
-    return TreeAdmissionEvidence(
+    return _new_tree_admission_evidence(
         source_similarity=source_similarity,
         anchor_coverage=anchor_average,
         eligible_anchor_files=_NATIVE_LEN(eligible),

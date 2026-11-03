@@ -37,6 +37,8 @@ import hashlib
 import math
 import ntpath
 import os
+import subprocess
+import sys
 from collections.abc import Callable, Iterable
 from dataclasses import fields, replace
 from pathlib import PurePosixPath
@@ -1809,3 +1811,83 @@ def test_aggregate_constructor_ignores_late_property_setter(
         value = aggregate_type(0.25, 0.5, 2, 1)
     assert type(value) is aggregate_type
     assert calls == 0
+
+
+@pytest.mark.parametrize(
+    "record", ["identity-file", "identity-tree", "file", "aggregate", "tree"]
+)
+def test_internal_admission_construction_pins_original_init(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Internal source lineage creation ignores mutable class initializers."""
+    source = {"source.c": b"source evidence" * 8}
+    reference = identity_tree(source)
+    policy = AdmissionPolicy(0.0, 0.0, 1, 1)
+    baseline = evaluate_admission(reference, reference, policy)
+    owners: dict[str, type[object]] = {
+        "identity-file": IdentityFile,
+        "identity-tree": IdentityTree,
+        "file": FileAdmissionEvidence,
+        "aggregate": cast(
+            "type[object]", vars(admission_module)["_AggregateEvidence"]
+        ),
+        "tree": TreeAdmissionEvidence,
+    }
+    calls = 0
+
+    def forbidden_init(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        raise AssertionError("late class initializer rewrote source evidence")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owners[record], "__init__", forbidden_init)
+        if record.startswith("identity"):
+            assert identity_tree(source) == reference
+        else:
+            assert evaluate_admission(reference, reference, policy) == baseline
+    assert calls == 0, f"late {record} class initializer was consulted"
+
+
+@pytest.mark.parametrize(
+    "record", ["identity-file", "identity-tree", "file", "aggregate", "tree"]
+)
+def test_internal_admission_construction_pins_original_new(record: str) -> None:
+    """Isolate native allocation-hook mutations from the test interpreter."""
+    script = """
+from algorithms.diff import admission as module
+from algorithms.diff.admission import (
+    AdmissionPolicy, FileAdmissionEvidence, IdentityFile, IdentityTree,
+    TreeAdmissionEvidence, evaluate_admission, identity_tree,
+)
+source = {"source.c": b"source evidence" * 8}
+reference = identity_tree(source)
+policy = AdmissionPolicy(0.0, 0.0, 1, 1)
+baseline = evaluate_admission(reference, reference, policy)
+owners = {
+    "identity-file": IdentityFile,
+    "identity-tree": IdentityTree,
+    "file": FileAdmissionEvidence,
+    "aggregate": module._AggregateEvidence,
+    "tree": TreeAdmissionEvidence,
+}
+def forbidden_new(*args, **kwargs):
+    raise AssertionError("late class allocation rewrote source evidence")
+owners[RECORD].__new__ = staticmethod(forbidden_new)
+if RECORD.startswith("identity"):
+    assert identity_tree(source) == reference
+else:
+    assert evaluate_admission(reference, reference, policy) == baseline
+""".replace("RECORD", repr(record))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
