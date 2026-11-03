@@ -39,9 +39,11 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import os
+import py_compile
 import stat
 import subprocess
 import sys
+from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import CodeType, MemberDescriptorType, ModuleType, SimpleNamespace
@@ -416,6 +418,41 @@ def test_domain_rejects_late_native_import_loader_substitution(
     assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
 
 
+def test_domain_rejects_late_source_loader_cache_metadata_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged bytecode-cache status cannot execute an unselected module."""
+    admitted = tmp_path / "admitted.py"
+    rogue = tmp_path / "rogue.py"
+    marker = tmp_path / "rogue-executed"
+    _write(admitted, _COMPLETE)
+    _write(rogue, f"from pathlib import Path\nPath({str(marker)!r}).touch()\n" + _COMPLETE)
+    cached = Path(importlib.util.cache_from_source(str(admitted)))
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    _ = py_compile.compile(str(rogue), cfile=str(cached), doraise=True)
+    native_path_stats = importlib.machinery.SourceFileLoader.path_stats
+    before = frozenset(sys.modules)
+
+    def forged_path_stats(
+        loader: importlib.machinery.SourceFileLoader, path: str
+    ) -> Mapping[str, int | float]:
+        if path == str(admitted):
+            source_status = rogue.stat()
+            return {"mtime": source_status.st_mtime, "size": source_status.st_size}
+        return native_path_stats(loader, path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            importlib.machinery.SourceFileLoader, "path_stats", forged_path_stats
+        )
+        with pytest.raises(DomainContractError):
+            _ = load_diff_domain(admitted)
+    assert not marker.exists(), "unselected cached bytecode was executed"
+    added = frozenset(sys.modules) - before
+    assert not any(name.startswith("_malbolge_diff_domain_") for name in added)
+
+
 def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
     """Turn required consumer names into one validated callable bundle."""
     module = tmp_path / "domain.py"
@@ -593,7 +630,8 @@ def test_domain_loader_rejects_late_readlink_hardlink_swap(
     def forged_readlink(path: str | bytes | os.PathLike[str]) -> str:
         if path == admitted_label:
             return str(redirected)
-        result = native_readlink(path)
+        # Domain module resolution supplies native string paths at this hook.
+        result = native_readlink(cast("str", path))
         if isinstance(result, bytes):
             return os.fsdecode(result)
         return result
