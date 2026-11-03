@@ -127,7 +127,11 @@ runtime OS, preventing a caller from selecting an overwrite-capable rename.
 Source-pin snapshot and revision verification, relocatable tree planning and
 placement, and executable local domain module loading also reject foreign `Path`
 subclasses before source checks, output creation, or import hooks. Six red-first
-regressions cover the three independent public boundaries.
+regressions cover the three independent public boundaries. Consumer
+module and ancestor status receipts must also be native `os.stat_result`
+objects before the domain module executes. Invalid receipts cannot authorize
+import, and errors from import, hook lookup, status, or resolution retain their
+typed causes without invoking foreign exception string/representation hooks.
 Exact tree snapshot, authoring and materialization root admission and compatible
 build/materialize request admission independently require exact host-native
 `Path` objects. Foreign path subclasses cannot redirect source/oracle reads,

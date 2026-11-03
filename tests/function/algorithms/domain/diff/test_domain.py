@@ -41,7 +41,8 @@ import sys
 from dataclasses import replace
 from pathlib import Path
 from types import ModuleType
-from typing import TYPE_CHECKING, cast
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, cast, override
 
 import pytest
 from algorithms.diff.domain import DomainContractError, load_diff_domain
@@ -51,6 +52,23 @@ if TYPE_CHECKING:
 
     from algorithms.diff.mapped import MappedView
 
+_HOSTILE_EXCEPTION_SOURCE = (
+    "class HostileError(RuntimeError):\n"
+    "    def __str__(self):\n"
+    "        raise AssertionError('untrusted str hook ran')\n"
+)
+
+
+class _HostileMetadataError(OSError):
+    """A synthetic host error with unsafe diagnostic hooks."""
+
+    @override
+    def __repr__(self) -> str:
+        message = "untrusted repr hook ran"
+        raise AssertionError(message)
+
+
+_HOSTILE_EXCEPTION_NAME = "HostileError"
 _POSIX = "posix"
 _STAGE_MODULE = "module"
 _STAGE_PARENT = "parent"
@@ -102,6 +120,7 @@ def test_domain_loader_rejects_foreign_path_before_filesystem() -> None:
 class _ForeignDomainModulePath(type(Path())):
     """A module path override cannot establish domain execution authority."""
 
+    @override
     def __str__(self) -> str:
         message = "foreign domain module path conversion executed"
         raise AssertionError(message)
@@ -129,6 +148,26 @@ def test_domain_module_execution_failure_uses_contract_error(
 
     with pytest.raises(DomainContractError, match="module execution failed"):
         _ = load_diff_domain(module)
+
+
+def test_domain_execution_does_not_format_foreign_exception(
+    tmp_path: Path,
+) -> None:
+    """Import failure must preserve its typed boundary and undo registration."""
+    module = tmp_path / "hostile_exec.py"
+    source = _HOSTILE_EXCEPTION_SOURCE + "raise HostileError('bad import')\n"
+    _write(module, source)
+    previous = frozenset(sys.modules)
+
+    with pytest.raises(
+        DomainContractError, match="module execution failed"
+    ) as caught:
+        _ = load_diff_domain(module)
+    assert type(caught.value.__cause__).__name__ == _HOSTILE_EXCEPTION_NAME
+    registered = frozenset(sys.modules) - previous
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
 
 
 @pytest.mark.parametrize(
@@ -159,7 +198,9 @@ def test_domain_import_preparation_errors_are_typed(
     with pytest.raises(DomainContractError, match="import preparation failed"):
         _ = load_diff_domain(module)
     registered = frozenset(sys.modules) - before
-    assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
 
 
 def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
@@ -237,7 +278,9 @@ def test_rejected_domain_module_is_not_left_registered(tmp_path: Path) -> None:
         _ = load_diff_domain(module)
 
     registered = frozenset(sys.modules) - before
-    assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
 
 
 def test_domain_hook_lookup_exception_uses_contract_error(
@@ -256,7 +299,35 @@ def test_domain_hook_lookup_exception_uses_contract_error(
     with pytest.raises(DomainContractError, match="hook lookup failed"):
         _ = load_diff_domain(module)
     registered = frozenset(sys.modules) - before
-    assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
+
+
+def test_domain_hook_lookup_does_not_format_foreign_exception(
+    tmp_path: Path,
+) -> None:
+    """A hostile consumer hook fault cannot run exception string methods."""
+    module = tmp_path / "hostile_hook.py"
+    missing = _COMPLETE.replace(
+        "def build_behavior_programs():\n    return None\n\n", ""
+    )
+    getter = (
+        "def __getattr__(name):\n"
+        "    raise HostileError('bad consumer lookup')\n"
+    )
+    _write(module, missing + _HOSTILE_EXCEPTION_SOURCE + getter)
+    previous = frozenset(sys.modules)
+
+    with pytest.raises(
+        DomainContractError, match="hook lookup failed"
+    ) as caught:
+        _ = load_diff_domain(module)
+    assert type(caught.value.__cause__).__name__ == _HOSTILE_EXCEPTION_NAME
+    registered = frozenset(sys.modules) - previous
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
 
 
 def test_rejected_domain_reload_preserves_previous_registration(
@@ -392,6 +463,67 @@ def test_domain_file_status_error_fails_closed(
     monkeypatch.setattr(Path, "lstat", fail_lstat)
     with pytest.raises(DomainContractError, match="status failed"):
         _ = load_diff_domain(module)
+
+
+@pytest.mark.parametrize("stage", [_STAGE_MODULE, _STAGE_PARENT])
+def test_domain_rejects_foreign_status_before_module_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Only native status receipts may authorize a consumer module import."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    target = module if stage == _STAGE_MODULE else module.parent
+    original_lstat = Path.lstat
+    native = original_lstat(target)
+    foreign = SimpleNamespace(st_mode=native.st_mode)
+    previous = frozenset(sys.modules)
+
+    def foreign_lstat(path: Path) -> os.stat_result:
+        if path == target:
+            return cast("os.stat_result", cast("object", foreign))
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", foreign_lstat)
+    with pytest.raises(DomainContractError, match="native filesystem status"):
+        _ = load_diff_domain(module)
+    registered = frozenset(sys.modules) - previous
+    assert not any(
+        name.startswith("_malbolge_diff_domain_") for name in registered
+    )
+
+
+@pytest.mark.parametrize("stage", [_STAGE_MODULE, _STAGE_RESOLVED])
+def test_domain_metadata_fault_does_not_format_foreign_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    stage: str,
+) -> None:
+    """Host status and resolution faults cannot escape through repr hooks."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    failure = _HostileMetadataError("untrusted host diagnostic")
+    original_lstat = Path.lstat
+    original_resolve = Path.resolve
+
+    def fail_lstat(path: Path) -> os.stat_result:
+        if stage == _STAGE_MODULE and path == module:
+            raise failure
+        return original_lstat(path)
+
+    def fail_resolve(path: Path, *, strict: bool = False) -> Path:
+        if stage == _STAGE_RESOLVED and path == module and strict:
+            raise failure
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    monkeypatch.setattr(Path, "resolve", fail_resolve)
+    with pytest.raises(
+        DomainContractError, match=r"status failed|resolution failed"
+    ) as caught:
+        _ = load_diff_domain(module)
+    assert caught.value.__cause__ is failure
 
 
 @pytest.mark.parametrize(

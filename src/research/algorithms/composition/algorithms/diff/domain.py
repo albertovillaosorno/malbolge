@@ -64,6 +64,7 @@ if TYPE_CHECKING:
 
 
 _NUL = "\x00"
+_NATIVE_STAT_RESULT = os.stat_result
 
 
 class DomainContractError(ValueError):
@@ -129,15 +130,34 @@ def _module_is_junction(path: Path) -> bool:
         raise DomainContractError(message) from error
 
 
+def _require_native_module_status(
+    receipt: object, description: str
+) -> os.stat_result:
+    """Reject foreign filesystem metadata before consumer code executes.
+
+    Returns:
+        The exact native host status receipt.
+
+    Raises:
+        DomainContractError: Status is not an exact host record.
+
+    """
+    if type(receipt) is not _NATIVE_STAT_RESULT:
+        message = f"diff domain {description} requires native filesystem status"
+        raise DomainContractError(message)
+    return receipt
+
+
 def _reject_linked_module_ancestors(path: Path) -> None:
     current = path.parent
     while current != current.parent:
         try:
-            mode = current.lstat().st_mode
+            receipt = current.lstat()
         except (OSError, ValueError, RuntimeError) as error:
             message = f"diff domain module parent status failed: {current!r}"
             raise DomainContractError(message) from error
-        if S_ISLNK(mode) or _module_is_junction(current):
+        receipt = _require_native_module_status(receipt, "parent")
+        if S_ISLNK(receipt.st_mode) or _module_is_junction(current):
             message = f"diff domain module has a linked parent: {current!r}"
             raise DomainContractError(message)
         current = current.parent
@@ -146,21 +166,26 @@ def _reject_linked_module_ancestors(path: Path) -> None:
 def _regular_module_path(path: Path) -> Path:
     _require_module_path_without_nul(path)
     try:
-        mode = path.lstat().st_mode
+        receipt = path.lstat()
     except FileNotFoundError as error:
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message) from error
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"diff domain module status failed: {path!r}: {error!r}"
+        message = f"diff domain module status failed: {path!r}"
         raise DomainContractError(message) from error
-    if S_ISLNK(mode) or _module_is_junction(path) or not S_ISREG(mode):
+    receipt = _require_native_module_status(receipt, "module")
+    if (
+        S_ISLNK(receipt.st_mode)
+        or _module_is_junction(path)
+        or not S_ISREG(receipt.st_mode)
+    ):
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message)
     _reject_linked_module_ancestors(path)
     try:
         return path.resolve(strict=True)
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"diff domain module resolution failed: {path!r}: {error!r}"
+        message = f"diff domain module resolution failed: {path!r}"
         raise DomainContractError(message) from error
 
 
@@ -201,7 +226,7 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
         completion = cast("object", loader.exec_module(module))
     except Exception as error:
         _restore_domain_registration(name, module, previous)
-        message = f"diff domain module execution failed: {resolved}: {error}"
+        message = f"diff domain module execution failed: {resolved}"
         raise DomainContractError(message) from error
     if completion is not None:
         _restore_domain_registration(name, module, previous)
@@ -216,7 +241,7 @@ def _callable(module: ModuleType, name: str) -> Callable[..., object]:
     try:
         value = getattr(module, name, None)
     except Exception as error:
-        message = f"diff domain hook lookup failed for {name!r}: {error}"
+        message = f"diff domain hook lookup failed for {name!r}"
         raise DomainContractError(message) from error
     if not callable(value):
         message = f"diff domain module requires callable {name!r}"
