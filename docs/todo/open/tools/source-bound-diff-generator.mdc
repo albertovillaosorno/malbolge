@@ -1432,6 +1432,13 @@ format.
   A clean full diff run passed 3,792 tests on the final source revision.
   Global Jig rules and concurrent external filesystem writers remain outside
   this scoped security verification.
+- Behavior observation roots now reject replaced `TemporaryDirectory` lifecycle
+  methods and mutable `tempfile` creation/cleanup dependencies before the
+  source mirror is created (`ce84b03e0`). Eleven red-first callback and alias
+  cases now fail closed. All 261 postcommit behavior tests and 828 adjacent
+  precommit tests passed; scoped Ruff, strict source/test typing, and diff
+  checks were clean. Global Jig and external host/filesystem races remain
+  outside this verification.
 
 ## Acceptance
 

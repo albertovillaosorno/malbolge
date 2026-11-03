@@ -1577,6 +1577,17 @@ and temporary observation root failures retain typed causes without executing
 foreign exception formatting callbacks. The copy is not atomic; external source
 writers can race the snapshot/copy boundary and still require coordination.
 
+The behavior observer also guards the native `TemporaryDirectory` class's
+lifecycle methods and its dynamically loaded `tempfile` creation and cleanup
+helpers (`ce84b03e0`). Otherwise a late `__enter__`, `cleanup`, `mkdtemp`,
+`os.mkdir`, or `shutil.rmtree` replacement could run consumer callbacks before
+source-mirror admission, redirect its workspace, or bypass cleanup. Eleven
+red-first regressions now reject those substitutions before execution; all
+261 postcommit behavior-program tests and 828 precommit adjacent tests passed,
+with scoped Ruff, strict source/test typing, and diff checks clean. The
+in-process guard is not atomic against external filesystem writers or concurrent
+host-hook mutations; repository-wide Jig remains independently non-green.
+
 Behavior context resolution now checks the import-original host
 `os.fspath`, `os.lstat`, `os.readlink`, `os.getcwd`, and `stat.S_ISLNK`
 helpers that are dynamically consulted by the captured `os.path.realpath`.
