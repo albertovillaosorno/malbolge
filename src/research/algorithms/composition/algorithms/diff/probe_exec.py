@@ -44,6 +44,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] - no shell; reso
 import tempfile
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
@@ -52,7 +53,7 @@ from stat import S_ISREG
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from sys import getfilesystemencoding as _get_filesystem_encoding
 from types import MemberDescriptorType
-from typing import IO, TYPE_CHECKING, Callable, Protocol, cast
+from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from algorithms.diff.exact import ExactTreeError, snapshot_tree
 from algorithms.diff.model import reserved_windows_component
@@ -166,8 +167,9 @@ class PathArgument:
 
     def __post_init__(self) -> None:
         """Reject foreign roots and unsafe relative paths."""
-        _validate_probe_root(self.root)
-        _validate_relative_path(self.relative_path)
+        root, relative = _probe_path_fields(self, PathArgument)
+        _validate_probe_root(root)
+        _validate_relative_path(relative)
 
 
 # Generated dataclass init methods consult mutable class post-init hooks.
@@ -215,7 +217,8 @@ class ToolExecutable:
     def __post_init__(self) -> None:
         """Require a portable logical tool identifier."""
         _ = _require_portable_probe_identifier(
-            self.tool_id, "probe tool identifier"
+            _probe_field(self, ToolExecutable, "tool_id"),
+            "probe tool identifier",
         )
 
 
@@ -246,8 +249,9 @@ class RootedExecutable:
 
     def __post_init__(self) -> None:
         """Reject foreign roots and unsafe executable paths."""
-        _validate_probe_root(self.root)
-        _validate_relative_path(self.relative_path)
+        root, relative = _probe_path_fields(self, RootedExecutable)
+        _validate_probe_root(root)
+        _validate_relative_path(relative)
 
 
 # Generated dataclass init methods consult mutable class post-init hooks.
@@ -286,25 +290,26 @@ def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
 
 
 def _validate_command_shape(command: ProbeCommand) -> None:
-    if _NATIVE_TYPE(command.executable) not in {
-        ToolExecutable,
-        RootedExecutable,
-    }:
+    executable = _probe_field(command, ProbeCommand, "executable")
+    arguments = _probe_field(command, ProbeCommand, "arguments")
+    stdin = _probe_field(command, ProbeCommand, "stdin")
+    if _NATIVE_TYPE(executable) not in {ToolExecutable, RootedExecutable}:
         message = "probe executable must use an exact executable record"
         raise ProbeProgramError(message)
-    if _NATIVE_TYPE(command.arguments) is not _NATIVE_TUPLE:
+    if _NATIVE_TYPE(arguments) is not _NATIVE_TUPLE:
         message = "probe arguments must use the exact immutable tuple type"
         raise ProbeProgramError(message)
+    admitted_arguments = cast("tuple[ProbeArgument, ...]", arguments)
     if _NATIVE_ANY(
         _NATIVE_TYPE(argument) not in {_NATIVE_STR, PathArgument}
-        for argument in command.arguments
+        for argument in admitted_arguments
     ):
         message = "probe arguments contain a foreign argument record"
         raise ProbeProgramError(message)
-    if _NATIVE_TYPE(command.stdin) is not _NATIVE_BYTES:
+    if _NATIVE_TYPE(stdin) is not _NATIVE_BYTES:
         message = "probe stdin must use exact bytes"
         raise ProbeProgramError(message)
-    _validate_argv_strings(command.arguments)
+    _validate_argv_strings(admitted_arguments)
 
 
 def _validate_command_integer(
@@ -321,25 +326,27 @@ def _validate_command_integer(
 
 
 def _validate_command_limits(command: ProbeCommand) -> None:
-    if command.expected_exit_code is not None:
+    expected = _probe_field(command, ProbeCommand, "expected_exit_code")
+    if expected is not None:
         _validate_command_integer(
-            command.expected_exit_code,
-            "probe expected exit code",
-            positive=False,
+            expected, "probe expected exit code", positive=False
         )
-    _validate_command_integer(
-        command.timeout_ms, "probe timeout", positive=True
-    )
-    _validate_command_integer(
-        command.max_stdout_bytes, "probe stdout limit", positive=False
-    )
-    _validate_command_integer(
-        command.max_stderr_bytes, "probe stderr limit", positive=False
-    )
-    if _NATIVE_TYPE(command.digest_stdout) is not _NATIVE_BOOL:
+    for field_name, context, positive in (
+        ("timeout_ms", "probe timeout", True),
+        ("max_stdout_bytes", "probe stdout limit", False),
+        ("max_stderr_bytes", "probe stderr limit", False),
+    ):
+        _validate_command_integer(
+            _probe_field(command, ProbeCommand, field_name), context, positive=positive
+        )
+    if _NATIVE_TYPE(
+        _probe_field(command, ProbeCommand, "digest_stdout")
+    ) is not _NATIVE_BOOL:
         message = "probe stdout digest selector must use an exact boolean"
         raise ProbeProgramError(message)
-    if _NATIVE_TYPE(command.digest_exit_code) is not _NATIVE_BOOL:
+    if _NATIVE_TYPE(
+        _probe_field(command, ProbeCommand, "digest_exit_code")
+    ) is not _NATIVE_BOOL:
         message = "probe exit digest selector must use an exact boolean"
         raise ProbeProgramError(message)
 
@@ -427,17 +434,19 @@ class ProbeProgram:
 
         """
         _ = _require_portable_probe_identifier(
-            self.probe_id, "probe program identifier"
+            _probe_field(self, ProbeProgram, "probe_id"),
+            "probe program identifier",
         )
-        if _NATIVE_TYPE(self.commands) is not _NATIVE_TUPLE:
+        commands = _probe_field(self, ProbeProgram, "commands")
+        if _NATIVE_TYPE(commands) is not _NATIVE_TUPLE:
             message = "probe commands must use the exact immutable tuple type"
             raise ProbeProgramError(message)
-        if not self.commands:
+        if not commands:
             message = "probe program requires at least one command"
             raise ProbeProgramError(message)
         if _NATIVE_ANY(
             _NATIVE_TYPE(command) is not ProbeCommand
-            for command in self.commands
+            for command in cast("tuple[object, ...]", commands)
         ):
             message = "probe program contains a foreign command record"
             raise ProbeProgramError(message)
@@ -527,10 +536,17 @@ class ProbeRunContext:
             unsorted.
 
         """
-        _validate_path(self.source_root, "probe source root")
-        _validate_path(self.repository_root, "probe repository root")
-        _ = _validate_tool_bindings(self.tools)
-        if _NATIVE_TYPE(self.enforce_source_immutable) is not _NATIVE_BOOL:
+        _validate_path(
+            _probe_field(self, ProbeRunContext, "source_root"), "probe source root"
+        )
+        _validate_path(
+            _probe_field(self, ProbeRunContext, "repository_root"),
+            "probe repository root",
+        )
+        _ = _validate_tool_bindings(_probe_field(self, ProbeRunContext, "tools"))
+        if _NATIVE_TYPE(
+            _probe_field(self, ProbeRunContext, "enforce_source_immutable")
+        ) is not _NATIVE_BOOL:
             message = "probe source-immutability flag must use an exact boolean"
             raise ProbeProgramError(message)
 
@@ -571,18 +587,18 @@ class ProbeTranscript:
 
         """
         _ = _require_portable_probe_identifier(
-            self.probe_id, "probe transcript identifier"
+            _probe_field(self, ProbeTranscript, "probe_id"),
+            "probe transcript identifier",
         )
+        digest = _probe_field(self, ProbeTranscript, "digest")
         if (
-            _NATIVE_TYPE(self.digest) is not _NATIVE_BYTES
-            or _NATIVE_LEN(self.digest) != _SHA256_BYTES
+            _NATIVE_TYPE(digest) is not _NATIVE_BYTES
+            or _NATIVE_LEN(digest) != _SHA256_BYTES
         ):
             message = "probe transcript digest must be exactly 32 bytes"
             raise ProbeProgramError(message)
-        if (
-            _NATIVE_TYPE(self.digested_commands) is not _NATIVE_INT
-            or self.digested_commands < _ZERO
-        ):
+        selected = _probe_field(self, ProbeTranscript, "digested_commands")
+        if _NATIVE_TYPE(selected) is not _NATIVE_INT or selected < _ZERO:
             message = "probe transcript selected count must be non-negative int"
             raise ProbeProgramError(message)
 
@@ -611,6 +627,21 @@ _PROBE_RECORD_SLOTS: dict[type, dict[str, MemberDescriptorType]] = {
         ProbeTranscript,
     )
 }
+
+
+def _probe_field(record: object, owner: type, field: str) -> object:
+    """Read original native storage instead of post-import class getters."""
+    return cast("object", _PROBE_RECORD_SLOTS[owner][field].__get__(record, owner))
+
+
+def _probe_path_fields(
+    record: PathArgument | RootedExecutable,
+    owner: type,
+) -> tuple[object, object]:
+    return (
+        _probe_field(record, owner, "root"),
+        _probe_field(record, owner, "relative_path"),
+    )
 
 
 @dataclass(frozen=True, slots=True)

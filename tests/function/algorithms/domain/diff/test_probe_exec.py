@@ -3538,3 +3538,67 @@ def test_probe_valid_constructor_uses_original_field_slots(
         clone = replace(baseline)
     assert clone == baseline
     assert calls == 0, f"valid {record}.{field} invoked forged setter"
+
+
+@pytest.mark.parametrize(
+    ("record", "field", "invalid"),
+    [
+        ("path", "root", object()),
+        ("path", "relative_path", "../unsafe"),
+        ("tool", "tool_id", ""),
+        ("rooted", "root", object()),
+        ("rooted", "relative_path", "../unsafe"),
+        ("command", "executable", object()),
+        ("command", "arguments", ["-c"]),
+        ("command", "stdin", "invalid"),
+        ("command", "expected_exit_code", -1),
+        ("command", "timeout_ms", 0),
+        ("command", "max_stdout_bytes", -1),
+        ("command", "max_stderr_bytes", -1),
+        ("command", "digest_stdout", 1),
+        ("command", "digest_exit_code", 1),
+        ("program", "probe_id", ""),
+        ("program", "commands", ()),
+        ("context", "source_root", "invalid"),
+        ("context", "repository_root", "invalid"),
+        ("context", "tools", []),
+        ("context", "enforce_source_immutable", 1),
+        ("transcript", "probe_id", ""),
+        ("transcript", "digest", b"short"),
+        ("transcript", "digested_commands", -1),
+    ],
+)
+def test_probe_record_validation_uses_original_fields_not_late_getters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+    field: str,
+    invalid: object,
+) -> None:
+    """A forged class getter must not sanitize malformed stored probe evidence."""
+    tool = ToolExecutable(_PYTHON_TOOL)
+    command = ProbeCommand(tool)
+    baseline = {
+        "path": PathArgument(ProbeRoot.SOURCE, "safe"),
+        "tool": tool,
+        "rooted": RootedExecutable(ProbeRoot.SCRATCH, "tool.exe"),
+        "command": command,
+        "program": ProbeProgram("probe", (command,)),
+        "context": ProbeRunContext(tmp_path, tmp_path, ()),
+        "transcript": ProbeTranscript("probe", bytes(32), 1),
+    }[record]
+    owner = type(baseline)
+    slot = owner.__dict__[field]
+    valid = slot.__get__(baseline, owner)
+    calls = 0
+
+    def forged_getter(_record: object) -> object:
+        nonlocal calls
+        calls += 1
+        return valid
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(forged_getter))
+        with pytest.raises(ProbeProgramError):
+            _ = replace(baseline, **{field: invalid})
+    assert calls == 0, f"late {record}.{field} getter affected record admission"
