@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import os
 import shutil
 import signal
@@ -77,6 +78,9 @@ _NATIVE_PATH_RESOLVE = Path.resolve
 # Inode disjointness and executable admission cannot trust late host hooks.
 _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_ANY = builtins.any
+_NATIVE_SET = builtins.set
+_NATIVE_SORTED = builtins.sorted
 
 
 def _native_path_stat(path: Path) -> os.stat_result:
@@ -197,7 +201,7 @@ def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
         ProbeProgramError: An argument contains a NUL character.
 
     """
-    if any(_NUL in item for item in arguments if type(item) is str):
+    if _NATIVE_ANY(_NUL in item for item in arguments if type(item) is str):
         message = "probe argv strings must not contain NUL bytes"
         raise ProbeProgramError(message)
     for argument in arguments:
@@ -213,7 +217,10 @@ def _validate_command_shape(command: ProbeCommand) -> None:
     if type(command.arguments) is not tuple:
         message = "probe arguments must use the exact immutable tuple type"
         raise ProbeProgramError(message)
-    if any(type(argument) not in {str, PathArgument} for argument in command.arguments):
+    if _NATIVE_ANY(
+        type(argument) not in {str, PathArgument}
+        for argument in command.arguments
+    ):
         message = "probe arguments contain a foreign argument record"
         raise ProbeProgramError(message)
     if type(command.stdin) is not bytes:
@@ -298,7 +305,9 @@ class ProbeProgram:
         if not self.commands:
             message = "probe program requires at least one command"
             raise ProbeProgramError(message)
-        if any(type(command) is not ProbeCommand for command in self.commands):
+        if _NATIVE_ANY(
+            type(command) is not ProbeCommand for command in self.commands
+        ):
             message = "probe program contains a foreign command record"
             raise ProbeProgramError(message)
 
@@ -335,7 +344,7 @@ def _validate_tool_bindings(value: object) -> tuple[str, ...]:
         raise ProbeProgramError(message)
     bindings = cast("tuple[object, ...]", value)
     identifiers = tuple(_validate_tool_binding(binding)[0] for binding in bindings)
-    if identifiers != tuple(sorted(set(identifiers))):
+    if identifiers != tuple(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = "probe tool bindings must be unique and sorted"
         raise ProbeProgramError(message)
     return identifiers
@@ -953,7 +962,7 @@ def _require_finished_workers(running: _RunningProbe) -> None:
 
     """
     captures = (running.stdout, running.stderr)
-    reader_failed = any(
+    reader_failed = _NATIVE_ANY(
         not reader.is_alive() and not capture.finished
         for reader, capture in zip(running.readers, captures, strict=True)
     )
@@ -1181,7 +1190,7 @@ def _validate_probe_batch(
         message = "probe program batch must use the exact immutable tuple type"
         raise ProbeProgramError(message)
     items = cast("tuple[object, ...]", programs)
-    if any(type(program) is not ProbeProgram for program in items):
+    if _NATIVE_ANY(type(program) is not ProbeProgram for program in items):
         message = "probe program batch contains a foreign program record"
         raise ProbeProgramError(message)
     admitted = cast("tuple[ProbeProgram, ...]", programs)
@@ -1189,7 +1198,7 @@ def _validate_probe_batch(
         message = "probe run context must use the exact ProbeRunContext type"
         raise ProbeProgramError(message)
     identifiers = tuple(program.probe_id for program in admitted)
-    if identifiers != tuple(sorted(set(identifiers))):
+    if identifiers != tuple(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = "probe programs must have unique sorted identifiers"
         raise ProbeProgramError(message)
     return admitted

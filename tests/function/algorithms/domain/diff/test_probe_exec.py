@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import gc
 import hashlib
 import io
@@ -2155,6 +2156,99 @@ def test_probe_command_rejects_boolean_aliases_and_mutable_inputs() -> None:
     for build in invalid:
         with pytest.raises(ProbeProgramError, match="probe"):
             _ = build()
+
+
+def test_probe_argv_rejects_late_any_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late truth helper cannot approve NUL-bearing process arguments."""
+
+    def construct_after_hook_swap() -> ProbeCommand:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "any", lambda values: False)
+            return ProbeCommand(
+                executable=ToolExecutable(_PYTHON_TOOL),
+                arguments=("--flag=\x00invalid",),
+            )
+
+    with pytest.raises(ProbeProgramError, match="NUL"):
+        _ = construct_after_hook_swap()
+
+
+def test_probe_commands_reject_late_any_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late truth helper cannot authorize foreign probe command records."""
+    commands = (cast("ProbeCommand", object()),)
+
+    def construct_after_hook_swap() -> ProbeProgram:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "any", lambda values: False)
+            return ProbeProgram("identity", commands)
+
+    with pytest.raises(ProbeProgramError, match="foreign command"):
+        _ = construct_after_hook_swap()
+
+
+@pytest.mark.parametrize("helper", ["sorted", "set"])
+def test_probe_tool_bindings_reject_late_order_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    helper: str,
+) -> None:
+    """Late global sort or set hooks cannot admit duplicate tool bindings."""
+    tools = (
+        (_PYTHON_TOOL, Path(sys.executable)),
+        (_PYTHON_TOOL, Path(sys.executable)),
+    )
+
+    def construct_after_hook_swap() -> ProbeRunContext:
+        with monkeypatch.context() as patch:
+            if helper == "sorted":
+                patch.setattr(
+                    builtins, "sorted", lambda values: list(tools_ids)
+                )
+            else:
+                patch.setattr(builtins, "set", lambda values: list(values))
+            return ProbeRunContext(Path("source"), Path("repo"), tools)
+
+    tools_ids = (_PYTHON_TOOL, _PYTHON_TOOL)
+    with pytest.raises(ProbeProgramError, match="unique and sorted"):
+        _ = construct_after_hook_swap()
+
+
+@pytest.mark.parametrize("helper", ["any", "sorted", "set"])
+def test_probe_batch_rejects_late_global_validation_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+    helper: str,
+) -> None:
+    """Batch validation cannot admit foreign or repeated probe programs."""
+    batch = cast(
+        "Callable[[object, object], tuple[ProbeProgram, ...]]",
+        vars(probe_exec_module)["_validate_probe_batch"],
+    )
+    context = _context(Path("source"), Path("repo"))
+    original = _program("identity-a", "pass")
+    if helper == "any":
+        invalid = (cast("ProbeProgram", object()),)
+        message = "foreign program"
+    else:
+        invalid = (original, original)
+        message = "unique sorted identifiers"
+
+    def validate_after_hook_swap() -> tuple[ProbeProgram, ...]:
+        with monkeypatch.context() as patch:
+            if helper == "any":
+                patch.setattr(builtins, "any", lambda values: False)
+            elif helper == "sorted":
+                patch.setattr(
+                    builtins, "sorted", lambda values: [original.probe_id] * 2
+                )
+            else:
+                patch.setattr(builtins, "set", lambda values: list(values))
+            return batch(invalid, context)
+
+    with pytest.raises(ProbeProgramError, match=message):
+        _ = validate_after_hook_swap()
 
 
 def test_probe_rejects_nul_command_and_rooted_path_arguments() -> None:
