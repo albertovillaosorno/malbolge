@@ -50,6 +50,7 @@ from builtins import type as _native_type
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
+from types import MemberDescriptorType
 from typing import cast
 
 _ZERO = 0
@@ -141,11 +142,27 @@ class FileRecord:
             TreeModelError: Snapshot metadata uses an invalid runtime value.
 
         """
-        _require_canonical_relative_path(self.path, "file record path")
-        _validate_sha256_hex(self.sha256, "file record sha256")
-        if _native_type(self.size) is not _native_int or self.size < _ZERO:
+        path, digest, size = _file_fields(self)
+        _require_canonical_relative_path(path, "file record path")
+        _validate_sha256_hex(digest, "file record sha256")
+        if _native_type(size) is not _native_int or size < _ZERO:
             message = "file record size must be a non-negative integer"
             raise TreeModelError(message)
+
+
+# Exact file metadata must retain its original stored values after consumers
+# replace class properties or __getattribute__ during source evaluation.
+_FILE_PATH_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["path"])
+_FILE_DIGEST_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["sha256"])
+_FILE_SIZE_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["size"])
+
+
+def _file_fields(record: FileRecord) -> tuple[str, str, int]:
+    return (
+        _FILE_PATH_SLOT.__get__(record, FileRecord),
+        _FILE_DIGEST_SLOT.__get__(record, FileRecord),
+        _FILE_SIZE_SLOT.__get__(record, FileRecord),
+    )
 
 
 def _has_file_ancestor(path: str, file_paths: set[str]) -> bool:
@@ -169,17 +186,18 @@ class TreeSnapshot:
             TreeModelError: File records are mutable, foreign, or unordered.
 
         """
-        if _native_type(self.files) is not _native_tuple:
+        files = _snapshot_files(self)
+        if _native_type(files) is not _native_tuple:
             message = (
                 "tree snapshot files must use the exact immutable tuple type"
             )
             raise TreeModelError(message)
         if _native_any(
-            _native_type(item) is not FileRecord for item in self.files
+            _native_type(item) is not FileRecord for item in files
         ):
             message = "tree snapshot contains a foreign file record"
             raise TreeModelError(message)
-        paths = _native_tuple(item.path for item in self.files)
+        paths = _native_tuple(_file_fields(item)[0] for item in files)
         if paths != _native_tuple(_native_sorted(_native_set(paths))):
             message = "tree snapshot paths must be unique and sorted"
             raise TreeModelError(message)
@@ -187,6 +205,15 @@ class TreeSnapshot:
         if _native_any(_has_file_ancestor(path, file_paths) for path in paths):
             message = "tree snapshot has an ancestor/descendant file overlap"
             raise TreeModelError(message)
+
+
+_SNAPSHOT_FILES_SLOT = cast(
+    "MemberDescriptorType", TreeSnapshot.__dict__["files"]
+)
+
+
+def _snapshot_files(snapshot: TreeSnapshot) -> tuple[FileRecord, ...]:
+    return _SNAPSHOT_FILES_SLOT.__get__(snapshot, TreeSnapshot)
 
 
 class ExactInstructionKind(StrEnum):
@@ -211,15 +238,31 @@ class SourceSlice:
             TreeModelError: The range is negative or empty.
 
         """
+        offset, length = _source_slice_fields(self)
         if (
-            _native_type(self.offset) is not _native_int
-            or _native_type(self.length) is not _native_int
+            _native_type(offset) is not _native_int
+            or _native_type(length) is not _native_int
         ):
             message = "source slice coordinates must use exact integers"
             raise TreeModelError(message)
-        if self.offset < _ZERO or self.length <= _ZERO:
+        if offset < _ZERO or length <= _ZERO:
             message = "source slices require a non-negative offset and positive length"
             raise TreeModelError(message)
+
+
+_SOURCE_SLICE_OFFSET_SLOT = cast(
+    "MemberDescriptorType", SourceSlice.__dict__["offset"]
+)
+_SOURCE_SLICE_LENGTH_SLOT = cast(
+    "MemberDescriptorType", SourceSlice.__dict__["length"]
+)
+
+
+def _source_slice_fields(segment: SourceSlice) -> tuple[int, int]:
+    return (
+        _SOURCE_SLICE_OFFSET_SLOT.__get__(segment, SourceSlice),
+        _SOURCE_SLICE_LENGTH_SLOT.__get__(segment, SourceSlice),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,9 +278,18 @@ class OracleLiteral:
             TreeModelError: Target literal is not exact bytes.
 
         """
-        if _native_type(self.data) is not _native_bytes:
+        if _native_type(_oracle_literal_data(self)) is not _native_bytes:
             message = "oracle literal must use exact bytes"
             raise TreeModelError(message)
+
+
+_ORACLE_LITERAL_DATA_SLOT = cast(
+    "MemberDescriptorType", OracleLiteral.__dict__["data"]
+)
+
+
+def _oracle_literal_data(literal: OracleLiteral) -> bytes:
+    return _ORACLE_LITERAL_DATA_SLOT.__get__(literal, OracleLiteral)
 
 
 ExactSegment = SourceSlice | OracleLiteral

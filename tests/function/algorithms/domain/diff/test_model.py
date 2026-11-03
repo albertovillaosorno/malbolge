@@ -40,16 +40,17 @@ import os
 from typing import TYPE_CHECKING, cast
 
 import pytest
-
 from algorithms.diff import model as model_module
-from algorithms.diff.model import ExactAuthoringPlan
-from algorithms.diff.model import ExactInstruction
-from algorithms.diff.model import ExactInstructionKind
-from algorithms.diff.model import FileRecord
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import SourceSlice
-from algorithms.diff.model import TreeModelError
-from algorithms.diff.model import TreeSnapshot
+from algorithms.diff.model import (
+    ExactAuthoringPlan,
+    ExactInstruction,
+    ExactInstructionKind,
+    FileRecord,
+    OracleLiteral,
+    SourceSlice,
+    TreeModelError,
+    TreeSnapshot,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -330,3 +331,136 @@ def test_model_rejects_late_builtin_any_in_ntpath(
         patch.setattr(builtins, "any", omit_reserved_names)
         with pytest.raises(TreeModelError, match="canonical relative path"):
             _ = FileRecord("CON", _HASH, 1)
+
+
+@pytest.mark.parametrize(
+    ("field", "stored", "forged", "message"),
+    [
+        ("path", "../unsafe", "safe.bin", "canonical relative path"),
+        ("sha256", "not-a-hash", _HASH, "64 lowercase hex digits"),
+        ("size", -1, 1, "non-negative integer"),
+    ],
+)
+def test_model_file_record_constructor_ignores_late_field_getter(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    stored: object,
+    forged: object,
+    message: str,
+) -> None:
+    """Late class getters cannot misstate stored source snapshot evidence."""
+    original_getattribute = FileRecord.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: FileRecord, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original_getattribute(value, name))
+
+    values: dict[str, object] = {"path": "safe.bin", "sha256": _HASH, "size": 1}
+    values[field] = stored
+    with monkeypatch.context() as patched:
+        patched.setattr(FileRecord, "__getattribute__", forged_attribute)
+        with pytest.raises(TreeModelError, match=message):
+            constructor = cast("Callable[..., FileRecord]", FileRecord)
+            _ = constructor(**values)
+    assert calls == 0, "late file getter concealed invalid stored evidence"
+
+
+def test_model_tree_snapshot_constructor_ignores_late_files_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable stored file list is never approved by a forged getter."""
+    original_getattribute = TreeSnapshot.__getattribute__
+    calls = 0
+
+    def forged_files(value: TreeSnapshot, name: str) -> object:
+        nonlocal calls
+        if name == "files":
+            calls += 1
+            return ()
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(TreeSnapshot, "__getattribute__", forged_files)
+        with pytest.raises(TreeModelError, match="exact immutable tuple"):
+            _ = TreeSnapshot(cast("tuple[FileRecord, ...]", cast("object", [])))
+    assert calls == 0, "late tree getter concealed mutable files"
+
+
+def test_model_snapshot_path_order_ignores_late_file_descriptor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """File path ordering checks must read admitted lexical file paths."""
+    first = FileRecord("b.bin", _HASH, 1)
+    second = FileRecord("a.bin", _HASH, 1)
+    calls = 0
+
+    def forged_path(value: FileRecord) -> str:
+        nonlocal calls
+        calls += 1
+        return "a.bin" if value is first else "b.bin"
+
+    with monkeypatch.context() as patched:
+        patched.setattr(FileRecord, "path", property(forged_path))
+        with pytest.raises(TreeModelError, match="unique and sorted"):
+            _ = TreeSnapshot((first, second))
+    assert calls == 0, "late file descriptor forged snapshot order"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "forged", "message"),
+    [
+        ("offset", -1, 0, "non-negative offset"),
+        ("length", 0, 1, "positive length"),
+    ],
+)
+def test_model_source_slice_constructor_ignores_late_field_getter(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: int,
+    forged: int,
+    message: str,
+) -> None:
+    """Late class getters cannot conceal invalid stored source offsets."""
+    original_getattribute = SourceSlice.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: SourceSlice, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original_getattribute(value, name))
+
+    fields = {"offset": 0, "length": 1}
+    fields[field] = invalid
+    with monkeypatch.context() as patched:
+        patched.setattr(SourceSlice, "__getattribute__", forged_attribute)
+        with pytest.raises(TreeModelError, match=message):
+            _ = SourceSlice(**fields)
+    assert calls == 0, "late source-slice getter concealed bad coordinates"
+
+
+def test_model_oracle_literal_constructor_ignores_late_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stored mutable oracle material cannot pass by spoofing class getters."""
+    original_getattribute = OracleLiteral.__getattribute__
+    calls = 0
+
+    def forged_data(value: OracleLiteral, name: str) -> object:
+        nonlocal calls
+        if name == "data":
+            calls += 1
+            return b"trusted"
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(OracleLiteral, "__getattribute__", forged_data)
+        with pytest.raises(TreeModelError, match="exact bytes"):
+            foreign = cast("bytes", cast("object", bytearray(b"unsafe")))
+            _ = OracleLiteral(foreign)
+    assert calls == 0, "late literal getter concealed mutable oracle bytes"
