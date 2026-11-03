@@ -212,6 +212,14 @@ late-builtin-alias cases previously leaked raw errors instead of typed
 checks showed no new findings. This is not isolation from arbitrary
 consumer effects or concurrent module-state mutation.
 
+Consumer-domain filesystem error admission now pins native `OSError`,
+`ValueError`, `RuntimeError`, and `FileNotFoundError` exception classes
+(`8f741fe43`). Late builtin substitutions cannot leak a raw native error
+for an overlong module filename or mislabel a missing module. Two red-first
+cases, 142 postcommit domain tests, and 3,919 integrated diff tests
+passed, with scoped Ruff, strict source/test typing, and diff checks clean.
+This does not make filesystem reads atomic or sandbox consumer code.
+
 ### Exact Authoring Baseline
 
 The implemented exact layer snapshots regular files by normalized relative path,
@@ -621,6 +629,15 @@ commit and 167 model/fingerprint tests passing after commit. Scoped Ruff,
 strict BasedPyright, and diff checks were clean. These checks are not atomic
 against instance mutation or external source-tree races; Jig doctor remains
 degraded (graph absent), and the bounded global check timed out.
+
+Native tree-model receipt catches also retain the import-original
+`AttributeError` (`2448169a7`). Late process-global exception substitution
+no longer leaks raw missing-slot failures from nested file snapshots,
+source slices, oracle literals, or exact plan snapshots/instructions. Six
+red-first regressions, 105 postcommit model tests, and 760 adjacent
+model/exact/compatible tests passed; a later live diff run passed 3,919
+tests. Scoped Ruff, strict typing, and diff checks were clean. Direct
+instance edits and external writer races remain outside the guard.
 
 Exact materialization now reruns the import-captured `ExactAuthoringPlan`
 validator before filesystem access (`ddf59bc5d`). Ten red-first cases reject
@@ -1380,6 +1397,14 @@ check timed out during native validation without a green verdict.
 Direct trusted record mutation and external writers remain out of scope.
 
 ### Portable Behavior Programs
+
+Behavior-program native receipt and host-error guards now catch original
+exception classes instead of late builtin aliases (`c6b7f108c`,
+`d2387c4c1`). Eight red-first native receipt and six host/diagnostic
+alias regressions passed. All 275 postcommit focused and 3,912 integrated
+diff tests passed; scoped Ruff and diff checks were clean, with zero new
+strict typing findings. This does not isolate external process or file
+races or direct edits of trusted record storage.
 
 The generic execution layer now has a process-program representation designed to
 be reproducible by the future Rust emitter. Commands never use shell

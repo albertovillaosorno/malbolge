@@ -1048,6 +1048,12 @@ format.
   original and resolved regular-file identities before importing. Five red-first
   tests cover forged module names and redirected imports, including hardlinks.
   External filesystem mutation between checks still requires coordination.
+- Consumer-domain status, resolution, junction, and ancestor-path error
+  catches now pin original filesystem exception classes (`8f741fe43`).
+  Two red-first overlong-path and missing-module cases retain typed domain
+  diagnostics after late builtin swaps; 142 postcommit domain and 3,919
+  integrated diff tests, Ruff, strict typing, and diff checks passed.
+  External writers and trusted execution remain outside the guard.
 - Domain loader registration rollback now restores the previously accepted
   `sys.modules` entry after rejected imports, even when a consumer has rebound
   or deleted the import key (`38ee4b9bc`). Successful execution and late hook
@@ -1147,6 +1153,13 @@ format.
   Static typing retains thirteen older compatible-model diagnostics outside
   this staging change; trusted module internals and external writers are not
   isolated by the host-hook repair.
+- Exact tree-model nested receipt catches now pin import-original
+  `AttributeError` (`2448169a7`). Six red-first missing-slot cases for files,
+  segments, snapshots, and instructions now raise typed `TreeModelError` even
+  after a builtin alias change. All 105 postcommit model and 760 adjacent
+  model/exact/compatible and 3,919 later integrated diff tests passed.
+  Ruff, strict typing, and diff checks were clean. Direct storage edits
+  and external races remain open.
 - Generator exact replay now compares stored native snapshot/file fields and
   binds output ancestry to original path operations (`28dc8284d`,
   `a15eccef2`). Twelve red-first replay, equality, and path-hook cases
@@ -1238,6 +1251,12 @@ format.
   tests passed; scoped Ruff and source BasedPyright reported zero errors
   (nine existing type warnings). Direct stored-record mutation and
   concurrent filesystem writers are not isolated; Jig remains unverified.
+- Behavior-program native receipt/host diagnostics now pin original
+  exception classes (`c6b7f108c`, `d2387c4c1`). Eight red-first native
+  receipt and six host/diagnostic alias regressions now pass. All 275
+  postcommit behavior and 3,912 integrated diff tests passed, with scoped
+  Ruff and diff checks clean and zero new strict typing findings. Direct
+  record storage edits and external process/filesystem races remain open.
 - Exact native behavior records now revalidate nested `BugProgram` and
   `AuthoredBugProgram` evidence in aggregate constructors, before portable
   authoring probes, and before source observation (`395616c75`). Missing
