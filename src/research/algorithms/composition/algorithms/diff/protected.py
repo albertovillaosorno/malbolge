@@ -56,7 +56,14 @@ from algorithms.diff.model import (
     SourceSlice,
     TreeModelError,
     TreeSnapshot,
+    _oracle_literal_data,  # pyright: ignore[reportPrivateUsage]
     reserved_windows_component,
+)
+from algorithms.diff.model import (
+    _instruction_fields as _exact_instruction_fields,  # pyright: ignore[reportPrivateUsage]
+)
+from algorithms.diff.model import (
+    _plan_fields as _exact_plan_fields,  # pyright: ignore[reportPrivateUsage]
 )
 from algorithms.diff.payload import (
     AuthenticatedPayload,
@@ -1018,41 +1025,50 @@ def _protected_segment(
     segment: ExactSegment,
     builder: _PayloadBuilder,
 ) -> ProtectedSegment:
-    if _NATIVE_ISINSTANCE(segment, SourceSlice):
+    if _NATIVE_TYPE(segment) is SourceSlice:
         return segment
-    return _PAYLOAD_BUILDER_APPEND(builder, segment.data)
+    return _PAYLOAD_BUILDER_APPEND(
+        builder, _oracle_literal_data(cast("OracleLiteral", segment))
+    )
 
 
 def _protect_instruction(
     instruction: ExactInstruction,
     builder: _PayloadBuilder,
 ) -> ProtectedInstruction:
-    if instruction.kind is ExactInstructionKind.COPY_SOURCE:
+    (
+        output_path,
+        kind,
+        expected_sha256,
+        source_path,
+        literal,
+        segments,
+    ) = _exact_instruction_fields(instruction)
+    if kind is ExactInstructionKind.COPY_SOURCE:
         return _new_protected_instruction(
-            output_path=instruction.output_path,
+            output_path=output_path,
             kind=ProtectedInstructionKind.COPY_SOURCE,
-            expected_sha256=instruction.expected_sha256,
-            source_path=instruction.source_path,
+            expected_sha256=expected_sha256,
+            source_path=source_path,
         )
-    if instruction.kind is ExactInstructionKind.PATCH_SOURCE:
+    if kind is ExactInstructionKind.PATCH_SOURCE:
         return _new_protected_instruction(
-            output_path=instruction.output_path,
+            output_path=output_path,
             kind=ProtectedInstructionKind.PATCH_SOURCE,
-            expected_sha256=instruction.expected_sha256,
-            source_path=instruction.source_path,
+            expected_sha256=expected_sha256,
+            source_path=source_path,
             segments=_NATIVE_TUPLE(
-                _protected_segment(segment, builder)
-                for segment in instruction.segments
+                _protected_segment(segment, builder) for segment in segments
             ),
         )
-    if instruction.literal is None:
+    if literal is None:
         message = "literal instruction lost authoring bytes before protection"
         raise ProtectedPlanError(message)
     return _new_protected_instruction(
-        output_path=instruction.output_path,
+        output_path=output_path,
         kind=ProtectedInstructionKind.PAYLOAD,
-        expected_sha256=instruction.expected_sha256,
-        payload_slice=_PAYLOAD_BUILDER_APPEND(builder, instruction.literal),
+        expected_sha256=expected_sha256,
+        payload_slice=_PAYLOAD_BUILDER_APPEND(builder, literal),
     )
 
 
@@ -1142,17 +1158,18 @@ def protect_exact_plan(
 
     """
     _validate_protect_inputs(plan, reference_identity, context)
+    source, target, exact_instructions, passthrough_roots = _exact_plan_fields(plan)
     builder = _new_payload_builder(_NATIVE_BYTEARRAY())
     instructions = _NATIVE_TUPLE(
         _protect_instruction(instruction, builder)
-        for instruction in plan.instructions
+        for instruction in exact_instructions
     )
     plaintext = _payload_builder_bytes(builder)
     metadata = _metadata(
-        plan.source,
-        plan.target,
+        source,
+        target,
         instructions,
-        passthrough_roots=plan.passthrough_roots,
+        passthrough_roots=passthrough_roots,
     )
     aad = protected_plan_aad(metadata, context=context)
     key = _derive_payload_key(
@@ -1174,10 +1191,10 @@ def protect_exact_plan(
         context=_binding_context(aad, context),
     )
     return _new_protected_exact_plan(
-        source=plan.source,
-        target=plan.target,
+        source=source,
+        target=target,
         instructions=instructions,
-        passthrough_roots=plan.passthrough_roots,
+        passthrough_roots=passthrough_roots,
         context=context,
         nonce=_SINGLE_MESSAGE_NONCE,
         payload=payload,

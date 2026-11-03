@@ -203,6 +203,11 @@ native filesystem identity checks fail before module registration or execution.
 Three red-first substitution tests passed, with 93 focused domain and 3,210
 integrated diff tests green. This is a local post-import hook guard, not
 protection from direct internal mutation or concurrent host filesystem writers.
+The same boundary pins source-loader `get_code`, `get_data`,
+`get_filename`, and `source_to_code` (`1eb1b012a`). Four further red-first
+cases proved that each mutable reader could execute unselected source bytes.
+All 97 focused domain and 3,240 integrated diff tests passed. The check does
+not isolate direct trusted-state mutation or concurrent filesystem writers.
 Neither status check nor import is atomic against external filesystem writes;
 this is not a sandbox for trusted consumer-domain code.
 A frozen, slotted Python evidence record still permits its *class* slot

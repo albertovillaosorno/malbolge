@@ -53,6 +53,8 @@ from algorithms.diff.exact import build_exact_plan, snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.model import (
     ExactAuthoringPlan,
+    ExactInstruction,
+    ExactInstructionKind,
     FileRecord,
     OracleLiteral,
     SourceSlice,
@@ -2262,3 +2264,150 @@ def test_protected_native_admission_ignores_late_class_validators(
     assert calls == 0
     assert not (tmp_path / "out").exists()
     assert source.is_dir()
+
+
+@pytest.mark.parametrize("hook", ["descriptor", "getattribute"])
+@pytest.mark.parametrize(
+    "field", ["source", "target", "instructions", "passthrough_roots"]
+)
+def test_protected_authoring_ignores_late_exact_plan_getters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str, field: str
+) -> None:
+    """Protected authoring must bind the exact plan's admitted native fields."""
+    _, _, source_files, exact, baseline = _protected(tmp_path)
+    replacements: dict[str, object] = {
+        "source": exact.target,
+        "target": exact.source,
+        "instructions": (),
+        "passthrough_roots": ("dynamic",),
+    }
+    owner = ExactAuthoringPlan
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    original_getattribute = cast(
+        "Callable[[object, str], object]", owner.__getattribute__
+    )
+    calls = 0
+
+    def forged_field(value: object) -> object:
+        nonlocal calls
+        if value is exact:
+            calls += 1
+            return replacements[field]
+        return cast("object", slot.__get__(value, owner))
+
+    def forged_attribute(value: object, name: str) -> object:
+        if name == field:
+            return forged_field(value)
+        return original_getattribute(value, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "descriptor":
+            patched.setattr(owner, field, property(forged_field))
+        else:
+            patched.setattr(owner, "__getattribute__", forged_attribute)
+        observed = protect_exact_plan(
+            exact, _identity(source_files),
+            binding_policy=_policy(), context=_CONTEXT,
+        )
+    assert observed == baseline, "late exact-plan getter changed protected output"
+    assert calls == 0, "late exact-plan getter participated in authoring"
+
+
+@pytest.mark.parametrize("hook", ["descriptor", "getattribute"])
+@pytest.mark.parametrize(
+    "field", ["output_path", "kind", "expected_sha256", "source_path", "literal", "segments"]
+)
+def test_protected_authoring_ignores_late_exact_instruction_getters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str, field: str
+) -> None:
+    """Protected instructions must be derived from validated stored values."""
+    _, _, source_files, exact, baseline = _protected(tmp_path)
+    record = next(
+        item for item in exact.instructions
+        if item.kind is (
+            ExactInstructionKind.LITERAL_ORACLE
+            if field == "literal" else ExactInstructionKind.PATCH_SOURCE
+        )
+    )
+    replacements: dict[str, object] = {
+        "output_path": "foreign.bin",
+        "kind": ExactInstructionKind.COPY_SOURCE,
+        "expected_sha256": "0" * 64,
+        "source_path": "keep.bin",
+        "literal": b"forged unvalidated literal bytes",
+        "segments": (),
+    }
+    owner = ExactInstruction
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    original_getattribute = cast(
+        "Callable[[object, str], object]", owner.__getattribute__
+    )
+    calls = 0
+
+    def forged_field(value: object) -> object:
+        nonlocal calls
+        if value is record:
+            calls += 1
+            return replacements[field]
+        return cast("object", slot.__get__(value, owner))
+
+    def forged_attribute(value: object, name: str) -> object:
+        if name == field:
+            return forged_field(value)
+        return original_getattribute(value, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "descriptor":
+            patched.setattr(owner, field, property(forged_field))
+        else:
+            patched.setattr(owner, "__getattribute__", forged_attribute)
+        observed = protect_exact_plan(
+            exact, _identity(source_files),
+            binding_policy=_policy(), context=_CONTEXT,
+        )
+    assert observed == baseline, "late instruction getter changed protected output"
+    assert calls == 0, "late instruction getter participated in authoring"
+
+
+@pytest.mark.parametrize("hook", ["descriptor", "getattribute"])
+def test_protected_authoring_ignores_late_oracle_literal_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A patched byte getter cannot rewrite target-only authenticated material."""
+    _, _, source_files, exact, baseline = _protected(tmp_path)
+    record = next(
+        segment
+        for instruction in exact.instructions
+        for segment in instruction.segments
+        if type(segment) is OracleLiteral
+    )
+    owner = OracleLiteral
+    slot = cast("MemberDescriptorType", owner.__dict__["data"])
+    original_getattribute = cast(
+        "Callable[[object, str], object]", owner.__getattribute__
+    )
+    calls = 0
+
+    def forged_data(value: object) -> object:
+        nonlocal calls
+        if value is record:
+            calls += 1
+            return b"forged authenticated payload segment"
+        return cast("object", slot.__get__(value, owner))
+
+    def forged_attribute(value: object, name: str) -> object:
+        if name == "data":
+            return forged_data(value)
+        return original_getattribute(value, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "descriptor":
+            patched.setattr(owner, "data", property(forged_data))
+        else:
+            patched.setattr(owner, "__getattribute__", forged_attribute)
+        observed = protect_exact_plan(
+            exact, _identity(source_files),
+            binding_policy=_policy(), context=_CONTEXT,
+        )
+    assert observed == baseline, "late literal getter changed protected payload"
+    assert calls == 0, "late oracle literal getter participated in authoring"

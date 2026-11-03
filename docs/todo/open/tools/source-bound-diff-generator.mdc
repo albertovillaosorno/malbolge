@@ -65,6 +65,10 @@ format.
   blocking substitutions of unselected module code after native path checks.
   Three red-first cases, 93 domain tests, and 3,210 integrated diff tests pass;
   direct trusted-state mutation and external filesystem races are not covered.
+- Domain loading also pins `get_code`, `get_data`, `get_filename`, and
+  `source_to_code` (`1eb1b012a`). Four additional red-first substitutions
+  now fail closed; 97 focused domain and 3,240 integrated diff tests passed.
+  Trusted direct mutations and filesystem races remain excluded.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode
