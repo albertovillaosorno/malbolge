@@ -206,6 +206,16 @@ chosen source, oracle, mode, or output after preflight. Twenty-eight red-first
 regressions cover stored invalid fields and post-validation class edits. This
 does not protect against deliberate direct mutation of stored instance values.
 
+The internal `_RecipeSnapshot` now uses its captured original NamedTuple
+allocator (`7bab64eb0`) instead of consulting later class `__new__` or
+`__init__` hooks during recipe policy checks. Four red-first regressions
+cover exact and compatible modes; all 205 focused generator tests, scoped
+Ruff, and diff checks passed. The integrated diff run had 2,736 passes and
+14 failures from concurrently edited compatible constructor regressions,
+so no green integration verdict is claimed for this commit. Source strict
+BasedPyright retains four pre-existing diagnostics. Trusted direct mutation
+and filesystem races remain separate boundaries.
+
 The `DiffRecipe` constructor also writes all fifteen fields through the same
 captured native descriptors, instead of a dataclass-generated initializer that
 would dispatch replaceable class property setters. Fifteen malformed-field

@@ -68,6 +68,14 @@ format.
   view through domain preflight and exact output. Twenty-eight red-first
   regressions reject forged getters, masked invalid storage, and post-preflight
   mode/path/policy redirection without claiming arbitrary instance isolation.
+- Private `_RecipeSnapshot` creation now invokes the import-captured
+  NamedTuple constructor instead of late class `__new__`/`__init__` hooks
+  (`7bab64eb0`), preserving exact and compatible recipe admission policy.
+  Four red-first cases and all 205 focused generator tests passed with clean
+  scoped Ruff/diff checks. The integrated diff run had 2,736 passes and 14
+  concurrent compatible WIP red-test failures, so it is not green; strict
+  source typing still reports four pre-existing diagnostics. Trusted direct
+  mutation remains outside this constructor hardening boundary.
 - The `DiffRecipe` constructor now writes all fifteen fields through captured
   native descriptors before policy preflight. Fifteen invalid-field and fifteen
   valid-field cases in `21e31bba1` block replaceable class setters from
