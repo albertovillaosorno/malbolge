@@ -124,10 +124,17 @@ _NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_REALPATH = os.path.realpath
+_NATIVE_OS_PATH_MODULE = os.path
+_NATIVE_OS_SPLITROOT = os.path.splitroot
+_NATIVE_OS_SPLITDRIVE = os.path.splitdrive
+_NATIVE_OS_PATH_JOIN = os.path.join
+_NATIVE_OS_PATH_SEP = os.path.sep
+_NATIVE_OS_PATH_ALTSEP = os.path.altsep
 _NATIVE_OS_FSPATH = os.fspath
 _NATIVE_OS_READLINK = os.readlink
 _NATIVE_OS_GETCWD = os.getcwd
 _NATIVE_STAT_ISLNK = stat.S_ISLNK
+_NATIVE_STAT_ISDIR = stat.S_ISDIR
 # Capturing Path.resolve does not capture its dynamic host and class hooks.
 _RESOLVER_HOOK_NAMES = (
     "with_segments",
@@ -207,12 +214,21 @@ _NATIVE_RMTREE = shutil.rmtree
 def _require_native_resolution() -> None:
     """Fail closed on late filesystem or pathlib resolution hook changes."""
     if (
-        os.path.realpath is not _NATIVE_OS_REALPATH
+        os.path is not _NATIVE_OS_PATH_MODULE
+        or os.path.realpath is not _NATIVE_OS_REALPATH
+        or os.path.splitroot is not _NATIVE_OS_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_OS_SPLITDRIVE
+        or os.path.join is not _NATIVE_OS_PATH_JOIN
+        or os.path.sep is not _NATIVE_OS_PATH_SEP
+        or os.path.altsep is not _NATIVE_OS_PATH_ALTSEP
+        or builtins.bytes is not _NATIVE_BYTES
+        or builtins.len is not _NATIVE_LEN
         or os.fspath is not _NATIVE_OS_FSPATH
         or os.lstat is not _NATIVE_OS_LSTAT
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
         or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
         or builtins.isinstance is not _NATIVE_ISINSTANCE
         or builtins.hasattr is not _NATIVE_HASATTR
         or pathlib.__dict__.get("_PathParents") is not _NATIVE_PATH_PARENTS_TYPE

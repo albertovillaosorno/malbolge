@@ -1370,6 +1370,87 @@ def test_compatible_containment_rejects_late_host_realpath_forgery(
     assert not output.exists()
 
 
+def test_compatible_rejects_late_host_parser_output_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late splitroot hook cannot relocate an uncached output path."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "generated"
+    output_spelling = f"{candidate}/generated"
+    foreign_spelling = str(tmp_path / "outside")
+    native_splitroot = os.path.splitroot
+    calls = 0
+
+    def forged_splitroot(value: str) -> tuple[str, str, str]:
+        nonlocal calls
+        if value == output_spelling:
+            calls += 1
+            return native_splitroot(foreign_spelling)
+        return native_splitroot(value)
+
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(compatible_module)["_resolve_request_root"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(os.path, "splitroot", forged_splitroot)
+        try:
+            _ = resolve(output, "output")
+        except CompatiblePlanError as error:
+            rejected = "resolution hooks changed" in str(error)
+    assert rejected, "late parser redirected an uncached output path"
+    assert calls == 0, "late parser was executed before admission"
+
+
+@pytest.mark.parametrize(
+    "helper", ["splitdrive", "sep", "altsep", "bytes", "len", "isdir"]
+)
+def test_compatible_rejects_late_native_resolver_helper_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    """Original Path.resolve must not consume swapped host parser helpers."""
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    output = candidate / "generated"
+    if helper == "isdir":
+        owner, name = compatible_module.stat, "S_ISDIR"
+    elif helper in {"bytes", "len"}:
+        owner, name = builtins, helper
+    else:
+        owner, name = os.path, helper
+    original = getattr(owner, name)
+    calls = 0
+
+    def watched(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    if helper == "bytes":
+        replacement: object = str
+    elif helper == "sep":
+        replacement = "!"
+    elif helper == "altsep":
+        replacement = "\\"
+    else:
+        replacement = watched
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(compatible_module)["_resolve_request_root"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, name, replacement)
+        try:
+            _ = resolve(output, "output")
+        except CompatiblePlanError as error:
+            rejected = "resolution hooks changed" in str(error)
+    assert rejected, f"changed native {helper} helper was allowed"
+    assert calls == 0, f"late native {helper} helper executed"
+
+
 @pytest.mark.parametrize("hook", ["lstat", "readlink", "getcwd", "fspath"])
 def test_compatible_containment_rejects_late_host_resolver_dependencies(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
