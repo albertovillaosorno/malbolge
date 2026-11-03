@@ -3002,6 +3002,34 @@ under `jig doctor`. Fresh bounded global `jig check` (100 seconds) and
 `jig validate` (60 seconds) both reached native-validator scheduling, then
 timed out (exit 124). No green repository-wide Jig verdict is claimed.
 
+## Emitter, relocation, and mapped receipt continuity (2026-11-03)
+
+The Rust emitter now pins imported native `ProtectedPlanError` and
+`ExactTreeError` classes (`4d73996c7`), retaining typed `RustEmissionError`
+for malformed protected plans and failed staged-source verification even
+when a consumer substitutes module exception names. Three red-first cases,
+180 postcommit focused tests, and 4,036 integrated diff tests passed.
+
+Relocatable compatible-placement authoring now captures the original
+`TreeModelError` and `ExactTreeError` classes (`e4838d6e3`). Five red-first
+cases cover malformed native segments, exact plans, source snapshots,
+and source reads, including retained native exact-reader diagnostic notes.
+All 302 postcommit focused and 4,053 integrated diff tests passed.
+
+Canonical-to-raw mapped metadata now pins the original `MappedUnit` and
+`MappedView` classes (`44767f39b`). Five red-first valid-receipt cases
+previously falsely rejected original native records after module alias
+changes; two foreign-receipt cases escaped as raw descriptor `TypeError`.
+All seven now pass, alongside 81 postcommit mapped tests, 590 adjacent
+consumer tests, and 4,069 integrated diff tests.
+
+All three DCO commits were pushed SHA-exact to `main`. Scoped Ruff,
+strict source/test BasedPyright, and diff checks passed. These guards do
+not isolate external concurrent writers or direct trusted state mutation.
+`jig doctor` remains degraded because the compiled graph is absent, and a
+fresh 75-second global `jig check` timed out (exit 124) at native-validator
+scheduling. No repository-wide green Jig verdict is claimed.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

@@ -1727,6 +1727,29 @@ format.
   and `jig validate` (60 seconds) both reached native scheduling but timed
   out (exit 124) without a verdict. Full Jig acceptance remains open.
 
+- Rust emitter delegated-error handling now preserves imported native
+  `ProtectedPlanError` and `ExactTreeError` identities (`4d73996c7`). Three
+  red-first malformed-plan rendering/publication and physical read cases
+  now return typed `RustEmissionError`; 180 postcommit emitter and 4,036
+  integrated diff tests passed. Scoped Ruff, strict source/test typing,
+  and diff checks were clean. The DCO was pushed SHA-exact.
+- Relocatable plan authoring now preserves original `TreeModelError` and
+  `ExactTreeError` identities (`e4838d6e3`), including exact-reader notes.
+  Five red-first nested segment, authoring-plan, snapshot, and file-read
+  cases passed, together with 302 postcommit focused and 4,053 integrated
+  diff tests. Scoped Ruff, strict source/test typing, and diff checks were
+  clean; the DCO was pushed SHA-exact.
+- Canonical-to-raw mapped record validation now pins native `MappedUnit`
+  and `MappedView` class identities (`44767f39b`). Seven red-first cases
+  prevent valid-unit false rejection and foreign-record descriptor errors
+  after module alias mutation. All 81 postcommit focused, 590 adjacent
+  consumer, and 4,069 integrated diff tests passed; Ruff, strict typing,
+  and diff checks were clean. The DCO was pushed SHA-exact to `main`.
+  These tests do not isolate concurrent filesystem writers or direct
+  trusted-state mutation. `jig doctor` remains degraded (graph absent),
+  and a bounded 75-second global `jig check` timed out (exit 124) during
+  native scheduling without a repository-wide acceptance verdict.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
