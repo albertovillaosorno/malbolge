@@ -4777,3 +4777,93 @@ def test_exact_direct_file_reader_does_not_depend_on_python_audit_hook(
             == b"admitted source"
         )
     assert calls == 0
+
+
+@pytest.mark.parametrize("entrypoint", ["snapshot", "excluded"])
+def test_exact_tree_walk_rejects_late_builtin_reversed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A forged child-directory iterator cannot hide nested source evidence."""
+    root = tmp_path / "source"
+    (root / "nested").mkdir(parents=True)
+    _ = (root / "nested" / "identity.bin").write_bytes(b"source evidence")
+    baseline = snapshot_tree(root)
+    assert len(baseline.files) == 1
+    callbacks = 0
+    original_reversed = cast("Callable[[object], object]", builtins.reversed)
+
+    def forged_reversed(value: object) -> object:
+        nonlocal callbacks
+        if type(value) is list and value == ["nested"]:
+            callbacks += 1
+            return iter(())
+        return original_reversed(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "reversed", forged_reversed)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if entrypoint == "snapshot":
+                _ = snapshot_tree(root)
+            else:
+                _ = snapshot_tree_excluding(root, ())
+    assert callbacks == 0, "late reversed callback executed during tree walk"
+
+
+@pytest.mark.parametrize("entrypoint", ["snapshot", "excluded"])
+def test_exact_tree_walk_rejects_late_os_walk_link_sentinel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A substituted traversal sentinel cannot run a foreign bool hook."""
+    root = tmp_path / "source"
+    (root / "nested").mkdir(parents=True)
+    _ = (root / "nested" / "identity.bin").write_bytes(b"source evidence")
+    callbacks = 0
+
+    class FalseWalkSentinel:
+        def __bool__(self) -> bool:
+            nonlocal callbacks
+            callbacks += 1
+            return False
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "_walk_symlinks_as_files", FalseWalkSentinel())
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if entrypoint == "snapshot":
+                _ = snapshot_tree(root)
+            else:
+                _ = snapshot_tree_excluding(root, ())
+    assert callbacks == 0, "late link sentinel executed during tree walk"
+
+
+@pytest.mark.parametrize("dependency", ["reversed", "walk-sentinel"])
+def test_exact_direct_file_reader_ignores_walk_dispatch_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """A previously supplied regular inode has no tree-walker dependency."""
+    source = tmp_path / "source.bin"
+    _ = source.write_bytes(b"admitted source")
+    calls = 0
+    native_reversed = cast("Callable[[object], object]", builtins.reversed)
+
+    def foreign_reversed(value: object) -> object:
+        nonlocal calls
+        if type(value) is list and value == ["nested"]:
+            calls += 1
+        return native_reversed(value)
+
+    class ForeignSentinel:
+        def __bool__(self) -> bool:
+            nonlocal calls
+            calls += 1
+            return False
+
+    with monkeypatch.context() as patched:
+        if dependency == "reversed":
+            patched.setattr(builtins, "reversed", foreign_reversed)
+        else:
+            patched.setattr(os, "_walk_symlinks_as_files", ForeignSentinel())
+        assert (
+            exact_module.read_exact_regular_file(source, "source")
+            == b"admitted source"
+        )
+    assert calls == 0, "foreign walk dependency entered direct file reader"

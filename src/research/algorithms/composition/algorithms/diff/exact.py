@@ -91,6 +91,7 @@ _NATIVE_BYTEARRAY = builtins.bytearray
 _NATIVE_MIN = builtins.min
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
+_NATIVE_REVERSED = builtins.reversed
 _NATIVE_TYPE = builtins.type
 _NATIVE_LEN = builtins.len
 _NATIVE_TUPLE = builtins.tuple
@@ -110,6 +111,7 @@ _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_OS_WALK = os.walk
+_NATIVE_OS_WALK_LINKS_SENTINEL = os.__dict__["_walk_symlinks_as_files"]
 _NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_SYS_AUDIT = sys.audit
 # The native Path.is_junction still dispatches through mutable os.path.
@@ -211,6 +213,11 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
                 or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
                 or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
                 or sys.audit is not _NATIVE_SYS_AUDIT
+                or builtins.reversed is not _NATIVE_REVERSED
+                or (
+                    os.__dict__["_walk_symlinks_as_files"]
+                    is not _NATIVE_OS_WALK_LINKS_SENTINEL
+                )
             )
         )
         or _NATIVE_ANY(
