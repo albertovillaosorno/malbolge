@@ -3192,3 +3192,60 @@ def test_probe_exit_digest_ignores_late_int_framing_spoof(
         patched.setattr(builtins, "int", forged_int)
         update(altered, 0, 37)
     assert altered.digest() == expected, "late int hook rewrote exit framing"
+
+
+@pytest.mark.parametrize(
+    "role", ["raw-argv", "relative-path", "source-root", "tool-path"]
+)
+def test_probe_admission_ignores_late_fsencode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    role: str,
+) -> None:
+    """A post-import filesystem codec hook cannot change probe admission."""
+    constructors = {
+        "raw-argv": lambda: ProbeCommand(
+            ToolExecutable(_PYTHON_TOOL), arguments=("stable-argument",)
+        ),
+        "relative-path": lambda: PathArgument(ProbeRoot.SOURCE, "src/a.c"),
+        "source-root": lambda: ProbeRunContext(tmp_path, tmp_path, ()),
+        "tool-path": lambda: ProbeRunContext(
+            tmp_path, tmp_path, ((_PYTHON_TOOL, tmp_path / "tool"),)
+        ),
+    }
+    baseline = constructors[role]()
+    calls = 0
+
+    def forged_fsencode(value: object) -> bytes:
+        nonlocal calls
+        del value
+        calls += 1
+        raise AssertionError("consumer filesystem-codec hook executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os, "fsencode", forged_fsencode)
+        observed = constructors[role]()
+    assert observed == baseline
+    assert calls == 0, "consumer filesystem-codec hook was consulted"
+
+
+@pytest.mark.parametrize("invalid", [False, True])
+def test_probe_root_admission_ignores_late_path_string_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid: bool,
+) -> None:
+    """Native probe root admission ignores later Path formatter hooks."""
+    source = tmp_path / ("bad\x00root" if invalid else "safe-root")
+
+    def forged_path_string(value: Path) -> str:
+        del value
+        return "safe-root" if invalid else "bad\x00root"
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "__str__", forged_path_string)
+        if invalid:
+            with pytest.raises(ProbeProgramError, match="NUL"):
+                _ = ProbeRunContext(source, tmp_path, ())
+        else:
+            _ = ProbeRunContext(source, tmp_path, ())

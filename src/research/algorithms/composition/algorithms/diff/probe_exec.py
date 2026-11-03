@@ -49,6 +49,7 @@ from enum import StrEnum
 from hashlib import sha256 as _native_sha256
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISREG
+from sys import getfilesystemencoding as _get_filesystem_encoding
 from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from algorithms.diff.exact import ExactTreeError, snapshot_tree
@@ -78,6 +79,11 @@ _NATIVE_PATH_RESOLVE = Path.resolve
 # Inode disjointness and executable admission cannot trust late host hooks.
 _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
+# Freeze the host filesystem codec before any consumer module can mutate os.
+_FILESYSTEM_ENCODING = _get_filesystem_encoding()
+_FILESYSTEM_ERRORS = (
+    "strict" if _FILESYSTEM_ENCODING == "mbcs" else "surrogateescape"
+)
 # Keep mirror creation independent of late consumer library hooks.
 _NATIVE_GETTEMPDIR = tempfile.gettempdir
 _NATIVE_TEMPORARY_DIRECTORY = tempfile.TemporaryDirectory
@@ -208,7 +214,7 @@ ProbeExecutable = ToolExecutable | RootedExecutable
 
 def _require_fs_encodable(value: str, context: str) -> None:
     try:
-        _ = os.fsencode(value)
+        _ = value.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
     except UnicodeError as error:
         message = f"{context} must be filesystem-encodable"
         raise ProbeProgramError(message) from error
@@ -348,10 +354,11 @@ def _validate_path(value: object, context: str) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
         message = f"{context} must use exact pathlib Path"
         raise ProbeProgramError(message)
-    if _NUL in _NATIVE_STR(value):
+    raw = _NATIVE_PATH_STRING(value)
+    if _NUL in raw:
         message = f"{context} must not contain NUL bytes"
         raise ProbeProgramError(message)
-    _require_fs_encodable(_NATIVE_STR(value), context)
+    _require_fs_encodable(raw, context)
 
 
 def _validate_tool_binding(binding: object) -> tuple[str, Path]:
