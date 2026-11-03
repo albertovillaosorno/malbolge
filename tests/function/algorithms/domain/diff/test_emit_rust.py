@@ -42,6 +42,7 @@ import shutil
 
 # Used only with fixed local argv and shell=False.
 import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
+from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -731,6 +732,37 @@ def test_writer_wraps_output_status_failure(
     monkeypatch.setattr(Path, "lstat", fail_lstat)
     with pytest.raises(RustEmissionError, match="output file status failed"):
         write_rust_transform(protected, _PROFILE, output)
+
+
+@pytest.mark.parametrize("location", [_LOCATION_LEAF, _LOCATION_PARENT])
+def test_writer_rejects_foreign_output_status_before_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    location: str,
+) -> None:
+    """Foreign file/parent metadata cannot authorize a Rust source write."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    if location == _LOCATION_LEAF:
+        _ = output.write_bytes(_SENTINEL)
+    target = output if location == _LOCATION_LEAF else output.parent
+    original_lstat = Path.lstat
+    native = original_lstat(target)
+    foreign = SimpleNamespace(st_mode=native.st_mode)
+
+    def forged_lstat(path: Path) -> os.stat_result:
+        if path == target:
+            return cast("os.stat_result", cast("object", foreign))
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", forged_lstat)
+    with pytest.raises(RustEmissionError, match="native filesystem status"):
+        write_rust_transform(protected, _PROFILE, output)
+    if location == _LOCATION_LEAF:
+        assert output.read_bytes() == _SENTINEL
+    else:
+        assert not output.exists()
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
 
 
 @pytest.mark.parametrize("location", [_LOCATION_LEAF, _LOCATION_PARENT])

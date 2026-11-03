@@ -63,6 +63,7 @@ _SURROGATE_START = 0xD800
 _SURROGATE_END = 0xDFFF
 _PRINTABLE_ASCII_START = 0x20
 _PRINTABLE_ASCII_END = 0x7E
+_NATIVE_STAT_RESULT = os.stat_result
 
 
 class RustEmissionError(ValueError):
@@ -271,14 +272,33 @@ def emit_rust_transform(
     return rendered.replace("\r\n", "\n")
 
 
+def _require_native_output_status(
+    receipt: object, description: str
+) -> os.stat_result:
+    """Reject foreign output status before trusting its file-mode claims.
+
+    Returns:
+        Exact native filesystem status.
+
+    Raises:
+        RustEmissionError: The status does not come from the host runtime.
+
+    """
+    if type(receipt) is not _NATIVE_STAT_RESULT:
+        message = f"Rust output {description} requires native filesystem status"
+        raise RustEmissionError(message)
+    return receipt
+
+
 def _output_mode(path: Path, description: str) -> int | None:
     try:
-        return path.lstat().st_mode
+        receipt = path.lstat()
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
         message = f"Rust output {description} status failed: {path}: {error}"
         raise RustEmissionError(message) from error
+    return _require_native_output_status(receipt, description).st_mode
 
 
 def _output_redirects(path: Path, mode: int) -> bool:

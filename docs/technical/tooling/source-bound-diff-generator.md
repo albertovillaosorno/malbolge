@@ -140,6 +140,9 @@ cover the independent roles before any path method runs.
 The Python generated-Rust source emitter separately requires an exact native
 `pathlib.Path` output before rendering or staging bytes. Its default native path
 remains valid; caller-defined path subclasses never receive filesystem calls.
+The emitter also requires native `os.stat_result` receipts when checking the
+output leaf and ancestor directories before creating or replacing output.
+Forged metadata cannot approve output publication or overwrite an existing file.
 The same publisher admits only the running host's exact native `pathlib.Path`
 type for both staging and destination before querying filesystem methods.
 Caller-defined `Path` subclasses may override path resolution, file status, or
