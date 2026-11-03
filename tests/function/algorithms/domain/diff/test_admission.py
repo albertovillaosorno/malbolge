@@ -196,6 +196,57 @@ def test_direct_admission_evidence_cannot_erase_policy_failures() -> None:
         _ = replace(rejected, reasons=())
 
 
+def test_tree_evidence_rejects_late_reason_getattribute_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Class attribute hooks cannot authorize erased source policy failures."""
+    reference = identity_tree(_reference_files())
+    rejected = evaluate_admission(reference, identity_tree({}), _policy())
+    original_reasons = rejected.reasons
+    calls = 0
+
+    def forged_attribute(value: object, name: str) -> object:
+        nonlocal calls
+        if name == "reasons":
+            calls += 1
+            return original_reasons
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            TreeAdmissionEvidence, "__getattribute__", forged_attribute
+        )
+        with pytest.raises(AdmissionPolicyError, match="reasons do not match"):
+            _ = replace(rejected, reasons=())
+    assert calls == 0, "late reason getter participated in admission"
+
+
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_tree_evidence_admitted_ignores_late_reason_hook(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A completed rejected source receipt cannot be promoted by a hook."""
+    reference = identity_tree(_reference_files())
+    rejected = evaluate_admission(reference, identity_tree({}), _policy())
+    assert not rejected.admitted
+
+    def forged_attribute(value: object, name: str) -> object:
+        if name == "reasons":
+            return ()
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(
+                TreeAdmissionEvidence, "reasons", property(lambda _: ())
+            )
+        else:
+            patched.setattr(
+            TreeAdmissionEvidence, "__getattribute__", forged_attribute
+        )
+        assert not rejected.admitted
+
+
 def test_direct_admission_evidence_cannot_forge_distribution_count() -> None:
     """The accepted anchor-file count must come from policy and file scores."""
     reference = identity_tree(_reference_files())
@@ -823,7 +874,7 @@ def _forge_admission_any(patched: pytest.MonkeyPatch, invalid: str) -> None:
     del invalid
     native_any = builtins.any
 
-    def forged_any(values: object) -> bool:
+    def forged_any(values: Iterable[object]) -> bool:
         frame = getattr(values, "gi_frame", None)
         globals_map = getattr(frame, "f_globals", {})
         if globals_map is vars(ntpath):

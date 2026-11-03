@@ -37,6 +37,7 @@ from __future__ import annotations
 import builtins
 import math
 from dataclasses import dataclass
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.fingerprints import (
@@ -433,7 +434,9 @@ def _validate_policy_bound_evidence(
     files: tuple[FileAdmissionEvidence, ...],
     aggregates: tuple[float, float, int],
 ) -> None:
-    reasons = _require_reason_tuple(evidence.reasons)
+    reasons = _require_reason_tuple(
+        _TREE_REASONS_SLOT.__get__(evidence, TreeAdmissionEvidence)
+    )
     if _NATIVE_TYPE(evidence.policy) is not AdmissionPolicy:
         message = "tree admission evidence requires exact AdmissionPolicy"
         raise AdmissionPolicyError(message)
@@ -504,7 +507,14 @@ class TreeAdmissionEvidence:
             True exactly when no deterministic rejection reason exists.
 
         """
-        return not self.reasons
+        return not _TREE_REASONS_SLOT.__get__(self, TreeAdmissionEvidence)
+
+
+# Class-level slot descriptors are mutable after consumer module imports.
+# Evidence policy decisions must observe the value stored at construction.
+_TREE_REASONS_SLOT = cast(
+    "MemberDescriptorType", TreeAdmissionEvidence.__dict__["reasons"]
+)
 
 
 def identity_tree(files: dict[str, bytes]) -> IdentityTree:
@@ -715,7 +725,8 @@ def require_admission(
 
     """
     evidence = evaluate_admission(reference, candidate, policy)
-    if evidence.reasons:
-        message = "; ".join(evidence.reasons)
+    reasons = _TREE_REASONS_SLOT.__get__(evidence, TreeAdmissionEvidence)
+    if reasons:
+        message = "; ".join(reasons)
         raise AdmissionError(message)
     return evidence
