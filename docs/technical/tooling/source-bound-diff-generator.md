@@ -2319,6 +2319,20 @@ and diff checks clean. Seventeen older compatible test typing diagnostics
 remain outside changed lines. This preserves record construction authority,
 not isolation from trusted storage edits or filesystem races.
 
+Compatible exact-reader failure notes now also use the import-captured native
+`list` type (`88fef3274`). Two red-first tuple/dict alias cases previously
+removed trusted notes after a valid exact read error; all 309 compatible
+tests passed postcommit. Ruff, strict source typing, and diff checks passed.
+Seventeen inherited compatible-test typing errors remain outside added lines.
+This preserves diagnostic evidence, not protection from external writers.
+
+Generator recipe path preflight also verifies original inherited `PurePath`
+parser and raw-field hooks (`76cc5cdde`). A late `_parse_path` replacement
+previously redirected an uncached native source path despite unchanged
+`os.path` helpers. One red-first regression and 269 generator tests passed
+postcommit, with strict source/test typing, Ruff, and diff checks clean.
+Direct stored-object mutations and filesystem races remain unisolated.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:
