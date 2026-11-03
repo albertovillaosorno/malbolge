@@ -53,6 +53,12 @@ from algorithms.diff.model import (
     SourceSlice,
     TreeModelError,
     TreeSnapshot,
+    _file_fields,  # pyright: ignore[reportPrivateUsage]
+    _instruction_fields,  # pyright: ignore[reportPrivateUsage]
+    _oracle_literal_data,  # pyright: ignore[reportPrivateUsage]
+    _plan_fields,  # pyright: ignore[reportPrivateUsage]
+    _snapshot_files,  # pyright: ignore[reportPrivateUsage]
+    _source_slice_fields,  # pyright: ignore[reportPrivateUsage]
     reserved_windows_component,
 )
 from algorithms.diff.publication import publish_directory_no_replace
@@ -218,10 +224,21 @@ def _filter_snapshot(
     return TreeSnapshot(
         files=_NATIVE_TUPLE(
             record
-            for record in snapshot.files
-            if _path_in_roots(record.path, roots) is inside
+            for record in _snapshot_files(snapshot)
+            if _path_in_roots(_file_fields(record)[0], roots) is inside
         )
     )
+
+
+def _snapshots_match(left: TreeSnapshot, right: TreeSnapshot) -> bool:
+    """Compare admitted file values, not replaceable record equality."""
+    left_files = _NATIVE_TUPLE(
+        _file_fields(record) for record in _snapshot_files(left)
+    )
+    right_files = _NATIVE_TUPLE(
+        _file_fields(record) for record in _snapshot_files(right)
+    )
+    return left_files == right_files
 
 
 def _raise_tree_walk_error(error: OSError | ValueError | RuntimeError) -> None:
@@ -643,9 +660,10 @@ def _source_paths_by_content(
     source: TreeSnapshot,
 ) -> dict[tuple[str, int], tuple[str, ...]]:
     paths: dict[tuple[str, int], list[str]] = {}
-    for record in source.files:
-        key = (record.sha256, record.size)
-        paths.setdefault(key, []).append(record.path)
+    for record in _snapshot_files(source):
+        path, digest, size = _file_fields(record)
+        key = (digest, size)
+        paths.setdefault(key, []).append(path)
     return {
         key: _NATIVE_TUPLE(_NATIVE_SORTED(value))
         for key, value in paths.items()
@@ -658,9 +676,10 @@ def _tree_bytes(root: Path, relative_path: str) -> bytes:
 
 
 def _oracle_bytes(oracle_root: Path, target_record: FileRecord) -> bytes:
-    literal = _tree_bytes(oracle_root, target_record.path)
-    if _sha256(literal) != target_record.sha256:
-        message = f"oracle file changed while planning: {target_record.path}"
+    path, digest, _ = _file_fields(target_record)
+    literal = _tree_bytes(oracle_root, path)
+    if _sha256(literal) != digest:
+        message = f"oracle file changed while planning: {path}"
         raise ExactTreeError(message)
     return literal
 
@@ -792,21 +811,22 @@ def _patch_instruction(
     target_record: FileRecord,
     target_bytes: bytes,
 ) -> ExactInstruction:
-    source_bytes = _tree_bytes(source_root, target_record.path)
+    path, digest, _ = _file_fields(target_record)
+    source_bytes = _tree_bytes(source_root, path)
     segments = _build_patch_segments(source_bytes, target_bytes)
     if _contains_source_slice(segments):
         return ExactInstruction(
-            output_path=target_record.path,
+            output_path=path,
             kind=ExactInstructionKind.PATCH_SOURCE,
-            source_path=target_record.path,
+            source_path=path,
             segments=segments,
-            expected_sha256=target_record.sha256,
+            expected_sha256=digest,
         )
     return ExactInstruction(
-        output_path=target_record.path,
+        output_path=path,
         kind=ExactInstructionKind.LITERAL_ORACLE,
         literal=target_bytes,
-        expected_sha256=target_record.sha256,
+        expected_sha256=digest,
     )
 
 
@@ -814,32 +834,29 @@ def _instruction_for_target(
     context: _PlanningContext,
     target_record: FileRecord,
 ) -> ExactInstruction:
-    key = (target_record.sha256, target_record.size)
+    path, digest, size = _file_fields(target_record)
+    key = (digest, size)
     candidates = context.source_by_content.get(key, ())
     if candidates:
-        source_path = (
-            target_record.path
-            if target_record.path in candidates
-            else candidates[0]
-        )
+        source_path = path if path in candidates else candidates[0]
         return ExactInstruction(
-            output_path=target_record.path,
+            output_path=path,
             kind=ExactInstructionKind.COPY_SOURCE,
             source_path=source_path,
-            expected_sha256=target_record.sha256,
+            expected_sha256=digest,
         )
     target_bytes = _oracle_bytes(context.oracle_root, target_record)
-    if target_record.path in context.source_by_path:
+    if path in context.source_by_path:
         return _patch_instruction(
             context.source_root,
             target_record,
             target_bytes,
         )
     return ExactInstruction(
-        output_path=target_record.path,
+        output_path=path,
         kind=ExactInstructionKind.LITERAL_ORACLE,
         literal=target_bytes,
-        expected_sha256=target_record.sha256,
+        expected_sha256=digest,
     )
 
 
@@ -866,7 +883,7 @@ def build_exact_plan(
     target_full = snapshot_tree(oracle_root)
     source_passthrough = _filter_snapshot(source_full, roots, inside=True)
     target_passthrough = _filter_snapshot(target_full, roots, inside=True)
-    if source_passthrough != target_passthrough:
+    if not _snapshots_match(source_passthrough, target_passthrough):
         message = "passthrough roots differ between source and authoring oracle"
         raise ExactTreeError(message)
     source = _filter_snapshot(source_full, roots, inside=False)
@@ -874,16 +891,19 @@ def build_exact_plan(
     context = _PlanningContext(
         source_root=source_root,
         oracle_root=oracle_root,
-        source_by_path={record.path: record for record in source.files},
+        source_by_path={
+            _file_fields(record)[0]: record for record in _snapshot_files(source)
+        },
         source_by_content=_source_paths_by_content(source),
     )
     instructions = _NATIVE_TUPLE(
-        _instruction_for_target(context, record) for record in target.files
+        _instruction_for_target(context, record)
+        for record in _snapshot_files(target)
     )
-    if snapshot_tree(source_root) != source_full:
+    if not _snapshots_match(snapshot_tree(source_root), source_full):
         message = "source tree changed while exact planning"
         raise ExactTreeError(message)
-    if snapshot_tree(oracle_root) != target_full:
+    if not _snapshots_match(snapshot_tree(oracle_root), target_full):
         message = "oracle tree changed while exact planning"
         raise ExactTreeError(message)
     return ExactAuthoringPlan(
@@ -932,14 +952,15 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
 def _patch_bytes(source: bytes, segments: tuple[ExactSegment, ...]) -> bytes:
     parts: list[bytes] = []
     for segment in segments:
-        if _NATIVE_ISINSTANCE(segment, OracleLiteral):
-            parts.append(segment.data)
+        if _NATIVE_TYPE(segment) is OracleLiteral:
+            parts.append(_oracle_literal_data(segment))
             continue
-        end = segment.offset + segment.length
+        offset, length = _source_slice_fields(cast("SourceSlice", segment))
+        end = offset + length
         if end > _NATIVE_LEN(source):
             message = "source slice exceeds source file"
             raise ExactTreeError(message)
-        parts.append(source[segment.offset : end])
+        parts.append(source[offset:end])
     return b"".join(parts)
 
 
@@ -947,19 +968,21 @@ def _instruction_bytes(
     source_root: Path,
     instruction: ExactInstruction,
 ) -> bytes:
-    if instruction.kind is ExactInstructionKind.LITERAL_ORACLE:
-        if instruction.literal is None:
+    _, kind, _, source_path, literal, segments = _instruction_fields(instruction)
+    if kind is ExactInstructionKind.LITERAL_ORACLE:
+        if literal is None:
             message = "literal-oracle instruction lost its literal bytes"
             raise ExactTreeError(message)
-        return instruction.literal
-    if instruction.source_path is None:
+        return literal
+    if source_path is None:
         message = "source-backed instruction lost its source path"
         raise ExactTreeError(message)
-    source_path = _safe_tree_path(source_root, instruction.source_path)
-    source = read_exact_regular_file(source_path, "instruction source")
-    if instruction.kind is ExactInstructionKind.COPY_SOURCE:
+    source = read_exact_regular_file(
+        _safe_tree_path(source_root, source_path), "instruction source"
+    )
+    if kind is ExactInstructionKind.COPY_SOURCE:
         return source
-    return _patch_bytes(source, instruction.segments)
+    return _patch_bytes(source, segments)
 
 
 def _write_output_file(path: Path, data: bytes, context: str) -> None:
@@ -997,19 +1020,21 @@ def _write_instruction(
     instruction: ExactInstruction,
 ) -> None:
     data = _instruction_bytes(source_root, instruction)
-    if _sha256(data) != instruction.expected_sha256:
+    output_label, _, digest, _, _, _ = _instruction_fields(instruction)
+    if _sha256(data) != digest:
         message = (
             "instruction bytes do not match expected hash for "
-            f"{instruction.output_path}"
+            f"{output_label}"
         )
         raise ExactTreeError(message)
-    output_path = _safe_tree_path(staging_root, instruction.output_path)
+    output_path = _safe_tree_path(staging_root, output_label)
     _write_output_file(output_path, data, "instruction output")
 
 
 def _verify_source(source_root: Path, plan: ExactAuthoringPlan) -> None:
-    current = snapshot_tree_excluding(source_root, plan.passthrough_roots)
-    if current != plan.source:
+    source, _, _, roots = _plan_fields(plan)
+    current = snapshot_tree_excluding(source_root, roots)
+    if not _snapshots_match(current, source):
         message = "source tree does not match exact authoring snapshot"
         raise ExactTreeError(message)
 
@@ -1124,19 +1149,14 @@ def _populate_staging(
     staging_root: Path,
     plan: ExactAuthoringPlan,
 ) -> None:
-    for instruction in plan.instructions:
+    _, target, instructions, roots = _plan_fields(plan)
+    for instruction in instructions:
         _write_instruction(source_root, staging_root, instruction)
-    _copy_passthrough_roots(
-        source_root,
-        staging_root,
-        plan.passthrough_roots,
-    )
+    _copy_passthrough_roots(source_root, staging_root, roots)
     static_output = _filter_snapshot(
-        snapshot_tree(staging_root),
-        plan.passthrough_roots,
-        inside=False,
+        snapshot_tree(staging_root), roots, inside=False
     )
-    if static_output != plan.target:
+    if not _snapshots_match(static_output, target):
         message = "materialized tree does not match target snapshot"
         raise ExactTreeError(message)
 
@@ -1200,6 +1220,9 @@ def materialize_exact_plan(
         ExactTreeError: The source is invalid or the output is not separate.
 
     """
+    if _NATIVE_TYPE(plan) is not ExactAuthoringPlan:
+        message = "exact materialization requires an exact authoring plan"
+        raise ExactTreeError(message)
     resolved_source = _resolved_tree_root(source_root)
     resolved_output = _resolved_output_root(output_root)
     if _native_path_inside(resolved_output, resolved_source):

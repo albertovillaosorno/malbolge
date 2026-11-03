@@ -2969,3 +2969,250 @@ def test_exact_root_admission_ignores_late_path_string_spoof(
                 require_root(source, "tree root")
         else:
             require_root(source, "tree root")
+
+
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [
+        ("source", "observed-source"),
+        ("target", TreeSnapshot(())),
+        ("instructions", ()),
+        ("passthrough_roots", ("forged",)),
+    ],
+)
+def test_exact_materialization_ignores_late_plan_field_getters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    forged: object,
+) -> None:
+    """Validated plan storage cannot be replaced by consumer class accessors."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    if field == "source":
+        _write(source, "keep.txt", b"changed after planning")
+    replacement = snapshot_tree(source) if field == "source" else forged
+    original = ExactAuthoringPlan.__getattribute__
+    calls = 0
+
+    def forged_getter(record: ExactAuthoringPlan, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return replacement
+        return original(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ExactAuthoringPlan, "__getattribute__", forged_getter)
+        if field == "source":
+            with pytest.raises(ExactTreeError, match="source tree"):
+                materialize_exact_plan(source, plan, output)
+        else:
+            materialize_exact_plan(source, plan, output)
+    assert calls == 0, "late plan getter influenced exact admission"
+    assert output.exists() is (field != "source")
+
+
+def test_exact_materialization_rejects_late_snapshot_equality_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replacing record equality must not forgive changed source evidence."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    _write(source, "unrelated.txt", b"source v1")
+    _write(oracle, "target.txt", b"literal-only target")
+    plan = build_exact_plan(source, oracle)
+    _write(source, "unrelated.txt", b"source v2")
+    output = tmp_path / "result"
+    calls = 0
+
+    def forged_eq(_left: TreeSnapshot, _right: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TreeSnapshot, "__eq__", forged_eq)
+        with pytest.raises(ExactTreeError, match="source tree"):
+            materialize_exact_plan(source, plan, output)
+    assert calls == 0, "late snapshot equality skipped source verification"
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("output_path", "forged.bin"),
+        ("kind", ExactInstructionKind.LITERAL_ORACLE),
+        ("expected_sha256", "f" * 64),
+        ("source_path", "other.bin"),
+    ],
+)
+def test_exact_materialization_ignores_late_instruction_getters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    replacement: object,
+) -> None:
+    """Replay reads admitted instruction fields, not substituted class hooks."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    _write(source, "safe.bin", b"verified source bytes")
+    _write(source, "other.bin", b"wrong source bytes")
+    _write(oracle, "target.bin", b"verified source bytes")
+    plan = build_exact_plan(source, oracle)
+    original = ExactInstruction.__getattribute__
+    calls = 0
+
+    def forged_getter(record: ExactInstruction, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return replacement
+        return original(record, name)
+
+    output = tmp_path / "result"
+    with monkeypatch.context() as patch:
+        patch.setattr(ExactInstruction, "__getattribute__", forged_getter)
+        materialize_exact_plan(source, plan, output)
+    assert calls == 0, "late instruction getter changed exact replay"
+    assert (output / "target.bin").read_bytes() == b"verified source bytes"
+    assert not (output / "forged.bin").exists()
+
+
+@pytest.mark.parametrize("field", ["path", "sha256", "size"])
+def test_exact_plan_ignores_late_file_record_getters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Planning uses admitted source/target record metadata, not hooks."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    _write(source, "same.bin", b"source bytes")
+    _write(oracle, "same.bin", b"source bytes")
+    replacements: dict[str, object] = {
+        "path": "forged.bin",
+        "sha256": "f" * 64,
+        "size": 1_000_000,
+    }
+    replacement = replacements[field]
+    original = FileRecord.__getattribute__
+    calls = 0
+
+    def forged_getter(record: FileRecord, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return replacement
+        return original(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(FileRecord, "__getattribute__", forged_getter)
+        plan = build_exact_plan(source, oracle)
+    assert calls == 0, "late file record getter influenced plan authoring"
+    assert plan.target.files[0].path == "same.bin"
+    assert plan.instructions[0].kind is ExactInstructionKind.COPY_SOURCE
+
+
+@pytest.mark.parametrize("field", ["offset", "length"])
+def test_exact_replay_ignores_late_slice_getters(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A patched class accessor cannot redirect admitted byte-range reuse."""
+    segment = SourceSlice(1, 2)
+    original = SourceSlice.__getattribute__
+    calls = 0
+
+    def forged_getter(record: SourceSlice, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return 100
+        return original(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(SourceSlice, "__getattribute__", forged_getter)
+        result = exact_module._patch_bytes(b"abcd", (segment,))
+    assert calls == 0, "late source slice getter modified exact byte ranges"
+    assert result == b"bc"
+
+
+def test_exact_replay_ignores_late_literal_data_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Literal patch bytes remain pinned to the admitted literal record."""
+    segment = OracleLiteral(b"admitted")
+    original = OracleLiteral.__getattribute__
+    calls = 0
+
+    def forged_getter(record: OracleLiteral, name: str) -> object:
+        nonlocal calls
+        if name == "data":
+            calls += 1
+            return b"forged"
+        return original(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(OracleLiteral, "__getattribute__", forged_getter)
+        result = exact_module._patch_bytes(b"source", (segment,))
+    assert calls == 0, "late literal data getter modified exact output bytes"
+    assert result == b"admitted"
+
+
+def test_exact_plan_ignores_late_snapshot_files_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A patched snapshot files getter must not erase authoring evidence."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    _write(source, "source.bin", b"admitted")
+    _write(oracle, "target.bin", b"admitted")
+    original = TreeSnapshot.__getattribute__
+    calls = 0
+
+    def forged_getter(record: TreeSnapshot, field: str) -> object:
+        nonlocal calls
+        if field == "files":
+            calls += 1
+            return ()
+        return original(record, field)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TreeSnapshot, "__getattribute__", forged_getter)
+        plan = build_exact_plan(source, oracle)
+    assert calls == 0, "late snapshot getter erased planned output"
+    assert len(plan.target.files) == 1
+    assert len(plan.instructions) == 1
+
+
+def test_exact_passthrough_equality_does_not_trust_late_record_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Different runtime roots are not equivalent under fake record equality."""
+    source = tmp_path / "source"
+    oracle = tmp_path / "oracle"
+    _write(source, "data/runtime.bin", b"runtime v1")
+    _write(oracle, "data/runtime.bin", b"runtime v2")
+    calls = 0
+
+    def forged_eq(_left: TreeSnapshot, _right: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(TreeSnapshot, "__eq__", forged_eq)
+        with pytest.raises(ExactTreeError, match="passthrough roots differ"):
+            _ = build_exact_plan(source, oracle, passthrough_roots=("data",))
+    assert calls == 0, "late snapshot equality skipped passthrough admission"
+
+
+def test_exact_materialization_rejects_foreign_plan_before_tree_reads(
+    tmp_path: Path,
+) -> None:
+    """An arbitrary object cannot impersonate admitted authoring evidence."""
+    source = tmp_path / "missing-source"
+    output = tmp_path / "output"
+    with pytest.raises(ExactTreeError, match="exact authoring plan"):
+        materialize_exact_plan(source, cast("ExactAuthoringPlan", object()), output)
+    assert not output.exists()
