@@ -89,6 +89,19 @@ this fail-closed hook check does not provide atomic protection against concurren
 host mutations or filesystem writers. A postcommit diff-suite rerun passed
 all 3,205 tests.
 
+The captured `Path.resolve` also delegates through mutable path-conversion and
+construction hooks even when `os.path.realpath` itself is unchanged. Generator
+preflight now verifies import-original `os.fspath`, `builtins.type`, and both
+base `Path` and concrete platform path methods (`__fspath__`, `__str__`,
+`with_segments`, `__getattribute__`, `__new__`, and `__init__`) before and after
+resolution and following domain preflight (`2d566f119`). Twenty-five new
+regressions cover contained outputs disguised as external paths, forged
+denials, and post-domain hook mutation. All 248 focused generator tests pass;
+scoped Ruff and BasedPyright report zero errors. A shared-checkout diff run
+passed 3,320 tests and failed two concurrent, uncommitted probe-execution
+regressions in a separate owned file. This check is not atomic against host
+mutation or external filesystem races, nor does it validate every host hook.
+
 The Rust source emitter protects its own runtime template from output overwrite
 with the same import-original `os.path.realpath` identity requirement before
 and after resolving the template and destination (`f15620ff7`). Two red-first
