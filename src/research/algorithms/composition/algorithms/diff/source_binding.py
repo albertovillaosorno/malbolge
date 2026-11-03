@@ -110,6 +110,7 @@ _NATIVE_CEIL = math.ceil
 _NATIVE_ZIP = builtins.zip
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
@@ -1110,7 +1111,7 @@ def _validate_share_path(value: object) -> None:
         raise SourceBindingError(message)
     try:
         _ = value.encode("utf-8")
-    except UnicodeEncodeError as error:
+    except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = "source-binding share path must be UTF-8 encodable"
         raise SourceBindingError(message) from error
     _require_no_windows_drive(value)

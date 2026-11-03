@@ -2379,3 +2379,36 @@ def test_source_binding_native_guards_reject_late_attribute_error_alias(
     else:
         assert rejected is not None, route
         assert detail in str(rejected)
+
+
+@pytest.mark.parametrize("route", ["validate", "recover"])
+def test_source_binding_share_path_unicode_error_alias_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """A late exception alias cannot leak an unencodable share path error."""
+    reference = _reference()
+    valid = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
+    first = valid.shares[0]
+    malformed = replace(
+        valid,
+        shares=(
+            replace(first, source_path="src/bad\ud800name.c"),
+            *valid.shares[1:],
+        ),
+    )
+    native_unicode_encode_error = builtins.UnicodeEncodeError
+    rejected: SourceBindingError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeEncodeError", LookupError)
+        try:
+            if route == "validate":
+                _ = validate_threshold_binding(malformed)
+            else:
+                _ = recover_secret(malformed, reference)
+        except SourceBindingError as error:
+            rejected = error
+        finally:
+            builtins.__dict__["UnicodeEncodeError"] = native_unicode_encode_error
+    assert rejected is not None, route
+    assert "UTF-8 encodable" in str(rejected)
+    assert type(rejected.__cause__) is native_unicode_encode_error
