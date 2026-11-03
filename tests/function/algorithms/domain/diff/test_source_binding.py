@@ -274,6 +274,74 @@ def test_binding_policy_ignores_late_field_forgery(
     assert calls == 0, "late policy hook participated in source binding"
 
 
+@pytest.mark.parametrize("field", ["files", "path", "canonical"])
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_binding_uses_stored_source_identity_after_late_hooks(
+    monkeypatch: pytest.MonkeyPatch, field: str, hook: str
+) -> None:
+    """Late identity getters cannot redirect key binding to foreign bytes."""
+    reference = _reference()
+    policy = _policy()
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    first = reference.files[0]
+    if field == "files":
+        owner = type(reference)
+        target = reference
+        forged: object = identity_tree(_files("foreign")).files
+    else:
+        owner = type(first)
+        target = first
+        forged = "src/forged.c" if field == "path" else b"forged" * 512
+    original_slot = owner.__dict__[field]
+
+    def forged_getattr(value: object, name: str) -> object:
+        if name == field and value is target:
+            return forged
+        return object.__getattribute__(value, name)
+
+    def forged_slot(value: object) -> object:
+        if value is target:
+            return forged
+        return original_slot.__get__(value, owner)
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(owner, field, property(forged_slot))
+        else:
+            patched.setattr(owner, "__getattribute__", forged_getattr)
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+    assert observed == expected
+
+
+@pytest.mark.parametrize("field", ["files", "path", "canonical"])
+def test_recovery_uses_stored_candidate_source_identity(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A valid candidate cannot be hidden by late source-record hooks."""
+    reference = _reference()
+    binding = bind_secret(
+        reference, _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    if field == "files":
+        owner = type(reference)
+        forged: object = identity_tree(_files("foreign")).files
+    else:
+        owner = type(reference.files[0])
+        forged = "src/forged.c" if field == "path" else b"forged" * 512
+    original_slot = owner.__dict__[field]
+
+    def forged_slot(value: object) -> object:
+        if field == "files" and value is not reference:
+            return original_slot.__get__(value, owner)
+        return forged
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, field, property(forged_slot))
+        assert recover_secret(binding, reference) == _SECRET
+
+
 def test_binding_policy_validation_rejects_late_getattribute_forgery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

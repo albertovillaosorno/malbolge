@@ -53,11 +53,10 @@ from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.admission import IdentityTree
+from algorithms.diff.admission import IdentityFile, IdentityTree
 from algorithms.diff.fingerprints import AnchorPolicy, stable_anchors
 
 if TYPE_CHECKING:
-    from algorithms.diff.admission import IdentityFile
     from algorithms.diff.fingerprints import StableAnchor
 
 _SHA256_BYTES = 32
@@ -240,6 +239,31 @@ class _RecoveredShare:
     source_path: str
     x: int
     value: bytes
+
+
+# Source identities are admitted at construction; mutable class getters must
+# not change the actual bytes or path labels used to bind or recover secrets.
+_IDENTITY_FILES_SLOT = cast(
+    "MemberDescriptorType", IdentityTree.__dict__["files"]
+)
+_IDENTITY_PATH_SLOT = cast(
+    "MemberDescriptorType", IdentityFile.__dict__["path"]
+)
+_IDENTITY_CANONICAL_SLOT = cast(
+    "MemberDescriptorType", IdentityFile.__dict__["canonical"]
+)
+
+
+def _identity_files(value: IdentityTree) -> tuple[IdentityFile, ...]:
+    return _IDENTITY_FILES_SLOT.__get__(value, IdentityTree)
+
+
+def _identity_path(value: IdentityFile) -> str:
+    return _IDENTITY_PATH_SLOT.__get__(value, IdentityFile)
+
+
+def _identity_canonical(value: IdentityFile) -> bytes:
+    return _IDENTITY_CANONICAL_SLOT.__get__(value, IdentityFile)
 
 
 # Validate and recover from stored metadata, not late class attribute hooks.
@@ -557,10 +581,10 @@ def _anchor_window(
     anchor: StableAnchor,
     policy: AnchorPolicy,
 ) -> bytes:
-    if _NATIVE_LEN(identity_file.canonical) < policy.window_bytes:
-        return identity_file.canonical
+    if _NATIVE_LEN(_identity_canonical(identity_file)) < policy.window_bytes:
+        return _identity_canonical(identity_file)
     end = anchor.offset + policy.window_bytes
-    return identity_file.canonical[anchor.offset : end]
+    return _identity_canonical(identity_file)[anchor.offset : end]
 
 
 def _file_anchor_materials(
@@ -568,12 +592,12 @@ def _file_anchor_materials(
     policy: AnchorPolicy,
 ) -> tuple[_AnchorMaterial, ...]:
     anchors = _NATIVE_SORTED(
-        stable_anchors(identity_file.canonical, policy),
+        stable_anchors(_identity_canonical(identity_file), policy),
         key=lambda anchor: anchor.digest,
     )
     return _NATIVE_TUPLE(
         _AnchorMaterial(
-            source_path=identity_file.path,
+            source_path=_identity_path(identity_file),
             digest=anchor.digest,
             window=_anchor_window(identity_file, anchor, policy),
         )
@@ -587,7 +611,7 @@ def _per_file_anchor_materials(
 ) -> tuple[tuple[_AnchorMaterial, ...], ...]:
     return _NATIVE_TUPLE(
         materials
-        for identity_file in reference.files
+        for identity_file in _identity_files(reference)
         if (materials := _file_anchor_materials(identity_file, policy))
     )
 
@@ -690,7 +714,10 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
     if _NATIVE_TYPE(policy) is not SourceBindingPolicy:
         message = "source-binding policy must use the exact SourceBindingPolicy type"
         raise SourceBindingPolicyError(message)
-    drives = (_has_windows_drive(item.path) for item in reference.files)
+    drives = (
+        _has_windows_drive(_identity_path(item))
+        for item in _identity_files(reference)
+    )
     if _NATIVE_ANY(drives):
         message = "source-binding reference path cannot have a Windows drive"
         raise SourceBindingPolicyError(message)
@@ -971,7 +998,7 @@ def _candidate_materials(
     policy: AnchorPolicy,
 ) -> dict[tuple[str, bytes], _AnchorMaterial]:
     materials: dict[tuple[str, bytes], _AnchorMaterial] = {}
-    for identity_file in candidate.files:
+    for identity_file in _identity_files(candidate):
         for material in _file_anchor_materials(identity_file, policy):
             materials[material.source_path, material.digest] = material
     return materials
