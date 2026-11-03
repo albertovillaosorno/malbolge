@@ -192,6 +192,9 @@ class SourceBindingPolicy:
         if _NATIVE_TYPE(anchor_policy) is not AnchorPolicy:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise SourceBindingPolicyError(message)
+        if not _valid_anchor_policy_fields(anchor_policy):
+            message = "anchor_policy requires positive exact integer anchor dimensions"
+            raise SourceBindingPolicyError(message)
 
 
 # Generated dataclass constructors resolve post-init through mutable class
@@ -319,6 +322,27 @@ _STABLE_ANCHOR_OFFSET_SLOT = cast(
 _ANCHOR_POLICY_WINDOW_SLOT = cast(
     "MemberDescriptorType", AnchorPolicy.__dict__["window_bytes"]
 )
+_ANCHOR_POLICY_MODULUS_SLOT = cast(
+    "MemberDescriptorType", AnchorPolicy.__dict__["selection_modulus"]
+)
+
+
+def _valid_anchor_policy_fields(value: AnchorPolicy) -> bool:
+    if _NATIVE_TYPE(value) is not AnchorPolicy:
+        return False
+    # The envelope can originate outside the constructor. Check native slots
+    # before candidate inspection instead of trusting a nested record's type.
+    try:
+        window = _ANCHOR_POLICY_WINDOW_SLOT.__get__(value, AnchorPolicy)
+        modulus = _ANCHOR_POLICY_MODULUS_SLOT.__get__(value, AnchorPolicy)
+    except AttributeError:
+        return False
+    return (
+        _NATIVE_TYPE(window) is _NATIVE_INT
+        and window > _ZERO
+        and _NATIVE_TYPE(modulus) is _NATIVE_INT
+        and modulus > _ZERO
+    )
 
 
 def _stable_anchor_digest(value: StableAnchor) -> bytes:
@@ -930,6 +954,13 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
     if _NATIVE_TYPE(policy) is not SourceBindingPolicy:
         message = "source-binding policy must use the exact SourceBindingPolicy type"
         raise SourceBindingPolicyError(message)
+    # Raw exact records can enter this boundary without running __init__.
+    # Revalidate all native policy slots before interpreting source material.
+    try:
+        _SOURCE_BINDING_POLICY_VALIDATOR(policy)
+    except AttributeError as error:
+        message = "source-binding policy requires all stored fields"
+        raise SourceBindingPolicyError(message) from error
     drives = (
         _has_windows_drive(_identity_path(item))
         for item in _identity_files(reference)
@@ -1133,6 +1164,9 @@ def _validate_binding_header(binding: ThresholdBinding) -> None:
     _validate_binding_secret(binding)
     if _NATIVE_TYPE(_binding_anchor_policy(binding)) is not AnchorPolicy:
         message = "source-binding anchor policy must use the exact AnchorPolicy type"
+        raise SourceBindingError(message)
+    if not _valid_anchor_policy_fields(_binding_anchor_policy(binding)):
+        message = "source-binding anchor policy requires positive exact integers"
         raise SourceBindingError(message)
 
 

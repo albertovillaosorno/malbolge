@@ -1136,6 +1136,164 @@ def test_public_source_binding_inputs_fail_closed() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("maximum_anchors", 0),
+        ("maximum_anchors", 256),
+        ("minimum_anchor_files", 0),
+        ("minimum_anchor_files", True),
+    ],
+)
+def test_binding_rechecks_unvalidated_native_policy_fields(
+    field: str, invalid: object
+) -> None:
+    """A raw exact policy object must not bypass constructor bounds at bind."""
+    raw = object.__new__(SourceBindingPolicy)
+    object.__setattr__(raw, "threshold_fraction", 0.6)
+    object.__setattr__(raw, "maximum_anchors", 5)
+    object.__setattr__(raw, "minimum_anchor_files", 3)
+    object.__setattr__(raw, "anchor_policy", AnchorPolicy(16, 1))
+    object.__setattr__(raw, field, invalid)
+    reference = identity_tree({f"src/{i}.bin": bytes((i,)) for i in range(5)})
+    with pytest.raises(SourceBindingPolicyError):
+        _ = bind_secret(reference, _SECRET, policy=raw, context=_CONTEXT)
+
+
+def test_binding_rejects_incomplete_native_policy_before_source_use() -> None:
+    """A raw policy with an unset slot fails with a typed policy error."""
+    raw = object.__new__(SourceBindingPolicy)
+    object.__setattr__(raw, "threshold_fraction", 0.6)
+    with pytest.raises(SourceBindingPolicyError):
+        _ = bind_secret(
+            _reference(), _SECRET,
+            policy=raw, context=_CONTEXT,
+        )
+
+
+@pytest.mark.parametrize("field", ["window_bytes", "selection_modulus"])
+@pytest.mark.parametrize("invalid", [0, True, "1"])
+def test_binding_policy_rejects_unvalidated_nested_anchor_fields(
+    field: str, invalid: object
+) -> None:
+    """A forged exact policy record must not bypass nested anchor admission."""
+    raw = object.__new__(AnchorPolicy)
+    object.__setattr__(raw, "window_bytes", invalid if field == "window_bytes" else 16)
+    object.__setattr__(
+        raw, "selection_modulus", invalid if field == "selection_modulus" else 1
+    )
+    with pytest.raises(SourceBindingPolicyError, match="anchor_policy"):
+        _ = SourceBindingPolicy(
+            0.6, maximum_anchors=5, minimum_anchor_files=3,
+            anchor_policy=raw,
+        )
+
+
+@pytest.mark.parametrize("field", ["window_bytes", "selection_modulus"])
+@pytest.mark.parametrize("invalid", [0, True, "1"])
+def test_binding_validation_rejects_unvalidated_nested_anchor_fields(
+    field: str, invalid: object
+) -> None:
+    """A distributable envelope cannot admit malformed nested policy slots."""
+    valid = bind_secret(
+        _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    raw = object.__new__(AnchorPolicy)
+    object.__setattr__(raw, "window_bytes", invalid if field == "window_bytes" else 16)
+    object.__setattr__(
+        raw, "selection_modulus", invalid if field == "selection_modulus" else 1
+    )
+    malformed = replace(valid, anchor_policy=raw)
+    with pytest.raises(SourceBindingError, match="anchor policy"):
+        _ = validate_threshold_binding(malformed)
+    with pytest.raises(SourceBindingError, match="anchor policy"):
+        _ = recover_secret(malformed, cast("IdentityTree", object()))
+
+
+@pytest.mark.parametrize("field", ["window_bytes", "selection_modulus"])
+def test_binding_rejects_nested_anchor_record_changed_after_policy_creation(
+    field: str,
+) -> None:
+    """An invalid nested anchor policy cannot be admitted by a later bind."""
+    policy = _policy()
+    unvalidated = object.__new__(AnchorPolicy)
+    object.__setattr__(unvalidated, "window_bytes", 0 if field == "window_bytes" else 16)
+    object.__setattr__(
+        unvalidated, "selection_modulus", 0 if field == "selection_modulus" else 1
+    )
+    object.__setattr__(policy, "anchor_policy", unvalidated)
+    with pytest.raises(SourceBindingPolicyError, match="anchor_policy"):
+        _ = bind_secret(
+            _reference(), _SECRET, policy=policy, context=_CONTEXT
+        )
+
+
+@pytest.mark.parametrize("role", ["policy", "envelope"])
+@pytest.mark.parametrize("missing", ["window_bytes", "selection_modulus"])
+def test_source_binding_rejects_incomplete_nested_anchor_policy(
+    role: str, missing: str
+) -> None:
+    """An incomplete native anchor record must fail closed with a typed error."""
+    unvalidated = object.__new__(AnchorPolicy)
+    if missing != "window_bytes":
+        object.__setattr__(unvalidated, "window_bytes", 16)
+    if missing != "selection_modulus":
+        object.__setattr__(unvalidated, "selection_modulus", 1)
+    if role == "policy":
+        with pytest.raises(SourceBindingPolicyError, match="anchor_policy"):
+            _ = SourceBindingPolicy(0.6, anchor_policy=unvalidated)
+    else:
+        binding = bind_secret(
+            _reference(), _SECRET, policy=_policy(), context=_CONTEXT
+        )
+        with pytest.raises(SourceBindingError, match="anchor policy"):
+            _ = validate_threshold_binding(
+                replace(binding, anchor_policy=unvalidated)
+            )
+
+
+@pytest.mark.parametrize("field", ["window_bytes", "selection_modulus"])
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_binding_nested_anchor_validation_ignores_late_getters(
+    monkeypatch: pytest.MonkeyPatch, field: str, hook: str
+) -> None:
+    """Stored valid dimensions survive late anchor-policy class hook changes."""
+    reference = _reference()
+    policy = _policy()
+    baseline = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    calls = 0
+
+    def forbidden_getter(_anchor: AnchorPolicy) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late anchor-policy getter consulted")
+
+    native_getattribute = AnchorPolicy.__getattribute__
+
+    def forbidden_getattribute(anchor: AnchorPolicy, name: str) -> object:
+        if name == field:
+            return forbidden_getter(anchor)
+        return native_getattribute(anchor, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(AnchorPolicy, field, property(forbidden_getter))
+        else:
+            patched.setattr(
+                AnchorPolicy, "__getattribute__", forbidden_getattribute
+            )
+        _ = SourceBindingPolicy(
+            0.6, maximum_anchors=5, minimum_anchor_files=3,
+            anchor_policy=policy.anchor_policy,
+        )
+        assert validate_threshold_binding(baseline) is baseline
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+    assert calls == 0
+    assert observed == baseline
+
+
 def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
     """Distributable binding metadata is admitted before source inspection."""
     reference = _reference()
