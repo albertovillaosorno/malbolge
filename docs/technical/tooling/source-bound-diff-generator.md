@@ -184,6 +184,26 @@ diagnostic remains. Snapshot resolution now rejects late `len` changes, while
 descriptor-bound file reads still preserve admitted bytes. These identity
 checks are not atomic against host hooks or concurrent filesystem writers.
 
+Generator path preflight now also checks the import-original `builtins.str`
+before invoking the captured native resolver (`aca052dbf`). A late callable
+substitution previously executed a foreign hook or surfaced an untyped error;
+a bytes-type alias changed the resolver semantics. Three regression cases
+cover both aliases and replacement during consumer-domain preflight.
+
+The validated private recipe snapshot can otherwise be redirected after
+preflight by replacing its namedtuple field descriptor or
+`__getattribute__`, including an output path inside the source tree.
+Generator authoring now checks captured snapshot accessor identities across
+domain callbacks, identity replay, payload protection, and Rust emission
+(`4283dbb4d`). Three new regression cases cover two post-domain substitutions
+and a post-protection output redirection. The latest generator suite passed
+282 tests after commit, and an integrated diff run passed 3,848 tests before
+that commit. Both commits are on `origin/main`; neither introduced diagnostic
+findings on changed Ruff or BasedPyright lines. The repository-wide Jig
+doctor remains degraded because graph state is absent, and `jig check`
+exceeded a 105-second bound during native validation. These guards do not
+eliminate direct trusted storage mutation or external filesystem races.
+
 ### Exact Authoring Baseline
 
 The implemented exact layer snapshots regular files by normalized relative path,

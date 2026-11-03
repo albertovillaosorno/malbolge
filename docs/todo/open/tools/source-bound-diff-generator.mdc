@@ -99,6 +99,18 @@ format.
   3,718 integrated diff tests pass. Default Ruff/diff checks pass; strict
   project typing retains 121 older source/test findings and no new findings
   in added lines. External host/filesystem races remain unresolved.
+- Generator path resolution checks the import-original `builtins.str`
+  (`aca052dbf`). Three regressions reject callable/bytes substitutions
+  and post-domain alias mutation before native host dispatch. The combined
+  diff suite passed 3,838 tests, with 279 generator checks postcommit.
+- Generator authoring now rejects changed private recipe snapshot accessors
+  after domain callbacks and payload protection (`4283dbb4d`). A replaced
+  namedtuple output getter could otherwise redirect an approved output into
+  the source tree. Three regression cases, 282 postcommit generator tests,
+  and 3,848 precommit integrated diff tests pass. Changed-line Ruff and
+  BasedPyright findings remain zero, despite inherited diagnostics. Jig
+  doctor reports an absent graph; the global check timed out at 105 seconds.
+  Direct trusted instance mutation and filesystem races remain out of scope.
 - Generator domain preflight now invokes the original native
   `SourcePinEvidence` validator after the consumer callback (`a27f430de`),
   rather than accepting an exact-type object whose initializer never ran.
