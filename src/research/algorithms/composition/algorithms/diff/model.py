@@ -37,6 +37,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
+from ntpath import isreserved as _native_isreserved
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import cast
 
@@ -73,6 +74,7 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
         or value == _DOT
         or path.is_absolute()
         or PureWindowsPath(value).drive
+        or _native_isreserved(value)
         or _PARENT in path.parts
         or path.as_posix() != value
     )

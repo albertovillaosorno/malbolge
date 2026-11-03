@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import os
 import shutil
 
@@ -171,6 +172,11 @@ def test_exact_roots_reject_foreign_path_subclasses_before_methods(
         "src\\file",
         "C:/unsafe",
         "C:relative",
+        "NUL",
+        "CON",
+        "src/COM1/child.bin",
+        "src/trailing.",
+        "src/stream:fork",
         "src\x00file",
         "src\ud800file",
     ],
@@ -203,6 +209,30 @@ def test_exact_authoring_metadata_rejects_noncanonical_paths(
             target=empty,
             instructions=(),
             passthrough_roots=(invalid_path,),
+        )
+
+
+@pytest.mark.parametrize(
+    "invalid_path", ["CON", "src/COM1/child.bin", "src/trailing."]
+)
+def test_exact_model_paths_resist_mutable_reserved_name_policy(
+    monkeypatch: pytest.MonkeyPatch, invalid_path: str
+) -> None:
+    """Domain hooks cannot authorize nonportable snapshot or output names."""
+
+    def forged_isreserved(path: str) -> bool:
+        del path
+        return False
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
+    with pytest.raises(TreeModelError, match="canonical relative"):
+        _ = FileRecord(invalid_path, "0" * 64, 0)
+    with pytest.raises(TreeModelError, match="canonical relative"):
+        _ = ExactInstruction(
+            output_path=invalid_path,
+            kind=ExactInstructionKind.LITERAL_ORACLE,
+            expected_sha256="0" * 64,
+            literal=b"",
         )
 
 
