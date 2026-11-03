@@ -4065,3 +4065,76 @@ def test_relocation_cleanup_runs_after_exception_alias_swap(
     assert caught is failure
     assert not output.exists()
     assert not (tmp_path / ".output.relocatable-staging").exists()
+
+
+def test_relocation_segment_keeps_native_model_error_after_import_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed native literal segments must remain typed rejections."""
+    malformed = cast(
+        "OracleLiteral",
+        _raw_relocatable_record(OracleLiteral, {"data": bytearray(b"bad")}),
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "TreeModelError", LookupError)
+        with pytest.raises(RelocationError, match="invalid native segment"):
+            _ = RelocatableInstruction(
+                "output.bin", "source.bin",
+                copy_candidate_file=False, segments=(malformed,)
+            )
+
+
+def test_relocation_plan_keeps_native_model_error_after_import_alias_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Invalid exact plan storage cannot bypass typed relocation admission."""
+    source, oracle, _ = _fixture(tmp_path)
+    malformed = _plan_with_tampered_literal(build_exact_plan(source, oracle))
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "TreeModelError", LookupError)
+        with pytest.raises(RelocationError, match="invalid native metadata"):
+            _ = build_relocatable_plan(source, malformed)
+
+
+def test_relocation_snapshot_keeps_native_exact_error_after_import_alias_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Delegated tree snapshot errors cannot escape relocation authoring."""
+    source, oracle, _ = _fixture(tmp_path)
+    exact = build_exact_plan(source, oracle)
+    failure = ExactTreeError("native snapshot failure")
+
+    def fail_snapshot(_root: Path, _excluded: tuple[str, ...]) -> TreeSnapshot:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "snapshot_tree_excluding", fail_snapshot)
+        patched.setattr(relocatable_module, "ExactTreeError", LookupError)
+        with pytest.raises(RelocationError, match="source snapshot failed") as caught:
+            _ = build_relocatable_plan(source, exact)
+    assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize("with_note", [False, True])
+def test_relocation_read_keeps_native_exact_error_after_import_alias_swap(
+    monkeypatch: pytest.MonkeyPatch, with_note: bool
+) -> None:
+    """Delegated read errors preserve typed failure and trusted notes."""
+    failure = ExactTreeError("native read failure")
+    if with_note:
+        BaseException.add_note(failure, "trusted read note")
+
+    def fail_read(_path: Path, _context: str) -> bytes:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "read_exact_regular_file", fail_read)
+        patched.setattr(relocatable_module, "ExactTreeError", LookupError)
+        with pytest.raises(RelocationError, match="source read failed") as caught:
+            _ = relocatable_module._read_relocatable_bytes(
+                Path("missing.bin"), "source"
+            )
+    assert caught.value.__cause__ is failure
+    assert getattr(caught.value, "__notes__", []) == (
+        ["trusted read note"] if with_note else []
+    )

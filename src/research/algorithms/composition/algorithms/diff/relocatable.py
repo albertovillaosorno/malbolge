@@ -106,6 +106,9 @@ _NATIVE_TYPE_ERROR = builtins.TypeError
 _NATIVE_UNICODE_ERROR = builtins.UnicodeError
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_EXCEPTION = builtins.Exception
+# Native model and exact-reader failures must survive late consumer aliases.
+_NATIVE_TREE_MODEL_ERROR = TreeModelError
+_NATIVE_EXACT_TREE_ERROR = ExactTreeError
 # Keep output containment independent of post-load pathlib hook swaps.
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
@@ -504,7 +507,7 @@ def _require_valid_segments(segments: tuple[RelocatableSegment, ...]) -> None:
                 _SOURCE_RANGE_VALIDATOR(segment)
             else:
                 _ORACLE_LITERAL_VALIDATOR(cast("OracleLiteral", segment))
-    except (_NATIVE_ATTRIBUTE_ERROR, RelocationError, TreeModelError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, RelocationError, _NATIVE_TREE_MODEL_ERROR) as error:
         message = "relocatable instruction contains invalid native segment"
         raise RelocationError(message) from error
 
@@ -973,11 +976,11 @@ def _path_present(path: Path, context: str) -> bool:
 def _read_relocatable_bytes(path: Path, context: str) -> bytes:
     try:
         return read_exact_regular_file(path, context)
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _host_error_detail(error)
         message = f"{context} read failed: {path}: {detail}"
         failure = RelocationError(message)
-        if _NATIVE_TYPE(error) is ExactTreeError:
+        if _NATIVE_TYPE(error) is _NATIVE_EXACT_TREE_ERROR:
             # Read native exception notes without invoking a late class getter.
             try:
                 notes = cast(
@@ -1089,7 +1092,7 @@ def _require_exact_source_snapshot(
     try:
         source, _, passthrough = _exact_plan_fields(exact_plan)
         current = snapshot_tree_excluding(source_root, passthrough)
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _host_error_detail(error)
         message = f"relocatable source snapshot failed: {detail}"
         raise RelocationError(message) from error
@@ -1119,7 +1122,7 @@ def build_relocatable_plan(
         raise RelocationError(message)
     try:
         _EXACT_PLAN_VALIDATOR(exact_plan)
-    except (_NATIVE_ATTRIBUTE_ERROR, TreeModelError, _NATIVE_TYPE_ERROR) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TREE_MODEL_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "relocatable exact plan has invalid native metadata"
         raise RelocationError(message) from error
     _require_exact_source_snapshot(source_root, exact_plan)
