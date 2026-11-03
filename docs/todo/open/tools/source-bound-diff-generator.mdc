@@ -80,6 +80,12 @@ format.
   realpath entrypoint. Five red-first checks and 268 focused generator tests
   pass, with strict source/test typing, Ruff, and diff checks clean; races
   and external filesystem writers remain outside this guard.
+- Generator resolution now also pins inherited `PurePath` parser and
+  raw-field class hooks (`76cc5cdde`). Replacing `PurePath._parse_path`
+  previously redirected an uncached native source to another tree despite
+  unchanged host `os.path` functions. One red-first case, 269 postcommit
+  generator tests, strict source/test typing, Ruff, and diff checks pass;
+  direct storage changes and external filesystem races remain out of scope.
 - Generator domain preflight now invokes the original native
   `SourcePinEvidence` validator after the consumer callback (`a27f430de`),
   rather than accepting an exact-type object whose initializer never ran.
