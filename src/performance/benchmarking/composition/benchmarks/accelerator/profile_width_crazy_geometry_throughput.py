@@ -34,19 +34,15 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
-from statistics import median
-from statistics import pstdev
 import sys
+from dataclasses import asdict, dataclass
+from statistics import median, pstdev
 from time import perf_counter_ns
-from typing import Final
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
-from accelerator.cuda.resident_kernel import CRAZY_TABLE_ENTRIES
-from accelerator.cuda.resident_kernel import ResidentCrazyGeometry
+from accelerator.cuda.resident_kernel import CRAZY_TABLE_ENTRIES, ResidentCrazyGeometry
 
 from benchmarks.accelerator import profile_width_crazy_throughput as baseline
 
@@ -55,14 +51,14 @@ if TYPE_CHECKING:
 
     from accelerator.cuda.runtime import CudaKernelResources
     from accelerator.exact_primitives import AcceleratorCapability
-    from accelerator.profile_run import ProfileRunGeometry
-    from accelerator.profile_run import ProfileRunRequest
-    from accelerator.profile_run import ProfileRunResult
+    from accelerator.profile_run import (
+        ProfileRunGeometry,
+        ProfileRunRequest,
+        ProfileRunResult,
+    )
 
 BENCHMARK_ID: Final = "cuda-profile-width-crazy-geometry-throughput-v1"
-BASELINE_BENCHMARK_ID: Final = (
-    baseline.BENCHMARK_ID
-)
+BASELINE_BENCHMARK_ID: Final = baseline.BENCHMARK_ID
 BATCH_SIZE: Final = baseline.BATCH_SIZE
 END_TO_END_REGION: Final = baseline.END_TO_END_REGION
 RESIDENT_REGION: Final = baseline.RESIDENT_REGION
@@ -79,6 +75,7 @@ CRAZY_GEOMETRIES: Final = (
 )
 ROUTE_ORDER: Final = "cyclic first-route by width; fifteen-sample route blocks"
 COMMON_CONSTANT_BYTES: Final = 94 + 94
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +147,44 @@ def declared_constant_bytes(crazy_geometry: ResidentCrazyGeometry) -> int:
     return COMMON_CONSTANT_BYTES + CRAZY_TABLE_ENTRIES
 
 
+class GeometryThroughputReportError(ValueError):
+    """Frozen CRAZY geometry throughput evidence could not be delivered."""
+
+
+def _render_report(payload: object) -> str:
+    """Require public JSON to match the source-bound native encoder."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"geometry throughput JSON writer failed: {type(error).__name__}"
+        raise GeometryThroughputReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "geometry throughput JSON writer differs from source"
+        raise GeometryThroughputReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Reject short/foreign output acknowledgements and failed flushes."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"geometry throughput stdout write failed: {type(error).__name__}"
+        raise GeometryThroughputReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "geometry throughput stdout write incomplete"
+        raise GeometryThroughputReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"geometry throughput stdout flush failed: {type(error).__name__}"
+        raise GeometryThroughputReportError(message) from error
+    if flushed is not None:
+        message = "geometry throughput stdout flush incomplete"
+        raise GeometryThroughputReportError(message)
+
+
 def main() -> int:
     """Measure identical crazy-heavy work at every admitted benchmark width.
 
@@ -173,9 +208,7 @@ def main() -> int:
         "backend": backend,
         "batch_size": BATCH_SIZE,
         "benchmark_id": BENCHMARK_ID,
-        "crazy_geometries": tuple(
-            geometry.value for geometry in CRAZY_GEOMETRIES
-        ),
+        "crazy_geometries": tuple(geometry.value for geometry in CRAZY_GEOMETRIES),
         "device": device,
         "end_to_end_region": END_TO_END_REGION,
         "resident_region": RESIDENT_REGION,
@@ -187,7 +220,7 @@ def main() -> int:
         "widths": WIDTHS,
         "workload_id": WORKLOAD_ID,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
@@ -196,9 +229,7 @@ def _measure_width(
     word_trits: int,
 ) -> tuple[tuple[CrazyGeometryThroughputRow, ...], AcceleratorCapability]:
     width = _WidthWorkload(
-        expected_memory=(
-            baseline.expected_profile_width_crazy_memory(word_trits)
-        ),
+        expected_memory=(baseline.expected_profile_width_crazy_memory(word_trits)),
         geometry=baseline.profile_width_crazy_geometry(word_trits),
         request=baseline.profile_width_crazy_request(word_trits),
     )
@@ -228,12 +259,8 @@ def _measure(
         results = adapter.evaluate((route.width.request,))
         _validate(results, route)
         _ = _resident_elapsed(adapter, route)
-    end_to_end = [
-        _evaluate_elapsed(adapter, route) for _ in range(SAMPLE_COUNT)
-    ]
-    resident = [
-        _resident_elapsed(adapter, route) for _ in range(SAMPLE_COUNT)
-    ]
+    end_to_end = [_evaluate_elapsed(adapter, route) for _ in range(SAMPLE_COUNT)]
+    resident = [_resident_elapsed(adapter, route) for _ in range(SAMPLE_COUNT)]
     return _row(route, end_to_end, resident, resources=resources)
 
 
@@ -290,9 +317,7 @@ def _row(
         ),
         driver_constant_memory_bytes=resources.constant_memory_bytes,
         driver_launch_threads_per_block=resources.launch_threads_per_block,
-        driver_local_memory_bytes_per_thread=(
-            resources.local_memory_bytes_per_thread
-        ),
+        driver_local_memory_bytes_per_thread=(resources.local_memory_bytes_per_thread),
         driver_max_threads_per_block=resources.max_threads_per_block,
         driver_max_threads_per_multiprocessor=(
             resources.max_threads_per_multiprocessor

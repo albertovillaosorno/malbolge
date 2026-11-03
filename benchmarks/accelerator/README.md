@@ -103,6 +103,12 @@ It also records the CUDA occupancy calculator's maximum active blocks per SM for
 the actual 256-thread, zero-dynamic-shared launch and the device maximum
 resident threads per SM.
 
+The retained output must match the import-bound native JSON serializer before
+publication, so substituted public writers cannot alter raw timing rows or
+device identity unnoticed. An exact stdout character-write receipt and
+successful flush are required; hardware-free synthetic rows exercise reporting
+failure behavior independently of the CUDA timing loop.
+
 Adapter construction, NVRTC compilation, and resource/occupancy queries remain
 outside timing. The occupancy values describe theoretical launch capacity, not
 observed SM utilization. Retained RTX 4060 geometry evidence is under
