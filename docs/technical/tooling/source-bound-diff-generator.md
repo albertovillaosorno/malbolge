@@ -291,6 +291,19 @@ spellings instead of late `Path.__eq__`. Twenty-six red-first regressions
 cover these emission and publication hooks. The output preflight still cannot
 make concurrent filesystem writes atomic and is not a sandbox for trusted code.
 
+The Python emitter's staged UTF-8 writer, output-directory creation, atomic
+file replacement, and owned temporary cleanup now use captured native host
+operations rather than replaceable `Path` methods or a late `os.mkdir` hook.
+Original `Path.parent`, `Path.name`, and `Path.with_name` operations also bind
+output ancestor checks and temporary staging to the admitted destination.
+Seven targeted regressions cover late `Path.open`, `Path.replace`,
+`Path.mkdir`, `Path.unlink`, `Path.parent`, `Path.with_name`, and `os.mkdir`
+redirection; five were first demonstrated failing before their repairs.
+After the follow-up, all 132 emitter tests and 2,252 integrated diff tests
+excluding a concurrently edited probe suite passed. These measures cannot
+make path checks atomic against external filesystem races or isolate arbitrary
+trusted consumer code that directly mutates module bindings.
+
 The same publisher admits only the running host's exact native `pathlib.Path`
 type for both staging and destination before querying filesystem methods.
 Caller-defined `Path` subclasses may override path resolution, file status, or

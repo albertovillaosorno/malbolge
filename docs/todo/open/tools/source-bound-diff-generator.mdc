@@ -329,6 +329,13 @@ format.
   ancestor termination, and rename receipts from forged `Path.__eq__` values.
   Twenty-six red-first regressions cover those fields and publisher checks;
   external filesystem race prevention remains out of scope.
+- Emitter staged writes, directory creation, replacement, and cleanup now use
+  captured native host primitives instead of mutable `Path`/`os.mkdir` hooks.
+  Original parent/name/with_name operations also protect output ancestry and
+  temporary-stage identity. Seven regressions cover these redirection surfaces;
+  five reproduced red before the repairs. All 132 focused tests and 2,252
+  integrated tests excluding concurrent probe WIP passed. Direct trusted
+  module mutation and external filesystem races remain outside these guards.
 - The no-replace directory publisher now rejects foreign `pathlib.Path`
   subclasses for both staging and destination before any path conversion or
   filesystem method can run. Two red-first regressions preserve exact native
