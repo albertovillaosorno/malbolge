@@ -41,6 +41,7 @@ from hashlib import sha256 as _native_sha256
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from sys import getfilesystemencoding as _get_filesystem_encoding
+from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from typing import Final, cast
 
 from algorithms.diff.exact import ExactTreeError, read_exact_regular_file
@@ -79,9 +80,7 @@ _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
 # Match os.fsencode's host codec without late os.fspath/fsencode lookups.
 _FILESYSTEM_ENCODING = _get_filesystem_encoding()
-_FILESYSTEM_ERRORS = (
-    "strict" if _FILESYSTEM_ENCODING == "mbcs" else "surrogateescape"
-)
+_FILESYSTEM_ERRORS = _get_filesystem_encode_errors()
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:

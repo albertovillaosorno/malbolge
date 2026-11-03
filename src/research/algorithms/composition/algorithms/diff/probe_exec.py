@@ -50,6 +50,7 @@ from hashlib import sha256 as _native_sha256
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISREG
 from sys import getfilesystemencoding as _get_filesystem_encoding
+from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from typing import IO, TYPE_CHECKING, Protocol, cast
 
 from algorithms.diff.exact import ExactTreeError, snapshot_tree
@@ -81,9 +82,7 @@ _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
 # Freeze the host filesystem codec before any consumer module can mutate os.
 _FILESYSTEM_ENCODING = _get_filesystem_encoding()
-_FILESYSTEM_ERRORS = (
-    "strict" if _FILESYSTEM_ENCODING == "mbcs" else "surrogateescape"
-)
+_FILESYSTEM_ERRORS = _get_filesystem_encode_errors()
 # Keep mirror creation independent of late consumer library hooks.
 _NATIVE_GETTEMPDIR = tempfile.gettempdir
 _NATIVE_TEMPORARY_DIRECTORY = tempfile.TemporaryDirectory

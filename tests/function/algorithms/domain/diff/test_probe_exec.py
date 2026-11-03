@@ -41,6 +41,7 @@ import io
 import os
 import shutil
 import signal
+import subprocess  # ruff: ignore[suspicious-subprocess-import]
 import sys
 import tempfile
 import threading
@@ -3249,3 +3250,22 @@ def test_probe_root_admission_ignores_late_path_string_spoof(
                 _ = ProbeRunContext(source, tmp_path, ())
         else:
             _ = ProbeRunContext(source, tmp_path, ())
+
+
+def test_native_filesystem_encoding_captures_platform_errors() -> None:
+    """All native admission codecs capture the host's error policy."""
+    # A separate interpreter avoids reloading imported dataclass identities.
+    script = (
+        "import sys\n"
+        "sys.getfilesystemencodeerrors = lambda: 'surrogatepass'\n"
+        "from algorithms.diff import exact, probe_exec, provenance\n"
+        "assert all(m._FILESYSTEM_ERRORS == 'surrogatepass' "
+        "for m in (exact, probe_exec, provenance))\n"
+    )
+    result = subprocess.run(
+        (sys.executable, "-c", script),
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr

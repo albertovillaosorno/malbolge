@@ -100,9 +100,7 @@ _NATIVE_PATH_IS_JUNCTION = Path.is_junction
 _NATIVE_PATH_STRING = Path.__str__
 # Encode native Path strings without mutable late pathlib/os conversion hooks.
 _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
-_FILESYSTEM_ERRORS = (
-    "strict" if _FILESYSTEM_ENCODING == "mbcs" else "surrogateescape"
-)
+_FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 # Owned staging deletion must ignore consumer changes to shutil hooks.
 _NATIVE_RMTREE = shutil.rmtree
 
