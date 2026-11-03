@@ -733,6 +733,18 @@ format.
   post-bridge integrated diff passed 3,616 tests in 103.93 seconds and DOOM
   generator checks passed 65 with one skip. Global Jig text/version failures,
   concurrent filesystem changes, and trusted module mutation remain excluded.
+- Behavior-program diagnostics now read native exception `args` through
+  `BaseException` rather than late mutable class getters (`19dcd5ff8`).
+  Three red-first metadata-hook cases and one snapshot-boundary regression
+  pass with 235 behavior tests, strict source/test typing, Ruff, and diff
+  checks clean. The guard does not isolate direct storage mutation or
+  concurrent filesystem writers.
+- Exact-tree host and cleanup diagnostics now bypass late class getters for
+  native exception arguments (`44b7a6e04`). Two red-first getter forgeries
+  and one cleanup integration case pass with 298 focused tests, strict
+  source typing, Ruff, and diff checks clean. One inherited test typing
+  diagnostic at old `test_exact.py` line 4366 and global Jig failures
+  remain outside these safeguards; external writers are still untrusted.
 - Relocatable staging now pins `io.open` for exclusive file creation, native
   `os.mkdir`, and original output parent/name/with-name operations. Four
   red-first Path hook regressions (`65c7738a8`) reproduced staging/file

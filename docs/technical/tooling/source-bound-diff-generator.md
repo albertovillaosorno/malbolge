@@ -2248,6 +2248,20 @@ generator tests passed 65 with one skip. Global Jig checks remain degraded or
 failing on broader text/version rules; no clean repository-wide Jig verdict is
 claimed. External filesystem races and trusted direct mutations remain open.
 
+Behavior-program failure diagnostics also bypass mutable exception-class
+getters when reading exact native error arguments (`19dcd5ff8`). Three
+red-first class-hook cases and one snapshot-boundary integration case pass
+with all 235 behavior-program tests, strict source/test typing, Ruff, and
+diff checks clean. The change does not isolate direct state mutations or
+concurrent source writers.
+
+Exact-tree host and cleanup diagnostics now use original `BaseException`
+argument reads (`44b7a6e04`). Two red-first class-getter substitutions and
+one cleanup integration case pass with all 298 exact-tree tests, strict
+source typing, Ruff, and diff checks clean. One inherited exact-test typing
+error at line 4366 remains, and the repository-wide Jig gate is not green.
+This is exception metadata hardening, not atomic filesystem isolation.
+
 Probe native exception reporting now reads exact `ExactTreeError` and
 `ProbeExecutionError` arguments through `BaseException` rather than late class
 getters (`ad3a4a6f3`). Three red-first direct/snapshot cases reject hostile
