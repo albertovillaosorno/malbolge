@@ -113,6 +113,12 @@ format.
   reuses whole source files and source spans, and publishes only after full
   target
   verification.
+- Exact authoring now pins native allocation and original initializers for
+  internal matching and tree contexts, source slices, literals, output
+  instructions, and final plans (`d9021ca1c`). Fourteen red-first class-hook
+  cases passed, with 237 focused and 2,716 integrated diff tests, scoped
+  Ruff, and strict source BasedPyright all green. Direct stored-object mutation
+  and filesystem races remain unresolved trust boundaries.
 - Synthetic tests cover exact reconstruction, deterministic planning, binary
   data,
   moves, modifications, creations, deletions, source mutation, and symlink
@@ -159,6 +165,12 @@ format.
 - A conjunctive gate proves behavior-only clones cannot replace structural
   lineage
   and source lineage cannot replace failed compatibility behavior.
+- Internal computed behavior reports now use captured native allocation and
+  the original validator-bearing initializer (`85857aea2`). Four red-first
+  cases preserve acceptance and failed compatibility rejection under late
+  `__init__`/`__new__` replacement; 149 focused and 2,685 integrated diff
+  tests passed. Ruff and diff checks were clean; six older strict source typing
+  diagnostics remain, with direct record mutation still outside this guard.
 - Gate report creation now uses original native allocation and validating
   initialization (`7b8038188`) rather than late class `__new__`/`__init__`.
   Four red-first cases preserve accepted and rejected conjunctive reports.
@@ -350,6 +362,12 @@ format.
   C
   placement milestone rather than pretending byte relocation solves
   reformatting.
+- Relocatable authoring now pins native allocation and original validators
+  for range locators, source ranges, instructions, and plans (`39c042c07`).
+  Eight red-first late `__init__`/`__new__` regressions passed with 201
+  focused and 2,732 integrated diff tests; scoped Ruff and source
+  BasedPyright were clean. The guard excludes direct stored-record mutation
+  and racing external filesystem writers.
 - Relocatable staging now pins `io.open` for exclusive file creation, native
   `os.mkdir`, and original output parent/name/with-name operations. Four
   red-first Path hook regressions (`65c7738a8`) reproduced staging/file

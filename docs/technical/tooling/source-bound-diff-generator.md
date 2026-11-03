@@ -99,6 +99,15 @@ Both full input snapshots are rechecked after instruction construction so a
 persistent source or oracle change during replay cannot return a stale plan.
 These checks cannot make source-tree reads atomic against concurrent writers.
 
+Exact plan creation now constructs five categories of internal records through
+captured native allocation and original initializers: byte-matching and tree
+planning contexts, source slices and local literals, output instructions, and
+the final exact plan (`d9021ca1c`). Fourteen red-first late `__new__`/`__init__`
+regressions cover those records. All 237 focused exact tests and 2,716
+integrated diff tests passed; scoped Ruff and strict source BasedPyright had
+zero errors. These are class-hook guards, not protection against direct
+stored-instance mutation or external filesystem races.
+
 This local plan is verification evidence, not a distributable transform. Raw
 `OracleLiteral` bytes must never cross the public emission boundary. A later
 source-binding stage must convert them to recovery material that cannot be
@@ -537,6 +546,14 @@ perfect-behavior/unrelated-source
 clone and prove it is rejected. The generic evaluator consumes normalized
 observations only; executing application-specific probes remains consumer work.
 
+Internal behavior-evidence reports now use native allocation and the original
+validating initializer instead of later class constructors (`85857aea2`).
+Four red-first cases preserve behavior admission and failed compatibility
+rejection under replaced `BehaviorEvidence.__init__`/`__new__` hooks. All 149
+focused behavior tests and 2,685 integrated diff tests passed; scoped Ruff
+and diff checks were clean. Source strict type checking retains six unrelated
+existing diagnostics. This does not defend against direct stored-record edits.
+
 Internal `combine_admission()` now creates its `TransformAdmissionEvidence`
 report through captured native allocation and the original validating
 initializer instead of replaceable class `__new__`/`__init__` hooks
@@ -946,6 +963,16 @@ formatting or notes. Secondary cleanup failures preserve the original error
 as their cause; unchecked host exception hooks cannot authorize publication.
 Concurrent filesystem writers can still race a non-atomic input snapshot or
 path check and require coordination.
+
+Relocatable authoring now creates internal `RangeLocator`,
+`RelocatableSourceRange`, `RelocatableInstruction`, and
+`RelocatableAuthoringPlan` records using captured native allocation and the
+original validation-backed initializers (`39c042c07`). Eight red-first
+`__init__`/`__new__` regressions protect locator, segment, instruction, and
+plan construction from late class hooks. All 201 focused relocatable tests
+and 2,732 integrated diff tests passed; scoped Ruff and source BasedPyright
+had zero errors. Direct stored-instance tampering and concurrent source
+changes remain outside this boundary.
 
 Relocatable output staging now uses import-pinned `io.open` with exclusive `xb`
 mode, native `os.mkdir` for parent creation, and original `Path.parent`,
