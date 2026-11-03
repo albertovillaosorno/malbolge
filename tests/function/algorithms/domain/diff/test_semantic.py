@@ -1855,3 +1855,54 @@ def test_semantic_public_readers_ignore_late_validator_override(
         with pytest.raises(SemanticPlacementError, match="semantic"):
             _ = read()
     assert calls == 0, "a late class validator certified fabricated evidence"
+
+
+@pytest.mark.parametrize("kind", ["locator", "edit", "plan"])
+def test_semantic_native_readers_reject_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """An incomplete exact-native record must retain its typed rejection."""
+    native_attribute_error = builtins.AttributeError
+    caught: SemanticPlacementError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if kind == "locator":
+                _ = read_semantic_locator(object.__new__(SemanticLocator))
+            elif kind == "edit":
+                _ = read_semantic_edit(object.__new__(SemanticEdit))
+            else:
+                _ = read_semantic_plan(object.__new__(SemanticAuthoringPlan))
+        except SemanticPlacementError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(caught) is SemanticPlacementError, (kind, caught)
+    assert "missing" in str(caught)
+
+
+def test_semantic_mapper_rejects_late_exception_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A callback may not redirect native mapper failure containment."""
+    source = _map(b"alpha = old ; omega")
+    target = _map(b"alpha = new ; omega")
+    plan = build_semantic_plan(source, target)
+    native_exception = builtins.Exception
+    caught: SemanticPlacementError | None = None
+
+    with monkeypatch.context() as patched:
+
+        def fail_mapper(_: bytes) -> MappedView:
+            patched.setattr(builtins, "Exception", ValueError)
+            raise RuntimeError("foreign mapper failure")
+
+        try:
+            _ = apply_semantic_plan(source, plan, fail_mapper)
+        except SemanticPlacementError as error:
+            caught = error
+        finally:
+            builtins.__dict__["Exception"] = native_exception
+    assert type(caught) is SemanticPlacementError, caught
+    assert "mapper failed" in str(caught)
+    assert type(caught.__cause__) is RuntimeError

@@ -68,6 +68,8 @@ _NATIVE_SET = builtins.set
 _NATIVE_REVERSED = builtins.reversed
 _NATIVE_LIST = builtins.list
 _NATIVE_OBJECT_NEW = object.__new__
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_EXCEPTION = builtins.Exception
 # Verify placement using a constructor pinned before host hooks can replace it.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -167,7 +169,7 @@ def _stored_semantic_locator(
                 _LOCATOR_AFTER_SLOT.__get__(locator, SemanticLocator),
             ),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "semantic locator is missing evidence fields"
         raise SemanticPlacementError(message) from error
 
@@ -273,7 +275,7 @@ def _stored_semantic_edit(
                 _EDIT_DIGESTS_SLOT.__get__(edit, SemanticEdit),
             ),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "semantic edit is missing metadata fields"
         raise SemanticPlacementError(message) from error
 
@@ -345,7 +347,7 @@ def _stored_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ..
             "tuple[SemanticEdit, ...]",
             _PLAN_EDITS_SLOT.__get__(plan, SemanticAuthoringPlan),
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "semantic plan is missing edit fields"
         raise SemanticPlacementError(message) from error
 
@@ -1286,7 +1288,7 @@ def _map_semantic_output(
 ) -> MappedView:
     try:
         mapped = mapper(output)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         # Callback exceptions may define executable or failing __str__ hooks.
         # Preserve the original error as the cause without formatting it.
         message = "semantic mapper failed after edit application"
