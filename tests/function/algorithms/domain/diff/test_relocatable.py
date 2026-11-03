@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import ntpath
 import os
@@ -1474,6 +1475,66 @@ def test_relocatable_instruction_rejects_windows_drive_paths(
             source_path=drive_path,
             copy_candidate_file=True,
         )
+
+
+def test_relocatable_instruction_rejects_late_sum_form_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Contradictory copy and segment forms must never pass a forged count."""
+
+    def construct_after_hook_swap() -> RelocatableInstruction:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "sum", lambda values: 1)
+            return RelocatableInstruction(
+                output_path="out.bin",
+                source_path="src.bin",
+                copy_candidate_file=True,
+                segments=(OracleLiteral(b"extra"),),
+            )
+
+    with pytest.raises(RelocationError, match="exactly one payload form"):
+        _ = construct_after_hook_swap()
+
+
+def test_relocatable_instruction_rejects_late_any_segment_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed process-global any cannot approve foreign output segments."""
+
+    def construct_after_hook_swap() -> RelocatableInstruction:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "any", lambda values: False)
+            return RelocatableInstruction(
+                output_path="out.bin",
+                source_path="src.bin",
+                copy_candidate_file=False,
+                segments=(cast("OracleLiteral", object()),),
+            )
+
+    with pytest.raises(RelocationError, match="foreign segment"):
+        _ = construct_after_hook_swap()
+
+
+def test_relocatable_plan_rejects_late_set_uniqueness_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Duplicate output destinations cannot survive a replaced set helper."""
+    instruction = RelocatableInstruction(
+        output_path="out.bin",
+        source_path=None,
+        copy_candidate_file=False,
+        literal=b"target",
+    )
+
+    def construct_after_hook_swap() -> RelocatableAuthoringPlan:
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, "set", lambda values: list(values))
+            return relocatable_module.RelocatableAuthoringPlan(
+                (instruction, instruction)
+            )
+
+    with pytest.raises(RelocationError, match="unique output paths"):
+        _ = construct_after_hook_swap()
 
 
 def test_relocatable_plan_rejects_duplicate_output_destinations() -> None:

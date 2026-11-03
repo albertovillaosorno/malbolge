@@ -41,6 +41,7 @@ compatible-plan layer is implemented.
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import ntpath
 import os
@@ -86,6 +87,9 @@ _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_IS_SYMLINK = S_ISLNK
+_NATIVE_ANY = builtins.any
+_NATIVE_SET = builtins.set
+_NATIVE_SUM = builtins.sum
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -212,7 +216,7 @@ def _validate_relocatable_payload(instruction: RelocatableInstruction) -> None:
     if type(instruction.segments) is not tuple:
         message = "relocatable segments must use the immutable tuple type"
         raise RelocationError(message)
-    if any(
+    if _NATIVE_ANY(
         type(segment) not in {RelocatableSourceRange, OracleLiteral}
         for segment in instruction.segments
     ):
@@ -226,7 +230,7 @@ def _validate_relocatable_shape(instruction: RelocatableInstruction) -> None:
 
 
 def _validate_relocatable_form(instruction: RelocatableInstruction) -> None:
-    forms = sum((
+    forms = _NATIVE_SUM((
         instruction.copy_candidate_file,
         instruction.literal is not None,
         bool(instruction.segments),
@@ -279,18 +283,18 @@ class RelocatableAuthoringPlan:
                 "relocatable plan instructions must use an immutable tuple"
             )
             raise RelocationError(message)
-        if any(
+        if _NATIVE_ANY(
             type(instruction) is not RelocatableInstruction
             for instruction in self.instructions
         ):
             message = "relocatable plan contains a foreign instruction record"
             raise RelocationError(message)
         paths = tuple(item.output_path for item in self.instructions)
-        if len(paths) != len(set(paths)):
+        if len(paths) != len(_NATIVE_SET(paths)):
             message = "relocatable plan requires unique output paths"
             raise RelocationError(message)
-        known_paths = set(paths)
-        if any(
+        known_paths = _NATIVE_SET(paths)
+        if _NATIVE_ANY(
             parent.as_posix() in known_paths
             for path in paths
             for parent in PurePosixPath(path).parents
