@@ -61,6 +61,13 @@ _NATIVE_BUILD_CLASS: Final = builtins.__build_class__
 _NATIVE_STR_TYPE: Final = builtins.str
 _NATIVE_INT_TYPE: Final = builtins.int
 _NATIVE_LIST_TYPE: Final = builtins.list
+_NATIVE_ATTRIBUTE_ERROR: Final = builtins.AttributeError
+_NATIVE_OS_ERROR: Final = builtins.OSError
+_NATIVE_FILE_NOT_FOUND_ERROR: Final = builtins.FileNotFoundError
+_NATIVE_TYPE_ERROR: Final = builtins.TypeError
+_NATIVE_VALUE_ERROR: Final = builtins.ValueError
+_NATIVE_RUNTIME_ERROR: Final = builtins.RuntimeError
+_NATIVE_UNICODE_ERROR: Final = builtins.UnicodeError
 _NATIVE_PATH_TYPE: Final = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_IS_DIR: Final = stat.S_ISDIR
@@ -169,11 +176,13 @@ def _native_posix_path_string(path: Path) -> str:
     """Normalize original POSIX raw parts without mutable os.fspath hooks."""
     parts = _NATIVE_PATH_RAW_SLOT.__get__(path, PurePath)
     if _NATIVE_TYPE(parts) is not _NATIVE_LIST_TYPE:
-        raise OSError(errno.EINVAL, "directory publication requires native path parts")
+        raise _NATIVE_OS_ERROR(
+            errno.EINVAL, "directory publication requires native path parts"
+        )
     joined = ""
     for part in parts:
         if _NATIVE_TYPE(part) is not _NATIVE_STR_TYPE:
-            raise OSError(
+            raise _NATIVE_OS_ERROR(
                 errno.EINVAL, "directory publication requires native path parts"
             )
         if part.startswith("/"):
@@ -200,14 +209,16 @@ def _native_path_string(path: Path) -> str:
         for path_class, hooks in _NATIVE_PATH_CLASS_HOOKS
         for name, original in hooks
     ):
-        raise OSError(errno.EINVAL, "directory publication path hooks changed")
+        raise _NATIVE_OS_ERROR(
+            errno.EINVAL, "directory publication path hooks changed"
+        )
     if _HOST_OS_NAME != _WINDOWS_OS_NAME:
         return _native_posix_path_string(path)
     try:
         return cast("str", _NATIVE_PATH_STR_SLOT.__get__(path, PurePath))
-    except AttributeError:
+    except _NATIVE_ATTRIBUTE_ERROR:
         if _NATIVE_OS_MODULE.fspath is not _NATIVE_OS_FSPATH:
-            raise OSError(
+            raise _NATIVE_OS_ERROR(
                 errno.EINVAL, "directory publication path hooks changed"
             ) from None
         _ = _NATIVE_PATH_STR(path)
@@ -265,7 +276,7 @@ def _require_native_cdll_dispatch(destination: Path) -> None:
             for name, original in _NATIVE_CTYPES_CDLL_GLOBALS
         )
     ):
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.ENOTSUP,
             "Linux renameat2(RENAME_NOREPLACE) is unavailable: native loader changed",
             destination,
@@ -286,14 +297,14 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
         )
         renameat2.restype = _NATIVE_C_INT
     except (
-        AttributeError,
-        OSError,
-        TypeError,
-        ValueError,
-        RuntimeError,
+        _NATIVE_ATTRIBUTE_ERROR,
+        _NATIVE_OS_ERROR,
+        _NATIVE_TYPE_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
         _NATIVE_C_ARGUMENT_ERROR,
     ) as error:
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.ENOTSUP,
             "Linux renameat2(RENAME_NOREPLACE) is unavailable",
             destination,
@@ -306,14 +317,19 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
             _native_fsencode_path(destination),
             _RENAME_NOREPLACE,
         )
-    except (TypeError, ValueError, RuntimeError, _NATIVE_C_ARGUMENT_ERROR) as error:
-        raise OSError(
+    except (
+        _NATIVE_TYPE_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
+        _NATIVE_C_ARGUMENT_ERROR,
+    ) as error:
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "Linux renameat2 invocation failed",
             destination,
         ) from error
     if _NATIVE_TYPE(result) is not _NATIVE_INT_TYPE:
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "Linux renameat2 returned an invalid status",
             destination,
@@ -325,12 +341,12 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
             or error_number < 1
             or error_number > _MAX_LINUX_ERRNO
         ):
-            raise OSError(
+            raise _NATIVE_OS_ERROR(
                 errno.EIO,
                 "Linux renameat2 returned an invalid errno status",
                 destination,
             )
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             error_number,
             _NATIVE_STRERROR(error_number),
             destination,
@@ -340,8 +356,8 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
 def _require_fs_encodable_path(path: Path) -> None:
     try:
         _ = _native_fsencode_path(path)
-    except UnicodeError as error:
-        raise OSError(
+    except _NATIVE_UNICODE_ERROR as error:
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "directory publication paths must be filesystem-encodable",
             path,
@@ -357,20 +373,22 @@ def _require_staging_directory(staging: Path) -> tuple[int, int]:
     """
     try:
         receipt = _NATIVE_PATH_LSTAT(staging)
-    except (TypeError, ValueError, RuntimeError) as error:
-        raise OSError(
+    except (
+        _NATIVE_TYPE_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "staging directory status failed",
             staging,
         ) from error
     if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "staging directory requires native filesystem status",
             staging,
         )
     if not _NATIVE_IS_DIR(receipt.st_mode):
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.ENOTDIR,
             "staging must be an existing directory, not a file or symlink",
             staging,
@@ -380,7 +398,7 @@ def _require_staging_directory(staging: Path) -> tuple[int, int]:
 
 def _require_host_match(os_name: str, platform: str, destination: Path) -> None:
     if os_name != _HOST_OS_NAME or platform != _HOST_PLATFORM:
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "directory publication host selectors must match the running host",
             destination,
@@ -402,7 +420,7 @@ def _validate_publication_inputs(
         _NATIVE_TYPE(staging) is not native_path_type
         or _NATIVE_TYPE(destination) is not native_path_type
     ):
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "directory publication paths must use exact pathlib Path",
         )
@@ -410,7 +428,7 @@ def _validate_publication_inputs(
         _NUL in _NATIVE_PATH_STRING(staging)
         or _NUL in _NATIVE_PATH_STRING(destination)
     ):
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "directory publication paths must not contain NUL bytes",
             destination,
@@ -421,7 +439,7 @@ def _validate_publication_inputs(
         _NATIVE_TYPE(os_name) is not _NATIVE_STR_TYPE
         or _NATIVE_TYPE(platform) is not _NATIVE_STR_TYPE
     ):
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "directory publication host selectors must use exact strings",
         )
@@ -430,7 +448,7 @@ def _validate_publication_inputs(
     # Compare the pinned native path spellings instead of letting consumer
     # hooks reject distinct directories or admit aliased publication roots.
     if _NATIVE_PATH_STRING(staging) == _NATIVE_PATH_STRING(destination):
-        raise OSError(
+        raise _NATIVE_OS_ERROR(
             errno.EINVAL,
             "directory publication staging and destination must differ",
             destination,
@@ -446,21 +464,31 @@ def _require_completed_publication(
     message = "directory publication was not completed with the staged directory"
     try:
         result = _NATIVE_PATH_LSTAT(destination)
-    except (OSError, ValueError, RuntimeError, TypeError) as error:
-        raise OSError(errno.EIO, message, destination) from error
+    except (
+        _NATIVE_OS_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
+        _NATIVE_TYPE_ERROR,
+    ) as error:
+        raise _NATIVE_OS_ERROR(errno.EIO, message, destination) from error
     if (
         _NATIVE_TYPE(result) is not _NATIVE_STAT_RESULT
         or not _NATIVE_IS_DIR(result.st_mode)
         or (result.st_dev, result.st_ino) != identity
     ):
-        raise OSError(errno.EIO, message, destination)
+        raise _NATIVE_OS_ERROR(errno.EIO, message, destination)
     try:
         _ = _NATIVE_PATH_LSTAT(staging)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return
-    except (OSError, ValueError, RuntimeError, TypeError) as error:
-        raise OSError(errno.EIO, message, destination) from error
-    raise OSError(errno.EIO, message, destination)
+    except (
+        _NATIVE_OS_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
+        _NATIVE_TYPE_ERROR,
+    ) as error:
+        raise _NATIVE_OS_ERROR(errno.EIO, message, destination) from error
+    raise _NATIVE_OS_ERROR(errno.EIO, message, destination)
 
 
 def publish_directory_no_replace(
@@ -486,8 +514,10 @@ def publish_directory_no_replace(
     if os_name == _WINDOWS_OS_NAME:
         try:
             _ = _NATIVE_PATH_RENAME(staging, destination)
-        except (TypeError, ValueError, RuntimeError) as error:
-            raise OSError(
+        except (
+            _NATIVE_TYPE_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+        ) as error:
+            raise _NATIVE_OS_ERROR(
                 errno.EIO,
                 "Windows directory rename failed",
                 destination,
@@ -498,7 +528,7 @@ def publish_directory_no_replace(
         _linux_rename_noreplace(staging, destination)
         _require_completed_publication(staging, destination, identity)
         return
-    raise OSError(
+    raise _NATIVE_OS_ERROR(
         errno.ENOTSUP,
         "atomic no-replace directory publication is unsupported",
         destination,

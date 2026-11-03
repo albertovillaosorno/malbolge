@@ -1846,3 +1846,176 @@ def test_linux_publication_rejects_late_cdll_builtin_dispatch_alias(
     assert calls == 0, "publication reached substituted builtin dispatch"
     assert (staging / "payload").read_bytes() == _OURS
     assert list(destination.iterdir()) == []
+
+
+@pytest.mark.skipif(
+    sys.platform != _LINUX_PLATFORM,
+    reason="requires Linux no-replace publication",
+)
+def test_publication_attestation_rejects_late_missing_file_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed missing-file class cannot certify an unmoved directory."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    stat_result = os.lstat(staging)
+    denied = PermissionError(errno.EACCES, "status denied")
+    receipt = Mock(side_effect=[stat_result, stat_result, denied])
+    native_missing = builtins.FileNotFoundError
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(publication, "_NATIVE_PATH_LSTAT", receipt)
+        patched.setattr(publication, "_linux_rename_noreplace", Mock())
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            publication.publish_directory_no_replace(staging, destination)
+        except OSError as error:
+            caught = error
+        finally:
+            builtins.__dict__["FileNotFoundError"] = native_missing
+    assert type(caught) is OSError
+    assert caught.errno == errno.EIO
+    assert caught.__cause__ is denied
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
+@pytest.mark.skipif(
+    sys.platform != _LINUX_PLATFORM,
+    reason="requires Linux no-replace publication",
+)
+@pytest.mark.parametrize("stage", [False, True])
+def test_publication_attestation_wraps_denial_after_oserror_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, stage: bool
+) -> None:
+    """Both post-rename status reads report EIO with the original cause."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    stat_result = os.lstat(staging)
+    failure = PermissionError(errno.EACCES, "status denied")
+    receipt = Mock(
+        side_effect=(
+            [stat_result, stat_result, failure]
+            if stage
+            else [stat_result, failure]
+        )
+    )
+    native_oserror = builtins.OSError
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(publication, "_NATIVE_PATH_LSTAT", receipt)
+        patched.setattr(publication, "_linux_rename_noreplace", Mock())
+        patched.setattr(builtins, "OSError", LookupError)
+        try:
+            publication.publish_directory_no_replace(staging, destination)
+        except native_oserror as error:
+            caught = error
+        finally:
+            builtins.__dict__["OSError"] = native_oserror
+    assert type(caught) is native_oserror
+    assert caught.errno == errno.EIO
+    assert caught.__cause__ is failure
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
+def test_publication_staging_status_wraps_late_typeerror_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Host status TypeError must remain a typed publication error."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    failure = TypeError("status reader failed")
+    native_typeerror = builtins.TypeError
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            publication, "_NATIVE_PATH_LSTAT", Mock(side_effect=failure)
+        )
+        patched.setattr(builtins, "TypeError", LookupError)
+        try:
+            publication.publish_directory_no_replace(
+                staging, tmp_path / "destination"
+            )
+        except OSError as error:
+            caught = error
+        finally:
+            builtins.__dict__["TypeError"] = native_typeerror
+    assert type(caught) is OSError
+    assert caught.errno == errno.EINVAL
+    assert caught.__cause__ is failure
+
+
+@pytest.mark.skipif(
+    sys.platform != _LINUX_PLATFORM,
+    reason="requires Linux native loader route",
+)
+def test_publication_linux_loader_wraps_late_valueerror_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late error aliases cannot leak a native loader exception."""
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    failure = ValueError("native loader failed")
+    native_valueerror = builtins.ValueError
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(publication, "_NATIVE_CDLL", Mock(side_effect=failure))
+        patched.setattr(builtins, "ValueError", LookupError)
+        try:
+            publication.publish_directory_no_replace(
+                staging, tmp_path / "destination"
+            )
+        except OSError as error:
+            caught = error
+        finally:
+            builtins.__dict__["ValueError"] = native_valueerror
+    assert type(caught) is OSError
+    assert caught.errno == errno.ENOTSUP
+    assert caught.__cause__ is failure
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME, reason="requires POSIX surrogate encoding"
+)
+def test_publication_unicode_error_wraps_late_unicodeerror_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unencodable paths must report native EINVAL after alias replacement."""
+    native_unicodeerror = builtins.UnicodeError
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeError", LookupError)
+        try:
+            publication.publish_directory_no_replace(
+                Path("\ud800"), Path("output")
+            )
+        except OSError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeError"] = native_unicodeerror
+    assert type(caught) is OSError
+    assert caught.errno == errno.EINVAL
+    assert type(caught.__cause__) is UnicodeEncodeError
+
+
+def test_publication_rejection_uses_native_oserror_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed path admission must not raise a substituted error class."""
+    native_oserror = builtins.OSError
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "OSError", LookupError)
+        try:
+            publication.publish_directory_no_replace(
+                cast("Path", cast("object", "not a path")), Path("output")
+            )
+        except native_oserror as error:
+            caught = error
+        finally:
+            builtins.__dict__["OSError"] = native_oserror
+    assert type(caught) is native_oserror
+    assert caught.errno == errno.EINVAL
