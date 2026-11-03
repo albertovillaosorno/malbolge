@@ -265,7 +265,12 @@ python3.14 -B -m benchmarks.arena.target_echo_reference \
 
 The study requires repository-local built executables under
 `.cache/rust/target/debug/`, an existing `.temp` root, and an explicit
-canonical `malbolge-1998` profile. Each external emitter/VM executable
+canonical `malbolge-1998` profile. Target run-manifest TOML strings are quoted
+with an import-bound standard-library JSON encoder, corroborated against the
+public JSON writer. Forged cached-default-encoder or writer output cannot
+silently relabel the recorded Git revision, workload, host, or raw-output path;
+this does not defend modification of Python's underlying JSON implementation.
+Each external emitter/VM executable
 must be a regular nonempty file of at most 128 MiB; both the producer and
 read-only replay auditor enforce this cap before hashing the full executable
 identity. This bounds tool fingerprint I/O, not tool behavior or host memory.

@@ -36,6 +36,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import os
 import shutil
@@ -56,6 +57,7 @@ from benchmarks.arena import (
     target_echo_reference,
 )
 from benchmarks.arena.tests.test_evidence import sample_study
+from scripts.validate import target_profile
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -65,6 +67,139 @@ TARGET_RAW = "raw"
 TARGET_RUNS = "runs"
 TARGET_RSS = "rss"
 TARGET_STUDY = "study"
+
+
+def _quoted_manifest_inputs(
+    tmp_path: Path,
+) -> tuple[dict[str, Any], target_echo_reference._Context]:
+    """Provide structurally valid synthetic target provenance with no VM work."""
+    document = target_profile.load_document(
+        Path(__file__).resolve().parents[3] / "malbolge.json"
+    )
+    fingerprint = target_profile.profile_fingerprint(
+        document, target_echo_reference.PROFILE
+    )
+    context = replace(
+        _synthetic_target_context(tmp_path, site=TARGET_RUNS),
+        fingerprint=fingerprint,
+    )
+    row = {
+        "algorithm": target_echo_reference.BASELINE,
+        "case": {
+            "family": target_echo_reference.FAMILY,
+            "difficulty": 1,
+            "workload_sha256": "f" * 64,
+        },
+        "verifier": target_echo_reference.VERIFIER,
+        "outcome": analyze.VERIFIED,
+        "raw_sample": ".temp/synthetic-target/raw/one.csv",
+        "trial": 0,
+    }
+    return row, context
+
+
+@pytest.mark.parametrize(
+    "providers", ("cached-encoder", "writer", "cached-encoder-and-writer")
+)
+def test_target_run_manifest_rejects_forged_git_quote_provider(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    providers: str,
+) -> None:
+    """Source Git commitment cannot be relabeled by public JSON providers."""
+    row, context = _quoted_manifest_inputs(tmp_path)
+    baseline = target_echo_reference._manifest(row, context, "f" * 64)
+    forged_commit = "b" * 40
+    assert f'commit = "{context.commit}"' in baseline
+    assert f'commit = "{forged_commit}"' not in baseline
+    source_encoder = json.JSONEncoder(ensure_ascii=True)
+    source_dumps = json.dumps
+
+    def altered(value: object, **kwargs: object) -> str:
+        if value == context.commit:
+            return source_encoder.encode(forged_commit)
+        return source_dumps(value, **kwargs)
+
+    class ForgedCachedEncoder:
+        def encode(self, value: object) -> str:
+            if value == context.commit:
+                return source_encoder.encode(forged_commit)
+            return source_encoder.encode(value)
+
+    with monkeypatch.context() as patch:
+        if providers != "writer":
+            patch.setattr(json, "_default_encoder", ForgedCachedEncoder())
+        if providers != "cached-encoder":
+            patch.setattr(json, "dumps", altered)
+        assert json.dumps(context.commit) == source_encoder.encode(forged_commit)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="JSON quote serializer disagrees with source",
+        ):
+            _ = target_echo_reference._manifest(row, context, "f" * 64)
+
+
+class _ForeignManifestQuote(str):
+    """A public quote cannot override comparison through Python hooks."""
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        raise AssertionError("untrusted JSON quote comparison executed")
+
+    __hash__ = str.__hash__
+
+
+@pytest.mark.parametrize(
+    "receipt", (None, b'"forged"', _ForeignManifestQuote('"forged"'))
+)
+def test_target_run_manifest_rejects_foreign_json_quote_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    receipt: object,
+) -> None:
+    """Only exact native writer text can join retained run provenance."""
+    row, context = _quoted_manifest_inputs(tmp_path)
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", lambda *_args, **_kwargs: receipt)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="JSON quote serializer disagrees with source",
+        ):
+            _ = target_echo_reference._manifest(row, context, "f" * 64)
+
+
+def test_target_run_manifest_contains_json_writer_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """External JSON failures retain a typed error and exact cause."""
+    row, context = _quoted_manifest_inputs(tmp_path)
+    failure = RuntimeError("untrusted JSON producer details")
+
+    def broken_writer(*_args: object, **_kwargs: object) -> str:
+        raise failure
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "dumps", broken_writer)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="JSON quote serializer failed: RuntimeError",
+        ) as caught:
+            _ = target_echo_reference._manifest(row, context, "f" * 64)
+        assert caught.value.__cause__ is failure
+
+
+def test_target_run_manifest_accepts_equivalent_cached_json_encoder(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Equivalent cached encoders preserve exact producer provenance."""
+    row, context = _quoted_manifest_inputs(tmp_path)
+    expected = target_echo_reference._manifest(row, context, "f" * 64)
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "_default_encoder", json.JSONEncoder(ensure_ascii=True))
+        assert target_echo_reference._manifest(row, context, "f" * 64) == expected
+
 
 
 class _FaultyTargetWriter:

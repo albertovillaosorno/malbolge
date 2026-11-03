@@ -62,6 +62,7 @@ from benchmarks.arena import (
 )
 from scripts.validate import experiment_manifest, target_profile
 
+_SOURCE_JSON_ENCODER = json.JSONEncoder
 _ROOT = Path(__file__).resolve().parents[2]
 _TEMP = _ROOT / ".temp"
 _BUILD = _ROOT / ".cache/rust/target/debug"
@@ -177,6 +178,20 @@ class _Context:
 
 def _fail(message: str) -> Never:
     raise TargetEchoStudyError(message)
+
+
+def _quote(text: str) -> str:
+    try:
+        # Public json.dumps uses the mutable cached default encoder for
+        # strings, which cannot authenticate retained TOML identity fields.
+        source = _SOURCE_JSON_ENCODER(ensure_ascii=True).encode(text)
+        observed = json.dumps(text)
+    except Exception as error:
+        message = f"target echo JSON quote serializer failed: {type(error).__name__}"
+        raise TargetEchoStudyError(message) from error
+    if type(observed) is not str or observed != source:
+        _fail("target echo JSON quote serializer disagrees with source")
+    return source
 
 
 def _read_source_bytes(relative: str, *, limit: int) -> bytes:
@@ -964,7 +979,7 @@ def _manifest(
     rss_hash: str | None = None,
 ) -> str:
     case = row["case"]
-    quote = json.dumps
+    quote = _quote
     lines = [
         "schema_version = 1",
         "",
