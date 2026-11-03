@@ -60,9 +60,14 @@ _LOWER_HEX = frozenset("0123456789abcdef")
 # Snapshot acceptance must not depend on later consumer-global hooks.
 _NATIVE_ALL = builtins.all
 _NATIVE_ANY = builtins.any
+_NATIVE_BOOL = builtins.bool
+_NATIVE_LEN = builtins.len
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
+_NATIVE_TUPLE = builtins.tuple
+_NATIVE_TYPE = builtins.type
 _NATIVE_ZIP = builtins.zip
+_NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
@@ -111,7 +116,7 @@ class SourcePin:
 
 
 def _validate_repository(repository: object) -> None:
-    if type(repository) is not str or not repository:
+    if _NATIVE_TYPE(repository) is not str or not repository:
         message = "source pin repository must be a non-empty string"
         raise SourcePinError(message)
     if _NUL in repository:
@@ -125,23 +130,27 @@ def _validate_repository(repository: object) -> None:
 
 
 def _is_lower_hex(value: str, length: int) -> bool:
-    return len(value) == length and _NATIVE_ALL(char in _LOWER_HEX for char in value)
+    return _NATIVE_LEN(value) == length and _NATIVE_ALL(
+        char in _LOWER_HEX for char in value
+    )
 
 
 def _validate_commit(commit: object) -> None:
-    if type(commit) is not str or not _is_lower_hex(commit, _COMMIT_HEX_LENGTH):
+    if _NATIVE_TYPE(commit) is not str or not _is_lower_hex(
+        commit, _COMMIT_HEX_LENGTH
+    ):
         message = "source pin commit must be 40 lowercase hexadecimal characters"
         raise SourcePinError(message)
 
 
 def _validate_file_count(file_count: object) -> None:
-    if type(file_count) is not int or file_count < _ONE:
+    if _NATIVE_TYPE(file_count) is not int or file_count < _ONE:
         message = "source pin file_count must be a positive integer"
         raise SourcePinError(message)
 
 
 def _validate_snapshot_sha256(snapshot_sha256: object) -> None:
-    if type(snapshot_sha256) is not str or not _is_lower_hex(
+    if _NATIVE_TYPE(snapshot_sha256) is not str or not _is_lower_hex(
         snapshot_sha256, _SHA256_HEX_LENGTH
     ):
         message = "source pin snapshot_sha256 must be lowercase SHA-256"
@@ -149,15 +158,15 @@ def _validate_snapshot_sha256(snapshot_sha256: object) -> None:
 
 
 def _validate_roots(roots: object) -> None:
-    if type(roots) is not tuple:
+    if _NATIVE_TYPE(roots) is not tuple:
         message = "source pin roots must use the exact immutable tuple type"
         raise SourcePinError(message)
     items = cast("tuple[object, ...]", roots)
-    if _NATIVE_ANY(type(root) is not str for root in items):
+    if _NATIVE_ANY(_NATIVE_TYPE(root) is not str for root in items):
         message = "source pin roots must contain exact string paths"
         raise SourcePinError(message)
     string_roots = cast("tuple[str, ...]", roots)
-    if not string_roots or string_roots != tuple(
+    if not string_roots or string_roots != _NATIVE_TUPLE(
         _NATIVE_SORTED(_NATIVE_SET(string_roots))
     ):
         message = "source pin roots must be unique and sorted"
@@ -197,7 +206,7 @@ def _u64(value: int) -> bytes:
 
 
 def _frame(value: bytes) -> bytes:
-    return _u64(len(value)) + value
+    return _u64(_NATIVE_LEN(value)) + value
 
 
 def _utf8_pinned_path(path: str) -> bytes:
@@ -209,7 +218,7 @@ def _utf8_pinned_path(path: str) -> bytes:
 
 
 def _validate_relative_path(relative_path: object) -> str:
-    if type(relative_path) is not str:
+    if _NATIVE_TYPE(relative_path) is not str:
         message = "pinned source path must use the exact string type"
         raise SourcePinError(message)
     # Root labels are lexical evidence, not mutable pathlib method results.
@@ -219,7 +228,7 @@ def _validate_relative_path(relative_path: object) -> str:
         or _BACKSLASH in relative_path
         or _NUL in relative_path
         or relative_path.startswith("/")
-        or bool(_native_splitdrive(relative_path)[0])
+        or _NATIVE_BOOL(_native_splitdrive(relative_path)[0])
         or _native_isreserved(relative_path)
         or _NATIVE_ANY(part in {"", _DOT, _PARENT} for part in relative_path.split("/"))
     )
@@ -232,11 +241,13 @@ def _validate_relative_path(relative_path: object) -> str:
 
 def _host_error_detail(error: BaseException) -> str:
     """Keep foreign exception formatters outside provenance diagnostics."""
-    if type(error) in (OSError, ValueError, RuntimeError, ExactTreeError):
+    if _NATIVE_TYPE(error) in (
+        OSError, ValueError, RuntimeError, ExactTreeError
+    ):
         arguments = cast("tuple[object, ...]", error.args)
-        if len(arguments) == 1 and type(arguments[0]) is str:
+        if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is str:
             return arguments[0]
-    return type(error).__name__
+    return _NATIVE_TYPE(error).__name__
 
 
 def _source_mode(path: Path, relative: str) -> int | None:
@@ -248,7 +259,7 @@ def _source_mode(path: Path, relative: str) -> int | None:
         detail = _host_error_detail(error)
         message = f"pinned source status failed for {relative}: {detail}"
         raise SourcePinError(message) from error
-    if type(receipt) is not _NATIVE_STAT_RESULT:
+    if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"pinned source status must be native for {relative}"
         raise SourcePinError(message)
     mode = receipt.st_mode
@@ -322,7 +333,7 @@ def _directory_paths(selected: Path) -> tuple[Path, ...]:
             raise
         except (OSError, ValueError, RuntimeError) as error:
             _raise_source_walk_error(error)
-    return tuple(_NATIVE_SORTED(paths))
+    return _NATIVE_TUPLE(_NATIVE_SORTED(paths))
 
 
 def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
@@ -339,7 +350,7 @@ def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
         if not S_ISDIR(mode):
             message = f"special entry is not accepted in pinned source: {relative}"
             raise SourcePinError(message)
-    return tuple(files)
+    return _NATIVE_TUPLE(files)
 
 
 def _collect_root(root: Path, relative_root: str) -> tuple[Path, ...]:
@@ -350,22 +361,24 @@ def _collect_root(root: Path, relative_root: str) -> tuple[Path, ...]:
 
 
 def _pinned_files(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
-    files = tuple(path for relative in roots for path in _collect_root(root, relative))
+    files = _NATIVE_TUPLE(
+        path for relative in roots for path in _collect_root(root, relative)
+    )
     unique = {_native_relative_label(path, root) for path in files}
-    if len(unique) != len(files):
+    if _NATIVE_LEN(unique) != _NATIVE_LEN(files):
         message = "pinned source roots overlap"
         raise SourcePinError(message)
-    return tuple(
+    return _NATIVE_TUPLE(
         _NATIVE_SORTED(files, key=lambda path: _native_relative_label(path, root))
     )
 
 
 def _validate_root_path(root: object) -> None:
     # A foreign Path subclass can override source pin status and byte reads.
-    if type(root) is not type(Path()):
+    if _NATIVE_TYPE(root) is not _NATIVE_PATH_TYPE:
         message = "pinned source root must use exact pathlib Path"
         raise SourcePinError(message)
-    raw = str(root)
+    raw = _NATIVE_PATH_STRING(root)
     if _NUL in raw:
         message = "pinned source root path must not contain NUL"
         raise SourcePinError(message)
@@ -398,7 +411,7 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
         detail = _host_error_detail(error)
         message = f"pinned source read failed for {relative}: {detail}"
         failure = SourcePinError(message)
-        if type(error) is ExactTreeError:
+        if _NATIVE_TYPE(error) is ExactTreeError:
             for note in cast("list[str]", getattr(error, "__notes__", [])):
                 failure.add_note(note)
         raise failure from error
@@ -411,7 +424,7 @@ def _pinned_file_receipt(path: Path, relative: str) -> tuple[int, ...]:
     except (OSError, ValueError, RuntimeError, TypeError) as error:
         message = f"pinned source file changed during snapshot: {relative}"
         raise SourcePinError(message) from error
-    if type(status) is not _NATIVE_STAT_RESULT:
+    if _NATIVE_TYPE(status) is not _NATIVE_STAT_RESULT:
         message = f"pinned source status must be native for {relative}"
         raise SourcePinError(message)
     if not S_ISREG(status.st_mode):
@@ -440,7 +453,7 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
     digest.update(_DOMAIN)
     resolved_root = _resolved_source_root(root)
     files = _pinned_files(resolved_root, roots)
-    digest.update(_u64(len(files)))
+    digest.update(_u64(_NATIVE_LEN(files)))
     receipts: list[tuple[int, ...]] = []
     for path in files:
         relative_text = _native_relative_label(path, resolved_root)
@@ -460,7 +473,7 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
             message = f"pinned source file changed during snapshot: {relative_text}"
             raise SourcePinError(message)
     return SourcePinEvidence(
-        file_count=len(files),
+        file_count=_NATIVE_LEN(files),
         snapshot_sha256=digest.hexdigest(),
     )
 
@@ -475,7 +488,7 @@ def require_source_pin(root: Path, pin: SourcePin) -> SourcePinEvidence:
         SourcePinError: File count or snapshot digest differs from the pin.
 
     """
-    if type(pin) is not SourcePin:
+    if _NATIVE_TYPE(pin) is not SourcePin:
         message = "source pin must use the exact SourcePin type"
         raise SourcePinError(message)
     observed = source_snapshot_evidence(root, pin.roots)

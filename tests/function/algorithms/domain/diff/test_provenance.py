@@ -56,7 +56,7 @@ from algorithms.diff.provenance import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Iterator
+    from collections.abc import Callable, Generator, Iterator, Sized
 
 _COMMIT = "0123456789abcdef0123456789abcdef01234567"
 _EXPECTED_FILE_COUNT = 3
@@ -1185,3 +1185,116 @@ def test_pinned_snapshot_ignores_late_zip_receipt_drop(
         with pytest.raises(SourcePinError, match="changed during snapshot"):
             _ = require_source_pin(tmp_path, pin)
     assert changed, "the within-snapshot mutation did not execute"
+
+
+class _ForeignPinRepository(str):
+    """A string subclass is not admitted as pinned metadata."""
+
+
+class _ForeignPinRoots(tuple[str, ...]):
+    """A tuple subclass must not evade immutable-root admission."""
+
+
+@pytest.mark.parametrize(
+    ("foreign", "pretend", "field"),
+    [
+        (_ForeignPinRepository("repo"), str, "repository"),
+        (True, int, "file_count"),
+        (_ForeignPinRoots(("src",)), tuple, "roots"),
+    ],
+)
+def test_source_pin_late_type_spoof_rejects_foreign_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    foreign: object,
+    pretend: type,
+    field: str,
+) -> None:
+    """A consumer type hook cannot authorize foreign source-pin records."""
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return pretend if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            if field == "repository":
+                provenance_module._validate_repository(foreign)
+            elif field == "file_count":
+                provenance_module._validate_file_count(foreign)
+            else:
+                provenance_module._validate_roots(foreign)
+        except SourcePinError:
+            rejected = True
+    assert rejected, f"late type hook admitted foreign {field}"
+
+
+def test_source_pin_late_type_spoof_rejects_path_subclass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged native type cannot call foreign root string hooks."""
+    foreign = _ForeignPinnedRoot(tmp_path / "foreign")
+    native_type = type
+    path_type = type(Path())
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return path_type if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "type", forged_type)
+        try:
+            provenance_module._validate_root_path(foreign)
+        except SourcePinError:
+            rejected = True
+    assert rejected, "late type hook admitted a foreign source root"
+
+
+def test_source_pin_late_len_spoof_rejects_short_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Digest widths cannot be forged by late length replacement."""
+    malformed = "0" * 63
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        return 64 if value is malformed else native_len(cast("Sized", value))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "len", forged_len)
+        try:
+            provenance_module._validate_snapshot_sha256(malformed)
+        except SourcePinError:
+            rejected = True
+    assert rejected, "late len hook accepted a short source digest"
+
+
+def test_source_pin_late_tuple_spoof_rejects_unsorted_roots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged tuple constructor cannot hide unsorted root selection."""
+    roots = ("zeta", "alpha")
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", lambda _: roots)
+        try:
+            provenance_module._validate_roots(roots)
+        except SourcePinError:
+            rejected = True
+    assert rejected, "late tuple hook admitted unsorted source roots"
+
+
+def test_source_pin_late_bool_spoof_rejects_drive_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late truth hook cannot erase portable drive-prefix policy."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bool", lambda _: False)
+        try:
+            provenance_module._validate_relative_path("C:/source")
+        except SourcePinError:
+            rejected = True
+    assert rejected, "late bool hook admitted a drive-relative root"
