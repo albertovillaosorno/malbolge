@@ -2902,6 +2902,53 @@ object-state mutation. `jig doctor`
 remains degraded because the repository graph is absent; no global green
 Jig verdict is claimed.
 
+## Protected plan and conjunctive gate error-class continuity (2026-11-03)
+
+Protected-plan metadata now catches the import-original `UnicodeError`
+(`f2c72b166`) while validating output paths, source paths, and passthrough
+roots. A late builtin alias previously leaked raw `UnicodeEncodeError` for
+unencodable surrogate labels. Three red-first regressions now fail closed
+with `ProtectedPlanError`; 230 postcommit protected tests and 4,002 integrated
+diff tests passed. Scoped Ruff and strict source/test BasedPyright were clean.
+
+Source-binding share path validation now catches the import-original
+`UnicodeEncodeError` (`3f0d54f1f`); two red-first validation/recovery cases
+passed, with 206 postcommit focused and 4,014 integrated diff tests. Ruff
+and diff checks were clean. Its 73 older source/test type findings remain
+outside changed lines. Domain consumer registration now pins native
+exception classes during import and `sys.modules` rollback (`ad231003f`).
+Four red-first cases, 146 postcommit domain tests, and 958 adjacent tests
+passed; scoped source typing, Ruff, and diff checks were clean.
+
+Source-revision provenance now preserves original native error-class catches
+(`f25c5ae9e`) when malformed pin and evidence receipts pass through the
+public verification interface. Eight red-first cases passed, along with
+216 postcommit focused and 3,996 integrated diff tests. The tree-model path
+codec guard similarly retains native encoding failures after late aliases
+(`82a4fd012`), with three red-first cases, 108 focused and 3,999 integrated
+passing tests. Scoped source typing, Ruff, and diff checks were clean.
+
+The conjunctive admission gate now captures original source and behavior
+policy error classes (`51d1196ea`), so late module aliases cannot leak raw
+policy exceptions when validating fabricated native evidence. Six red-first
+cases cover both evidence families across `combine_admission`,
+`require_transform_admission`, and the `admitted` verdict. All 73 postcommit
+gate tests passed; a shared integrated run with these cases passed 4,014
+diff tests. Scoped Ruff, strict source/test BasedPyright, and diff checks
+were clean. These commits were DCO signed and pushed to `main`.
+
+Behavior-program observation and expected-failure routing now captures the
+original `ProbeExecutionError` and `ExactTreeError` classes (`fe382a673`).
+Four red-first regressions cover late error alias redirection; 281 postcommit
+focused and 4,018 integrated diff tests passed. Scoped Ruff and diff checks
+were clean, with 74 older source/test strict typing errors outside changed
+lines. The DCO was pushed SHA-exact to `main`.
+
+This work does not isolate direct trusted-instance mutation or concurrent
+external filesystem writers. The repository's `jig doctor` still reports a
+degraded graph state, and a fresh 45-second bounded `jig check` timed out
+during global native-validator scheduling; no green global verdict is claimed.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

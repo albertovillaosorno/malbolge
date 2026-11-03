@@ -1657,6 +1657,42 @@ format.
   graph state is absent; the current global `jig check` reached native
   validation but timed out after 95 seconds without a final verdict.
 
+- Protected-plan paths now catch native Unicode encoding failures after late
+  `UnicodeError` aliases (`f2c72b166`). Three red-first cases cover output,
+  source, and passthrough paths; 230 postcommit protected and 4,002
+  integrated diff tests passed. Scoped Ruff and strict source/test typing
+  were clean, and the DCO commit was pushed SHA-exact.
+- Source-binding share admission now pins `UnicodeEncodeError` (`3f0d54f1f`),
+  with two red-first cases, 206 focused and 4,014 integrated diff tests.
+  Ruff/diff passed; 73 older type findings remain outside changed lines.
+  Consumer domain registration similarly pins native exception handling and
+  import rollback (`ad231003f`): four red-first cases, 146 focused and 958
+  adjacent tests passed, with scoped source typing and Ruff/diff clean.
+  Both DCO commits were pushed on `main`.
+- Provenance/source-revision checks now pin native error classes
+  (`f25c5ae9e`), preventing late alias swaps from leaking malformed pin and
+  evidence failures. Eight red-first cases, 216 focused and 3,996 integrated
+  tests passed, with scoped source typing/Ruff/diff clean. Tree-model path
+  admission (`82a4fd012`) uses original Unicode error handling as well:
+  three red-first cases, 108 focused and 3,999 integrated tests passed,
+  with scoped source typing and Ruff clean. Both DCOs were pushed on `main`.
+- Source/behavior conjunctive gate validation now catches original policy
+  error classes (`51d1196ea`) before late module aliases can leak malformed
+  native receipt errors. Six red-first source/behavior cases cover combined
+  admission, required admission, and native verdict reads. All 73 focused
+  postcommit and 4,014 shared integrated diff tests passed; scoped Ruff,
+  strict source/test typing, and diff checks were clean. This DCO was pushed
+  SHA-exact. The fresh 45-second global Jig check timed out at native tool
+  scheduling; `jig doctor` remains degraded (graph absent). External writers
+  and direct trusted-instance state mutation remain outside these guards.
+
+- Behavior-program expected-failure handling now retains original
+  `ProbeExecutionError` and `ExactTreeError` classes (`fe382a673`). Four
+  red-first alias cases, 281 postcommit focused and 4,018 integrated diff
+  tests passed. Scoped Ruff and diff were clean; 74 inherited strict
+  source/test typing errors remain outside changed lines. The DCO was
+  pushed SHA-exact to `main`.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
