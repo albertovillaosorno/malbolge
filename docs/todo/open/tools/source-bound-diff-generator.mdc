@@ -232,6 +232,19 @@ format.
   repository-wide Jig check timed out at 100 seconds during evidence
   acquisition. Direct descriptor reads remain independent of tree factory
   hooks. Concurrent host/filesystem races are not excluded.
+- Exact traversal now rejects late Python `sys.audit` dispatch
+  (`d2ec9c39f`) before original `Path.walk`/`os.walk` can invoke it;
+  two red-first snapshot cases and one direct-reader preservation case
+  passed, alongside 801 adjacent exact/generator/source-binding tests.
+- The original walker also consults late `builtins.reversed` and a mutable
+  `os._walk_symlinks_as_files` sentinel when selecting child directories.
+  Both identities are guarded before exact snapshots (`808ba5293`).
+  Four red-first full/excluded snapshot cases prevent omitted nested
+  source evidence or foreign boolean hooks; two direct-reader cases
+  preserve descriptor independence. All 807 postcommit adjacent tests,
+  3,829 integrated diff tests, and scoped Ruff pass. One inherited
+  exact-test typing error persists; repository-wide Jig previously timed
+  out at 100 seconds. These guards do not prevent host/filesystem races.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused

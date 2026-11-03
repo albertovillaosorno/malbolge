@@ -302,6 +302,26 @@ Ruff pass after commit. One inherited exact-test typing error persists.
 Global Jig check timed out after 100 seconds in evidence acquisition.
 Neither guard is atomic against host mutation or filesystem writers.
 
+The captured `Path.walk` and `os.walk` still call the mutable Python
+`sys.audit` module attribute during traversal. Exact source snapshots now
+verify its import-original identity before entering either walker
+(`d2ec9c39f`); two red-first full/excluded snapshot cases prevent an
+untrusted audit callback from running, while a third direct-read case
+confirms descriptor reads are independent. All 801 adjacent exact,
+generator, and source-binding tests passed after commit.
+
+Original `os.walk` also consults mutable `builtins.reversed` for child
+iteration and the private `os._walk_symlinks_as_files` sentinel for link
+handling. A replaced `reversed` previously omitted an entire nested source
+subtree from the snapshot. Commit `808ba5293` captures both original
+identities and checks them before full and passthrough-excluded walks.
+Four red-first admission cases and two direct-file preservation cases,
+807 postcommit adjacent tests, and 3,829 integrated diff tests passed.
+Scoped Ruff and diff checks were clean; one older exact-test typing error
+remains. These checks prevent late Python hook substitution, not concurrent
+host mutation, direct trusted module-state edits, or external filesystem
+writers. The global Jig check previously timed out during evidence capture.
+
 This local plan is verification evidence, not a distributable transform. Raw
 `OracleLiteral` bytes must never cross the public emission boundary. A later
 source-binding stage must convert them to recovery material that cannot be
