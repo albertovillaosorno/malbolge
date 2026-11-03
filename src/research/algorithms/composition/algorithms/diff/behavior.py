@@ -42,6 +42,8 @@ from typing import cast
 _ZERO = 0
 _ONE = 1
 _NUL = "\x00"
+# Do not allow domain-loaded code to redefine finite score admission.
+_NATIVE_ISFINITE = math.isfinite
 
 
 class BehaviorPolicyError(ValueError):
@@ -294,7 +296,7 @@ class BehaviorObservations:
 
 
 def _require_evidence_similarity(value: object) -> float:
-    if type(value) is not float or not math.isfinite(value):
+    if type(value) is not float or not _NATIVE_ISFINITE(value):
         message = "behavior evidence similarity must use a finite exact float"
         raise BehaviorPolicyError(message)
     if value < _ZERO or value > _ONE:
@@ -393,7 +395,7 @@ def _validate_fraction(name: str, value: object) -> float:
         if _ZERO <= value <= _ONE:
             return float(value)
     elif type(value) is float:
-        if math.isfinite(value) and _ZERO <= value <= _ONE:
+        if _NATIVE_ISFINITE(value) and _ZERO <= value <= _ONE:
             return value
     else:
         message = f"{name} must be a finite numeric fraction in [0, 1]"

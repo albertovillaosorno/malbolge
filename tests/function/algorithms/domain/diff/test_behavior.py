@@ -98,6 +98,49 @@ def _observations(
     )
 
 
+def test_behavior_valid_threshold_ignores_late_math_finite_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Domain hooks must not reject an already-valid behavior threshold."""
+    calls = 0
+
+    def forged_finite(value: float) -> bool:
+        nonlocal calls
+        del value
+        calls += 1
+        return False
+
+    with monkeypatch.context() as patched:
+        patched.setattr(math, "isfinite", forged_finite)
+        admitted = require_behavior(
+            _profile(), _observations(), _MINIMUM_BEHAVIOR_SIMILARITY
+        )
+    assert admitted.admitted
+    assert calls == 0
+
+
+def test_behavior_valid_evidence_ignores_late_math_finite_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Existing observation receipts remain valid after domain hook swaps."""
+    evidence = require_behavior(
+        _profile(), _observations(), _MINIMUM_BEHAVIOR_SIMILARITY
+    )
+    calls = 0
+
+    def forged_finite(value: float) -> bool:
+        nonlocal calls
+        del value
+        calls += 1
+        return False
+
+    with monkeypatch.context() as patched:
+        patched.setattr(math, "isfinite", forged_finite)
+        reconstructed = replace(evidence)
+    assert reconstructed.admitted
+    assert calls == 0
+
+
 def test_behavior_evidence_rejects_incoherent_direct_construction() -> None:
     """Aggregated evidence cannot forge impossible local invariants."""
     with pytest.raises(BehaviorPolicyError, match=r"similarity.*probe counts"):
