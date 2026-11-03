@@ -2965,6 +2965,43 @@ external filesystem writers. The repository's `jig doctor` still reports a
 degraded graph state, and a fresh 45-second bounded `jig check` timed out
 during global native-validator scheduling; no green global verdict is claimed.
 
+## Admission, fingerprint, and canonical identity guards (2026-11-03)
+
+The admission evaluator now captures the original imported
+`FingerprintPolicyError` (`f13fe1968`). Under late module alias mutation,
+malformed native structural and anchor policies previously leaked raw
+validator errors instead of the required `AdmissionPolicyError`. Four
+red-first constructor/revalidation cases passed, together with 185 focused
+and 4,031 integrated diff tests. The original `AnchorPolicy` class is also
+pinned (`45eedabbe`): a late alias formerly denied a valid policy while
+letting a forged dictionary reach native descriptor handling. Two red-first
+cases, 187 focused admission tests, 268 adjacent admission/fingerprint tests,
+and 4,036 shared integrated diff tests passed. Both changes were DCO signed
+and pushed SHA-exact to `main`.
+
+Fingerprint construction now preserves its original policy, anchor, and
+coverage class identities (`a3cdef954`). Late aliases could previously
+reject valid source fingerprints, redirect native receipt allocation, or
+let foreign records reach raw descriptor errors. Eight red-first short/long
+source and foreign-record cases passed. All 89 focused fingerprint tests,
+276 adjacent admission/fingerprint tests, and 4,053 integrated diff tests
+passed. Scoped Ruff, strict source/test BasedPyright, and diff checks were
+clean. The DCO was pushed SHA-exact to `main`.
+
+Canonical identity normalization now calls the original line-ending,
+whitespace, and exact formatting-policy validators (`c3aea345f`). Late
+module aliases previously erased normalized bytes, admitted foreign source
+content, or promoted a non-boolean formatting policy. Six red-first routes,
+all 23 postcommit focused tests, and 4,062 integrated diff tests passed.
+Scoped Ruff, formatting, strict source/test BasedPyright, and diff checks
+were clean. This DCO was pushed SHA-exact to `main`.
+
+These guards do not isolate concurrent external filesystem writers or
+direct trusted-instance state mutation. The repository graph remains absent
+under `jig doctor`. A fresh bounded 100-second `jig check --root .`
+reached native-validator scheduling but timed out (exit 124); no green
+repository-wide Jig verdict is claimed.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

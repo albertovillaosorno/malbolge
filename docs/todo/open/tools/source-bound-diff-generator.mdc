@@ -1705,6 +1705,28 @@ format.
   integrated tests passed. Scoped Ruff/diff passed, with 74 inherited
   type findings outside changed lines. The DCO was pushed on `main`.
 
+- Native admission now catches its import-original `FingerprintPolicyError`
+  (`f13fe1968`) and validates against the original `AnchorPolicy` class
+  (`45eedabbe`). Four red-first nested-error cases and two class-alias
+  cases protect constructor and revalidated receipt paths. Their focused
+  suites passed 185 and 187 tests respectively; integrated diff runs
+  passed 4,031 and 4,036 tests. Scoped Ruff, strict source/test typing,
+  and diff checks were clean; both DCOs were pushed SHA-exact.
+- Fingerprint policy, anchor, and coverage receipt creation now retain
+  original class identities (`a3cdef954`). Eight red-first short/long
+  source, matching, and forged-record cases passed. The postcommit
+  adjacent suite passed 276 tests and 4,053 integrated diff tests passed;
+  scoped Ruff, strict source/test typing, and diff checks were clean.
+  This DCO was pushed SHA-exact.
+- Canonical source identity now uses original line-ending, whitespace, and
+  formatting-policy validators (`c3aea345f`). Six red-first erased-identity,
+  foreign-byte, and non-boolean policy routes passed. All 23 postcommit
+  focused tests and 4,062 integrated diff tests passed; scoped Ruff,
+  formatting, strict source/test typing, and diff checks were clean.
+  The DCO was pushed SHA-exact. A bounded 100-second global
+  `jig check --root .` reached native scheduling, then timed out (exit 124)
+  without a repository-wide verdict. Full Jig acceptance remains open.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
