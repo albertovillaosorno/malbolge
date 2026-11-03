@@ -80,6 +80,11 @@ _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
+_NATIVE_UNICODE_ERROR = builtins.UnicodeError
+_NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
 _NATIVE_ZIP = builtins.zip
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
@@ -311,7 +316,7 @@ def _validate_repository(repository: object) -> None:
         raise SourcePinError(message)
     try:
         _ = repository.encode("utf-8")
-    except UnicodeError as error:
+    except _NATIVE_UNICODE_ERROR as error:
         message = "source pin repository must be UTF-8 encodable"
         raise SourcePinError(message) from error
 
@@ -437,7 +442,7 @@ def _frame(value: bytes) -> bytes:
 def _utf8_pinned_path(path: str) -> bytes:
     try:
         return path.encode("utf-8")
-    except UnicodeError as error:
+    except _NATIVE_UNICODE_ERROR as error:
         message = "pinned source paths must be UTF-8 encodable"
         raise SourcePinError(message) from error
 
@@ -469,7 +474,10 @@ def _validate_relative_path(relative_path: object) -> str:
 def _host_error_detail(error: BaseException) -> str:
     """Keep foreign exception formatters outside provenance diagnostics."""
     if _NATIVE_TYPE(error) in (
-        OSError, ValueError, RuntimeError, ExactTreeError
+        _NATIVE_OS_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
+        ExactTreeError,
     ):
         arguments = cast(
             "tuple[object, ...]",
@@ -488,9 +496,9 @@ def _host_error_detail(error: BaseException) -> str:
 def _source_mode(path: Path, relative: str) -> int | None:
     try:
         receipt = _NATIVE_PATH_LSTAT(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _host_error_detail(error)
         message = f"pinned source status failed for {relative}: {detail}"
         raise SourcePinError(message) from error
@@ -500,7 +508,7 @@ def _source_mode(path: Path, relative: str) -> int | None:
     mode = receipt.st_mode
     try:
         is_link = S_ISLNK(mode) or _NATIVE_PATH_IS_JUNCTION(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _host_error_detail(error)
         message = f"pinned source status failed for {relative}: {detail}"
         raise SourcePinError(message) from error
@@ -567,7 +575,7 @@ def _directory_paths(selected: Path) -> tuple[Path, ...]:
                         pending.append(child)
         except SourcePinError:
             raise
-        except (OSError, ValueError, RuntimeError) as error:
+        except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
             _raise_source_walk_error(error)
     # Sort by guarded portable labels, never mutable Path.__lt__ dispatch.
     return _NATIVE_TUPLE(
@@ -636,7 +644,7 @@ def _validate_root_path(root: object) -> None:
     try:
         _ = raw.encode("utf-8")
         _ = raw.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
-    except UnicodeError as error:
+    except _NATIVE_UNICODE_ERROR as error:
         message = "pinned source root path must be filesystem-encodable"
         raise SourcePinError(message) from error
 
@@ -686,7 +694,7 @@ def _resolved_source_root(root: Path) -> Path:
     _require_native_root_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(root, strict=True)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _host_error_detail(error)
         message = f"pinned source root resolution failed: {root}: {detail}"
         raise SourcePinError(message) from error
@@ -724,7 +732,12 @@ def _pinned_file_receipt(path: Path, relative: str) -> tuple[int, ...]:
     """Capture a physical file identity that survives mtime restoration."""
     try:
         status = _NATIVE_PATH_LSTAT(path)
-    except (OSError, ValueError, RuntimeError, TypeError) as error:
+    except (
+        _NATIVE_OS_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
+        _NATIVE_TYPE_ERROR,
+    ) as error:
         message = f"pinned source file changed during snapshot: {relative}"
         raise SourcePinError(message) from error
     if _NATIVE_TYPE(status) is not _NATIVE_STAT_RESULT:

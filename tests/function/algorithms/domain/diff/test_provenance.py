@@ -2609,3 +2609,92 @@ def test_source_pin_native_errors_reject_late_attribute_error_alias(
         assert "read failed" in str(rejected)
     else:
         assert "incomplete native metadata" in str(rejected)
+
+
+def test_source_pin_denied_status_cannot_be_missing_after_exception_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late missing-file alias must not certify a denied source path."""
+    failure = PermissionError("status denied")
+    original = builtins.FileNotFoundError
+
+    def denied(_path: Path) -> os.stat_result:
+        raise failure
+
+    caught: SourcePinError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(provenance_module, "_NATIVE_PATH_LSTAT", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            _ = provenance_module._source_mode(tmp_path / "input", "input")
+        except SourcePinError as error:
+            caught = error
+        finally:
+            builtins.__dict__["FileNotFoundError"] = original
+    assert caught is not None
+    assert "status failed" in str(caught)
+    assert caught.__cause__ is failure
+
+
+@pytest.mark.parametrize("route", ["status", "walk", "receipt", "resolution"])
+def test_source_pin_native_os_denials_survive_exception_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """Native filesystem failures retain a typed provenance error boundary."""
+    failure = PermissionError("source access denied")
+    original = builtins.OSError
+    (tmp_path / "input").write_bytes(b"pinned")
+
+    def denied(*_args: object, **_kwargs: object) -> object:
+        raise failure
+
+    caught: SourcePinError | None = None
+    with monkeypatch.context() as patched:
+        if route in ("status", "receipt"):
+            patched.setattr(provenance_module, "_NATIVE_PATH_LSTAT", denied)
+        elif route == "walk":
+            patched.setattr(provenance_module, "_NATIVE_OS_SCANDIR", denied)
+        else:
+            patched.setattr(provenance_module, "_NATIVE_PATH_RESOLVE", denied)
+        patched.setattr(builtins, "OSError", LookupError)
+        try:
+            if route == "status":
+                _ = provenance_module._source_mode(tmp_path / "input", "input")
+            elif route == "walk":
+                _ = provenance_module._directory_paths(tmp_path)
+            elif route == "receipt":
+                _ = provenance_module._pinned_file_receipt(tmp_path / "input", "input")
+            else:
+                _ = provenance_module._resolved_source_root(tmp_path)
+        except SourcePinError as error:
+            caught = error
+        finally:
+            builtins.__dict__["OSError"] = original
+    assert caught is not None, route
+    assert caught.__cause__ is failure, route
+
+
+@pytest.mark.parametrize("route", ["repository", "label", "root"])
+def test_source_pin_utf8_rejection_survives_unicode_error_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """A late UnicodeError alias cannot leak raw codec failures."""
+    unencodable = "unpaired\ud800"
+    root = tmp_path / unencodable
+    original = builtins.UnicodeError
+    caught: SourcePinError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeError", LookupError)
+        try:
+            if route == "repository":
+                provenance_module._validate_repository(unencodable)
+            elif route == "label":
+                _ = provenance_module._utf8_pinned_path(unencodable)
+            else:
+                provenance_module._validate_root_path(root)
+        except SourcePinError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeError"] = original
+    assert caught is not None, route
+    assert type(caught.__cause__) is UnicodeEncodeError
