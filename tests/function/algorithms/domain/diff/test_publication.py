@@ -2019,3 +2019,81 @@ def test_publication_rejection_uses_native_oserror_after_alias_swap(
             builtins.__dict__["OSError"] = native_oserror
     assert type(caught) is native_oserror
     assert caught.errno == errno.EINVAL
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux no-replace directory semantics",
+)
+@pytest.mark.parametrize("alias", ["_os", "_sys"])
+def test_linux_publication_rejects_late_ctypes_host_module_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A substituted ctypes host module cannot run before no-replace rename."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    (staging / "payload").write_bytes(_OURS)
+    calls = 0
+
+    class ForeignPlatform:
+        def startswith(self, _prefix: str) -> bool:
+            nonlocal calls
+            calls += 1
+            os.rename(staging, destination)
+            return False
+
+    forged_module = (
+        SimpleNamespace(platform=ForeignPlatform())
+        if alias == "_sys"
+        else SimpleNamespace()
+    )
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(ctypes, alias, forged_module)
+        try:
+            publication.publish_directory_no_replace(staging, destination)
+        except OSError as error:
+            caught = error
+
+    assert caught is not None and caught.errno == errno.ENOTSUP
+    assert calls == 0, "foreign ctypes host module executed before no-replace"
+    assert (staging / "payload").read_bytes() == _OURS
+    assert list(destination.iterdir()) == []
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux no-replace directory semantics",
+)
+def test_linux_publication_rejects_mutated_host_platform_before_ctypes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed sys.platform cannot execute hooks inside the native loader."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    destination.mkdir()
+    (staging / "payload").write_bytes(_OURS)
+    calls = 0
+
+    class ForeignPlatform:
+        def startswith(self, _prefix: str) -> bool:
+            nonlocal calls
+            calls += 1
+            os.rename(staging, destination)
+            return False
+
+    caught: OSError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(sys, "platform", ForeignPlatform())
+        try:
+            publication.publish_directory_no_replace(staging, destination)
+        except OSError as error:
+            caught = error
+
+    assert caught is not None and caught.errno == errno.ENOTSUP
+    assert calls == 0, "mutated host platform executed inside ctypes loader"
+    assert (staging / "payload").read_bytes() == _OURS
+    assert list(destination.iterdir()) == []

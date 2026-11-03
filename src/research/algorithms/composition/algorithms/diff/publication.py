@@ -148,8 +148,11 @@ _NATIVE_CDLL_CLASS_HOOKS: Final = tuple(
     for cdll_class in _NATIVE_CDLL.__mro__
     if cdll_class is not object
 )
-# CDLL.__init__ also reads these module globals on every construction.
+# CDLL construction reads these module globals; forged host module aliases
+# can execute callbacks before the native no-replace symbol is resolved.
 _CTYPES_CDLL_GLOBAL_NAMES: Final = (
+    "_os",
+    "_sys",
     "_dlopen",
     "_CFuncPtr",
     "_FUNCFLAG_USE_ERRNO",
@@ -262,7 +265,9 @@ _NATIVE_PATH_RENAME: Final = _native_path_rename
 def _require_native_cdll_dispatch(destination: Path) -> None:
     """Fail closed when late ctypes class hooks could redirect renameat2."""
     if (
-        builtins.isinstance is not _NATIVE_ISINSTANCE
+        _NATIVE_TYPE(sys.platform) is not _NATIVE_STR_TYPE
+        or sys.platform != _HOST_PLATFORM
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
         or builtins.setattr is not _NATIVE_SETATTR
         or builtins.int is not _NATIVE_INT_TYPE
         or builtins.__build_class__ is not _NATIVE_BUILD_CLASS
