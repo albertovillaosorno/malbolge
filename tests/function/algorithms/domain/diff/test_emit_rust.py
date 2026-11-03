@@ -110,6 +110,13 @@ _DUPLICATE_ANCHOR = "anchor"
 _BINDING_U64_BYTES = 8
 _OVERLIMIT_SHARE_COUNT = 256
 _OVERSIZED_SHARE_COUNT = (1 << 64) - 1
+_INVALID_FRAME_COUNT_MARKER = b"generated count exceeds framed data"
+_AAD_DOMAIN = b"source-bound-exact-plan-aad-v2\0"
+_SNAPSHOT_COUNT = "snapshot"
+_ROOT_COUNT = "roots"
+_INSTRUCTION_COUNT = "instructions"
+_SEGMENT_COUNT = "segments"
+_PRESENT_TAG = 1
 _LATE_SOURCE_DRIFT_MARKER = b"source tree changed during materialization"
 _LATE_SOURCE_MUTATION = b"late mutation"
 
@@ -776,8 +783,10 @@ def _lower_embedded_binding_threshold(
     return generated.replace(declaration, replacement, 1)
 
 
-def _replace_embedded_binding(generated: str, data: bytes) -> str:
-    marker = "const BINDING_HEX: &str = concat!("
+def _replace_embedded_constant(
+    generated: str, name: str, data: bytes
+) -> str:
+    marker = f"const {name}: &str = concat!("
     begin = generated.index(marker)
     end = generated.index(");", begin) + 2
     declaration = generated[begin:end]
@@ -828,8 +837,9 @@ def test_emitted_rust_rejects_duplicate_binding_shares_before_source_reads(
     executable = tmp_path / f"duplicate-{duplicate}"
     output = tmp_path / "out"
     _ = rust_source.write_text(
-        _replace_embedded_binding(
+        _replace_embedded_constant(
             emit_rust_transform(protected, _PROFILE),
+            "BINDING_HEX",
             _duplicate_binding_bytes(protected, duplicate),
         ),
         encoding="utf-8",
@@ -889,8 +899,9 @@ def test_emitted_rust_rejects_oversized_binding_count_without_panic(
     executable = tmp_path / f"share-count-{count}"
     output = tmp_path / "out"
     _ = rust_source.write_text(
-        _replace_embedded_binding(
+        _replace_embedded_constant(
             emit_rust_transform(protected, _PROFILE),
+            "BINDING_HEX",
             _binding_with_share_count(protected, count),
         ),
         encoding="utf-8",
@@ -909,6 +920,115 @@ def test_emitted_rust_rejects_oversized_binding_count_without_panic(
         "oversized binding failed outside the typed parser boundary",
     )
     _expect(not output.exists(), "oversized binding published output")
+
+
+def _read_frame_length(data: bytes | bytearray, position: int) -> int:
+    return int.from_bytes(
+        data[position : position + _BINDING_U64_BYTES], byteorder="big"
+    )
+
+
+def _skip_frame(data: bytes | bytearray, position: int) -> int:
+    return position + _BINDING_U64_BYTES + _read_frame_length(data, position)
+
+
+def _first_instruction_segment_count_position(
+    data: bytes | bytearray, cursor: int
+) -> int:
+    # Kind, output path, SHA-256, source and payload optional fields.
+    cursor += 1
+    cursor = _skip_frame(data, cursor)
+    cursor = _skip_frame(data, cursor)
+    if data[cursor] == _PRESENT_TAG:
+        cursor = _skip_frame(data, cursor + 1)
+    else:
+        cursor += 1
+    if data[cursor] == _PRESENT_TAG:
+        cursor += 1 + 2 * _BINDING_U64_BYTES
+    else:
+        cursor += 1
+    return cursor
+
+
+def _aad_count_position(data: bytes | bytearray, section: str) -> int:
+    cursor = _skip_frame(data, len(_AAD_DOMAIN))
+    if section == _SNAPSHOT_COUNT:
+        cursor += _BINDING_U64_BYTES
+    else:
+        cursor = _skip_frame(data, cursor)
+        cursor = _skip_frame(data, cursor)
+        if section != _ROOT_COUNT:
+            root_count = _read_frame_length(data, cursor)
+            cursor += _BINDING_U64_BYTES
+            for _ in range(root_count):
+                cursor = _skip_frame(data, cursor)
+            if section == _SEGMENT_COUNT:
+                cursor = _first_instruction_segment_count_position(
+                    data, cursor + _BINDING_U64_BYTES
+                )
+    return cursor
+
+
+def _aad_with_oversized_count(
+    generated: str, protected: ProtectedExactPlan, section: str
+) -> bytes:
+    marker = "const AAD_HEX: &str = concat!("
+    begin = generated.index(marker)
+    end = generated.index(");", begin) + 2
+    encoded = bytearray.fromhex("".join(
+        line.split('"')[1] for line in generated[begin:end].splitlines()[1:-1]
+    ))
+    position = _aad_count_position(encoded, section)
+    expected = {
+        _SNAPSHOT_COUNT: len(protected.source.files),
+        _ROOT_COUNT: len(protected.passthrough_roots),
+        _INSTRUCTION_COUNT: len(protected.instructions),
+        _SEGMENT_COUNT: len(protected.instructions[0].segments),
+    }[section]
+    _expect(
+        _read_frame_length(encoded, position) == expected,
+        "AAD metadata count frame moved",
+    )
+    encoded[position : position + _BINDING_U64_BYTES] = (
+        _OVERSIZED_SHARE_COUNT.to_bytes(_BINDING_U64_BYTES, byteorder="big")
+    )
+    return bytes(encoded)
+
+
+@pytest.mark.parametrize(
+    "section",
+    [_SNAPSHOT_COUNT, _ROOT_COUNT, _INSTRUCTION_COUNT, _SEGMENT_COUNT],
+)
+def test_emitted_rust_rejects_oversized_metadata_count_without_panic(
+    tmp_path: Path, *, section: str
+) -> None:
+    """Untrusted AAD must not allocate huge vectors before AEAD verification."""
+    source, _, _, protected = _fixture(tmp_path)
+    generated = emit_rust_transform(protected, _PROFILE)
+    rust_source = tmp_path / f"huge-{section}.rs"
+    executable = tmp_path / f"huge-{section}"
+    output = tmp_path / "out"
+    _ = rust_source.write_text(
+        _replace_embedded_constant(
+            generated, "AAD_HEX",
+            _aad_with_oversized_count(generated, protected, section),
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "oversized-metadata runtime failed to compile: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+    completed = _run(executable, source, output)
+    _expect(completed.returncode != 0, "oversized metadata was accepted")
+    _expect(
+        _INVALID_FRAME_COUNT_MARKER in completed.stderr,
+        "oversized metadata failed outside the bounded frame parser",
+    )
+    _expect(not output.exists(), "oversized metadata published output")
 
 
 def test_emitted_rust_rejects_binding_threshold_under_file_minimum(

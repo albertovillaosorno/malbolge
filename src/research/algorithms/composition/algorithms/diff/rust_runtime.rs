@@ -152,6 +152,18 @@ impl<'a> Cursor<'a> {
         usize::try_from(self.u64_be()?)
             .map_err(|_| String::from("generated length exceeds host usize"))
     }
+    fn bounded_count(
+        &mut self,
+        minimum_item_bytes: usize,
+    ) -> Result<usize, String> {
+        let count = self.usize_be()?;
+        // Refuse impossible collection lengths before reserving memory.
+        // Callers supply a conservative on-wire minimum for each item.
+        if count > (self.data.len() - self.offset) / minimum_item_bytes {
+            return Err(String::from("generated count exceeds framed data"));
+        }
+        Ok(count)
+    }
     fn frame(&mut self) -> Result<&'a [u8], String> {
         let n = self.usize_be()?;
         self.take(n)
@@ -199,7 +211,8 @@ fn digest_hex(value: &[u8]) -> Result<[u8; 32], String> {
 }
 fn parse_snapshot(data: &[u8]) -> Result<Snapshot, String> {
     let mut c = Cursor::new(data);
-    let count = c.usize_be()?;
+    // Path frame, 64-character SHA-256 frame, and 64-bit size.
+    let count = c.bounded_count(8 + 8 + 64 + 8)?;
     let mut files = Vec::with_capacity(count);
     for _ in 0..count {
         files.push(FileRecord {
@@ -236,7 +249,8 @@ fn parse_instruction(c: &mut Cursor<'_>) -> Result<Instruction, String> {
     let expected_sha256 = digest_hex(c.frame()?)?;
     let source_path = optional_text(c)?;
     let payload_slice = optional_slice(c)?;
-    let count = c.usize_be()?;
+    // Every segment includes one tag and two 64-bit coordinates.
+    let count = c.bounded_count(1 + 8 + 8)?;
     let mut segments = Vec::with_capacity(count);
     for _ in 0..count {
         let tag = c.byte()?;
@@ -288,13 +302,14 @@ fn parse_metadata(aad: &[u8]) -> Result<Metadata, String> {
     }
     let source = parse_snapshot(c.frame()?)?;
     let target = parse_snapshot(c.frame()?)?;
-    let passthrough_count = c.usize_be()?;
+    let passthrough_count = c.bounded_count(8)?;
     let mut passthrough_roots = Vec::with_capacity(passthrough_count);
     for _ in 0..passthrough_count {
         passthrough_roots.push(c.text()?);
     }
     validate_passthrough_roots(&passthrough_roots)?;
-    let count = c.usize_be()?;
+    // Kind, two frames, SHA-256 hex, optional tags, and segment count.
+    let count = c.bounded_count(1 + 8 + 8 + 64 + 1 + 1 + 8)?;
     let mut instructions = Vec::with_capacity(count);
     for _ in 0..count {
         instructions.push(parse_instruction(&mut c)?);
