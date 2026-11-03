@@ -78,6 +78,9 @@ _DOT = "."
 _BACKSLASH = "\\"
 _NUL = "\x00"
 _HEX_DIGITS = frozenset("0123456789abcdef")
+# Keep digest evidence independent of later mutable process-global hooks.
+_SHA256_FACTORY = hashlib.sha256
+_SHA256_BYTES = _SHA256_FACTORY().digest_size
 
 Mapper = Callable[[str, bytes], MappedView | None]
 Postcondition = Callable[[Path], bool]
@@ -388,7 +391,7 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None: 
         value = instruction.source_sha256
         if (
             type(value) is not str
-            or len(value) != hashlib.sha256().digest_size * 2
+            or len(value) != _SHA256_BYTES * 2
             or any(char not in _HEX_DIGITS for char in value)
         ):
             message = "compatible source sha256 must be 64 lowercase hex digits"
@@ -938,7 +941,7 @@ def build_compatible_plan(
 
 
 def _sha256(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+    return _SHA256_FACTORY(data).hexdigest()
 
 
 def _exact_literal(instruction: ExactInstruction) -> bytes:

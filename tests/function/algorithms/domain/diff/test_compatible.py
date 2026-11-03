@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import shutil
 from dataclasses import replace
@@ -624,6 +625,35 @@ def test_compatible_instruction_rejects_foreign_metadata() -> None:
             output_path="created.bin",
             kind=CompatibleFileKind.CREATE_LITERAL,
             literal=cast("bytes", cast("object", bytearray(b"created"))),
+        )
+
+
+def test_exact_gate_digest_width_rejects_forged_host_hash_size(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Instruction digest shape is fixed despite mutated host hash symbols."""
+
+    class _TruncatedHash:
+        digest_size: int = 1
+
+    def forged_sha256(data: bytes = b"") -> _TruncatedHash:
+        _ = data
+        return _TruncatedHash()
+
+    monkeypatch.setattr(hashlib, "sha256", forged_sha256)
+    exact = ExactInstruction(
+        output_path="file.bin",
+        kind=ExactInstructionKind.COPY_SOURCE,
+        expected_sha256="0" * 64,
+        source_path="file.bin",
+    )
+    with pytest.raises(CompatiblePlanError, match="64 lowercase hex digits"):
+        _ = CompatibleInstruction(
+            output_path="file.bin",
+            kind=CompatibleFileKind.EXACT_GATED,
+            source_path="file.bin",
+            source_sha256="00",
+            exact=exact,
         )
 
 
@@ -1218,6 +1248,47 @@ def test_opaque_candidate_change_fails_exact_gate(tmp_path: Path) -> None:
     ):
         _ = materialize_compatible_plan(_request(candidate, plan, output))
     _expect(not output.exists(), "opaque-rejected output was published")
+
+
+def test_exact_gate_rejects_forged_process_global_sha256(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Changing opaque bytes cannot be hidden by a forged host hash symbol."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    changed = b"opaque-upstream-change"
+    blob_path = "blob.bin"
+    _write(candidate, blob_path, changed)
+    output = tmp_path / "out"
+    exact_gate = next(
+        instruction
+        for instruction in plan.instructions
+        if instruction.output_path == blob_path
+    )
+    digest = exact_gate.source_sha256
+    assert digest is not None
+    genuine_sha256 = hashlib.sha256
+
+    class _ForgedHash:
+        """Return a trusted digest for bytes not represented by that digest."""
+
+        def __init__(self, digest: str) -> None:
+            self.digest: str = digest
+
+        def hexdigest(self) -> str:
+            return self.digest
+
+    def forged_sha256(data: bytes = b"") -> object:
+        if data == changed:
+            return _ForgedHash(digest)
+        return genuine_sha256(data)
+
+    monkeypatch.setattr(hashlib, "sha256", forged_sha256)
+    with pytest.raises(
+        CompatiblePlanError, match="opaque compatible source changed"
+    ):
+        _ = materialize_compatible_plan(_request(candidate, plan, output))
+    _expect(not output.exists(), "forged hash published unrelated opaque bytes")
 
 
 class _HostileExactCompatibleError(ExactTreeError):
