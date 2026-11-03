@@ -1891,3 +1891,253 @@ else:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+def _fabricate_admission_slots(
+    owner: type[object], values: dict[str, object]
+) -> object:
+    """Model a native exact-class record created without its initializer.
+
+    Returns:
+        A record with raw native slot values and no construction guarantees.
+
+    """
+    record = object.__new__(owner)
+    for name, value in values.items():
+        cast("MemberDescriptorType", owner.__dict__[name]).__set__(
+            record, value
+        )
+    return record
+
+
+_REFERENCE_ROLE = "reference"
+_CANDIDATE_ROLE = "candidate"
+_STRUCTURAL_POLICY_FIELD = "structural_policy"
+_ANCHOR_POLICY_FIELD = "anchor_policy"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("minimum_source_similarity", -1.0),
+        ("minimum_anchor_coverage", 2.0),
+        ("minimum_anchor_files", 0),
+        ("minimum_anchors_per_file", True),
+        ("minimum_anchor_files", "one"),
+    ],
+)
+def test_admission_revalidates_fabricated_policy(
+    field: str, invalid: object
+) -> None:
+    """Bypassing policy construction cannot relax admission thresholds."""
+    values: dict[str, object] = {
+        "minimum_source_similarity": 0.8,
+        "minimum_anchor_coverage": 0.8,
+        "minimum_anchor_files": 1,
+        "minimum_anchors_per_file": 1,
+        "structural_policy": AnchorPolicy(8, 4),
+        "anchor_policy": AnchorPolicy(8, 4),
+    }
+    values[field] = invalid
+    forged = cast(
+        "AdmissionPolicy", _fabricate_admission_slots(AdmissionPolicy, values)
+    )
+    reference = identity_tree({"source.c": b"A" * 256})
+    with pytest.raises(AdmissionPolicyError, match="minimum_"):
+        _ = evaluate_admission(reference, reference, forged)
+
+
+@pytest.mark.parametrize(
+    "field", ["minimum_source_similarity", "anchor_policy"]
+)
+def test_admission_rejects_incomplete_native_policy(field: str) -> None:
+    """Uninitialized policy slots result in a typed admission error."""
+    values: dict[str, object] = {
+        "minimum_source_similarity": 0.8,
+        "minimum_anchor_coverage": 0.8,
+        "minimum_anchor_files": 1,
+        "minimum_anchors_per_file": 1,
+        "structural_policy": AnchorPolicy(8, 4),
+        "anchor_policy": AnchorPolicy(8, 4),
+    }
+    del values[field]
+    forged = cast(
+        "AdmissionPolicy", _fabricate_admission_slots(AdmissionPolicy, values)
+    )
+    reference = identity_tree({"source.c": b"A" * 256})
+    with pytest.raises(AdmissionPolicyError, match="policy"):
+        _ = evaluate_admission(reference, reference, forged)
+
+
+@pytest.mark.parametrize("role", [_REFERENCE_ROLE, _CANDIDATE_ROLE])
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [("path", "../unsafe.c"), ("canonical", bytearray(b"source"))],
+)
+def test_admission_revalidates_fabricated_identity_file(
+    role: str, field: str, invalid: object
+) -> None:
+    """Foreign paths and mutable bytes cannot enter an exact-class identity."""
+    values: dict[str, object] = {"path": "source.c", "canonical": b"source"}
+    values[field] = invalid
+    file = cast(
+        "IdentityFile", _fabricate_admission_slots(IdentityFile, values)
+    )
+    forged_tree = cast(
+        "IdentityTree",
+        _fabricate_admission_slots(IdentityTree, {"files": (file,)}),
+    )
+    valid_tree = identity_tree({"source.c": b"source"})
+    source = forged_tree if role == _REFERENCE_ROLE else valid_tree
+    candidate = forged_tree if role == _CANDIDATE_ROLE else valid_tree
+    with pytest.raises(AdmissionPolicyError, match="identity"):
+        _ = evaluate_admission(
+            source, candidate, AdmissionPolicy(0.0, 0.0, 1, 1)
+        )
+
+
+@pytest.mark.parametrize("role", [_REFERENCE_ROLE, _CANDIDATE_ROLE])
+@pytest.mark.parametrize(
+    "invalid_files", [("z.c", "a.c"), ("a.c", "a.c"), None]
+)
+def test_admission_revalidates_fabricated_identity_tree(
+    role: str, invalid_files: tuple[str, str] | None
+) -> None:
+    """Raw exact-class trees cannot bypass tuple/order/unique admission."""
+    entries = (
+        tuple(IdentityFile(name, b"source") for name in invalid_files)
+        if invalid_files is not None
+        else None
+    )
+    slots: dict[str, object] = (
+        {"files": entries} if entries is not None else {}
+    )
+    forged_tree = cast(
+        "IdentityTree", _fabricate_admission_slots(IdentityTree, slots)
+    )
+    valid_tree = identity_tree({"source.c": b"source"})
+    source = forged_tree if role == _REFERENCE_ROLE else valid_tree
+    candidate = forged_tree if role == _CANDIDATE_ROLE else valid_tree
+    with pytest.raises(AdmissionPolicyError, match="identity tree"):
+        _ = evaluate_admission(
+            source, candidate, AdmissionPolicy(0.0, 0.0, 1, 1)
+        )
+
+
+@pytest.mark.parametrize("policy_field", ["structural_policy", "anchor_policy"])
+def test_admission_revalidates_nested_native_anchor_policy(
+    policy_field: str,
+) -> None:
+    """An exact anchor policy allocated without validation cannot be trusted."""
+    malformed = cast(
+        "AnchorPolicy",
+        _fabricate_admission_slots(
+            AnchorPolicy, {"window_bytes": 0, "selection_modulus": 4}
+        ),
+    )
+    values: dict[str, object] = {
+        "minimum_source_similarity": 0.0,
+        "minimum_anchor_coverage": 0.0,
+        "minimum_anchor_files": 1,
+        "minimum_anchors_per_file": 1,
+        "structural_policy": AnchorPolicy(8, 4),
+        "anchor_policy": AnchorPolicy(8, 4),
+    }
+    values[policy_field] = malformed
+    with pytest.raises(AdmissionPolicyError, match="anchor"):
+        _ = AdmissionPolicy(
+            0.0,
+            0.0,
+            1,
+            1,
+            structural_policy=malformed
+            if policy_field == _STRUCTURAL_POLICY_FIELD
+            else AnchorPolicy(8, 4),
+            anchor_policy=malformed
+            if policy_field == _ANCHOR_POLICY_FIELD
+            else AnchorPolicy(8, 4),
+        )
+    forged = cast(
+        "AdmissionPolicy", _fabricate_admission_slots(AdmissionPolicy, values)
+    )
+    reference = identity_tree({"source.c": b"source"})
+    with pytest.raises(AdmissionPolicyError, match="anchor"):
+        _ = evaluate_admission(reference, reference, forged)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [("path", "../unsafe.c"), ("matched_anchor_count", 2)],
+)
+def test_tree_receipt_revalidates_nested_file_evidence(
+    field: str, invalid: object
+) -> None:
+    """Raw nested file scores cannot certify an aggregate lineage receipt."""
+    values: dict[str, object] = {
+        "path": "source.c",
+        "structural_similarity": 1.0,
+        "anchor_coverage": 1.0,
+        "reference_anchor_count": 1,
+        "matched_anchor_count": 1,
+    }
+    values[field] = invalid
+    malformed = cast(
+        "FileAdmissionEvidence",
+        _fabricate_admission_slots(FileAdmissionEvidence, values),
+    )
+    with pytest.raises(
+        AdmissionPolicyError, match=r"(file admission|matched anchor)"
+    ):
+        _ = TreeAdmissionEvidence(
+            1.0, 1.0, 1, 1, (malformed,), (), AdmissionPolicy(0.0, 0.0, 1, 1)
+        )
+
+
+def test_tree_receipt_revalidates_fabricated_native_policy() -> None:
+    """Invalid policy cannot make fabricated aggregate evidence admissible."""
+    policy = cast(
+        "AdmissionPolicy",
+        _fabricate_admission_slots(
+            AdmissionPolicy,
+            {
+                "minimum_source_similarity": -1.0,
+                "minimum_anchor_coverage": 0.0,
+                "minimum_anchor_files": 1,
+                "minimum_anchors_per_file": 1,
+                "structural_policy": AnchorPolicy(8, 4),
+                "anchor_policy": AnchorPolicy(8, 4),
+            },
+        ),
+    )
+    file = FileAdmissionEvidence("source.c", 1.0, 1.0, 1, 1)
+    with pytest.raises(AdmissionPolicyError, match="minimum_source_similarity"):
+        _ = TreeAdmissionEvidence(1.0, 1.0, 1, 1, (file,), (), policy)
+
+
+_MISSING_RECEIPT_MODE = "missing"
+
+
+@pytest.mark.parametrize("fabrication", [_MISSING_RECEIPT_MODE, "erased"])
+def test_tree_admitted_revalidates_fabricated_native_receipt(
+    fabrication: str,
+) -> None:
+    """A raw exact-class tree receipt cannot self-certify its acceptance."""
+    if fabrication == _MISSING_RECEIPT_MODE:
+        slots: dict[str, object] = {"reasons": ()}
+    else:
+        source = identity_tree({"source.c": b"source"})
+        rejected = evaluate_admission(
+            source, identity_tree({}), AdmissionPolicy(1.0, 0.0, 1, 1)
+        )
+        assert not rejected.admitted
+        slots = {
+            field.name: getattr(rejected, field.name)
+            for field in fields(rejected)
+        }
+        slots["reasons"] = ()
+    fabricated = cast(
+        "TreeAdmissionEvidence",
+        _fabricate_admission_slots(TreeAdmissionEvidence, slots),
+    )
+    with pytest.raises(AdmissionPolicyError, match=r"(metadata|reasons)"):
+        _ = fabricated.admitted
