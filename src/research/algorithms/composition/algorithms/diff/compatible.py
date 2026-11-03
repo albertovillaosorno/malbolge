@@ -1353,8 +1353,20 @@ def _read_compatible_bytes(path: Path, context: str) -> bytes:
         message = f"{context} read failed: {path}: {detail}"
         failure = CompatiblePlanError(message)
         if _NATIVE_TYPE(error) is ExactTreeError:
-            for note in cast("list[str]", getattr(error, "__notes__", [])):
-                failure.add_note(note)
+            # Native note access bypasses late exact-error class getters.
+            try:
+                notes = cast(
+                    "object",
+                    BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                        error, "__notes__"
+                    ),
+                )
+            except AttributeError:
+                notes = None
+            if _NATIVE_TYPE(notes) is list:
+                for note in cast("list[object]", notes):
+                    if _NATIVE_TYPE(note) is _NATIVE_STR:
+                        BaseException.add_note(failure, note)
         raise failure from error
 
 
@@ -2073,7 +2085,12 @@ def _safe_compatible_error_detail(error: Exception) -> str:
         RuntimeError,
         ValueError,
     }:
-        arguments = cast("tuple[object, ...]", error.args)
+        arguments = cast(
+            "tuple[object, ...]",
+            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                error, "args"
+            ),
+        )
         if _NATIVE_LEN(arguments) == 1:
             reason = arguments[0]
             if _NATIVE_TYPE(reason) is _NATIVE_STR:

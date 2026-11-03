@@ -554,6 +554,42 @@ def test_source_pin_errors_do_not_invoke_foreign_formatters(
         _ = source_snapshot_evidence(tmp_path, ("src",))
 
 
+@pytest.mark.parametrize("with_note", [False, True])
+@pytest.mark.parametrize("hooked_attribute", ["args", "__notes__"])
+def test_source_pin_native_error_fields_ignore_late_class_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    *, with_note: bool, hooked_attribute: str,
+) -> None:
+    """Pinned reads copy original error diagnostics without class hooks."""
+    _write(tmp_path, "README", b"trusted")
+    native_error = ExactTreeError("native read blocked")
+    if with_note:
+        BaseException.add_note(native_error, "trusted reader note")
+    original_getattribute = ExactTreeError.__getattribute__
+    calls = 0
+
+    def forged_getattribute(error: ExactTreeError, name: str) -> object:
+        nonlocal calls
+        if name == hooked_attribute:
+            calls += 1
+            raise AssertionError("late native reader getter executed")
+        return cast("object", original_getattribute(error, name))
+
+    def fail_read(path: Path, context: str) -> bytes:
+        del path, context
+        raise native_error
+
+    with monkeypatch.context() as patch:
+        patch.setattr(provenance_module, "read_exact_regular_file", fail_read)
+        patch.setattr(ExactTreeError, "__getattribute__", forged_getattribute)
+        with pytest.raises(SourcePinError, match="read failed") as caught:
+            provenance_module._read_pinned_source(tmp_path, tmp_path / "README", "README")
+    assert calls == 0, "late class getter read native error metadata"
+    assert getattr(caught.value, "__notes__", []) == (
+        ["trusted reader note"] if with_note else []
+    )
+
+
 class _HostileExactError(ExactTreeError):
     """A delegated byte reader must not control failure formatting."""
 

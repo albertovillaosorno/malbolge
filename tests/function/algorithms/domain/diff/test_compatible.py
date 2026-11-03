@@ -2103,6 +2103,41 @@ def test_exact_gate_rejects_forged_process_global_sha256(
     _expect(not output.exists(), "forged hash published unrelated opaque bytes")
 
 
+@pytest.mark.parametrize("with_note", [False, True])
+@pytest.mark.parametrize("hooked_attribute", ["args", "__notes__"])
+def test_compatible_native_error_fields_ignore_late_class_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    *, with_note: bool, hooked_attribute: str,
+) -> None:
+    """Native exact-read errors bypass late class getters for diagnostics."""
+    native_error = ExactTreeError("native read blocked")
+    if with_note:
+        BaseException.add_note(native_error, "trusted reader note")
+    original_getattribute = ExactTreeError.__getattribute__
+    calls = 0
+
+    def forged_getattribute(error: ExactTreeError, name: str) -> object:
+        nonlocal calls
+        if name == hooked_attribute:
+            calls += 1
+            raise AssertionError("late native reader getter executed")
+        return cast("object", original_getattribute(error, name))
+
+    def fail_read(path: Path, context: str) -> bytes:
+        del path, context
+        raise native_error
+
+    with monkeypatch.context() as patch:
+        patch.setattr(compatible_module, "read_exact_regular_file", fail_read)
+        patch.setattr(ExactTreeError, "__getattribute__", forged_getattribute)
+        with pytest.raises(CompatiblePlanError, match="read failed") as caught:
+            compatible_module._read_compatible_bytes(tmp_path / "missing", "source")
+    assert calls == 0, "late class getter read native error metadata"
+    assert getattr(caught.value, "__notes__", []) == (
+        ["trusted reader note"] if with_note else []
+    )
+
+
 class _HostileExactCompatibleError(ExactTreeError):
     """Exact byte callbacks must not execute foreign diagnostic hooks."""
 

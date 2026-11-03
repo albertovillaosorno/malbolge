@@ -455,7 +455,12 @@ def _host_error_detail(error: BaseException) -> str:
     if _NATIVE_TYPE(error) in (
         OSError, ValueError, RuntimeError, ExactTreeError
     ):
-        arguments = cast("tuple[object, ...]", error.args)
+        arguments = cast(
+            "tuple[object, ...]",
+            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                error, "args"
+            ),
+        )
         if (
             _NATIVE_LEN(arguments) == 1
             and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR
@@ -665,8 +670,20 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
         message = f"pinned source read failed for {relative}: {detail}"
         failure = SourcePinError(message)
         if _NATIVE_TYPE(error) is ExactTreeError:
-            for note in cast("list[str]", getattr(error, "__notes__", [])):
-                failure.add_note(note)
+            # Native note access bypasses late exact-error class getters.
+            try:
+                notes = cast(
+                    "object",
+                    BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                        error, "__notes__"
+                    ),
+                )
+            except AttributeError:
+                notes = None
+            if _NATIVE_TYPE(notes) is list:
+                for note in cast("list[object]", notes):
+                    if _NATIVE_TYPE(note) is _NATIVE_STR:
+                        BaseException.add_note(failure, note)
         raise failure from error
 
 
