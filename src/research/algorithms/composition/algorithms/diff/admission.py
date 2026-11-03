@@ -88,6 +88,7 @@ _NATIVE_BOOL = builtins.bool
 _NATIVE_LEN = builtins.len
 _NATIVE_FROZENSET = builtins.frozenset
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_OBJECT_NEW = object.__new__
 _ORIGINAL_ANCHOR_POLICY_VALIDATOR = cast(
     "Callable[[AnchorPolicy], None]", AnchorPolicy.__dict__["__post_init__"]
@@ -147,7 +148,7 @@ def _is_portable_relative_path(path: str) -> bool:
         return False
     try:
         _ = path.encode("utf-8")
-    except UnicodeEncodeError:
+    except _NATIVE_UNICODE_ENCODE_ERROR:
         return False
     # Identity labels are lexical authority, not mutable pathlib methods.
     # Empty/dot/parent components also cover absolute and noncanonical paths.

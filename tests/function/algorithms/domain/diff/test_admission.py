@@ -2312,3 +2312,33 @@ def test_incomplete_native_admission_receipt_rejects_late_attribute_error_alias(
             builtins.__dict__["AttributeError"] = native_attribute_error
     assert type(caught) is AdmissionPolicyError, (route, caught)
     assert detail in str(caught)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(
+            lambda: IdentityFile(path="\ud800", canonical=b"source"), id="file"
+        ),
+        pytest.param(
+            lambda: FileAdmissionEvidence("\ud800", 1.0, None, 0, 0),
+            id="evidence",
+        ),
+        pytest.param(lambda: identity_tree({"\ud800": b"source"}), id="tree"),
+    ],
+)
+def test_admission_unicode_path_keeps_typed_error_after_late_alias(
+    monkeypatch: pytest.MonkeyPatch, build: Callable[[], object]
+) -> None:
+    """A changed builtin codec exception cannot escape identity admission."""
+    original = builtins.UnicodeEncodeError
+    caught: AdmissionPolicyError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeEncodeError", LookupError)
+        try:
+            _ = build()
+        except AdmissionPolicyError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeEncodeError"] = original
+    assert type(caught) is AdmissionPolicyError, caught
