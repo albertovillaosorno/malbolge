@@ -489,6 +489,68 @@ def test_anchor_functions_reject_foreign_runtime_types() -> None:
         _ = anchor_coverage((cast("StableAnchor", object()),), ())
 
 
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("window_bytes", 0),
+        ("window_bytes", True),
+        ("selection_modulus", 0),
+        ("selection_modulus", "8"),
+    ],
+)
+def test_anchor_selection_revalidates_fabricated_native_policy(
+    field: str, invalid: object
+) -> None:
+    """An exact policy instance cannot bypass positive integer admission."""
+    policy = object.__new__(AnchorPolicy)
+    for name, value in {"window_bytes": 8, "selection_modulus": 4}.items():
+        slot = cast("MemberDescriptorType", AnchorPolicy.__dict__[name])
+        slot.__set__(policy, invalid if name == field else value)
+    with pytest.raises(FingerprintPolicyError):
+        _ = stable_anchors(b"fabricated source" * 4, policy)
+
+
+def test_anchor_selection_rejects_uninitialized_native_policy() -> None:
+    """Missing native policy fields fail as typed policy errors."""
+    policy = object.__new__(AnchorPolicy)
+    with pytest.raises(FingerprintPolicyError, match="policy"):
+        _ = stable_anchors(b"lineage source", policy)
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("digest", b"short"),
+        ("digest", bytearray(32)),
+        ("offset", -1),
+        ("offset", True),
+    ],
+)
+@pytest.mark.parametrize("role", ["reference", "candidate"])
+def test_anchor_coverage_revalidates_fabricated_native_anchor(
+    role: str, field: str, invalid: object
+) -> None:
+    """Forged native metadata cannot be promoted into lineage coverage."""
+    anchor = object.__new__(StableAnchor)
+    for name, value in {"digest": b"x" * 32, "offset": 0}.items():
+        slot = cast("MemberDescriptorType", StableAnchor.__dict__[name])
+        slot.__set__(anchor, invalid if name == field else value)
+    reference = (anchor,) if role == "reference" else ()
+    candidate = (anchor,) if role == "candidate" else ()
+    with pytest.raises(FingerprintPolicyError):
+        _ = anchor_coverage(reference, candidate)
+
+
+@pytest.mark.parametrize("role", ["reference", "candidate"])
+def test_anchor_coverage_rejects_uninitialized_native_anchor(role: str) -> None:
+    """A missing digest/offset cannot leak a raw AttributeError."""
+    anchor = object.__new__(StableAnchor)
+    reference = (anchor,) if role == "reference" else ()
+    candidate = (anchor,) if role == "candidate" else ()
+    with pytest.raises(FingerprintPolicyError, match="anchor"):
+        _ = anchor_coverage(reference, candidate)
+
+
 @pytest.mark.parametrize("record", ["policy", "anchor", "coverage"])
 def test_fingerprint_record_rejects_invalid_data_after_validator_swap(
     monkeypatch: pytest.MonkeyPatch, record: str
@@ -784,7 +846,7 @@ def test_fingerprint_construction_ignores_late_class_setters(
     owner = type(valid)
     factory = cast("Callable[..., object]", owner)
     values = {datum.name: getattr(valid, datum.name) for datum in fields(valid)}
-    original = values[field]
+    original = cast("object", values[field])
     values[field] = invalid
     slot = cast("MemberDescriptorType", owner.__dict__[field])
     calls = 0

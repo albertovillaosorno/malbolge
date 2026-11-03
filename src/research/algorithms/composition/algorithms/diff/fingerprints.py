@@ -372,7 +372,14 @@ def stable_anchors(
     if _NATIVE_TYPE(policy) is not AnchorPolicy:
         message = "stable anchor policy must use the exact AnchorPolicy type"
         raise FingerprintPolicyError(message)
-    window_bytes, selection_modulus = _policy_fields(policy)
+    # Exact native type alone does not prove that callers ran __init__.
+    # Revalidate original slotted metadata before it controls hash windows.
+    try:
+        _ANCHOR_POLICY_VALIDATOR(policy)
+        window_bytes, selection_modulus = _policy_fields(policy)
+    except AttributeError as error:
+        message = "stable anchor policy has incomplete native metadata"
+        raise FingerprintPolicyError(message) from error
     if _NATIVE_LEN(data) < window_bytes:
         return _small_input_anchor(data)
     selected, fallback_offset = _scan_anchor_windows(
@@ -411,6 +418,13 @@ def anchor_coverage(
         if _NATIVE_TYPE(anchor) is not StableAnchor:
             message = "anchor coverage inputs contain a foreign anchor record"
             raise FingerprintPolicyError(message)
+        # A fabricated exact StableAnchor can carry invalid native slots even
+        # though its class identity passes the public admission gate.
+        try:
+            _STABLE_ANCHOR_VALIDATOR(anchor)
+        except AttributeError as error:
+            message = "anchor coverage input has incomplete native anchor metadata"
+            raise FingerprintPolicyError(message) from error
     reference_digests = {_anchor_fields(anchor)[0] for anchor in reference}
     candidate_digests = {_anchor_fields(anchor)[0] for anchor in candidate}
     total = _NATIVE_LEN(reference_digests)
