@@ -38,7 +38,7 @@ import builtins
 import os
 import shutil
 import tempfile
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
@@ -531,6 +531,18 @@ _BUG_OBSERVATION_INIT = cast("Callable[..., None]", BugObservation.__dict__["__i
 _BEHAVIOR_OBSERVATIONS_INIT = cast(
     "Callable[..., None]", BehaviorObservations.__dict__["__init__"]
 )
+_PROBE_RUN_CONTEXT_INIT = cast(
+    "Callable[..., None]", ProbeRunContext.__dict__["__init__"]
+)
+_PROBE_RUN_CONTEXT_SOURCE_SLOT = cast(
+    "MemberDescriptorType", ProbeRunContext.__dict__["source_root"]
+)
+_PROBE_RUN_CONTEXT_REPOSITORY_SLOT = cast(
+    "MemberDescriptorType", ProbeRunContext.__dict__["repository_root"]
+)
+_PROBE_RUN_CONTEXT_TOOLS_SLOT = cast(
+    "MemberDescriptorType", ProbeRunContext.__dict__["tools"]
+)
 
 
 def _new_receipt(
@@ -974,7 +986,12 @@ def _admit_observation_mirror(
     """
     try:
         completion = _NATIVE_COPYTREE(
-            context.source_root, mirror, symlinks=True
+            cast(
+                "Path",
+                _PROBE_RUN_CONTEXT_SOURCE_SLOT.__get__(context, ProbeRunContext),
+            ),
+            mirror,
+            symlinks=True,
         )
     except Exception as error:
         detail = _behavior_error_detail(error)
@@ -988,8 +1005,25 @@ def _admit_observation_mirror(
     if _snapshot_observed_source(mirror) != admitted:
         message = "behavior candidate tree changed while creating mirror"
         raise ProbeExecutionError(message)
-    _require_observed_source_unchanged(context.source_root, admitted)
-    return replace(context, source_root=mirror, enforce_source_immutable=True)
+    _require_observed_source_unchanged(
+        cast("Path", _PROBE_RUN_CONTEXT_SOURCE_SLOT.__get__(context, ProbeRunContext)),
+        admitted,
+    )
+    # Preserve the admitted repository/tool authority even if a mirror-copy
+    # callback replaces context getters, __init__, or __new__ afterward.
+    return _new_receipt(
+        ProbeRunContext,
+        _PROBE_RUN_CONTEXT_INIT,
+        source_root=mirror,
+        repository_root=cast(
+            "Path", _PROBE_RUN_CONTEXT_REPOSITORY_SLOT.__get__(context, ProbeRunContext)
+        ),
+        tools=cast(
+            "tuple[tuple[str, Path], ...]",
+            _PROBE_RUN_CONTEXT_TOOLS_SLOT.__get__(context, ProbeRunContext),
+        ),
+        enforce_source_immutable=True,
+    )
 
 
 def _require_observation_sources_unchanged(
@@ -1029,16 +1063,19 @@ def observe_behavior_programs(
     _, identity_programs, compatibility_programs, bug_programs = read_authored_behavior(
         authored
     )
-    admitted = _snapshot_observed_source(context.source_root)
+    source = cast(
+        "Path", _PROBE_RUN_CONTEXT_SOURCE_SLOT.__get__(context, ProbeRunContext)
+    )
+    admitted = _snapshot_observed_source(source)
     with _temporary_observation_root() as temporary:
         mirror = Path(temporary) / "source"
         mirrored = _admit_observation_mirror(context, mirror, admitted)
         identity = _observe_identity(identity_programs, mirrored)
-        _require_observation_sources_unchanged(context.source_root, mirror, admitted)
+        _require_observation_sources_unchanged(source, mirror, admitted)
         compatibility = _observe_compatibility(compatibility_programs, mirrored)
-        _require_observation_sources_unchanged(context.source_root, mirror, admitted)
+        _require_observation_sources_unchanged(source, mirror, admitted)
         bugs = _observe_bugs(bug_programs, mirrored)
-        _require_observation_sources_unchanged(context.source_root, mirror, admitted)
+        _require_observation_sources_unchanged(source, mirror, admitted)
         return _new_receipt(
             BehaviorObservations,
             _BEHAVIOR_OBSERVATIONS_INIT,

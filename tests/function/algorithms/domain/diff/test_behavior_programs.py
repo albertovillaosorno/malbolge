@@ -2028,3 +2028,130 @@ def test_behavior_observation_ignores_late_receipt_constructors(
         observations = observe_behavior_programs(authored, _context(source, tmp_path))
         assert observations.bugs[0].state is BugState.PRESENT
     assert installed and calls == 0
+
+
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+@pytest.mark.parametrize("record_type", [ProbeRunContext])
+def test_behavior_mirror_context_ignores_late_constructor(
+    tmp_path: Path, hook: str, record_type: type[object]
+) -> None:
+    """Mirror copy callbacks cannot substitute the admitted execution context."""
+    if hook == "__new__" and _isolate_late_receipt_new(
+        "test_behavior_mirror_context_ignores_late_constructor", record_type
+    ):
+        return
+    source, _ = _trees(tmp_path)
+    context = _context(source, tmp_path)
+    admitted = behavior_module._snapshot_observed_source(source)
+    mirror = tmp_path / "mirror"
+    native_copy = shutil.copytree
+    calls = 0
+
+    def forbidden_constructor(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late mirror context constructor executed")
+
+    with ExitStack() as stack:
+
+        def copy_then_replace(
+            source_root: Path, destination: Path, *, symlinks: bool = False
+        ) -> Path:
+            completed = native_copy(source_root, destination, symlinks=symlinks)
+            _ = stack.enter_context(
+                patch.object(record_type, hook, forbidden_constructor)
+            )
+            return completed
+
+        _ = stack.enter_context(
+            patch.object(behavior_module, "_NATIVE_COPYTREE", copy_then_replace)
+        )
+        mirrored = behavior_module._admit_observation_mirror(
+            context, mirror, admitted
+        )
+        assert mirrored.source_root == mirror
+        assert mirrored.repository_root == tmp_path
+        assert mirrored.enforce_source_immutable
+    assert calls == 0
+
+
+@pytest.mark.parametrize("field", ["repository_root", "tools"])
+def test_behavior_mirror_context_preserves_stored_tool_bindings(
+    tmp_path: Path, field: str
+) -> None:
+    """A mirror-copy callback cannot forge the original tool authority."""
+    source, _ = _trees(tmp_path)
+    context = _context(source, tmp_path)
+    admitted = behavior_module._snapshot_observed_source(source)
+    mirror = tmp_path / "mirror"
+    native_copy = shutil.copytree
+    original_slot = ProbeRunContext.__dict__[field]
+    original = original_slot.__get__(context, ProbeRunContext)
+    forged: object = (
+        tmp_path / "other-repository"
+        if field == "repository_root"
+        else ((_PYTHON_TOOL, tmp_path / "other-python"),)
+    )
+    calls = 0
+
+    def forged_getter(_context: object) -> object:
+        nonlocal calls
+        calls += 1
+        return forged
+
+    with ExitStack() as stack:
+
+        def copy_then_replace(
+            source_root: Path, destination: Path, *, symlinks: bool = False
+        ) -> Path:
+            completed = native_copy(source_root, destination, symlinks=symlinks)
+            _ = stack.enter_context(
+                patch.object(ProbeRunContext, field, property(forged_getter))
+            )
+            return completed
+
+        _ = stack.enter_context(
+            patch.object(behavior_module, "_NATIVE_COPYTREE", copy_then_replace)
+        )
+        mirrored = behavior_module._admit_observation_mirror(
+            context, mirror, admitted
+        )
+        observed = original_slot.__get__(mirrored, ProbeRunContext)
+    assert observed == original
+    assert calls == 0, "late class getter redirected original tool bindings"
+
+
+def test_behavior_observation_rejects_original_drift_under_late_root_getter(
+    tmp_path: Path
+) -> None:
+    """A copy callback cannot hide original-source drift with a fake root."""
+    authored, source, _ = _authored(tmp_path)
+    native_copy = shutil.copytree
+    calls = 0
+
+    def forged_root(_context: object) -> Path:
+        nonlocal calls
+        calls += 1
+        return destination
+
+    with ExitStack() as stack:
+        destination = tmp_path / "observation-target"
+
+        def copy_then_mutate(
+            source_root: Path, mirror: Path, *, symlinks: bool = False
+        ) -> Path:
+            nonlocal destination
+            completed = native_copy(source_root, mirror, symlinks=symlinks)
+            destination = mirror
+            _write(source_root, "identity.txt", b"mutated outside mirror")
+            _ = stack.enter_context(
+                patch.object(ProbeRunContext, "source_root", property(forged_root))
+            )
+            return completed
+
+        _ = stack.enter_context(
+            patch.object(behavior_module, "_NATIVE_COPYTREE", copy_then_mutate)
+        )
+        with pytest.raises(ProbeExecutionError, match="changed between probes"):
+            _ = observe_behavior_programs(authored, _context(source, tmp_path))
+    assert calls == 0, "late source getter concealed original-tree drift"
