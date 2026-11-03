@@ -263,7 +263,13 @@ def _host_error_detail(error: BaseException) -> str:
         ExactTreeError,
         RelocationError,
     ):
-        arguments = cast("tuple[object, ...]", error.args)
+        arguments = cast(
+            "tuple[object, ...]",
+            # Exact exception types can still gain a late class getter.
+            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                error, "args"
+            ),
+        )
         if (
             _NATIVE_LEN(arguments) == 1
             and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR
@@ -937,8 +943,20 @@ def _read_relocatable_bytes(path: Path, context: str) -> bytes:
         message = f"{context} read failed: {path}: {detail}"
         failure = RelocationError(message)
         if _NATIVE_TYPE(error) is ExactTreeError:
-            for note in cast("list[str]", getattr(error, "__notes__", [])):
-                failure.add_note(note)
+            # Read native exception notes without invoking a late class getter.
+            try:
+                notes = cast(
+                    "object",
+                    BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+                        error, "__notes__"
+                    ),
+                )
+            except AttributeError:
+                notes = None
+            if _NATIVE_TYPE(notes) is list:
+                for note in cast("list[object]", notes):
+                    if _NATIVE_TYPE(note) is _NATIVE_STR:
+                        BaseException.add_note(failure, note)
         raise failure from error
 
 

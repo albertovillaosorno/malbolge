@@ -260,6 +260,41 @@ def test_relocatable_host_failures_do_not_invoke_foreign_formatters(
     _expect(not staging.exists(), "a foreign host error left owned staging")
 
 
+@pytest.mark.parametrize("with_note", [False, True])
+@pytest.mark.parametrize("hooked_attribute", ["args", "__notes__"])
+def test_relocatable_exact_reader_notes_ignore_late_class_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    *, with_note: bool, hooked_attribute: str,
+) -> None:
+    """Native exact-reader arguments and notes ignore late class getters."""
+    native_error = ExactTreeError("native read failed")
+    if with_note:
+        BaseException.add_note(native_error, "trusted reader note")
+    native_getattribute = ExactTreeError.__getattribute__
+    calls = 0
+
+    def forged_getattribute(error: ExactTreeError, name: str) -> object:
+        nonlocal calls
+        if name == hooked_attribute:
+            calls += 1
+            raise AssertionError("late exact reader getter executed")
+        return cast("object", native_getattribute(error, name))
+
+    def fail_read(path: Path, context: str) -> bytes:
+        del path, context
+        raise native_error
+
+    with monkeypatch.context() as patch:
+        patch.setattr(relocatable_module, "read_exact_regular_file", fail_read)
+        patch.setattr(ExactTreeError, "__getattribute__", forged_getattribute)
+        with pytest.raises(RelocationError, match="read failed") as caught:
+            relocatable_module._read_relocatable_bytes(tmp_path / "missing.bin", "source")
+    assert calls == 0, "late class getter observed native reader error fields"
+    assert getattr(caught.value, "__notes__", []) == (
+        ["trusted reader note"] if with_note else []
+    )
+
+
 @pytest.mark.parametrize(
     "method", ["is_symlink", "is_junction", "resolve"]
 )
