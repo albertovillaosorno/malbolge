@@ -362,6 +362,140 @@ def test_exact_passthrough_roots_ignore_host_reserved_policy_mutation(
         _ = build_exact_plan(source, oracle, passthrough_roots=(reserved_root,))
 
 
+
+@pytest.mark.parametrize(
+    "attack",
+    [
+        "sha256", "path", "foreign-record", "ancestor-overlap",
+        "patch-overrun", "passthrough-overlap", "static-target",
+    ],
+)
+def test_exact_model_rejects_late_any_metadata_bypass(
+    monkeypatch: pytest.MonkeyPatch, attack: str
+) -> None:
+    """Late any overrides must not forge exact metadata trust boundaries."""
+    record = FileRecord("src.bin", "a" * 64, 1)
+    source = TreeSnapshot(files=(record,))
+    target = TreeSnapshot(files=(FileRecord("out.bin", "b" * 64, 2),))
+    unsafe_patch = ExactInstruction(
+        output_path="out.bin",
+        kind=ExactInstructionKind.PATCH_SOURCE,
+        expected_sha256="b" * 64,
+        source_path="src.bin",
+        segments=(SourceSlice(offset=1, length=2),),
+    )
+    literal = b"target"
+    literal_sha256 = hashlib.sha256(literal).hexdigest()
+    literal_target = TreeSnapshot(
+        files=(FileRecord("assets/output.bin", literal_sha256, len(literal)),)
+    )
+    literal_instruction = ExactInstruction(
+        output_path="assets/output.bin",
+        kind=ExactInstructionKind.LITERAL_ORACLE,
+        expected_sha256=literal_sha256,
+        literal=literal,
+    )
+    empty = TreeSnapshot(files=())
+    actions: dict[str, Callable[[], object]] = {
+        "sha256": lambda: FileRecord("file.bin", "g" * 64, 0),
+        "path": lambda: FileRecord("src/../escape", "a" * 64, 0),
+        "foreign-record": lambda: TreeSnapshot(
+            files=(
+                cast(
+                    "FileRecord",
+                    cast("object", SimpleNamespace(path="foreign.bin")),
+                ),
+            )
+        ),
+        "ancestor-overlap": lambda: TreeSnapshot(
+            files=(
+                FileRecord("parent", "a" * 64, 0),
+                FileRecord("parent/child", "b" * 64, 0),
+            )
+        ),
+        "patch-overrun": lambda: ExactAuthoringPlan(
+            source=source, target=target, instructions=(unsafe_patch,)
+        ),
+        "passthrough-overlap": lambda: ExactAuthoringPlan(
+            source=empty,
+            target=empty,
+            instructions=(),
+            passthrough_roots=("assets", "assets/sub"),
+        ),
+        "static-target": lambda: ExactAuthoringPlan(
+            source=empty,
+            target=literal_target,
+            instructions=(literal_instruction,),
+            passthrough_roots=("assets",),
+        ),
+    }
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        try:
+            _ = actions[attack]()
+        except TreeModelError:
+            rejected = True
+    assert rejected, f"late any hook admitted model {attack}"
+
+
+def test_exact_model_rejects_late_set_duplicate_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced set cannot certify duplicate file identities."""
+    record = FileRecord("file.bin", "a" * 64, 0)
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "set", lambda values: list(values))
+        try:
+            _ = TreeSnapshot(files=(record, record))
+        except TreeModelError:
+            rejected = True
+    assert rejected, "late set hook admitted duplicate snapshot file paths"
+
+
+
+def test_exact_model_rejects_late_bool_drive_bypass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late bool hook cannot authorize a Windows drive-relative label."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", lambda value: False)
+        try:
+            _ = FileRecord("C:escape", "a" * 64, 1)
+        except TreeModelError:
+            rejected = True
+    assert rejected, "late bool hook admitted a Windows drive-relative path"
+
+
+def test_exact_model_rejects_late_sum_patch_size_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged aggregator cannot certify false patch output lengths."""
+    source = TreeSnapshot(files=(FileRecord("src.bin", "a" * 64, 3),))
+    target = TreeSnapshot(files=(FileRecord("out.bin", "b" * 64, 10),))
+    instruction = ExactInstruction(
+        output_path="out.bin",
+        kind=ExactInstructionKind.PATCH_SOURCE,
+        expected_sha256="b" * 64,
+        source_path="src.bin",
+        segments=(SourceSlice(0, 2),),
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "sum", lambda values: 10)
+        try:
+            _ = ExactAuthoringPlan(
+                source=source,
+                target=target,
+                instructions=(instruction,),
+            )
+        except TreeModelError:
+            rejected = True
+    assert rejected, "late sum hook certified false patch output length"
+
+
 def test_exact_relative_path_rejects_late_any_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

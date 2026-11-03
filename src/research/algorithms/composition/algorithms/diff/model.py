@@ -34,7 +34,11 @@
 
 from __future__ import annotations
 
+from builtins import any as _native_any
+from builtins import bool as _native_bool
+from builtins import set as _native_set
 from builtins import sorted as _native_sorted
+from builtins import sum as _native_sum
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
@@ -58,7 +62,7 @@ def _validate_sha256_hex(value: object, context: str) -> None:
     if type(value) is not str or len(value) != _SHA256_HEX_LENGTH:
         message = f"{context} must be 64 lowercase hex digits"
         raise TreeModelError(message)
-    if any(char not in _HEX_DIGITS for char in value):
+    if _native_any(char not in _HEX_DIGITS for char in value):
         message = f"{context} must be 64 lowercase hex digits"
         raise TreeModelError(message)
 
@@ -71,9 +75,9 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
     unsafe = (
         _BACKSLASH in value
         or _NUL in value
-        or bool(_native_splitdrive(value)[0])
+        or _native_bool(_native_splitdrive(value)[0])
         or _native_isreserved(value)
-        or any(part in _UNSAFE_COMPONENTS for part in value.split("/"))
+        or _native_any(part in _UNSAFE_COMPONENTS for part in value.split("/"))
     )
     if unsafe:
         message = f"{context} must be a canonical relative path"
@@ -109,7 +113,7 @@ class FileRecord:
 
 def _has_file_ancestor(path: str, file_paths: set[str]) -> bool:
     components = path.split("/")
-    return any(
+    return _native_any(
         "/".join(components[:index]) in file_paths
         for index in range(1, len(components))
     )
@@ -131,15 +135,15 @@ class TreeSnapshot:
         if type(self.files) is not tuple:
             message = "tree snapshot files must use the exact immutable tuple type"
             raise TreeModelError(message)
-        if any(type(item) is not FileRecord for item in self.files):
+        if _native_any(type(item) is not FileRecord for item in self.files):
             message = "tree snapshot contains a foreign file record"
             raise TreeModelError(message)
         paths = tuple(item.path for item in self.files)
-        if paths != tuple(_native_sorted(set(paths))):
+        if paths != tuple(_native_sorted(_native_set(paths))):
             message = "tree snapshot paths must be unique and sorted"
             raise TreeModelError(message)
-        file_paths = set(paths)
-        if any(_has_file_ancestor(path, file_paths) for path in paths):
+        file_paths = _native_set(paths)
+        if _native_any(_has_file_ancestor(path, file_paths) for path in paths):
             message = "tree snapshot has an ancestor/descendant file overlap"
             raise TreeModelError(message)
 
@@ -200,7 +204,9 @@ def _validate_exact_segments(value: object) -> None:
         message = "exact instruction segments must use an immutable tuple"
         raise TreeModelError(message)
     segments = cast("tuple[object, ...]", value)
-    if any(type(segment) not in {SourceSlice, OracleLiteral} for segment in segments):
+    allowed_types = {SourceSlice, OracleLiteral}
+    foreign = (type(segment) not in allowed_types for segment in segments)
+    if _native_any(foreign):
         message = "exact instruction contains a foreign segment record"
         raise TreeModelError(message)
 
@@ -299,13 +305,13 @@ class ExactAuthoringPlan:
         ):
             message = "exact plan snapshots must use exact TreeSnapshot records"
             raise TreeModelError(message)
-        if type(self.instructions) is not tuple or any(
+        if type(self.instructions) is not tuple or _native_any(
             type(item) is not ExactInstruction for item in self.instructions
         ):
             message = "exact plan instructions must be exact immutable records"
             raise TreeModelError(message)
         paths = tuple(item.output_path for item in self.instructions)
-        if len(paths) != len(set(paths)):
+        if len(paths) != len(_native_set(paths)):
             message = "exact plan requires unique output paths"
             raise TreeModelError(message)
         authored_outputs = tuple(
@@ -337,7 +343,8 @@ def _require_static_source_entry(
     source = source_by_path.get(path)
     if source is not None:
         return source
-    if any(path == root or path.startswith(root + "/") for root in passthrough_roots):
+    dynamic = (path == r or path.startswith(r + "/") for r in passthrough_roots)
+    if _native_any(dynamic):
         return None
     message = f"exact plan source path is absent from snapshot: {path}"
     raise TreeModelError(message)
@@ -361,7 +368,7 @@ def _require_static_instruction_consistency(
         if target.size != source.size:
             message = f"exact plan copy-source size differs: {source.path}"
             raise TreeModelError(message)
-    if instruction.kind is ExactInstructionKind.PATCH_SOURCE and any(
+    if instruction.kind is ExactInstructionKind.PATCH_SOURCE and _native_any(
         segment.offset + segment.length > source.size
         for segment in instruction.segments
         if type(segment) is SourceSlice
@@ -412,7 +419,7 @@ def _require_exact_output_consistency(
 
     """
     if instruction.kind is ExactInstructionKind.PATCH_SOURCE:
-        reconstructed_size = sum(
+        reconstructed_size = _native_sum(
             _exact_segment_length(segment) for segment in instruction.segments
         )
         if reconstructed_size != target.size:
@@ -441,7 +448,7 @@ def _require_static_source_references(plan: ExactAuthoringPlan) -> None:
 def _require_static_target_outside_passthrough(
     target: TreeSnapshot, roots: tuple[str, ...]
 ) -> None:
-    if any(
+    if _native_any(
         record.path == root or record.path.startswith(root + "/")
         for record in target.files
         for root in roots
@@ -460,11 +467,12 @@ def _require_passthrough_roots(roots: object) -> None:
 
 
 def _validate_passthrough_topology(ordered: tuple[str, ...]) -> None:
-    if ordered != tuple(_native_sorted(set(ordered))):
+    if ordered != tuple(_native_sorted(_native_set(ordered))):
         message = "exact plan passthrough roots must be unique and sorted"
         raise TreeModelError(message)
     for index, root in enumerate(ordered):
         prefix = root + "/"
-        if any(other.startswith(prefix) for other in ordered[index + 1 :]):
+        successors = ordered[index + 1 :]
+        if _native_any(other.startswith(prefix) for other in successors):
             message = "exact plan passthrough roots must not overlap"
             raise TreeModelError(message)
