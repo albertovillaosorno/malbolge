@@ -81,6 +81,11 @@ _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_HOST_REALPATH = os.path.realpath
+# Native PurePath lazily re-parses uncached paths through host parser globals.
+_NATIVE_HOST_SPLITROOT = os.path.splitroot
+_NATIVE_HOST_SPLITDRIVE = os.path.splitdrive
+_NATIVE_HOST_SEP = os.path.sep
+_NATIVE_HOST_ALTSEP = os.path.altsep
 _NATIVE_HOST_LSTAT = os.lstat
 _NATIVE_HOST_READLINK = os.readlink
 _NATIVE_HOST_GETCWD = os.getcwd
@@ -131,7 +136,15 @@ _PATH_CACHE_HOOK_NAMES = (
     "_str",
     "_format_parsed_parts",
     "_raw_paths",
+    "_raw_path",
+    "_drv",
+    "_root",
+    "_tail_cached",
     "_tail",
+    "drive",
+    "root",
+    "_parse_path",
+    "parser",
 )
 _NATIVE_PATH_CACHE_HOOKS = tuple(
     (
@@ -928,6 +941,12 @@ def _require_native_host_resolver() -> None:
     if (
         os.getcwd is not _NATIVE_HOST_GETCWD
         or stat.S_ISLNK is not _NATIVE_HOST_ISLINK
+        or os.path.splitroot is not _NATIVE_HOST_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_HOST_SPLITDRIVE
+        or os.path.sep is not _NATIVE_HOST_SEP
+        or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or builtins.len is not _NATIVE_LEN
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
     ):
         message = "probe native host resolver changed"
         raise ProbeExecutionError(message)

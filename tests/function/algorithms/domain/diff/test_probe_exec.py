@@ -75,7 +75,7 @@ from algorithms.diff.probe_exec import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sized
     from subprocess import Popen
     from typing import IO
 
@@ -3312,6 +3312,89 @@ def test_probe_rejects_late_host_resolver_dependencies(
         ):
             _ = require_root(alias, "repository")
     assert alias.resolve() == outside
+
+
+def test_probe_rejects_late_builtin_len_used_by_native_realpath(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late list-length hook must not redirect uncached native root paths."""
+    root = tmp_path / "source"
+    root.mkdir()
+    native_len = builtins.len
+    realpath_code = os.path.realpath.__code__
+    intercepted = False
+
+    def forged_len(value: object) -> int:
+        nonlocal intercepted
+        if type(value) is list and sys._getframe(1).f_code is realpath_code:
+            intercepted = True
+            return 0
+        return native_len(cast("Sized", value))
+
+    require_root = cast(
+        "Callable[[Path, str], Path]",
+        vars(probe_exec_module)["_resolved_root"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "len", forged_len)
+        with pytest.raises(
+            ProbeExecutionError, match="native host resolver changed"
+        ):
+            _ = require_root(root, "source")
+    assert not intercepted, "late realpath length hook was consulted"
+
+
+@pytest.mark.parametrize("dependency", ["splitroot", "parse_path"])
+def test_probe_rejects_late_native_path_parser_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """An uncached Path must not resolve through replaced parser hooks."""
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    source_raw = os.fspath(source)
+    outside_raw = os.fspath(outside)
+    uncached_source = Path(source_raw)
+    native_splitroot = os.path.splitroot
+    native_parse = cast(
+        "Callable[[type[PurePath], str], tuple[str, str, list[str]]]",
+        vars(PurePath)["_parse_path"].__func__,
+    )
+    intercepted = False
+
+    def forged_splitroot(path: str) -> tuple[str, str, str]:
+        nonlocal intercepted
+        if path == source_raw:
+            intercepted = True
+            return native_splitroot(outside_raw)
+        return native_splitroot(path)
+
+    def forged_parse(
+        cls: type[PurePath], path: str
+    ) -> tuple[str, str, list[str]]:
+        nonlocal intercepted
+        if path == source_raw:
+            intercepted = True
+            return native_parse(cls, outside_raw)
+        return native_parse(cls, path)
+
+    require_root = cast(
+        "Callable[[Path, str], Path]",
+        vars(probe_exec_module)["_resolved_root"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        if dependency == "splitroot":
+            patch.setattr(os.path, "splitroot", forged_splitroot)
+        else:
+            patch.setattr(PurePath, "_parse_path", classmethod(forged_parse))
+        try:
+            _ = require_root(uncached_source, "source")
+        except ProbeExecutionError as error:
+            rejected = "native" in str(error) and "changed" in str(error)
+    assert rejected, "late parser hook was not rejected"
+    assert not intercepted, "late native parser redirected an admitted source"
 
 
 def test_probe_rejects_host_dependency_mutation_during_resolution(
