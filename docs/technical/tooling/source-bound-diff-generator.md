@@ -611,6 +611,15 @@ scoped Ruff and strict BasedPyright clean. This rejects tested in-process hook
 substitution, not concurrent filesystem replacement or arbitrary trusted
 module-state mutation.
 
+The emitter's path-string and output-template resolver guards now pin the
+import-original `any()` (`a63aeb867`). A later consumer had been able to
+replace the global helper and bypass the native `pathlib` hook checks, invoking
+substituted `_tail` or `with_segments` behavior during output preflight.
+Two red-first regressions are green; all 162 postcommit emitter tests passed,
+with scoped Ruff, strict source/test BasedPyright, and diff checks clean.
+The guard is not isolation against concurrent filesystem writes or direct
+trusted module-state mutation.
+
 The standalone Rust exact runtime now checks source-root metadata without
 following links before attempting a candidate snapshot (`e894ca859`). A
 compile-and-run regression first reproduced a linked source root passing

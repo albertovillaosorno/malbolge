@@ -641,6 +641,12 @@ format.
   BasedPyright were clean; mutable trusted module state and external writers
   still require separate isolation. Jig doctor remains degraded and a bounded
   `jig check` did not produce a repository-wide green result.
+- Rust emitter path-integrity guards now use import-original `any()` to
+  detect substituted `Path._tail` and `Path.with_segments` hooks despite late
+  consumer builtin overrides (`a63aeb867`). Two red-first cases passed; all
+  162 postcommit emitter tests, scoped Ruff, strict source/test BasedPyright,
+  and diff checks were clean. Concurrent filesystem changes and direct trusted
+  module-state mutation remain outside the hook guard.
 - Current stable-toolchain revalidation compiles both checked-in DOOM Rust
   transforms with Rust 1.98.1 and `-D warnings`; the synthetic emitted-Rust
   compile/run suite passes 14/14 under the same repository-local rustc.
