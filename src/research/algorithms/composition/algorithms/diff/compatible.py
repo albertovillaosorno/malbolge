@@ -93,6 +93,9 @@ _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_TUPLE = builtins.tuple
 _NATIVE_TYPE = builtins.type
+_NATIVE_INT = builtins.int
+_NATIVE_STR = builtins.str
+_NATIVE_BYTES = builtins.bytes
 _NATIVE_ZIP = builtins.zip
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
@@ -149,17 +152,20 @@ class CompatibleCorrectionBinding:
             CompatiblePlanError: Correction metadata is malformed.
 
         """
-        if _NATIVE_TYPE(self.output_path) is not str:
+        if _NATIVE_TYPE(self.output_path) is not _NATIVE_STR:
             message = (
                 "compatible correction path must use the exact string type"
             )
             raise CompatiblePlanError(message)
         _ = _validate_relative_path(self.output_path)
-        if _NATIVE_TYPE(self.edit_index) is not int or self.edit_index < 0:
+        if (
+            _NATIVE_TYPE(self.edit_index) is not _NATIVE_INT
+            or self.edit_index < 0
+        ):
             message = "compatible correction edit index must be non-negative"
             raise CompatiblePlanError(message)
         if (
-            _NATIVE_TYPE(self.correction_id) is not str
+            _NATIVE_TYPE(self.correction_id) is not _NATIVE_STR
             or not self.correction_id
         ):
             message = "compatible correction ID must be a non-empty string"
@@ -305,7 +311,7 @@ def _validate_build_request(request: CompatibleBuildRequest) -> None:
         message = "compatible admission policy must use exact AdmissionPolicy"
         raise CompatiblePlanError(message)
     _validate_mapper(request.mapper)
-    if _NATIVE_TYPE(request.preserve_candidate_only) is not bool:
+    if _NATIVE_TYPE(request.preserve_candidate_only) is not _NATIVE_BOOL:
         message = "compatible candidate-only policy must use an exact boolean"
         raise CompatiblePlanError(message)
 
@@ -419,7 +425,7 @@ _INSTRUCTION_VALIDATORS = {
 
 # jig-ignore-next-line: exact Ruff suppression is indivisible
 def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None:  # ruff: ignore[complex-structure, too-many-branches, too-many-statements] -- independent metadata invariants.
-    if _NATIVE_TYPE(instruction.output_path) is not str:
+    if _NATIVE_TYPE(instruction.output_path) is not _NATIVE_STR:
         message = "compatible output path must use the exact string type"
         raise CompatiblePlanError(message)
     _ = _validate_relative_path(instruction.output_path)
@@ -427,14 +433,14 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None: 
         message = "compatible instruction kind must use the exact enum type"
         raise CompatiblePlanError(message)
     if instruction.source_path is not None:
-        if _NATIVE_TYPE(instruction.source_path) is not str:
+        if _NATIVE_TYPE(instruction.source_path) is not _NATIVE_STR:
             message = "compatible source path must use the exact string type"
             raise CompatiblePlanError(message)
         _ = _validate_relative_path(instruction.source_path)
     if instruction.source_sha256 is not None:
         value = instruction.source_sha256
         if (
-            _NATIVE_TYPE(value) is not str
+            _NATIVE_TYPE(value) is not _NATIVE_STR
             or _NATIVE_LEN(value) != _SHA256_BYTES * 2
             or _NATIVE_ANY(char not in _HEX_DIGITS for char in value)
         ):
@@ -456,15 +462,16 @@ def _validate_instruction_metadata(instruction: CompatibleInstruction) -> None: 
         raise CompatiblePlanError(message)
     if (
         instruction.literal is not None
-        and _NATIVE_TYPE(instruction.literal) is not bytes
+        and _NATIVE_TYPE(instruction.literal) is not _NATIVE_BYTES
     ):
         message = "compatible literal evidence must use exact bytes"
         raise CompatiblePlanError(message)
-    if _NATIVE_TYPE(instruction.correction_ids) is not tuple:
+    if _NATIVE_TYPE(instruction.correction_ids) is not _NATIVE_TUPLE:
         message = "compatible correction IDs must use an immutable tuple"
         raise CompatiblePlanError(message)
     if _NATIVE_ANY(
-        value is not None and (_NATIVE_TYPE(value) is not str or not value)
+        value is not None
+        and (_NATIVE_TYPE(value) is not _NATIVE_STR or not value)
         for value in instruction.correction_ids
     ):
         message = "compatible correction IDs must be non-empty strings or None"
@@ -500,13 +507,13 @@ def _validate_plan_records(plan: CompatibleAuthoringPlan) -> None:  # ruff: igno
             "compatible plan policy must use the exact AdmissionPolicy type"
         )
         raise CompatiblePlanError(message)
-    if _NATIVE_TYPE(plan.instructions) is not tuple or _NATIVE_ANY(
+    if _NATIVE_TYPE(plan.instructions) is not _NATIVE_TUPLE or _NATIVE_ANY(
         _NATIVE_TYPE(item) is not CompatibleInstruction
         for item in plan.instructions
     ):
         message = "compatible plan instructions must be exact immutable records"
         raise CompatiblePlanError(message)
-    if _NATIVE_TYPE(plan.preserve_candidate_only) is not bool:
+    if _NATIVE_TYPE(plan.preserve_candidate_only) is not _NATIVE_BOOL:
         message = "compatible candidate-only policy must use an exact boolean"
         raise CompatiblePlanError(message)
 
@@ -606,7 +613,7 @@ def _normalized_correction_ids(
 def _validate_correction_bindings(
     bindings: object,
 ) -> tuple[CompatibleCorrectionBinding, ...]:
-    if _NATIVE_TYPE(bindings) is not tuple:
+    if _NATIVE_TYPE(bindings) is not _NATIVE_TUPLE:
         message = "compatible correction bindings must use an immutable tuple"
         raise CompatiblePlanError(message)
     items = cast("tuple[object, ...]", bindings)
@@ -733,7 +740,7 @@ def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
         detail = _safe_compatible_error_detail(error)
         message = f"ancestor inspection failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
-    if _NATIVE_TYPE(junction) is not bool:
+    if _NATIVE_TYPE(junction) is not _NATIVE_BOOL:
         message = "ancestor inspection requires native boolean"
         raise CompatiblePlanError(message)
     return junction
@@ -812,7 +819,7 @@ def _write_compatible_bytes(path: Path, data: bytes, context: str) -> None:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} write failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
-    if _NATIVE_TYPE(written) is not int or written != _NATIVE_LEN(data):
+    if _NATIVE_TYPE(written) is not _NATIVE_INT or written != _NATIVE_LEN(data):
         message = f"{context} short or invalid byte count: {path}"
         raise CompatiblePlanError(message)
 
@@ -1301,7 +1308,7 @@ def _require_postcondition(
         # A consumer callback may supply a hostile exception formatter.
         message = "compatible output postcondition failed"
         raise CompatiblePlanError(message) from error
-    if _NATIVE_TYPE(accepted) is not bool:
+    if _NATIVE_TYPE(accepted) is not _NATIVE_BOOL:
         message = "compatible output postcondition must return an exact boolean"
         raise CompatiblePlanError(message)
     if not accepted:
@@ -1382,7 +1389,7 @@ def _safe_compatible_error_detail(error: Exception) -> str:
         arguments = cast("tuple[object, ...]", error.args)
         if _NATIVE_LEN(arguments) == 1:
             reason = arguments[0]
-            if _NATIVE_TYPE(reason) is str:
+            if _NATIVE_TYPE(reason) is _NATIVE_STR:
                 return reason
     return _NATIVE_TYPE(error).__name__
 

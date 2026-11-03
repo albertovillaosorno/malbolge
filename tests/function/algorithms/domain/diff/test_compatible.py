@@ -110,6 +110,8 @@ _EXPECTED_MIXED_EDITS = 2
 _CHANGE_MODIFY = "modify"
 _CHANGE_CREATE = "create"
 _CHANGE_DELETE = "delete"
+_EXACT_BOOLEAN_ERROR = "exact boolean"
+_EXACT_STRING_TYPE = "exact string type"
 
 
 class _HostileFormattingError(RuntimeError):
@@ -2619,3 +2621,175 @@ def test_postcondition_rejects_staging_before_publish(tmp_path: Path) -> None:
     with pytest.raises(CompatiblePlanError, match="postcondition"):
         _ = materialize_compatible_plan(request)
     _expect(not output.exists(), "postcondition-rejected output was published")
+
+
+def test_compatible_correction_rejects_late_integer_alias_for_boolean_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Boolean edit index cannot gain native integer identity via alias."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            _ = CompatibleCorrectionBinding(
+                output_path="code.src", edit_index=True, correction_id="fix"
+            )
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "Boolean edit index passed late int alias"
+
+
+def test_compatible_literal_rejects_late_bytes_alias_for_mutable_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable target-only literals cannot be certified by a bytes alias."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = CompatibleInstruction(
+                output_path="new.bin",
+                kind=CompatibleFileKind.CREATE_LITERAL,
+                literal=cast("bytes", cast("object", bytearray(_CREATED))),
+            )
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "mutable literal passed late bytes alias"
+
+
+def test_compatible_instruction_rejects_late_tuple_alias_for_mutable_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty mutable correction list still violates record immutability."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        try:
+            _ = CompatibleInstruction(
+                output_path="new.bin",
+                kind=CompatibleFileKind.CREATE_LITERAL,
+                literal=_CREATED,
+                correction_ids=cast(
+                    "tuple[str | None, ...]", cast("object", [])
+                ),
+            )
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "mutable correction list passed late tuple alias"
+
+
+def test_compatible_metadata_native_records_survive_late_builtin_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid edits and literals remain accepted after consumer type swaps."""
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        correction = CompatibleCorrectionBinding("code.src", 1, "fix")
+    assert correction.edit_index == 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        instruction = CompatibleInstruction(
+            output_path="new.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        )
+    assert instruction.literal == _CREATED
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        native = CompatibleInstruction(
+            output_path="new.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        )
+    assert native.correction_ids == ()
+
+
+def test_compatible_writer_rejects_late_integer_alias_for_boolean_receipt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged one-byte receipt cannot certify a missing staged file."""
+    write_bytes = cast(
+        "Callable[[Path, bytes, str], None]",
+        vars(compatible_module)["_write_compatible_bytes"],
+    )
+    output = tmp_path / "missing.bin"
+
+    def fake_write(_: Path, data: bytes) -> bool:
+        del data
+        return True
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        patch.setattr(Path, "write_bytes", fake_write)
+        try:
+            write_bytes(output, _CREATED[:1], "compatible materialization")
+        except CompatiblePlanError:
+            rejected = True
+    assert rejected, "Boolean write receipt certified a missing target"
+    assert not output.exists()
+
+
+def test_compatible_build_request_rejects_late_boolean_alias_for_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign integer cannot redefine the candidate-only policy flag."""
+    source, oracle = _roots(tmp_path)
+    request = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bool", int)
+        try:
+            _ = replace(
+                request,
+                preserve_candidate_only=cast("bool", cast("object", 1)),
+            )
+        except CompatiblePlanError as error:
+            rejected = _EXACT_BOOLEAN_ERROR in error.args[0]
+        native = replace(request, preserve_candidate_only=True)
+    assert rejected, "integer policy value passed late boolean alias"
+    assert native.preserve_candidate_only is True
+
+
+def test_compatible_writer_accepts_native_receipt_after_late_integer_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native one-byte output receipt survives a late integer alias."""
+    write_bytes = cast(
+        "Callable[[Path, bytes, str], None]",
+        vars(compatible_module)["_write_compatible_bytes"],
+    )
+    output = tmp_path / "valid.bin"
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        write_bytes(output, _CREATED[:1], "compatible materialization")
+    assert output.read_bytes() == _CREATED[:1]
+
+
+def test_compatible_instruction_rejects_late_string_alias_for_foreign_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late string aliases cannot promote non-text output identifiers."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", bytes)
+        try:
+            _ = CompatibleInstruction(
+                output_path=cast("str", cast("object", b"new.bin")),
+                kind=CompatibleFileKind.CREATE_LITERAL,
+                literal=_CREATED,
+            )
+        except CompatiblePlanError as error:
+            rejected = _EXACT_STRING_TYPE in error.args[0]
+    assert rejected, "foreign compatible path bypassed typed preflight"
