@@ -488,7 +488,12 @@ def _require_file_anchor_relation(
         message = "matched anchor count cannot exceed reference anchors"
         raise AdmissionPolicyError(message)
     if coverage is not None and (
-        reference == _ZERO or coverage != matched / reference
+        reference == _ZERO
+        or coverage != matched / reference
+        # Float rounding must not turn incomplete evidence into full or
+        # empty coverage, even when the count ratio saturates at an endpoint.
+        or (coverage == 1.0 and matched != reference)
+        or (coverage == 0.0 and matched != _ZERO)
     ):
         message = "file anchor coverage does not match anchor counts"
         raise AdmissionPolicyError(message)

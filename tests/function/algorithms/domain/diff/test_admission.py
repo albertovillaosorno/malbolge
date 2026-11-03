@@ -196,6 +196,41 @@ def test_admission_evidence_rejects_incoherent_direct_construction() -> None:
         _ = TreeAdmissionEvidence(1.0, 0.0, 1, 1, (unmatched,), (), _policy())
 
 
+@pytest.mark.parametrize(
+    ("matched", "reference", "rounded_ratio"),
+    [
+        (1 << 54, (1 << 54) + 1, 1.0),
+        (1, 10**400, 0.0),
+    ],
+)
+def test_file_admission_rejects_rounded_coverage_endpoint_forgery(
+    matched: int, reference: int, rounded_ratio: float
+) -> None:
+    """A saturated float cannot conceal unmatched or surviving anchors."""
+    assert 0 < matched < reference
+    assert matched / reference == rounded_ratio
+    with pytest.raises(AdmissionPolicyError, match="coverage does not match"):
+        _ = FileAdmissionEvidence(
+            "source.c", 1.0, rounded_ratio, reference, matched
+        )
+
+
+@pytest.mark.parametrize(
+    ("matched", "reference", "ratio"),
+    [
+        (0, 10**400, 0.0),
+        (1 << 54, 1 << 54, 1.0),
+        (0, 0, None),
+    ],
+)
+def test_file_admission_preserves_genuine_coverage_endpoints(
+    matched: int, reference: int, ratio: float | None
+) -> None:
+    """Zero, full, and ineligible file evidence retain valid values."""
+    receipt = FileAdmissionEvidence("source.c", 1.0, ratio, reference, matched)
+    assert receipt.anchor_coverage == ratio
+
+
 def test_direct_admission_evidence_cannot_erase_policy_failures() -> None:
     """Direct evidence must not turn a rejected source into an admitted one."""
     reference = identity_tree(_reference_files())
