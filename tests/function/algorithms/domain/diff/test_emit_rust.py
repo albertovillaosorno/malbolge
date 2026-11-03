@@ -94,6 +94,7 @@ _TEMP_COLLISION_ID = "collision-id"
 _EXCLUSIVE_CREATE_MODE = "x"
 _LATE_OUTPUT_RECHECK = 2
 _LOCATION_LEAF = "leaf"
+_RUNTIME_ALIAS_EXACT = "exact"
 _LOCATION_PARENT = "parent"
 _SINGLE_CHUNK_NONCE_MARKER = (
     'const NONCE_HEX: &str = concat!("000000000000000000000000",);'
@@ -291,6 +292,7 @@ def test_emitter_rejects_foreign_public_inputs(tmp_path: Path) -> None:
 class _ForeignOutputPath(type(Path())):
     """An overridden filesystem path cannot act as emission authority."""
 
+    @override
     def __fspath__(self) -> str:
         message = "untrusted Rust output filesystem conversion ran"
         raise AssertionError(message)
@@ -652,11 +654,11 @@ def test_writer_never_overwrites_its_runtime_template(
 ) -> None:
     """A generated file cannot destroy the template used to generate it."""
     _, _, _, protected = _fixture(tmp_path)
-    actual_template = emit_rust_module._RUNTIME_TEMPLATE
+    actual_template = cast("Path", vars(emit_rust_module)["_RUNTIME_TEMPLATE"])
     template = tmp_path / "rust_runtime.rs"
     original = actual_template.read_bytes()
     _ = template.write_bytes(original)
-    if alias == "exact":
+    if alias == _RUNTIME_ALIAS_EXACT:
         output = template
     else:
         output = template.parent / "sibling" / ".." / template.name
@@ -773,6 +775,65 @@ def test_writer_rejects_foreign_output_status_before_publication(
     else:
         assert not output.exists()
     assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
+@pytest.mark.parametrize("location", [_LOCATION_LEAF, _LOCATION_PARENT])
+def test_writer_rejects_foreign_junction_boolean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, location: str
+) -> None:
+    """A false-like foreign result must not authorize output publication."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    if location == _LOCATION_LEAF:
+        _ = output.write_bytes(_SENTINEL)
+    checked = output if location == _LOCATION_LEAF else tmp_path
+    native_is_junction = Path.is_junction
+    observed = False
+
+    def forged_is_junction(path: Path) -> object:
+        nonlocal observed
+        if path == checked:
+            observed = True
+            return 0
+        return native_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_is_junction)
+    with pytest.raises(RustEmissionError, match="native boolean"):
+        write_rust_transform(protected, _PROFILE, output)
+    _expect(observed, "foreign junction result was not observed")
+    if location == _LOCATION_LEAF:
+        _expect(output.read_bytes() == _SENTINEL, "output was overwritten")
+    else:
+        _expect(not output.exists(), "foreign junction published output")
+
+
+@pytest.mark.parametrize("location", [_LOCATION_LEAF, _LOCATION_PARENT])
+def test_writer_rejects_foreign_template_resolution_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, location: str
+) -> None:
+    """A foreign resolved path cannot control runtime-template protection."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    original_resolve = Path.resolve
+    observed = False
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal observed
+        selected = (
+            path == output
+            if location == _LOCATION_LEAF
+            else path.name == _RUNTIME_TEMPLATE_NAME
+        )
+        if selected:
+            observed = True
+            return _ForeignOutputPath(path)
+        return original_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    with pytest.raises(RustEmissionError, match="native Path"):
+        write_rust_transform(protected, _PROFILE, output)
+    _expect(observed, "foreign resolved path was not observed")
+    _expect(not output.exists(), "foreign resolution published output")
 
 
 @pytest.mark.parametrize("location", [_LOCATION_LEAF, _LOCATION_PARENT])

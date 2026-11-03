@@ -325,11 +325,17 @@ def _output_mode(path: Path, description: str) -> int | None:
 
 def _output_redirects(path: Path, mode: int) -> bool:
     try:
-        return S_ISLNK(mode) or path.is_junction()
+        if S_ISLNK(mode):
+            return True
+        junction = path.is_junction()
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_emission_error_detail(error)
         message = f"Rust output junction status failed: {path}: {detail}"
         raise RustEmissionError(message) from error
+    if type(junction) is not bool:
+        message = "Rust output junction status requires native boolean"
+        raise RustEmissionError(message)
+    return junction
 
 
 def _validate_output_leaf(output_path: Path) -> None:
@@ -426,7 +432,12 @@ def _raise_publication_error(
 
 
 def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
-    """Reattest the physical UTF-8 source before trusting publication."""
+    """Reattest the physical UTF-8 source before trusting publication.
+
+    Raises:
+        RustEmissionError: The staged or published bytes are untrustworthy.
+
+    """
     try:
         actual = read_exact_regular_file(path, f"{phase} Rust source")
     except ExactTreeError as error:
@@ -439,7 +450,12 @@ def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
 
 
 def _require_output_not_runtime_template(output_path: Path) -> None:
-    """Protect the source template needed for future deterministic emission."""
+    """Protect the source template needed for future deterministic emission.
+
+    Raises:
+        RustEmissionError: The selected path may overwrite the source template.
+
+    """
     _validate_output_path(output_path)
     try:
         output = output_path.resolve()
@@ -447,6 +463,9 @@ def _require_output_not_runtime_template(output_path: Path) -> None:
     except (OSError, ValueError, RuntimeError) as error:
         message = "Rust output path resolution failed"
         raise RustEmissionError(message) from error
+    if type(output) is not type(Path()) or type(template) is not type(Path()):
+        message = "Rust output path resolution requires native Path"
+        raise RustEmissionError(message)
     if output == template:
         message = "Rust output must not overwrite its runtime template"
         raise RustEmissionError(message)
