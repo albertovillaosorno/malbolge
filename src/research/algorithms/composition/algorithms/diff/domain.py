@@ -34,14 +34,16 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import importlib.util
 import os
-import sys
-from dataclasses import dataclass
 from pathlib import Path
-from stat import S_ISLNK, S_ISREG
-from typing import TYPE_CHECKING, cast
+from stat import S_ISLNK
+from stat import S_ISREG
+import sys
+from typing import TYPE_CHECKING
+from typing import cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -49,10 +51,8 @@ if TYPE_CHECKING:
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.behavior_programs import BehaviorPrograms
-    from algorithms.diff.compatible import (
-        CompatibleAuthoringPlan,
-        CompatibleCorrectionBinding,
-    )
+    from algorithms.diff.compatible import CompatibleAuthoringPlan
+    from algorithms.diff.compatible import CompatibleCorrectionBinding
     from algorithms.diff.mapped import MappedView
     from algorithms.diff.probe_exec import ProbeRunContext
     from algorithms.diff.provenance import SourcePinEvidence
@@ -65,6 +65,8 @@ if TYPE_CHECKING:
 
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
+_NATIVE_PATH_TYPE = type(Path())
+_SHA256_FACTORY = hashlib.sha256
 
 
 class DomainContractError(ValueError):
@@ -112,7 +114,7 @@ class DiffDomain:
 
 
 def _module_name(path: Path) -> str:
-    digest = hashlib.sha256(os.fsencode(path)).hexdigest()[:16]
+    digest = _SHA256_FACTORY(os.fsencode(path)).hexdigest()[:16]
     return f"_malbolge_diff_domain_{digest}"
 
 
@@ -124,10 +126,14 @@ def _require_module_path_without_nul(path: Path) -> None:
 
 def _module_is_junction(path: Path) -> bool:
     try:
-        return path.is_junction()
+        verdict = path.is_junction()
     except (OSError, ValueError, RuntimeError) as error:
         message = f"diff domain module junction status failed: {path!r}"
         raise DomainContractError(message) from error
+    if type(verdict) is not bool:
+        message = "diff domain module junction status requires native boolean"
+        raise DomainContractError(message)
+    return verdict
 
 
 def _require_native_module_status(
@@ -163,6 +169,27 @@ def _reject_linked_module_ancestors(path: Path) -> None:
         current = current.parent
 
 
+def _resolved_native_module_path(path: Path) -> Path:
+    """Require a native canonical path before import machinery receives it.
+
+    Returns:
+        The native resolved filesystem path.
+
+    Raises:
+        DomainContractError: Resolution fails or provides a foreign path.
+
+    """
+    try:
+        resolved = path.resolve(strict=True)
+    except (OSError, ValueError, RuntimeError) as error:
+        message = f"diff domain module resolution failed: {path!r}"
+        raise DomainContractError(message) from error
+    if type(resolved) is not _NATIVE_PATH_TYPE:
+        message = "diff domain module resolution requires native Path"
+        raise DomainContractError(message)
+    return resolved
+
+
 def _regular_module_path(path: Path) -> Path:
     _require_module_path_without_nul(path)
     try:
@@ -182,11 +209,7 @@ def _regular_module_path(path: Path) -> Path:
         message = f"diff domain module is not a regular file: {path}"
         raise DomainContractError(message)
     _reject_linked_module_ancestors(path)
-    try:
-        return path.resolve(strict=True)
-    except (OSError, ValueError, RuntimeError) as error:
-        message = f"diff domain module resolution failed: {path!r}"
-        raise DomainContractError(message) from error
+    return _resolved_native_module_path(path)
 
 
 def _restore_domain_registration(
@@ -203,9 +226,18 @@ def _restore_domain_registration(
         sys.modules[name] = previous
 
 
-def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
-    resolved = _regular_module_path(path)
-    name = _module_name(resolved)
+def _prepare_module(
+    resolved: Path, name: str
+) -> tuple[ModuleType, Callable[[ModuleType], object]]:
+    """Build a loader-bound module before publishing any registration.
+
+    Returns:
+        The unexecuted module and native loader entry point.
+
+    Raises:
+        DomainContractError: The import spec or module is unusable.
+
+    """
     try:
         spec = importlib.util.spec_from_file_location(name, resolved)
         loader = spec.loader if spec is not None else None
@@ -220,10 +252,17 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
     except Exception as error:
         message = f"diff domain import preparation failed: {resolved}"
         raise DomainContractError(message) from error
+    return module, loader.exec_module
+
+
+def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
+    resolved = _regular_module_path(path)
+    name = _module_name(resolved)
+    module, exec_module = _prepare_module(resolved, name)
     previous = sys.modules.get(name)
     sys.modules[name] = module
     try:
-        completion = cast("object", loader.exec_module(module))
+        completion = exec_module(module)
     except Exception as error:
         _restore_domain_registration(name, module, previous)
         message = f"diff domain module execution failed: {resolved}"
@@ -231,7 +270,8 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
     if completion is not None:
         _restore_domain_registration(name, module, previous)
         message = (
-            f"diff domain module execution reported non-native completion: {resolved}"
+            "diff domain module execution reported non-native completion: "
+            f"{resolved}"
         )
         raise DomainContractError(message)
     return module, previous

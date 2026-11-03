@@ -34,21 +34,25 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+import hashlib
 import importlib.machinery
 import importlib.util
 import os
-import sys
-from dataclasses import replace
 from pathlib import Path
-from types import ModuleType
+import sys
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, cast, override
+from typing import TYPE_CHECKING
+from typing import cast
+from typing import override
 
+from algorithms.diff.domain import DomainContractError
+from algorithms.diff.domain import load_diff_domain
 import pytest
-from algorithms.diff.domain import DomainContractError, load_diff_domain
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from types import ModuleType
 
     from algorithms.diff.mapped import MappedView
 
@@ -128,7 +132,9 @@ class _ForeignDomainModulePath(type(Path())):
 
 def test_domain_loader_rejects_foreign_path_subclass_before_methods() -> None:
     """Reject module overrides before module status or import registration."""
-    with pytest.raises(DomainContractError, match="must use exact pathlib Path"):
+    with pytest.raises(
+        DomainContractError, match="must use exact pathlib Path"
+    ):
         _ = load_diff_domain(_ForeignDomainModulePath("unsafe-domain.py"))
 
 
@@ -218,7 +224,9 @@ def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
         callable(domain.validate_authoring_oracle),
         "oracle validator is not callable",
     )
-    _expect(callable(domain.build_identity_tree), "identity builder is not callable")
+    _expect(
+        callable(domain.build_identity_tree), "identity builder is not callable"
+    )
     _expect(
         callable(domain.map_compatible_file),
         "mapped-file adapter is not callable",
@@ -292,7 +300,8 @@ def test_domain_hook_lookup_exception_uses_contract_error(
         "def build_behavior_programs():\n    return None\n\n", ""
     )
     getter = (
-        "def __getattr__(name):\n    raise RuntimeError('consumer lookup failed')\n"
+        "def __getattr__(name):\n"
+        "    raise RuntimeError('consumer lookup failed')\n"
     )
     _write(module, missing + getter)
     before = frozenset(sys.modules)
@@ -339,7 +348,9 @@ def test_rejected_domain_reload_preserves_previous_registration(
     before = frozenset(sys.modules)
     _ = load_diff_domain(module)
     names = frozenset(sys.modules) - before
-    loaded = tuple(name for name in names if name.startswith("_malbolge_diff_domain_"))
+    loaded = tuple(
+        name for name in names if name.startswith("_malbolge_diff_domain_")
+    )
     assert len(loaded) == 1
     name = loaded[0]
     accepted_module = sys.modules[name]
@@ -564,7 +575,9 @@ def test_domain_module_metadata_failures_are_typed(
 
     monkeypatch.setattr(Path, "lstat", blocked_lstat)
     monkeypatch.setattr(Path, "resolve", blocked_resolve)
-    with pytest.raises(DomainContractError, match=r"status failed|resolution failed"):
+    with pytest.raises(
+        DomainContractError, match=r"status failed|resolution failed"
+    ):
         _ = load_diff_domain(module)
 
 
@@ -597,6 +610,105 @@ def test_domain_junction_status_failures_are_typed(
     monkeypatch.setattr(Path, "is_junction", blocked_is_junction)
     with pytest.raises(DomainContractError, match="junction status failed"):
         _ = load_diff_domain(module)
+
+
+@pytest.mark.parametrize("stage", [_STAGE_MODULE, _STAGE_PARENT])
+def test_domain_junction_requires_exact_native_boolean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, stage: str
+) -> None:
+    """Foreign false-like junction reports cannot authorize module loading."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    target = module if stage == _STAGE_MODULE else module.parent
+    native_is_junction = Path.is_junction
+    observed = False
+
+    def forged_junction(path: Path) -> object:
+        nonlocal observed
+        if path == target:
+            observed = True
+            return 0
+        return native_is_junction(path)
+
+    monkeypatch.setattr(Path, "is_junction", forged_junction)
+    with pytest.raises(DomainContractError, match="native boolean"):
+        _ = load_diff_domain(module)
+    _expect(observed, "foreign junction receipt was not reached")
+
+
+class _ForeignResolvedDomainPath(type(Path())):
+    """A synthetic resolved path must never reach import machinery."""
+
+    @override
+    def __fspath__(self) -> str:
+        message = "foreign resolved domain path conversion executed"
+        raise AssertionError(message)
+
+
+def test_domain_resolved_path_must_be_native(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Reject a foreign resolution result before it controls imports."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    native_resolve = Path.resolve
+    observed = False
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal observed
+        if path == module and strict:
+            observed = True
+            return _ForeignResolvedDomainPath(path)
+        return native_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    with pytest.raises(DomainContractError, match="native Path"):
+        _ = load_diff_domain(module)
+    _expect(observed, "foreign resolved path was not consumed")
+
+
+class _ForgedModuleNamespaceDigest:
+    """All module paths become one identical host-supplied digest."""
+
+    @staticmethod
+    def hexdigest() -> str:
+        """Return one forged digest.
+
+        Returns:
+            A constant all-zero digest string.
+
+        """
+        return "0" * 64
+
+
+def test_domain_import_names_resist_post_import_hash_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Different local policies cannot collide via mutable hash callbacks."""
+    first = tmp_path / "first.py"
+    second = tmp_path / "second.py"
+    _write(first, _COMPLETE)
+    _write(second, _COMPLETE)
+    genuine_hash = hashlib.sha256
+
+    def forged_hash(data: bytes = b"") -> _ForgedModuleNamespaceDigest:
+        del data
+        return _ForgedModuleNamespaceDigest()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(hashlib, "sha256", forged_hash)
+        first_domain = load_diff_domain(first)
+        second_domain = load_diff_domain(second)
+    first_name = first_domain.validate_authoring_oracle.__module__
+    second_name = second_domain.validate_authoring_oracle.__module__
+    _expect(
+        first_name != second_name, "foreign digest merged module identities"
+    )
+    _expect(
+        genuine_hash(str(first).encode()).digest()
+        != genuine_hash(str(second).encode()).digest(),
+        "two module paths unexpectedly shared native hash identity",
+    )
 
 
 def test_domain_file_resolution_error_fails_closed(
