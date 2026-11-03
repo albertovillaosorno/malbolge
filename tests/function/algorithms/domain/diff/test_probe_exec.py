@@ -3766,6 +3766,60 @@ def test_probe_rooted_containment_rejects_late_path_hooks(
     assert PurePath.__eq__ is original_eq
 
 
+@pytest.mark.parametrize("owner", ["base", "platform"])
+@pytest.mark.parametrize(
+    "method", ["_from_parsed_parts", "_from_parsed_string"]
+)
+def test_probe_rooted_containment_rejects_late_path_factories(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str,
+    method: str,
+) -> None:
+    """Mutable native parsed-path factories cannot launder symlink escapes."""
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "private.txt").write_bytes(b"outside")
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    try:
+        (source / "alias").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    context = _context(source, repository)
+    calls = 0
+
+    def forged_factory(path: PurePath, *parts: object) -> Path:
+        nonlocal calls
+        _ = (path, parts)
+        calls += 1
+        return source
+
+    rooted = cast(
+        "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+        vars(probe_exec_module)["_rooted_path"],
+    )
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            PurePath if owner == "base" else type(source),
+            method,
+            forged_factory,
+        )
+        try:
+            _ = rooted(
+                PathArgument(ProbeRoot.SOURCE, "alias/private.txt"),
+                context,
+                tmp_path,
+            )
+        except ProbeExecutionError as error:
+            rejected = "native path hooks changed" in str(error)
+    assert rejected, "late parsed-path factory was not rejected"
+    assert calls == 0, "late parsed-path factory executed"
+
+
 @pytest.mark.parametrize("dependency", ["chain", "enumerate", "hasattr"])
 def test_probe_rooted_containment_rejects_late_relative_to_globals(
     tmp_path: Path,

@@ -147,6 +147,8 @@ _PATH_CACHE_HOOK_NAMES = (
     "drive",
     "root",
     "_parse_path",
+    "_from_parsed_string",
+    "_from_parsed_parts",
     "parser",
 )
 _NATIVE_PATH_CACHE_HOOKS = tuple(
