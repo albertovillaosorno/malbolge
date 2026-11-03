@@ -170,7 +170,13 @@ _NATIVE_PATH_FACTORY_HOOKS: Final = tuple(
         cls,
         tuple(
             (name, cls.__dict__.get(name))
-            for name in ("with_segments", "__new__", "__init__")
+            for name in (
+                "__truediv__",
+                "__itruediv__",
+                "with_segments",
+                "__new__",
+                "__init__",
+            )
         ),
     )
     for cls in _NATIVE_PATH_TYPE.__mro__

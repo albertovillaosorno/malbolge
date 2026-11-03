@@ -2535,3 +2535,31 @@ def test_source_pin_rejects_late_relative_label_dispatch(
     assert rejected, "source evidence consulted an untrusted relative path hook"
     assert calls == 0, "a late relative path hook executed before rejection"
     assert original.file_count == 1
+
+
+@pytest.mark.parametrize("owner", [Path, PurePath])
+@pytest.mark.parametrize("hook", ["__truediv__", "__itruediv__"])
+def test_source_pin_rejects_late_division_before_parent_walk(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: type[PurePath],
+    hook: str,
+) -> None:
+    """Mutable path composition must not execute while checking parent links."""
+    source = tmp_path / "source"
+    child = source / "subdir"
+    child.mkdir(parents=True)
+    _ = (child / "input.txt").write_bytes(b"pinned")
+    callbacks = 0
+
+    def redirected_division(_path: PurePath, _part: object) -> Path:
+        nonlocal callbacks
+        callbacks += 1
+        message = "late source path division executed"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, hook, redirected_division, raising=False)
+        with pytest.raises(SourcePinError, match="native path factory changed"):
+            _ = source_snapshot_evidence(source, ("subdir/input.txt",))
+    assert callbacks == 0, "untrusted parent path hook was executed"
