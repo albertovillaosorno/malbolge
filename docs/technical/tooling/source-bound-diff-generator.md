@@ -204,6 +204,14 @@ doctor remains degraded because graph state is absent, and `jig check`
 exceeded a 105-second bound during native validation. These guards do not
 eliminate direct trusted storage mutation or external filesystem races.
 
+Generator domain-provenance receipt rejection now catches import-original
+`AttributeError` and `TypeError` classes (`cf2a78929`). Two red-first
+late-builtin-alias cases previously leaked raw errors instead of typed
+`DomainContractError` rejection. All 284 postcommit generator tests and
+3,860 integrated diff tests passed; changed-line Ruff and BasedPyright
+checks showed no new findings. This is not isolation from arbitrary
+consumer effects or concurrent module-state mutation.
+
 ### Exact Authoring Baseline
 
 The implemented exact layer snapshots regular files by normalized relative path,

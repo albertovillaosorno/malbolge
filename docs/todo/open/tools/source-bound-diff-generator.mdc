@@ -111,6 +111,11 @@ format.
   BasedPyright findings remain zero, despite inherited diagnostics. Jig
   doctor reports an absent graph; the global check timed out at 105 seconds.
   Direct trusted instance mutation and filesystem races remain out of scope.
+- Generator provenance error handling pins original `AttributeError` and
+  `TypeError` catch classes (`cf2a78929`): two red-first aliases now produce
+  typed rejection. All 284 postcommit generator and 3,860 integrated diff
+  tests passed, with zero added-line Ruff or BasedPyright findings. Global
+  Jig status and concurrent host mutation limits remain unresolved.
 - Generator domain preflight now invokes the original native
   `SourcePinEvidence` validator after the consumer callback (`a27f430de`),
   rather than accepting an exact-type object whose initializer never ran.
