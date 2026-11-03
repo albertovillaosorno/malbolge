@@ -766,6 +766,21 @@ allocator regression runs in a child process because even a restored Python
 private state mutation, malicious native code, and concurrent writers remain
 out of scope.
 
+The publisher's path-class and Linux `ctypes` loader-integrity guards now use
+an import-pinned `builtins.any` (`22e34f392`). A late override returning
+`False` previously hid a forged `renameat2` dispatcher and allowed it to be
+called before final publication attestation rejected the incomplete move.
+An override returning `True` could instead cause a spurious path rejection.
+One red-first occupied-target case and three additional path/loader
+regressions verify that the original aggregate is retained and hostile
+callbacks are not invoked. All 106 postcommit publication tests and a
+514-test postcommit publication/behavior/provenance run passed; scoped Ruff,
+strict source/test BasedPyright, and diff checks were clean. A separate full
+diff run exceeded its command-wrapper limit without a retrievable verdict;
+the 3,560-test prior integrated result predates this publication change.
+The global Jig gate remains unverified; direct trusted-state mutation,
+malicious native code, and external filesystem races remain excluded.
+
 The matcher used for source-span reuse remains separate from canonical identity
 and
 stable admission anchors.

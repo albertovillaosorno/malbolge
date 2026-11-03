@@ -852,6 +852,15 @@ format.
   102 postcommit publication and 3,381 precommit integrated diff tests passed,
   with scoped Ruff, strict BasedPyright, and diff checks clean. Host/native
   races and direct module-private mutation remain excluded.
+- Atomic publication now pins original `builtins.any` in its path-class and
+  native `ctypes` dispatch integrity checks (`22e34f392`). A late false
+  aggregate previously let a forged `renameat2` symbol run; final inode
+  attestation caught the incomplete move only afterward. A true aggregate
+  produced false denial. One red-first case and three additional path/ABI
+  regressions pass, with 106 postcommit publication and 514 cross-boundary
+  tests, Ruff, strict source/test BasedPyright, and diff checks clean. The
+  later full diff run lacked a returned verdict; 3,560 earlier integrated
+  tests predated this change. Jig and host-race guarantees remain open.
 - Probe runtime `_CommandResult`, `_PipeCapture`, and `_RunningProbe`
   receipts now use captured original initializers and native allocation
   (`82e32113e`). Eight late `__init__`/`__new__` regression cases pass;
