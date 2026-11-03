@@ -878,6 +878,15 @@ format.
   semantic source typing had zero errors and pinned Ruff introduced no new
   findings (84 versus 87 baseline). Direct stored-instance mutation and
   external writers still require separate controls.
+- Public semantic locator/edit/plan readers now require exact native records
+  and rerun pinned validators on all nested original-slot evidence
+  (`9fb6430ec`), rather than returning constructor-bypassed malformed
+  digests, replacements, or edit collections. Ten red-first tests cover
+  invalid nested records, subclasses, and late validator swaps. All 435
+  postcommit semantic/compatible and 3,457 precommit integrated diff tests
+  passed, with scoped Ruff, strict BasedPyright and diff checks green.
+  Direct trusted storage mutation and external source races remain outside
+  this guarantee.
 - Generic mapped semantic placement now hashes canonical units, uniquely locates
   them
   in candidate source, maps them back to raw spans, preserves unrelated raw

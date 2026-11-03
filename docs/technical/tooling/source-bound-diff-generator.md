@@ -1790,6 +1790,17 @@ raw span, skip valid edits, or accept incomplete correction vectors. This is a
 late process-hook isolation boundary, not protection against trusted code that
 directly rewrites private object storage or races an external filesystem writer.
 
+Public semantic readers now revalidate exact `SemanticLocator`, `SemanticEdit`,
+and `SemanticAuthoringPlan` types and their nested stored evidence before
+returning source-context digests, replacement bytes, or edit lists
+(`9fb6430ec`). Private original-slot readers remain available only for
+constructor validation, avoiding recursive validation. Ten red-first tests
+reject forged native slots, inherited subclass records, and late validator
+replacements. All 435 postcommit semantic/compatible tests and 3,457
+precommit integrated diff tests passed, with scoped Ruff, strict BasedPyright,
+and whitespace checks clean. This guards reader admission rather than direct
+trusted instance mutation or concurrent external writes.
+
 Semantic authoring now additionally constructs `SemanticLocator`,
 `SemanticEdit`, `SemanticAuthoringPlan`, and `_SemanticBuildContext` with
 captured native allocation and original initializer guards (`fa60753bb`).
