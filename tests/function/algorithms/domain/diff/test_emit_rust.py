@@ -1609,6 +1609,70 @@ def test_writer_template_resolution_rejects_late_host_dependencies(
     assert calls == 0
 
 
+@pytest.mark.parametrize("helper", ["isinstance", "len"])
+def test_writer_template_rejects_late_realpath_builtin_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    """Template containment must not call late realpath builtin helpers."""
+    output = tmp_path / "output.rs"
+    original = cast("Callable[..., object]", getattr(builtins, helper))
+    calls = 0
+
+    def watched(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, helper, watched)
+        try:
+            emit_rust_module._require_output_not_runtime_template(output)
+        except RustEmissionError:
+            rejected = True
+    assert rejected, f"late builtin {helper} was admitted"
+    assert calls == 0, f"late builtin {helper} callback was executed"
+
+
+def test_writer_template_rejects_late_realpath_bytes_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged bytes type cannot change output-template resolution."""
+    output = tmp_path / "output.rs"
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", str)
+        try:
+            emit_rust_module._require_output_not_runtime_template(output)
+        except RustEmissionError:
+            rejected = True
+    assert rejected, "late bytes alias reached template resolution"
+
+
+def test_writer_template_rejects_late_host_splitroot_callback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An uncached output must not consult the mutable host path splitter."""
+    output = tmp_path / "output.rs"
+    original = os.path.splitroot
+    calls = 0
+
+    def watched(path: str) -> tuple[str, str, str]:
+        nonlocal calls
+        calls += 1
+        return original(path)
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(os.path, "splitroot", watched)
+        try:
+            emit_rust_module._require_output_not_runtime_template(output)
+        except RustEmissionError:
+            rejected = True
+    assert rejected, "late host splitroot callback was admitted"
+    assert calls == 0, "late host splitter was executed"
+
+
 @pytest.mark.parametrize("guard", ["string", "resolution"])
 def test_emitter_path_guards_reject_late_any_suppression(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, guard: str

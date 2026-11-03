@@ -97,6 +97,14 @@ _NATIVE_OS_UNLINK = os.unlink
 _NATIVE_OS_FSENCODE = os.fsencode
 _NATIVE_PATH_STR = Path.__str__
 _NATIVE_OS_FSPATH = os.fspath
+_NATIVE_BYTES_TYPE = builtins.bytes
+_NATIVE_ISINSTANCE = builtins.isinstance
+_NATIVE_HOST_PARSER = os.path
+_NATIVE_HOST_SPLITROOT = os.path.splitroot
+_NATIVE_HOST_SPLITDRIVE = os.path.splitdrive
+_NATIVE_HOST_JOIN = os.path.join
+_NATIVE_HOST_SEP = os.path.sep
+_NATIVE_HOST_ALTSEP = os.path.altsep
 # A captured Path.__str__ still follows late class descriptor and os.fspath
 # hooks. Freeze its full native class dependency chain before domain callbacks.
 _PATH_STRING_DEPENDENCIES = (
@@ -132,10 +140,22 @@ _NATIVE_PATH_STRING_HOOKS = tuple(
 
 def _native_path_string(path: Path) -> str:
     """Reject late path formatter substitution before any filesystem access."""
-    if os.fspath is not _NATIVE_OS_FSPATH or _NATIVE_ANY(
-        path_class.__dict__.get(name) is not original
-        for path_class, hooks in _NATIVE_PATH_STRING_HOOKS
-        for name, original in hooks
+    if (
+        os.fspath is not _NATIVE_OS_FSPATH
+        or os.path is not _NATIVE_HOST_PARSER
+        or os.path.splitroot is not _NATIVE_HOST_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_HOST_SPLITDRIVE
+        or os.path.join is not _NATIVE_HOST_JOIN
+        or os.path.sep is not _NATIVE_HOST_SEP
+        or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or builtins.bytes is not _NATIVE_BYTES_TYPE
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.len is not _NATIVE_LEN
+        or _NATIVE_ANY(
+            path_class.__dict__.get(name) is not original
+            for path_class, hooks in _NATIVE_PATH_STRING_HOOKS
+            for name, original in hooks
+        )
     ):
         raise RustEmissionError("Rust transform path hooks changed")
     return _NATIVE_PATH_STR(path)
@@ -741,6 +761,15 @@ def _require_native_host_realpath() -> None:
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
         or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or os.path is not _NATIVE_HOST_PARSER
+        or os.path.splitroot is not _NATIVE_HOST_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_HOST_SPLITDRIVE
+        or os.path.join is not _NATIVE_HOST_JOIN
+        or os.path.sep is not _NATIVE_HOST_SEP
+        or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or builtins.bytes is not _NATIVE_BYTES_TYPE
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
+        or builtins.len is not _NATIVE_LEN
         or _NATIVE_ANY(
             path_class.__dict__.get(name) is not original
             for path_class, hooks in _NATIVE_PATH_RESOLUTION_HOOKS
