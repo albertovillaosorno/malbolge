@@ -149,6 +149,15 @@ emitter and 3,348 integrated diff tests passed; scoped Ruff, strict
 BasedPyright, and diff checks were clean. These identity checks are not atomic
 against concurrent host or filesystem mutation.
 
+Emitter runtime-template protection now also pins the import-original
+host `os.path` parser, `splitroot`, `splitdrive`, `join`, separators, and
+`builtins.bytes`, `builtins.isinstance`, and `builtins.len` (`8150ccf06`).
+Both path formatting and template/output resolution reject late mutations
+before they can run substituted callbacks or forge an alias. Four red-first
+callback, bytes-alias, and splitter cases and all 169 postcommit emitter
+cases pass, as do scoped Ruff, strict source/test BasedPyright, and diff
+checks. This is an in-process hook guard, not atomic filesystem exclusion.
+
 All implemented public metadata boundaries now admit exact runtime types before
 using them as evidence or touching output. Numeric thresholds and counts reject
 boolean aliases. Identity trees, anchors, behavior observations, probe programs,
@@ -1886,6 +1895,17 @@ run against the combined emitter, publisher, and relocatable fixes passed all
 3,576 tests in 118.76 seconds. Host/filesystem races and direct trusted-state
 mutation remain outside this guard; global Jig lacks a clean verdict due to
 the degraded graph state.
+
+Relocatable candidate/output resolution now also pins the original
+host `os.path` parser and separators, `splitroot`/`splitdrive`/`join`,
+`stat.S_ISDIR`, `builtins.bytes`, and `builtins.len` (`1cdaea91b`). The
+prior trusted resolver admitted late splitters, classifiers, and a length
+callback; a forged bytes alias raised a foreign `TypeError`. Six red-first
+cases and all 279 postcommit relocatable tests now pass, with scoped Ruff,
+strict source/test typing, and diff checks clean. Four changed-domain suites
+also passed 845 tests together. The bounded repository-wide Jig check
+exceeded 75 seconds without a green verdict; direct trusted-state mutation
+and external host/filesystem races remain open.
 
 Relocatable authoring now creates internal `RangeLocator`,
 `RelocatableSourceRange`, `RelocatableInstruction`, and

@@ -116,6 +116,11 @@ format.
   symlink-alias regressions pass, with 160 focused emitter and 3,348 integrated
   diff tests green; scoped Ruff, strict BasedPyright, and diff checks pass.
   Checks remain non-atomic against concurrent host/filesystem mutations.
+- Emitter runtime-template protection pins original host path parser
+  helpers and `builtins.bytes`/`isinstance`/`len` in both path formatting
+  and realpath resolution (`8150ccf06`). Four red-first callback/alias
+  cases and 169 postcommit emitter tests pass; Ruff, strict source/test
+  typing, and diff checks pass. External filesystem races remain.
 - Rust emitter parent-directory staging now uses import-original
   `reversed()` (`e7ec05dca`). A forged post-import iterator previously
   silently skipped nested directory creation; one red-first regression and
@@ -173,6 +178,12 @@ format.
   tests in 118.76 seconds across the combined shared fixes. The 35 inherited
   test typing diagnostics, degraded global Jig graph, and external filesystem
   races remain open.
+- Relocatable candidate/output resolution pins host `os.path` parser
+  helpers, `stat.S_ISDIR`, and `builtins.bytes`/`len` (`1cdaea91b`). Six
+  red-first callback/alias cases and 279 postcommit relocatable tests pass;
+  combined changed-domain suite passed 845 tests. Scoped Ruff, strict
+  source/test typing, and diff checks pass. Global Jig check timed out at
+  75 seconds; host and filesystem races remain outside this guard.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused
