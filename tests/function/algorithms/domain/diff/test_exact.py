@@ -4967,3 +4967,109 @@ def test_exact_staging_cleanup_ignores_late_exception_alias(
     assert type(observed) is RuntimeError
     assert not (tmp_path / ".published.staging").exists()
     assert not output.exists()
+
+
+# Exercise exact-tree trust boundaries through typed private entrypoints.
+_NATIVE_EXACT_ENTRY_MODE = cast(
+    "Callable[[Path, str], int | None]", vars(exact_module)["_entry_mode"]
+)
+_NATIVE_EXACT_CLEANUP = cast(
+    "Callable[[Path], str | None]", vars(exact_module)["_cleanup_exact_staging"]
+)
+_NATIVE_EXACT_MKDIR = cast(
+    "Callable[..., None]", vars(exact_module)["_native_make_output_directory"]
+)
+_NATIVE_EXACT_PORTABLE_LABEL = cast(
+    "Callable[[object], str]", vars(exact_module)["_require_portable_path_label"]
+)
+
+
+def test_exact_status_does_not_hide_denial_as_missing_under_late_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An lstat permission denial is not evidence that an entry is absent."""
+    failure = PermissionError("native status denied")
+    native_missing = builtins.FileNotFoundError
+    caught: Exception | None = None
+
+    def denied(_path: Path) -> os.stat_result:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "_NATIVE_PATH_LSTAT", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            _ = _NATIVE_EXACT_ENTRY_MODE(tmp_path / "entry", "source entry")
+        except (ExactTreeError, PermissionError) as error:
+            caught = error
+        finally:
+            builtins.FileNotFoundError = native_missing
+    assert type(caught) is ExactTreeError
+    assert caught.__cause__ is failure
+
+
+def test_exact_cleanup_does_not_certify_denied_staging_as_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed staging cleanup cannot become a successful no-op."""
+    failure = PermissionError("native staging cleanup denied")
+    native_missing = builtins.FileNotFoundError
+
+    def denied(_path: Path) -> None:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "_NATIVE_RMTREE", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            outcome = _NATIVE_EXACT_CLEANUP(tmp_path / "stage")
+        finally:
+            builtins.FileNotFoundError = native_missing
+    assert outcome == "PermissionError"
+
+
+def test_exact_mkdir_does_not_retry_denied_parent_after_missing_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Permission denial must not trigger recursive missing-parent creation."""
+    failure = PermissionError("native directory creation denied")
+    native_missing = builtins.FileNotFoundError
+    calls = 0
+    caught: Exception | None = None
+
+    def denied(_path: str) -> None:
+        nonlocal calls
+        calls += 1
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "_NATIVE_OS_MKDIR", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            _NATIVE_EXACT_MKDIR(
+                Path("root/child"), parents=True, exist_ok=False
+            )
+        except PermissionError as error:
+            caught = error
+        finally:
+            builtins.FileNotFoundError = native_missing
+    assert caught is failure
+    assert calls == 1
+
+
+def test_exact_unsafe_utf8_label_wraps_native_error_under_late_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed source labels must keep TreeModelError after codec alias swaps."""
+    native_codec_error = builtins.UnicodeEncodeError
+    caught: Exception | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeEncodeError", LookupError)
+        try:
+            _ = _NATIVE_EXACT_PORTABLE_LABEL("invalid\ud800path")
+        except (TreeModelError, native_codec_error) as error:
+            caught = error
+        finally:
+            builtins.UnicodeEncodeError = native_codec_error
+    assert type(caught) is TreeModelError
+    assert type(caught.__cause__) is native_codec_error

@@ -105,6 +105,11 @@ _NATIVE_RANGE = builtins.range
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
+_NATIVE_UNICODE_ERROR = builtins.UnicodeError
+_NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_EXCEPTION = builtins.Exception
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
@@ -114,7 +119,9 @@ _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_OS_WALK = os.walk
-_NATIVE_OS_WALK_LINKS_SENTINEL = os.__dict__["_walk_symlinks_as_files"]
+_NATIVE_OS_WALK_LINKS_SENTINEL = cast(
+    "object", os.__dict__["_walk_symlinks_as_files"]
+)
 _NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_SYS_AUDIT = sys.audit
 # The native Path.is_junction still dispatches through mutable os.path.
@@ -518,7 +525,7 @@ def _native_path_inside(path: Path, root: Path) -> bool:
     """Check containment with the import-native pathlib method."""
     try:
         _ = _NATIVE_RELATIVE_TO(path, root)
-    except ValueError:
+    except _NATIVE_VALUE_ERROR:
         return False
     return True
 
@@ -545,7 +552,7 @@ def _require_portable_path_label(value: object) -> str:
         raise TreeModelError(message)
     try:
         _ = value.encode("utf-8")
-    except UnicodeEncodeError as error:
+    except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"invalid relative path: {value!r}"
         raise TreeModelError(message) from error
     return value
@@ -638,7 +645,7 @@ def _walk_tree(
         yield from _NATIVE_PATH_WALK(root, on_error=_raise_tree_walk_error)
     except ExactTreeError:
         raise
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         _raise_tree_walk_error(error)
 
 
@@ -706,9 +713,9 @@ def _entry_mode(path: Path, context: str) -> int | None:
     _require_native_path_hooks()
     try:
         receipt = _NATIVE_PATH_LSTAT(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"{context} status failed: {_safe_host_error_detail(error)}"
         raise ExactTreeError(message) from error
     _ = _require_native_status(receipt, context)
@@ -720,7 +727,7 @@ def _is_redirect(path: Path, mode: int) -> bool:
         if S_ISLNK(mode):
             return True
         is_junction = _NATIVE_PATH_IS_JUNCTION(path)
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _safe_host_error_detail(error)
         message = f"tree redirect status failed: {path}: {detail}"
         raise ExactTreeError(message) from error
@@ -853,7 +860,7 @@ def _verify_closed_source(
     # Finalizers may change or replace the named file after the last fstat.
     try:
         final = _NATIVE_PATH_LSTAT(path)
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"{context} status failed after descriptor close: {path}"
         raise ExactTreeError(message) from error
     final = _require_native_status(final, context)
@@ -931,7 +938,7 @@ def read_exact_regular_file(path: Path, context: str) -> bytes:
         return _read_bound_file(path, context)
     except ExactTreeError:
         raise
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _safe_host_error_detail(error)
         message = f"{context} read failed: {path}: {detail}"
         failure = ExactTreeError(message)
@@ -973,7 +980,7 @@ def _require_filesystem_root(value: object, context: str) -> None:
         raise ExactTreeError(message)
     try:
         _ = raw.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
-    except UnicodeError as error:
+    except _NATIVE_UNICODE_ERROR as error:
         message = f"{context} must use a representable filesystem path"
         raise ExactTreeError(message) from error
 
@@ -1009,7 +1016,7 @@ def _resolved_tree_root(root: Path) -> Path:
         raise ExactTreeError(message)
     try:
         resolved = _NATIVE_PATH_RESOLVE(root, strict=True)
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _safe_host_error_detail(error)
         message = f"tree root resolution failed: {root}: {detail}"
         raise ExactTreeError(message) from error
@@ -1338,7 +1345,7 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
         resolved_root = _require_native_resolved_path(
             _NATIVE_PATH_RESOLVE(root), "tree root"
         )
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = (
             "tree path resolution failed: "
             f"{relative_path!r}: {_safe_host_error_detail(error)}"
@@ -1346,7 +1353,7 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
         raise ExactTreeError(message) from error
     try:
         _ = _NATIVE_RELATIVE_TO(resolved_path, resolved_root)
-    except ValueError as error:
+    except _NATIVE_VALUE_ERROR as error:
         message = f"path escapes tree root: {relative_path!r}"
         raise ExactTreeError(message) from error
     _reject_linked_tree_ancestors(root, normalized)
@@ -1404,7 +1411,7 @@ def _native_make_output_directory(path: Path, *, parents: bool, exist_ok: bool) 
     _require_native_path_hooks()
     try:
         _NATIVE_OS_MKDIR(_NATIVE_PATH_STRING(path))
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         parent = _NATIVE_PATH_PARENT(path)
         if not parents or _NATIVE_PATH_STRING(parent) == _NATIVE_PATH_STRING(path):
             raise
@@ -1424,7 +1431,7 @@ def _write_output_file(path: Path, data: bytes, context: str) -> None:
             _NATIVE_PATH_PARENT(path), parents=True, exist_ok=True
         )
         written = _NATIVE_WRITE_OUTPUT_BYTES(path, data)
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"{context} write failed: {path}: " + _safe_host_error_detail(
             error
         )
@@ -1443,7 +1450,7 @@ def _make_output_directory(
 ) -> None:
     try:
         _native_make_output_directory(path, parents=parents, exist_ok=exist_ok)
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _safe_host_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
         raise ExactTreeError(message) from error
@@ -1604,7 +1611,7 @@ def _resolved_output_root(output_root: Path) -> Path:
         raise ExactTreeError(message)
     try:
         resolved = _NATIVE_PATH_RESOLVE(output_root)
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = (
             "output root resolution failed: "
             f"{output_root}: {_safe_host_error_detail(error)}"
@@ -1616,9 +1623,9 @@ def _resolved_output_root(output_root: Path) -> Path:
 def _cleanup_exact_staging(path: Path) -> str | None:
     try:
         _NATIVE_RMTREE(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (_NATIVE_OS_ERROR, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         return _safe_host_error_detail(error)
     return None
 
