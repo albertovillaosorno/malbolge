@@ -170,6 +170,8 @@ _NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
 _NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
 _NATIVE_PATH_WITH_NAME = Path.with_name
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
+# Path.is_junction dynamically looks up os.path.isjunction at call time.
+_NATIVE_OS_PATH_ISJUNCTION = os.path.isjunction
 _NATIVE_RESOLVE = _NATIVE_PATH_TYPE.resolve
 _NATIVE_OS_REALPATH = os.path.realpath
 _NATIVE_OS_READLINK = os.readlink
@@ -622,6 +624,9 @@ def _output_mode(path: Path, description: str) -> int | None:
 
 
 def _output_redirects(path: Path, mode: int) -> bool:
+    if os.path.isjunction is not _NATIVE_OS_PATH_ISJUNCTION:
+        message = "Rust output junction hooks changed"
+        raise RustEmissionError(message)
     try:
         if S_ISLNK(mode):
             return True

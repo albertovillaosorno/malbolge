@@ -138,3 +138,36 @@ def test_emitter_rejects_late_host_str_alias(
     assert type(observed) is emit_rust.RustEmissionError, observed
     assert "path hooks changed" in str(observed)
     assert not destination.exists()
+
+
+@pytest.mark.parametrize("role", ["leaf", "parent"])
+def test_emitter_rejects_late_junction_classifier_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """The captured Path.is_junction must not call a late host classifier."""
+    destination = tmp_path / "destination.rs"
+    if role == "leaf":
+        _ = destination.write_bytes(b"preserved")
+        checked = destination
+    else:
+        checked = tmp_path
+    native_classifier = os.path.isjunction
+    callbacks = 0
+
+    def forged_classifier(path: str | os.PathLike[str]) -> bool:
+        nonlocal callbacks
+        callbacks += 1
+        return native_classifier(path)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "isjunction", forged_classifier)
+        with pytest.raises(emit_rust.RustEmissionError, match="junction hooks changed"):
+            if role == "leaf":
+                emit_rust._validate_output_leaf(checked)
+            else:
+                emit_rust._validate_output_parent(
+                    checked, emit_rust._output_mode(checked, "parent")
+                )
+    assert callbacks == 0
+    if role == "leaf":
+        assert destination.read_bytes() == b"preserved"
