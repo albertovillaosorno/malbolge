@@ -37,6 +37,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 import ntpath
+import os
 import shutil
 from dataclasses import replace
 from pathlib import PurePosixPath
@@ -1095,3 +1096,55 @@ def test_protected_aad_ignores_late_isinstance_segment_spoof(
     assert observed == baseline, (
         "late isinstance hook altered authenticated tags"
     )
+
+
+@pytest.mark.parametrize("role", ["output", "source", "passthrough"])
+@pytest.mark.parametrize(
+    "unsafe", ["C:relative", "CON", "src/COM2", "src/trailing."]
+)
+def test_protected_path_rejects_late_ntpath_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+    role: str,
+    unsafe: str,
+) -> None:
+    """Protected path admission ignores late dependency hooks in ntpath."""
+
+    def hide_windows_path(value: object) -> tuple[str, str, str]:
+        del value
+        return "", "", "safe"
+
+    def checked_record() -> object:
+        if role == "passthrough":
+            empty = TreeSnapshot(files=())
+            return ProtectedMetadata(empty, empty, (), (unsafe,))
+        return ProtectedInstruction(
+            output_path=unsafe if role == "output" else "target.bin",
+            kind=ProtectedInstructionKind.COPY_SOURCE,
+            expected_sha256="0" * 64,
+            source_path=unsafe if role == "source" else "source.bin",
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ntpath, "splitroot", hide_windows_path)
+        with pytest.raises(ProtectedPlanError, match="canonical relative"):
+            _ = checked_record()
+
+
+@pytest.mark.parametrize("hook", ["fspath", "any"])
+def test_protected_reserved_device_ignores_late_host_hook(
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """A late filesystem or builtin hook cannot make CON a portable path."""
+    with monkeypatch.context() as patch:
+        if hook == "fspath":
+            patch.setattr(os, "fspath", lambda value: "safe")
+        else:
+            patch.setattr(builtins, "any", lambda values: False)
+        with pytest.raises(ProtectedPlanError, match="canonical relative"):
+            _ = ProtectedInstruction(
+                output_path="CON",
+                kind=ProtectedInstructionKind.COPY_SOURCE,
+                expected_sha256="0" * 64,
+                source_path="source.bin",
+            )

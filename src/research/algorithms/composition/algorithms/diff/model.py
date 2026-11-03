@@ -92,7 +92,8 @@ def _validate_sha256_hex(value: object, context: str) -> None:
         raise TreeModelError(message)
 
 
-def _reserved_windows_component(component: str) -> bool:
+def reserved_windows_component(component: str) -> bool:
+    """Check one component against stable Windows name rules."""
     if component[-1:] in (".", " ") and component not in (".", ".."):
         return True
     if _native_any(char in _WINDOWS_RESERVED_CHARACTERS for char in component):
@@ -110,7 +111,7 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
         _BACKSLASH in value
         or _NUL in value
         or _native_any(
-            _reserved_windows_component(component)
+            reserved_windows_component(component)
             for component in value.split("/")
         )
         or _native_any(part in _UNSAFE_COMPONENTS for part in value.split("/"))

@@ -38,8 +38,6 @@ import builtins
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
-from ntpath import isreserved as _native_isreserved
-from ntpath import splitdrive as _native_splitdrive
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import IdentityTree
@@ -47,6 +45,7 @@ from algorithms.diff.exact import (
     materialize_exact_plan,
     snapshot_tree_excluding,
 )
+from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.model import (
     ExactAuthoringPlan,
     ExactInstruction,
@@ -132,8 +131,10 @@ def _require_utf8_path(value: str, context: str) -> None:
     # Empty, dot, or parent components are never valid portable file labels.
     unsafe = (
         _BACKSLASH in value
-        or _NATIVE_BOOL(_native_splitdrive(value)[0])
-        or _native_isreserved(value)
+        or _NATIVE_ANY(
+            reserved_windows_component(component)
+            for component in value.split("/")
+        )
         or _NATIVE_ANY(part in _UNSAFE_COMPONENTS for part in value.split("/"))
     )
     if unsafe:
