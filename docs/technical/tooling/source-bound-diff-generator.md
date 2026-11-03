@@ -1344,6 +1344,18 @@ success. Windows still stops only the direct child on failure; descendants that
 detach their POSIX session are also outside cleanup. Cross-platform child-tree
 cleanup remains open.
 
+Process-group cleanup now calls the import-captured original `os.kill`
+(`0f295967a`) instead of the mutable host module function. A late no-op
+replacement previously skipped the group signal while reporting success;
+a forged permission denial rejected a completed probe. Both red-first
+regressions now pass, and simulated genuine denial tests use the internal
+signal-dispatch test seam. All 443 focused probe tests passed after commit,
+and 3,818 integrated diff tests passed before it. Pinned Ruff and strict
+typing retain existing diagnostics but none on the added lines. Global Jig
+check cannot complete because the resolved ChkTeX version is 1.7.9 rather
+than required 1.7.10. This is not protection against direct trusted state
+mutation, concurrent host edits, or detached descendants.
+
 The six transient `_PipeCapture` fields (quota, fragments, byte count, overflow,
 error, completion) and seven `_RunningProbe` fields (process, pipes, workers,
 stdin errors and acknowledgment) now construct through captured native slots.

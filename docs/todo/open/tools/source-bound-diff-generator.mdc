@@ -648,6 +648,14 @@ format.
   focused and 3,811 precommit integrated diff passes. This protects host
   callback substitution, not arbitrary direct module-state changes or
   external process races.
+- Probe process-group cleanup now uses captured original `os.kill`
+  (`0f295967a`). Two red-first no-op and false-denial host-hook cases
+  show that late dispatch previously skipped termination or rejected a
+  successful probe. Existing denied-signal injection now targets an
+  internal seam. All 443 postcommit probe and 3,818 precommit diff tests
+  passed; the pinned Ruff/strict BasedPyright findings remain outside
+  added lines. The global Jig check is blocked by ChkTeX version drift,
+  and external host/filesystem races remain outside the local guard.
 - Portable process probes now execute without shell interpolation, with
   structured
   roots, bounded time/output, isolated source mirrors, and deterministic
