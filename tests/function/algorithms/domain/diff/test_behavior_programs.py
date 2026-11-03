@@ -687,6 +687,42 @@ def test_behavior_context_rejects_late_host_splitroot_redirect(
     assert calls == 0, "late host parser redirected behavior context"
 
 
+@pytest.mark.parametrize("helper", ["len", "bytes", "isinstance", "isdir"])
+def test_behavior_context_rejects_late_realpath_builtin_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    """Original realpath must not consume swapped builtins or classifier."""
+    source = tmp_path / "source"
+    source.mkdir()
+    selected = tmp_path / "source"
+    if helper == "isdir":
+        owner, name = stat, "S_ISDIR"
+    else:
+        owner, name = builtins, helper
+    original = getattr(owner, name)
+    calls = 0
+
+    def watched(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    replacement: object = str if helper == "bytes" else watched
+    resolve = cast(
+        "Callable[[Path, str], Path]",
+        vars(behavior_module)["_resolved_context_path"],
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, name, replacement)
+        try:
+            _ = resolve(selected, "repository")
+        except BehaviorProgramError as error:
+            rejected = "resolver hooks changed" in str(error)
+    assert rejected, f"late host {helper} dependency was admitted"
+    assert calls == 0, f"late host {helper} callback was invoked"
+
+
 @pytest.mark.parametrize("hook", ["splitdrive", "join", "sep", "altsep"])
 def test_behavior_context_rejects_late_host_parser_hooks(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str

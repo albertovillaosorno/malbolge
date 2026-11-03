@@ -94,6 +94,7 @@ _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_READLINK = os.readlink
 _NATIVE_OS_GETCWD = os.getcwd
 _NATIVE_STAT_ISLNK = stat.S_ISLNK
+_NATIVE_STAT_ISDIR = stat.S_ISDIR
 _NATIVE_PATH_NEW = Path.__new__
 _NATIVE_PATH_INIT = Path.__init__
 _NATIVE_PATH_GETATTRIBUTE = Path.__getattribute__
@@ -144,6 +145,7 @@ _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = builtins.type
 _NATIVE_TUPLE = builtins.tuple
 _NATIVE_LEN = builtins.len
+_NATIVE_ISINSTANCE = builtins.isinstance
 _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_BOOL = builtins.bool
@@ -175,6 +177,10 @@ def _require_native_context_resolver() -> None:
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
         or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+        or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
+        or builtins.len is not _NATIVE_LEN
+        or builtins.bytes is not _NATIVE_BYTES
+        or builtins.isinstance is not _NATIVE_ISINSTANCE
         or Path.__new__ is not _NATIVE_PATH_NEW
         or Path.__init__ is not _NATIVE_PATH_INIT
         or Path.__getattribute__ is not _NATIVE_PATH_GETATTRIBUTE
