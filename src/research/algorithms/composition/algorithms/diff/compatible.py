@@ -44,7 +44,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from stat import S_ISLNK
-from types import MemberDescriptorType
+from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 # jig-ignore-next-line: canonical Ruff import grouping requires one statement
@@ -240,7 +240,12 @@ class CompatibleInstruction:
             ("correction_ids", correction_ids),
         ):
             _NATIVE_OBJECT_SETATTR(self, name, value)
-        _INSTRUCTION_VALIDATOR(self)
+        _INSTRUCTION_VALIDATOR(
+            cast(
+                "CompatibleInstruction",
+                cast("object", _pinned_validation_view(self, CompatibleInstruction)),
+            )
+        )
 
     def __post_init__(self) -> None:
         """Reject incomplete instruction forms."""
@@ -277,7 +282,12 @@ class CompatibleBuildRequest:
             ("preserve_candidate_only", preserve_candidate_only),
         ):
             _NATIVE_OBJECT_SETATTR(self, name, value)
-        _BUILD_REQUEST_VALIDATOR(self)
+        _BUILD_REQUEST_VALIDATOR(
+            cast(
+                "CompatibleBuildRequest",
+                cast("object", _pinned_validation_view(self, CompatibleBuildRequest)),
+            )
+        )
 
     def __post_init__(self) -> None:
         """Reject malformed compatible authoring request envelopes."""
@@ -314,7 +324,12 @@ class CompatibleAuthoringPlan:
             ("preserve_candidate_only", preserve_candidate_only),
         ):
             _NATIVE_OBJECT_SETATTR(self, name, value)
-        _AUTHORING_PLAN_VALIDATOR(self)
+        _AUTHORING_PLAN_VALIDATOR(
+            cast(
+                "CompatibleAuthoringPlan",
+                cast("object", _pinned_validation_view(self, CompatibleAuthoringPlan)),
+            )
+        )
 
     def __post_init__(self) -> None:
         """Require one self-consistent immutable compatible authoring plan."""
@@ -354,7 +369,15 @@ class CompatibleMaterializeRequest:
             ("postcondition", postcondition),
         ):
             _NATIVE_OBJECT_SETATTR(self, name, value)
-        _MATERIALIZE_REQUEST_VALIDATOR(self)
+        _MATERIALIZE_REQUEST_VALIDATOR(
+            cast(
+                "CompatibleMaterializeRequest",
+                cast(
+                    "object",
+                    _pinned_validation_view(self, CompatibleMaterializeRequest),
+                ),
+            )
+        )
 
     def __post_init__(self) -> None:
         """Reject malformed compatible materialization request envelopes."""
@@ -378,6 +401,32 @@ _MATERIALIZE_REQUEST_VALIDATOR = cast(
     "Callable[[CompatibleMaterializeRequest], None]",
     CompatibleMaterializeRequest.__dict__["__post_init__"],
 )
+
+
+# Dataclass slot readers are immutable, unlike later class getters. The
+# validation proxy is a short-lived internal view, never admitted as a record.
+_COMPATIBLE_RECORD_SLOTS = {
+    record_type: _NATIVE_TUPLE(
+        (name, cast("MemberDescriptorType", record_type.__dict__[name]))
+        for name in record_type.__dataclass_fields__
+    )
+    for record_type in (
+        CompatibleInstruction,
+        CompatibleBuildRequest,
+        CompatibleAuthoringPlan,
+        CompatibleMaterializeRequest,
+    )
+}
+
+
+def _pinned_validation_view(record: object, record_type: type) -> SimpleNamespace:
+    """Read original immutable slots before construction admission."""
+    return SimpleNamespace(
+        **{
+            name: descriptor.__get__(record, record_type)
+            for name, descriptor in _COMPATIBLE_RECORD_SLOTS[record_type]
+        }
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1098,11 +1147,43 @@ def _compatible_instruction(
     return _exact_instruction(context, instruction, source_path)
 
 
+def _admitted_plan_view(plan: CompatibleAuthoringPlan) -> CompatibleAuthoringPlan:
+    """Freeze the admitted plan and instruction slots for one replay."""
+    view = _pinned_validation_view(plan, CompatibleAuthoringPlan)
+    original_instructions = cast(
+        "tuple[CompatibleInstruction, ...]", view.instructions
+    )
+    view.instructions = _NATIVE_TUPLE(
+        cast(
+            "CompatibleInstruction",
+            cast("object", _pinned_validation_view(item, CompatibleInstruction)),
+        )
+        for item in original_instructions
+    )
+    return cast("CompatibleAuthoringPlan", cast("object", view))
+
+
+def _admitted_materialize_view(
+    request: CompatibleMaterializeRequest,
+) -> CompatibleMaterializeRequest:
+    """Freeze original request and nested plan values before callbacks."""
+    view = _pinned_validation_view(request, CompatibleMaterializeRequest)
+    plan = cast("CompatibleAuthoringPlan", view.plan)
+    if _NATIVE_TYPE(plan) is not CompatibleAuthoringPlan:
+        message = "compatible plan must use exact CompatibleAuthoringPlan"
+        raise CompatiblePlanError(message)
+    view.plan = _admitted_plan_view(plan)
+    return cast("CompatibleMaterializeRequest", cast("object", view))
+
+
 def _require_build_request(value: object) -> CompatibleBuildRequest:
     if _NATIVE_TYPE(value) is not CompatibleBuildRequest:
         message = "compatible authoring requires exact CompatibleBuildRequest"
         raise CompatiblePlanError(message)
-    return value
+    return cast(
+        "CompatibleBuildRequest",
+        cast("object", _pinned_validation_view(value, CompatibleBuildRequest)),
+    )
 
 
 def _require_materialize_request(
@@ -1114,7 +1195,7 @@ def _require_materialize_request(
             "CompatibleMaterializeRequest"
         )
         raise CompatiblePlanError(message)
-    return value
+    return _admitted_materialize_view(value)
 
 
 def build_compatible_plan(

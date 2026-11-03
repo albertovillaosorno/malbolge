@@ -3175,3 +3175,168 @@ def test_compatible_envelope_constructor_keeps_valid_after_late_rejection(
         clone = replace(baseline)
     assert clone == baseline
     assert calls == 0, "late validator rejected valid compatible metadata"
+
+
+@pytest.mark.parametrize(
+    ("record_kind", "field", "invalid"),
+    [
+        ("instruction", "output_path", "../unsafe"),
+        ("build", "source_root", "foreign-root"),
+        ("plan", "instructions", ()),
+        ("materialize", "postcondition", object()),
+    ],
+)
+def test_compatible_constructor_reads_original_slots_under_late_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_kind: str,
+    field: str,
+    invalid: object,
+) -> None:
+    """Forged class getters must not conceal invalid stored evidence."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    records = {
+        "instruction": CompatibleInstruction(
+            output_path="created.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        ),
+        "build": build,
+        "plan": plan,
+        "materialize": _request(candidate, plan, tmp_path / "output"),
+    }
+    baseline = records[record_kind]
+    expected = getattr(baseline, field)
+    cls = type(baseline)
+    getter = cls.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return expected
+        return getter(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(cls, "__getattribute__", forged_getter)
+        with pytest.raises(CompatiblePlanError):
+            _ = replace(baseline, **{field: invalid})
+    assert calls == 0, "late getter hid incompatible stored metadata"
+
+
+@pytest.mark.parametrize(
+    ("record_kind", "field", "invalid"),
+    [
+        ("instruction", "output_path", "../unsafe"),
+        ("build", "source_root", "foreign-root"),
+        ("plan", "instructions", ()),
+        ("materialize", "postcondition", object()),
+    ],
+)
+def test_compatible_constructor_does_not_consult_forged_rejection_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_kind: str,
+    field: str,
+    invalid: object,
+) -> None:
+    """Valid stored fields remain valid when class getters forge failures."""
+    source, oracle = _roots(tmp_path)
+    build = CompatibleBuildRequest(
+        source_root=source,
+        oracle_root=oracle,
+        reference_identity=_identity(source),
+        admission_policy=_policy(),
+        mapper=_mapper,
+    )
+    plan = build_compatible_plan(build)
+    candidate = _candidate(tmp_path)
+    records = {
+        "instruction": CompatibleInstruction(
+            output_path="created.bin",
+            kind=CompatibleFileKind.CREATE_LITERAL,
+            literal=_CREATED,
+        ),
+        "build": build,
+        "plan": plan,
+        "materialize": _request(candidate, plan, tmp_path / "output"),
+    }
+    baseline = records[record_kind]
+    original = getattr(baseline, field)
+    cls = type(baseline)
+    getter = cls.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return invalid
+        return getter(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(cls, "__getattribute__", forged_getter)
+        clone = replace(baseline, **{field: original})
+    assert clone == baseline
+    assert calls == 0, "late getter rejected valid stored metadata"
+
+
+@pytest.mark.parametrize(
+    "spoof", ["output-root", "plan-instructions", "create-literal"]
+)
+def test_compatible_materialization_uses_original_admitted_record_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    spoof: str,
+) -> None:
+    """Late class getters cannot redirect publication or substitute plan bytes."""
+    plan = _plan(tmp_path)
+    candidate = _candidate(tmp_path)
+    output = tmp_path / "accepted"
+    request = _request(candidate, plan, output)
+    forged_output = tmp_path / "redirected"
+    if spoof == "output-root":
+        cls = CompatibleMaterializeRequest
+        field = "output_root"
+        forged: object = forged_output
+    elif spoof == "plan-instructions":
+        cls = type(plan)
+        field = "instructions"
+        forged = ()
+    else:
+        instruction = next(
+            item
+            for item in plan.instructions
+            if item.kind is CompatibleFileKind.CREATE_LITERAL
+        )
+        cls = type(instruction)
+        field = "literal"
+        forged = b"untrusted substitute"
+    getter = cls.__getattribute__
+    calls = 0
+
+    def forged_getter(record: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return getter(record, name)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(cls, "__getattribute__", forged_getter)
+        evidence = materialize_compatible_plan(request)
+    assert evidence.admitted
+    assert (output / "created.bin").read_bytes() == _CREATED
+    assert (output / "code.src").read_bytes() == _EXPECTED_CODE
+    assert not forged_output.exists()
+    assert calls == 0, "compatible replay consulted late record getter"
