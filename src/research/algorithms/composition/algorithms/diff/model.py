@@ -38,7 +38,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
 from ntpath import isreserved as _native_isreserved
-from pathlib import PurePosixPath, PureWindowsPath
+from ntpath import splitdrive as _native_splitdrive
 from typing import cast
 
 _ZERO = 0
@@ -46,8 +46,7 @@ _SHA256_HEX_LENGTH = 64
 _HEX_DIGITS = frozenset("0123456789abcdef")
 _BACKSLASH = "\\"
 _NUL = "\x00"
-_PARENT = ".."
-_DOT = "."
+_UNSAFE_COMPONENTS = frozenset(("", ".", ".."))
 
 
 class TreeModelError(ValueError):
@@ -67,16 +66,13 @@ def _require_canonical_relative_path(value: object, context: str) -> None:
     if type(value) is not str or not value:
         message = f"{context} must be a canonical relative path"
         raise TreeModelError(message)
-    path = PurePosixPath(value)
+    # Security-critical path labels must not consult mutable pathlib methods.
     unsafe = (
         _BACKSLASH in value
         or _NUL in value
-        or value == _DOT
-        or path.is_absolute()
-        or PureWindowsPath(value).drive
+        or bool(_native_splitdrive(value)[0])
         or _native_isreserved(value)
-        or _PARENT in path.parts
-        or path.as_posix() != value
+        or any(part in _UNSAFE_COMPONENTS for part in value.split("/"))
     )
     if unsafe:
         message = f"{context} must be a canonical relative path"
@@ -110,6 +106,14 @@ class FileRecord:
             raise TreeModelError(message)
 
 
+def _has_file_ancestor(path: str, file_paths: set[str]) -> bool:
+    components = path.split("/")
+    return any(
+        "/".join(components[:index]) in file_paths
+        for index in range(1, len(components))
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class TreeSnapshot:
     """Sorted regular-file snapshot used for deterministic verification."""
@@ -134,11 +138,7 @@ class TreeSnapshot:
             message = "tree snapshot paths must be unique and sorted"
             raise TreeModelError(message)
         file_paths = set(paths)
-        if any(
-            parent.as_posix() in file_paths
-            for path in paths
-            for parent in PurePosixPath(path).parents
-        ):
+        if any(_has_file_ancestor(path, file_paths) for path in paths):
             message = "tree snapshot has an ancestor/descendant file overlap"
             raise TreeModelError(message)
 

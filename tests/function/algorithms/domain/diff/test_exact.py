@@ -44,7 +44,7 @@ import subprocess  # ruff: ignore[suspicious-subprocess-import] - bounded no-she
 import sys
 import textwrap
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
@@ -234,6 +234,78 @@ def test_exact_model_paths_resist_mutable_reserved_name_policy(
             expected_sha256="0" * 64,
             literal=b"",
         )
+
+
+def _forge_model_path_method(
+    patched: pytest.MonkeyPatch, method: str, invalid: str
+) -> None:
+    def forged_parts(_path: PurePosixPath) -> tuple[str, ...]:
+        del _path
+        return ()
+
+    def forged_as_posix(_path: PurePosixPath) -> str:
+        del _path
+        return invalid
+
+    def forged_absolute(_path: PurePosixPath) -> bool:
+        del _path
+        return False
+
+    hooks = {
+        "parts": property(forged_parts),
+        "as_posix": forged_as_posix,
+        "is_absolute": forged_absolute,
+    }
+    patched.setattr(PurePosixPath, method, hooks[method])
+
+
+@pytest.mark.parametrize(
+    ("method", "invalid"),
+    [
+        ("is_absolute", "/escape.bin"),
+        ("parts", "nested/../escape.bin"),
+        ("as_posix", "nested//escape.bin"),
+    ],
+)
+def test_exact_model_path_admission_resists_late_pathlib_spoof(
+    monkeypatch: pytest.MonkeyPatch, method: str, invalid: str
+) -> None:
+    """A mutable pathlib class must not authorize noncanonical exact labels."""
+    with monkeypatch.context() as patched:
+        _forge_model_path_method(patched, method, invalid)
+        with pytest.raises(TreeModelError, match="canonical relative"):
+            _ = FileRecord(invalid, "0" * 64, 0)
+        with pytest.raises(TreeModelError, match="canonical relative"):
+            _ = ExactInstruction(
+                output_path=invalid,
+                kind=ExactInstructionKind.LITERAL_ORACLE,
+                expected_sha256="0" * 64,
+                literal=b"",
+            )
+        with pytest.raises(TreeModelError, match="canonical relative"):
+            _ = ExactAuthoringPlan(
+                source=TreeSnapshot(files=()),
+                target=TreeSnapshot(files=()),
+                instructions=(),
+                passthrough_roots=(invalid,),
+            )
+
+
+def test_exact_snapshot_topology_resists_late_parent_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late parent enumeration hook cannot admit nested file records."""
+    ancestor = FileRecord("src/module", "0" * 64, 0)
+    descendant = FileRecord("src/module/child", "0" * 64, 0)
+
+    def forged_parents(_path: PurePosixPath) -> tuple[()]:
+        del _path
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(PurePosixPath, "parents", property(forged_parents))
+        with pytest.raises(TreeModelError, match="ancestor"):
+            _ = TreeSnapshot(files=(ancestor, descendant))
 
 
 @pytest.mark.parametrize(
