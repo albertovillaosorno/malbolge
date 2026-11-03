@@ -282,13 +282,28 @@ def read_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ...]:
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class _LocatedEdit:
     edit: SemanticEdit
     unit_start: int
     unit_end: int
     raw_start: int
     raw_end: int
+
+    def __init__(
+        self,
+        edit: SemanticEdit,
+        unit_start: int,
+        unit_end: int,
+        raw_start: int,
+        raw_end: int,
+    ) -> None:
+        """Preserve computed evidence against late class setters."""
+        _LOCATED_EDIT_SLOT.__set__(self, edit)
+        _LOCATED_UNIT_START_SLOT.__set__(self, unit_start)
+        _LOCATED_UNIT_END_SLOT.__set__(self, unit_end)
+        _LOCATED_RAW_START_SLOT.__set__(self, raw_start)
+        _LOCATED_RAW_END_SLOT.__set__(self, raw_end)
 
 
 # Placement must keep its computed bounds after host callbacks replace class
@@ -323,17 +338,37 @@ def _located_edit_fields(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class _AnchorPair:
     source_start: int
     target_start: int
 
+    def __init__(
+        self,
+        source_start: int,
+        target_start: int,
+    ) -> None:
+        """Preserve computed evidence against late class setters."""
+        _ANCHOR_SLOTS[0].__set__(self, source_start)
+        _ANCHOR_SLOTS[1].__set__(self, target_start)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class _MatchBlock:
     source_start: int
     target_start: int
     length: int
+
+    def __init__(
+        self,
+        source_start: int,
+        target_start: int,
+        length: int,
+    ) -> None:
+        """Preserve computed evidence against late class setters."""
+        _MATCH_BLOCK_SLOTS[0].__set__(self, source_start)
+        _MATCH_BLOCK_SLOTS[1].__set__(self, target_start)
+        _MATCH_BLOCK_SLOTS[2].__set__(self, length)
 
 
 _MATCH_BLOCK_SLOTS = (
@@ -352,34 +387,82 @@ def _match_block_fields(block: _MatchBlock) -> tuple[int, int, int]:
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class _EditRange:
     source_start: int
     source_end: int
     target_start: int
     target_end: int
 
+    def __init__(
+        self,
+        source_start: int,
+        source_end: int,
+        target_start: int,
+        target_end: int,
+    ) -> None:
+        """Preserve computed evidence against late class setters."""
+        _EDIT_RANGE_SLOTS[0].__set__(self, source_start)
+        _EDIT_RANGE_SLOTS[1].__set__(self, source_end)
+        _EDIT_RANGE_SLOTS[2].__set__(self, target_start)
+        _EDIT_RANGE_SLOTS[3].__set__(self, target_end)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class _MatchContext:
     source: tuple[bytes, ...]
     target: tuple[bytes, ...]
 
+    def __init__(
+        self,
+        source: tuple[bytes, ...],
+        target: tuple[bytes, ...],
+    ) -> None:
+        """Preserve computed evidence against late class setters."""
+        _MATCH_CONTEXT_SLOTS[0].__set__(self, source)
+        _MATCH_CONTEXT_SLOTS[1].__set__(self, target)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class _Region:
     source_start: int
     source_end: int
     target_start: int
     target_end: int
 
+    def __init__(
+        self,
+        source_start: int,
+        source_end: int,
+        target_start: int,
+        target_end: int,
+    ) -> None:
+        """Preserve computed evidence against late class setters."""
+        _REGION_SLOTS[0].__set__(self, source_start)
+        _REGION_SLOTS[1].__set__(self, source_end)
+        _REGION_SLOTS[2].__set__(self, target_start)
+        _REGION_SLOTS[3].__set__(self, target_end)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class _SemanticBuildContext:
     source_digests: tuple[bytes, ...]
     target_digests: tuple[bytes, ...]
     target: MappedView
     context_units: int
+
+    def __init__(
+        self,
+        source_digests: tuple[bytes, ...],
+        target_digests: tuple[bytes, ...],
+        target: MappedView,
+        context_units: int,
+    ) -> None:
+        """Preserve computed evidence against late class setters."""
+        _BUILD_CONTEXT_SLOTS[0].__set__(self, source_digests)
+        _BUILD_CONTEXT_SLOTS[1].__set__(self, target_digests)
+        _BUILD_CONTEXT_SLOTS[2].__set__(self, target)
+        _BUILD_CONTEXT_SLOTS[3].__set__(self, context_units)
 
 
 # All transient matching roles bind original slots, not later class hooks.

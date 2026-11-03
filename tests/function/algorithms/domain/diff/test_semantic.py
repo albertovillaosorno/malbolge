@@ -1444,3 +1444,94 @@ def test_semantic_constructors_reject_property_setter_laundering(
         with pytest.raises(SemanticPlacementError, match=expected):
             _ = cast("Callable[..., object]", owner)(**values)
     assert not intercepted, "late semantic setter intercepted construction"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("_LocatedEdit", "edit"),
+        ("_LocatedEdit", "unit_start"),
+        ("_LocatedEdit", "unit_end"),
+        ("_LocatedEdit", "raw_start"),
+        ("_LocatedEdit", "raw_end"),
+        ("_AnchorPair", "source_start"),
+        ("_AnchorPair", "target_start"),
+        ("_MatchBlock", "source_start"),
+        ("_MatchBlock", "target_start"),
+        ("_MatchBlock", "length"),
+        ("_EditRange", "source_start"),
+        ("_EditRange", "source_end"),
+        ("_EditRange", "target_start"),
+        ("_EditRange", "target_end"),
+        ("_MatchContext", "source"),
+        ("_MatchContext", "target"),
+        ("_Region", "source_start"),
+        ("_Region", "source_end"),
+        ("_Region", "target_start"),
+        ("_Region", "target_end"),
+        ("_SemanticBuildContext", "source_digests"),
+        ("_SemanticBuildContext", "target_digests"),
+        ("_SemanticBuildContext", "target"),
+        ("_SemanticBuildContext", "context_units"),
+    ],
+)
+def test_semantic_transient_constructors_pin_original_slots(
+    monkeypatch: pytest.MonkeyPatch, case: tuple[str, str]
+) -> None:
+    """Class setters cannot rewrite computed replay evidence."""
+    name, field = case
+    valid_edit = SemanticEdit(
+        _SETTER_LOCATOR, b"replacement", (_SETTER_DIGEST,)
+    )
+    records: dict[str, dict[str, object]] = {
+        "_LocatedEdit": {
+            "edit": valid_edit,
+            "unit_start": 1,
+            "unit_end": 2,
+            "raw_start": 3,
+            "raw_end": 4,
+        },
+        "_AnchorPair": {"source_start": 1, "target_start": 2},
+        "_MatchBlock": {"source_start": 1, "target_start": 2, "length": 3},
+        "_EditRange": {
+            "source_start": 1,
+            "source_end": 2,
+            "target_start": 3,
+            "target_end": 4,
+        },
+        "_MatchContext": {
+            "source": (_SETTER_DIGEST,),
+            "target": (_SETTER_DIGEST,),
+        },
+        "_Region": {
+            "source_start": 1,
+            "source_end": 2,
+            "target_start": 3,
+            "target_end": 4,
+        },
+        "_SemanticBuildContext": {
+            "source_digests": (_SETTER_DIGEST,),
+            "target_digests": (_SETTER_DIGEST,),
+            "target": _map(b"alpha"),
+            "context_units": 2,
+        },
+    }
+    owner = cast("type[object]", vars(semantic_module)[name])
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    intercepted: list[object] = []
+    replacement = object()
+
+    def forged_setter(value: object, supplied: object) -> None:
+        intercepted.append(supplied)
+        slot.__set__(value, replacement)
+
+    def read_original(value: object) -> object:
+        return cast("object", slot.__get__(value, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, field, property(read_original, forged_setter))
+        observed = cast("Callable[..., object]", owner)(**records[name])
+    assert not intercepted, (
+        "late transient setter redirected authoring evidence"
+    )
+    assert slot.__get__(observed, owner) is records[name][field]
