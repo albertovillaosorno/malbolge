@@ -63,6 +63,18 @@ format.
   hooks, not direct instance mutation or concurrent filesystem writers.
   Compatible instruction/correction paths and provenance-pin roots reject
   Windows drive-prefixed labels before they can influence a consumer path.
+- Public generator authoring now snapshots all fifteen recipe fields via
+  original native slots before policy validation and carries that immutable
+  view through domain preflight and exact output. Twenty-eight red-first
+  regressions reject forged getters, masked invalid storage, and post-preflight
+  mode/path/policy redirection without claiming arbitrary instance isolation.
+- Six exact model record constructors now write seventeen original slots;
+  protected metadata and plan constructors write twenty, and two source-pin
+  constructors write seven. Captured descriptor writes prevent hostile class
+  property setters from sanitizing malformed storage before pinned validators
+  run. Six model, four protected, and two provenance red-first rejection cases
+  plus forty-four valid-field cases cover the boundaries. These changes cannot
+  prevent direct stored-instance mutation or external concurrent writers.
 - The exact authoring planner/materializer reconstructs deterministic byte
   trees,
   reuses whole source files and source spans, and publishes only after full

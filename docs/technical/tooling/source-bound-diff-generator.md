@@ -181,6 +181,14 @@ states before these fixes. Trusted callback execution, direct instance-storage
 mutation, and concurrent filesystem writers remain separate trust boundaries;
 these changes do not create a sandbox or an atomic source snapshot.
 
+The public generator recipe captures all fifteen original field slots in a
+private immutable snapshot before validation. The same validated snapshot is
+used for domain preflight and exact publication, so a late class property or
+`__getattribute__` replacement cannot conceal malformed policy or redirect the
+chosen source, oracle, mode, or output after preflight. Twenty-eight red-first
+regressions cover stored invalid fields and post-validation class edits. This
+does not protect against deliberate direct mutation of stored instance values.
+
 The six exact-authoring model records (`FileRecord`, `TreeSnapshot`,
 `SourceSlice`, `OracleLiteral`, `ExactInstruction`, and `ExactAuthoringPlan`)
 now invoke original constructor validators instead of late class
@@ -192,6 +200,20 @@ instruction and plan getters, changed validation helpers, and source digest
 or slice-offset spoofing. This protects the local model admission boundary
 from late class hooks, not intentional instance-storage mutation or racing
 external filesystem writers.
+
+The six exact-authoring model constructors now also write all seventeen
+fields through captured original storage descriptors instead of
+`object.__setattr__`, which dispatches replaceable class property setters.
+Six red-first invalid-record and seventeen valid-construction regressions
+prevent a late setter from laundering unsafe paths or other evidence before
+validation. The four protected-plan records similarly write twenty fields
+through original descriptors, with four red-first invalid-construction and
+twenty valid-field cases protecting authenticated payload and plan metadata.
+`SourcePin` and `SourcePinEvidence` likewise write seven original slots;
+two red-first malformed-count cases and seven valid-field cases prevent
+forged setters from changing source revision commitments. All remain process
+class-hook guards, not protection from direct instance-storage mutation or
+external concurrent filesystem changes.
 
 Pinned-source snapshots also require native `os.stat_result` receipts for the
 source root, selected paths and parent components, and file-identity rechecks.
