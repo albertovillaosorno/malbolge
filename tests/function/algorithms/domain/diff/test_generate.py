@@ -375,6 +375,38 @@ def test_generator_rejects_foreign_resolved_path_receipts(
 
 
 @pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])
+def test_generator_output_containment_resists_mutable_path_selector(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    input_name: str,
+) -> None:
+    """A late host path hook cannot authorize writing into authoring inputs."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    input_root = {
+        "source_root": recipe.source_root,
+        "oracle_root": recipe.oracle_root,
+    }[input_name]
+    recipe = replace(recipe, output_algorithm=input_root / "nested" / "main.rs")
+
+    def forged_is_relative_to(_path: Path, _other: Path) -> bool:
+        del _path, _other
+        return False
+
+    def unexpected_emission(ignored_recipe: DiffRecipe) -> None:
+        del ignored_recipe
+        message = "forged containment allowed writing into an input tree"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(Path, "is_relative_to", forged_is_relative_to)
+    monkeypatch.setattr(
+        generate_module, "_write_exact_algorithm", unexpected_emission
+    )
+    with pytest.raises(ValueError, match=f"output_algorithm.*{input_name}"):
+        write_algorithm(recipe)
+    assert not recipe.output_algorithm.exists()
+
+
+@pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])
 def test_generator_never_publishes_inside_input_trees(
     tmp_path: Path,
     input_name: str,

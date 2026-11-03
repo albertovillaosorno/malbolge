@@ -60,6 +60,8 @@ from algorithms.diff.source_binding import SourceBindingPolicy
 
 # Source replay identity must not trust a mutable process-global hash hook.
 _SHA256_FACTORY = hashlib.sha256
+# Domain callbacks cannot redefine the host path containment verdict.
+_NATIVE_IS_RELATIVE_TO = Path.is_relative_to
 _MAX_SHARES = 255
 _NUL = "\x00"
 _BACKSLASH = "\\"
@@ -189,7 +191,7 @@ def _validate_output_location(recipe: DiffRecipe) -> None:
         ("source_root", recipe.source_root),
         ("oracle_root", recipe.oracle_root),
     ):
-        if output.is_relative_to(_resolve_recipe_path(root, name)):
+        if _NATIVE_IS_RELATIVE_TO(output, _resolve_recipe_path(root, name)):
             message = f"output_algorithm must be outside {name}"
             raise ValueError(message)
     if recipe.domain_module is not None and output == _resolve_recipe_path(
