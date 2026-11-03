@@ -5080,3 +5080,99 @@ def test_compatible_ancestor_rechecks_native_join_after_status_callback(
             _ = _compatible_safe_path(root, "first/linked/payload.bin")
     assert replaced, "the status callback did not reach the mid-call swap"
     assert called == 0, "a late join executed before native hook revalidation"
+
+
+def test_compatible_status_denial_cannot_be_missing_after_exception_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late FileNotFoundError aliases cannot authorize absent-file decisions."""
+    failure = PermissionError("status denied")
+    original = builtins.FileNotFoundError
+
+    def denied(_path: Path) -> os.stat_result:
+        raise failure
+
+    caught: CompatiblePlanError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "_NATIVE_PATH_LSTAT", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            _ = compatible_module._path_status(tmp_path / "target", "compatible output")
+        except CompatiblePlanError as error:
+            caught = error
+        finally:
+            builtins.__dict__["FileNotFoundError"] = original
+    assert caught is not None
+    assert "status failed" in str(caught)
+    assert caught.__cause__ is failure
+
+
+def test_compatible_staging_cleanup_denial_is_reported_after_missing_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Cleanup cannot report success when a changed exception name hides denial."""
+    stage = tmp_path / "staging"
+    stage.mkdir()
+    original = builtins.FileNotFoundError
+
+    def denied(_path: Path) -> None:
+        raise PermissionError("cleanup denied")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "_NATIVE_RMTREE", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            detail = compatible_module._cleanup_compatible_staging(stage)
+        finally:
+            builtins.__dict__["FileNotFoundError"] = original
+    assert detail == "cleanup denied"
+    assert stage.is_dir()
+
+
+@pytest.mark.parametrize("alias", [False, True])
+def test_compatible_mkdir_does_not_accept_permission_denial_as_existing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: bool
+) -> None:
+    """Only a native FileExistsError can certify an existing directory."""
+    destination = tmp_path / "directory"
+    destination.mkdir()
+    failure = PermissionError("mkdir denied")
+    original = builtins.FileExistsError
+
+    def denied(_path: str) -> None:
+        raise failure
+
+    caught: CompatiblePlanError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "_NATIVE_OS_MKDIR", denied)
+        if alias:
+            patched.setattr(builtins, "FileExistsError", PermissionError)
+        try:
+            compatible_module._make_compatible_directory(
+                destination, "compatible output", parents=False, exist_ok=True
+            )
+        except CompatiblePlanError as error:
+            caught = error
+        finally:
+            builtins.__dict__["FileExistsError"] = original
+    assert caught is not None
+    assert "creation failed" in str(caught)
+    assert caught.__cause__ is failure
+
+
+def test_compatible_unicode_rejection_stays_typed_after_exception_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed UnicodeError class cannot leak raw input codec exceptions."""
+    original = builtins.UnicodeError
+    caught: CompatiblePlanError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeError", LookupError)
+        try:
+            _ = compatible_module._validate_relative_path("\ud800")
+        except CompatiblePlanError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeError"] = original
+    assert caught is not None
+    assert type(caught.__cause__) is UnicodeEncodeError

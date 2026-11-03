@@ -113,6 +113,18 @@ _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_ZIP = builtins.zip
+# Late domain callbacks may replace builtin exception names; retain their
+# original classes for host error classification and cleanup decisions.
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
+_NATIVE_FILE_EXISTS_ERROR = builtins.FileExistsError
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_PERMISSION_ERROR = builtins.PermissionError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_UNICODE_ERROR = builtins.UnicodeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
+_NATIVE_EXCEPTION = builtins.Exception
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -588,7 +600,7 @@ def _pinned_validation_view(record: object, record_type: type) -> SimpleNamespac
                 for name, descriptor in _COMPATIBLE_RECORD_SLOTS[record_type]
             }
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "compatible native record is missing required fields"
         raise CompatiblePlanError(message) from error
 
@@ -800,7 +812,7 @@ def _validate_request_path(value: object, context: str) -> None:
     try:
         _ = raw.encode("utf-8")
         _ = raw.encode(_NATIVE_FS_ENCODING, _NATIVE_FS_ERRORS)
-    except (UnicodeError, TypeError) as error:
+    except (_NATIVE_UNICODE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = f"{context} path cannot be encoded"
         raise CompatiblePlanError(message) from error
 
@@ -808,7 +820,9 @@ def _validate_request_path(value: object, context: str) -> None:
 def _resolve_request_root(path: Path, context: str) -> Path:
     try:
         resolved = _trusted_resolve(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"compatible {context} root resolution failed: {detail}"
         raise CompatiblePlanError(message) from error
@@ -1172,7 +1186,7 @@ def _validate_correction_bindings(
             _original_correction_view(item)
             for item in cast("tuple[CompatibleCorrectionBinding, ...]", bindings)
         )
-    except AttributeError as error:
+    except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "compatible correction binding is missing native fields"
         raise CompatiblePlanError(message) from error
     locations = _NATIVE_TUPLE(
@@ -1300,7 +1314,7 @@ def _validate_relative_path(relative_path: str) -> str:
         raise CompatiblePlanError(message)
     try:
         _ = relative_path.encode("utf-8")
-    except UnicodeError as error:
+    except _NATIVE_UNICODE_ERROR as error:
         message = f"unsafe compatible tree path: {relative_path!r}"
         raise CompatiblePlanError(message) from error
     return relative_path
@@ -1311,7 +1325,9 @@ def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
         if _NATIVE_IS_SYMLINK(status.st_mode):
             return True
         junction = _NATIVE_IS_JUNCTION(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"ancestor inspection failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
@@ -1344,7 +1360,9 @@ def _safe_path(root: Path, relative_path: str) -> Path:
     try:
         resolved_path = _trusted_resolve(path)
         resolved_root = _trusted_resolve(root)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_compatible_error_detail(error)
         message = (
             f"compatible path resolution failed: {relative_path!r}: {detail}"
@@ -1352,7 +1370,7 @@ def _safe_path(root: Path, relative_path: str) -> Path:
         raise CompatiblePlanError(message) from error
     try:
         _ = _NATIVE_RELATIVE_TO(resolved_path, resolved_root)
-    except ValueError as error:
+    except _NATIVE_VALUE_ERROR as error:
         message = f"compatible path escapes tree root: {relative_path!r}"
         raise CompatiblePlanError(message) from error
     _reject_linked_ancestors(root, normalized)
@@ -1362,9 +1380,11 @@ def _safe_path(root: Path, relative_path: str) -> Path:
 def _path_status(path: Path, context: str) -> os.stat_result | None:
     try:
         status = _NATIVE_PATH_LSTAT(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} status failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
@@ -1394,7 +1414,7 @@ def _read_compatible_bytes(path: Path, context: str) -> bytes:
                         error, "__notes__"
                     ),
                 )
-            except AttributeError:
+            except _NATIVE_ATTRIBUTE_ERROR:
                 notes = None
             if _NATIVE_TYPE(notes) is _NATIVE_LIST:
                 for note in cast("list[object]", notes):
@@ -1418,13 +1438,13 @@ def _native_make_compatible_directory(
     """Create compatible directories without mutable pathlib/os.mkdir hooks."""
     try:
         _NATIVE_OS_MKDIR(_NATIVE_PATH_STRING(path))
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         parent = _NATIVE_PATH_PARENT(path)
         if not parents or _NATIVE_PATH_STRING(parent) == _NATIVE_PATH_STRING(path):
             raise
         _native_make_compatible_directory(parent, parents=True, exist_ok=True)
         _native_make_compatible_directory(path, parents=False, exist_ok=exist_ok)
-    except OSError:
+    except _NATIVE_FILE_EXISTS_ERROR:
         if not exist_ok:
             raise
         status = _path_status(path, "compatible directory")
@@ -1442,7 +1462,9 @@ def _write_compatible_bytes(path: Path, data: bytes, context: str) -> None:
             _NATIVE_PATH_PARENT(path), parents=True, exist_ok=True
         )
         written = _NATIVE_WRITE_COMPATIBLE_BYTES(path, data)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} write failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
@@ -1460,7 +1482,9 @@ def _make_compatible_directory(
 ) -> None:
     try:
         _native_make_compatible_directory(path, parents=parents, exist_ok=exist_ok)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
         raise CompatiblePlanError(message) from error
@@ -1478,7 +1502,7 @@ def _map_compatible_file(
 ) -> MappedView | None:
     try:
         view = mapper(path, data)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         # Preserve the callback cause without evaluating a foreign __str__.
         message = f"compatible mapper failed for {path!r}"
         raise CompatiblePlanError(message) from error
@@ -2028,7 +2052,7 @@ def _require_postcondition(
         return
     try:
         accepted = postcondition(staging)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         # A consumer callback may supply a hostile exception formatter.
         message = "compatible output postcondition failed"
         raise CompatiblePlanError(message) from error
@@ -2113,10 +2137,10 @@ def _safe_compatible_error_detail(error: Exception) -> str:
     if _NATIVE_TYPE(error) in {
         CompatiblePlanError,
         ExactTreeError,
-        OSError,
-        PermissionError,
-        RuntimeError,
-        ValueError,
+        _NATIVE_OS_ERROR,
+        _NATIVE_PERMISSION_ERROR,
+        _NATIVE_RUNTIME_ERROR,
+        _NATIVE_VALUE_ERROR,
     }:
         arguments = cast(
             "tuple[object, ...]",
@@ -2134,9 +2158,11 @@ def _safe_compatible_error_detail(error: Exception) -> str:
 def _cleanup_compatible_staging(path: Path) -> str | None:
     try:
         _NATIVE_RMTREE(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         return _safe_compatible_error_detail(error)
     return None
 
@@ -2152,7 +2178,9 @@ def _raise_compatible_cleanup_failure(
 def _publish_compatible_output(staging: Path, destination: Path) -> None:
     try:
         publish_directory_no_replace(staging, destination)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"compatible output publication failed: {detail}"
         raise CompatiblePlanError(message) from error
@@ -2191,7 +2219,7 @@ def materialize_compatible_plan(
         _require_tree_unchanged(
             request.candidate_root, candidate, "candidate", phase="publication"
         )
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         cleanup_error = _cleanup_compatible_staging(staging)
         if cleanup_error is not None:
             _raise_compatible_cleanup_failure(error, cleanup_error)
