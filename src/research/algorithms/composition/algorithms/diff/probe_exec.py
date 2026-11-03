@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import os
+import pathlib
 import shutil
 import signal
 import stat
@@ -144,13 +145,31 @@ _NATIVE_PATH_CACHE_HOOKS = tuple(
 
 # Resolve and command argv need additional dispatch hooks that admission
 # intentionally tolerates until execution (for example a late Path.__str__).
-_RESOLVER_HOOK_NAMES = ("__str__", "with_segments", "joinpath")
+_RESOLVER_HOOK_NAMES = (
+    "__str__", "with_segments", "joinpath", "parents", "__eq__"
+)
 _NATIVE_RESOLVER_HOOKS = tuple(
     (
         cls,
         tuple((name, cls.__dict__.get(name)) for name in _RESOLVER_HOOK_NAMES),
     )
     for cls, _ in _NATIVE_PATH_CACHE_HOOKS
+)
+# Native relative_to reads the mutable _PathParents sequence, not just the
+# Path.parents descriptor. Pin its class alias and inherited dispatch chain.
+_NATIVE_PATH_PARENTS_TYPE = _NATIVE_TYPE(Path().parents)
+_PARENT_SEQUENCE_HOOK_NAMES = (
+    "__new__", "__init__", "__getattribute__", "__setattr__",
+    "__contains__", "__iter__", "__getitem__", "__len__",
+    "_path", "_drv", "_root", "_tail",
+)
+_NATIVE_PARENT_SEQUENCE_HOOKS = tuple(
+    (
+        cls,
+        tuple((name, cls.__dict__.get(name)) for name in _PARENT_SEQUENCE_HOOK_NAMES),
+    )
+    for cls in _NATIVE_PATH_PARENTS_TYPE.__mro__
+    if cls is not object
 )
 
 
@@ -167,6 +186,17 @@ def _native_resolver_hooks_changed() -> bool:
         cls.__dict__.get(name) is not original
         for cls, hooks in _NATIVE_RESOLVER_HOOKS
         for name, original in hooks
+    )
+
+
+def _native_parent_hooks_changed() -> bool:
+    return (
+        pathlib.__dict__.get("_PathParents") is not _NATIVE_PATH_PARENTS_TYPE
+        or _NATIVE_ANY(
+            cls.__dict__.get(name) is not original
+            for cls, hooks in _NATIVE_PARENT_SEQUENCE_HOOKS
+            for name, original in hooks
+        )
     )
 
 
@@ -851,10 +881,13 @@ def _validate_relative_path(relative_path: object) -> None:
 
 def _native_path_inside(path: Path, root: Path) -> bool:
     """Check native Path containment without a mutable process-global hook."""
+    _require_native_host_resolver()
     try:
         _ = _NATIVE_RELATIVE_TO(path, root)
     except ValueError:
+        _require_native_host_resolver()
         return False
+    _require_native_host_resolver()
     return True
 
 
@@ -871,6 +904,7 @@ def _require_native_host_resolver() -> None:
     if (
         _native_path_hooks_changed()
         or _native_resolver_hooks_changed()
+        or _native_parent_hooks_changed()
         or os.fspath is not _NATIVE_OS_FSPATH
         or Path.__str__ is not _NATIVE_PATH_STRING
         or Path.with_segments is not _NATIVE_PATH_WITH_SEGMENTS
@@ -956,6 +990,7 @@ def _rooted_path(
     except ValueError as error:
         message = f"probe path escapes authorized root: {relative_path!r}"
         raise ProbeExecutionError(message) from error
+    _require_native_host_resolver()
     return candidate
 
 

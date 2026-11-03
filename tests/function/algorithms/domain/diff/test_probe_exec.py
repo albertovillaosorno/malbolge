@@ -39,6 +39,7 @@ import gc
 import hashlib
 import io
 import os
+import pathlib
 import shutil
 import signal
 import stat
@@ -3536,6 +3537,177 @@ def test_probe_rejects_late_platform_path_resolution_hooks(
         ):
             _ = resolve(source, "source") if root else resolve(source)
     assert calls == 0, "late platform Path hook was consulted"
+
+
+@pytest.mark.parametrize("owner", ["base", "platform"])
+@pytest.mark.parametrize("hook", ["parents", "__eq__"])
+def test_probe_rooted_containment_rejects_late_path_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    owner: str,
+    hook: str,
+) -> None:
+    """Mutable path ancestors/equality cannot admit a symlink escape."""
+    source = tmp_path / "source"
+    source.mkdir()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "private.txt").write_bytes(b"outside")
+    try:
+        (source / "alias").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    context = _context(source, repository)
+    original_parents = PurePath.parents
+    original_eq = PurePath.__eq__
+    calls = 0
+
+    def forged_parents(path: PurePath) -> object:
+        nonlocal calls
+        _ = path
+        calls += 1
+        return (source,)
+
+    def forged_eq(path: PurePath, other: object) -> bool:
+        nonlocal calls
+        _ = (path, other)
+        calls += 1
+        return True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            PurePath if owner == "base" else type(source),
+            hook,
+            property(forged_parents) if hook == "parents" else forged_eq,
+        )
+        rooted_path = cast(
+            "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+            vars(probe_exec_module)["_rooted_path"],
+        )
+        with pytest.raises(ProbeExecutionError, match="native path hooks changed"):
+            _ = rooted_path(
+                PathArgument(ProbeRoot.SOURCE, "alias/private.txt"),
+                context,
+                tmp_path,
+            )
+    assert calls == 0, "late path containment hook was consulted"
+    assert PurePath.parents is original_parents
+    assert PurePath.__eq__ is original_eq
+
+
+@pytest.mark.parametrize("hook", ["getitem", "iter", "module-alias"])
+def test_probe_rooted_containment_rejects_late_parent_sequence_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    hook: str,
+) -> None:
+    """The original parents property still constructs a mutable sequence."""
+    source = tmp_path / "source"
+    source.mkdir()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "private.txt").write_bytes(b"outside")
+    try:
+        (source / "alias").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    context = _context(source, repository)
+    calls = 0
+
+    def forged_getitem(_sequence: object, index: int) -> Path:
+        nonlocal calls
+        if index == 0:
+            calls += 1
+            return source
+        raise IndexError(index)
+
+    def forged_iter(_sequence: object) -> object:
+        nonlocal calls
+        calls += 1
+        return iter((source,))
+
+    class ForgedParents:
+        def __init__(self, _path: PurePath) -> None:
+            nonlocal calls
+            calls += 1
+
+        def __iter__(self) -> object:
+            return iter((source,))
+
+        def __contains__(self, _path: object) -> bool:
+            return True
+
+    with monkeypatch.context() as patch:
+        if hook == "module-alias":
+            patch.setattr(pathlib, "_PathParents", ForgedParents)
+        else:
+            patch.setattr(
+                type(source.parents),
+                "__getitem__" if hook == "getitem" else "__iter__",
+                forged_getitem if hook == "getitem" else forged_iter,
+            )
+        rooted_path = cast(
+            "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+            vars(probe_exec_module)["_rooted_path"],
+        )
+        with pytest.raises(ProbeExecutionError, match="native path hooks changed"):
+            _ = rooted_path(
+                PathArgument(ProbeRoot.SOURCE, "alias/private.txt"),
+                context,
+                tmp_path,
+            )
+    assert calls == 0, "changed parent sequence code was invoked"
+
+
+@pytest.mark.parametrize("site", ["rooted", "inside"])
+def test_probe_containment_rechecks_native_hooks_after_comparison(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+) -> None:
+    """A path hook replaced inside original containment cannot certify it."""
+    source = tmp_path / "source"
+    source.mkdir()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    _ = (source / "allowed.txt").write_bytes(b"allowed")
+    context = _context(source, repository)
+    native_relative = Path.relative_to
+    changed = False
+
+    def forged_eq(_path: PurePath, _other: object) -> bool:
+        return True
+
+    def replace_eq(path: Path, root: Path) -> Path:
+        nonlocal changed
+        result = native_relative(path, root)
+        patch.setattr(PurePath, "__eq__", forged_eq)
+        changed = True
+        return result
+
+    with monkeypatch.context() as patch:
+        patch.setattr(probe_exec_module, "_NATIVE_RELATIVE_TO", replace_eq)
+        if site == "rooted":
+            rooted_path = cast(
+                "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+                vars(probe_exec_module)["_rooted_path"],
+            )
+            invoke: Callable[[], object] = lambda: rooted_path(
+                PathArgument(ProbeRoot.SOURCE, "allowed.txt"), context, tmp_path
+            )
+        else:
+            native_inside = cast(
+                "Callable[[Path, Path], bool]",
+                vars(probe_exec_module)["_native_path_inside"],
+            )
+            invoke = lambda: native_inside(source / "allowed.txt", source)
+        with pytest.raises(ProbeExecutionError, match="native path hooks changed"):
+            _ = invoke()
+    assert changed, "native containment comparison was not exercised"
 
 
 @pytest.mark.parametrize("hook", ["getattribute", "cached-descriptor"])
