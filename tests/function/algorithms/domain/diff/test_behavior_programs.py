@@ -291,14 +291,16 @@ def test_behavior_observation_does_not_format_foreign_host_errors(
             _ = source_root, destination, symlinks
             raise failure
 
-        monkeypatch.setattr(shutil, "copytree", fail_copy)
+        monkeypatch.setattr(behavior_module, "_NATIVE_COPYTREE", fail_copy)
     elif operation == "temporary":
 
         def fail_temporary(*, prefix: str) -> tempfile.TemporaryDirectory[str]:
             _ = prefix
             raise failure
 
-        monkeypatch.setattr(tempfile, "TemporaryDirectory", fail_temporary)
+        monkeypatch.setattr(
+            behavior_module, "_NATIVE_TEMPORARY_DIRECTORY", fail_temporary
+        )
     else:
         original_snapshot = cast(
             "Callable[[Path], TreeSnapshot]",
@@ -1148,7 +1150,7 @@ def test_observation_rejects_copy_time_mirror_drift(
         _write(copied, "identity.txt", b"drift during copy")
         return copied
 
-    monkeypatch.setattr(shutil, "copytree", changed_copy)
+    monkeypatch.setattr(behavior_module, "_NATIVE_COPYTREE", changed_copy)
     with pytest.raises(ProbeExecutionError, match="changed while creating mirror"):
         _ = observe_behavior_programs(authored, _context(source, tmp_path))
     _expect(
@@ -1183,7 +1185,7 @@ def test_observation_mirror_creation_errors_are_typed(
         message = "copytree host failure"
         raise failure_type(message)
 
-    monkeypatch.setattr(shutil, "copytree", denied_copy)
+    monkeypatch.setattr(behavior_module, "_NATIVE_COPYTREE", denied_copy)
     with pytest.raises(ProbeExecutionError, match="candidate mirror failed"):
         _ = observe_behavior_programs(authored, _context(source, tmp_path))
     _expect(
@@ -1208,7 +1210,9 @@ def test_observation_temporary_root_creation_errors_are_typed(
         message = "temporary root host failure"
         raise failure_type(message)
 
-    monkeypatch.setattr(tempfile, "TemporaryDirectory", denied_temporary_root)
+    monkeypatch.setattr(
+        behavior_module, "_NATIVE_TEMPORARY_DIRECTORY", denied_temporary_root
+    )
     with pytest.raises(ProbeExecutionError, match="temporary root failed"):
         _ = observe_behavior_programs(authored, _context(source, tmp_path))
 
@@ -1293,7 +1297,7 @@ def test_observation_mirror_requires_native_copy_completion(
             return destination.parent / "other"
         return ForeignReceipt(destination)
 
-    monkeypatch.setattr(shutil, "copytree", forged_copy)
+    monkeypatch.setattr(behavior_module, "_NATIVE_COPYTREE", forged_copy)
     with pytest.raises(ProbeExecutionError, match="non-native completion"):
         _ = observe_behavior_programs(authored, _context(source, tmp_path))
     _expect(
@@ -1344,3 +1348,50 @@ def test_authoring_rejects_incomplete_or_foreign_transcript_batch(
             _programs(), _context(source, tmp_path), _context(oracle, tmp_path)
         )
     _expect(source_batch_mutated, "the transcript mutation did not run")
+
+
+def test_behavior_mirror_ignores_late_shutil_copytree(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer cannot replace the host source-mirror copier."""
+    source, _ = _trees(tmp_path)
+    context = _context(source, tmp_path)
+    admitted = behavior_module._snapshot_observed_source(source)
+    mirror = tmp_path / "isolated-mirror"
+    calls = 0
+
+    def forged_copy(*args: object, **kwargs: object) -> Path:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        raise AssertionError("consumer source mirror copier executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(shutil, "copytree", forged_copy)
+        mirrored = behavior_module._admit_observation_mirror(
+            context, mirror, admitted
+        )
+    assert mirrored.source_root == mirror
+    assert mirrored.enforce_source_immutable
+    assert mirror.joinpath("identity.txt").read_bytes() == b"stable"
+    assert calls == 0, "consumer mirror copier received host authority"
+
+
+def test_behavior_observation_root_ignores_late_tempfile_constructor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An admitted mirror must not use a swapped temporary root provider."""
+    calls = 0
+
+    def forged_temporary(*, prefix: str) -> tempfile.TemporaryDirectory[str]:
+        nonlocal calls
+        del prefix
+        calls += 1
+        raise AssertionError("consumer temporary directory provider executed")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile, "TemporaryDirectory", forged_temporary)
+        with behavior_module._temporary_observation_root() as root:
+            assert Path(root).is_dir()
+    assert calls == 0, "consumer temporary root provider was invoked"

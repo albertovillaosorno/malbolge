@@ -79,6 +79,8 @@ _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
+_NATIVE_COPYTREE = shutil.copytree
+_NATIVE_TEMPORARY_DIRECTORY = tempfile.TemporaryDirectory
 _NUL = "\x00"
 
 
@@ -686,7 +688,9 @@ def _admit_observation_mirror(
 
     """
     try:
-        completion = shutil.copytree(context.source_root, mirror, symlinks=True)
+        completion = _NATIVE_COPYTREE(
+            context.source_root, mirror, symlinks=True
+        )
     except Exception as error:
         detail = _behavior_error_detail(error)
         message = f"behavior candidate mirror failed: {detail}"
@@ -714,7 +718,7 @@ def _require_observation_sources_unchanged(
 
 def _temporary_observation_root() -> tempfile.TemporaryDirectory[str]:
     try:
-        return tempfile.TemporaryDirectory(prefix="diff-behavior-source-")
+        return _NATIVE_TEMPORARY_DIRECTORY(prefix="diff-behavior-source-")
     except (OSError, ValueError, RuntimeError) as error:
         detail = _behavior_error_detail(error)
         message = f"behavior observation temporary root failed: {detail}"
