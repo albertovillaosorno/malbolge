@@ -98,6 +98,8 @@ _NATIVE_FS_ENCODING = sys.getfilesystemencoding()
 _NATIVE_FS_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_IS_SYMLINK = S_ISLNK
+# Owned staging deletion must ignore consumer changes to shutil hooks.
+_NATIVE_RMTREE = shutil.rmtree
 _NATIVE_ANY = builtins.any
 _NATIVE_SET = builtins.set
 _NATIVE_SUM = builtins.sum
@@ -695,7 +697,7 @@ def _prepare_staging(output_root: Path) -> Path:
 
 def _cleanup_relocatable_staging(path: Path) -> str | None:
     try:
-        shutil.rmtree(path)
+        _NATIVE_RMTREE(path)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:

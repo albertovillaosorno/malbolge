@@ -308,6 +308,32 @@ def test_relocatable_nested_path_errors_do_not_format_foreign_failures(
     )
 
 
+def test_relocatable_cleanup_ignores_post_import_rmtree_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late shutil hook cannot suppress deletion of owned staging."""
+    staging = tmp_path / "owned-staging"
+    staging.mkdir()
+    _ = (staging / "payload.bin").write_bytes(b"temporary")
+    calls = 0
+
+    def forged_rmtree(path: Path) -> None:
+        nonlocal calls
+        _ = path
+        calls += 1
+
+    cleanup = cast(
+        "Callable[[Path], str | None]",
+        vars(relocatable_module)["_cleanup_relocatable_staging"],
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(shutil, "rmtree", forged_rmtree)
+        detail = cleanup(staging)
+    assert detail is None
+    assert calls == 0, "late cleanup hook executed"
+    assert not staging.exists(), "owned staging remained after cleanup"
+
+
 @pytest.mark.parametrize("hostile_primary", [False, True])
 def test_relocatable_cleanup_preserves_failure_without_foreign_formatter(
     tmp_path: Path,
@@ -339,7 +365,7 @@ def test_relocatable_cleanup_preserves_failure_without_foreign_formatter(
         raise _HostileRelocatableError("foreign cleanup")
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
-    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    monkeypatch.setattr(relocatable_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         RelocationError, match="staging cleanup failed"
     ) as failure:
@@ -764,7 +790,7 @@ def test_relocatable_cleanup_failure_preserves_primary_error(
         raise failure_type(message)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
-    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    monkeypatch.setattr(relocatable_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         RelocationError,
         match=r"relocatable output write failed.*staging cleanup failed",

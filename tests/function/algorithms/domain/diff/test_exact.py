@@ -1510,6 +1510,32 @@ def test_exact_materialization_wraps_staging_directory_failure(
     _expect(not staging.exists(), "staging mkdir failure left staging")
 
 
+def test_exact_cleanup_ignores_post_import_rmtree_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late shutil hook cannot suppress deletion of owned staging."""
+    staging = tmp_path / "owned-staging"
+    staging.mkdir()
+    _ = (staging / "payload.bin").write_bytes(b"temporary")
+    calls = 0
+
+    def forged_rmtree(path: Path) -> None:
+        nonlocal calls
+        _ = path
+        calls += 1
+
+    cleanup = cast(
+        "Callable[[Path], str | None]",
+        vars(exact_module)["_cleanup_exact_staging"],
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(shutil, "rmtree", forged_rmtree)
+        detail = cleanup(staging)
+    assert detail is None
+    assert calls == 0, "late cleanup hook executed"
+    assert not staging.exists(), "owned staging remained after cleanup"
+
+
 @pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_exact_cleanup_failure_is_reported_with_primary_error(
     tmp_path: Path,
@@ -1535,7 +1561,7 @@ def test_exact_cleanup_failure_is_reported_with_primary_error(
         raise failure_type(message)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
-    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    monkeypatch.setattr(exact_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         ExactTreeError,
         match=r"instruction output write failed.*staging cleanup failed",

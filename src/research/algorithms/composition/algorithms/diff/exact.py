@@ -97,6 +97,8 @@ _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
+# Owned staging deletion must ignore consumer changes to shutil hooks.
+_NATIVE_RMTREE = shutil.rmtree
 
 
 class ExactTreeError(RuntimeError):
@@ -1159,7 +1161,7 @@ def _resolved_output_root(output_root: Path) -> Path:
 
 def _cleanup_exact_staging(path: Path) -> str | None:
     try:
-        shutil.rmtree(path)
+        _NATIVE_RMTREE(path)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
