@@ -112,7 +112,7 @@ class TransformMode(StrEnum):
     COMPATIBLE = "compatible"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class DiffRecipe:
     """Declarative inputs and policy for one generated transform."""
 
@@ -131,6 +131,57 @@ class DiffRecipe:
     source_binding_minimum_files: int = 1
     ignore_comments_for_identity: bool = True
     ignore_formatting_for_identity: bool = True
+
+    def __init__(
+        self,
+        source_root: Path,
+        oracle_root: Path,
+        output_algorithm: Path,
+        profile: str,
+        mode: TransformMode,
+        domain_module: Path | None = None,
+        passthrough_roots: tuple[str, ...] = (),
+        minimum_source_similarity: float = 0.50,
+        minimum_anchor_coverage: float = 0.66,
+        minimum_behavior_similarity: float = 0.80,
+        source_binding_threshold: float = 0.66,
+        source_binding_maximum_anchors: int = 127,
+        source_binding_minimum_files: int = 1,
+        ignore_comments_for_identity: bool = True,
+        ignore_formatting_for_identity: bool = True,
+    ) -> None:
+        """Store authored fields without dispatching late class setters."""
+        _RECIPE_SLOTS["source_root"].__set__(self, source_root)
+        _RECIPE_SLOTS["oracle_root"].__set__(self, oracle_root)
+        _RECIPE_SLOTS["output_algorithm"].__set__(self, output_algorithm)
+        _RECIPE_SLOTS["profile"].__set__(self, profile)
+        _RECIPE_SLOTS["mode"].__set__(self, mode)
+        _RECIPE_SLOTS["domain_module"].__set__(self, domain_module)
+        _RECIPE_SLOTS["passthrough_roots"].__set__(self, passthrough_roots)
+        _RECIPE_SLOTS["minimum_source_similarity"].__set__(
+            self, minimum_source_similarity
+        )
+        _RECIPE_SLOTS["minimum_anchor_coverage"].__set__(
+            self, minimum_anchor_coverage
+        )
+        _RECIPE_SLOTS["minimum_behavior_similarity"].__set__(
+            self, minimum_behavior_similarity
+        )
+        _RECIPE_SLOTS["source_binding_threshold"].__set__(
+            self, source_binding_threshold
+        )
+        _RECIPE_SLOTS["source_binding_maximum_anchors"].__set__(
+            self, source_binding_maximum_anchors
+        )
+        _RECIPE_SLOTS["source_binding_minimum_files"].__set__(
+            self, source_binding_minimum_files
+        )
+        _RECIPE_SLOTS["ignore_comments_for_identity"].__set__(
+            self, ignore_comments_for_identity
+        )
+        _RECIPE_SLOTS["ignore_formatting_for_identity"].__set__(
+            self, ignore_formatting_for_identity
+        )
 
 
 # Public recipes can be passed through consumer callbacks that replace their
@@ -168,7 +219,7 @@ def _snapshot_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
     """Capture original stored fields without late recipe class dispatch."""
 
     def field(name: str) -> object:
-        return _RECIPE_SLOTS[name].__get__(recipe, DiffRecipe)
+        return cast("object", _RECIPE_SLOTS[name].__get__(recipe, DiffRecipe))
 
     return _RecipeSnapshot(
         source_root=cast("Path", field("source_root")),

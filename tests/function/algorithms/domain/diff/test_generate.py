@@ -41,7 +41,7 @@ import ntpath
 import os
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -1763,3 +1763,80 @@ def test_recipe_publication_preserves_fields_after_late_getter_swap(
         patch.setattr(generate_module, "_write_exact_algorithm", record_writer)
         write_algorithm(recipe)
     assert observed == [expected], f"late {field} getter changed output inputs"
+
+
+_RECIPE_CONSTRUCTOR_FIELDS = (
+    "source_root",
+    "oracle_root",
+    "output_algorithm",
+    "profile",
+    "mode",
+    "domain_module",
+    "passthrough_roots",
+    "minimum_source_similarity",
+    "minimum_anchor_coverage",
+    "minimum_behavior_similarity",
+    "source_binding_threshold",
+    "source_binding_maximum_anchors",
+    "source_binding_minimum_files",
+    "ignore_comments_for_identity",
+    "ignore_formatting_for_identity",
+)
+
+
+@pytest.mark.parametrize("field", _RECIPE_CONSTRUCTOR_FIELDS)
+def test_recipe_constructor_rejects_late_class_setter_laundering(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Late class properties cannot sanitize malformed authoring inputs."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    valid = cast("object", getattr(recipe, field))
+    values = {name: getattr(recipe, name) for name in _RECIPE_CONSTRUCTOR_FIELDS}
+    values[field] = object()
+    factory = cast("Callable[..., DiffRecipe]", DiffRecipe)
+    slot = cast("MemberDescriptorType", DiffRecipe.__dict__[field])
+    calls = 0
+
+    def forged_getter(_record: DiffRecipe) -> object:
+        return valid
+
+    def forged_setter(record: DiffRecipe, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(record, valid)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(DiffRecipe, field, property(forged_getter, forged_setter))
+        with pytest.raises(TypeError):
+            _ = generate_module._validate_recipe(  # pyright: ignore[reportPrivateUsage]
+                factory(**values)
+            )
+    assert calls == 0, "late class setter sanitized invalid recipe storage"
+
+
+@pytest.mark.parametrize("field", _RECIPE_CONSTRUCTOR_FIELDS)
+def test_recipe_constructor_writes_original_slots_without_class_setters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Valid recipe construction must not execute replaced class setters."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    values = {name: getattr(recipe, name) for name in _RECIPE_CONSTRUCTOR_FIELDS}
+    factory = cast("Callable[..., DiffRecipe]", DiffRecipe)
+    calls = 0
+
+    def forbidden_setter(_record: DiffRecipe, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("recipe construction dispatched a late setter")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(DiffRecipe, field, property(fset=forbidden_setter))
+        observed = factory(**values)
+        _ = generate_module._validate_recipe(  # pyright: ignore[reportPrivateUsage]
+            observed
+        )
+    assert calls == 0
