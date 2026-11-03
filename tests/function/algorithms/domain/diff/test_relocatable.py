@@ -2679,3 +2679,50 @@ def test_relocation_snapshot_attestation_ignores_false_comparison(
         actual = build_relocatable_plan(source, exact)
     assert actual == expected
     assert calls == 0, "late equality denied unchanged source evidence"
+
+
+@pytest.mark.parametrize(
+    ("record_type", "fields", "expected"),
+    [
+        (
+            RangeLocator,
+            {"source_length": 0, "window_bytes": 1, "start_digest": b"x" * 32},
+            "positive integer",
+        ),
+        (
+            RelocatableSourceRange,
+            {"locator": object()},
+            "exact locator",
+        ),
+        (
+            RelocatableInstruction,
+            {"output_path": "../escape", "source_path": None,
+             "copy_candidate_file": False, "literal": b"target"},
+            "unsafe relocatable tree path",
+        ),
+        (
+            relocatable_module.RelocatableAuthoringPlan,
+            {"instructions": []},
+            "immutable tuple",
+        ),
+    ],
+)
+def test_relocatable_constructor_cannot_skip_late_post_init_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[object],
+    fields: dict[str, object],
+    expected: str,
+) -> None:
+    """Record construction must enforce original structural validation."""
+    calls = 0
+
+    def skip_validation(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(record_type, "__post_init__", skip_validation)
+        with pytest.raises(RelocationError, match=expected):
+            constructor = cast("Callable[..., object]", record_type)
+            _ = constructor(**fields)
+    assert calls == 0, "late __post_init__ replaced record validation"

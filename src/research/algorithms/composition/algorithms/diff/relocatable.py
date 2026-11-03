@@ -50,6 +50,7 @@ import shutil
 from stat import S_ISLNK
 import sys
 from types import MemberDescriptorType
+from typing import Callable
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -102,6 +103,7 @@ _NATIVE_SET = builtins.set
 _NATIVE_SUM = builtins.sum
 _NATIVE_MIN = builtins.min
 _NATIVE_RANGE = builtins.range
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -136,7 +138,7 @@ def _host_error_detail(error: BaseException) -> str:
     return _NATIVE_TYPE(error).__name__
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class RangeLocator:
     """Hash-only locator for one source range in a later candidate file."""
 
@@ -144,6 +146,20 @@ class RangeLocator:
     window_bytes: int
     start_digest: bytes
     end_digest: bytes | None = None
+
+    def __init__(
+        self,
+        source_length: int,
+        window_bytes: int,
+        start_digest: bytes,
+        end_digest: bytes | None = None,
+    ) -> None:
+        """Initialize slots and invoke the captured native validator."""
+        _NATIVE_OBJECT_SETATTR(self, "source_length", source_length)
+        _NATIVE_OBJECT_SETATTR(self, "window_bytes", window_bytes)
+        _NATIVE_OBJECT_SETATTR(self, "start_digest", start_digest)
+        _NATIVE_OBJECT_SETATTR(self, "end_digest", end_digest)
+        _LOCATOR_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Reject malformed range locators.
@@ -177,6 +193,11 @@ class RangeLocator:
             raise RelocationError(message)
         _validate_range_end_shape(self)
 
+
+# Generated dataclass initializers dispatch through a mutable class hook.
+_LOCATOR_VALIDATOR = cast(
+    "Callable[[RangeLocator], None]", RangeLocator.__dict__["__post_init__"]
+)
 
 # Frozen slots still allow later class getter replacement. Original descriptors
 # are the authority for both direct validation and downstream placement.
@@ -215,11 +236,16 @@ def _validate_range_end_shape(locator: RangeLocator) -> None:
         raise RelocationError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class RelocatableSourceRange:
     """Source-backed output segment located by content rather than offset."""
 
     locator: RangeLocator
+
+    def __init__(self, locator: RangeLocator) -> None:
+        """Initialize and validate stored source-range metadata."""
+        _NATIVE_OBJECT_SETATTR(self, "locator", locator)
+        _SOURCE_RANGE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require one exact admitted range locator.
@@ -233,6 +259,10 @@ class RelocatableSourceRange:
             raise RelocationError(message)
 
 
+_SOURCE_RANGE_VALIDATOR = cast(
+    "Callable[[RelocatableSourceRange], None]",
+    RelocatableSourceRange.__dict__["__post_init__"],
+)
 _SOURCE_RANGE_LOCATOR_SLOT = cast(
     "MemberDescriptorType", RelocatableSourceRange.__dict__["locator"]
 )
@@ -309,7 +339,7 @@ def _validate_relocatable_form(instruction: RelocatableInstruction) -> None:
         raise RelocationError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class RelocatableInstruction:
     """One compatible-placement output instruction."""
 
@@ -319,12 +349,32 @@ class RelocatableInstruction:
     literal: bytes | None = None
     segments: tuple[RelocatableSegment, ...] = ()
 
+    def __init__(
+        self,
+        output_path: str,
+        source_path: str | None,
+        copy_candidate_file: bool,
+        literal: bytes | None = None,
+        segments: tuple[RelocatableSegment, ...] = (),
+    ) -> None:
+        """Initialize stored output instruction and run pinned validation."""
+        _NATIVE_OBJECT_SETATTR(self, "output_path", output_path)
+        _NATIVE_OBJECT_SETATTR(self, "source_path", source_path)
+        _NATIVE_OBJECT_SETATTR(self, "copy_candidate_file", copy_candidate_file)
+        _NATIVE_OBJECT_SETATTR(self, "literal", literal)
+        _NATIVE_OBJECT_SETATTR(self, "segments", segments)
+        _INSTRUCTION_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject ambiguous instruction forms."""
         _validate_relocatable_shape(self)
         _validate_relocatable_form(self)
 
 
+_INSTRUCTION_VALIDATOR = cast(
+    "Callable[[RelocatableInstruction], None]",
+    RelocatableInstruction.__dict__["__post_init__"],
+)
 _INSTRUCTION_OUTPUT_SLOT = cast(
     "MemberDescriptorType", RelocatableInstruction.__dict__["output_path"]
 )
@@ -355,11 +405,18 @@ def _instruction_fields(
     )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class RelocatableAuthoringPlan:
     """Non-distributable placement plan derived from an exact baseline."""
 
     instructions: tuple[RelocatableInstruction, ...]
+
+    def __init__(
+        self, instructions: tuple[RelocatableInstruction, ...]
+    ) -> None:
+        """Preserve construction checks under late validator replacement."""
+        _NATIVE_OBJECT_SETATTR(self, "instructions", instructions)
+        _PLAN_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require immutable exact relocation instructions.
@@ -396,6 +453,10 @@ class RelocatableAuthoringPlan:
             raise RelocationError(message)
 
 
+_PLAN_VALIDATOR = cast(
+    "Callable[[RelocatableAuthoringPlan], None]",
+    RelocatableAuthoringPlan.__dict__["__post_init__"],
+)
 _PLAN_INSTRUCTIONS_SLOT = cast(
     "MemberDescriptorType", RelocatableAuthoringPlan.__dict__["instructions"]
 )
