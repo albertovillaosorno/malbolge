@@ -3102,3 +3102,117 @@ def test_authored_profile_rejects_uninitialized_native_profile() -> None:
             programs.compatibility,
             (),
         )
+
+
+_TEMP_ROOT_HOOKS_CHANGED = "temporary root hooks changed"
+
+
+@pytest.mark.parametrize(
+    "hook", ["__init__", "__enter__", "__exit__", "cleanup"]
+)
+def test_observation_root_rejects_late_temporary_lifecycle_hooks(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A captured temporary class must not dispatch consumer lifecycle code."""
+    original = getattr(tempfile.TemporaryDirectory, hook)
+    calls = 0
+
+    def foreign_hook(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        if hook in ("__exit__", "cleanup"):
+            _ = original(*args, **kwargs)
+        message = "untrusted temporary lifecycle executed"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(tempfile.TemporaryDirectory, hook, foreign_hook)
+        with (
+            pytest.raises(ProbeExecutionError, match=_TEMP_ROOT_HOOKS_CHANGED),
+            behavior_module._temporary_observation_root() as root,
+        ):
+            assert Path(root).is_dir()
+    assert calls == 0, "late temporary lifecycle callback was called"
+
+
+@pytest.mark.parametrize("hook", ["mkdtemp", "_weakref"])
+def test_observation_root_rejects_late_temporary_module_hooks(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """The captured constructor still looks up mutable tempfile dependencies."""
+    calls = 0
+
+    def foreign_mkdtemp(*args: object, **kwargs: object) -> str:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        message = "untrusted temporary creation executed"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patch:
+        if hook == "mkdtemp":
+            patch.setattr(tempfile, "mkdtemp", foreign_mkdtemp)
+        else:
+            patch.setattr(tempfile, "_weakref", object())
+        with (
+            pytest.raises(ProbeExecutionError, match=_TEMP_ROOT_HOOKS_CHANGED),
+            behavior_module._temporary_observation_root() as root,
+        ):
+            assert Path(root).is_dir()
+    assert calls == 0, "late temporary creation callback was called"
+
+
+@pytest.mark.parametrize(
+    "hook", ["_sanitize_params", "_get_candidate_names", "_os"]
+)
+def test_observation_root_rejects_late_tempfile_creation_helpers(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Original mkdtemp must not call mutable directory creation helpers."""
+    calls = 0
+
+    def foreign_helper(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        message = "untrusted temporary creation helper executed"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            tempfile, hook, object() if hook == "_os" else foreign_helper
+        )
+        with (
+            pytest.raises(ProbeExecutionError, match=_TEMP_ROOT_HOOKS_CHANGED),
+            behavior_module._temporary_observation_root() as root,
+        ):
+            assert Path(root).is_dir()
+    assert calls == 0, "foreign temporary creation helper was called"
+
+
+@pytest.mark.parametrize("operation", ["mkdir", "rmtree"])
+def test_observation_root_rejects_late_creation_and_cleanup_dispatch(
+    monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """No late OS creation or cleanup dispatch may redirect the mirror."""
+    calls = 0
+    original = os.mkdir if operation == "mkdir" else shutil.rmtree
+
+    def foreign_dispatch(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        if operation == "rmtree":
+            _ = cast("Callable[..., object]", original)(*args, **kwargs)
+        message = "untrusted temporary filesystem dispatch executed"
+        raise AssertionError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            os if operation == "mkdir" else shutil, operation, foreign_dispatch
+        )
+        with (
+            pytest.raises(ProbeExecutionError, match=_TEMP_ROOT_HOOKS_CHANGED),
+            behavior_module._temporary_observation_root() as root,
+        ):
+            assert Path(root).is_dir()
+    assert calls == 0, "foreign temporary filesystem dispatch was called"

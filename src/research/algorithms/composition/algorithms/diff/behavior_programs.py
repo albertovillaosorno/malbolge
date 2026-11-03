@@ -39,6 +39,7 @@ import os
 import shutil
 import stat
 import tempfile
+import weakref
 from dataclasses import dataclass
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, TypeVar, cast
@@ -154,7 +155,36 @@ _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
 _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_COPYTREE = shutil.copytree
-_NATIVE_TEMPORARY_DIRECTORY = tempfile.TemporaryDirectory
+_NATIVE_TEMPORARY_ROOT_CLASS = tempfile.TemporaryDirectory
+_NATIVE_TEMPORARY_DIRECTORY = _NATIVE_TEMPORARY_ROOT_CLASS
+# Capturing the class alone does not freeze its Python lifecycle methods.
+# A late class patch can redirect the observation mirror or suppress cleanup.
+_TEMPORARY_ROOT_CLASS_HOOK_NAMES = (
+    "__new__",
+    "__init__",
+    "__enter__",
+    "__exit__",
+    "__getattribute__",
+    "__setattr__",
+    "__repr__",
+    "cleanup",
+    "_cleanup",
+    "_rmtree",
+)
+_NATIVE_TEMPORARY_ROOT_CLASS_HOOKS = tuple(
+    (name, _NATIVE_TEMPORARY_ROOT_CLASS.__dict__.get(name))
+    for name in _TEMPORARY_ROOT_CLASS_HOOK_NAMES
+)
+# The original TemporaryDirectory.__init__ still loads module globals.
+_NATIVE_TEMPFILE_MKDTEMP = tempfile.mkdtemp
+_NATIVE_TEMPFILE_SANITIZE_PARAMS = tempfile.__dict__.get("_sanitize_params")
+_NATIVE_TEMPFILE_CANDIDATE_NAMES = tempfile.__dict__.get("_get_candidate_names")
+_NATIVE_TEMPFILE_WEAKREF = weakref
+_NATIVE_TEMPFILE_FINALIZE = weakref.finalize
+_NATIVE_TEMPFILE_OS = os
+_NATIVE_OS_MKDIR = os.mkdir
+_NATIVE_TEMPFILE_SHUTIL = shutil
+_NATIVE_SHUTIL_RMTREE = shutil.rmtree
 _NUL = "\x00"
 _NATIVE_WINDOWS_HOST = os.name == "nt"
 
@@ -1329,6 +1359,25 @@ def _require_observation_sources_unchanged(
 
 
 def _temporary_observation_root() -> tempfile.TemporaryDirectory[str]:
+    if (
+        _NATIVE_ANY(
+            _NATIVE_TEMPORARY_ROOT_CLASS.__dict__.get(name) is not original
+            for name, original in _NATIVE_TEMPORARY_ROOT_CLASS_HOOKS
+        )
+        or tempfile.mkdtemp is not _NATIVE_TEMPFILE_MKDTEMP
+        or tempfile.__dict__.get("_sanitize_params")
+        is not _NATIVE_TEMPFILE_SANITIZE_PARAMS
+        or tempfile.__dict__.get("_get_candidate_names")
+        is not _NATIVE_TEMPFILE_CANDIDATE_NAMES
+        or tempfile.__dict__.get("_weakref") is not _NATIVE_TEMPFILE_WEAKREF
+        or weakref.finalize is not _NATIVE_TEMPFILE_FINALIZE
+        or tempfile.__dict__.get("_os") is not _NATIVE_TEMPFILE_OS
+        or os.mkdir is not _NATIVE_OS_MKDIR
+        or tempfile.__dict__.get("_shutil") is not _NATIVE_TEMPFILE_SHUTIL
+        or shutil.rmtree is not _NATIVE_SHUTIL_RMTREE
+    ):
+        message = "behavior observation temporary root hooks changed"
+        raise ProbeExecutionError(message)
     try:
         return _NATIVE_TEMPORARY_DIRECTORY(prefix="diff-behavior-source-")
     except (OSError, ValueError, RuntimeError) as error:
