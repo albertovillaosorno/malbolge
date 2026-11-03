@@ -59,6 +59,7 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_BOOL = builtins.bool
 _NATIVE_INT = builtins.int
 _NATIVE_FLOAT = builtins.float
+_NATIVE_OBJECT_NEW = object.__new__
 
 
 class BehaviorPolicyError(ValueError):
@@ -813,6 +814,53 @@ _BEHAVIOR_MINIMUM_SLOT = cast(
     "MemberDescriptorType", BehaviorEvidence.__dict__["minimum_similarity"]
 )
 
+_BEHAVIOR_EVIDENCE_INIT = cast(
+    Callable[
+        [
+            BehaviorEvidence,
+            float,
+            int,
+            int,
+            tuple[str, ...],
+            tuple[str, ...],
+            tuple[str, ...],
+            BehaviorProfile,
+            BehaviorObservations,
+            float,
+        ],
+        None,
+    ],
+    BehaviorEvidence.__dict__["__init__"],
+)
+
+
+def _new_behavior_evidence(
+    similarity: float,
+    matched_identity_probes: int,
+    total_identity_probes: int,
+    corrections_to_apply: tuple[str, ...],
+    corrections_to_skip: tuple[str, ...],
+    reasons: tuple[str, ...],
+    profile: BehaviorProfile,
+    observations: BehaviorObservations,
+    minimum_similarity: float,
+) -> BehaviorEvidence:
+    """Validate internal decisions without late evidence class constructors."""
+    evidence = _NATIVE_OBJECT_NEW(BehaviorEvidence)
+    _BEHAVIOR_EVIDENCE_INIT(
+        evidence,
+        similarity,
+        matched_identity_probes,
+        total_identity_probes,
+        corrections_to_apply,
+        corrections_to_skip,
+        reasons,
+        profile,
+        observations,
+        minimum_similarity,
+    )
+    return evidence
+
 
 def _behavior_evidence_fields(
     evidence: BehaviorEvidence,
@@ -1072,7 +1120,7 @@ def evaluate_behavior(
         profile, observations, validated_minimum
     )
     total = _NATIVE_LEN(_profile_fields(profile)[0])
-    return BehaviorEvidence(
+    return _new_behavior_evidence(
         similarity=matched / total,
         matched_identity_probes=matched,
         total_identity_probes=total,
@@ -1101,7 +1149,10 @@ def require_behavior(
 
     """
     evidence = evaluate_behavior(profile, observations, minimum_similarity)
-    reasons = _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence)
+    reasons = cast(
+        "tuple[str, ...]",
+        _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence),
+    )
     if reasons:
         message = "; ".join(reasons)
         raise BehaviorAdmissionError(message)

@@ -34,6 +34,9 @@
 
 import builtins
 import math
+import os
+import subprocess
+import sys
 from collections import UserString
 from collections.abc import Callable
 from dataclasses import fields, replace
@@ -1379,3 +1382,76 @@ def test_behavior_construction_ignores_late_class_field_setters(
         with pytest.raises(BehaviorPolicyError):
             _ = factory(**values)
     assert calls == 0, "mutable class setter rewrote the stored evidence"
+
+
+@pytest.mark.parametrize("compatible", [True, False])
+def test_evaluated_behavior_ignores_late_init_hook(
+    monkeypatch: pytest.MonkeyPatch, compatible: bool
+) -> None:
+    """Late class initialization cannot overwrite evaluated rejection reasons."""
+    profile = _profile()
+    observations = _observations(compatible=compatible)
+    expected = evaluate_behavior(profile, observations, 0.8)
+    native_init = cast("Callable[..., None]", BehaviorEvidence.__dict__["__init__"])
+    reasons_slot = cast(
+        "MemberDescriptorType", BehaviorEvidence.__dict__["reasons"]
+    )
+    calls = 0
+
+    def forged_init(
+        self: BehaviorEvidence, *args: object, **kwargs: object
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        native_init(self, *args, **kwargs)
+        reasons_slot.__set__(self, ())
+
+    with monkeypatch.context() as patched:
+        patched.setattr(BehaviorEvidence, "__init__", forged_init)
+        assert evaluate_behavior(profile, observations, 0.8) == expected
+        if compatible:
+            assert require_behavior(profile, observations, 0.8).admitted
+        else:
+            with pytest.raises(BehaviorAdmissionError, match="compatibility"):
+                _ = require_behavior(profile, observations, 0.8)
+    assert calls == 0, "late behavior initializer was consulted"
+
+
+@pytest.mark.parametrize("compatible", [True, False])
+def test_evaluated_behavior_ignores_late_new_hook(compatible: bool) -> None:
+    """Test unsafe class allocation replacement in a separate interpreter."""
+    script = f"""
+from algorithms.diff.behavior import (
+    BehaviorAdmissionError, BehaviorEvidence, evaluate_behavior, require_behavior,
+)
+from test_behavior import _profile, _observations
+profile = _profile()
+observations = _observations(compatible={compatible!r})
+expected = evaluate_behavior(profile, observations, 0.8)
+def forbidden_new(*args, **kwargs):
+    raise AssertionError("late behavior allocation hook was consulted")
+BehaviorEvidence.__new__ = staticmethod(forbidden_new)
+assert evaluate_behavior(profile, observations, 0.8) == expected
+if {compatible!r}:
+    assert require_behavior(profile, observations, 0.8).admitted
+else:
+    try:
+        require_behavior(profile, observations, 0.8)
+    except BehaviorAdmissionError:
+        pass
+    else:
+        raise AssertionError("late allocation accepted failed compatibility")
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
