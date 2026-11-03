@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+import importlib.machinery
 import importlib.util
 import os
 import sys
@@ -85,6 +86,12 @@ _NATIVE_OS_IS_JUNCTION = os.path.isjunction
 _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 _SHA256_FACTORY = hashlib.sha256
+# A verified domain file must not be rerouted through import machinery swapped
+# by an earlier consumer callback. These are the exact host import entry points
+# admitted before any consumer-domain module executes.
+_NATIVE_IMPORT_SPEC = importlib.util.spec_from_file_location
+_NATIVE_IMPORT_MODULE = importlib.util.module_from_spec
+_NATIVE_SOURCE_LOADER_EXEC = importlib.machinery.SourceFileLoader.exec_module
 _NATIVE_OBJECT_NEW = object.__new__
 
 
@@ -384,10 +391,20 @@ def _prepare_module(
         DomainContractError: The import spec or module is unusable.
 
     """
+    if (
+        importlib.util.spec_from_file_location is not _NATIVE_IMPORT_SPEC
+        or importlib.util.module_from_spec is not _NATIVE_IMPORT_MODULE
+    ):
+        message = "diff domain import preparation failed: native import hooks changed"
+        raise DomainContractError(message)
+    if (
+        importlib.machinery.SourceFileLoader.exec_module
+        is not _NATIVE_SOURCE_LOADER_EXEC
+    ):
+        message = "diff domain module execution reported non-native completion"
+        raise DomainContractError(message)
     try:
-        spec = importlib.util.spec_from_file_location(
-            name, _NATIVE_PATH_STRING(resolved)
-        )
+        spec = _NATIVE_IMPORT_SPEC(name, _NATIVE_PATH_STRING(resolved))
         loader = spec.loader if spec is not None else None
     except Exception as error:
         message = (
@@ -399,7 +416,7 @@ def _prepare_module(
         message = f"cannot load diff domain module: {_NATIVE_PATH_STRING(resolved)}"
         raise DomainContractError(message)
     try:
-        module = importlib.util.module_from_spec(spec)
+        module = _NATIVE_IMPORT_MODULE(spec)
     except Exception as error:
         message = (
             "diff domain import preparation failed: "

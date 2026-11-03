@@ -39,8 +39,8 @@ import hashlib
 import importlib.machinery
 import importlib.util
 import os
-import subprocess
 import stat
+import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -294,6 +294,58 @@ def test_domain_import_preparation_errors_are_typed(
     assert not any(
         name.startswith("_malbolge_diff_domain_") for name in registered
     )
+
+
+@pytest.mark.parametrize(
+    "replacement", ["spec_from_file_location", "module_from_spec", "exec_module"]
+)
+def test_domain_rejects_late_native_import_loader_substitution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """Late import hooks cannot authorize code from an unselected module."""
+    trusted = tmp_path / "trusted.py"
+    rogue = tmp_path / "rogue.py"
+    marker = tmp_path / "rogue-executed"
+    _write(trusted, _COMPLETE)
+    _write(
+        rogue, f"from pathlib import Path\nPath({str(marker)!r}).touch()\n" + _COMPLETE
+    )
+    original_spec = importlib.util.spec_from_file_location
+    original_module = importlib.util.module_from_spec
+    original_exec = importlib.machinery.SourceFileLoader.exec_module
+    before = frozenset(sys.modules)
+
+    def forged_spec(
+        name: str, location: str
+    ) -> importlib.machinery.ModuleSpec | None:
+        del location
+        return original_spec(name, rogue)
+
+    def forged_module(spec: importlib.machinery.ModuleSpec) -> ModuleType:
+        return original_module(spec)
+
+    def forged_exec(
+        loader: importlib.machinery.SourceFileLoader, module: ModuleType
+    ) -> None:
+        rogue_loader = importlib.machinery.SourceFileLoader(module.__name__, str(rogue))
+        original_exec(rogue_loader, module)
+
+    with monkeypatch.context() as patched:
+        if replacement == "spec_from_file_location":
+            patched.setattr(importlib.util, replacement, forged_spec)
+        elif replacement == "module_from_spec":
+            patched.setattr(importlib.util, replacement, forged_module)
+        else:
+            patched.setattr(
+                importlib.machinery.SourceFileLoader, replacement, forged_exec
+            )
+        with pytest.raises(DomainContractError):
+            _ = load_diff_domain(trusted)
+    assert not marker.exists(), "late import hook executed an unselected module"
+    registered = frozenset(sys.modules) - before
+    assert not any(name.startswith("_malbolge_diff_domain_") for name in registered)
 
 
 def test_complete_domain_module_loads_explicit_hooks(tmp_path: Path) -> None:
