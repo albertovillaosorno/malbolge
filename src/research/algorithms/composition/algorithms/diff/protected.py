@@ -54,6 +54,7 @@ from algorithms.diff.model import (
     FileRecord,
     OracleLiteral,
     SourceSlice,
+    TreeModelError,
     TreeSnapshot,
     reserved_windows_component,
 )
@@ -119,6 +120,17 @@ _FILE_SHA256_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["sha256"])
 _FILE_SIZE_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["size"])
 _SOURCE_SLICE_OFFSET_SLOT = cast("MemberDescriptorType", SourceSlice.__dict__["offset"])
 _SOURCE_SLICE_LENGTH_SLOT = cast("MemberDescriptorType", SourceSlice.__dict__["length"])
+# Read nested model evidence with validators pinned before consumer hooks.
+_TREE_SNAPSHOT_VALIDATOR = cast(
+    "Callable[[TreeSnapshot], None]", TreeSnapshot.__dict__["__post_init__"]
+)
+_SOURCE_SLICE_VALIDATOR = cast(
+    "Callable[[SourceSlice], None]", SourceSlice.__dict__["__post_init__"]
+)
+_EXACT_AUTHORING_PLAN_VALIDATOR = cast(
+    "Callable[[ExactAuthoringPlan], None]",
+    ExactAuthoringPlan.__dict__["__post_init__"],
+)
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
 _NATIVE_ISINSTANCE = builtins.isinstance
@@ -204,6 +216,15 @@ def _validate_protected_segments(value: object) -> None:
     ):
         message = "protected instruction contains a foreign segment record"
         raise ProtectedPlanError(message)
+    for item in segments:
+        try:
+            if _NATIVE_TYPE(item) is SourceSlice:
+                _SOURCE_SLICE_VALIDATOR(item)
+            else:
+                _PAYLOAD_SLICE_VALIDATOR(cast("PayloadSlice", item))
+        except (AttributeError, TreeModelError) as error:
+            message = "protected instruction contains an invalid native segment"
+            raise ProtectedPlanError(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -341,14 +362,17 @@ class ProtectedInstruction:
         _require_optional_utf8_path(
             source_path, "protected instruction source path"
         )
-        if (
-            payload_slice is not None
-            and _NATIVE_TYPE(payload_slice) is not PayloadSlice
-        ):
-            message = (
-                "protected instruction payload slice must use the exact record"
-            )
-            raise ProtectedPlanError(message)
+        if payload_slice is not None:
+            if _NATIVE_TYPE(payload_slice) is not PayloadSlice:
+                message = (
+                    "protected instruction payload slice must use the exact record"
+                )
+                raise ProtectedPlanError(message)
+            try:
+                _PAYLOAD_SLICE_VALIDATOR(payload_slice)
+            except AttributeError as error:
+                message = "protected instruction contains an incomplete native payload slice"
+                raise ProtectedPlanError(message) from error
         _validate_protected_segments(segments)
 
     def _shape_is_valid(self) -> bool:
@@ -422,10 +446,14 @@ def _instruction_fields(instruction: ProtectedInstruction) -> tuple[
 
 # Pin the original validators as well as field descriptors. Authoring must
 # not invoke late replacement methods installed on the class by consumers.
-_INSTRUCTION_VALIDATE_METADATA = ProtectedInstruction.__dict__[
-    "_validate_metadata"
-]
-_INSTRUCTION_SHAPE_IS_VALID = ProtectedInstruction.__dict__["_shape_is_valid"]
+_INSTRUCTION_VALIDATE_METADATA = cast(
+    "Callable[[ProtectedInstruction], None]",
+    ProtectedInstruction.__dict__["_validate_metadata"],
+)
+_INSTRUCTION_SHAPE_IS_VALID = cast(
+    "Callable[[ProtectedInstruction], bool]",
+    ProtectedInstruction.__dict__["_shape_is_valid"],
+)
 
 
 def _require_static_target_outside_passthrough(
@@ -508,6 +536,14 @@ class ProtectedMetadata:
         ):
             message = "protected metadata instructions must be exact immutable records"
             raise ProtectedPlanError(message)
+        try:
+            for snapshot in (source, target):
+                _TREE_SNAPSHOT_VALIDATOR(snapshot)
+            for instruction in instructions:
+                _PROTECTED_INSTRUCTION_VALIDATOR(instruction)
+        except (AttributeError, TreeModelError) as error:
+            message = "protected metadata contains invalid or incomplete native evidence"
+            raise ProtectedPlanError(message) from error
         _require_unique_instruction_outputs(instructions)
         _require_instructions_match_target(instructions, target)
         if _NATIVE_TYPE(roots) is not _NATIVE_TUPLE:
@@ -940,6 +976,11 @@ def protected_plan_aad(
     if _NATIVE_TYPE(metadata) is not ProtectedMetadata:
         message = "protected metadata must use the exact ProtectedMetadata type"
         raise ProtectedPlanError(message)
+    try:
+        _PROTECTED_METADATA_VALIDATOR(metadata)
+    except AttributeError as error:
+        message = "protected metadata has incomplete native evidence"
+        raise ProtectedPlanError(message) from error
     if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "protected-plan context must be non-empty exact bytes"
         raise ProtectedPlanError(message)
@@ -1069,6 +1110,11 @@ def _validate_protect_inputs(
     if _NATIVE_TYPE(plan) is not ExactAuthoringPlan:
         message = "protected authoring plan must use the exact ExactAuthoringPlan type"
         raise ProtectedPlanError(message)
+    try:
+        _EXACT_AUTHORING_PLAN_VALIDATOR(plan)
+    except (AttributeError, TreeModelError) as error:
+        message = "protected authoring plan contains invalid native exact evidence"
+        raise ProtectedPlanError(message) from error
     if _NATIVE_TYPE(reference_identity) is not IdentityTree:
         message = "protected reference must use the exact IdentityTree type"
         raise ProtectedPlanError(message)
@@ -1202,6 +1248,11 @@ def _require_protected_exact_plan(value: object) -> ProtectedExactPlan:
     if _NATIVE_TYPE(value) is not ProtectedExactPlan:
         message = "protected plan must use the exact ProtectedExactPlan type"
         raise ProtectedPlanError(message)
+    try:
+        _PROTECTED_EXACT_PLAN_VALIDATOR(value)
+    except AttributeError as error:
+        message = "protected plan has incomplete native envelope evidence"
+        raise ProtectedPlanError(message) from error
     return value
 
 

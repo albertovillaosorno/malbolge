@@ -41,7 +41,7 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import PurePosixPath
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, SupportsIndex, cast, override
@@ -51,10 +51,17 @@ from algorithms.diff import protected as protected_module
 from algorithms.diff.admission import IdentityFile, IdentityTree, identity_tree
 from algorithms.diff.exact import build_exact_plan, snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
-from algorithms.diff.model import OracleLiteral, SourceSlice, TreeSnapshot
+from algorithms.diff.model import (
+    ExactAuthoringPlan,
+    FileRecord,
+    OracleLiteral,
+    SourceSlice,
+    TreeSnapshot,
+)
 from algorithms.diff.payload import AuthenticatedPayload, PayloadCryptoError
 from algorithms.diff.protected import (
     PayloadSlice,
+    ProtectedExactPlan,
     ProtectedInstruction,
     ProtectedInstructionKind,
     ProtectedMetadata,
@@ -73,8 +80,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from pathlib import Path
 
-    from algorithms.diff.model import ExactAuthoringPlan
-    from algorithms.diff.protected import ProtectedExactPlan
     from algorithms.diff.source_binding import ThresholdBinding
 
 _CONTEXT = b"synthetic-protected-exact-v1"
@@ -2074,3 +2079,186 @@ def test_protected_metadata_rejects_late_target_digest_forgery(
         with pytest.raises(ProtectedPlanError, match="match the target snapshot"):
             _ = ProtectedMetadata(plan.source, plan.target, mismatched)
     assert calls == 0, "late target digest getter promoted invalid instructions"
+
+
+def _unvalidated_protected_record[
+    T: FileRecord
+    | TreeSnapshot
+    | ExactAuthoringPlan
+    | ProtectedMetadata
+    | ProtectedInstruction
+    | ProtectedExactPlan
+    | PayloadSlice
+    | SourceSlice
+](template: T, **changes: object) -> T:
+    """Construct same-type native records without their admission validator."""
+    forged = object.__new__(type(template))
+    for field in fields(template):
+        original = cast("object", getattr(template, field.name))
+        object.__setattr__(forged, field.name, changes.get(field.name, original))
+    return forged
+
+
+@pytest.mark.parametrize(
+    "corruption",
+    ["source-file-size", "mutable-snapshot", "instruction-digest", "payload-range"],
+)
+def test_protected_metadata_rejects_unvalidated_native_children(
+    tmp_path: Path, corruption: str
+) -> None:
+    """Authenticating metadata requires valid nested native evidence."""
+    _, _, _, _, plan = _protected(tmp_path)
+    source = plan.source
+    instructions = plan.instructions
+    if corruption == "source-file-size":
+        original = source.files[0]
+        forged = _unvalidated_protected_record(original, size=True)
+        source = _unvalidated_protected_record(
+            source, files=(forged, *source.files[1:])
+        )
+    elif corruption == "mutable-snapshot":
+        source = _unvalidated_protected_record(source, files=list(source.files))
+    elif corruption == "instruction-digest":
+        # Keep target digest unchanged; only the nested source type is invalid.
+        invalid = _unvalidated_protected_record(instructions[0], source_path=True)
+        instructions = (invalid, *instructions[1:])
+    else:
+        index = next(
+            i for i, instruction in enumerate(instructions)
+            if instruction.payload_slice is not None
+        )
+        instruction = instructions[index]
+        assert instruction.payload_slice is not None
+        forged_range = _unvalidated_protected_record(
+            instruction.payload_slice, offset=True
+        )
+        instructions = (
+            *instructions[:index],
+            _unvalidated_protected_record(instruction, payload_slice=forged_range),
+            *instructions[index+1:],
+        )
+    with pytest.raises(ProtectedPlanError):
+        _ = ProtectedMetadata(source, plan.target, instructions)
+
+
+@pytest.mark.parametrize("field", ["instructions", "passthrough_roots"])
+def test_protected_aad_rejects_forged_native_metadata_fields(
+    tmp_path: Path, field: str
+) -> None:
+    """A direct AAD caller must not frame mutable native metadata."""
+    _, _, _, _, plan = _protected(tmp_path)
+    metadata = ProtectedMetadata(plan.source, plan.target, plan.instructions)
+    forged = _unvalidated_protected_record(
+        metadata,
+        **{field: list(cast("tuple[object, ...]", getattr(metadata, field)))},
+    )
+    with pytest.raises(ProtectedPlanError):
+        _ = protected_plan_aad(forged, context=_CONTEXT)
+
+
+def test_protected_aad_rejects_incomplete_native_metadata() -> None:
+    """Missing native AAD slots cause an owned typed failure."""
+    with pytest.raises(ProtectedPlanError, match="incomplete"):
+        _ = protected_plan_aad(
+            object.__new__(ProtectedMetadata), context=_CONTEXT
+        )
+
+
+@pytest.mark.parametrize("entrypoint", ["recover", "materialize"])
+@pytest.mark.parametrize("field", ["context", "nonce", "passthrough_roots"])
+def test_protected_recovery_rejects_forged_native_plan_fields(
+    tmp_path: Path, entrypoint: str, field: str
+) -> None:
+    """An unvalidated protected envelope cannot be used for decryption."""
+    source, _, source_files, _, plan = _protected(tmp_path)
+    if field == "context":
+        invalid: object = bytearray(plan.context)
+    elif field == "nonce":
+        invalid = bytearray(plan.nonce)
+    else:
+        invalid = []
+    forged = _unvalidated_protected_record(plan, **{field: invalid})
+    identity = _identity(source_files)
+    with pytest.raises(ProtectedPlanError):
+        if entrypoint == "recover":
+            _ = recover_exact_plan(forged, identity)
+        else:
+            materialize_protected_exact_plan(
+                source, identity, plan=forged, output_root=tmp_path / "out"
+            )
+    assert not (tmp_path / "out").exists()
+
+
+def test_protected_recovery_rejects_incomplete_native_plan_before_io(
+    tmp_path: Path,
+) -> None:
+    """Incomplete slotted envelope raises an owned error, not AttributeError."""
+    source = tmp_path / "source"
+    source.mkdir()
+    with pytest.raises(ProtectedPlanError, match="incomplete"):
+        materialize_protected_exact_plan(
+            source,
+            identity_tree({}),
+            plan=object.__new__(ProtectedExactPlan),
+            output_root=tmp_path / "out",
+        )
+    assert not (tmp_path / "out").exists()
+
+
+def test_protected_authoring_revalidates_native_exact_plan(
+    tmp_path: Path,
+) -> None:
+    """An exact plan with forged mutable instruction storage is not admissible."""
+    _, _, source_files, exact, _ = _protected(tmp_path)
+    forged = _unvalidated_protected_record(
+        exact, instructions=list(exact.instructions)
+    )
+    with pytest.raises(ProtectedPlanError):
+        _ = protect_exact_plan(
+            forged, _identity(source_files),
+            binding_policy=_policy(), context=_CONTEXT,
+        )
+
+
+@pytest.mark.parametrize("entrypoint", ["aad", "recover", "author"])
+def test_protected_native_admission_ignores_late_class_validators(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A late class validator cannot excuse malformed original native slots."""
+    source, _, source_files, exact, protected = _protected(tmp_path)
+    calls = 0
+
+    def ignored_validation(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    if entrypoint == "aad":
+        metadata = ProtectedMetadata(
+            protected.source, protected.target, protected.instructions
+        )
+        forged = _unvalidated_protected_record(metadata, passthrough_roots=[])
+        owner = ProtectedMetadata
+        action = lambda: protected_plan_aad(forged, context=_CONTEXT)
+    elif entrypoint == "recover":
+        forged = _unvalidated_protected_record(protected, nonce=bytearray(12))
+        owner = ProtectedExactPlan
+        action = lambda: recover_exact_plan(forged, _identity(source_files))
+    else:
+        forged = _unvalidated_protected_record(
+            exact, instructions=list(exact.instructions)
+        )
+        owner = ExactAuthoringPlan
+        action = lambda: protect_exact_plan(
+            forged,
+            _identity(source_files),
+            binding_policy=_policy(),
+            context=_CONTEXT,
+        )
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__post_init__", ignored_validation)
+        with pytest.raises(ProtectedPlanError):
+            _ = action()
+    assert calls == 0
+    assert not (tmp_path / "out").exists()
+    assert source.is_dir()
