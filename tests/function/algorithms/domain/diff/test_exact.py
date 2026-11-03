@@ -2635,3 +2635,45 @@ def test_exact_snapshot_ignores_late_len_size_spoof(
         patched.setattr(builtins, "len", forged_len)
         observed = snapshot_tree(root)
     assert observed == baseline, "late len hook falsified snapshot file size"
+
+
+def test_exact_roots_reject_late_enumerate_suppression(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late enumerate override must not skip nested passthrough roots."""
+    normalized_roots = cast(
+        "Callable[[tuple[str, ...]], tuple[str, ...]]",
+        vars(exact_module)["_normalized_roots"],
+    )
+
+    def omit_roots(values: object) -> tuple[()]:
+        del values
+        return ()
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "enumerate", omit_roots)
+        try:
+            _ = normalized_roots(("src", "src/nested"))
+        except ExactTreeError:
+            rejected = True
+    assert rejected, "late enumerate admitted nested passthrough roots"
+
+
+def test_exact_roots_accept_native_disjoint_after_late_enumerate_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid pair of native roots does not require the current builtin."""
+    normalized_roots = cast(
+        "Callable[[tuple[str, ...]], tuple[str, ...]]",
+        vars(exact_module)["_normalized_roots"],
+    )
+
+    def omit_roots(values: object) -> tuple[()]:
+        del values
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "enumerate", omit_roots)
+        roots = normalized_roots(("src", "tests"))
+    assert roots == ("src", "tests")

@@ -76,6 +76,7 @@ _FILE_READ_FLAGS = (
 _ZERO = 0
 # Keep path and passthrough admission independent of late host hooks.
 _NATIVE_ANY = builtins.any
+_NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_BYTEARRAY = builtins.bytearray
 _NATIVE_MIN = builtins.min
 _NATIVE_SET = builtins.set
@@ -190,7 +191,7 @@ def _normalized_roots(roots: tuple[str, ...]) -> tuple[str, ...]:
     if normalized != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(normalized))):
         message = "passthrough roots must be unique and sorted"
         raise ExactTreeError(message)
-    for index, root in enumerate(normalized):
+    for index, root in _NATIVE_ENUMERATE(normalized):
         prefix = root + "/"
         if _NATIVE_ANY(
             other.startswith(prefix) for other in normalized[index + 1 :]
