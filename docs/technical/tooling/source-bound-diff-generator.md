@@ -2643,6 +2643,17 @@ alias replaced passed; all 109 publication tests passed postcommit. Scoped
 Ruff, strict source/test BasedPyright, and diff checks were clean. Host
 filesystem races and global Jig governance remain outside this evidence.
 
+Linux `ctypes.CDLL` publication also guards import-original
+`builtins.setattr`, `isinstance`, `int`, and `__build_class__` identities
+before constructing its native loader or resolving `renameat2`
+(`2b67db240`). Four red-first tests show foreign callbacks previously
+ran through the Python loader/class/symbol dispatch. All 113 postcommit
+publication and 3,842 precommit integrated diff tests pass; scoped Ruff,
+strict BasedPyright, and diff checks are clean. The guard fails closed
+with `ENOTSUP` on late alias substitutions, but does not isolate direct
+trusted-state edits or external filesystem races. Jig doctor remains
+degraded because its graph is absent; global Jig is not green.
+
 Exact-tree, relocatable, and source-pin native error-note bridges now pin
 import-original `builtins.list` when admitting `BaseException.__notes__`
 (`0e5898d4c`). A late consumer `builtins.list` substitution previously erased

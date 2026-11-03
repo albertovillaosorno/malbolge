@@ -1159,6 +1159,13 @@ format.
   cases and a real Linux no-replace move passed, with 109 postcommit focused
   tests, scoped Ruff, strict source/test BasedPyright, and diff checks clean.
   Direct stored-path mutation, host races, and Jig governance remain open.
+- Linux no-replace publication now rejects late `builtins.setattr`,
+  `isinstance`, `int`, and `__build_class__` substitutions before
+  `ctypes.CDLL` construction or `renameat2` symbol lookup (`2b67db240`).
+  Four red-first variants previously reached foreign callbacks. All 113
+  postcommit publication and 3,842 precommit integrated diff tests pass;
+  scoped Ruff, strict BasedPyright, and diff checks are clean. Jig doctor
+  remains degraded (graph absent); external filesystem races remain.
 - Probe runtime `_CommandResult`, `_PipeCapture`, and `_RunningProbe`
   receipts now use captured original initializers and native allocation
   (`82e32113e`). Eight late `__init__`/`__new__` regression cases pass;
