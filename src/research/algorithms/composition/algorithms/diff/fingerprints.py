@@ -36,9 +36,10 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from types import MemberDescriptorType
-from typing import Callable, cast
+from typing import cast
 
 _DEFAULT_WINDOW_BYTES = 32
 _DEFAULT_SELECTION_MODULUS = 64
@@ -60,7 +61,6 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_LEN = len
 _NATIVE_RANGE = range
 _NATIVE_TUPLE = tuple
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 
 class FingerprintPolicyError(ValueError):
@@ -80,8 +80,8 @@ class AnchorPolicy:
         selection_modulus: int = _DEFAULT_SELECTION_MODULUS,
     ) -> None:
         """Validate anchor parameters with the captured original guard."""
-        _NATIVE_OBJECT_SETATTR(self, "window_bytes", window_bytes)
-        _NATIVE_OBJECT_SETATTR(self, "selection_modulus", selection_modulus)
+        _POLICY_WINDOW_SLOT.__set__(self, window_bytes)
+        _POLICY_MODULUS_SLOT.__set__(self, selection_modulus)
         _ANCHOR_POLICY_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -139,8 +139,8 @@ class StableAnchor:
 
     def __init__(self, digest: bytes, offset: int) -> None:
         """Validate source digest and offset with the original guard."""
-        _NATIVE_OBJECT_SETATTR(self, "digest", digest)
-        _NATIVE_OBJECT_SETATTR(self, "offset", offset)
+        _ANCHOR_DIGEST_SLOT.__set__(self, digest)
+        _ANCHOR_OFFSET_SLOT.__set__(self, offset)
         _STABLE_ANCHOR_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -223,9 +223,9 @@ class AnchorCoverage:
 
     def __init__(self, matched: int, total: int, ratio: float) -> None:
         """Validate coverage counts and ratio using the original guard."""
-        _NATIVE_OBJECT_SETATTR(self, "matched", matched)
-        _NATIVE_OBJECT_SETATTR(self, "total", total)
-        _NATIVE_OBJECT_SETATTR(self, "ratio", ratio)
+        _COVERAGE_MATCHED_SLOT.__set__(self, matched)
+        _COVERAGE_TOTAL_SLOT.__set__(self, total)
+        _COVERAGE_RATIO_SLOT.__set__(self, ratio)
         _ANCHOR_COVERAGE_VALIDATOR(self)
 
     def __post_init__(self) -> None:

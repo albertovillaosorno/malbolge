@@ -34,8 +34,9 @@
 
 import builtins
 import hashlib
-from collections.abc import Iterable, Sized
-from dataclasses import replace
+from collections.abc import Callable, Iterable, Sized
+from dataclasses import fields, replace
+from types import MemberDescriptorType
 from typing import cast
 
 import pytest
@@ -756,3 +757,45 @@ def test_stable_anchor_constructor_rejects_forged_invalid_fields(
                 digest=b"short" if field == "digest" else b"x" * 32,
                 offset=-1 if field == "offset" else 0,
             )
+
+
+@pytest.mark.parametrize(
+    ("valid", "field", "invalid"),
+    [
+        (AnchorPolicy(16, 8), "window_bytes", 0),
+        (AnchorPolicy(16, 8), "selection_modulus", 0),
+        (StableAnchor(b"x" * 32, 0), "digest", b"short"),
+        (StableAnchor(b"x" * 32, 0), "offset", -1),
+        (AnchorCoverage(1, 2, 0.5), "matched", 3),
+        (AnchorCoverage(1, 2, 0.5), "total", 0),
+        (AnchorCoverage(1, 2, 0.5), "ratio", 1.0),
+    ],
+)
+def test_fingerprint_construction_ignores_late_class_setters(
+    monkeypatch: pytest.MonkeyPatch,
+    valid: AnchorPolicy | StableAnchor | AnchorCoverage,
+    field: str,
+    invalid: object,
+) -> None:
+    """Consumer properties must not rewrite untrusted anchor field storage."""
+    owner = type(valid)
+    factory = cast("Callable[..., object]", owner)
+    values = {datum.name: getattr(valid, datum.name) for datum in fields(valid)}
+    original = values[field]
+    values[field] = invalid
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    calls = 0
+
+    def forged_getter(_record: object) -> object:
+        return original
+
+    def forged_setter(record: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(record, original)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(forged_getter, forged_setter))
+        with pytest.raises(FingerprintPolicyError):
+            _ = factory(**values)
+    assert calls == 0, "late class setter rewrote fingerprint admission storage"
