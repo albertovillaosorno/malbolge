@@ -42,6 +42,7 @@ compatible-plan layer is implemented.
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import os
 import shutil
 from dataclasses import dataclass
@@ -73,6 +74,7 @@ _BOUNDARY_BYTES = 32
 # A loaded domain must not redefine the relocation hash primitive.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_DIGEST_BYTES = _SHA256_FACTORY().digest_size
+_NATIVE_ISRESERVED = ntpath.isreserved
 _STAGING_SUFFIX = ".relocatable-staging"
 _BACKSLASH = "\\"
 _NUL = "\x00"
@@ -481,6 +483,7 @@ def _validate_relative_path(relative_path: object) -> str:
         or relative_path == _DOT
         or candidate.is_absolute()
         or bool(PureWindowsPath(relative_path).drive)
+        or _NATIVE_ISRESERVED(relative_path)
         or _PARENT in candidate.parts
         or candidate.as_posix() != relative_path
     )

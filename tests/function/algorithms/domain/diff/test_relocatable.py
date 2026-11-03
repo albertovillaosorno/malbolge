@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import hashlib
+import ntpath
 import os
 import shutil
 from pathlib import Path
@@ -1224,7 +1225,10 @@ def test_relocatable_metadata_rejects_boolean_and_foreign_records() -> None:
         )
 
 
-@pytest.mark.parametrize("unsafe_path", ["src/\x00.bin", "src/\ud800.bin"])
+@pytest.mark.parametrize(
+    "unsafe_path",
+    ["src/\x00.bin", "src/\ud800.bin", "CON", "aux.txt", "src/NUL.bin", "LPT1"],
+)
 def test_relocatable_instruction_rejects_nonportable_paths(
     unsafe_path: str,
 ) -> None:
@@ -1241,6 +1245,25 @@ def test_relocatable_instruction_rejects_nonportable_paths(
             output_path="output.bin",
             source_path=unsafe_path,
             copy_candidate_file=True,
+        )
+
+
+def test_relocatable_reserved_paths_reject_host_predicate_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A runtime callback cannot reclassify Windows device labels as safe."""
+
+    def forged_isreserved(path: str) -> bool:
+        _ = path
+        return False
+
+    monkeypatch.setattr(ntpath, "isreserved", forged_isreserved)
+    with pytest.raises(RelocationError, match="unsafe relocatable tree path"):
+        _ = RelocatableInstruction(
+            output_path="src/CON.bin",
+            source_path=None,
+            copy_candidate_file=False,
+            literal=b"target",
         )
 
 
