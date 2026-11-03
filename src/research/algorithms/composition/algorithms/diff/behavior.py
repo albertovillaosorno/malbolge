@@ -60,6 +60,9 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_BOOL = builtins.bool
 _NATIVE_INT = builtins.int
 _NATIVE_FLOAT = builtins.float
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
+_NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_OBJECT_NEW = object.__new__
 
 
@@ -88,7 +91,7 @@ def _require_identifier(value: object, context: str) -> str:
         raise BehaviorPolicyError(message)
     try:
         _ = value.encode("utf-8")
-    except UnicodeEncodeError as error:
+    except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"{context} must be portable UTF-8 text"
         raise BehaviorPolicyError(message) from error
     return value
@@ -278,7 +281,7 @@ def _require_probe_tuple(
     try:
         for item in items:
             validator(item)
-    except (AttributeError, TypeError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = f"{context} contains incomplete native probe metadata"
         raise BehaviorPolicyError(message) from error
 
@@ -610,7 +613,7 @@ def _require_observation_tuple(
     try:
         for item in items:
             validator(item)
-    except (AttributeError, TypeError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = f"{context} contains incomplete native observation metadata"
         raise BehaviorPolicyError(message) from error
 
@@ -821,7 +824,7 @@ class BehaviorEvidence:
         # Re-check the original binding before exposing a public verdict.
         try:
             _BEHAVIOR_EVIDENCE_VALIDATOR(self)
-        except (AttributeError, TypeError) as error:
+        except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
             message = "behavior evidence has incomplete native metadata"
             raise BehaviorPolicyError(message) from error
         return not _BEHAVIOR_REASONS_SLOT.__get__(self, BehaviorEvidence)
@@ -1124,7 +1127,7 @@ def _require_behavior_evidence_sources(
     try:
         _BEHAVIOR_PROFILE_VALIDATOR(profile)
         _BEHAVIOR_OBSERVATIONS_VALIDATOR(observations)
-    except (AttributeError, TypeError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "behavior evidence has incomplete native source metadata"
         raise BehaviorPolicyError(message) from error
 

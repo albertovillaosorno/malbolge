@@ -1644,3 +1644,93 @@ def test_behavior_admitted_rejects_foreign_verdict_receiver(receiver_kind: str) 
             getter = cast("property", BehaviorEvidence.__dict__["admitted"]).fget
             assert getter is not None
             _ = getter(object())
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(
+            lambda: IdentityProbe("\ud800", b"digest"), id="identity-probe"
+        ),
+        pytest.param(
+            lambda: CompatibilityProbe("\ud800"), id="compatibility-probe"
+        ),
+        pytest.param(lambda: BugProbe("\ud800", "correction"), id="bug-probe"),
+        pytest.param(lambda: BugProbe("bug", "\ud800"), id="correction"),
+        pytest.param(
+            lambda: IdentityObservation("\ud800", b"digest"),
+            id="identity-observation",
+        ),
+        pytest.param(
+            lambda: CompatibilityObservation("\ud800", compatible=True),
+            id="compatibility-observation",
+        ),
+        pytest.param(
+            lambda: BugObservation("\ud800", BugState.PRESENT),
+            id="bug-observation",
+        ),
+    ],
+)
+def test_behavior_identifiers_keep_typed_error_after_late_unicode_alias(
+    monkeypatch: pytest.MonkeyPatch, build: Callable[[], object]
+) -> None:
+    """Unicode encoding exceptions cannot escape a probe identifier guard."""
+    original = builtins.UnicodeEncodeError
+    caught: BehaviorPolicyError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeEncodeError", LookupError)
+        try:
+            _ = build()
+        except BehaviorPolicyError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeEncodeError"] = original
+    assert type(caught) is BehaviorPolicyError, caught
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(
+            lambda: BehaviorProfile((object.__new__(IdentityProbe),), (), ()),
+            id="profile-probe",
+        ),
+        pytest.param(
+            lambda: BehaviorObservations(
+                (object.__new__(IdentityObservation),), (), ()
+            ),
+            id="observation",
+        ),
+        pytest.param(
+            lambda: object.__new__(BehaviorEvidence).admitted,
+            id="verdict",
+        ),
+        pytest.param(
+            lambda: evaluate_behavior(
+                object.__new__(BehaviorProfile), _observations(), 0.8
+            ),
+            id="evaluation-profile",
+        ),
+        pytest.param(
+            lambda: evaluate_behavior(
+                _profile(), object.__new__(BehaviorObservations), 0.8
+            ),
+            id="evaluation-observations",
+        ),
+    ],
+)
+def test_behavior_incomplete_receipt_keeps_typed_error_after_late_alias(
+    monkeypatch: pytest.MonkeyPatch, build: Callable[[], object]
+) -> None:
+    """Original native slot errors remain typed at behavior receipt gates."""
+    original = builtins.AttributeError
+    caught: BehaviorPolicyError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", LookupError)
+        try:
+            _ = build()
+        except BehaviorPolicyError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = original
+    assert type(caught) is BehaviorPolicyError, caught
