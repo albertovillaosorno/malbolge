@@ -40,6 +40,7 @@ import os
 from collections.abc import Callable, Iterable
 from dataclasses import replace
 from pathlib import PurePosixPath
+from types import MemberDescriptorType
 from typing import cast
 
 import pytest
@@ -1433,3 +1434,87 @@ def test_admission_identity_tree_reads_ignore_late_files_getter(
         observed = evaluate_admission(reference, candidate, policy)
     assert observed == expected
     assert calls == 0, "late identity tree getter rewrote source lineage"
+
+
+@pytest.mark.parametrize(
+    ("field", "forged", "actual"),
+    [
+        ("matched_anchor_count", 1, ("source.c", 1.0, 1.0, 1, 2)),
+        ("structural_similarity", 1.0, ("source.c", True, 1.0, 1, 1)),
+    ],
+)
+def test_file_evidence_constructor_ignores_late_getter_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    forged: object,
+    actual: tuple[object, ...],
+) -> None:
+    """A file receipt cannot validate fraudulent metadata via a late hook."""
+    original = FileAdmissionEvidence.__getattribute__
+
+    def forged_attribute(value: FileAdmissionEvidence, name: str) -> object:
+        if name == field:
+            return forged
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            FileAdmissionEvidence, "__getattribute__", forged_attribute
+        )
+        with pytest.raises(AdmissionPolicyError):
+            _ = FileAdmissionEvidence(
+                cast("str", actual[0]),
+                cast("float", actual[1]),
+                cast("float", actual[2]),
+                cast("int", actual[3]),
+                cast("int", actual[4]),
+            )
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_admission_ignores_late_file_score_forgery(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A completed source score cannot be promoted using a record class hook."""
+    reference = identity_tree({"main.c": _content("reference", 0)})
+    candidate = identity_tree({"main.c": _content("unrelated", 0)})
+    policy = _policy(source_similarity=0.8)
+    expected = evaluate_admission(reference, candidate, policy)
+    assert not expected.admitted
+    original = FileAdmissionEvidence.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: FileAdmissionEvidence, name: str) -> object:
+        nonlocal calls
+        if name == "structural_similarity":
+            calls += 1
+            return 1.0
+        return cast("object", original(value, name))
+
+    def forged_property(value: FileAdmissionEvidence) -> object:
+        return forged_attribute(value, "structural_similarity")
+
+    original_slot = cast(
+        "MemberDescriptorType",
+        FileAdmissionEvidence.__dict__["structural_similarity"],
+    )
+
+    def store_score(value: FileAdmissionEvidence, score: float) -> None:
+        original_slot.__set__(value, score)
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            patch.setattr(
+                FileAdmissionEvidence,
+                "structural_similarity",
+                property(forged_property, store_score),
+            )
+        else:
+            patch.setattr(
+                FileAdmissionEvidence,
+                "__getattribute__",
+                forged_attribute,
+            )
+        observed = evaluate_admission(reference, candidate, policy)
+    assert observed == expected
+    assert calls == 0, "mutable file score hook influenced source admission"

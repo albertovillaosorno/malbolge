@@ -389,27 +389,18 @@ def _require_file_anchor_relation(
 
 
 def _validate_file_admission_evidence(evidence: FileAdmissionEvidence) -> None:
-    _ = _require_evidence_path(evidence.path)
-    _ = _require_evidence_fraction(
-        evidence.structural_similarity,
-        "file structural similarity",
+    path, similarity, fraction, count, matched_count = _file_evidence_fields(
+        evidence
     )
+    _ = _require_evidence_path(path)
+    _ = _require_evidence_fraction(similarity, "file structural similarity")
     coverage = (
-        _require_evidence_fraction(
-            evidence.anchor_coverage,
-            "file anchor coverage",
-        )
-        if evidence.anchor_coverage is not None
+        _require_evidence_fraction(fraction, "file anchor coverage")
+        if fraction is not None
         else None
     )
-    reference = _require_evidence_count(
-        evidence.reference_anchor_count,
-        "reference anchor count",
-    )
-    matched = _require_evidence_count(
-        evidence.matched_anchor_count,
-        "matched anchor count",
-    )
+    reference = _require_evidence_count(count, "reference anchor count")
+    matched = _require_evidence_count(matched_count, "matched anchor count")
     _require_file_anchor_relation(coverage, reference, matched)
 
 
@@ -429,7 +420,7 @@ def _require_file_evidence_tuple(
     if not files:
         message = "tree admission evidence requires at least one file"
         raise AdmissionPolicyError(message)
-    paths = _NATIVE_TUPLE(item.path for item in files)
+    paths = _NATIVE_TUPLE(_file_evidence_fields(item)[0] for item in files)
     if paths != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(paths))):
         message = "tree admission file paths must be unique and sorted"
         raise AdmissionPolicyError(message)
@@ -440,12 +431,14 @@ def _require_file_evidence_tuple(
 def _tree_file_aggregates(
     files: tuple[FileAdmissionEvidence, ...],
 ) -> tuple[float, float, int]:
-    source_values = _NATIVE_TUPLE(item.structural_similarity for item in files)
+    source_values = _NATIVE_TUPLE(
+        _file_evidence_fields(item)[1] for item in files
+    )
     source = _NATIVE_FSUM(source_values) / _NATIVE_LEN(source_values)
     covered = _NATIVE_TUPLE(
-        item.anchor_coverage
+        cast("float", _file_evidence_fields(item)[2])
         for item in files
-        if item.anchor_coverage is not None
+        if _file_evidence_fields(item)[2] is not None
     )
     anchor = _NATIVE_FSUM(covered) / _NATIVE_LEN(covered) if covered else 0.0
     return source, anchor, _NATIVE_LEN(covered)
@@ -496,7 +489,8 @@ def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
         message = "satisfied anchor file count cannot exceed eligible files"
         raise AdmissionPolicyError(message)
     matched_eligible = _NATIVE_SUM(
-        item.anchor_coverage is not None and item.matched_anchor_count > _ZERO
+        _file_evidence_fields(item)[2] is not None
+        and _file_evidence_fields(item)[4] > _ZERO
         for item in files
     )
     if satisfied > matched_eligible:
@@ -519,16 +513,16 @@ def _validate_policy_bound_evidence(
     policy = evidence.policy
     _, minimum_coverage, _, minimum_per_file, _, _ = _policy_fields(policy)
     if _NATIVE_ANY(
-        (item.anchor_coverage is not None)
-        != (item.reference_anchor_count >= minimum_per_file)
+        (_file_evidence_fields(item)[2] is not None)
+        != (_file_evidence_fields(item)[3] >= minimum_per_file)
         for item in files
     ):
         message = "file anchor eligibility does not match admission policy"
         raise AdmissionPolicyError(message)
     expected_satisfied = _NATIVE_SUM(
-        item.matched_anchor_count > _ZERO
-        and item.anchor_coverage is not None
-        and item.anchor_coverage >= minimum_coverage
+        _file_evidence_fields(item)[4] > _ZERO
+        and _file_evidence_fields(item)[2] is not None
+        and cast("float", _file_evidence_fields(item)[2]) >= minimum_coverage
         for item in files
     )
     if evidence.satisfied_anchor_files != expected_satisfied:
@@ -558,6 +552,60 @@ class FileAdmissionEvidence:
     def __post_init__(self) -> None:
         """Require internally coherent per-file source evidence."""
         _validate_file_admission_evidence(self)
+
+
+# Per-file admission is also a class-mutable frozen record. Read raw slots.
+_FILE_EVIDENCE_PATH_SLOT = cast(
+    "MemberDescriptorType", FileAdmissionEvidence.__dict__["path"]
+)
+_FILE_EVIDENCE_SIMILARITY_SLOT = cast(
+    "MemberDescriptorType",
+    FileAdmissionEvidence.__dict__["structural_similarity"],
+)
+_FILE_EVIDENCE_COVERAGE_SLOT = cast(
+    "MemberDescriptorType", FileAdmissionEvidence.__dict__["anchor_coverage"]
+)
+_FILE_EVIDENCE_REFERENCE_SLOT = cast(
+    "MemberDescriptorType",
+    FileAdmissionEvidence.__dict__["reference_anchor_count"],
+)
+_FILE_EVIDENCE_MATCHED_SLOT = cast(
+    "MemberDescriptorType",
+    FileAdmissionEvidence.__dict__["matched_anchor_count"],
+)
+
+
+def _file_evidence_fields(
+    receipt: FileAdmissionEvidence,
+) -> tuple[str, float, float | None, int, int]:
+    return (
+        cast(
+            "str",
+            _FILE_EVIDENCE_PATH_SLOT.__get__(receipt, FileAdmissionEvidence),
+        ),
+        cast(
+            "float",
+            _FILE_EVIDENCE_SIMILARITY_SLOT.__get__(
+                receipt, FileAdmissionEvidence
+            ),
+        ),
+        cast(
+            "float | None",
+            _FILE_EVIDENCE_COVERAGE_SLOT.__get__(
+                receipt, FileAdmissionEvidence
+            ),
+        ),
+        cast(
+            "int",
+            _FILE_EVIDENCE_REFERENCE_SLOT.__get__(
+                receipt, FileAdmissionEvidence
+            ),
+        ),
+        cast(
+            "int",
+            _FILE_EVIDENCE_MATCHED_SLOT.__get__(receipt, FileAdmissionEvidence),
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -778,18 +826,20 @@ def evaluate_admission(
         for item in reference_files
     )
     source_similarity = _mean(
-        _NATIVE_TUPLE(item.structural_similarity for item in files)
+        _NATIVE_TUPLE(_file_evidence_fields(item)[1] for item in files)
     )
     eligible = _NATIVE_TUPLE(
-        item for item in files if item.anchor_coverage is not None
+        item for item in files if _file_evidence_fields(item)[2] is not None
     )
     anchor_average = _mean(
-        _NATIVE_TUPLE(item.anchor_coverage or 0.0 for item in eligible)
+        _NATIVE_TUPLE(
+            _file_evidence_fields(item)[2] or 0.0 for item in eligible
+        )
     )
     _, minimum_coverage, _, _, _, _ = _policy_fields(policy)
     satisfied = _NATIVE_SUM(
-        item.matched_anchor_count > _ZERO
-        and (item.anchor_coverage or 0.0) >= minimum_coverage
+        _file_evidence_fields(item)[4] > _ZERO
+        and (_file_evidence_fields(item)[2] or 0.0) >= minimum_coverage
         for item in eligible
     )
     aggregate = _AggregateEvidence(
