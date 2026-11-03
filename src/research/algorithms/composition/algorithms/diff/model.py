@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from builtins import AttributeError as _native_attribute_error
 from builtins import any as _native_any
 from builtins import bytes as _native_bytes
 from builtins import enumerate as _native_enumerate
@@ -228,7 +229,7 @@ class TreeSnapshot:
         for record in files:
             try:
                 _FILE_RECORD_VALIDATOR(record)
-            except AttributeError as error:
+            except _native_attribute_error as error:
                 message = "tree snapshot contains an incomplete native file record"
                 raise TreeModelError(message) from error
         paths = _native_tuple(_file_fields(item)[0] for item in files)
@@ -381,7 +382,7 @@ def _validate_exact_segments(value: object) -> None:
                 _SOURCE_SLICE_VALIDATOR(segment)
             else:
                 _ORACLE_LITERAL_VALIDATOR(cast("OracleLiteral", segment))
-        except AttributeError as error:
+        except _native_attribute_error as error:
             message = "exact instruction contains an incomplete native segment"
             raise TreeModelError(message) from error
 
@@ -578,13 +579,13 @@ class ExactAuthoringPlan:
         for snapshot in (source, target):
             try:
                 _TREE_SNAPSHOT_VALIDATOR(snapshot)
-            except AttributeError as error:
+            except _native_attribute_error as error:
                 message = "exact plan contains an incomplete native snapshot"
                 raise TreeModelError(message) from error
         for instruction in instructions:
             try:
                 _EXACT_INSTRUCTION_VALIDATOR(instruction)
-            except AttributeError as error:
+            except _native_attribute_error as error:
                 message = "exact plan contains an incomplete native instruction"
                 raise TreeModelError(message) from error
         paths = _native_tuple(

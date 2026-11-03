@@ -613,6 +613,51 @@ def test_exact_plan_revalidates_fabricated_native_instruction(
         )
 
 
+@pytest.mark.parametrize(
+    "entrypoint",
+    ["snapshot-file", "patch-slice", "patch-literal",
+     "plan-source", "plan-target", "plan-instruction"],
+)
+def test_model_incomplete_native_receipts_reject_late_attribute_error_alias(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A late global exception substitution must not leak missing slots."""
+    native_attribute_error = builtins.AttributeError
+    caught: TreeModelError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if entrypoint == "snapshot-file":
+                _ = TreeSnapshot((object.__new__(FileRecord),))
+            elif entrypoint in ("patch-slice", "patch-literal"):
+                segment = (
+                    object.__new__(SourceSlice)
+                    if entrypoint == "patch-slice"
+                    else object.__new__(OracleLiteral)
+                )
+                _ = ExactInstruction(
+                    "out.bin", ExactInstructionKind.PATCH_SOURCE, _HASH,
+                    source_path="src.bin", segments=(segment,),
+                )
+            else:
+                missing_snapshot = object.__new__(TreeSnapshot)
+                empty = TreeSnapshot(())
+                if entrypoint == "plan-source":
+                    _ = ExactAuthoringPlan(missing_snapshot, empty, ())
+                elif entrypoint == "plan-target":
+                    _ = ExactAuthoringPlan(empty, missing_snapshot, ())
+                else:
+                    _ = ExactAuthoringPlan(
+                        empty, empty, (object.__new__(ExactInstruction),)
+                    )
+        except TreeModelError as error:
+            caught = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(caught) is TreeModelError, caught
+    assert "incomplete native" in str(caught)
+
+
 def test_model_snapshot_path_order_ignores_late_file_descriptor(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
