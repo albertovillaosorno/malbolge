@@ -377,6 +377,79 @@ def test_relocatable_roots_reject_foreign_path_subclasses_before_methods(
     assert not (tmp_path / "untrusted").exists()
 
 
+def test_relocatable_rejects_foreign_resolved_output_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged resolved Path cannot approve writing inside the candidate."""
+    candidate = tmp_path / "candidate"
+    _write(candidate, "code.bin", b"original candidate")
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            output_path="copied.bin",
+            source_path="code.bin",
+            copy_candidate_file=True,
+        ),
+    ))
+    output = candidate / "out"
+    native_resolve = Path.resolve
+
+    class ForgedResolvedPath(type(Path())):
+        @override
+        def is_relative_to(self, other: object) -> bool:
+            _ = other
+            return False
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        resolved = native_resolve(path, strict=strict)
+        if path == output:
+            return ForgedResolvedPath(resolved)
+        return resolved
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    with pytest.raises(RelocationError, match="native resolved Path"):
+        materialize_relocatable_plan(candidate, plan, output)
+    assert not output.exists()
+    assert not (candidate / ".out.relocatable-staging").exists()
+
+
+@pytest.mark.parametrize("role", ["candidate", "staging"])
+def test_relocatable_rejects_foreign_nested_resolution_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """Path containment must not use foreign nested resolution methods."""
+    candidate = tmp_path / "candidate"
+    _write(candidate, "nested/file.bin", b"native source")
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            output_path="copied.bin",
+            source_path="nested/file.bin",
+            copy_candidate_file=True,
+        ),
+    ))
+    output = tmp_path / "out"
+    targeted = (
+        candidate / "nested/file.bin"
+        if role == "candidate"
+        else tmp_path / ".out.relocatable-staging"
+    )
+    native_resolve = Path.resolve
+
+    class ForgedResolvedPath(type(Path())):
+        pass
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        resolved = native_resolve(path, strict=strict)
+        if path == targeted:
+            return ForgedResolvedPath(resolved)
+        return resolved
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    with pytest.raises(RelocationError, match="native resolved Path"):
+        materialize_relocatable_plan(candidate, plan, output)
+    assert not output.exists()
+    assert not (tmp_path / ".out.relocatable-staging").exists()
+
+
 @pytest.mark.parametrize("linked_output", [False, True])
 def test_relocatable_rejects_output_inside_candidate_source(
     tmp_path: Path,
@@ -952,6 +1025,45 @@ def test_relocatable_ancestor_inspection_errors_are_typed(
         not (tmp_path / ".out.relocatable-staging").exists(),
         "failed admission left staging behind",
     )
+
+
+@pytest.mark.parametrize("method", ["is_symlink", "is_junction"])
+def test_relocatable_rejects_nonboolean_ancestor_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, method: str
+) -> None:
+    """False-like foreign host verdicts cannot attest an unlinked directory."""
+    candidate = tmp_path / "candidate"
+    _write(candidate, "real/file.bin", b"linked candidate bytes")
+    nested = candidate / "alias"
+    if method == _SYMLINK_METHOD:
+        try:
+            nested.symlink_to(candidate / "real", target_is_directory=True)
+        except OSError:
+            pytest.skip("filesystem symlinks unavailable")
+    else:
+        _write(candidate, "alias/file.bin", b"ordinary candidate bytes")
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            output_path="copied.bin",
+            source_path="alias/file.bin",
+            copy_candidate_file=True,
+        ),
+    ))
+    original = (
+        Path.is_symlink if method == _SYMLINK_METHOD else Path.is_junction
+    )
+
+    def forged_status(path: Path) -> bool:
+        if path == nested:
+            return cast("bool", cast("object", 0))
+        return original(path)
+
+    monkeypatch.setattr(Path, method, forged_status)
+    output = tmp_path / "out"
+    with pytest.raises(RelocationError, match="ancestor inspection failed"):
+        materialize_relocatable_plan(candidate, plan, output)
+    assert not output.exists()
+    assert not (tmp_path / ".out.relocatable-staging").exists()
 
 
 def test_relocatable_authoring_read_error_fails_closed(

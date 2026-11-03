@@ -497,12 +497,22 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
         if not _path_present(current, "relocatable path ancestor"):
             continue
         try:
-            linked = current.is_symlink() or current.is_junction()
+            symlink = current.is_symlink()
+            junction = (
+                current.is_junction()
+                if type(symlink) is bool and not symlink
+                else False
+            )
         except (OSError, ValueError, RuntimeError) as error:
             detail = _host_error_detail(error)
             message = f"ancestor inspection failed: {current}: {detail}"
             raise RelocationError(message) from error
-        if linked:
+        if type(symlink) is not bool or type(junction) is not bool:
+            message = (
+                f"ancestor inspection failed: {current}: non-native verdict"
+            )
+            raise RelocationError(message)
+        if symlink or junction:
             message = (
                 f"relocatable linked path component is not supported: {current}"
             )
@@ -521,6 +531,11 @@ def _safe_path(root: Path, relative_path: str) -> Path:
             f"relocatable path resolution failed: {relative_path!r}: {detail}"
         )
         raise RelocationError(message) from error
+    if type(resolved_path) is not type(Path()) or type(
+        resolved_root
+    ) is not type(Path()):
+        message = "relocatable path resolution requires native resolved Path"
+        raise RelocationError(message)
     try:
         _ = resolved_path.relative_to(resolved_root)
     except ValueError as error:
@@ -663,6 +678,9 @@ def _require_external_output_root(
         detail = _host_error_detail(error)
         message = f"relocatable root resolution failed: {detail}"
         raise RelocationError(message) from error
+    if type(candidate) is not type(Path()) or type(output) is not type(Path()):
+        message = "relocatable root resolution requires native resolved Path"
+        raise RelocationError(message)
     if output.is_relative_to(candidate):
         message = "relocatable output must not be inside the candidate source"
         raise RelocationError(message)
