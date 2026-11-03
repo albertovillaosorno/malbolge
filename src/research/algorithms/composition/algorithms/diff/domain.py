@@ -372,7 +372,9 @@ def _regular_module_path(path: Path) -> Path:
     return _resolved_native_module_path(path, receipt)
 
 
-def _restore_domain_registration(name: str, previous: ModuleType | None) -> None:
+def _restore_domain_registration(
+    name: str, previous: ModuleType | None
+) -> None:
     """Restore the last accepted module even after consumer key rebinding."""
     if previous is None:
         _ = sys.modules.pop(name, None)
@@ -500,7 +502,9 @@ def load_diff_domain(path: object) -> DiffDomain:
     try:
         domain = _validated_domain(module)
         if sys.modules.get(name) is not module:
-            message = "diff domain module registration changed during validation"
+            message = (
+                "diff domain module registration changed during validation"
+            )
             raise DomainContractError(message)
         return domain
     except Exception:

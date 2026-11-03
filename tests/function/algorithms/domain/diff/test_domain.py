@@ -816,7 +816,7 @@ def test_rejected_domain_restores_registration_after_self_rebinding(
 def test_domain_rejects_registration_swap_during_hook_lookup(
     tmp_path: Path, reload_existing: bool
 ) -> None:
-    """Late hook lookup cannot silently replace an admitted module registration."""
+    """Late hook lookup cannot silently replace a module registration."""
     module = tmp_path / "late_registration.py"
     name = domain_module._module_name(module.resolve())
     assert name not in sys.modules
