@@ -42,7 +42,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 from types import MemberDescriptorType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, NamedTuple, cast
 
 from algorithms.diff.admission import identity_tree
 from algorithms.diff.domain import DiffDomain, DomainContractError, load_diff_domain
@@ -133,6 +133,74 @@ class DiffRecipe:
     ignore_formatting_for_identity: bool = True
 
 
+# Public recipes can be passed through consumer callbacks that replace their
+# class descriptors. Read each original native field slot once before any
+# validation or domain execution, then carry this independent immutable view
+# through all subsequent authoring and publication steps.
+_RECIPE_SLOTS = {
+    name: cast("MemberDescriptorType", DiffRecipe.__dict__[name])
+    for name in DiffRecipe.__slots__
+}
+
+
+class _RecipeSnapshot(NamedTuple):
+    source_root: Path
+    oracle_root: Path
+    output_algorithm: Path
+    profile: str
+    mode: TransformMode
+    domain_module: Path | None
+    passthrough_roots: tuple[str, ...]
+    minimum_source_similarity: float
+    minimum_anchor_coverage: float
+    minimum_behavior_similarity: float
+    source_binding_threshold: float
+    source_binding_maximum_anchors: int
+    source_binding_minimum_files: int
+    ignore_comments_for_identity: bool
+    ignore_formatting_for_identity: bool
+
+
+type _RecipeLike = DiffRecipe | _RecipeSnapshot
+
+
+def _snapshot_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
+    """Capture original stored fields without late recipe class dispatch."""
+
+    def field(name: str) -> object:
+        return _RECIPE_SLOTS[name].__get__(recipe, DiffRecipe)
+
+    return _RecipeSnapshot(
+        source_root=cast("Path", field("source_root")),
+        oracle_root=cast("Path", field("oracle_root")),
+        output_algorithm=cast("Path", field("output_algorithm")),
+        profile=cast("str", field("profile")),
+        mode=cast("TransformMode", field("mode")),
+        domain_module=cast("Path | None", field("domain_module")),
+        passthrough_roots=cast("tuple[str, ...]", field("passthrough_roots")),
+        minimum_source_similarity=(
+            cast("float", field("minimum_source_similarity"))
+        ),
+        minimum_anchor_coverage=cast("float", field("minimum_anchor_coverage")),
+        minimum_behavior_similarity=(
+            cast("float", field("minimum_behavior_similarity"))
+        ),
+        source_binding_threshold=cast("float", field("source_binding_threshold")),
+        source_binding_maximum_anchors=(
+            cast("int", field("source_binding_maximum_anchors"))
+        ),
+        source_binding_minimum_files=(
+            cast("int", field("source_binding_minimum_files"))
+        ),
+        ignore_comments_for_identity=(
+            cast("bool", field("ignore_comments_for_identity"))
+        ),
+        ignore_formatting_for_identity=(
+            cast("bool", field("ignore_formatting_for_identity"))
+        ),
+    )
+
+
 class DiffGeneratorUnavailableError(RuntimeError):
     """Raised when a requested transform mode is not implemented yet."""
 
@@ -166,7 +234,7 @@ def _validate_binding_count(
     return value
 
 
-def _validate_binding_policy(recipe: DiffRecipe) -> None:
+def _validate_binding_policy(recipe: _RecipeLike) -> None:
     if recipe.source_binding_threshold <= 0.0:
         message = "source_binding_threshold must be greater than zero"
         raise ValueError(message)
@@ -229,7 +297,7 @@ def _resolve_recipe_path(path: Path, name: str) -> Path:
     return resolved
 
 
-def _validate_output_location(recipe: DiffRecipe) -> None:
+def _validate_output_location(recipe: _RecipeLike) -> None:
     output = _resolve_recipe_path(recipe.output_algorithm, "output_algorithm")
     for name, root in (
         ("source_root", recipe.source_root),
@@ -245,7 +313,7 @@ def _validate_output_location(recipe: DiffRecipe) -> None:
         raise ValueError(message)
 
 
-def _validate_recipe_paths(recipe: DiffRecipe) -> None:
+def _validate_recipe_paths(recipe: _RecipeLike) -> None:
     for value, name in (
         (recipe.source_root, "source_root"),
         (recipe.oracle_root, "oracle_root"),
@@ -274,7 +342,7 @@ def _validate_profile_text(value: object) -> None:
         raise ValueError(message)
 
 
-def _validate_recipe_identity(recipe: DiffRecipe) -> None:
+def _validate_recipe_identity(recipe: _RecipeLike) -> None:
     _validate_profile_text(recipe.profile)
     if _NATIVE_TYPE(recipe.mode) is not TransformMode:
         message = "mode must use the exact TransformMode type"
@@ -330,7 +398,7 @@ def _validate_passthrough_roots(value: object) -> None:
     _validate_passthrough_topology(roots)
 
 
-def _validate_identity_flags(recipe: DiffRecipe) -> None:
+def _validate_identity_flags(recipe: _RecipeLike) -> None:
     for name, value in (
         ("ignore_comments_for_identity", recipe.ignore_comments_for_identity),
         (
@@ -343,22 +411,24 @@ def _validate_identity_flags(recipe: DiffRecipe) -> None:
             raise TypeError(message)
 
 
-def _validate_recipe(recipe: DiffRecipe) -> None:
+def _validate_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
     if _NATIVE_TYPE(recipe) is not DiffRecipe:
         message = "diff recipe must use the exact DiffRecipe type"
         raise TypeError(message)
-    _validate_recipe_paths(recipe)
-    _validate_recipe_identity(recipe)
-    _validate_passthrough_roots(recipe.passthrough_roots)
-    _validate_identity_flags(recipe)
+    snapshot = _snapshot_recipe(recipe)
+    _validate_recipe_paths(snapshot)
+    _validate_recipe_identity(snapshot)
+    _validate_passthrough_roots(snapshot.passthrough_roots)
+    _validate_identity_flags(snapshot)
     for name, value in (
-        ("minimum_source_similarity", recipe.minimum_source_similarity),
-        ("minimum_anchor_coverage", recipe.minimum_anchor_coverage),
-        ("minimum_behavior_similarity", recipe.minimum_behavior_similarity),
-        ("source_binding_threshold", recipe.source_binding_threshold),
+        ("minimum_source_similarity", snapshot.minimum_source_similarity),
+        ("minimum_anchor_coverage", snapshot.minimum_anchor_coverage),
+        ("minimum_behavior_similarity", snapshot.minimum_behavior_similarity),
+        ("source_binding_threshold", snapshot.source_binding_threshold),
     ):
         _validate_fraction(name, value)
-    _validate_binding_policy(recipe)
+    _validate_binding_policy(snapshot)
+    return snapshot
 
 
 def _read_exact_identity_file(path: Path, record: FileRecord) -> bytes:
@@ -373,7 +443,7 @@ def _read_exact_identity_file(path: Path, record: FileRecord) -> bytes:
 
 
 def _raw_exact_identity(
-    recipe: DiffRecipe,
+    recipe: _RecipeLike,
     source: TreeSnapshot,
 ) -> IdentityTree:
     files = {
@@ -385,7 +455,7 @@ def _raw_exact_identity(
     return identity_tree(files)
 
 
-def _write_exact_algorithm(recipe: DiffRecipe) -> None:
+def _write_exact_algorithm(recipe: _RecipeLike) -> None:
     exact = build_exact_plan(
         recipe.source_root,
         recipe.oracle_root,
@@ -427,7 +497,7 @@ def _write_exact_algorithm(recipe: DiffRecipe) -> None:
     )
 
 
-def _preflight_domain(recipe: DiffRecipe) -> None:
+def _preflight_domain(recipe: _RecipeLike) -> None:
     if recipe.domain_module is None:
         message = "domain preflight requires a domain module"
         raise DiffGeneratorUnavailableError(message)
@@ -467,14 +537,14 @@ def write_algorithm(recipe: DiffRecipe) -> None:
         DiffGeneratorUnavailableError: Compatible emission is not implemented.
 
     """
-    _validate_recipe(recipe)
-    if recipe.domain_module is not None:
-        _preflight_domain(recipe)
-    elif recipe.mode is TransformMode.COMPATIBLE:
+    recipe_view = _validate_recipe(recipe)
+    if recipe_view.domain_module is not None:
+        _preflight_domain(recipe_view)
+    elif recipe_view.mode is TransformMode.COMPATIBLE:
         message = "compatible generation requires a domain module"
         raise DiffGeneratorUnavailableError(message)
-    if recipe.mode is TransformMode.EXACT_BASELINE:
-        _write_exact_algorithm(recipe)
+    if recipe_view.mode is TransformMode.EXACT_BASELINE:
+        _write_exact_algorithm(recipe_view)
         return
     message = (
         "compatible source-bound Rust emission is not implemented; "

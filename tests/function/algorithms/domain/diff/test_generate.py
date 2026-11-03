@@ -1614,3 +1614,152 @@ def test_domain_preflight_uses_stored_hooks_after_late_class_getter(
             write_algorithm(recipe)
     assert fake_calls == 0, "late class getter redirected domain validation"
     assert not recipe.output_algorithm.exists()
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "source_root",
+        "oracle_root",
+        "output_algorithm",
+        "profile",
+        "mode",
+        "domain_module",
+        "passthrough_roots",
+        "minimum_source_similarity",
+        "minimum_anchor_coverage",
+        "minimum_behavior_similarity",
+        "source_binding_threshold",
+        "source_binding_maximum_anchors",
+        "source_binding_minimum_files",
+        "ignore_comments_for_identity",
+        "ignore_formatting_for_identity",
+    ],
+)
+def test_recipe_rejects_late_class_getter_masking_invalid_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """A swapped class getter cannot make malformed stored policy valid."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    valid = getattr(recipe, field)
+    invalid = replace(recipe, **{field: object()})
+    reached_writer = False
+
+    def record_writer(_recipe: DiffRecipe) -> None:
+        nonlocal reached_writer
+        reached_writer = True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(DiffRecipe, field, property(lambda _: valid))
+        patch.setattr(generate_module, "_write_exact_algorithm", record_writer)
+        with pytest.raises(TypeError):
+            write_algorithm(invalid)
+    assert not reached_writer, f"forged {field} admitted invalid recipe"
+
+
+@pytest.mark.parametrize(
+    "field", ["source_root", "mode", "source_binding_threshold"]
+)
+def test_recipe_rejects_late_getattribute_masking_invalid_storage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """A replaced record attribute dispatcher cannot mask stored values."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    valid = getattr(recipe, field)
+    invalid = replace(recipe, **{field: object()})
+    native_getattribute = object.__getattribute__
+    reached_writer = False
+
+    def forged_getattribute(self: DiffRecipe, name: str) -> object:
+        if name == field:
+            return valid
+        return native_getattribute(self, name)
+
+    def record_writer(_recipe: DiffRecipe) -> None:
+        nonlocal reached_writer
+        reached_writer = True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(DiffRecipe, "__getattribute__", forged_getattribute)
+        patch.setattr(generate_module, "_write_exact_algorithm", record_writer)
+        with pytest.raises(TypeError):
+            write_algorithm(invalid)
+    assert not reached_writer, f"forged {field} admitted invalid recipe"
+
+
+def test_recipe_mode_remains_bound_to_admitted_storage_after_preflight(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A getter swapped during preflight cannot change the output mode."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    validate = generate_module._validate_recipe
+    reached_writer = False
+
+    def validating_then_swapping(value: DiffRecipe) -> object:
+        snapshot = validate(value)
+        monkeypatch.setattr(
+            DiffRecipe,
+            "mode",
+            property(lambda _: TransformMode.COMPATIBLE),
+        )
+        return snapshot
+
+    def record_writer(_recipe: DiffRecipe) -> None:
+        nonlocal reached_writer
+        reached_writer = True
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            generate_module, "_validate_recipe", validating_then_swapping
+        )
+        patch.setattr(generate_module, "_write_exact_algorithm", record_writer)
+        write_algorithm(recipe)
+    assert reached_writer, "late getter changed admitted generation mode"
+
+
+@pytest.mark.parametrize(
+    ("field", "forged"),
+    [
+        ("source_root", Path("/untrusted-source")),
+        ("oracle_root", Path("/untrusted-oracle")),
+        ("output_algorithm", Path("/untrusted-output")),
+        ("profile", "untrusted-profile"),
+        ("passthrough_roots", ("untrusted",)),
+        ("source_binding_threshold", 0.01),
+        ("source_binding_maximum_anchors", 255),
+        ("source_binding_minimum_files", 1),
+        ("domain_module", Path("/untrusted-module")),
+    ],
+)
+def test_recipe_publication_preserves_fields_after_late_getter_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    forged: object,
+) -> None:
+    """A post-preflight class edit cannot redirect a validated recipe."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    expected = getattr(recipe, field)
+    validate = generate_module._validate_recipe
+    observed: list[object] = []
+
+    def validating_then_swapping(value: DiffRecipe) -> object:
+        snapshot = validate(value)
+        monkeypatch.setattr(DiffRecipe, field, property(lambda _: forged))
+        return snapshot
+
+    def record_writer(value: object) -> None:
+        observed.append(getattr(value, field))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            generate_module, "_validate_recipe", validating_then_swapping
+        )
+        patch.setattr(generate_module, "_write_exact_algorithm", record_writer)
+        write_algorithm(recipe)
+    assert observed == [expected], f"late {field} getter changed output inputs"
