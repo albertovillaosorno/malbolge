@@ -36,9 +36,17 @@ from __future__ import annotations
 
 from builtins import any as _native_any
 from builtins import bool as _native_bool
+from builtins import bytes as _native_bytes
+from builtins import int as _native_int
+from builtins import isinstance as _native_isinstance
+from builtins import len as _native_len
+from builtins import range as _native_range
 from builtins import set as _native_set
 from builtins import sorted as _native_sorted
+from builtins import str as _native_str
 from builtins import sum as _native_sum
+from builtins import tuple as _native_tuple
+from builtins import type as _native_type
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
@@ -59,7 +67,10 @@ class TreeModelError(ValueError):
 
 
 def _validate_sha256_hex(value: object, context: str) -> None:
-    if type(value) is not str or len(value) != _SHA256_HEX_LENGTH:
+    if (
+        _native_type(value) is not _native_str
+        or _native_len(value) != _SHA256_HEX_LENGTH
+    ):
         message = f"{context} must be 64 lowercase hex digits"
         raise TreeModelError(message)
     if _native_any(char not in _HEX_DIGITS for char in value):
@@ -68,7 +79,7 @@ def _validate_sha256_hex(value: object, context: str) -> None:
 
 
 def _require_canonical_relative_path(value: object, context: str) -> None:
-    if type(value) is not str or not value:
+    if _native_type(value) is not _native_str or not value:
         message = f"{context} must be a canonical relative path"
         raise TreeModelError(message)
     # Security-critical path labels must not consult mutable pathlib methods.
@@ -106,7 +117,7 @@ class FileRecord:
         """
         _require_canonical_relative_path(self.path, "file record path")
         _validate_sha256_hex(self.sha256, "file record sha256")
-        if type(self.size) is not int or self.size < _ZERO:
+        if _native_type(self.size) is not _native_int or self.size < _ZERO:
             message = "file record size must be a non-negative integer"
             raise TreeModelError(message)
 
@@ -115,7 +126,7 @@ def _has_file_ancestor(path: str, file_paths: set[str]) -> bool:
     components = path.split("/")
     return _native_any(
         "/".join(components[:index]) in file_paths
-        for index in range(1, len(components))
+        for index in _native_range(1, _native_len(components))
     )
 
 
@@ -132,14 +143,18 @@ class TreeSnapshot:
             TreeModelError: File records are mutable, foreign, or unordered.
 
         """
-        if type(self.files) is not tuple:
-            message = "tree snapshot files must use the exact immutable tuple type"
+        if _native_type(self.files) is not _native_tuple:
+            message = (
+                "tree snapshot files must use the exact immutable tuple type"
+            )
             raise TreeModelError(message)
-        if _native_any(type(item) is not FileRecord for item in self.files):
+        if _native_any(
+            _native_type(item) is not FileRecord for item in self.files
+        ):
             message = "tree snapshot contains a foreign file record"
             raise TreeModelError(message)
-        paths = tuple(item.path for item in self.files)
-        if paths != tuple(_native_sorted(_native_set(paths))):
+        paths = _native_tuple(item.path for item in self.files)
+        if paths != _native_tuple(_native_sorted(_native_set(paths))):
             message = "tree snapshot paths must be unique and sorted"
             raise TreeModelError(message)
         file_paths = _native_set(paths)
@@ -170,7 +185,10 @@ class SourceSlice:
             TreeModelError: The range is negative or empty.
 
         """
-        if type(self.offset) is not int or type(self.length) is not int:
+        if (
+            _native_type(self.offset) is not _native_int
+            or _native_type(self.length) is not _native_int
+        ):
             message = "source slice coordinates must use exact integers"
             raise TreeModelError(message)
         if self.offset < _ZERO or self.length <= _ZERO:
@@ -191,7 +209,7 @@ class OracleLiteral:
             TreeModelError: Target literal is not exact bytes.
 
         """
-        if type(self.data) is not bytes:
+        if _native_type(self.data) is not _native_bytes:
             message = "oracle literal must use exact bytes"
             raise TreeModelError(message)
 
@@ -200,12 +218,14 @@ ExactSegment = SourceSlice | OracleLiteral
 
 
 def _validate_exact_segments(value: object) -> None:
-    if type(value) is not tuple:
+    if _native_type(value) is not _native_tuple:
         message = "exact instruction segments must use an immutable tuple"
         raise TreeModelError(message)
     segments = cast("tuple[object, ...]", value)
     allowed_types = {SourceSlice, OracleLiteral}
-    foreign = (type(segment) not in allowed_types for segment in segments)
+    foreign = (
+        _native_type(segment) not in allowed_types for segment in segments
+    )
     if _native_any(foreign):
         message = "exact instruction contains a foreign segment record"
         raise TreeModelError(message)
@@ -216,16 +236,21 @@ def _validate_exact_instruction_metadata(instruction: ExactInstruction) -> None:
         instruction.output_path,
         "exact instruction output path",
     )
-    if type(instruction.kind) is not ExactInstructionKind:
+    if _native_type(instruction.kind) is not ExactInstructionKind:
         message = "exact instruction kind must use the exact enum type"
         raise TreeModelError(message)
-    _validate_sha256_hex(instruction.expected_sha256, "exact instruction sha256")
+    _validate_sha256_hex(
+        instruction.expected_sha256, "exact instruction sha256"
+    )
     if instruction.source_path is not None:
         _require_canonical_relative_path(
             instruction.source_path,
             "exact instruction source path",
         )
-    if instruction.literal is not None and type(instruction.literal) is not bytes:
+    if (
+        instruction.literal is not None
+        and _native_type(instruction.literal) is not _native_bytes
+    ):
         message = "exact instruction literal must use exact bytes or None"
         raise TreeModelError(message)
     _validate_exact_segments(instruction.segments)
@@ -268,17 +293,29 @@ class ExactInstruction:
         raise TreeModelError(message)
 
     def _validate_copy(self) -> None:
-        if self.source_path is None or self.literal is not None or self.segments:
+        if (
+            self.source_path is None
+            or self.literal is not None
+            or self.segments
+        ):
             message = "copy-source requires only source_path"
             raise TreeModelError(message)
 
     def _validate_patch(self) -> None:
-        if self.source_path is None or self.literal is not None or not self.segments:
+        if (
+            self.source_path is None
+            or self.literal is not None
+            or not self.segments
+        ):
             message = "patch-source requires source_path and segments"
             raise TreeModelError(message)
 
     def _validate_literal(self) -> None:
-        if self.literal is None or self.source_path is not None or self.segments:
+        if (
+            self.literal is None
+            or self.source_path is not None
+            or self.segments
+        ):
             message = "literal-oracle requires only literal bytes"
             raise TreeModelError(message)
 
@@ -300,29 +337,35 @@ class ExactAuthoringPlan:
 
         """
         if (
-            type(self.source) is not TreeSnapshot
-            or type(self.target) is not TreeSnapshot
+            _native_type(self.source) is not TreeSnapshot
+            or _native_type(self.target) is not TreeSnapshot
         ):
             message = "exact plan snapshots must use exact TreeSnapshot records"
             raise TreeModelError(message)
-        if type(self.instructions) is not tuple or _native_any(
-            type(item) is not ExactInstruction for item in self.instructions
+        if _native_type(self.instructions) is not _native_tuple or _native_any(
+            _native_type(item) is not ExactInstruction
+            for item in self.instructions
         ):
             message = "exact plan instructions must be exact immutable records"
             raise TreeModelError(message)
-        paths = tuple(item.output_path for item in self.instructions)
-        if len(paths) != len(_native_set(paths)):
+        paths = _native_tuple(item.output_path for item in self.instructions)
+        if _native_len(paths) != _native_len(_native_set(paths)):
             message = "exact plan requires unique output paths"
             raise TreeModelError(message)
-        authored_outputs = tuple(
-            (item.output_path, item.expected_sha256) for item in self.instructions
+        authored_outputs = _native_tuple(
+            (item.output_path, item.expected_sha256)
+            for item in self.instructions
         )
-        target_outputs = tuple((item.path, item.sha256) for item in self.target.files)
+        target_outputs = _native_tuple(
+            (item.path, item.sha256) for item in self.target.files
+        )
         if authored_outputs != target_outputs:
             message = "exact plan instructions must match the target snapshot"
             raise TreeModelError(message)
         _require_passthrough_roots(self.passthrough_roots)
-        _require_static_target_outside_passthrough(self.target, self.passthrough_roots)
+        _require_static_target_outside_passthrough(
+            self.target, self.passthrough_roots
+        )
         _require_static_source_references(self)
 
 
@@ -371,9 +414,11 @@ def _require_static_instruction_consistency(
     if instruction.kind is ExactInstructionKind.PATCH_SOURCE and _native_any(
         segment.offset + segment.length > source.size
         for segment in instruction.segments
-        if type(segment) is SourceSlice
+        if _native_type(segment) is SourceSlice
     ):
-        message = f"exact plan source slice exceeds snapshot size: {source.path}"
+        message = (
+            f"exact plan source slice exceeds snapshot size: {source.path}"
+        )
         raise TreeModelError(message)
 
 
@@ -384,9 +429,9 @@ def _exact_segment_length(segment: ExactSegment) -> int:
         Number of output bytes from this exact segment.
 
     """
-    if isinstance(segment, SourceSlice):
+    if _native_isinstance(segment, SourceSlice):
         return segment.length
-    return len(segment.data)
+    return _native_len(segment.data)
 
 
 def _require_literal_output_consistency(
@@ -400,7 +445,7 @@ def _require_literal_output_consistency(
     """
     if literal is None:
         return
-    if len(literal) != target.size:
+    if _native_len(literal) != target.size:
         message = f"exact plan literal-oracle size differs: {target.path}"
         raise TreeModelError(message)
     if _native_sha256(literal).hexdigest() != target.sha256:
@@ -458,7 +503,7 @@ def _require_static_target_outside_passthrough(
 
 
 def _require_passthrough_roots(roots: object) -> None:
-    if type(roots) is not tuple:
+    if _native_type(roots) is not _native_tuple:
         message = "exact plan passthrough roots must use an immutable tuple"
         raise TreeModelError(message)
     for root in cast("tuple[object, ...]", roots):
@@ -467,7 +512,7 @@ def _require_passthrough_roots(roots: object) -> None:
 
 
 def _validate_passthrough_topology(ordered: tuple[str, ...]) -> None:
-    if ordered != tuple(_native_sorted(_native_set(ordered))):
+    if ordered != _native_tuple(_native_sorted(_native_set(ordered))):
         message = "exact plan passthrough roots must be unique and sorted"
         raise TreeModelError(message)
     for index, root in enumerate(ordered):
