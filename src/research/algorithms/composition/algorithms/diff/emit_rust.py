@@ -82,6 +82,13 @@ _NATIVE_TYPE = type
 _NATIVE_ERROR_ARGS_GETATTRIBUTE = BaseException.__getattribute__
 # Do not let late builtin exception aliases promote foreign error types.
 _NATIVE_EMISSION_ERROR_TYPES = (OSError, PermissionError, RuntimeError, ValueError)
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_UNICODE_ERROR = builtins.UnicodeError
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
+_NATIVE_FILE_EXISTS_ERROR = builtins.FileExistsError
 _NATIVE_STR_TYPE = str
 _NATIVE_INT_TYPE = int
 _NATIVE_BOOL_TYPE = bool
@@ -232,7 +239,10 @@ _PLAN_SLOTS = _record_slots(
 )
 # Reuse the original protected-envelope validator, not a replaceable late
 # __post_init__ attribute. Exact native records can bypass their constructor.
-_NATIVE_PROTECTED_PLAN_VALIDATOR = ProtectedExactPlan.__dict__["__post_init__"]
+_NATIVE_PROTECTED_PLAN_VALIDATOR = cast(
+    "Callable[[ProtectedExactPlan], None]",
+    ProtectedExactPlan.__dict__["__post_init__"],
+)
 _PAYLOAD_SLOTS = _record_slots(AuthenticatedPayload, ("ciphertext", "tag"))
 _BINDING_SLOTS = _record_slots(
     ThresholdBinding,
@@ -306,7 +316,7 @@ def _output_mkdir(path: Path) -> None:
     for spelling in _NATIVE_REVERSED(chain):
         try:
             _NATIVE_OS_MKDIR(spelling)
-        except FileExistsError:
+        except _NATIVE_FILE_EXISTS_ERROR:
             # The second parent-chain preflight rejects non-directories/links.
             continue
 
@@ -491,7 +501,7 @@ _GENERATED_HEADER = (
 def _runtime_template_text() -> str:
     try:
         return _NATIVE_TEMPLATE_READ(_RUNTIME_TEMPLATE)
-    except (OSError, UnicodeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_UNICODE_ERROR) as error:
         reason = _safe_emission_error_detail(error)
         message = f"Rust runtime template read failed: {reason}"
         raise RustEmissionError(message) from error
@@ -512,8 +522,8 @@ def _validate_emission_inputs(
     # A slotted native plan can be allocated without running __init__. Check
     # nested binding, metadata and required slots before reading the template.
     try:
-        _NATIVE_PROTECTED_PLAN_VALIDATOR(cast("ProtectedExactPlan", plan))
-    except (ProtectedPlanError, AttributeError) as error:
+        _NATIVE_PROTECTED_PLAN_VALIDATOR(plan)
+    except (ProtectedPlanError, _NATIVE_ATTRIBUTE_ERROR) as error:
         message = "Rust emission requires a valid native protected plan"
         raise RustEmissionError(message) from error
 
@@ -529,7 +539,7 @@ def _validate_output_path(output_path: object) -> None:
         raise RustEmissionError(message)
     try:
         _ = _NATIVE_OS_FSENCODE(_NATIVE_PATH_STRING(output_path))
-    except (UnicodeError, ValueError) as error:
+    except (_NATIVE_UNICODE_ERROR, _NATIVE_VALUE_ERROR) as error:
         message = "Rust transform output path is not filesystem-encodable"
         raise RustEmissionError(message) from error
 
@@ -615,9 +625,11 @@ def _require_native_output_status(
 def _output_mode(path: Path, description: str) -> int | None:
     try:
         receipt = _NATIVE_PATH_LSTAT(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_emission_error_detail(error)
         message = f"Rust output {description} status failed: {path}: {detail}"
         raise RustEmissionError(message) from error
@@ -632,7 +644,9 @@ def _output_redirects(path: Path, mode: int) -> bool:
         if S_ISLNK(mode):
             return True
         junction = _NATIVE_IS_JUNCTION(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         detail = _safe_emission_error_detail(error)
         message = f"Rust output junction status failed: {path}: {detail}"
         raise RustEmissionError(message) from error
@@ -680,7 +694,9 @@ def _prepare_output_path(output_path: Path) -> Path:
     _validate_output_parent_chain(parent)
     try:
         _output_mkdir(parent)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         message = (
             "Rust output parent creation failed: "
             f"{parent}: {_safe_emission_error_detail(error)}"
@@ -709,9 +725,11 @@ def _temporary_output_path(output_path: Path) -> Path:
 def _cleanup_owned_temporary(path: Path) -> str | None:
     try:
         _output_unlink(path)
-    except FileNotFoundError:
+    except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         return _safe_emission_error_detail(error)
     return None
 
@@ -723,7 +741,7 @@ def _write_complete_staged_source(stream: IO[str], source: str) -> None:
         or written != _NATIVE_LEN(source)
     ):
         message = "Rust staging write reported a short or invalid count"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _claim_and_write_temporary(path: Path, source: str) -> None:
@@ -733,7 +751,7 @@ def _claim_and_write_temporary(path: Path, source: str) -> None:
             owned = True
             _write_complete_staged_source(stream, source)
             stream.flush()
-    except OSError, ValueError, RuntimeError:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR):
         if owned:
             _ = _cleanup_owned_temporary(path)
         raise
@@ -814,7 +832,9 @@ def _require_output_not_runtime_template(output_path: Path) -> None:
     try:
         output = _NATIVE_RESOLVE(output_path)
         template = _NATIVE_RESOLVE(_RUNTIME_TEMPLATE)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         message = "Rust output path resolution failed"
         raise RustEmissionError(message) from error
     _require_native_host_realpath()
@@ -847,7 +867,9 @@ def write_rust_transform(
     temporary = _temporary_output_path(prepared_output)
     try:
         _claim_and_write_temporary(temporary, source)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         _raise_publication_error(error)
     expected = source.encode("utf-8")
     try:
@@ -874,6 +896,8 @@ def write_rust_transform(
             message = f"{detail}; temporary cleanup failed: {cleanup_error}"
             raise RustEmissionError(message) from error
         raise
-    except (OSError, ValueError, RuntimeError) as error:
+    except (
+        _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
+    ) as error:
         cleanup_error = _cleanup_owned_temporary(temporary)
         _raise_publication_error(error, cleanup_error=cleanup_error)

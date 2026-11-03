@@ -3156,3 +3156,186 @@ def test_writer_stage_rejects_late_path_from_parsed_parts(
         with pytest.raises(RustEmissionError, match="path hooks changed"):
             _ = stage(output)
     assert calls == 0, "late path factory redirected temporary stage"
+
+
+# Keep the private emission checks typed without changing their production API.
+_NATIVE_EMIT_OUTPUT_MODE = cast(
+    "Callable[[Path, str], int | None]", vars(emit_rust_module)["_output_mode"]
+)
+_NATIVE_EMIT_CLEANUP = cast(
+    "Callable[[Path], str | None]", vars(emit_rust_module)["_cleanup_owned_temporary"]
+)
+_NATIVE_EMIT_MKDIR = cast(
+    "Callable[[Path], None]", vars(emit_rust_module)["_output_mkdir"]
+)
+_NATIVE_EMIT_TEMPLATE = cast(
+    "Callable[[], str]", vars(emit_rust_module)["_runtime_template_text"]
+)
+_NATIVE_EMIT_VALIDATE_PATH = cast(
+    "Callable[[object], None]", vars(emit_rust_module)["_validate_output_path"]
+)
+_NATIVE_EMIT_WRITE_SOURCE = cast(
+    "Callable[[IO[str], str], None]",
+    vars(emit_rust_module)["_write_complete_staged_source"],
+)
+
+
+def test_emitter_status_cannot_hide_denial_as_missing_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late FileNotFoundError aliases cannot make failed status a free leaf."""
+    failure = PermissionError("native status denied")
+    native_missing = builtins.FileNotFoundError
+    caught: Exception | None = None
+
+    def denied(_path: Path) -> os.stat_result:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "_NATIVE_PATH_LSTAT", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            _ = _NATIVE_EMIT_OUTPUT_MODE(Path("output.rs"), "file")
+        except (RustEmissionError, PermissionError) as error:
+            caught = error
+        finally:
+            builtins.FileNotFoundError = native_missing
+    assert type(caught) is RustEmissionError
+    assert caught.__cause__ is failure
+
+
+def test_emitter_cleanup_does_not_hide_denial_as_missing_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed owned-stage unlink must not certify a missing stage."""
+    failure = PermissionError("native unlink denied")
+    native_missing = builtins.FileNotFoundError
+
+    def denied(_path: Path) -> None:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "_output_unlink", denied)
+        patched.setattr(builtins, "FileNotFoundError", PermissionError)
+        try:
+            result = _NATIVE_EMIT_CLEANUP(Path("stage.rs"))
+        finally:
+            builtins.FileNotFoundError = native_missing
+    assert result == "native unlink denied"
+
+
+def test_emitter_parent_mkdir_does_not_ignore_denial_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late FileExistsError alias cannot suppress a denied directory."""
+    failure = PermissionError("native mkdir denied")
+    native_exists = builtins.FileExistsError
+    caught: Exception | None = None
+
+    def denied(_path: str) -> None:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "_NATIVE_OS_MKDIR", denied)
+        patched.setattr(builtins, "FileExistsError", PermissionError)
+        try:
+            _NATIVE_EMIT_MKDIR(Path("output"))
+        except PermissionError as error:
+            caught = error
+        finally:
+            builtins.FileExistsError = native_exists
+    assert caught is failure
+
+
+def test_emitter_status_wraps_native_error_after_late_oserror_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native status errors remain typed after OSError name replacement."""
+    failure = PermissionError("native status denied")
+    native_oserror = builtins.OSError
+    caught: Exception | None = None
+
+    def denied(_path: Path) -> os.stat_result:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "_NATIVE_PATH_LSTAT", denied)
+        patched.setattr(builtins, "OSError", LookupError)
+        try:
+            _ = _NATIVE_EMIT_OUTPUT_MODE(Path("output.rs"), "file")
+        except (RustEmissionError, PermissionError) as error:
+            caught = error
+        finally:
+            builtins.OSError = native_oserror
+    assert type(caught) is RustEmissionError
+    assert caught.__cause__ is failure
+
+
+def test_emitter_template_wraps_native_unicode_failure_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native decode errors cannot escape as raw template read failures."""
+    failure = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid input")
+    native_unicode_error = builtins.UnicodeError
+    caught: Exception | None = None
+
+    def denied(_path: Path) -> str:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "_NATIVE_TEMPLATE_READ", denied)
+        patched.setattr(builtins, "UnicodeError", LookupError)
+        try:
+            _ = _NATIVE_EMIT_TEMPLATE()
+        except (RustEmissionError, UnicodeDecodeError) as error:
+            caught = error
+        finally:
+            builtins.UnicodeError = native_unicode_error
+    assert type(caught) is RustEmissionError
+    assert caught.__cause__ is failure
+
+
+def test_emitter_encoding_wraps_native_valueerror_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid output codec reports RustEmissionError after alias swaps."""
+    failure = ValueError("native encoding denied")
+    native_value_error = builtins.ValueError
+    caught: Exception | None = None
+
+    def denied(_path: str) -> bytes:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "_NATIVE_OS_FSENCODE", denied)
+        patched.setattr(builtins, "ValueError", LookupError)
+        try:
+            _NATIVE_EMIT_VALIDATE_PATH(Path("output.rs"))
+        except (RustEmissionError, native_value_error) as error:
+            caught = error
+        finally:
+            builtins.ValueError = native_value_error
+    assert type(caught) is RustEmissionError
+    assert caught.__cause__ is failure
+
+
+def test_emitter_short_write_raises_native_valueerror_after_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Short writes do not raise a foreign error class after late aliases."""
+    native_value_error = builtins.ValueError
+    caught: Exception | None = None
+
+    class ShortWriter:
+        def write(self, _source: str) -> int:
+            return 0
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "ValueError", LookupError)
+        try:
+            _NATIVE_EMIT_WRITE_SOURCE(cast("IO[str]", cast("object", ShortWriter())), "payload")
+        except (native_value_error, LookupError) as error:
+            caught = error
+        finally:
+            builtins.ValueError = native_value_error
+    assert type(caught) is native_value_error
