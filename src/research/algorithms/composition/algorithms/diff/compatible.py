@@ -42,7 +42,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
-from pathlib import Path, PurePosixPath, PureWindowsPath
+from pathlib import Path
 from stat import S_ISLNK
 from typing import TYPE_CHECKING, cast
 
@@ -57,12 +57,12 @@ from algorithms.diff.exact import (
 )
 from algorithms.diff.gate import require_transform_admission
 from algorithms.diff.mapped import MappedView
-from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.model import (
     ExactInstruction,
     ExactInstructionKind,
     OracleLiteral,
     TreeSnapshot,
+    reserved_windows_component,
 )
 from algorithms.diff.publication import publish_directory_no_replace
 from algorithms.diff.semantic import (
@@ -77,9 +77,6 @@ if TYPE_CHECKING:
 
 _ONE = 1
 _STAGING_SUFFIX = ".compatible-staging"
-_PARENT = ".."
-_DOT = "."
-_BACKSLASH = "\\"
 _NUL = "\x00"
 _HEX_DIGITS = frozenset("0123456789abcdef")
 # Preserve metadata admission against late process-global builtin replacements.
@@ -712,20 +709,16 @@ def _record_map(snapshot: TreeSnapshot) -> dict[str, FileRecord]:
 
 
 def _validate_relative_path(relative_path: str) -> str:
-    candidate = PurePosixPath(relative_path)
+    # Native string components are the path authority. PurePath delegates to
+    # mutable class and parser hooks that domain callbacks can replace.
     unsafe = (
         not relative_path
-        or _BACKSLASH in relative_path
         or _NUL in relative_path
-        or relative_path == _DOT
-        or candidate.is_absolute()
-        or _NATIVE_BOOL(PureWindowsPath(relative_path).drive)
         or _NATIVE_ANY(
-            reserved_windows_component(component)
+            component in ("", ".", "..")
+            or reserved_windows_component(component)
             for component in relative_path.split("/")
         )
-        or _PARENT in candidate.parts
-        or candidate.as_posix() != relative_path
     )
     if unsafe:
         message = f"unsafe compatible tree path: {relative_path!r}"
@@ -755,7 +748,7 @@ def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
 
 def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
     current = root
-    for component in PurePosixPath(relative_path).parts[:-1]:
+    for component in relative_path.split("/")[:-1]:
         current /= component
         status = _path_status(current, "compatible path ancestor")
         if status is not None and _is_linked_ancestor(current, status):
@@ -767,7 +760,7 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
 
 def _safe_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
-    path = root.joinpath(*PurePosixPath(normalized).parts)
+    path = root.joinpath(*normalized.split("/"))
     try:
         resolved_path = _NATIVE_RESOLVE(path)
         resolved_root = _NATIVE_RESOLVE(root)

@@ -2857,6 +2857,48 @@ def test_compatible_rejects_late_ntpath_dependencies(
                 )
 
 
+@pytest.mark.parametrize(
+    ("unsafe", "hook"),
+    [
+        ("nested/../escape", "parts"),
+        ("nested//alias", "as_posix"),
+        ("/absolute", "is_absolute"),
+    ],
+)
+@pytest.mark.parametrize("role", ["output", "source"])
+def test_compatible_rejects_late_posix_path_hooks(
+    unsafe: str,
+    hook: str,
+    role: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumer hooks cannot rewrite relative-path lexical admission."""
+    from pathlib import PurePosixPath
+
+    with monkeypatch.context() as patch:
+        if hook == "parts":
+            patch.setattr(
+                PurePosixPath, "parts", property(lambda _path: ("safe",))
+            )
+        elif hook == "as_posix":
+            patch.setattr(PurePosixPath, "as_posix", lambda _path: unsafe)
+        else:
+            patch.setattr(PurePosixPath, "is_absolute", lambda _path: False)
+        with pytest.raises(CompatiblePlanError, match="unsafe compatible"):
+            if role == "output":
+                _ = CompatibleInstruction(
+                    output_path=unsafe,
+                    kind=CompatibleFileKind.CREATE_LITERAL,
+                    literal=b"target",
+                )
+            else:
+                _ = CompatibleInstruction(
+                    output_path="out.bin",
+                    kind=CompatibleFileKind.COPY_CANDIDATE,
+                    source_path=unsafe,
+                )
+
+
 def test_compatible_request_path_ignores_late_fsencode(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
