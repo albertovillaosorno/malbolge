@@ -39,7 +39,13 @@ from types import MemberDescriptorType, SimpleNamespace
 from typing import cast
 
 import pytest
-from algorithms.diff.mapped import MappedUnit, MappedView, MappedViewError
+from algorithms.diff.mapped import (
+    MappedUnit,
+    MappedView,
+    MappedViewError,
+    read_mapped_unit,
+    read_mapped_view,
+)
 
 _CANONICAL_PAIR = b"AB"
 _CANONICAL_WITH_MARKER = b"AE"
@@ -630,3 +636,105 @@ def test_mapped_constructors_ignore_late_class_field_setters(
         with pytest.raises(MappedViewError):
             _ = factory(**values)
     assert calls == 0, "mutable setter rewrote the original mapped storage"
+
+
+@pytest.mark.parametrize("field,invalid", [
+    ("canonical", b""),
+    ("canonical", bytearray(b"A")),
+    ("raw_start", True),
+    ("raw_end", -1),
+])
+def test_public_mapped_unit_reader_revalidates_native_storage(
+    field: str, invalid: object
+) -> None:
+    """Public mapped reads cannot admit a fabricated same-type unit."""
+    unit = object.__new__(MappedUnit)
+    values: dict[str, object] = {"canonical": b"A", "raw_start": 0, "raw_end": 1}
+    values[field] = invalid
+    for name, value in values.items():
+        slot = cast("MemberDescriptorType", MappedUnit.__dict__[name])
+        slot.__set__(unit, value)
+    with pytest.raises(MappedViewError):
+        _ = read_mapped_unit(unit)
+
+
+@pytest.mark.parametrize("corruption", [
+    "mutable-raw", "mutable-units", "escaping-unit", "missing-units",
+])
+def test_public_mapped_view_reader_revalidates_native_storage(
+    corruption: str,
+) -> None:
+    """Semantic consumers must not read constructor-bypassed canonical views."""
+    view = object.__new__(MappedView)
+    raw: object = b"abc"
+    units: object = (MappedUnit(b"A", 0, 1),)
+    if corruption == "mutable-raw":
+        raw = bytearray(b"abc")
+    elif corruption == "mutable-units":
+        units = list(cast("tuple[MappedUnit, ...]", units))
+    elif corruption == "escaping-unit":
+        units = (MappedUnit(b"A", 0, 4),)
+    raw_slot = cast("MemberDescriptorType", MappedView.__dict__["raw"])
+    raw_slot.__set__(view, raw)
+    if corruption != "missing-units":
+        unit_slot = cast("MemberDescriptorType", MappedView.__dict__["units"])
+        unit_slot.__set__(view, units)
+    with pytest.raises(MappedViewError):
+        _ = read_mapped_view(view)
+
+
+@pytest.mark.parametrize("record", ["unit", "view"])
+def test_public_mapped_readers_reject_uninitialized_native_records(
+    record: str,
+) -> None:
+    """Uninitialized native mapped records produce typed boundary errors."""
+    with pytest.raises(MappedViewError, match="incomplete"):
+        if record == "unit":
+            _ = read_mapped_unit(object.__new__(MappedUnit))
+        else:
+            _ = read_mapped_view(object.__new__(MappedView))
+
+
+@pytest.mark.parametrize("record", ["unit", "view"])
+def test_public_mapped_readers_ignore_late_validator_override(
+    monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Late class validation hooks cannot admit invalid original storage."""
+    calls = 0
+
+    def replaced_validator(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    if record == "unit":
+        forged = object.__new__(MappedUnit)
+        for name, value in {
+            "canonical": bytearray(b"A"), "raw_start": 0, "raw_end": 1,
+        }.items():
+            slot = cast("MemberDescriptorType", MappedUnit.__dict__[name])
+            slot.__set__(forged, value)
+        owner = MappedUnit
+        action = lambda: read_mapped_unit(forged)
+    else:
+        forged_view = object.__new__(MappedView)
+        for name, value in {"raw": bytearray(b"A"), "units": ()}.items():
+            slot = cast("MemberDescriptorType", MappedView.__dict__[name])
+            slot.__set__(forged_view, value)
+        owner = MappedView
+        action = lambda: read_mapped_view(forged_view)
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__post_init__", replaced_validator)
+        with pytest.raises(MappedViewError):
+            _ = action()
+    assert calls == 0
+
+
+@pytest.mark.parametrize("record", ["unit", "view"])
+def test_public_mapped_readers_require_exact_record_types(record: str) -> None:
+    """Foreign subclasses or records do not enter native slot readers."""
+    if record == "unit":
+        with pytest.raises(MappedViewError, match="exact MappedUnit"):
+            _ = read_mapped_unit(cast("MappedUnit", object()))
+    else:
+        with pytest.raises(MappedViewError, match="exact MappedView"):
+            _ = read_mapped_view(cast("MappedView", object()))

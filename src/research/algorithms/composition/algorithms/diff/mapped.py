@@ -76,7 +76,7 @@ class MappedUnit:
             MappedViewError: Canonical bytes or raw coordinates are invalid.
 
         """
-        canonical, start, end = read_mapped_unit(self)
+        canonical, start, end = _stored_mapped_unit(self)
         if _NATIVE_TYPE(canonical) is not _NATIVE_BYTES or not canonical:
             message = "mapped canonical unit must be non-empty exact bytes"
             raise MappedViewError(message)
@@ -108,13 +108,26 @@ _UNIT_START_SLOT = cast(
 _UNIT_END_SLOT = cast("MemberDescriptorType", MappedUnit.__dict__["raw_end"])
 
 
-def read_mapped_unit(unit: MappedUnit) -> tuple[bytes, int, int]:
-    """Read canonical bytes and coordinates from original unit storage."""
+def _stored_mapped_unit(unit: MappedUnit) -> tuple[bytes, int, int]:
+    """Read raw original slots only inside an already validating boundary."""
     return (
         cast("bytes", _UNIT_CANONICAL_SLOT.__get__(unit, MappedUnit)),
         cast("int", _UNIT_START_SLOT.__get__(unit, MappedUnit)),
         cast("int", _UNIT_END_SLOT.__get__(unit, MappedUnit)),
     )
+
+
+def read_mapped_unit(unit: MappedUnit) -> tuple[bytes, int, int]:
+    """Validate native unit storage before exposing canonical span evidence."""
+    if _NATIVE_TYPE(unit) is not MappedUnit:
+        message = "mapped unit reader requires the exact MappedUnit type"
+        raise MappedViewError(message)
+    try:
+        _MAPPED_UNIT_VALIDATOR(unit)
+    except AttributeError as error:
+        message = "mapped unit reader has incomplete native metadata"
+        raise MappedViewError(message) from error
+    return _stored_mapped_unit(unit)
 
 
 def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
@@ -126,7 +139,7 @@ def _validate_view_units(raw: bytes, units: tuple[MappedUnit, ...]) -> None:
         except AttributeError as error:
             message = "mapped view contains an incomplete native unit"
             raise MappedViewError(message) from error
-        _, start, end = read_mapped_unit(unit)
+        _, start, end = _stored_mapped_unit(unit)
         if end > _NATIVE_LEN(raw):
             message = "mapped unit escapes raw source bytes"
             raise MappedViewError(message)
@@ -156,7 +169,7 @@ class MappedView:
             MappedViewError: A unit escapes raw bytes or overlaps a prior unit.
 
         """
-        raw, units = read_mapped_view(self)
+        raw, units = _stored_mapped_view(self)
         if _NATIVE_TYPE(raw) is not _NATIVE_BYTES:
             message = "mapped raw source must use exact bytes"
             raise MappedViewError(message)
@@ -175,7 +188,7 @@ class MappedView:
         """Concatenated canonical identity stream."""
         _revalidate_view(self)
         return b"".join(
-            read_mapped_unit(unit)[0] for unit in read_mapped_view(self)[1]
+            _stored_mapped_unit(unit)[0] for unit in _stored_mapped_view(self)[1]
         )
 
     @property
@@ -183,7 +196,7 @@ class MappedView:
         """Canonical unit sequence for placement matching."""
         _revalidate_view(self)
         return _NATIVE_TUPLE(
-            read_mapped_unit(unit)[0] for unit in read_mapped_view(self)[1]
+            _stored_mapped_unit(unit)[0] for unit in _stored_mapped_view(self)[1]
         )
 
 
@@ -203,8 +216,8 @@ def _revalidate_view(view: MappedView) -> None:
         raise MappedViewError(message) from error
 
 
-def read_mapped_view(view: MappedView) -> tuple[bytes, tuple[MappedUnit, ...]]:
-    """Read raw bytes and units without invoking mutable class getters."""
+def _stored_mapped_view(view: MappedView) -> tuple[bytes, tuple[MappedUnit, ...]]:
+    """Read original slots only inside a validating mapped-view boundary."""
     return (
         cast("bytes", _VIEW_RAW_SLOT.__get__(view, MappedView)),
         cast(
@@ -212,3 +225,12 @@ def read_mapped_view(view: MappedView) -> tuple[bytes, tuple[MappedUnit, ...]]:
             _VIEW_UNITS_SLOT.__get__(view, MappedView),
         ),
     )
+
+
+def read_mapped_view(view: MappedView) -> tuple[bytes, tuple[MappedUnit, ...]]:
+    """Validate a native view before exposing its source and canonical units."""
+    if _NATIVE_TYPE(view) is not MappedView:
+        message = "mapped view reader requires the exact MappedView type"
+        raise MappedViewError(message)
+    _revalidate_view(view)
+    return _stored_mapped_view(view)
