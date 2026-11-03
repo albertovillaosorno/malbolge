@@ -80,6 +80,8 @@ _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_TYPE = type
 # Read the original exception slot without later builtin name substitution.
 _NATIVE_ERROR_ARGS_GETATTRIBUTE = BaseException.__getattribute__
+# Do not let late builtin exception aliases promote foreign error types.
+_NATIVE_EMISSION_ERROR_TYPES = (OSError, PermissionError, RuntimeError, ValueError)
 _NATIVE_STR_TYPE = str
 _NATIVE_INT_TYPE = int
 _NATIVE_BOOL_TYPE = bool
@@ -573,13 +575,10 @@ def _safe_emission_error_detail(error: Exception) -> str:
         Exact native single-string reason or the exception class name.
 
     """
-    if _NATIVE_TYPE(error) in {
-        RustEmissionError,
-        OSError,
-        PermissionError,
-        RuntimeError,
-        ValueError,
-    }:
+    if (
+        _NATIVE_TYPE(error) is RustEmissionError
+        or _NATIVE_TYPE(error) in _NATIVE_EMISSION_ERROR_TYPES
+    ):
         # Exact native error classes can acquire late instance accessors.
         # Read the BaseException slot without invoking the mutable getter.
         arguments = cast(

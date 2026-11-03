@@ -191,3 +191,20 @@ def test_emitter_error_detail_pins_original_base_exception_accessor(
         detail = emit_rust._safe_emission_error_detail(failure)
     assert detail == "trusted native reason"
     assert callbacks == 0
+
+
+@pytest.mark.parametrize(
+    "alias", ["OSError", "PermissionError", "RuntimeError", "ValueError"]
+)
+def test_emitter_error_detail_rejects_late_builtin_error_type_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A foreign error cannot become a trusted native diagnostic by alias."""
+    class ForeignFailure(Exception):
+        pass
+
+    foreign = ForeignFailure("forged trusted reason")
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, alias, ForeignFailure)
+        detail = emit_rust._safe_emission_error_detail(foreign)
+    assert detail == "ForeignFailure"
