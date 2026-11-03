@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+from builtins import sorted as _native_sorted
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
@@ -134,7 +135,7 @@ class TreeSnapshot:
             message = "tree snapshot contains a foreign file record"
             raise TreeModelError(message)
         paths = tuple(item.path for item in self.files)
-        if paths != tuple(sorted(set(paths))):
+        if paths != tuple(_native_sorted(set(paths))):
             message = "tree snapshot paths must be unique and sorted"
             raise TreeModelError(message)
         file_paths = set(paths)
@@ -459,7 +460,7 @@ def _require_passthrough_roots(roots: object) -> None:
 
 
 def _validate_passthrough_topology(ordered: tuple[str, ...]) -> None:
-    if ordered != tuple(sorted(set(ordered))):
+    if ordered != tuple(_native_sorted(set(ordered))):
         message = "exact plan passthrough roots must be unique and sorted"
         raise TreeModelError(message)
     for index, root in enumerate(ordered):

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import ntpath
 import os
@@ -359,6 +360,40 @@ def test_exact_passthrough_roots_ignore_host_reserved_policy_mutation(
         _ = snapshot_tree_excluding(source, (reserved_root,))
     with pytest.raises(TreeModelError, match="relative path"):
         _ = build_exact_plan(source, oracle, passthrough_roots=(reserved_root,))
+
+
+def test_tree_snapshot_order_resists_late_sorted_hook_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable global sorter cannot certify out-of-order source records."""
+    reversed_records = (
+        FileRecord("z.bin", "0" * 64, 1),
+        FileRecord("a.bin", "1" * 64, 1),
+    )
+    calls = 0
+
+    def forged_sorted(values: object) -> list[str]:
+        """Return the attacker-chosen reversed record order.
+
+        Returns:
+            An unsorted forged record list.
+
+        """
+        nonlocal calls
+        del values
+        calls += 1
+        return ["z.bin", "a.bin"]
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "sorted", forged_sorted)
+        try:
+            _ = TreeSnapshot(files=reversed_records)
+        except TreeModelError:
+            rejected = True
+
+    _expect(rejected, "forged sorted hook admitted an unsorted snapshot")
+    _expect(calls == 0, "hostile sorting hook was consulted")
 
 
 def test_direct_tree_snapshot_rejects_file_ancestor_collisions() -> None:
