@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 import hashlib
 import importlib.util
@@ -64,6 +65,9 @@ if TYPE_CHECKING:
 
 
 _NUL = "\x00"
+# Domain validation must not trust builtins replaced by imported consumers.
+_NATIVE_CALLABLE = builtins.callable
+_NATIVE_GETATTR = builtins.getattr
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_PATH_TYPE = type(Path())
 _NATIVE_PATH_STRING = Path.__str__
@@ -135,7 +139,7 @@ class DiffDomain:
             ),
         )
         for name, hook in hooks:
-            if not callable(hook):
+            if not _NATIVE_CALLABLE(hook):
                 message = f"diff domain hook must be callable: {name}"
                 raise DomainContractError(message)
 
@@ -336,11 +340,11 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None]:
 
 def _callable(module: ModuleType, name: str) -> Callable[..., object]:
     try:
-        value = getattr(module, name, None)
+        value = _NATIVE_GETATTR(module, name, None)
     except Exception as error:
         message = f"diff domain hook lookup failed for {name!r}"
         raise DomainContractError(message) from error
-    if not callable(value):
+    if not _NATIVE_CALLABLE(value):
         message = f"diff domain module requires callable {name!r}"
         raise DomainContractError(message)
     return value

@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import replace
 import hashlib
 import importlib.machinery
@@ -41,6 +42,7 @@ import importlib.util
 import os
 from pathlib import Path
 import sys
+from types import ModuleType
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import cast
@@ -53,7 +55,6 @@ import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from types import ModuleType
 
     from algorithms.diff.mapped import MappedView
 
@@ -272,6 +273,51 @@ def test_direct_domain_bundle_rejects_foreign_hook(tmp_path: Path) -> None:
                 "Callable[[str, bytes], MappedView | None]", object()
             ),
         )
+
+
+def test_direct_domain_rejects_late_callable_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Consumer overrides cannot convert a non-hook into trusted policy."""
+    module = tmp_path / "domain.py"
+    _write(module, _COMPLETE)
+    domain = load_diff_domain(module)
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "callable", lambda value: True)
+        try:
+            _ = replace(
+                domain,
+                map_compatible_file=cast(
+                    "Callable[[str, bytes], MappedView | None]", object()
+                ),
+            )
+        except DomainContractError:
+            rejected = True
+    assert rejected, "mutable callable admitted a non-callable consumer hook"
+
+
+def test_domain_hook_resolution_ignores_late_getattr_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A global hook shim cannot inject a missing consumer contract field."""
+    module = ModuleType("missing_consumer_hook")
+    calls = 0
+
+    def spoof_getattr(obj: object, name: str, default: object = None) -> object:
+        nonlocal calls
+        calls += 1
+        return lambda: None
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "getattr", spoof_getattr)
+        try:
+            _ = domain_module._callable(module, "build_behavior_programs")
+        except DomainContractError:
+            rejected = True
+    assert rejected, "mutable getattr admitted a missing consumer hook"
+    assert calls == 0, "untrusted global hook lookup was consulted"
 
 
 def test_rejected_domain_module_is_not_left_registered(tmp_path: Path) -> None:
