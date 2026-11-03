@@ -127,6 +127,14 @@ format.
   diff run passed all 3,519 tests; downstream DOOM generator checks also passed
   65 tests with one skip. The older 35 relocatable-test typing diagnostics,
   global Jig graph absence, and external filesystem races remain outstanding.
+- Relocatable path integrity now uses import-original `any()` for both path
+  and parent-sequence hook comparisons (`4299dbd38`). Three red-first cases
+  exposed late hook execution and a false output denial through a replaced
+  builtin. All 266 postcommit relocatable tests pass; Ruff, strict source
+  typing, and diff checks are clean. A fresh complete diff run passed 3,576
+  tests in 118.76 seconds across the combined shared fixes. The 35 inherited
+  test typing diagnostics, degraded global Jig graph, and external filesystem
+  races remain open.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused

@@ -1756,6 +1756,20 @@ stabilized, a separate later integrated diff run passed all 3,519 tests;
 65 downstream DOOM generator tests also passed with one skip. The global
 Jig graph and external filesystem race limitations remain open.
 
+Relocatable native path-hook integrity now uses the import-captured
+`builtins.any` (`4299dbd38`) for both the `PurePath` ancestry sequence and
+the concrete path-hook comparisons. Two late global `any()` calls previously
+allowed an untrusted `Path.with_segments` or parents membership hook to run
+unchecked, or falsely rejected an external destination when replaced with
+an always-true predicate. Three red-first regressions now pass without
+consulting substituted hooks; all 266 postcommit relocatable tests, scoped
+Ruff, strict source BasedPyright, and diff checks pass. The original 35
+relocatable-test typing diagnostics are unchanged. A fresh integrated diff
+run against the combined emitter, publisher, and relocatable fixes passed all
+3,576 tests in 118.76 seconds. Host/filesystem races and direct trusted-state
+mutation remain outside this guard; global Jig lacks a clean verdict due to
+the degraded graph state.
+
 Relocatable authoring now creates internal `RangeLocator`,
 `RelocatableSourceRange`, `RelocatableInstruction`, and
 `RelocatableAuthoringPlan` records using captured native allocation and the
