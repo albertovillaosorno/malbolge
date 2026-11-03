@@ -2803,6 +2803,36 @@ def test_host_c_bundle_fingerprint_rejects_substituted_json_receipt(
     assert not (tmp_path / "bundles").exists()
 
 
+@pytest.mark.parametrize("source_kind", ("forged", "invalid-source"))
+def test_host_c_bundle_fingerprint_rejects_replaced_cached_decoder(
+    monkeypatch: pytest.MonkeyPatch, source_kind: str
+) -> None:
+    """A saved loads function still consults a mutable cached decoder."""
+    prefix = reference_study.target_profile.PROFILE_FINGERPRINT_PREFIX
+    actual = prefix + "a" * analyze.SHA256_HEX_LENGTH
+    fabricated = prefix + "b" * analyze.SHA256_HEX_LENGTH
+    manifest = (
+        json.dumps({"identity": {"target_profile_fingerprint": actual}}).encode()
+        if source_kind == "forged"
+        else b"invalid generated challenge manifest"
+    )
+
+    class ForgedCachedDecoder:
+        def decode(self, _source: str) -> dict[str, object]:
+            return {"identity": {"target_profile_fingerprint": fabricated}}
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json, "_default_decoder", ForgedCachedDecoder())
+        # This really forges the captured json.loads function used before
+        # source-class corroboration; a JSONDecoder-class-only patch does not.
+        assert json.loads(manifest)["identity"]["target_profile_fingerprint"] == fabricated
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="bundle fingerprint differs from source|manifest source JSON is invalid",
+        ):
+            reference_study._profile_fingerprint_from_bundle_manifest(manifest)
+
+
 def test_host_c_bundle_fingerprint_accepts_equivalent_json_decoder(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

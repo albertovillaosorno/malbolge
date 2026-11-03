@@ -62,8 +62,8 @@ from benchmarks.arena import (
 from benchmarks.challenges import generate
 from scripts.validate import experiment_manifest, target_profile
 
-# Bind JSON source reader and encoder before public provider mutation.
-_SOURCE_JSON_LOADS = json.loads
+# Bind source JSON classes before mutable public decoder/writer replacement.
+_SOURCE_JSON_DECODER = json.JSONDecoder
 _SOURCE_JSON_ENCODER = json.JSONEncoder
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -331,7 +331,7 @@ def _profile_fingerprint_from_bundle_manifest(manifest: object) -> str:
         _fail("host-C bundle manifest must contain native JSON bytes")
     try:
         reported = json.loads(manifest)
-        source = _SOURCE_JSON_LOADS(manifest)
+        source = _SOURCE_JSON_DECODER().decode(manifest.decode("utf-8"))
     except Exception as error:
         message = "host-C bundle manifest source JSON is invalid"
         raise ReferenceStudyError(message) from error

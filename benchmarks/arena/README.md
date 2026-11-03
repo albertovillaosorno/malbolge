@@ -908,6 +908,9 @@ native encoder before writing, and verifies written bytes separately. A
 substituted public JSON writer cannot silently rewrite costs, artifacts, or
 resource-policy receipts after the producer has checked them. This is local
 serializer consistency, not authentication of measurement sources.
+The generated challenge bundle's profile fingerprint is also checked against
+an import-bound JSON decoder class before any bundle artifact is retained;
+a substituted cached default decoder cannot relabel the manifest identity.
 
 Before publishing the local study, the producer also reopens every retained
 successful native executable through the arena's bounded non-symlink file
