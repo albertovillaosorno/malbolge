@@ -325,6 +325,20 @@ case proved that forged source metadata could authorize cached bytecode from an
 unselected file. All 100 focused domain and 3,255 integrated diff tests pass;
 scoped Ruff and strict BasedPyright report zero errors. Direct trusted-state
 mutation and concurrent filesystem or bytecode-cache writes remain out of scope.
+
+Domain loader import preparation now also verifies the original private
+`importlib._bootstrap_external` source-loader class and supported-loader
+factory, plus the native `SourceFileLoader.__new__` (`92b2f505d`).
+The pinned public spec constructor still looked up these mutable helpers
+at runtime, enabling untrusted callback execution before rejection.
+Three red-first loader/factory/allocator cases now fail closed, with the
+allocator mutation isolated in a child interpreter.
+
+All 128 postcommit domain tests and 603 adjacent precommit tests passed;
+scoped Ruff, strict BasedPyright, and diff checks were clean.
+Process-global hook races, direct trusted-state edits, and external
+filesystem writes remain beyond this import-time identity guard.
+
 Rejected domain loads now restore the original `sys.modules` registration
 (`38ee4b9bc`) even if executing consumer code replaces or deletes its own key.
 The loader also rejects successful execution or late hook lookup that changes
@@ -1145,6 +1159,19 @@ diff tests passed; scoped Ruff, strict BasedPyright, and diff checks reported
 zero errors. Direct mutation of trusted records after checks, trusted module
 internals, and concurrent writers remain outside this process-level boundary;
 the global Jig verdict remains unavailable.
+
+Behavior similarity admission now compares exact matched/total counts
+against the canonical decimal representation of the policy threshold with
+integer arithmetic (`059ab23c9`). Previously, float division rounded
+`1/11` up to a threshold whose decimal value is strictly greater than
+the true ratio, admitting too few matching probes. The red-first
+regression rejects that boundary and preserves acceptance immediately
+below it.
+
+All 170 postcommit behavior tests, 405 adjacent tests, and 3,735
+integrated diff tests passed; Ruff, strict BasedPyright, and diff checks
+were clean. Runtime observation truthfulness, process-global mutations,
+and external writer races remain outside this scoring repair.
 
 Internal `combine_admission()` now creates its `TransformAdmissionEvidence`
 report through captured native allocation and the original validating

@@ -241,6 +241,14 @@ format.
   showed that forged source metadata executed bytecode from another file.
   All 100 focused domain and 3,255 integrated diff tests passed, with scoped
   Ruff and strict BasedPyright clean. External filesystem races remain excluded.
+- Domain-loader import preparation now checks private bootstrap
+  `SourceFileLoader` and supported-loader factories plus the native
+  allocator (`92b2f505d`). Three red-first substitutions previously
+  invoked foreign code before import rejection; the allocator case runs
+  in a child process to isolate CPython type-slot mutations. All 128
+  postcommit domain and 603 adjacent precommit tests pass, with Ruff,
+  strict BasedPyright, and diff checks clean. Process-global races,
+  direct trusted-state changes, and external writers remain excluded.
 - Domain import now pins native `PurePath` parser dependencies and host
   `os.path.splitroot`/`splitdrive` (`32caad32e`). Two red-first uncached-path
   source-swap regressions and 120 postcommit domain tests pass, with Ruff,
@@ -456,6 +464,14 @@ format.
   integrated diff tests; Ruff, strict BasedPyright, and diff checks had zero
   errors. Jig remains unverified, and direct stored-field mutations or
   concurrent external writers remain outside this process-level boundary.
+- Behavior similarity now compares matched probe counts against the
+  policy threshold as a canonical decimal fraction with integer math
+  (`059ab23c9`). A red-first `1/11` boundary previously rounded up
+  and admitted insufficient matches; its regression also accepts the
+  threshold immediately below the true score. All 170 postcommit
+  behavior, 405 adjacent, and 3,735 integrated diff tests passed, with
+  Ruff, strict BasedPyright, and diff checks clean. External writer
+  races and process-global mutations remain outside this repair.
 - Gate report creation now uses original native allocation and validating
   initialization (`7b8038188`) rather than late class `__new__`/`__init__`.
   Four red-first cases preserve accepted and rejected conjunctive reports.
