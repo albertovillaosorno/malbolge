@@ -41,6 +41,7 @@ from stat import S_ISDIR
 from stat import S_ISLNK
 from stat import S_ISREG
 from typing import TYPE_CHECKING
+from typing import cast
 
 from algorithms.diff.exact import ExactTreeError
 from algorithms.diff.exact import read_exact_regular_file
@@ -272,6 +273,26 @@ def emit_rust_transform(
     return rendered.replace("\r\n", "\n")
 
 
+def _safe_emission_error_detail(error: Exception) -> str:
+    """Render only native failure reasons, without calling foreign string hooks.
+
+    Returns:
+        Exact native single-string reason or the exception class name.
+
+    """
+    if type(error) in {
+        RustEmissionError,
+        OSError,
+        PermissionError,
+        RuntimeError,
+        ValueError,
+    }:
+        arguments = cast("tuple[object, ...]", error.args)
+        if len(arguments) == 1 and type(arguments[0]) is str:
+            return arguments[0]
+    return type(error).__name__
+
+
 def _require_native_output_status(
     receipt: object, description: str
 ) -> os.stat_result:
@@ -296,7 +317,8 @@ def _output_mode(path: Path, description: str) -> int | None:
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"Rust output {description} status failed: {path}: {error}"
+        detail = _safe_emission_error_detail(error)
+        message = f"Rust output {description} status failed: {path}: {detail}"
         raise RustEmissionError(message) from error
     return _require_native_output_status(receipt, description).st_mode
 
@@ -305,7 +327,8 @@ def _output_redirects(path: Path, mode: int) -> bool:
     try:
         return S_ISLNK(mode) or path.is_junction()
     except (OSError, ValueError, RuntimeError) as error:
-        message = f"Rust output junction status failed: {path}: {error}"
+        detail = _safe_emission_error_detail(error)
+        message = f"Rust output junction status failed: {path}: {detail}"
         raise RustEmissionError(message) from error
 
 
@@ -348,7 +371,8 @@ def _prepare_output_path(output_path: Path) -> Path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
     except (OSError, ValueError, RuntimeError) as error:
         message = (
-            f"Rust output parent creation failed: {output_path.parent}: {error}"
+            "Rust output parent creation failed: "
+            f"{output_path.parent}: {_safe_emission_error_detail(error)}"
         )
         raise RustEmissionError(message) from error
     _validate_output_parent_chain(output_path.parent)
@@ -365,7 +389,7 @@ def _cleanup_owned_temporary(path: Path) -> str | None:
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:
-        return str(error)
+        return _safe_emission_error_detail(error)
     return None
 
 
@@ -394,7 +418,8 @@ def _raise_publication_error(
     *,
     cleanup_error: str | None = None,
 ) -> None:
-    message = f"Rust transform publication failed: {error}"
+    detail = _safe_emission_error_detail(error)
+    message = f"Rust transform publication failed: {detail}"
     if cleanup_error is not None:
         message = f"{message}; temporary cleanup failed: {cleanup_error}"
     raise RustEmissionError(message) from error
@@ -405,7 +430,8 @@ def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
     try:
         actual = read_exact_regular_file(path, f"{phase} Rust source")
     except ExactTreeError as error:
-        message = f"{phase} Rust source verification failed: {error}"
+        detail = _safe_emission_error_detail(error)
+        message = f"{phase} Rust source verification failed: {detail}"
         raise RustEmissionError(message) from error
     if actual != expected:
         message = f"{phase} Rust source differs from rendered bytes: {path}"
@@ -462,7 +488,8 @@ def write_rust_transform(
     except RustEmissionError as error:
         cleanup_error = _cleanup_owned_temporary(temporary)
         if cleanup_error is not None:
-            message = f"{error}; temporary cleanup failed: {cleanup_error}"
+            detail = _safe_emission_error_detail(error)
+            message = f"{detail}; temporary cleanup failed: {cleanup_error}"
             raise RustEmissionError(message) from error
         raise
     except (OSError, ValueError, RuntimeError) as error:

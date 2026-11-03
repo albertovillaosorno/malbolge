@@ -143,6 +143,9 @@ remains valid; caller-defined path subclasses never receive filesystem calls.
 The emitter also requires native `os.stat_result` receipts when checking the
 output leaf and ancestor directories before creating or replacing output.
 Forged metadata cannot approve output publication or overwrite an existing file.
+Output status, junction, parent creation, rename and temporary cleanup errors
+retain typed causes and native diagnostic text without executing foreign
+exception string hooks; cleanup errors cannot mask the original failure.
 The same publisher admits only the running host's exact native `pathlib.Path`
 type for both staging and destination before querying filesystem methods.
 Caller-defined `Path` subclasses may override path resolution, file status, or

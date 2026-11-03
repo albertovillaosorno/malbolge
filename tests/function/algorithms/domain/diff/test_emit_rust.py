@@ -45,6 +45,7 @@ import subprocess as sp  # ruff: ignore[suspicious-subprocess-import]
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 from typing import cast
+from typing import override
 
 from algorithms.diff import emit_rust as emit_rust_module
 from algorithms.diff.admission import identity_tree
@@ -100,6 +101,15 @@ _SINGLE_CHUNK_NONCE_MARKER = (
 _INVALID_BINDING_MARKER = b"invalid generated binding"
 _LATE_SOURCE_DRIFT_MARKER = b"source tree changed during materialization"
 _LATE_SOURCE_MUTATION = b"late mutation"
+
+
+class _HostileEmissionError(OSError):
+    """Host exception whose string hooks cannot be trusted."""
+
+    @override
+    def __str__(self) -> str:
+        message = "untrusted Rust host exception formatter executed"
+        raise AssertionError(message)
 
 
 def _expect(condition: object, message: str) -> None:
@@ -1047,6 +1057,87 @@ def test_writer_preserves_primary_error_after_invalid_cleanup(
     assert len(attempted) == 1
     assert not output.exists()
     assert attempted[0].is_file()
+    attempted[0].unlink()
+
+
+def test_writer_status_does_not_format_hostile_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Status failure stays typed without executing a host string hook."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    failure = _HostileEmissionError("hostile output stat")
+    original_lstat = Path.lstat
+
+    def fail_lstat(path: Path) -> os.stat_result:
+        if path == output:
+            raise failure
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", fail_lstat)
+    with pytest.raises(
+        RustEmissionError, match="output file status failed"
+    ) as caught:
+        write_rust_transform(protected, _PROFILE, output)
+    assert caught.value.__cause__ is failure
+    assert not output.exists()
+
+
+def test_writer_replace_does_not_format_hostile_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rename failure cannot invoke untrusted exception formatters."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    failure = _HostileEmissionError("hostile rename")
+    original_replace = Path.replace
+
+    def fail_replace(path: Path, target: Path) -> Path:
+        if target == output:
+            raise failure
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    with pytest.raises(RustEmissionError, match="publication failed") as caught:
+        write_rust_transform(protected, _PROFILE, output)
+    assert caught.value.__cause__ is failure
+    assert not output.exists()
+    assert not list(tmp_path.glob(".generated.rs.*.tmp"))
+
+
+def test_writer_cleanup_does_not_format_hostile_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hostile secondary cleanup error cannot mask publication failure."""
+    _, _, _, protected = _fixture(tmp_path)
+    output = tmp_path / "generated.rs"
+    original_replace = Path.replace
+    original_unlink = Path.unlink
+    attempted: list[Path] = []
+
+    def fail_replace(path: Path, target: Path) -> Path:
+        if target == output:
+            attempted.append(path)
+            message = "primary Rust rename failure"
+            raise OSError(message)
+        return original_replace(path, target)
+
+    def fail_unlink(path: Path, *, missing_ok: bool = False) -> None:
+        if path in attempted:
+            message = "hostile Rust cleanup"
+            raise _HostileEmissionError(message)
+        original_unlink(path, missing_ok=missing_ok)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "replace", fail_replace)
+        patch.setattr(Path, "unlink", fail_unlink)
+        with pytest.raises(
+            RustEmissionError, match="temporary cleanup failed"
+        ) as caught:
+            write_rust_transform(protected, _PROFILE, output)
+    assert type(caught.value.__cause__) is OSError
+    assert not output.exists()
+    assert len(attempted) == 1
     attempted[0].unlink()
 
 
