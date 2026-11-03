@@ -70,7 +70,6 @@ _NATIVE_BOOL = builtins.bool
 _NATIVE_SET = builtins.set
 _NATIVE_REVERSED = builtins.reversed
 _NATIVE_LIST = builtins.list
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 # Verify placement using a constructor pinned before host hooks can replace it.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -98,9 +97,9 @@ class SemanticLocator:
         after_digests: tuple[bytes, ...],
     ) -> None:
         """Seal source/context metadata with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "source_digests", source_digests)
-        _NATIVE_OBJECT_SETATTR(self, "before_digests", before_digests)
-        _NATIVE_OBJECT_SETATTR(self, "after_digests", after_digests)
+        _LOCATOR_SOURCE_SLOT.__set__(self, source_digests)
+        _LOCATOR_BEFORE_SLOT.__set__(self, before_digests)
+        _LOCATOR_AFTER_SLOT.__set__(self, after_digests)
         _LOCATOR_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -178,9 +177,9 @@ class SemanticEdit:
         replacement_digests: tuple[bytes, ...],
     ) -> None:
         """Seal edit metadata with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "locator", locator)
-        _NATIVE_OBJECT_SETATTR(self, "replacement", replacement)
-        _NATIVE_OBJECT_SETATTR(self, "replacement_digests", replacement_digests)
+        _EDIT_LOCATOR_SLOT.__set__(self, locator)
+        _EDIT_REPLACEMENT_SLOT.__set__(self, replacement)
+        _EDIT_DIGESTS_SLOT.__set__(self, replacement_digests)
         _EDIT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -245,7 +244,7 @@ class SemanticAuthoringPlan:
 
     def __init__(self, edits: tuple[SemanticEdit, ...]) -> None:
         """Seal the edit sequence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "edits", edits)
+        _PLAN_EDITS_SLOT.__set__(self, edits)
         _PLAN_VALIDATOR(self)
 
     def __post_init__(self) -> None:

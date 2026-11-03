@@ -37,7 +37,7 @@ from __future__ import annotations
 import builtins
 import hashlib
 import re
-from types import SimpleNamespace
+from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -1376,3 +1376,71 @@ def test_semantic_anchor_selection_ignores_late_pair_getters(
         selected = select(pairs, 1)
     assert selected == pairs
     assert calls == 0, "late anchor getter rewrote matched unit positions"
+
+
+_SETTER_DIGEST = hashlib.sha256(b"semantic-constructor-evidence").digest()
+_SETTER_LOCATOR = SemanticLocator((_SETTER_DIGEST,), (), ())
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("locator", "source_digests", [b"short"], "immutable tuples"),
+        ("locator", "before_digests", [b"short"], "immutable tuples"),
+        ("locator", "after_digests", [b"short"], "immutable tuples"),
+        ("edit", "locator", object(), "exact locator type"),
+        ("edit", "replacement", "foreign text", "exact bytes"),
+        ("edit", "replacement_digests", [b"short"], "immutable tuple"),
+        ("plan", "edits", [], "immutable tuple"),
+    ],
+)
+def test_semantic_constructors_reject_property_setter_laundering(
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, str, object, str],
+) -> None:
+    """A late class setter must not sanitize malformed semantic evidence."""
+    record, field, invalid, expected = case
+    owner, defaults = {
+        "locator": (
+            SemanticLocator,
+            {
+                "source_digests": (_SETTER_DIGEST,),
+                "before_digests": (),
+                "after_digests": (),
+            },
+        ),
+        "edit": (
+            SemanticEdit,
+            {
+                "locator": _SETTER_LOCATOR,
+                "replacement": b"replacement",
+                "replacement_digests": (_SETTER_DIGEST,),
+            },
+        ),
+        "plan": (
+            SemanticAuthoringPlan,
+            {
+                "edits": (
+                    SemanticEdit(
+                        _SETTER_LOCATOR, b"replacement", (_SETTER_DIGEST,)
+                    ),
+                ),
+            },
+        ),
+    }[record]
+    values = {**defaults, field: invalid}
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    intercepted: list[object] = []
+
+    def sanitize(value: object, supplied: object) -> None:
+        intercepted.append(supplied)
+        slot.__set__(value, defaults[field])
+
+    def read_original(value: object) -> object:
+        return cast("object", slot.__get__(value, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, field, property(read_original, sanitize))
+        with pytest.raises(SemanticPlacementError, match=expected):
+            _ = cast("Callable[..., object]", owner)(**values)
+    assert not intercepted, "late semantic setter intercepted construction"
