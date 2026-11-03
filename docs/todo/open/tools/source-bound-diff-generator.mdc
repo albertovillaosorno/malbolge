@@ -273,6 +273,14 @@ format.
 - A conjunctive gate proves behavior-only clones cannot replace structural
   lineage
   and source lineage cannot replace failed compatibility behavior.
+- Public tree, behavior, and combined gate `.admitted` verdicts now require
+  exact native receipt types (`c868d4a8b`), rejecting inherited subclass or
+  unbound receivers through typed admission errors. Six red-first cases, 397
+  focused, 3,340 integrated diff, and 670 postcommit adjacent tests passed;
+  scoped Ruff/strict source-and-test BasedPyright/diff checks were clean.
+  Existing formatting drift is unchanged. Jig doctor remains degraded and a
+  bounded 105-second global check timed out without a passing verdict. Direct
+  trusted storage edits and concurrent writers are not addressed.
 - Internal computed behavior reports now use captured native allocation and
   the original validator-bearing initializer (`85857aea2`). Four red-first
   cases preserve acceptance and failed compatibility rejection under late

@@ -873,6 +873,21 @@ no new green verdict; direct mutation of trusted stored fields, trusted
 module internals, and concurrent filesystem writers remain outside this
 process-level guard.
 
+The public `.admitted` verdicts of `TreeAdmissionEvidence`, `BehaviorEvidence`,
+and `TransformAdmissionEvidence` now require the exact native receipt type
+(`c868d4a8b`) before calling stored-slot validators. An inherited subclass
+getter previously certified foreign receipt storage, while unbound getters
+leaked a raw type error or misclassified the receiver. Six red-first cases now
+fail with each boundary's typed admission error. All 397 focused
+admission/behavior/gate tests, 3,340 integrated diff tests, and 670 postcommit
+admission/behavior/gate/compatible tests passed. Scoped Ruff and strict
+source/test BasedPyright were clean, as were diff checks. The unrelated
+existing descriptor-hook test annotation was also made type-exact. Existing
+formatting drift is untouched. `jig doctor` remained degraded with its graph
+absent and a 105-second global check timed out, so there is no repository-wide
+passing verdict. Trusted direct storage edits and external writers remain
+outside these getter protections.
+
 ### Portable Behavior Programs
 
 The generic execution layer now has a process-program representation designed to
