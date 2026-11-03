@@ -85,6 +85,7 @@ _NATIVE_TYPE = builtins.type
 _NATIVE_LEN = builtins.len
 _NATIVE_TUPLE = builtins.tuple
 _NATIVE_BYTES = builtins.bytes
+_NATIVE_BOOL = builtins.bool
 _NATIVE_STR = builtins.str
 _NATIVE_INT = builtins.int
 _NATIVE_ISINSTANCE = builtins.isinstance
@@ -173,7 +174,7 @@ def _validate_relative_path(relative_path: str) -> str:
     unsafe_part = _NATIVE_ANY(
         part in _UNSAFE_PATH_PARTS for part in candidate.parts
     )
-    unsafe_root = candidate.is_absolute() or bool(
+    unsafe_root = candidate.is_absolute() or _NATIVE_BOOL(
         PureWindowsPath(admitted).drive
     )
     if unsafe_root or _native_isreserved(admitted) or unsafe_part:
@@ -319,7 +320,7 @@ def _is_redirect(path: Path, mode: int) -> bool:
         detail = _safe_host_error_detail(error)
         message = f"tree redirect status failed: {path}: {detail}"
         raise ExactTreeError(message) from error
-    if _NATIVE_TYPE(is_junction) is not bool:
+    if _NATIVE_TYPE(is_junction) is not _NATIVE_BOOL:
         message = "tree redirect status requires native boolean"
         raise ExactTreeError(message)
     return is_junction

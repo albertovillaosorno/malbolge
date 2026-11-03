@@ -513,6 +513,49 @@ def test_exact_relative_path_rejects_late_any_override(
     assert rejected, "late any hook admitted a parent traversal"
 
 
+@pytest.mark.parametrize("path", ["C:escape", "C:/escape"])
+def test_exact_relative_path_rejects_late_bool_drive_override(
+    monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    """A late bool hook cannot suppress Windows drive-relative rejection."""
+    validate = cast(
+        "Callable[[str], str]", vars(exact_module)["_validate_relative_path"]
+    )
+
+    def always_false(_: object) -> bool:
+        return False
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", always_false)
+        try:
+            _ = validate(path)
+        except TreeModelError:
+            rejected = True
+    assert rejected, "late bool hook admitted a Windows drive path"
+
+
+def test_exact_relative_path_accepts_native_label_after_late_bool_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid label must not consult a hostile late bool hook."""
+    validate = cast(
+        "Callable[[str], str]", vars(exact_module)["_validate_relative_path"]
+    )
+
+    def always_true(_: object) -> bool:
+        return True
+
+    admitted = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", always_true)
+        try:
+            admitted = validate("src/file.txt") == "src/file.txt"
+        except TreeModelError:
+            pass
+    assert admitted, "late bool hook rejected a native valid path"
+
+
 def test_exact_passthrough_roots_reject_late_builtin_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1630,6 +1673,47 @@ def test_exact_snapshot_rejects_foreign_junction_verdict(
     with pytest.raises(ExactTreeError, match="native boolean"):
         _ = snapshot_tree(root)
     _expect(checked, "foreign junction verdict was not reached")
+
+
+def test_exact_junction_rejects_foreign_verdict_under_late_bool_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late bool type alias cannot admit a foreign false-like verdict."""
+    is_redirect = cast(
+        "Callable[[Path, int], bool]", vars(exact_module)["_is_redirect"]
+    )
+
+    def foreign_junction(_: Path) -> int:
+        return 0
+
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", int)
+        patched.setattr(
+            exact_module, "_NATIVE_PATH_IS_JUNCTION", foreign_junction
+        )
+        try:
+            _ = is_redirect(tmp_path, tmp_path.stat().st_mode)
+        except ExactTreeError:
+            rejected = True
+    assert rejected, "late bool alias admitted a nonnative junction verdict"
+
+
+def test_exact_junction_accepts_native_verdict_under_late_bool_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A native false junction verdict must survive a late bool alias."""
+    is_redirect = cast(
+        "Callable[[Path, int], bool]", vars(exact_module)["_is_redirect"]
+    )
+    observed: bool | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "bool", int)
+        try:
+            observed = is_redirect(tmp_path, tmp_path.stat().st_mode)
+        except ExactTreeError:
+            pass
+    assert observed is False, "late bool alias rejected a native junction"
 
 
 @pytest.mark.parametrize("role", ["root", "output", "source-path"])
