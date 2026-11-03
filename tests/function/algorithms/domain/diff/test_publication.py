@@ -38,11 +38,12 @@ from __future__ import annotations
 import ctypes
 import errno
 import os
+import platform
 import stat
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast
+from typing import cast, override
 from unittest.mock import Mock
 
 import pytest
@@ -57,6 +58,7 @@ _FOREIGN = b"foreign"
 class _ForeignPath(type(Path())):
     """A path subclass cannot supply independent filesystem evidence."""
 
+    @override
     def __fspath__(self) -> str:
         message = "foreign filesystem path conversion was evaluated"
         raise AssertionError(message)
@@ -210,6 +212,66 @@ def test_windows_route_uses_path_rename(
     assert calls == [(staging, destination)]
 
 
+@pytest.mark.parametrize("failure_type", [TypeError, ValueError, RuntimeError])
+def test_windows_publication_wraps_unexpected_rename_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: type[Exception],
+) -> None:
+    """An unexpected host rename failure remains an OSError with a typed cause."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+
+    def fail_rename(_source: Path, _target: Path) -> Path:
+        message = "unusable host rename"
+        raise failure_type(message)
+
+    monkeypatch.setattr(Path, "rename", fail_rename)
+    monkeypatch.setattr(
+        publication,
+        "os",
+        SimpleNamespace(name="nt", fsencode=os.fsencode),
+    )
+    monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+    with pytest.raises(OSError, match="Windows directory rename failed") as caught:
+        publication.publish_directory_no_replace(
+            staging, destination, os_name="nt", platform="win32"
+        )
+    assert caught.value.errno == errno.EIO
+    assert type(caught.value.__cause__) is failure_type
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
+def test_windows_publication_preserves_native_collision_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An ordinary host OSError keeps the original collision diagnostics."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    native_failure = FileExistsError(errno.EEXIST, "target occupied")
+
+    def fail_rename(_source: Path, _target: Path) -> Path:
+        raise native_failure
+
+    monkeypatch.setattr(Path, "rename", fail_rename)
+    monkeypatch.setattr(
+        publication,
+        "os",
+        SimpleNamespace(name="nt", fsencode=os.fsencode),
+    )
+    monkeypatch.setattr(publication, "sys", SimpleNamespace(platform="win32"))
+    with pytest.raises(FileExistsError) as caught:
+        publication.publish_directory_no_replace(
+            staging, destination, os_name="nt", platform="win32"
+        )
+    assert caught.value is native_failure
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
 def test_linux_route_uses_renameat2(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -330,7 +392,7 @@ def test_publication_rejects_non_directory_staging(
     assert not destination.exists()
 
 
-@pytest.mark.parametrize("failure_type", [ValueError, RuntimeError])
+@pytest.mark.parametrize("failure_type", [TypeError, ValueError, RuntimeError])
 def test_staging_status_errors_fail_closed_as_os_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -427,9 +489,7 @@ def test_publication_rejects_foreign_destination_attestation(
         return native
 
     monkeypatch.setattr(Path, "lstat", forged_destination_stat)
-    with pytest.raises(
-        OSError, match=r"publication.*not completed"
-    ) as rejected:
+    with pytest.raises(OSError, match=r"publication.*not completed") as rejected:
         publication.publish_directory_no_replace(staging, destination)
     assert rejected.value.errno == errno.EIO
     assert not staging.exists()
@@ -535,15 +595,20 @@ def test_publication_rejects_foreign_success_without_rename(
     _ = (staging / "payload").write_bytes(_OURS)
     if platform == "linux":
         native = Mock(return_value=0)
-        monkeypatch.setattr(
-            ctypes,
-            "CDLL",
-            lambda *_args, **_kwargs: SimpleNamespace(renameat2=native),
-        )
+
+        def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+            _ = (_name, _options)
+            return SimpleNamespace(renameat2=native)
+
+        monkeypatch.setattr(ctypes, "CDLL", fake_cdll)
         _fake_linux_host(monkeypatch)
         os_name, host_platform = "posix", "linux"
     else:
-        monkeypatch.setattr(Path, "rename", lambda *_args: destination)
+
+        def pretend_rename(_source: Path, _target: Path) -> Path:
+            return destination
+
+        monkeypatch.setattr(Path, "rename", pretend_rename)
         monkeypatch.setattr(
             publication,
             "os",
@@ -583,13 +648,11 @@ def test_linux_publication_rejects_success_for_different_directory(
             os.rename(foreign, destination)
         return 0
 
-    monkeypatch.setattr(
-        ctypes,
-        "CDLL",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            renameat2=Mock(side_effect=foreign_rename)
-        ),
-    )
+    def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+        _ = (_name, _options)
+        return SimpleNamespace(renameat2=Mock(side_effect=foreign_rename))
+
+    monkeypatch.setattr(ctypes, "CDLL", fake_cdll)
     _fake_linux_host(monkeypatch)
     with pytest.raises(OSError, match="publication.*not completed"):
         publication.publish_directory_no_replace(
@@ -604,7 +667,7 @@ def test_linux_publication_rejects_success_for_different_directory(
 
 def test_real_host_publication_attests_moved_directory(tmp_path: Path) -> None:
     """The native no-replace path still publishes a real stage exactly once."""
-    if os.name != "nt" and sys.platform != "linux":
+    if platform.system() not in {"Linux", "Windows"}:
         pytest.skip("no supported atomic directory publisher")
     staging = tmp_path / "staging"
     destination = tmp_path / "destination"

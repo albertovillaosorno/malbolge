@@ -135,7 +135,7 @@ def _require_staging_directory(staging: Path) -> tuple[int, int]:
     """
     try:
         receipt = staging.lstat()
-    except (ValueError, RuntimeError) as error:
+    except (TypeError, ValueError, RuntimeError) as error:
         raise OSError(
             errno.EINVAL,
             "staging directory status failed",
@@ -253,7 +253,14 @@ def publish_directory_no_replace(
         platform=platform,
     )
     if os_name == _WINDOWS_OS_NAME:
-        _ = staging.rename(destination)
+        try:
+            _ = staging.rename(destination)
+        except (TypeError, ValueError, RuntimeError) as error:
+            raise OSError(
+                errno.EIO,
+                "Windows directory rename failed",
+                destination,
+            ) from error
         _require_completed_publication(staging, destination, identity)
         return
     if platform == _LINUX_PLATFORM:
