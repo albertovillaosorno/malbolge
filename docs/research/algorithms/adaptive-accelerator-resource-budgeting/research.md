@@ -113,7 +113,10 @@ hardware-free N10-N14 CRAZY geometry failure-policy JSON report now verifies
 canonical serialization against an import-bound encoder before publication and
 requires exact text write and completed flush receipts. Replaced public JSON
 writers cannot forge resource-policy measurements; failed delivery cannot claim
-report success. The underlying Python encoder remains a trust dependency.
+report success. The separate synthetic/live capacity-scenario report applies
+that same source-bound JSON and exact stdout-delivery contract for its optional
+CUDA measurements as well. The underlying Python encoder remains a trust
+dependency.
 
 Existing RTX 4060 classic resident differential tests continue to pass after the
 planner is inserted into the real allocation path. Post-commit resource evidence

@@ -34,22 +34,17 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
 import sys
+from dataclasses import asdict, dataclass
 from typing import Final
 
-from accelerator.classic_run import MAX_U32
-from accelerator.classic_run import MEMORY_WORDS
-from accelerator.classic_run import STATE_WORDS
+from accelerator.classic_run import MAX_U32, MEMORY_WORDS, STATE_WORDS
 from accelerator.cuda.runtime import CudaRuntime
 from accelerator.profile_run import WORD_BYTES
-from accelerator.resource_budget import AcceleratorResources
-from accelerator.resource_budget import plan_resident_batches
+from accelerator.resource_budget import AcceleratorResources, plan_resident_batches
 
-from benchmarks.accelerator.profile_workload import PROFILE_TRITS
-from benchmarks.accelerator.profile_workload import PROFILE_WORDS
+from benchmarks.accelerator.profile_workload import PROFILE_TRITS, PROFILE_WORDS
 
 MIB: Final = 1024 * 1024
 GIB: Final = 1024 * MIB
@@ -63,6 +58,7 @@ HUGE_GIB: Final = 100_000
 HUGE_ITEMS: Final = 100_000
 CLASSIC_PROTOCOL_ITEMS: Final = 72_736
 CUDA_FLAG: Final = "--cuda"
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +93,49 @@ class ScenarioResult:
     word_trits: int | None
 
 
+class ResourceBudgetReportError(ValueError):
+    """Resource-budget report evidence could not be delivered safely."""
+
+
+def _render_report(payload: object) -> str:
+    """Verify public JSON matches import-bound native encoding.
+
+    Returns:
+        Exact pretty JSON source text with one terminating newline.
+
+    """
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"resource-budget JSON writer failed: {type(error).__name__}"
+        raise ResourceBudgetReportError(message) from error
+    if type(source) is not str or type(observed) is not str or source != observed:
+        message = "resource-budget JSON writer differs from source"
+        raise ResourceBudgetReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require an exact native write receipt and a completed stdout flush."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"resource-budget stdout write failed: {type(error).__name__}"
+        raise ResourceBudgetReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "resource-budget stdout write incomplete"
+        raise ResourceBudgetReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"resource-budget stdout flush failed: {type(error).__name__}"
+        raise ResourceBudgetReportError(message) from error
+    if flushed is not None:
+        message = "resource-budget stdout flush incomplete"
+        raise ResourceBudgetReportError(message)
+
+
 def main() -> int:
     """Emit deterministic synthetic scenarios and optional live CUDA evidence.
 
@@ -123,7 +162,7 @@ def main() -> int:
         "research_id": "adaptive-accelerator-resource-budgeting",
         "scenarios": [asdict(result) for result in results],
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
