@@ -149,9 +149,20 @@ Source-lineage, behavior, and conjunctive transform admission therefore read
 original captured reason-slot descriptors when validating direct evidence,
 returning `admitted`, or deciding whether to raise admission errors. Three
 source, four behavior, and five gate regressions cover forged direct receipts,
-failed evidence promoted to success, and incorrectly typed errors. Immutable
-record construction and process-hook isolation do not defend against arbitrary
-trusted code directly rewriting stored object state.
+failed evidence promoted to success, and incorrectly typed errors.
+
+Five additional focused hardening changes also pin the original aggregate
+source-lineage scores, anchor counts, file receipts, and policy; conjunctive
+gate source and behavior references; behavior scores, correction routes,
+profiles, observations, and minimum threshold; profile and observation
+collection tuples throughout evaluation; and identity digest, compatibility,
+and bug-state observation outcomes. Seventy-six red-first getter and slot
+regressions cover direct construction, policy consistency, and admission
+verdicts. These checks reject forged class-level readers but do not prevent
+trusted code directly rewriting instance storage, mutating third-party
+callbacks, or changing files concurrently. Immutable record construction and
+process-hook isolation do not defend against arbitrary trusted code directly
+rewriting stored object state.
 Pinned-source snapshots also require native `os.stat_result` receipts for the
 source root, selected paths and parent components, and file-identity rechecks.
 Foreign mode and inode records cannot certify pinned provenance. Filesystem

@@ -255,8 +255,14 @@ format.
   replaced descriptors and `__getattribute__` hooks.
 - The conjunctive transform gate also pins source/behavior/gate reason slots;
   five regressions prevent late class getters from promoting failed evidence
-  or previously rejected combined verdicts. This is a process-hook boundary,
-  not a sandbox for intentionally mutated evidence or arbitrary consumer code.
+  or previously rejected combined verdicts. Five followup source/gate/behavior
+  commits extend original-slot validation to source scores and policy, combined
+  evidence references, behavior score/routing/profile data, profile and
+  observation collection tuples, and identity/compatibility/bug outcomes.
+  Seventy-six red-first getter and slot cases prove construction and evaluation
+  cannot accept spoofed values from these fields. This is a process-hook
+  boundary, not a sandbox for intentionally mutated evidence or arbitrary
+  consumer code.
 - Exact tree snapshot, planning, and materialization and compatible plan build
   and materialization envelopes now require exact native host `Path` roots;
   eight red-first cases cover snapshot/source/oracle/candidate/output roles
