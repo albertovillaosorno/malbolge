@@ -4867,3 +4867,23 @@ def test_exact_direct_file_reader_ignores_walk_dispatch_changes(
             == b"admitted source"
         )
     assert calls == 0, "foreign walk dependency entered direct file reader"
+
+
+@pytest.mark.parametrize("builtin", ["str", "tuple"])
+def test_exact_walk_rejects_late_host_builtin_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, builtin: str
+) -> None:
+    """Original Path.walk and os.walk cannot trust late global type aliases."""
+    root = tmp_path / "source"
+    root.mkdir()
+    _ = (root / "evidence.bin").write_bytes(b"source evidence")
+    aliases: dict[str, object] = {"str": builtins.bytes, "tuple": builtins.str}
+    rejected_message: str | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, builtin, aliases[builtin])
+        try:
+            _ = snapshot_tree(root)
+        except ExactTreeError as error:
+            rejected_message = error.args[0]
+    assert rejected_message is not None
+    assert "path hooks changed" in rejected_message

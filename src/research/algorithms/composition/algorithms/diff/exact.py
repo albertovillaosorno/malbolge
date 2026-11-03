@@ -207,6 +207,8 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
                 or builtins.isinstance is not _NATIVE_ISINSTANCE
                 or builtins.bytes is not _NATIVE_BYTES
                 or builtins.len is not _NATIVE_LEN
+                or builtins.str is not _NATIVE_STR
+                or builtins.tuple is not _NATIVE_TUPLE
                 or os.lstat is not _NATIVE_OS_LSTAT
                 or os.readlink is not _NATIVE_OS_READLINK
                 or os.getcwd is not _NATIVE_OS_GETCWD
