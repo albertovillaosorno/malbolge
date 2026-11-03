@@ -317,6 +317,11 @@ fn parse_binding(data: &[u8]) -> Result<Binding, String> {
     let window_bytes = c.usize_be()?;
     let selection_modulus = c.u64_be()?;
     let count = c.usize_be()?;
+    // GF(256) permits at most 255 nonzero share coordinates. Validate the
+    // count before reserving attacker-controlled capacity.
+    if count == 0 || count > usize::from(u8::MAX) {
+        return Err(String::from("invalid generated binding"));
+    }
     let mut shares = Vec::with_capacity(count);
     for _ in 0..count {
         let source_path = c.text()?;

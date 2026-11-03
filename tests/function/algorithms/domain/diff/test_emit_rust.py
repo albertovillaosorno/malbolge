@@ -107,6 +107,9 @@ _SINGLE_CHUNK_NONCE_MARKER = (
 _INVALID_BINDING_MARKER = b"invalid generated binding"
 _DUPLICATE_COORDINATE = "coordinate"
 _DUPLICATE_ANCHOR = "anchor"
+_BINDING_U64_BYTES = 8
+_OVERLIMIT_SHARE_COUNT = 256
+_OVERSIZED_SHARE_COUNT = (1 << 64) - 1
 _LATE_SOURCE_DRIFT_MARKER = b"source tree changed during materialization"
 _LATE_SOURCE_MUTATION = b"late mutation"
 
@@ -845,6 +848,67 @@ def test_emitted_rust_rejects_duplicate_binding_shares_before_source_reads(
         "runtime did not reject the malformed binding envelope",
     )
     _expect(not output.exists(), "malformed binding published output")
+
+
+def _binding_with_share_count(
+    protected: ProtectedExactPlan, count: int
+) -> bytes:
+    binding = protected.binding
+    raw_binding = cast(
+        "Callable[[object], bytes]", vars(emit_rust_module)["_binding_bytes"]
+    )(binding)
+    encoded = bytearray(raw_binding)
+    fields_before_count = (
+        _BINDING_U64_BYTES + len(binding.context)
+        + _BINDING_U64_BYTES * 3
+        + _BINDING_U64_BYTES + len(binding.secret_commitment)
+        + _BINDING_U64_BYTES * 2
+    )
+    count_end = fields_before_count + _BINDING_U64_BYTES
+    _expect(
+        int.from_bytes(
+            encoded[fields_before_count:count_end], byteorder="big"
+        ) == len(binding.shares),
+        "source-binding share-count frame moved",
+    )
+    encoded[fields_before_count:count_end] = count.to_bytes(
+        _BINDING_U64_BYTES, byteorder="big"
+    )
+    return bytes(encoded)
+
+
+@pytest.mark.parametrize(
+    "count", [_OVERLIMIT_SHARE_COUNT, _OVERSIZED_SHARE_COUNT]
+)
+def test_emitted_rust_rejects_oversized_binding_count_without_panic(
+    tmp_path: Path, *, count: int
+) -> None:
+    """Reject hostile share counts before allocating an unbounded vector."""
+    source, _, _, protected = _fixture(tmp_path)
+    rust_source = tmp_path / f"share-count-{count}.rs"
+    executable = tmp_path / f"share-count-{count}"
+    output = tmp_path / "out"
+    _ = rust_source.write_text(
+        _replace_embedded_binding(
+            emit_rust_transform(protected, _PROFILE),
+            _binding_with_share_count(protected, count),
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(
+        compiled.returncode == 0,
+        "oversized-binding runtime failed to compile: "
+        + compiled.stderr.decode(errors="replace"),
+    )
+    completed = _run(executable, source, output)
+    _expect(completed.returncode != 0, "oversized binding was accepted")
+    _expect(
+        _INVALID_BINDING_MARKER in completed.stderr,
+        "oversized binding failed outside the typed parser boundary",
+    )
+    _expect(not output.exists(), "oversized binding published output")
 
 
 def test_emitted_rust_rejects_binding_threshold_under_file_minimum(
