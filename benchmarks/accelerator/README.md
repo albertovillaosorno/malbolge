@@ -83,6 +83,12 @@ transitions against a disjoint zero-filled data span. Fifteen end-to-end
 `advance()` samples isolate synchronous kernel execution after upload; complete
 final memory is validated outside both timed regions.
 
+The stdout timing report must match the import-bound native JSON encoder before
+it can be published; changed public serializers cannot silently rewrite raw
+samples or backend/device identity. Exact character-write and flush receipts
+are required before the command reports success. Hardware-free synthetic
+measurements test the reporting boundary without CUDA.
+
 Run with:
 
 ```powershell

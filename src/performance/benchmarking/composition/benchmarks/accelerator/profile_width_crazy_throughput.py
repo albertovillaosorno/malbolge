@@ -34,34 +34,30 @@
 
 from __future__ import annotations
 
-from array import array
-from dataclasses import asdict
-from dataclasses import dataclass
 import json
-from statistics import median
-from statistics import pstdev
 import sys
+from array import array
+from dataclasses import asdict, dataclass
+from statistics import median, pstdev
 from time import perf_counter_ns
-from typing import Final
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
-from accelerator.classic_run import RunError
-from accelerator.classic_run import RunStatus
+from accelerator.classic_run import RunError, RunStatus
 from accelerator.classic_step import StepTermination
-from accelerator.cuda.classic_step import XLAT1
-from accelerator.cuda.classic_step import XLAT2
+from accelerator.cuda.classic_step import XLAT1, XLAT2
 from accelerator.cuda.profile_run import CudaProfileRunAdapter
-from accelerator.profile_run import ProfileMemoryImage
-from accelerator.profile_run import ProfileRunRequest
-from accelerator.profile_run import validate_profile_run_requests
+from accelerator.profile_run import (
+    ProfileMemoryImage,
+    ProfileRunRequest,
+    validate_profile_run_requests,
+)
 
 from benchmarks.accelerator.profile_width_throughput import (
     profile_width_geometry,
 )
 
 if TYPE_CHECKING:
-    from accelerator.profile_run import ProfileRunGeometry
-    from accelerator.profile_run import ProfileRunResult
+    from accelerator.profile_run import ProfileRunGeometry, ProfileRunResult
 
 BENCHMARK_ID: Final = "cuda-profile-width-crazy-throughput-v1"
 BATCH_SIZE: Final = 1
@@ -79,6 +75,7 @@ WORD_BYTES: Final = 4
 WORKLOAD_ID: Final = "profile-16384-crazy-disjoint-data-v1"
 END_TO_END_REGION: Final = "CudaProfileRunAdapter.evaluate"
 RESIDENT_REGION: Final = "CudaProfileRunSession.advance"
+_SOURCE_JSON_ENCODER: Final = json.JSONEncoder
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,9 +106,7 @@ def profile_width_crazy_geometry(word_trits: int) -> ProfileRunGeometry:
 
     """
     if word_trits not in WIDTHS:
-        message = (
-            f"crazy width benchmark requires one of {WIDTHS}: {word_trits}"
-        )
+        message = f"crazy width benchmark requires one of {WIDTHS}: {word_trits}"
         raise ValueError(message)
     return profile_width_geometry(word_trits)
 
@@ -182,6 +177,44 @@ def validate_profile_width_crazy_results(
         raise RuntimeError(message)
 
 
+class CrazyWidthReportError(ValueError):
+    """Reviewed CRAZY width benchmark evidence could not be published."""
+
+
+def _render_report(payload: object) -> str:
+    """Verify report JSON against import-bound native encoding before output."""
+    try:
+        source = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True).encode(payload)
+        observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        message = f"crazy width JSON writer failed: {type(error).__name__}"
+        raise CrazyWidthReportError(message) from error
+    if type(source) is not str or type(observed) is not str or observed != source:
+        message = "crazy width JSON writer differs from source"
+        raise CrazyWidthReportError(message)
+    return source + "\n"
+
+
+def _publish_report(record: str) -> None:
+    """Require exact native stdout write receipt and complete flush."""
+    try:
+        written = sys.stdout.write(record)
+    except Exception as error:
+        message = f"crazy width stdout write failed: {type(error).__name__}"
+        raise CrazyWidthReportError(message) from error
+    if type(written) is not int or written != len(record):
+        message = "crazy width stdout write incomplete"
+        raise CrazyWidthReportError(message)
+    try:
+        flushed = sys.stdout.flush()
+    except Exception as error:
+        message = f"crazy width stdout flush failed: {type(error).__name__}"
+        raise CrazyWidthReportError(message) from error
+    if flushed is not None:
+        message = "crazy width stdout flush incomplete"
+        raise CrazyWidthReportError(message)
+
+
 def main() -> int:
     """Measure identical crazy-heavy work at every admitted benchmark width.
 
@@ -226,7 +259,7 @@ def main() -> int:
         "widths": WIDTHS,
         "workload_id": WORKLOAD_ID,
     }
-    _ = sys.stdout.write(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    _publish_report(_render_report(payload))
     return 0
 
 
@@ -244,15 +277,11 @@ def _measure(
             adapter, request, geometry, expected_memory=expected_memory
         )
     end_to_end = [
-        _evaluate_elapsed(
-            adapter, request, geometry, expected_memory=expected_memory
-        )
+        _evaluate_elapsed(adapter, request, geometry, expected_memory=expected_memory)
         for _ in range(SAMPLE_COUNT)
     ]
     resident = [
-        _resident_elapsed(
-            adapter, request, geometry, expected_memory=expected_memory
-        )
+        _resident_elapsed(adapter, request, geometry, expected_memory=expected_memory)
         for _ in range(SAMPLE_COUNT)
     ]
     return _row(geometry, end_to_end, resident)
