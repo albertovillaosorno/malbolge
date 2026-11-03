@@ -1231,6 +1231,20 @@ strict source/test BasedPyright, and diff checks were clean. These checks
 address late class-hook substitution, not direct stored-object edits or
 concurrent external writers. Repository-wide Jig validation is not yet green.
 
+Exact `ProbeRunContext` records in behavior authoring now run their original
+captured constructor validator before source/oracle context comparison or
+source-tree snapshots (`729b53902`). An instance created without its
+constructor can no longer supply missing native fields, a foreign source or
+repository path, malformed tool bindings, or an invalid immutability flag
+without raising `BehaviorProgramError`. Late overrides of `__post_init__`
+do not bypass the original validator. Eleven red-first cases, 209 postcommit
+focused behavior tests, and 3,447 precommit integrated diff tests passed;
+scoped Ruff and strict source/test BasedPyright have zero errors. The bounded
+130-second repository-wide Jig check did not complete and doctor remained
+degraded with its compiled graph absent; there is no global green verdict.
+Direct edits to already stored records and concurrent writers remain outside
+this admission guarantee.
+
 Compatibility programs contribute success/failure rather than an identity
 digest. Application-specific harnesses and logical tool resolution
 remain
