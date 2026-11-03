@@ -1345,6 +1345,90 @@ def test_incomplete_source_identity_fails_with_typed_binding_error(
             _ = recover_secret(valid, raw_identity)
 
 
+@pytest.mark.parametrize("role", ["reference", "candidate"])
+@pytest.mark.parametrize("mutation", ["noncanonical_file", "unsorted_tree"])
+def test_binding_rejects_unvalidated_native_source_identity(
+    role: str, mutation: str
+) -> None:
+    """Raw identity slots cannot bypass portable path and tree admission."""
+    reference = _reference()
+    binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
+    files = reference.files
+    if mutation == "noncanonical_file":
+        first = files[0]
+        raw_file = object.__new__(type(first))
+        object.__setattr__(raw_file, "path", "src/../escape.c")
+        object.__setattr__(raw_file, "canonical", first.canonical)
+        unsafe_files = (raw_file, *files[1:])
+    else:
+        unsafe_files = tuple(reversed(files))
+    raw_tree = object.__new__(IdentityTree)
+    object.__setattr__(raw_tree, "files", unsafe_files)
+    if role == "reference":
+        with pytest.raises(SourceBindingPolicyError):
+            _ = bind_secret(raw_tree, _SECRET, policy=_policy(), context=_CONTEXT)
+    else:
+        with pytest.raises(SourceBindingError):
+            _ = recover_secret(binding, raw_tree)
+
+
+@pytest.mark.parametrize("role", ["reference", "candidate"])
+@pytest.mark.parametrize("mutation", ["foreign_file", "mutable_canonical", "mutable_files"])
+def test_binding_rejects_unvalidated_identity_record_shapes(
+    role: str, mutation: str
+) -> None:
+    """Raw source identity cannot certify foreign or mutable nested evidence."""
+    reference = _reference()
+    binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
+    first = reference.files[0]
+    if mutation == "foreign_file":
+        files = (cast("object", SimpleNamespace(path=first.path, canonical=first.canonical)),
+                 *reference.files[1:])
+    elif mutation == "mutable_canonical":
+        raw_file = object.__new__(type(first))
+        object.__setattr__(raw_file, "path", first.path)
+        object.__setattr__(raw_file, "canonical", bytearray(first.canonical))
+        files = (raw_file, *reference.files[1:])
+    else:
+        files = list(reference.files)
+    raw_tree = object.__new__(IdentityTree)
+    object.__setattr__(raw_tree, "files", files)
+    if role == "reference":
+        with pytest.raises(SourceBindingPolicyError):
+            _ = bind_secret(raw_tree, _SECRET, policy=_policy(), context=_CONTEXT)
+    else:
+        with pytest.raises(SourceBindingError):
+            _ = recover_secret(binding, raw_tree)
+
+
+@pytest.mark.parametrize("role", ["reference", "candidate"])
+@pytest.mark.parametrize("record", ["tree", "file"])
+def test_source_binding_validation_uses_original_identity_validators(
+    monkeypatch: pytest.MonkeyPatch, role: str, record: str
+) -> None:
+    """Late class validators cannot override stored source admission."""
+    reference = _reference()
+    binding = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
+    owner = IdentityTree if record == "tree" else type(reference.files[0])
+    calls = 0
+
+    def forbidden_validator(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late identity validator consulted")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__post_init__", forbidden_validator)
+        if role == "reference":
+            observed = bind_secret(
+                reference, _SECRET, policy=_policy(), context=_CONTEXT
+            )
+            assert observed == binding
+        else:
+            assert recover_secret(binding, reference) == _SECRET
+    assert calls == 0
+
+
 def test_recovery_rejects_malformed_binding_before_candidate_use() -> None:
     """Distributable binding metadata is admitted before source inspection."""
     reference = _reference()

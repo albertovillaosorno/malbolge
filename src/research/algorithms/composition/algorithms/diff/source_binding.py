@@ -54,7 +54,7 @@ from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
 from typing import cast
 
-from algorithms.diff.admission import IdentityFile, IdentityTree
+from algorithms.diff.admission import AdmissionPolicyError, IdentityFile, IdentityTree
 from algorithms.diff.fingerprints import (
     AnchorPolicy,
     StableAnchor,
@@ -502,6 +502,23 @@ def _identity_path(value: IdentityFile) -> str:
 
 def _identity_canonical(value: IdentityFile) -> bytes:
     return _IDENTITY_CANONICAL_SLOT.__get__(value, IdentityFile)
+
+
+# The exact record type alone is not evidence that its constructor ran.
+# Validate the original native storage and structural invariants again when
+# a consumer submits an identity to the binding/recovery boundary.
+_IDENTITY_TREE_VALIDATOR = cast(
+    "Callable[[IdentityTree], None]", IdentityTree.__dict__["__post_init__"]
+)
+_IDENTITY_FILE_VALIDATOR = cast(
+    "Callable[[IdentityFile], None]", IdentityFile.__dict__["__post_init__"]
+)
+
+
+def _require_native_identity_tree(value: IdentityTree) -> None:
+    _IDENTITY_TREE_VALIDATOR(value)
+    for item in _identity_files(value):
+        _IDENTITY_FILE_VALIDATOR(item)
 
 
 # Validate and recover from stored metadata, not late class attribute hooks.
@@ -966,12 +983,17 @@ def _validate_bind_identity(reference: object, policy: object) -> None:
             _has_windows_drive(_identity_path(item))
             for item in _identity_files(reference)
         )
-    except AttributeError as error:
-        message = "source-binding reference has incomplete identity fields"
+    except (AttributeError, TypeError) as error:
+        message = "source-binding reference has invalid identity fields"
         raise SourceBindingPolicyError(message) from error
     if has_drive:
         message = "source-binding reference path cannot have a Windows drive"
         raise SourceBindingPolicyError(message)
+    try:
+        _require_native_identity_tree(reference)
+    except (AdmissionPolicyError, AttributeError, TypeError) as error:
+        message = "source-binding reference contains invalid identity metadata"
+        raise SourceBindingPolicyError(message) from error
 
 
 def _validate_bind_secret(secret: object, context: object) -> None:
@@ -1357,6 +1379,11 @@ def recover_secret(
     if _NATIVE_TYPE(candidate) is not IdentityTree:
         message = "source-binding candidate must use the exact IdentityTree type"
         raise SourceBindingError(message)
+    try:
+        _require_native_identity_tree(candidate)
+    except (AdmissionPolicyError, AttributeError, TypeError) as error:
+        message = "source-binding candidate contains invalid identity metadata"
+        raise SourceBindingError(message) from error
     try:
         available = _recover_available_shares(admitted, candidate)
     except AttributeError as error:
