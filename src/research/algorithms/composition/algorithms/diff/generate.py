@@ -64,7 +64,7 @@ from algorithms.diff.model import (
     reserved_windows_component,
 )
 from algorithms.diff.protected import protect_exact_plan
-from algorithms.diff.provenance import SourcePinEvidence
+from algorithms.diff.provenance import SourcePinError, SourcePinEvidence
 from algorithms.diff.source_binding import SourceBindingPolicy
 
 # Source replay identity must not trust a mutable process-global hash hook.
@@ -136,6 +136,13 @@ _DOMAIN_SOURCE_HOOK_SLOT = cast(
 )
 _DOMAIN_ORACLE_HOOK_SLOT = cast(
     "MemberDescriptorType", DiffDomain.__dict__["validate_authoring_oracle"]
+)
+
+# A domain callback can fabricate an exact native evidence instance without
+# invoking its constructor, or replace its class validator before returning.
+_NATIVE_SOURCE_EVIDENCE_VALIDATOR = cast(
+    "Callable[[SourcePinEvidence], None]",
+    SourcePinEvidence.__dict__["__post_init__"],
 )
 
 
@@ -671,6 +678,23 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
     )
 
 
+def _require_source_provenance_evidence(value: object) -> None:
+    """Revalidate the original native receipt after consumer callbacks.
+
+    Raises:
+        DomainContractError: Evidence is foreign, incomplete, or inconsistent.
+
+    """
+    if _NATIVE_TYPE(value) is not SourcePinEvidence:
+        message = "domain source provenance hook must return SourcePinEvidence"
+        raise DomainContractError(message)
+    try:
+        _NATIVE_SOURCE_EVIDENCE_VALIDATOR(value)
+    except (SourcePinError, AttributeError, TypeError) as error:
+        message = "domain source provenance evidence is invalid"
+        raise DomainContractError(message) from error
+
+
 def _preflight_domain(recipe: _RecipeLike) -> None:
     if recipe.domain_module is None:
         message = "domain preflight requires a domain module"
@@ -687,10 +711,7 @@ def _preflight_domain(recipe: _RecipeLike) -> None:
         "Callable[[Path], None]",
         _DOMAIN_ORACLE_HOOK_SLOT.__get__(domain, DiffDomain),
     )
-    evidence = source_hook(recipe.source_root)
-    if _NATIVE_TYPE(evidence) is not SourcePinEvidence:
-        message = "domain source provenance hook must return SourcePinEvidence"
-        raise DomainContractError(message)
+    _require_source_provenance_evidence(source_hook(recipe.source_root))
     oracle_result = oracle_hook(recipe.oracle_root)
     if oracle_result is not None:
         message = "domain oracle preflight hook must return None"

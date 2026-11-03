@@ -1167,6 +1167,100 @@ def test_domain_preflight_requires_source_pin_evidence(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("file_count", "snapshot_digest", "missing"),
+    [
+        (0, '"0" * 64', None),
+        (1, '"invalid"', None),
+        (1, '"0" * 64', "snapshot_sha256"),
+        (True, '"0" * 64', None),
+    ],
+)
+def test_domain_preflight_revalidates_native_source_pin_evidence(
+    tmp_path: Path,
+    *,
+    file_count: object,
+    snapshot_digest: str,
+    missing: str | None,
+) -> None:
+    """A constructor-bypassed native source pin cannot prove preflight."""
+    module = _domain_module(tmp_path)
+    content = module.read_text(encoding="utf-8")
+    valid = 'return SourcePinEvidence(file_count=1, snapshot_sha256="0" * 64)'
+    statements = [
+        "observed = object.__new__(SourcePinEvidence)",
+        (
+            f'SourcePinEvidence.__dict__["file_count"].__set__'
+            f'(observed, {file_count!r})'
+        ),
+    ]
+    if missing is None:
+        statements.append(
+            'SourcePinEvidence.__dict__["snapshot_sha256"].__set__(observed, '
+            + snapshot_digest + ")"
+        )
+    statements.append("return observed")
+    content = content.replace(valid, "\n    ".join(statements), 1)
+    _ = module.write_text(content, encoding="utf-8", newline="\n")
+    recipe = replace(
+        _recipe(tmp_path, mode=TransformMode.COMPATIBLE), domain_module=module
+    )
+    with pytest.raises(DomainContractError, match="source provenance evidence"):
+        write_algorithm(recipe)
+    assert not recipe.output_algorithm.exists()
+
+
+@pytest.mark.parametrize("hook", ["validator", "attribute", "slot"])
+def test_domain_source_evidence_revalidation_ignores_late_class_hooks(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Late domain hooks cannot rehabilitate malformed source evidence."""
+    observed = object.__new__(SourcePinEvidence)
+    cast(
+        "MemberDescriptorType", SourcePinEvidence.__dict__["file_count"]
+    ).__set__(observed, 0)
+    cast(
+        "MemberDescriptorType", SourcePinEvidence.__dict__["snapshot_sha256"]
+    ).__set__(observed, "0" * 64)
+    native_getattribute = object.__getattribute__
+    count_field = "file_count"
+    calls = 0
+
+    def fake_validator(_: SourcePinEvidence) -> None:
+        nonlocal calls
+        calls += 1
+
+    def fake_attribute(value: SourcePinEvidence, name: str) -> object:
+        nonlocal calls
+        if name == count_field:
+            calls += 1
+            return 1
+        return native_getattribute(value, name)
+
+    def fake_slot(_: SourcePinEvidence) -> int:
+        nonlocal calls
+        calls += 1
+        return 1
+
+    hooks: dict[str, tuple[str, object]] = {
+        "validator": ("__post_init__", fake_validator),
+        "attribute": ("__getattribute__", fake_attribute),
+        "slot": ("file_count", property(fake_slot)),
+    }
+    validator = cast(
+        "Callable[[object], None]",
+        vars(generate_module)["_require_source_provenance_evidence"],
+    )
+    with monkeypatch.context() as patch:
+        field, forged = hooks[hook]
+        patch.setattr(SourcePinEvidence, field, forged)
+        with pytest.raises(
+            DomainContractError, match="source provenance evidence"
+        ):
+            validator(observed)
+    assert calls == 0, "late evidence class hook was invoked"
+
+
 def test_domain_preflight_requires_void_oracle_result(tmp_path: Path) -> None:
     """Reject oracle validators that return foreign success metadata."""
     module = _domain_module(tmp_path)
