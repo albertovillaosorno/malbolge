@@ -1304,3 +1304,132 @@ def test_admission_policy_constructor_rejects_late_getter_forgery(
                     True if field == "minimum_anchors_per_file" else 1
                 ),
             )
+
+
+@pytest.mark.parametrize(
+    ("field", "forged", "expected"),
+    [
+        ("path", "source.c", "invalid identity path"),
+        ("canonical", b"contents", "exact bytes"),
+    ],
+)
+def test_identity_file_constructor_rejects_late_getter_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    forged: object,
+    expected: str,
+) -> None:
+    """Identity metadata construction must inspect stored path and bytes."""
+    original = IdentityFile.__getattribute__
+
+    def forged_attribute(value: IdentityFile, name: str) -> object:
+        if name == field:
+            return forged
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(IdentityFile, "__getattribute__", forged_attribute)
+        with pytest.raises(AdmissionPolicyError, match=expected):
+            _ = IdentityFile(
+                path="../escape.c" if field == "path" else "source.c",
+                canonical=(
+                    b"contents"
+                    if field == "path"
+                    else cast("bytes", cast("object", bytearray()))
+                ),
+            )
+
+
+def test_identity_tree_constructor_rejects_late_files_getter_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late getter cannot hide reversed source path order at construction."""
+    sorted_files = (
+        IdentityFile("a.c", b"a"),
+        IdentityFile("b.c", b"b"),
+    )
+    original = IdentityTree.__getattribute__
+
+    def forged_attribute(value: IdentityTree, name: str) -> object:
+        if name == "files":
+            return sorted_files
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(IdentityTree, "__getattribute__", forged_attribute)
+        with pytest.raises(AdmissionPolicyError, match="unique and sorted"):
+            _ = IdentityTree(files=tuple(reversed(sorted_files)))
+
+
+@pytest.mark.parametrize("field", ["path", "canonical"])
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_admission_identity_file_reads_ignore_late_getters(
+    monkeypatch: pytest.MonkeyPatch, field: str, hook: str
+) -> None:
+    """Source path matching and content comparison require stored identity."""
+    reference = identity_tree({"source.c": b"reproducible source bytes"})
+    candidate = identity_tree(
+        {"other.c" if field == "path" else "source.c": b"unrelated bytes"}
+    )
+    policy = _policy(source_similarity=0.8)
+    expected = evaluate_admission(reference, candidate, policy)
+    assert not expected.admitted
+    original = IdentityFile.__getattribute__
+    calls = 0
+
+    def forged_attribute(value: IdentityFile, name: str) -> object:
+        nonlocal calls
+        if name == field and value is candidate.files[0]:
+            calls += 1
+            return (
+                b"reproducible source bytes"
+                if field == "canonical"
+                else "source.c"
+            )
+        return cast("object", original(value, name))
+
+    def forged_property(value: IdentityFile) -> object:
+        return forged_attribute(value, field)
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            patch.setattr(IdentityFile, field, property(forged_property))
+        else:
+            patch.setattr(IdentityFile, "__getattribute__", forged_attribute)
+        observed = evaluate_admission(reference, candidate, policy)
+    assert observed == expected
+    assert calls == 0, "late identity file getter influenced lineage"
+
+
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_admission_identity_tree_reads_ignore_late_files_getter(
+    monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A replaced files getter cannot substitute reference records as source."""
+    reference = identity_tree({"source.c": b"reproducible source bytes"})
+    candidate = identity_tree({"other.c": b"unrelated bytes"})
+    policy = _policy(source_similarity=0.8)
+    expected = evaluate_admission(reference, candidate, policy)
+    assert not expected.admitted
+    original = IdentityTree.__getattribute__
+    source_files = reference.files
+    calls = 0
+
+    def forged_attribute(value: IdentityTree, name: str) -> object:
+        nonlocal calls
+        if name == "files" and value is candidate:
+            calls += 1
+            return source_files
+        return cast("object", original(value, name))
+
+    def forged_property(value: IdentityTree) -> object:
+        return forged_attribute(value, "files")
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            patch.setattr(IdentityTree, "files", property(forged_property))
+        else:
+            patch.setattr(IdentityTree, "__getattribute__", forged_attribute)
+        observed = evaluate_admission(reference, candidate, policy)
+    assert observed == expected
+    assert calls == 0, "late identity tree getter rewrote source lineage"

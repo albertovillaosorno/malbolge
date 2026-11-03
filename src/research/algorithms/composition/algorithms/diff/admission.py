@@ -186,15 +186,32 @@ class IdentityFile:
             AdmissionPolicyError: The identity path is unsafe or non-canonical.
 
         """
-        if _NATIVE_TYPE(self.path) is not _NATIVE_STR:
+        path, canonical = _identity_fields(self)
+        if _NATIVE_TYPE(path) is not _NATIVE_STR:
             message = "identity path must use the exact string type"
             raise AdmissionPolicyError(message)
-        if _NATIVE_TYPE(self.canonical) is not _NATIVE_BYTES:
+        if _NATIVE_TYPE(canonical) is not _NATIVE_BYTES:
             message = "identity canonical content must use exact bytes"
             raise AdmissionPolicyError(message)
-        if not _is_portable_relative_path(self.path):
-            message = f"invalid identity path: {self.path!r}"
+        if not _is_portable_relative_path(path):
+            message = f"invalid identity path: {path!r}"
             raise AdmissionPolicyError(message)
+
+
+# Do not let late class-level readers override canonical source identity.
+_IDENTITY_PATH_SLOT = cast(
+    "MemberDescriptorType", IdentityFile.__dict__["path"]
+)
+_IDENTITY_CANONICAL_SLOT = cast(
+    "MemberDescriptorType", IdentityFile.__dict__["canonical"]
+)
+
+
+def _identity_fields(file: IdentityFile) -> tuple[str, bytes]:
+    return (
+        cast("str", _IDENTITY_PATH_SLOT.__get__(file, IdentityFile)),
+        cast("bytes", _IDENTITY_CANONICAL_SLOT.__get__(file, IdentityFile)),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,19 +227,32 @@ class IdentityTree:
             AdmissionPolicyError: Files are duplicated or out of order.
 
         """
-        if _NATIVE_TYPE(self.files) is not _NATIVE_TUPLE:
+        files = _tree_files(self)
+        if _NATIVE_TYPE(files) is not _NATIVE_TUPLE:
             message = "identity tree files must use the exact immutable tuple"
             raise AdmissionPolicyError(message)
         if _NATIVE_ANY(
-            _NATIVE_TYPE(item) is not IdentityFile for item in self.files
+            _NATIVE_TYPE(item) is not IdentityFile for item in files
         ):
             message = "identity tree contains a foreign file record"
             raise AdmissionPolicyError(message)
-        paths = _NATIVE_TUPLE(item.path for item in self.files)
+        paths = _NATIVE_TUPLE(_identity_fields(item)[0] for item in files)
         if paths != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(paths))):
             message = "identity tree paths must be unique and sorted"
             raise AdmissionPolicyError(message)
         _require_file_path_topology(paths)
+
+
+_IDENTITY_FILES_SLOT = cast(
+    "MemberDescriptorType", IdentityTree.__dict__["files"]
+)
+
+
+def _tree_files(tree: IdentityTree) -> tuple[IdentityFile, ...]:
+    return cast(
+        "tuple[IdentityFile, ...]",
+        _IDENTITY_FILES_SLOT.__get__(tree, IdentityTree),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -635,20 +665,23 @@ def _file_evidence(
     candidate: IdentityFile | None,
     policy: AdmissionPolicy,
 ) -> FileAdmissionEvidence:
-    candidate_bytes = b"" if candidate is None else candidate.canonical
+    reference_path, reference_bytes = _identity_fields(reference)
+    candidate_bytes = (
+        b"" if candidate is None else _identity_fields(candidate)[1]
+    )
     _, _, _, minimum_per_file, structural_policy, anchor_policy = (
         _policy_fields(policy)
     )
     structural = (
         _structural_similarity(
-            reference.canonical,
+            reference_bytes,
             candidate_bytes,
             structural_policy,
         )
         if candidate is not None
         else 0.0
     )
-    reference_anchors = stable_anchors(reference.canonical, anchor_policy)
+    reference_anchors = stable_anchors(reference_bytes, anchor_policy)
     candidate_anchors = stable_anchors(candidate_bytes, anchor_policy)
     coverage = anchor_coverage(reference_anchors, candidate_anchors)
     total = cast(
@@ -662,7 +695,7 @@ def _file_evidence(
     )
     eligible = total >= minimum_per_file
     return FileAdmissionEvidence(
-        path=reference.path,
+        path=reference_path,
         structural_similarity=structural,
         anchor_coverage=ratio if eligible else None,
         reference_anchor_count=total,
@@ -731,13 +764,18 @@ def evaluate_admission(
     if _NATIVE_TYPE(policy) is not AdmissionPolicy:
         message = "admission policy must use the exact AdmissionPolicy type"
         raise AdmissionPolicyError(message)
-    if not reference.files:
+    reference_files = _tree_files(reference)
+    if not reference_files:
         message = "reference identity tree contains no source evidence"
         raise AdmissionError(message)
-    candidate_by_path = {item.path: item for item in candidate.files}
+    candidate_by_path = {
+        _identity_fields(item)[0]: item for item in _tree_files(candidate)
+    }
     files = _NATIVE_TUPLE(
-        _file_evidence(item, candidate_by_path.get(item.path), policy)
-        for item in reference.files
+        _file_evidence(
+            item, candidate_by_path.get(_identity_fields(item)[0]), policy
+        )
+        for item in reference_files
     )
     source_similarity = _mean(
         _NATIVE_TUPLE(item.structural_similarity for item in files)
