@@ -3865,6 +3865,7 @@ def test_probe_capture_quota_ignores_late_limit_getter(
     ("record", "callback"),
     (
         ("_CommandResult", "_launch_command"),
+        ("_CapturedProcess", "_wait_for_bounded_pipes"),
         ("_PipeCapture", "_capture_pipes"),
         ("_RunningProbe", "_start_writer"),
         ("ProbeTranscript", "_run_command"),
@@ -3924,3 +3925,136 @@ def test_probe_execution_ignores_late_receipt_constructors(
         observed = run_probe_program(program, context)
         assert observed == expected
     assert installed and calls == 0
+
+
+@pytest.mark.parametrize(
+    "attack",
+    (
+        "replace_class",
+        "replace_init",
+        "replace_new",
+        "forge_stdout",
+        "forge_stderr",
+        "forge_returncode",
+    ),
+)
+def test_probe_completed_process_cannot_rewrite_captured_observations(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    attack: str,
+) -> None:
+    """An executed child must not trust mutable subprocess result hooks."""
+    child_marker = "MALBOLGE_PROBE_COMPLETED_CHILD"
+    if attack == "replace_new" and os.environ.get(child_marker) != "1":
+        environment = os.environ.copy()
+        environment[child_marker] = "1"
+        completed = subprocess.run(
+            [sys.executable, "-B", "-m", "pytest", "-q", request.node.nodeid],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=90,
+            env=environment,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        return
+
+    source = tmp_path / "source"
+    source.mkdir()
+    command = ProbeCommand(
+        ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "import sys; print('trusted'); sys.stderr.write('stderr')"),
+        digest_stdout=True,
+        digest_exit_code=True,
+    )
+    program = ProbeProgram("completed-receipt", (command,))
+    context = _context(source, tmp_path)
+    baseline = run_probe_program(program, context)
+    original_wait = cast(
+        "Callable[..., None]", vars(probe_exec_module)["_wait_for_bounded_pipes"]
+    )
+    owner = subprocess.CompletedProcess
+    installed = False
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late subprocess result constructor executed")
+
+    def forged_getter(_record: object) -> object:
+        nonlocal calls
+        calls += 1
+        return {"stdout": b"forged", "stderr": b"unexpected"}.get(
+            attack.removeprefix("forge_"), 99
+        )
+
+    def stored_setter(record: object, value: object) -> None:
+        vars(record)[attack.removeprefix("forge_")] = value
+
+    with monkeypatch.context() as patched:
+
+        def after_capture(*args: object, **kwargs: object) -> None:
+            nonlocal installed
+            original_wait(*args, **kwargs)
+            if not installed:
+                if attack == "replace_class":
+                    patched.setattr(subprocess, "CompletedProcess", forbidden)
+                elif attack == "replace_init":
+                    patched.setattr(owner, "__init__", forbidden)
+                elif attack == "replace_new":
+                    patched.setattr(owner, "__new__", forbidden)
+                else:
+                    patched.setattr(
+                        owner,
+                        attack.removeprefix("forge_"),
+                        property(forged_getter, stored_setter),
+                        raising=False,
+                    )
+                installed = True
+
+        patched.setattr(probe_exec_module, "_wait_for_bounded_pipes", after_capture)
+        observed = run_probe_program(program, context)
+        assert observed == baseline
+    assert installed and calls == 0
+
+
+@pytest.mark.parametrize("field", ("stdout", "stderr", "returncode"))
+def test_probe_captured_process_ignores_late_field_getters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Digest and bounds checks read the pinned process receipt storage."""
+    source = tmp_path / "source"
+    source.mkdir()
+    command = ProbeCommand(
+        ToolExecutable(_PYTHON_TOOL),
+        arguments=("-c", "import sys; print('trusted'); sys.stderr.write('error')"),
+        digest_stdout=True,
+        digest_exit_code=True,
+    )
+    program = ProbeProgram("captured-fields", (command,))
+    context = _context(source, tmp_path)
+    baseline = run_probe_program(program, context)
+    owner = cast("type[object]", vars(probe_exec_module)["_CapturedProcess"])
+    original = cast("Callable[..., object]", vars(probe_exec_module)["_launch_command"])
+    calls = 0
+
+    def forbidden_getter(_receipt: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late captured process getter executed")
+
+    with monkeypatch.context() as patched:
+
+        def install_after_launch(*args: object, **kwargs: object) -> object:
+            result = original(*args, **kwargs)
+            patched.setattr(owner, field, property(forbidden_getter))
+            return result
+
+        patched.setattr(probe_exec_module, "_launch_command", install_after_launch)
+        observed = run_probe_program(program, context)
+        assert observed == baseline
+    assert calls == 0

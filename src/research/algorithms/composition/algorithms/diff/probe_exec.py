@@ -685,6 +685,44 @@ def _new_command_result(stdout: bytes, returncode: int) -> _CommandResult:
     return result
 
 
+@dataclass(frozen=True, slots=True, init=False)
+class _CapturedProcess:
+    """Private process receipt, independent of mutable subprocess classes."""
+
+    stdout: bytes
+    stderr: bytes
+    returncode: int
+
+    def __init__(self, stdout: bytes, stderr: bytes, returncode: int) -> None:
+        for name, value in (
+            ("stdout", stdout),
+            ("stderr", stderr),
+            ("returncode", returncode),
+        ):
+            _CAPTURED_PROCESS_SLOTS[name].__set__(self, value)
+
+
+_CAPTURED_PROCESS_SLOTS: dict[str, MemberDescriptorType] = {
+    name: cast("MemberDescriptorType", _CapturedProcess.__dict__[name])
+    for name in _CapturedProcess.__slots__
+}
+_CAPTURED_PROCESS_INIT = _CapturedProcess.__init__
+
+
+def _new_captured_process(
+    stdout: bytes, stderr: bytes, returncode: int
+) -> _CapturedProcess:
+    receipt = _NATIVE_OBJECT_NEW(_CapturedProcess)
+    _CAPTURED_PROCESS_INIT(receipt, stdout, stderr, returncode)
+    return receipt
+
+
+def _captured_field(receipt: _CapturedProcess, name: str) -> object:
+    return cast(
+        "object", _CAPTURED_PROCESS_SLOTS[name].__get__(receipt, _CapturedProcess)
+    )
+
+
 def _command_result_stdout(result: _CommandResult) -> bytes:
     return cast("bytes", _COMMAND_RESULT_STDOUT_SLOT.__get__(result, _CommandResult))
 
@@ -1527,7 +1565,7 @@ def _probe_wall_deadline(timeout_ms: int) -> float:
 
 def _launch_command(
     argv: list[str], command: ProbeCommand, scratch_root: Path
-) -> subprocess.CompletedProcess[bytes]:
+) -> _CapturedProcess:
     """Bound streamed child stdout and stderr before making a transcript.
 
     Returns:
@@ -1542,9 +1580,8 @@ def _launch_command(
     try:
         running = _start_capture_checked(process, command)
         _wait_for_bounded_pipes(running, deadline)
-        completed = subprocess.CompletedProcess(
-            argv,
-            process.wait(),
+        completed = _new_captured_process(
+            returncode=process.wait(),
             stdout=b"".join(
                 cast(
                     "list[bytes]",
@@ -1590,26 +1627,29 @@ def _run_command(
 ) -> _CommandResult:
     argv = _command_argv(command, context, scratch_root)
     completed = _launch_command(argv, command, scratch_root)
-    if _NATIVE_LEN(completed.stdout) > cast(
+    stdout = cast("bytes", _captured_field(completed, "stdout"))
+    stderr = cast("bytes", _captured_field(completed, "stderr"))
+    returncode = cast("int", _captured_field(completed, "returncode"))
+    if _NATIVE_LEN(stdout) > cast(
         "int", _probe_field(command, ProbeCommand, "max_stdout_bytes")
     ):
         message = "probe command exceeded stdout limit"
         raise ProbeExecutionError(message)
-    if _NATIVE_LEN(completed.stderr) > cast(
+    if _NATIVE_LEN(stderr) > cast(
         "int", _probe_field(command, ProbeCommand, "max_stderr_bytes")
     ):
         message = "probe command exceeded stderr limit"
         raise ProbeExecutionError(message)
     if cast(
         "int | None", _probe_field(command, ProbeCommand, "expected_exit_code")
-    ) is not None and completed.returncode != cast(
+    ) is not None and returncode != cast(
         "int | None", _probe_field(command, ProbeCommand, "expected_exit_code")
     ):
         message = "probe command returned an unexpected exit code"
         raise ProbeExecutionError(message)
     return _new_command_result(
-        stdout=completed.stdout,
-        returncode=completed.returncode,
+        stdout=stdout,
+        returncode=returncode,
     )
 
 
