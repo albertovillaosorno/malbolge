@@ -791,6 +791,15 @@ authoring/reference
 code; the emitted exact Rust runtime now carries the fixed-limb runtime
 implementation.
 
+Python AEAD encryption now returns detached `AuthenticatedPayload` evidence
+through captured native allocation and the original record initializer
+(`96837b2ff`), not mutable class `__new__` or `__init__` hooks. Two red-first
+initializer cases showed that late consumers could replace computed ciphertext
+or a valid Poly1305 tag; an isolated allocation-hook case covers `__new__`.
+All 37 payload tests and 2,671 integrated diff tests passed, with scoped Ruff
+and BasedPyright reporting zero errors (four existing type warnings). The
+change does not isolate direct trusted module or instance-storage edits.
+
 `protected.py` now combines key binding and authenticated encryption for exact
 authoring plans. Every `OracleLiteral` is moved into one deterministic plaintext
 stream. Protected instructions retain only source slices or offsets into that

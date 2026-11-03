@@ -281,6 +281,13 @@ format.
   transform, so transform metadata plus a guessed plaintext cannot derive the
   key by
   itself.
+- Python AEAD output construction now pins native allocation and original
+  `AuthenticatedPayload` initialization (`96837b2ff`), preventing late
+  class-hook replacement of ciphertext or authentication tags. Two red-first
+  initializer cases and one isolated allocation case passed, alongside 37
+  payload-focused tests and 2,671 integrated diff tests; scoped Ruff and
+  BasedPyright had zero errors, with four older type warnings. Direct stored
+  object or trusted module mutation remains outside this guard.
 - A historical read-only DOOM smoke protected 2,116,232 literal bytes across 152
   instructions and materialized the then-current 152-file oracle snapshot. That
   snapshot is now known to include one accidental PowerShell root entry. The
