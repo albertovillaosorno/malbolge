@@ -58,6 +58,7 @@ from algorithms.diff.exact import (
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.model import (
     _file_fields,
+    _plan_fields,
     _snapshot_files,
     reserved_windows_component,
 )
@@ -569,11 +570,15 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
         recipe.oracle_root,
         passthrough_roots=recipe.passthrough_roots,
     )
-    identity = _raw_exact_identity(recipe, exact.source)
+    # Domain callbacks can replace ExactAuthoringPlan class getters after
+    # creation; only the original plan slots can authorize post-protection
+    # input drift checks and source-bound key material.
+    planned_source, planned_target, _, _ = _plan_fields(exact)
+    identity = _raw_exact_identity(recipe, planned_source)
     replayed_source = snapshot_tree_excluding(
         recipe.source_root, recipe.passthrough_roots
     )
-    if not _snapshots_match(replayed_source, exact.source):
+    if not _snapshots_match(replayed_source, planned_source):
         message = "exact source tree changed after identity replay"
         raise ExactTreeError(message)
     policy = SourceBindingPolicy(
@@ -592,8 +597,8 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
     # Protection can take time; reject persistent input drift before emitting
     # a distributable transform bound to a stale source or oracle snapshot.
     for name, root, expected in (
-        ("source", recipe.source_root, exact.source),
-        ("oracle", recipe.oracle_root, exact.target),
+        ("source", recipe.source_root, planned_source),
+        ("oracle", recipe.oracle_root, planned_target),
     ):
         if not _snapshots_match(
             snapshot_tree_excluding(root, recipe.passthrough_roots), expected

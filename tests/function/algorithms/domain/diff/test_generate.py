@@ -56,7 +56,7 @@ from algorithms.diff.generate import (
     TransformMode,
     write_algorithm,
 )
-from algorithms.diff.model import FileRecord, TreeSnapshot
+from algorithms.diff.model import ExactAuthoringPlan, FileRecord, TreeSnapshot
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
 
@@ -65,7 +65,6 @@ if TYPE_CHECKING:
 
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.domain import DiffDomain
-    from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.protected import ProtectedExactPlan
     from algorithms.diff.source_binding import SourceBindingPolicy
 
@@ -2120,3 +2119,127 @@ with TemporaryDirectory() as directory:
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("field", ["source", "target"])
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_generator_post_protection_replay_uses_stored_plan_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    hook: str,
+) -> None:
+    """A late plan getter cannot certify a changed source or oracle tree."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    root = recipe.source_root if field == "source" else recipe.oracle_root
+    changed_file = root / ("b.bin" if field == "source" else "a.bin")
+    emitted: list[str] = []
+    getter_calls = 0
+
+    def change_after_protection(
+        _exact: ExactAuthoringPlan,
+        _identity: IdentityTree,
+        *,
+        binding_policy: SourceBindingPolicy,
+        context: bytes,
+    ) -> ProtectedExactPlan:
+        del binding_policy, context
+        original = changed_file.read_bytes()
+        _ = changed_file.write_bytes(b"changed" + original[7:])
+        forged_snapshot = generate_module.snapshot_tree_excluding(root, ())
+
+        def forged_getter(_plan: ExactAuthoringPlan) -> TreeSnapshot:
+            nonlocal getter_calls
+            getter_calls += 1
+            return forged_snapshot
+
+        if hook == "slot":
+            patched.setattr(ExactAuthoringPlan, field, property(forged_getter))
+        else:
+            original_getter = ExactAuthoringPlan.__getattribute__
+
+            def forged_getattribute(plan: ExactAuthoringPlan, name: str) -> object:
+                if name == field:
+                    return forged_getter(plan)
+                return cast("object", original_getter(plan, name))
+
+            patched.setattr(
+                ExactAuthoringPlan, "__getattribute__", forged_getattribute
+            )
+        return cast("ProtectedExactPlan", object())
+
+    def capture_emission(
+        _protected: ProtectedExactPlan, _profile: str, _path: Path
+    ) -> None:
+        emitted.append("unexpected")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            generate_module, "protect_exact_plan", change_after_protection
+        )
+        patched.setattr(generate_module, "write_rust_transform", capture_emission)
+        name = "source" if field == "source" else "oracle"
+        with pytest.raises(ExactTreeError, match=f"{name} tree changed"):
+            write_algorithm(recipe)
+    assert getter_calls == 0, "plan class getter replaced stored replay evidence"
+    assert not emitted, "source/oracle drift reached Rust emission"
+
+
+@pytest.mark.parametrize("field", ["source", "target"])
+@pytest.mark.parametrize("hook", ["slot", "getattribute"])
+def test_generator_identity_replay_ignores_late_plan_field_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    hook: str,
+) -> None:
+    """A valid authored plan remains usable when class getters are replaced."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    emitted: list[str] = []
+    getter_calls = 0
+
+    def build_and_replace(*args: object, **kwargs: object) -> ExactAuthoringPlan:
+        plan = build_exact_plan(
+            cast("Path", args[0]),
+            cast("Path", args[1]),
+            passthrough_roots=cast("tuple[str, ...]", kwargs["passthrough_roots"]),
+        )
+
+        def forbidden_getter(_plan: ExactAuthoringPlan) -> TreeSnapshot:
+            nonlocal getter_calls
+            getter_calls += 1
+            raise AssertionError("late plan getter consulted")
+
+        if hook == "slot":
+            patched.setattr(ExactAuthoringPlan, field, property(forbidden_getter))
+        else:
+            original_getter = ExactAuthoringPlan.__getattribute__
+
+            def forbidden_getattribute(
+                item: ExactAuthoringPlan, name: str
+            ) -> object:
+                if name == field:
+                    return forbidden_getter(item)
+                return cast("object", original_getter(item, name))
+
+            patched.setattr(
+                ExactAuthoringPlan, "__getattribute__", forbidden_getattribute
+            )
+        return plan
+
+    def capture_emission(
+        _protected: ProtectedExactPlan, _profile: str, _path: Path
+    ) -> None:
+        emitted.append("admitted")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "build_exact_plan", build_and_replace)
+        patched.setattr(
+            generate_module,
+            "protect_exact_plan",
+            lambda *_args, **_kwargs: cast("ProtectedExactPlan", object()),
+        )
+        patched.setattr(generate_module, "write_rust_transform", capture_emission)
+        write_algorithm(recipe)
+    assert getter_calls == 0, "late plan getter gained source authority"
+    assert emitted == ["admitted"], "valid stored plan did not reach emission"
