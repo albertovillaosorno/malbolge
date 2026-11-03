@@ -34,6 +34,7 @@
 
 from __future__ import annotations
 
+import builtins
 from dataclasses import dataclass
 from enum import StrEnum
 from hashlib import sha256 as _native_sha256
@@ -84,6 +85,10 @@ _UNSAFE_COMPONENTS = frozenset(("", ".", ".."))
 _AAD_MAGIC = b"source-bound-exact-plan-aad-v2\0"
 _KEY_DOMAIN = b"source-bound-exact-plan-source-key-v1\0"
 _BINDING_CONTEXT_DOMAIN = b"source-bound-exact-plan-binding-v1\0"
+# Preserve authenticated metadata admission across post-import domain hooks.
+_NATIVE_ANY = builtins.any
+_NATIVE_SORTED = builtins.sorted
+_NATIVE_SET = builtins.set
 
 
 class ProtectedPlanError(ValueError):
@@ -113,7 +118,7 @@ def _require_utf8_path(value: str, context: str) -> None:
         _BACKSLASH in value
         or bool(_native_splitdrive(value)[0])
         or _native_isreserved(value)
-        or any(part in _UNSAFE_COMPONENTS for part in value.split("/"))
+        or _NATIVE_ANY(part in _UNSAFE_COMPONENTS for part in value.split("/"))
     )
     if unsafe:
         message = f"{context} must be a canonical relative path"
@@ -128,12 +133,12 @@ def _require_optional_utf8_path(value: str | None, context: str) -> None:
 def _require_utf8_roots(roots: tuple[str, ...]) -> None:
     for root in roots:
         _require_utf8_path(root, "protected passthrough root")
-    if roots != tuple(sorted(set(roots))):
+    if roots != tuple(_NATIVE_SORTED(_NATIVE_SET(roots))):
         message = "protected passthrough roots must be unique and sorted"
         raise ProtectedPlanError(message)
     for index, root in enumerate(roots):
         prefix = root + "/"
-        if any(other.startswith(prefix) for other in roots[index + 1 :]):
+        if _NATIVE_ANY(other.startswith(prefix) for other in roots[index + 1 :]):
             message = "protected passthrough roots must not overlap"
             raise ProtectedPlanError(message)
 
@@ -142,7 +147,7 @@ def _require_sha256_hex(value: object, context: str) -> None:
     if type(value) is not str or len(value) != _SHA256_HEX_LENGTH:
         message = f"{context} must be 64 lowercase hex digits"
         raise ProtectedPlanError(message)
-    if any(char not in _HEX_DIGITS for char in value):
+    if _NATIVE_ANY(char not in _HEX_DIGITS for char in value):
         message = f"{context} must be 64 lowercase hex digits"
         raise ProtectedPlanError(message)
 
@@ -152,7 +157,7 @@ def _validate_protected_segments(value: object) -> None:
         message = "protected instruction segments must use an immutable tuple"
         raise ProtectedPlanError(message)
     segments = cast("tuple[object, ...]", value)
-    if any(type(item) not in {SourceSlice, PayloadSlice} for item in segments):
+    if _NATIVE_ANY(type(item) not in {SourceSlice, PayloadSlice} for item in segments):
         message = "protected instruction contains a foreign segment record"
         raise ProtectedPlanError(message)
 
@@ -255,7 +260,7 @@ class ProtectedInstruction:
 def _require_static_target_outside_passthrough(
     target: TreeSnapshot, roots: tuple[str, ...]
 ) -> None:
-    if any(
+    if _NATIVE_ANY(
         record.path == root or record.path.startswith(root + "/")
         for record in target.files
         for root in roots
@@ -268,7 +273,7 @@ def _require_unique_instruction_outputs(
     instructions: tuple[ProtectedInstruction, ...],
 ) -> None:
     paths = tuple(item.output_path for item in instructions)
-    if len(paths) != len(set(paths)):
+    if len(paths) != len(_NATIVE_SET(paths)):
         message = "protected instructions require unique output paths"
         raise ProtectedPlanError(message)
 
@@ -307,7 +312,7 @@ class ProtectedMetadata:
         ):
             message = "protected metadata snapshots must use exact TreeSnapshot records"
             raise ProtectedPlanError(message)
-        if type(self.instructions) is not tuple or any(
+        if type(self.instructions) is not tuple or _NATIVE_ANY(
             type(item) is not ProtectedInstruction for item in self.instructions
         ):
             message = "protected metadata instructions must be exact immutable records"
@@ -317,7 +322,7 @@ class ProtectedMetadata:
         if type(self.passthrough_roots) is not tuple:
             message = "protected passthrough roots must use an immutable tuple"
             raise ProtectedPlanError(message)
-        if any(type(root) is not str or not root for root in self.passthrough_roots):
+        if _NATIVE_ANY(type(root) is not str or not root for root in self.passthrough_roots):
             message = "protected passthrough roots must be non-empty strings"
             raise ProtectedPlanError(message)
         _require_utf8_roots(self.passthrough_roots)

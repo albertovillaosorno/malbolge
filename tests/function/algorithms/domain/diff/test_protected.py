@@ -34,11 +34,12 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import ntpath
 import shutil
-from pathlib import PurePosixPath
 from dataclasses import replace
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
@@ -340,6 +341,66 @@ def test_protected_authoring_rejects_foreign_inputs(tmp_path: Path) -> None:
             binding_policy=policy,
             context=cast("bytes", cast("object", bytearray(_CONTEXT))),
         )
+
+
+@pytest.mark.parametrize("invalid", ["nested/../escape.bin", "nested//unsafe.bin"])
+def test_protected_path_admission_ignores_late_any_hook(
+    monkeypatch: pytest.MonkeyPatch, invalid: str,
+) -> None:
+    """An untrusted callback cannot suppress path-component validation."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        try:
+            _ = ProtectedInstruction(
+                output_path=invalid,
+                kind=ProtectedInstructionKind.COPY_SOURCE,
+                expected_sha256="0" * 64,
+                source_path="safe.bin",
+            )
+        except ProtectedPlanError:
+            rejected = True
+    assert rejected, "a late any hook admitted an unsafe output path"
+
+
+def test_protected_roots_ignore_late_sorted_set_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed authenticated passthrough roots remain rejected."""
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "sorted", lambda values: list(values))
+        patched.setattr(builtins, "set", lambda values: list(values))
+        try:
+            _ = ProtectedMetadata(
+                source=TreeSnapshot(files=()),
+                target=TreeSnapshot(files=()),
+                instructions=(),
+                passthrough_roots=("zeta", "alpha"),
+            )
+        except ProtectedPlanError:
+            rejected = True
+    assert rejected, "late sort and set hooks admitted unsorted passthrough roots"
+
+
+def test_protected_static_passthrough_overlap_ignores_late_any_hook(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    """Static target bytes cannot be published from a dynamic root."""
+    _, _, _, _, plan = _protected(tmp_path)
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "any", lambda values: False)
+        try:
+            _ = ProtectedMetadata(
+                source=plan.source,
+                target=plan.target,
+                instructions=plan.instructions,
+                passthrough_roots=("keep.bin",),
+            )
+        except ProtectedPlanError:
+            rejected = True
+    assert rejected, "late any hook admitted static/dynamic target overlap"
 
 
 @pytest.mark.parametrize("invalid", ["unencodable" + chr(0xD800), "nul\x00path"])
