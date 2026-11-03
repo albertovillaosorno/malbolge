@@ -103,6 +103,11 @@ format.
   `3332c420b`, `321a99ba7`, and `44b31171a`. The full diff suite passed
   2,464 tests at validation time. These guards do not isolate direct
   instance mutation or racing source writers.
+- Domain bundle loading now pins native record allocation and original
+  initialization (`23646a309`); two red-first class `__init__`/`__new__`
+  substitution cases passed with 90 focused tests and scoped Ruff zero errors.
+  Source BasedPyright has zero errors; a pre-existing path-type issue remains
+  in domain tests. Direct trusted instance mutation remains outside this guard.
 - The exact authoring planner/materializer reconstructs deterministic byte
   trees,
   reuses whole source files and source spans, and publishes only after full

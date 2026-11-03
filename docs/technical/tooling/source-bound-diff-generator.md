@@ -181,6 +181,14 @@ states before these fixes. Trusted callback execution, direct instance-storage
 mutation, and concurrent filesystem writers remain separate trust boundaries;
 these changes do not create a sandbox or an atomic source snapshot.
 
+Domain hook loading now constructs the validated `DiffDomain` bundle with
+captured native allocation and its original initializer (`23646a309`). Two
+red-first `__init__`/`__new__` cases show imported consumer code could replace
+callable hooks or interrupt record creation after module admission. All 90
+domain tests and scoped Ruff checks passed; source BasedPyright reported zero
+errors, while the test file retains one pre-existing path-typing diagnostic.
+Class-hook isolation does not protect trusted direct record storage changes.
+
 The public generator recipe captures all fifteen original field slots in a
 private immutable snapshot before validation. The same validated snapshot is
 used for domain preflight and exact publication, so a late class property or
