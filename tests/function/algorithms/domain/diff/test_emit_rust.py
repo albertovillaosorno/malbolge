@@ -368,7 +368,7 @@ def _compile(rust_source: Path, executable: Path) -> sp.CompletedProcess[bytes]:
 
 def _run(
     executable: Path,
-    source: Path,
+    source: Path | str,
     output: Path,
 ) -> sp.CompletedProcess[bytes]:
     # Generated executable plus explicit paths; no shell interpolation.
@@ -2304,8 +2304,11 @@ def test_emitted_rust_rejects_wrong_source_before_output(
     _expect(not output.exists(), "wrong-source output was published")
 
 
-def test_emitted_rust_rejects_linked_source_root(tmp_path: Path) -> None:
-    """The runtime must reject a linked root as Python exact snapshots do."""
+@pytest.mark.parametrize("root_spelling", ["direct", "dot", "trailing-slash"])
+def test_emitted_rust_rejects_linked_source_root(
+    tmp_path: Path, root_spelling: str
+) -> None:
+    """Runtime source admission must reject linked roots and path aliases."""
     source, _, _, protected = _fixture(tmp_path)
     baseline = snapshot_tree(source)
     linked_source = tmp_path / "linked-source"
@@ -2324,11 +2327,50 @@ def test_emitted_rust_rejects_linked_source_root(tmp_path: Path) -> None:
     compiled = _compile(rust_source, executable)
     _expect(compiled.returncode == 0, "linked-source fixture did not compile")
 
-    completed = _run(executable, linked_source, output)
+    source_arg = (
+        linked_source
+        if root_spelling == "direct"
+        else f"{linked_source}/" + ("." if root_spelling == "dot" else "")
+    )
+    completed = _run(executable, source_arg, output)
 
     _expect(completed.returncode != 0, "linked source root was admitted")
+    _expect(
+        b"tree root must not be linked" in completed.stderr,
+        "linked root failed without the no-follow admission diagnosis",
+    )
     _expect(not output.exists(), "linked-root output was published")
     _expect(snapshot_tree(source) == baseline, "linked-root source was modified")
+
+
+@pytest.mark.parametrize("root_spelling", ["dot", "trailing-slash"])
+def test_emitted_rust_accepts_real_source_root_with_lexical_suffix(
+    tmp_path: Path, root_spelling: str
+) -> None:
+    """No-follow admission must preserve ordinary directory path spellings."""
+    source, oracle, _, protected = _fixture(tmp_path)
+    baseline = snapshot_tree(source)
+    rust_source = tmp_path / "real-source-alias.rs"
+    executable = tmp_path / "real-source-alias.exe"
+    output = tmp_path / "real-source-alias-out"
+    _ = rust_source.write_text(
+        emit_rust_transform(protected, _PROFILE),
+        encoding="utf-8",
+        newline="\n",
+    )
+    compiled = _compile(rust_source, executable)
+    _expect(compiled.returncode == 0, "real-source fixture did not compile")
+    source_arg = f"{source}/" + ("." if root_spelling == "dot" else "")
+
+    completed = _run(executable, source_arg, output)
+
+    _expect(
+        completed.returncode == 0,
+        "valid source spelling was rejected: "
+        + completed.stderr.decode(errors="replace"),
+    )
+    _expect(snapshot_tree(output) == snapshot_tree(oracle), "target mismatch")
+    _expect(snapshot_tree(source) == baseline, "source was modified")
 
 
 @pytest.mark.parametrize("linked_parent", [False, True])

@@ -633,7 +633,10 @@ fn collect_files(
     Ok(())
 }
 fn snapshot_tree(root: &Path) -> Result<Snapshot, String> {
-    let metadata = fs::symlink_metadata(root).map_err(|e| {
+    // A raw suffix of "/" or "/." makes symlink_metadata follow a link.
+    // Strip lexical dot/separator suffixes before the no-follow root check.
+    let normalized: PathBuf = root.components().collect();
+    let metadata = fs::symlink_metadata(&normalized).map_err(|e| {
         format!("cannot inspect tree root {}: {e}", root.display())
     })?;
     let kind = metadata.file_type();
