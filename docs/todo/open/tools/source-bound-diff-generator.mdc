@@ -86,6 +86,11 @@ format.
   unchanged host `os.path` functions. One red-first case, 269 postcommit
   generator tests, strict source/test typing, Ruff, and diff checks pass;
   direct storage changes and external filesystem races remain out of scope.
+- Generator resolution now also pins `builtins.isinstance`,
+  `builtins.len`, and `builtins.bytes` (`c11503fca`). Three red-first
+  callback/alias cases now fail closed instead of executing late hooks or
+  leaking `TypeError`. All 272 postcommit generator tests, strict typing,
+  Ruff, and diff checks pass. External host/filesystem races remain open.
 - Generator domain preflight now invokes the original native
   `SourcePinEvidence` validator after the consumer callback (`a27f430de`),
   rather than accepting an exact-type object whose initializer never ran.

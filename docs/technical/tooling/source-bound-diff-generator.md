@@ -124,6 +124,15 @@ identities now fail closed before resolution. Five red-first cases and all
 and diff checks clean. These checks cannot isolate direct process mutation
 races or concurrent filesystem writers.
 
+The generator additionally rejects late host `builtins.isinstance`,
+`builtins.len`, and `builtins.bytes` substitutions before `Path.resolve`
+(`c11503fca`). Original `realpath` dispatch invokes the first two and
+branches on the third; the prior check admitted callbacks and leaked a
+`TypeError` for a forged bytes alias. Three red-first cases and all 272
+postcommit generator tests pass, alongside scoped Ruff, strict source/test
+BasedPyright, and diff checks. These checks are not atomic against host
+mutation or external filesystem writers.
+
 The Rust source emitter protects its own runtime template from output overwrite
 with the same import-original `os.path.realpath` identity requirement before
 and after resolving the template and destination (`f15620ff7`). Two red-first
