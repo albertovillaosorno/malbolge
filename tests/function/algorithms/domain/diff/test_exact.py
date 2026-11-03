@@ -47,7 +47,7 @@ import sys
 import textwrap
 from contextlib import nullcontext
 from dataclasses import fields, replace
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePath, PurePosixPath
 from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
@@ -4166,6 +4166,45 @@ def test_exact_bound_reader_does_not_use_late_host_realpath(
         patched.setattr(os.path, "realpath", unused_realpath)
         actual = exact_module.read_exact_regular_file(source, "source")
     assert actual == b"admitted bytes"
+
+
+@pytest.mark.parametrize("excluded", [False, True])
+@pytest.mark.parametrize("comparator", ["path", "record"])
+def test_exact_snapshot_does_not_call_late_ordering_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    comparator: str,
+    *,
+    excluded: bool,
+) -> None:
+    """Native snapshot sorting must not invoke mutable path/record comparators."""
+    root = tmp_path / "source"
+    _write(root, "a.bin", b"one")
+    _write(root, "b.bin", b"two")
+    _write(root, "runtime/data.bin", b"dynamic")
+    baseline = (
+        snapshot_tree_excluding(root, ("runtime",))
+        if excluded
+        else snapshot_tree(root)
+    )
+    calls = 0
+
+    def forged_lt(_self: object, _other: object) -> bool:
+        nonlocal calls
+        calls += 1
+        message = "late ordering comparator executed"
+        raise AssertionError(message)
+
+    owner = PurePath if comparator == "path" else FileRecord
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "__lt__", forged_lt)
+        observed = (
+            snapshot_tree_excluding(root, ("runtime",))
+            if excluded
+            else snapshot_tree(root)
+        )
+    assert observed == baseline
+    assert calls == 0, "late ordering comparator executed during snapshot"
 
 
 @pytest.mark.parametrize("hook", ["walk", "scandir"])

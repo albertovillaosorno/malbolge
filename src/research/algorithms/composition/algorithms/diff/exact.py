@@ -617,7 +617,7 @@ def _tree_paths(root: Path) -> tuple[Path, ...]:
     for directory, directories, filenames in _walk_tree(root):
         paths.extend(directory / name for name in directories)
         paths.extend(directory / name for name in filenames)
-    return _NATIVE_TUPLE(_NATIVE_SORTED(paths))
+    return _NATIVE_TUPLE(_NATIVE_SORTED(paths, key=_NATIVE_PATH_STRING))
 
 
 def _walk_relative_path(root: Path, path: Path) -> str:
@@ -669,7 +669,7 @@ def _tree_paths_excluding(
             )
         )
         paths.extend(_admitted_files(root, directory, filenames, roots=roots))
-    return _NATIVE_TUPLE(_NATIVE_SORTED(paths))
+    return _NATIVE_TUPLE(_NATIVE_SORTED(paths, key=_NATIVE_PATH_STRING))
 
 
 def _entry_mode(path: Path, context: str) -> int | None:
@@ -1002,7 +1002,9 @@ def snapshot_tree(root: Path) -> TreeSnapshot:
         for path in _tree_paths(resolved_root)
         if (record := _record_file(resolved_root, path)) is not None
     )
-    return _new_tree_snapshot(files=_NATIVE_TUPLE(_NATIVE_SORTED(records)))
+    return _new_tree_snapshot(
+        files=_NATIVE_TUPLE(_NATIVE_SORTED(records, key=lambda record: _file_fields(record)[0]))
+    )
 
 
 def snapshot_tree_excluding(
@@ -1022,7 +1024,9 @@ def snapshot_tree_excluding(
         for path in _tree_paths_excluding(resolved_root, roots)
         if (record := _record_file(resolved_root, path)) is not None
     )
-    return _new_tree_snapshot(files=_NATIVE_TUPLE(_NATIVE_SORTED(records)))
+    return _new_tree_snapshot(
+        files=_NATIVE_TUPLE(_NATIVE_SORTED(records, key=lambda record: _file_fields(record)[0]))
+    )
 
 
 def _source_paths_by_content(
