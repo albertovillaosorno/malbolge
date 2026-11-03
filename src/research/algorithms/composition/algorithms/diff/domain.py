@@ -126,6 +126,8 @@ _NATIVE_OS_PATH_ALTSEP = os.path.altsep
 # pathlib factories and descriptors. An untrusted module path must not be
 # redirected or have linked ancestors hidden by a late class hook.
 _PATH_HOOK_NAMES = (
+    # Native Path.parent reconstructs parents via late with_segments dispatch.
+    "with_segments",
     "__new__",
     "__init__",
     "__getattribute__",

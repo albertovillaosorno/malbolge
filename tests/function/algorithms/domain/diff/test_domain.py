@@ -1993,3 +1993,62 @@ assert observed.build_identity_tree is module.build_identity_tree
         timeout=15,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize("path_class", (Path, PurePath, type(Path())))
+@pytest.mark.parametrize("hook", ("with_segments", "__new__", "__init__"))
+def test_domain_loader_rejects_late_path_construction_hooks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_class: type[PurePath],
+    hook: str,
+) -> None:
+    """Module admission must not call late native path construction hooks."""
+    module = tmp_path / "trusted-domain.py"
+    _write(module, _COMPLETE)
+    calls = 0
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("untrusted path construction executed")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(path_class, hook, forbidden)
+        with pytest.raises(DomainContractError, match="path hooks changed"):
+            _ = load_diff_domain(module)
+    assert calls == 0, "late path construction hook ran before module admission"
+
+
+@pytest.mark.parametrize("path_class", (Path, PurePath, type(Path())))
+def test_domain_loader_rejects_late_parent_link_concealment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path_class: type[PurePath],
+) -> None:
+    """Forged parent reconstruction cannot conceal a linked domain directory."""
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    module = real_parent / "domain.py"
+    _write(module, _COMPLETE)
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(real_parent, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable")
+    linked_module = alias / "domain.py"
+    native_with_segments = Path.with_segments
+    calls = 0
+
+    def forged_parent(path: Path, *segments: str | os.PathLike[str]) -> Path:
+        nonlocal calls
+        if path == linked_module and segments == (str(alias),):
+            calls += 1
+            return tmp_path
+        return native_with_segments(path, *segments)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(path_class, "with_segments", forged_parent)
+        with pytest.raises(DomainContractError, match="path hooks changed"):
+            _ = load_diff_domain(linked_module)
+    assert calls == 0, "forged parent skipped linked-domain validation"
