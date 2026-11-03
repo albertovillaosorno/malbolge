@@ -157,6 +157,8 @@ _NATIVE_OS_ERROR = builtins.OSError
 _NATIVE_PERMISSION_ERROR = builtins.PermissionError
 _NATIVE_VALUE_ERROR = builtins.ValueError
 _NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_PROBE_EXECUTION_ERROR = ProbeExecutionError
+_NATIVE_EXACT_TREE_ERROR = ExactTreeError
 _NATIVE_EXCEPTION = builtins.Exception
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_BASE_EXCEPTION_GETATTRIBUTE = BaseException.__getattribute__
@@ -321,8 +323,8 @@ def _behavior_error_detail(error: BaseException) -> str:
         _NATIVE_PERMISSION_ERROR,
         _NATIVE_VALUE_ERROR,
         _NATIVE_RUNTIME_ERROR,
-        ExactTreeError,
-        ProbeExecutionError,
+        _NATIVE_EXACT_TREE_ERROR,
+        _NATIVE_PROBE_EXECUTION_ERROR,
         BehaviorProgramError,
     ):
         # Exact error classes are mutable even after native-type admission.
@@ -1073,13 +1075,13 @@ def _require_authoring_trees_unchanged(
     for root, expected in admitted:
         try:
             current = _snapshot_observed_source(root)
-        except ProbeExecutionError as error:
+        except _NATIVE_PROBE_EXECUTION_ERROR as error:
             detail = _behavior_error_detail(error)
             message = f"behavior tree changed during authoring: {detail}"
-            raise ProbeExecutionError(message) from error
+            raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
         if current != expected:
             message = "behavior source/oracle tree changed during authoring"
-            raise ProbeExecutionError(message)
+            raise _NATIVE_PROBE_EXECUTION_ERROR(message)
 
 
 def _run_authored_baselines(
@@ -1205,7 +1207,7 @@ def _try_transcript(
 ) -> ProbeTranscript | None:
     try:
         return run_probe_program(program, context)
-    except ProbeExecutionError:
+    except _NATIVE_PROBE_EXECUTION_ERROR:
         return None
 
 
@@ -1287,10 +1289,10 @@ def _snapshot_observed_source(root: Path) -> TreeSnapshot:
     """
     try:
         return snapshot_tree(root)
-    except ExactTreeError as error:
+    except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _behavior_error_detail(error)
         message = f"behavior candidate tree changed between probes: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def _require_observed_source_unchanged(root: Path, admitted: TreeSnapshot) -> None:
@@ -1302,7 +1304,7 @@ def _require_observed_source_unchanged(root: Path, admitted: TreeSnapshot) -> No
     """
     if _snapshot_observed_source(root) != admitted:
         message = "behavior candidate tree changed between probes"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
 
 
 def _admit_observation_mirror(
@@ -1329,15 +1331,15 @@ def _admit_observation_mirror(
     except _NATIVE_EXCEPTION as error:
         detail = _behavior_error_detail(error)
         message = f"behavior candidate mirror failed: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     if _NATIVE_TYPE(completion) is not _NATIVE_TYPE(Path()) or _NATIVE_PATH_STR(
         completion
     ) != _NATIVE_PATH_STR(mirror):
         message = "behavior candidate mirror copy reported non-native completion"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if _snapshot_observed_source(mirror) != admitted:
         message = "behavior candidate tree changed while creating mirror"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     _require_observed_source_unchanged(
         cast("Path", _PROBE_RUN_CONTEXT_SOURCE_SLOT.__get__(context, ProbeRunContext)),
         admitted,
@@ -1386,13 +1388,13 @@ def _temporary_observation_root() -> tempfile.TemporaryDirectory[str]:
         or shutil.rmtree is not _NATIVE_SHUTIL_RMTREE
     ):
         message = "behavior observation temporary root hooks changed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     try:
         return _NATIVE_TEMPORARY_DIRECTORY(prefix="diff-behavior-source-")
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _behavior_error_detail(error)
         message = f"behavior observation temporary root failed: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def observe_behavior_programs(

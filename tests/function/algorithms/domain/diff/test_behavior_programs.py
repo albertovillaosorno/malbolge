@@ -3433,3 +3433,67 @@ def test_behavior_context_rejects_late_native_type_aliases(
             builtins.__dict__[alias] = original
     assert type(caught) is BehaviorProgramError, (alias, caught)
     assert "resolver hooks changed" in str(caught)
+
+
+@pytest.mark.parametrize("route", ["unavailable-probe", "authoring-recheck", "tree-snapshot"])
+def test_behavior_expected_error_routes_ignore_late_module_exception_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """Imported exception names cannot alter native probe failure routing."""
+    probe_failure = ProbeExecutionError("trusted failed probe")
+    tree_failure = ExactTreeError("trusted failed tree snapshot")
+
+    def fail_probe(_program: ProbeProgram, _context: ProbeRunContext) -> ProbeTranscript:
+        raise probe_failure
+
+    def fail_recheck(_root: Path) -> TreeSnapshot:
+        raise probe_failure
+
+    def fail_snapshot(_root: Path) -> TreeSnapshot:
+        raise tree_failure
+
+    with monkeypatch.context() as patched:
+        if route == "tree-snapshot":
+            patched.setattr(behavior_module, "ExactTreeError", LookupError)
+            patched.setattr(behavior_module, "snapshot_tree", fail_snapshot)
+            with pytest.raises(
+                ProbeExecutionError, match="candidate tree changed between probes"
+            ) as caught:
+                _ = behavior_module._snapshot_observed_source(tmp_path)  # pyright: ignore[reportPrivateUsage]
+            assert caught.value.__cause__ is tree_failure
+        elif route == "authoring-recheck":
+            patched.setattr(behavior_module, "ProbeExecutionError", LookupError)
+            patched.setattr(behavior_module, "_snapshot_observed_source", fail_recheck)
+            with pytest.raises(
+                ProbeExecutionError, match="tree changed during authoring"
+            ) as caught:
+                behavior_module._require_authoring_trees_unchanged(  # pyright: ignore[reportPrivateUsage]
+                    ((tmp_path, cast("TreeSnapshot", object())),)
+                )
+            assert caught.value.__cause__ is probe_failure
+        else:
+            patched.setattr(behavior_module, "ProbeExecutionError", LookupError)
+            patched.setattr(behavior_module, "run_probe_program", fail_probe)
+            assert behavior_module._try_transcript(  # pyright: ignore[reportPrivateUsage]
+                cast("ProbeProgram", object()),
+                cast("ProbeRunContext", object()),
+            ) is None
+
+
+def test_behavior_unexpected_probe_error_not_swallowed_by_late_class_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A broad alias cannot make an unexpected failure a missing probe."""
+    failure = ValueError("unexpected probe failure")
+
+    def fail_probe(_program: ProbeProgram, _context: ProbeRunContext) -> ProbeTranscript:
+        raise failure
+
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, "ProbeExecutionError", Exception)
+        patched.setattr(behavior_module, "run_probe_program", fail_probe)
+        with pytest.raises(ValueError) as caught:
+            _ = behavior_module._try_transcript(  # pyright: ignore[reportPrivateUsage]
+                cast("ProbeProgram", object()), cast("ProbeRunContext", object())
+            )
+    assert caught.value is failure
