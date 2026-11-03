@@ -2555,3 +2555,83 @@ def test_passthrough_authoring_requires_matching_source_and_oracle(
             oracle,
             passthrough_roots=("external",),
         )
+
+
+def test_exact_snapshot_rejects_late_type_spoofed_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A nonnative Path subclass cannot become a trusted source root."""
+    native_path_type = type(Path())
+    foreign_path_type = type("ForeignPath", (native_path_type,), {})
+    root = tmp_path / "source"
+    root.mkdir()
+    foreign = cast("Path", foreign_path_type(root))
+    native_type = type
+    expected_context = "exact pathlib Path"
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        if native_type(value) is foreign_path_type:
+            return native_path_type
+        return native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = snapshot_tree(foreign)
+        except ExactTreeError as error:
+            rejected = expected_context in str(error)
+    assert rejected, "late type hook admitted a foreign snapshot root"
+
+
+def test_exact_read_rejects_late_type_spoofed_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable host read receipt must not become authoritative bytes."""
+    read_chunk = cast(
+        "Callable[[int, int, str], bytes]",
+        vars(exact_module)["_read_native_chunk"],
+    )
+    foreign = bytearray(b"data")
+    native_type = type
+    rejected = False
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    def forged_read(descriptor: int, count: int) -> bytearray:
+        del descriptor, count
+        return foreign
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "read", forged_read)
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = read_chunk(7, 4, "test receipt")
+        except ExactTreeError:
+            rejected = True
+    assert rejected, "late type hook admitted a mutable read receipt"
+
+
+def test_exact_snapshot_ignores_late_len_size_spoof(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late length hook cannot falsify a snapshot's file-size receipt."""
+    root = tmp_path / "source"
+    root.mkdir()
+    source_bytes = b"abc"
+    _write(root, "file", source_bytes)
+    baseline = snapshot_tree(root)
+    native_len = len
+
+    def forged_len(value: object) -> int:
+        if type(value) is bytes and value == source_bytes:
+            return 100
+        return native_len(cast("bytes", value))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        observed = snapshot_tree(root)
+    assert observed == baseline, "late len hook falsified snapshot file size"
