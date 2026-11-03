@@ -625,6 +625,15 @@ format.
   in candidate source, maps them back to raw spans, preserves unrelated raw
   bytes, and
   re-tokenizes post-edit output to reject unsafe seams.
+- Mapped view constructors now validate nested exact `MappedUnit` metadata,
+  while `canonical` and `keys` property reads validate the view's original
+  native slots (`c409a1b0a`). Fourteen red-first cases reject constructor-
+  bypassed empty/mutable canonical units, invalid coordinates, forged raw
+  sources, and incomplete slots with `MappedViewError`. All 51 mapped and
+  3,048 integrated diff tests passed before commit, and 145 mapped/model tests
+  passed after commit; scoped Ruff, strict BasedPyright, and diff checks were
+  clean. Direct object-storage mutation and external races remain out of scope;
+  no clean repository-wide Jig verdict is available.
 - The DOOM C mapper is identity-equivalent to the established canonicalizer
   across a
   read-only 273-file / 549,978-unit source+oracle smoke with zero mismatches.

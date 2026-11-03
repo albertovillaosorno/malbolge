@@ -1286,6 +1286,17 @@ and immutable unit records; semantic locators/edits/plans require exact SHA-256
 digests and immutable records, and build/apply validate views, context width,
 plan, and mapper before placement.
 
+Mapped-view admission now reruns the captured original `MappedUnit` validator on
+nested exact native units, and `MappedView.canonical`/`MappedView.keys` rerun the
+original view validator before exposing identity (`c409a1b0a`). Previously
+`object.__new__` could bypass byte and coordinate checks or expose an empty
+canonical identity; incomplete slots now raise typed `MappedViewError`. Fourteen
+regressions reproduced this fail-open behavior, and one already rejected case
+was retained. All 51 mapped tests and 3,048 integrated diff tests passed before
+commit; 145 mapped/model tests passed after commit. Scoped Ruff, strict
+BasedPyright, and diff checks were clean. Direct storage mutation and external
+races are not prevented; the global Jig verdict remains unavailable.
+
 Slotted mapped and semantic records do not make their class getters immutable.
 The mapped unit/view constructor validators, canonical-key extraction, raw
 coordinate readers, and semantic placement now use captured original slot
