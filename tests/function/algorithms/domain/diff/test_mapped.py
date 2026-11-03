@@ -34,8 +34,8 @@
 
 import builtins
 from collections.abc import Callable
-from dataclasses import replace
-from types import SimpleNamespace
+from dataclasses import fields, replace
+from types import MemberDescriptorType, SimpleNamespace
 from typing import cast
 
 import pytest
@@ -512,3 +512,43 @@ def test_mapped_explicit_initializers_preserve_dataclass_replacement() -> None:
     assert expanded.units == (unit,)
     with pytest.raises(MappedViewError, match="escapes"):
         _ = replace(expanded, units=(MappedUnit(b"B", 0, 3),))
+
+
+@pytest.mark.parametrize(
+    ("valid", "field", "invalid"),
+    [
+        (MappedUnit(b"A", 0, 1), "canonical", b""),
+        (MappedUnit(b"A", 0, 1), "raw_start", -1),
+        (MappedUnit(b"A", 0, 1), "raw_end", -1),
+        (MappedView(b"a", (MappedUnit(b"A", 0, 1),)), "raw", bytearray(b"a")),
+        (MappedView(b"a", (MappedUnit(b"A", 0, 1),)), "units", []),
+    ],
+)
+def test_mapped_constructors_ignore_late_class_field_setters(
+    monkeypatch: pytest.MonkeyPatch,
+    valid: MappedUnit | MappedView,
+    field: str,
+    invalid: object,
+) -> None:
+    """Late class setters must not launder invalid canonical/raw metadata."""
+    owner = type(valid)
+    factory = cast("Callable[..., object]", owner)
+    values = {datum.name: getattr(valid, datum.name) for datum in fields(valid)}
+    original = values[field]
+    values[field] = invalid
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    calls = 0
+
+    def forged_getter(_record: object) -> object:
+        return original
+
+    def forged_setter(record: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(record, original)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(forged_getter, forged_setter))
+        with pytest.raises(MappedViewError):
+            _ = factory(**values)
+    assert calls == 0, "mutable setter rewrote the original mapped storage"

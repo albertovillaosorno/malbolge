@@ -48,7 +48,6 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_INT = builtins.int
 _NATIVE_LEN = builtins.len
 _NATIVE_TUPLE = builtins.tuple
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 
 class MappedViewError(ValueError):
@@ -65,9 +64,9 @@ class MappedUnit:
 
     def __init__(self, canonical: bytes, raw_start: int, raw_end: int) -> None:
         """Construct and validate through the original stored-field checker."""
-        _NATIVE_OBJECT_SETATTR(self, "canonical", canonical)
-        _NATIVE_OBJECT_SETATTR(self, "raw_start", raw_start)
-        _NATIVE_OBJECT_SETATTR(self, "raw_end", raw_end)
+        _UNIT_CANONICAL_SLOT.__set__(self, canonical)
+        _UNIT_START_SLOT.__set__(self, raw_start)
+        _UNIT_END_SLOT.__set__(self, raw_end)
         _MAPPED_UNIT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -140,8 +139,8 @@ class MappedView:
 
     def __init__(self, raw: bytes, units: tuple[MappedUnit, ...]) -> None:
         """Construct and validate through the original stored-field checker."""
-        _NATIVE_OBJECT_SETATTR(self, "raw", raw)
-        _NATIVE_OBJECT_SETATTR(self, "units", units)
+        _VIEW_RAW_SLOT.__set__(self, raw)
+        _VIEW_UNITS_SLOT.__set__(self, units)
         _MAPPED_VIEW_VALIDATOR(self)
 
     def __post_init__(self) -> None:
