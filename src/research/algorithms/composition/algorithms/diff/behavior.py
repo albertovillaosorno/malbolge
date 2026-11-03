@@ -35,10 +35,10 @@
 from __future__ import annotations
 
 import builtins
+import math
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MemberDescriptorType
-import math
 from typing import cast
 
 _ZERO = 0
@@ -345,16 +345,22 @@ def _require_string_tuple(value: object, context: str) -> tuple[str, ...]:
 
 
 def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
-    similarity = _require_evidence_similarity(evidence.similarity)
+    (
+        similarity_value,
+        matched_count,
+        total_count,
+        apply_values,
+        skip_values,
+        _,
+        _,
+        _,
+    ) = _behavior_evidence_fields(evidence)
+    similarity = _require_evidence_similarity(similarity_value)
     matched = _require_evidence_count(
-        evidence.matched_identity_probes,
-        "matched identity probe count",
-        _ZERO,
+        matched_count, "matched identity probe count", _ZERO
     )
     total = _require_evidence_count(
-        evidence.total_identity_probes,
-        "total identity probe count",
-        _ONE,
+        total_count, "total identity probe count", _ONE
     )
     if matched > total:
         message = "matched identity probe count cannot exceed total"
@@ -362,14 +368,8 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
     if similarity != matched / total:
         message = "behavior evidence similarity does not match probe counts"
         raise BehaviorPolicyError(message)
-    apply = _require_string_tuple(
-        evidence.corrections_to_apply,
-        "corrections to apply",
-    )
-    skip = _require_string_tuple(
-        evidence.corrections_to_skip,
-        "corrections to skip",
-    )
+    apply = _require_string_tuple(apply_values, "corrections to apply")
+    skip = _require_string_tuple(skip_values, "corrections to skip")
     if _NATIVE_LEN(apply) != _NATIVE_LEN(_NATIVE_SET(apply)) or _NATIVE_LEN(
         skip
     ) != _NATIVE_LEN(_NATIVE_SET(skip)):
@@ -379,7 +379,9 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
         message = "behavior correction routes must be disjoint"
         raise BehaviorPolicyError(message)
     _ = _require_string_tuple(
-        _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence),
+        cast(
+            "object", _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence)
+        ),
         "behavior evidence reasons",
     )
     _validate_behavior_evidence_binding(evidence)
@@ -419,6 +421,60 @@ class BehaviorEvidence:
 _BEHAVIOR_REASONS_SLOT = cast(
     "MemberDescriptorType", BehaviorEvidence.__dict__["reasons"]
 )
+_BEHAVIOR_SIMILARITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["similarity"]
+)
+_BEHAVIOR_MATCHED_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["matched_identity_probes"]
+)
+_BEHAVIOR_TOTAL_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["total_identity_probes"]
+)
+_BEHAVIOR_APPLY_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["corrections_to_apply"]
+)
+_BEHAVIOR_SKIP_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["corrections_to_skip"]
+)
+_BEHAVIOR_PROFILE_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["profile"]
+)
+_BEHAVIOR_OBSERVATIONS_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["observations"]
+)
+_BEHAVIOR_MINIMUM_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["minimum_similarity"]
+)
+
+
+def _behavior_evidence_fields(
+    evidence: BehaviorEvidence,
+) -> tuple[
+    float,
+    int,
+    int,
+    tuple[str, ...],
+    tuple[str, ...],
+    BehaviorProfile,
+    BehaviorObservations,
+    float,
+]:
+    owner = BehaviorEvidence
+    return (
+        cast("float", _BEHAVIOR_SIMILARITY_SLOT.__get__(evidence, owner)),
+        cast("int", _BEHAVIOR_MATCHED_SLOT.__get__(evidence, owner)),
+        cast("int", _BEHAVIOR_TOTAL_SLOT.__get__(evidence, owner)),
+        cast("tuple[str, ...]", _BEHAVIOR_APPLY_SLOT.__get__(evidence, owner)),
+        cast("tuple[str, ...]", _BEHAVIOR_SKIP_SLOT.__get__(evidence, owner)),
+        cast(
+            "BehaviorProfile", _BEHAVIOR_PROFILE_SLOT.__get__(evidence, owner)
+        ),
+        cast(
+            "BehaviorObservations",
+            _BEHAVIOR_OBSERVATIONS_SLOT.__get__(evidence, owner),
+        ),
+        cast("float", _BEHAVIOR_MINIMUM_SLOT.__get__(evidence, owner)),
+    )
 
 
 def _validate_fraction(name: str, value: object) -> float:
@@ -549,34 +605,39 @@ def _behavior_decision(
     return matched, apply, skip, _NATIVE_TUPLE(reasons)
 
 
-def _require_behavior_evidence_sources(evidence: BehaviorEvidence) -> None:
-    if _NATIVE_TYPE(evidence.profile) is not BehaviorProfile:
+def _require_behavior_evidence_sources(
+    profile: BehaviorProfile, observations: BehaviorObservations
+) -> None:
+    if _NATIVE_TYPE(profile) is not BehaviorProfile:
         message = "behavior evidence requires exact BehaviorProfile"
         raise BehaviorPolicyError(message)
-    if _NATIVE_TYPE(evidence.observations) is not BehaviorObservations:
+    if _NATIVE_TYPE(observations) is not BehaviorObservations:
         message = "behavior evidence requires exact BehaviorObservations"
         raise BehaviorPolicyError(message)
 
 
 def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
-    _require_behavior_evidence_sources(evidence)
+    (
+        _,
+        matched_count,
+        total_count,
+        apply_values,
+        skip_values,
+        profile,
+        observations,
+        minimum_value,
+    ) = _behavior_evidence_fields(evidence)
+    _require_behavior_evidence_sources(profile, observations)
     minimum = _validate_fraction(
-        "behavior evidence minimum_similarity", evidence.minimum_similarity
+        "behavior evidence minimum_similarity", minimum_value
     )
     matched, apply, skip, reasons = _behavior_decision(
-        evidence.profile, evidence.observations, minimum
+        profile, observations, minimum
     )
-    if (
-        matched != evidence.matched_identity_probes
-        or _NATIVE_LEN(evidence.profile.identity)
-        != evidence.total_identity_probes
-    ):
+    if matched != matched_count or _NATIVE_LEN(profile.identity) != total_count:
         message = "behavior evidence probe counts do not match observations"
         raise BehaviorPolicyError(message)
-    if (apply, skip) != (
-        evidence.corrections_to_apply,
-        evidence.corrections_to_skip,
-    ):
+    if (apply, skip) != (apply_values, skip_values):
         message = (
             "behavior evidence correction routes do not match observations"
         )

@@ -33,26 +33,29 @@
 """Synthetic tests for generic behavior-probe admission semantics."""
 
 import builtins
+import math
 from collections import UserString
 from dataclasses import replace
-import math
+from types import MemberDescriptorType
 from typing import cast
 
-from algorithms.diff.behavior import BehaviorAdmissionError
-from algorithms.diff.behavior import BehaviorEvidence
-from algorithms.diff.behavior import BehaviorObservations
-from algorithms.diff.behavior import BehaviorPolicyError
-from algorithms.diff.behavior import BehaviorProfile
-from algorithms.diff.behavior import BugObservation
-from algorithms.diff.behavior import BugProbe
-from algorithms.diff.behavior import BugState
-from algorithms.diff.behavior import CompatibilityObservation
-from algorithms.diff.behavior import CompatibilityProbe
-from algorithms.diff.behavior import IdentityObservation
-from algorithms.diff.behavior import IdentityProbe
-from algorithms.diff.behavior import evaluate_behavior
-from algorithms.diff.behavior import require_behavior
 import pytest
+from algorithms.diff.behavior import (
+    BehaviorAdmissionError,
+    BehaviorEvidence,
+    BehaviorObservations,
+    BehaviorPolicyError,
+    BehaviorProfile,
+    BugObservation,
+    BugProbe,
+    BugState,
+    CompatibilityObservation,
+    CompatibilityProbe,
+    IdentityObservation,
+    IdentityProbe,
+    evaluate_behavior,
+    require_behavior,
+)
 
 _MINIMUM_BEHAVIOR_SIMILARITY = 0.80
 _FOREIGN_PROBE = "probe"
@@ -879,3 +882,98 @@ def test_behavior_native_observation_routing_ignores_late_isinstance(
     assert checked.admitted
     assert checked.corrections_to_apply == ("fix-bug",)
     assert calls == 0, "late isinstance hook received admitted probe evidence"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+@pytest.mark.parametrize(
+    "field",
+    [
+        "similarity",
+        "matched_identity_probes",
+        "total_identity_probes",
+        "corrections_to_apply",
+        "corrections_to_skip",
+        "profile",
+        "observations",
+        "minimum_similarity",
+    ],
+)
+def test_behavior_evidence_constructor_rejects_late_field_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    hook: str,
+) -> None:
+    """Direct evidence cannot validate forged class-level scores or inputs."""
+    evidence = evaluate_behavior(_profile(), _observations(), 0.8)
+    valid: dict[str, object] = {
+        "similarity": evidence.similarity,
+        "matched_identity_probes": evidence.matched_identity_probes,
+        "total_identity_probes": evidence.total_identity_probes,
+        "corrections_to_apply": evidence.corrections_to_apply,
+        "corrections_to_skip": evidence.corrections_to_skip,
+        "profile": evidence.profile,
+        "observations": evidence.observations,
+        "minimum_similarity": evidence.minimum_similarity,
+    }
+    invalid: dict[str, object] = {
+        "similarity": 0.0,
+        "matched_identity_probes": 0,
+        "total_identity_probes": 0,
+        "corrections_to_apply": (),
+        "corrections_to_skip": ("fix-bug",),
+        "profile": object(),
+        "observations": object(),
+        "minimum_similarity": True,
+    }
+    values = valid | {field: invalid[field]}
+    calls = 0
+
+    def forged_attribute(value: BehaviorEvidence, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return valid[field]
+        return cast("object", object.__getattribute__(value, name))
+
+    def forged_property(value: BehaviorEvidence) -> object:
+        return forged_attribute(value, field)
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            original_slot = cast(
+                "MemberDescriptorType", BehaviorEvidence.__dict__[field]
+            )
+
+            def store(value: BehaviorEvidence, stored: object) -> None:
+                original_slot.__set__(value, stored)
+
+            patch.setattr(
+                BehaviorEvidence, field, property(forged_property, store)
+            )
+        else:
+            patch.setattr(
+                BehaviorEvidence, "__getattribute__", forged_attribute
+            )
+        with pytest.raises(BehaviorPolicyError):
+            _ = BehaviorEvidence(
+                similarity=cast("float", values["similarity"]),
+                matched_identity_probes=cast(
+                    "int", values["matched_identity_probes"]
+                ),
+                total_identity_probes=cast(
+                    "int", values["total_identity_probes"]
+                ),
+                corrections_to_apply=cast(
+                    "tuple[str, ...]", values["corrections_to_apply"]
+                ),
+                corrections_to_skip=cast(
+                    "tuple[str, ...]", values["corrections_to_skip"]
+                ),
+                reasons=evidence.reasons,
+                profile=cast("BehaviorProfile", values["profile"]),
+                observations=cast(
+                    "BehaviorObservations", values["observations"]
+                ),
+                minimum_similarity=cast("float", values["minimum_similarity"]),
+            )
+    assert calls == 0, "late behavior getter participated in admission"
