@@ -122,6 +122,10 @@ _NATIVE_BYTEARRAY = builtins.bytearray
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
 _NATIVE_UNICODE_ERROR = builtins.UnicodeError
+# Validation error identities must survive late consumer module alias changes.
+_NATIVE_TREE_MODEL_ERROR = TreeModelError
+_NATIVE_ADMISSION_POLICY_ERROR = AdmissionPolicyError
+_NATIVE_SOURCE_BINDING_ERROR = SourceBindingError
 # The authoring key schedule must hash the admitted identity's original
 # storage, not mutable dataclass field getters installed after import.
 _IDENTITY_FILES_SLOT = cast("MemberDescriptorType", IdentityTree.__dict__["files"])
@@ -244,7 +248,7 @@ def _validate_protected_segments(value: object) -> None:
                 _SOURCE_SLICE_VALIDATOR(item)
             else:
                 _PAYLOAD_SLICE_VALIDATOR(cast("PayloadSlice", item))
-        except (_NATIVE_ATTRIBUTE_ERROR, TreeModelError) as error:
+        except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TREE_MODEL_ERROR) as error:
             message = "protected instruction contains an invalid native segment"
             raise ProtectedPlanError(message) from error
 
@@ -563,7 +567,7 @@ class ProtectedMetadata:
                 _TREE_SNAPSHOT_VALIDATOR(snapshot)
             for instruction in instructions:
                 _PROTECTED_INSTRUCTION_VALIDATOR(instruction)
-        except (_NATIVE_ATTRIBUTE_ERROR, TreeModelError) as error:
+        except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TREE_MODEL_ERROR) as error:
             message = "protected metadata contains invalid or incomplete native evidence"
             raise ProtectedPlanError(message) from error
         _require_unique_instruction_outputs(instructions)
@@ -688,11 +692,11 @@ class ProtectedExactPlan:
             raise ProtectedPlanError(message)
         try:
             _ = validate_threshold_binding(binding)
-        except SourceBindingError as error:
+        except _NATIVE_SOURCE_BINDING_ERROR as error:
             # Only the exact known exception may contribute a diagnostic
             # message. A foreign subclass can execute code from __str__.
             detail = _NATIVE_TYPE(error).__name__
-            if _NATIVE_TYPE(error) is SourceBindingError:
+            if _NATIVE_TYPE(error) is _NATIVE_SOURCE_BINDING_ERROR:
                 # Read native exception storage, not a mutable class getter.
                 native_args_getter = BaseException.__getattribute__
                 arguments = cast(
@@ -1147,7 +1151,7 @@ def _validate_protect_inputs(
         raise ProtectedPlanError(message)
     try:
         _EXACT_AUTHORING_PLAN_VALIDATOR(plan)
-    except (_NATIVE_ATTRIBUTE_ERROR, TreeModelError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TREE_MODEL_ERROR) as error:
         message = "protected authoring plan contains invalid native exact evidence"
         raise ProtectedPlanError(message) from error
     if _NATIVE_TYPE(reference_identity) is not IdentityTree:
@@ -1155,7 +1159,7 @@ def _validate_protect_inputs(
         raise ProtectedPlanError(message)
     try:
         _IDENTITY_TREE_VALIDATOR(reference_identity)
-    except (AdmissionPolicyError, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
+    except (_NATIVE_ADMISSION_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = (
             "protected reference contains invalid native identity evidence"
         )

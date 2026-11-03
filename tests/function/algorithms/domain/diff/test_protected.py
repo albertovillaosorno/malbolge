@@ -2682,3 +2682,62 @@ def test_protected_native_receipts_reject_late_attribute_error_alias(
             builtins.__dict__["AttributeError"] = native_attribute_error
     assert type(rejected) is ProtectedPlanError, (route, rejected)
     assert detail in str(rejected)
+
+
+@pytest.mark.parametrize(
+    ("route", "alias", "detail"),
+    [
+        ("segment", "TreeModelError", "invalid native segment"),
+        ("metadata", "TreeModelError", "invalid or incomplete native evidence"),
+        ("exact", "TreeModelError", "invalid native exact evidence"),
+        ("identity", "AdmissionPolicyError", "invalid native identity evidence"),
+        ("binding", "SourceBindingError", "binding is invalid"),
+    ],
+)
+def test_protected_native_policy_errors_ignore_late_module_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    route: str,
+    alias: str,
+    detail: str,
+) -> None:
+    """An aliased imported error class cannot leak malformed native metadata."""
+    snapshot = TreeSnapshot(())
+    identity = identity_tree({})
+    caught: ProtectedPlanError | None = None
+    with monkeypatch.context() as patch:
+        patch.setattr(protected_module, alias, LookupError)
+        try:
+            if route == "segment":
+                invalid = _unvalidated_protected_record(SourceSlice(0, 1), offset=-1)
+                _ = ProtectedInstruction(
+                    "out.bin",
+                    ProtectedInstructionKind.PATCH_SOURCE,
+                    "0" * 64,
+                    source_path="src.bin",
+                    segments=(invalid,),
+                )
+            elif route == "metadata":
+                invalid = _unvalidated_protected_record(snapshot, files=[])
+                _ = ProtectedMetadata(invalid, snapshot, ())
+            elif route == "exact":
+                invalid = _unvalidated_protected_record(
+                    ExactAuthoringPlan(snapshot, snapshot, ()), instructions=[]
+                )
+                protected_module._validate_protect_inputs(invalid, identity, _CONTEXT)
+            elif route == "identity":
+                invalid = object.__new__(IdentityTree)
+                cast("MemberDescriptorType", IdentityTree.__dict__["files"]).__set__(
+                    invalid, []
+                )
+                protected_module._validate_protect_inputs(
+                    ExactAuthoringPlan(snapshot, snapshot, ()), invalid, _CONTEXT
+                )
+            else:
+                _, _, _, _, protected = _protected(tmp_path)
+                invalid = replace(protected.binding, threshold=True)
+                _ = replace(protected, binding=invalid)
+        except ProtectedPlanError as error:
+            caught = error
+    assert caught is not None, "late error alias leaked native policy failure"
+    assert detail in str(caught)
