@@ -78,6 +78,8 @@ _NATIVE_TYPE = builtins.type
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
+_NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
+_NATIVE_TYPE_ERROR = builtins.TypeError
 _NATIVE_ZIP = builtins.zip
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
@@ -709,7 +711,7 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
                         error, "__notes__"
                     ),
                 )
-            except AttributeError:
+            except _NATIVE_ATTRIBUTE_ERROR:
                 notes = None
             if _NATIVE_TYPE(notes) is _NATIVE_LIST:
                 for note in cast("list[object]", notes):
@@ -796,7 +798,7 @@ def require_source_pin(root: Path, pin: SourcePin) -> SourcePinEvidence:
     # Only the original validator can attest all stored revision metadata.
     try:
         _SOURCE_PIN_VALIDATOR(pin)
-    except (AttributeError, TypeError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source pin has incomplete native metadata"
         raise SourcePinError(message) from error
     repository, commit, roots, expected_count, expected_digest = (
@@ -808,7 +810,7 @@ def require_source_pin(root: Path, pin: SourcePin) -> SourcePinEvidence:
         raise SourcePinError(message)
     try:
         _SOURCE_EVIDENCE_VALIDATOR(observed)
-    except (AttributeError, TypeError) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source pin evidence has incomplete native metadata"
         raise SourcePinError(message) from error
     count, digest = _source_evidence_fields(observed)

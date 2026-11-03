@@ -2564,3 +2564,48 @@ def test_source_pin_rejects_late_division_before_parent_walk(
         with pytest.raises(SourcePinError, match="native path factory changed"):
             _ = source_snapshot_evidence(source, ("subdir/input.txt",))
     assert callbacks == 0, "untrusted parent path hook was executed"
+
+
+@pytest.mark.parametrize("route", ["pin", "observed", "missing-notes"])
+def test_source_pin_native_errors_reject_late_attribute_error_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """An untrusted builtin alias cannot bypass native pin error handling."""
+    _write(tmp_path, "README", b"release")
+    _write(tmp_path, "src/main.c", b"int main(void) { return 0; }")
+    pin = _pin(tmp_path)
+    native_attribute_error = builtins.AttributeError
+    rejected: SourcePinError | None = None
+
+    with monkeypatch.context() as patched:
+        if route == "observed":
+            observed = object.__new__(SourcePinEvidence)
+            patched.setattr(
+                provenance_module, "source_snapshot_evidence", lambda *_: observed
+            )
+        elif route == "missing-notes":
+            native_error = ExactTreeError("reader failed")
+
+            def fail_read(*_args: object) -> bytes:
+                raise native_error
+
+            patched.setattr(provenance_module, "read_exact_regular_file", fail_read)
+        patched.setattr(builtins, "AttributeError", RuntimeError)
+        try:
+            if route == "pin":
+                _ = require_source_pin(tmp_path, object.__new__(SourcePin))
+            elif route == "observed":
+                _ = require_source_pin(tmp_path, pin)
+            else:
+                _ = provenance_module._read_pinned_source(
+                    tmp_path, tmp_path / "README", "README"
+                )
+        except SourcePinError as error:
+            rejected = error
+        finally:
+            builtins.__dict__["AttributeError"] = native_attribute_error
+    assert type(rejected) is SourcePinError, (route, rejected)
+    if route == "missing-notes":
+        assert "read failed" in str(rejected)
+    else:
+        assert "incomplete native metadata" in str(rejected)
