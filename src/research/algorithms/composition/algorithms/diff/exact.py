@@ -124,10 +124,16 @@ _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_RMTREE = shutil.rmtree
 _NATIVE_OS_FSPATH = os.fspath
 _NATIVE_OS_REALPATH = os.path.realpath
+_NATIVE_OS_PATH_MODULE = os.path
+_NATIVE_OS_SPLITROOT = os.path.splitroot
+_NATIVE_OS_SPLITDRIVE = os.path.splitdrive
+_NATIVE_OS_PATH_SEP = os.path.sep
+_NATIVE_OS_PATH_ALTSEP = os.path.altsep
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_READLINK = os.readlink
 _NATIVE_OS_GETCWD = os.getcwd
 _NATIVE_STAT_ISLNK = stat.S_ISLNK
+_NATIVE_STAT_ISDIR = stat.S_ISDIR
 _NATIVE_OS_PATH_JOIN = os.path.join
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Capturing Path.__str__ is insufficient: it reads a mutable cached slot,
@@ -173,12 +179,21 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
             not direct_file_read
             and (
                 os.fspath is not _NATIVE_OS_FSPATH
+                or os.path is not _NATIVE_OS_PATH_MODULE
                 or os.path.realpath is not _NATIVE_OS_REALPATH
+                or os.path.splitroot is not _NATIVE_OS_SPLITROOT
+                or os.path.splitdrive is not _NATIVE_OS_SPLITDRIVE
                 or os.path.join is not _NATIVE_OS_PATH_JOIN
+                or os.path.sep is not _NATIVE_OS_PATH_SEP
+                or os.path.altsep is not _NATIVE_OS_PATH_ALTSEP
+                or builtins.isinstance is not _NATIVE_ISINSTANCE
+                or builtins.bytes is not _NATIVE_BYTES
+                or builtins.len is not _NATIVE_LEN
                 or os.lstat is not _NATIVE_OS_LSTAT
                 or os.readlink is not _NATIVE_OS_READLINK
                 or os.getcwd is not _NATIVE_OS_GETCWD
                 or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+                or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
             )
         )
         or _NATIVE_ANY(

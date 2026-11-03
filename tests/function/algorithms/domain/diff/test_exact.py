@@ -3107,15 +3107,17 @@ def test_exact_read_rejects_late_type_spoofed_receipt(
     assert rejected, "late type hook admitted a mutable read receipt"
 
 
-def test_exact_snapshot_ignores_late_len_size_spoof(
+def test_exact_snapshot_rejects_late_len_size_spoof(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A late length hook cannot falsify a snapshot's file-size receipt."""
+    """Fail closed on mutable resolver length hooks without altering file bytes."""
     root = tmp_path / "source"
     root.mkdir()
     source_bytes = b"abc"
     _write(root, "file", source_bytes)
+    file_path = root / "file"
+    _ = str(file_path)
     baseline = snapshot_tree(root)
     native_len = len
 
@@ -3126,8 +3128,11 @@ def test_exact_snapshot_ignores_late_len_size_spoof(
 
     with monkeypatch.context() as patched:
         patched.setattr(builtins, "len", forged_len)
-        observed = snapshot_tree(root)
-    assert observed == baseline, "late len hook falsified snapshot file size"
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            _ = snapshot_tree(root)
+        observed_bytes = exact_module.read_exact_regular_file(file_path, "source")
+    assert observed_bytes == source_bytes
+    assert baseline.files[0].size == native_len(source_bytes)
 
 
 def test_exact_roots_reject_late_enumerate_suppression(
@@ -4249,6 +4254,99 @@ def test_exact_snapshot_rejects_late_host_walk_join_redirection(
         if excluded
         else snapshot_tree(root)
     ) == baseline
+
+
+@pytest.mark.parametrize("entrypoint", ["output", "nested"])
+def test_exact_rejects_host_parser_redirect_before_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """A late parser must not redirect an uncached original Path result."""
+    root = tmp_path / "source"
+    root.mkdir()
+    selected = root / "generated"
+    selected_spelling = str(selected)
+    foreign_spelling = str(tmp_path / "outside")
+    native_splitroot = os.path.splitroot
+    calls = 0
+
+    def forged_splitroot(path: str) -> tuple[str, str, str]:
+        nonlocal calls
+        if path == selected_spelling:
+            calls += 1
+            return native_splitroot(foreign_spelling)
+        return native_splitroot(path)
+
+    resolve_output = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_output_root"]
+    )
+    safe_tree_path = cast(
+        "Callable[[Path, str], Path]", vars(exact_module)["_safe_tree_path"]
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "splitroot", forged_splitroot)
+        try:
+            if entrypoint == "output":
+                _ = resolve_output(selected)
+            else:
+                _ = safe_tree_path(root, "generated")
+        except ExactTreeError as error:
+            rejected = "path hooks changed" in str(error)
+    assert rejected, "late host parser was allowed into exact resolution"
+    assert calls == 0, "late parser redirected the selected tree path"
+
+
+@pytest.mark.parametrize(
+    "helper",
+    ["splitdrive", "sep", "altsep", "isinstance", "bytes", "len", "isdir"],
+)
+def test_exact_rejects_late_realpath_helper_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper: str
+) -> None:
+    """The trusted resolver cannot consult changed parser and builtin hooks."""
+    root = tmp_path / "source"
+    root.mkdir()
+    target = root / "generated"
+    calls = 0
+    if helper == "isdir":
+        owner, name = stat, "S_ISDIR"
+    elif helper in {"isinstance", "bytes", "len"}:
+        owner, name = builtins, helper
+    else:
+        owner, name = os.path, helper
+    original = getattr(owner, name)
+
+    def watched(*args: object, **kwargs: object) -> object:
+        nonlocal calls
+        calls += 1
+        return original(*args, **kwargs)
+
+    if helper == "bytes":
+        replacement: object = str
+    elif helper == "sep":
+        replacement = "!"
+    elif helper == "altsep":
+        replacement = "\\"
+    else:
+        replacement = watched
+    resolve_output = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_output_root"]
+    )
+    resolve_tree = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_tree_root"]
+    )
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, name, replacement)
+        try:
+            if helper == "isdir":
+                _ = resolve_tree(root)
+            else:
+                _ = resolve_output(target)
+        except ExactTreeError as error:
+            rejected = "path hooks changed" in str(error)
+    assert rejected, f"late host resolver {helper} alias was allowed"
+    assert calls == 0, f"late host resolver {helper} was executed"
 
 
 @pytest.mark.parametrize("dependency", ["lstat", "readlink", "getcwd", "islink"])
