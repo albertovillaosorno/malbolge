@@ -139,10 +139,16 @@ _PAYLOAD_INIT = cast(
 
 
 def _payload_fields(payload: AuthenticatedPayload) -> tuple[bytes, bytes]:
-    return (
-        _PAYLOAD_CIPHERTEXT_SLOT.__get__(payload, AuthenticatedPayload),
-        _PAYLOAD_TAG_SLOT.__get__(payload, AuthenticatedPayload),
-    )
+    # Exact native instances can still be allocated without their initializer.
+    # Never let an incomplete authenticated receipt escape the crypto boundary.
+    try:
+        return (
+            _PAYLOAD_CIPHERTEXT_SLOT.__get__(payload, AuthenticatedPayload),
+            _PAYLOAD_TAG_SLOT.__get__(payload, AuthenticatedPayload),
+        )
+    except AttributeError as error:
+        message = "ChaCha20-Poly1305 payload is missing authenticated fields"
+        raise PayloadCryptoError(message) from error
 
 
 def _new_authenticated_payload(ciphertext: bytes, tag: bytes) -> AuthenticatedPayload:

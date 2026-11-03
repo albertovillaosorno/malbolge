@@ -500,6 +500,30 @@ def test_decrypt_rejects_foreign_payload_before_field_access() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    "present_fields",
+    [(), ("ciphertext",), ("tag",)],
+)
+def test_decrypt_rejects_incomplete_native_payload_before_crypto(
+    present_fields: tuple[str, ...],
+) -> None:
+    """Uninitialized exact native records are not authenticated receipts."""
+    incomplete = object.__new__(AuthenticatedPayload)
+    valid_fields = {"ciphertext": b"payload", "tag": bytes(16)}
+    for name in present_fields:
+        slot = cast("MemberDescriptorType", AuthenticatedPayload.__dict__[name])
+        slot.__set__(incomplete, valid_fields[name])
+    with pytest.raises(PayloadCryptoError, match="missing"):
+        _ = chacha20_poly1305_decrypt(bytes(32), bytes(12), incomplete)
+
+
+def test_incomplete_native_payload_validator_reports_owned_error() -> None:
+    """Direct validation also fails through the payload boundary."""
+    incomplete = object.__new__(AuthenticatedPayload)
+    with pytest.raises(PayloadCryptoError, match="missing"):
+        incomplete.__post_init__()
+
+
 def test_authenticated_payload_rejects_late_type_spoof(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
