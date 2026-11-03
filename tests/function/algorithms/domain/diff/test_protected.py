@@ -2411,3 +2411,84 @@ def test_protected_authoring_ignores_late_oracle_literal_getter(
         )
     assert observed == baseline, "late literal getter changed protected payload"
     assert calls == 0, "late oracle literal getter participated in authoring"
+
+
+@pytest.mark.parametrize("record", ["literal", "instruction", "plan"])
+def test_protected_recovery_pins_exact_record_initializers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """A late exact-model initializer cannot change decrypted plan evidence."""
+    _, _, source_files, exact, protected = _protected(tmp_path)
+    owners: dict[str, type[object]] = {
+        "literal": OracleLiteral,
+        "instruction": ExactInstruction,
+        "plan": ExactAuthoringPlan,
+    }
+    calls = 0
+
+    def forged_init(*args: object, **kwargs: object) -> None:
+        nonlocal calls
+        del args, kwargs
+        calls += 1
+        raise AssertionError("late exact constructor executed during recovery")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owners[record], "__init__", forged_init)
+        recovered = recover_exact_plan(protected, _identity(source_files))
+    assert recovered == exact
+    assert calls == 0, "late constructor altered recovered exact evidence"
+
+
+@pytest.mark.parametrize("record", ["literal", "instruction", "plan"])
+def test_protected_recovery_pins_exact_record_allocation(record: str) -> None:
+    """Isolate global class allocation hook changes in a child process."""
+    script = """
+import hashlib
+import tempfile
+from pathlib import Path
+from algorithms.diff.admission import identity_tree
+from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.fingerprints import AnchorPolicy
+from algorithms.diff.model import ExactAuthoringPlan, ExactInstruction, OracleLiteral
+from algorithms.diff.protected import protect_exact_plan, recover_exact_plan
+from algorithms.diff.source_binding import SourceBindingPolicy
+with tempfile.TemporaryDirectory() as directory:
+    source = Path(directory) / "source"
+    oracle = Path(directory) / "oracle"
+    source.mkdir()
+    oracle.mkdir()
+    raw = b"".join(hashlib.sha256(str(i).encode()).digest() for i in range(64))
+    (source / "source.bin").write_bytes(raw)
+    (oracle / "source.bin").write_bytes(raw)
+    (oracle / "new.bin").write_bytes(b"only in target")
+    exact = build_exact_plan(source, oracle)
+    identity = identity_tree({"source.bin": raw})
+    policy = SourceBindingPolicy(
+        1.0, maximum_anchors=3, minimum_anchor_files=1,
+        anchor_policy=AnchorPolicy(window_bytes=16, selection_modulus=1),
+    )
+    protected = protect_exact_plan(
+        exact, identity, binding_policy=policy, context=b"test"
+    )
+    owners = {
+        "literal": OracleLiteral,
+        "instruction": ExactInstruction,
+        "plan": ExactAuthoringPlan,
+    }
+    def forbidden_new(*args, **kwargs):
+        raise AssertionError("late exact allocation executed during recovery")
+    owners[RECORD].__new__ = staticmethod(forbidden_new)
+    recovered = recover_exact_plan(protected, identity)
+    assert recovered == exact
+""".replace("RECORD", repr(record))
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(sys.path)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr

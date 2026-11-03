@@ -44,6 +44,9 @@ from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import IdentityFile, IdentityTree
 from algorithms.diff.exact import (
+    _new_exact_instruction,  # pyright: ignore[reportPrivateUsage]
+    _new_exact_plan,  # pyright: ignore[reportPrivateUsage]
+    _new_oracle_literal,  # pyright: ignore[reportPrivateUsage]
     materialize_exact_plan,
     snapshot_tree_excluding,
 )
@@ -1217,7 +1220,7 @@ def _exact_segment(
 ) -> ExactSegment:
     if _NATIVE_ISINSTANCE(segment, SourceSlice):
         return segment
-    return OracleLiteral(_payload_slice(plaintext, segment))
+    return _new_oracle_literal(_payload_slice(plaintext, segment))
 
 
 def _exact_instruction(
@@ -1233,14 +1236,14 @@ def _exact_instruction(
         segments,
     ) = _instruction_fields(instruction)
     if kind is ProtectedInstructionKind.COPY_SOURCE:
-        return ExactInstruction(
+        return _new_exact_instruction(
             output_path=output_path,
             kind=ExactInstructionKind.COPY_SOURCE,
             expected_sha256=expected_sha256,
             source_path=source_path,
         )
     if kind is ProtectedInstructionKind.PATCH_SOURCE:
-        return ExactInstruction(
+        return _new_exact_instruction(
             output_path=output_path,
             kind=ExactInstructionKind.PATCH_SOURCE,
             expected_sha256=expected_sha256,
@@ -1253,7 +1256,7 @@ def _exact_instruction(
     if payload_slice is None:
         message = "protected payload instruction lost its payload range"
         raise ProtectedPlanError(message)
-    return ExactInstruction(
+    return _new_exact_instruction(
         output_path=output_path,
         kind=ExactInstructionKind.LITERAL_ORACLE,
         expected_sha256=expected_sha256,
@@ -1307,7 +1310,7 @@ def recover_exact_plan(
         _exact_instruction(instruction, plaintext)
         for instruction in protected_instructions
     )
-    return ExactAuthoringPlan(
+    return _new_exact_plan(
         source=source,
         target=target,
         instructions=instructions,
