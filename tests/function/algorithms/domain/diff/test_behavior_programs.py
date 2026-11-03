@@ -71,7 +71,7 @@ from algorithms.diff.probe_exec import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sized
 
     from algorithms.diff.behavior import BehaviorProfile
     from algorithms.diff.model import TreeSnapshot
@@ -605,6 +605,139 @@ def test_behavior_programs_reject_late_type_spoofed_programs(
             rejected = True
     assert rejected, "foreign behavior program was admitted"
     assert calls == 0, "late type hook was consulted during admission"
+
+
+def test_behavior_programs_reject_late_tuple_alias_for_mutable_groups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable identity group must not become authenticated probe metadata."""
+    identity = [_read_program("identity", "identity.txt")]
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        try:
+            _ = BehaviorPrograms(
+                identity=cast(
+                    "tuple[ProbeProgram, ...]", cast("object", identity)
+                ),
+                compatibility=cast(
+                    "tuple[ProbeProgram, ...]", cast("object", [])
+                ),
+                bugs=cast("tuple[BugProgram, ...]", cast("object", [])),
+            )
+        except BehaviorProgramError:
+            rejected = True
+    assert rejected, "late tuple alias admitted mutable behavior groups"
+
+
+def test_authored_bug_rejects_late_bytes_alias_for_mutable_digests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consumer type aliases cannot certify mutable bug baseline digests."""
+    program = _read_program("bug", "bug.txt")
+    present = bytearray(b"present")
+    fixed = bytearray(b"fixed")
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        try:
+            _ = AuthoredBugProgram(
+                program=program,
+                correction_id="fix",
+                present_digest=cast("bytes", cast("object", present)),
+                fixed_digest=cast("bytes", cast("object", fixed)),
+            )
+        except BehaviorProgramError:
+            rejected = True
+    assert rejected, "late bytes alias admitted mutable bug digests"
+
+
+class _ForeignCorrectionLabel:
+    """Non-string correction ID with potentially side-effectful hooks."""
+
+    def __init__(self) -> None:
+        self.calls: int = 0
+
+    def __contains__(self, _item: object) -> bool:
+        self.calls += 1
+        return False
+
+    def encode(self, _encoding: str) -> bytes:
+        self.calls += 1
+        return b"fix"
+
+
+def test_bug_program_rejects_late_str_alias_before_foreign_hooks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A consumer string alias cannot execute a foreign correction ID."""
+    foreign = _ForeignCorrectionLabel()
+    program = _read_program("bug", "bug.txt")
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", _ForeignCorrectionLabel)
+        try:
+            _ = BugProgram(program, cast("str", cast("object", foreign)))
+        except BehaviorProgramError:
+            rejected = True
+    assert rejected, "late str alias admitted foreign correction ID"
+    assert foreign.calls == 0, (
+        "foreign correction hooks executed before rejection"
+    )
+
+
+@pytest.mark.parametrize("kind", ["program", "correction"])
+def test_behavior_programs_reject_late_len_spoof_of_duplicates(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A host length override cannot suppress duplicate evidence policy."""
+    identity = (_read_program("same-id", "identity.txt"),)
+    compatibility: tuple[ProbeProgram, ...] = ()
+    bugs: tuple[BugProgram, ...] = ()
+    repeated = ("same-id", "same-id")
+    if kind == "program":
+        compatibility = (_read_program("same-id", "identity.txt"),)
+    else:
+        bugs = (
+            BugProgram(_read_program("bug-a", "bug.txt"), "same-id"),
+            BugProgram(_read_program("bug-b", "bug.txt"), "same-id"),
+        )
+    native_len = builtins.len
+    calls = 0
+
+    def spoof_len(value: object) -> int:
+        nonlocal calls
+        if type(value) is tuple and value == repeated:
+            calls += 1
+            return 1
+        return native_len(cast("Sized", value))
+
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "len", spoof_len)
+        try:
+            _ = BehaviorPrograms(identity, compatibility, bugs)
+        except BehaviorProgramError:
+            rejected = True
+    assert rejected, f"late len spoof admitted duplicate {kind} IDs"
+    assert calls == 0, "host len override was consulted for evidence"
+
+
+def test_valid_behavior_programs_resist_late_type_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Admitted native records remain usable after consumer type aliases."""
+    program = _read_program("identity", "identity.txt")
+    valid = BehaviorPrograms((program,), (), ())
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        assert BehaviorPrograms((program,), (), ()) == valid
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        _ = AuthoredBugProgram(program, "fix", b"present", b"fixed")
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "str", bytes)
+        _ = BugProgram(program, "fix")
 
 
 @pytest.mark.parametrize("authored", [False, True])
