@@ -226,6 +226,11 @@ class _RecipeSnapshot(NamedTuple):
     ignore_formatting_for_identity: bool
 
 
+# A validated recipe snapshot must not dispatch class allocation or
+# initialization hooks installed after the public module was imported.
+_RECIPE_SNAPSHOT_NEW = _RecipeSnapshot.__new__
+
+
 type _RecipeLike = DiffRecipe | _RecipeSnapshot
 
 
@@ -235,7 +240,8 @@ def _snapshot_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
     def field(name: str) -> object:
         return cast("object", _RECIPE_SLOTS[name].__get__(recipe, DiffRecipe))
 
-    return _RecipeSnapshot(
+    return _RECIPE_SNAPSHOT_NEW(
+        _RecipeSnapshot,
         source_root=cast("Path", field("source_root")),
         oracle_root=cast("Path", field("oracle_root")),
         output_algorithm=cast("Path", field("output_algorithm")),

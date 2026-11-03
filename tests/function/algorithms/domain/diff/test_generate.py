@@ -39,6 +39,8 @@ import hashlib
 import math
 import ntpath
 import os
+import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 from types import MemberDescriptorType, SimpleNamespace
@@ -2080,3 +2082,41 @@ def test_generator_native_source_child_matches_pathlib_normalization(
     assert type(child) is type(expected)
     assert str(child) == str(expected)
     assert child == expected
+
+
+@pytest.mark.parametrize("mode", ["EXACT_BASELINE", "COMPATIBLE"])
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+def test_internal_recipe_snapshot_ignores_late_constructor_hooks(
+    mode: str, hook: str
+) -> None:
+    """A late snapshot hook cannot fabricate policy seen during admission."""
+    script = f"""
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from test_generate import _recipe
+from algorithms.diff import generate as generator
+with TemporaryDirectory() as directory:
+    recipe = _recipe(Path(directory), mode=getattr(generator.TransformMode, {mode!r}))
+    expected = generator._validate_recipe(recipe)
+    owner = generator._RecipeSnapshot
+    def forbidden(*args, **kwargs):
+        raise AssertionError("late private recipe snapshot hook consulted")
+    if {hook!r} == "__new__":
+        owner.__new__ = staticmethod(forbidden)
+    else:
+        owner.__init__ = forbidden
+    assert generator._validate_recipe(recipe) == expected
+"""
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
