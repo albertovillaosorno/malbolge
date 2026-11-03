@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import os
+import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
@@ -77,7 +78,11 @@ _NATIVE_OBJECT_NEW: Final = object.__new__
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
 _NATIVE_HOST_REALPATH = os.path.realpath
+_NATIVE_OS_FSPATH = os.fspath
 _NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_READLINK = os.readlink
+_NATIVE_OS_GETCWD = os.getcwd
+_NATIVE_STAT_ISLNK = stat.S_ISLNK
 _NATIVE_OS_SCANDIR = os.scandir
 _NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_STRING = Path.__str__
@@ -106,6 +111,19 @@ _NATIVE_PATH_STRING_HOOKS: Final = tuple(
     (
         cls,
         tuple((name, cls.__dict__.get(name)) for name in _PATH_STRING_DEPENDENCIES),
+    )
+    for cls in _NATIVE_PATH_TYPE.__mro__
+    if issubclass(cls, PurePath)
+)
+# Path.resolve constructs its result through class-level factories. The
+# original method still dispatches to these replaceable Python attributes.
+_NATIVE_PATH_FACTORY_HOOKS: Final = tuple(
+    (
+        cls,
+        tuple(
+            (name, cls.__dict__.get(name))
+            for name in ("with_segments", "__new__", "__init__")
+        ),
     )
     for cls in _NATIVE_PATH_TYPE.__mro__
     if issubclass(cls, PurePath)
@@ -521,29 +539,46 @@ def _validate_root_path(root: object) -> None:
         raise SourcePinError(message) from error
 
 
-def _resolved_source_root(root: Path) -> Path:
-    # pathlib's original resolve implementation still delegates to mutable
-    # os.path.realpath. The host resolver must remain the import-original one
-    # before and after normalization, never a later consumer replacement.
+def _require_native_root_resolver() -> None:
+    """Reject late host hooks consulted by the original pathlib resolver."""
     if os.path.realpath is not _NATIVE_HOST_REALPATH:
         message = "pinned source root native host resolver changed"
         raise SourcePinError(message)
+    # Original realpath still calls host functions by their mutable names.
+    # Native lstat used for our status check does not protect its internals.
+    if (
+        os.fspath is not _NATIVE_OS_FSPATH
+        or os.lstat is not _NATIVE_OS_LSTAT
+        or os.readlink is not _NATIVE_OS_READLINK
+        or os.getcwd is not _NATIVE_OS_GETCWD
+        or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
+    ):
+        message = "pinned source root native host resolver dependencies changed"
+        raise SourcePinError(message)
+    if _NATIVE_ANY(
+        cls.__dict__.get(name) is not original
+        for cls, hooks in _NATIVE_PATH_FACTORY_HOOKS
+        for name, original in hooks
+    ):
+        message = "pinned source root native path factory changed"
+        raise SourcePinError(message)
+
+
+def _resolved_source_root(root: Path) -> Path:
+    # Pin the resolver's indirect dependencies before and after normalization.
+    _require_native_root_resolver()
     mode = _source_mode(root, ".")
     if mode is None or not S_ISDIR(mode):
         message = f"pinned source root must be a directory: {root}"
         raise SourcePinError(message)
-    if os.path.realpath is not _NATIVE_HOST_REALPATH:
-        message = "pinned source root native host resolver changed"
-        raise SourcePinError(message)
+    _require_native_root_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(root, strict=True)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _host_error_detail(error)
         message = f"pinned source root resolution failed: {root}: {detail}"
         raise SourcePinError(message) from error
-    if os.path.realpath is not _NATIVE_HOST_REALPATH:
-        message = "pinned source root native host resolver changed"
-        raise SourcePinError(message)
+    _require_native_root_resolver()
     return resolved
 
 

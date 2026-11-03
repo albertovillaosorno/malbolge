@@ -773,7 +773,14 @@ def test_source_pin_rejects_linked_selection_after_status_hook_spoof(
             patched.setattr(Path, "lstat", Path.stat)
         else:
             patched.setattr(os, "lstat", os.stat)
-        with pytest.raises(SourcePinError, match="symlink is not accepted"):
+        # Global os.lstat is also consulted by Path.resolve, so pinning its
+        # identity rejects the attack before the selected link is visited.
+        expected = (
+            "symlink is not accepted"
+            if status_hook == "path"
+            else "native host resolver dependencies changed"
+        )
+        with pytest.raises(SourcePinError, match=expected):
             _ = source_snapshot_evidence(root, ("linked",))
 
 
@@ -2075,3 +2082,163 @@ def test_source_pin_hook_guard_ignores_late_builtin_any(
         with pytest.raises(SourcePinError, match="path.*hook"):
             _ = source_snapshot_evidence(source, ("README",))
     assert calls == 0, "mutable builtin bypassed root-string hook guard"
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_late_realpath_lstat_symlink_spoof(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """Original realpath must not trust a substituted host lstat/readlink pair."""
+    source = tmp_path / "source"
+    foreign = tmp_path / "foreign"
+    linked = tmp_path / "linked"
+    _write(source, "README", b"requested source")
+    _write(foreign, "README", b"foreign source")
+    linked.symlink_to(foreign, target_is_directory=True)
+    foreign_evidence = source_snapshot_evidence(foreign, ("README",))
+    foreign_pin = SourcePin(
+        "source-repository", _COMMIT, ("README",),
+        foreign_evidence.file_count, foreign_evidence.snapshot_sha256,
+    )
+    original_lstat = os.lstat
+    original_readlink = os.readlink
+    linked_stat = original_lstat(linked)
+    calls = 0
+
+    def forged_lstat(
+        path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> os.stat_result:
+        nonlocal calls
+        if os.fspath(path) == str(source):
+            calls += 1
+            return linked_stat
+        return original_lstat(path, *args, **kwargs)
+
+    def forged_readlink(
+        path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> str:
+        nonlocal calls
+        if os.fspath(path) == str(source):
+            calls += 1
+            return str(foreign)
+        return original_readlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "lstat", forged_lstat)
+        patched.setattr(os, "readlink", forged_readlink)
+        with pytest.raises(SourcePinError, match="host.*(resolver|hook)"):
+            if operation == "require":
+                _ = require_source_pin(source, foreign_pin)
+            else:
+                _ = source_snapshot_evidence(source, ("README",))
+    assert calls == 0, "mutable host path hooks interpreted a source pin"
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_late_realpath_parent_readlink_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """A linked parent cannot redirect the admitted root after status checks."""
+    original_parent = tmp_path / "parent"
+    foreign_parent = tmp_path / "foreign-parent"
+    alias = tmp_path / "alias"
+    source = original_parent / "source"
+    foreign = foreign_parent / "source"
+    _write(source, "README", b"requested source")
+    _write(foreign, "README", b"foreign source")
+    alias.symlink_to(original_parent, target_is_directory=True)
+    requested = alias / "source"
+    foreign_evidence = source_snapshot_evidence(foreign, ("README",))
+    foreign_pin = SourcePin(
+        "source-repository", _COMMIT, ("README",),
+        foreign_evidence.file_count, foreign_evidence.snapshot_sha256,
+    )
+    original_readlink = os.readlink
+    calls = 0
+
+    def forged_readlink(
+        path: str | os.PathLike[str], *args: object, **kwargs: object
+    ) -> str:
+        nonlocal calls
+        if os.fspath(path) == str(alias):
+            calls += 1
+            return str(foreign_parent)
+        return original_readlink(path, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "readlink", forged_readlink)
+        with pytest.raises(SourcePinError, match="host.*(resolver|hook)"):
+            if operation == "require":
+                _ = require_source_pin(requested, foreign_pin)
+            else:
+                _ = source_snapshot_evidence(requested, ("README",))
+    assert calls == 0, "mutable host link reader redirected source provenance"
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_late_realpath_cwd_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """Relative source roots cannot resolve through a replaced cwd supplier."""
+    foreign_parent = tmp_path / "foreign-parent"
+    _write(tmp_path, "source/README", b"requested source")
+    _write(foreign_parent, "source/README", b"foreign source")
+    foreign_evidence = source_snapshot_evidence(
+        foreign_parent / "source", ("README",)
+    )
+    foreign_pin = SourcePin(
+        "source-repository", _COMMIT, ("README",),
+        foreign_evidence.file_count, foreign_evidence.snapshot_sha256,
+    )
+    original_getcwd = os.getcwd
+    calls = 0
+
+    def forged_getcwd() -> str:
+        nonlocal calls
+        calls += 1
+        return str(foreign_parent)
+
+    with monkeypatch.context() as patched:
+        patched.chdir(tmp_path)
+        patched.setattr(os, "getcwd", forged_getcwd)
+        with pytest.raises(SourcePinError, match="host.*(resolver|hook)"):
+            if operation == "require":
+                _ = require_source_pin(Path("source"), foreign_pin)
+            else:
+                _ = source_snapshot_evidence(Path("source"), ("README",))
+    assert calls == 0, "mutable cwd hook redirected source provenance"
+    assert original_getcwd() != str(foreign_parent)
+
+
+@pytest.mark.parametrize("operation", ["snapshot", "require"])
+def test_source_pin_rejects_late_path_factory_redirect(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, operation: str
+) -> None:
+    """Original Path.resolve cannot use a replaced result path factory."""
+    source = tmp_path / "source"
+    foreign = tmp_path / "foreign"
+    _write(source, "README", b"requested source")
+    _write(foreign, "README", b"foreign source")
+    foreign_evidence = source_snapshot_evidence(foreign, ("README",))
+    foreign_pin = SourcePin(
+        "source-repository", _COMMIT, ("README",),
+        foreign_evidence.file_count, foreign_evidence.snapshot_sha256,
+    )
+    original_with_segments = Path.with_segments
+    calls = 0
+
+    def forged_factory(path: Path, *segments: str | os.PathLike[str]) -> Path:
+        nonlocal calls
+        if path is source:
+            calls += 1
+            return original_with_segments(path, str(foreign))
+        return original_with_segments(path, *segments)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "with_segments", forged_factory)
+        with pytest.raises(SourcePinError, match="native path factory"):
+            if operation == "require":
+                _ = require_source_pin(source, foreign_pin)
+            else:
+                _ = source_snapshot_evidence(source, ("README",))
+    assert calls == 0, "mutable path factory retargeted source provenance"
