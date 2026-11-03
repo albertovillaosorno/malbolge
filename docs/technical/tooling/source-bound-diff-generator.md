@@ -1484,6 +1484,18 @@ with no exclusions. These guards isolate late class
 hooks, not direct writes to instance storage, malicious consumer callbacks, or
 concurrent source/output writers.
 
+Compatible public authoring, correction binding, and materialization now
+rerun import-captured validators on exact native request and plan slots,
+including nested instructions and correction bindings (`9418fc2eb`). A
+constructor-bypassed plan previously could drop a target path or replace
+created-file bytes while publication still succeeded. Eight red-first tests
+also cover malformed request fields, missing native slots, invalid literal
+metadata, and negative correction indexes. All 273 compatible focused and
+3,180 integrated diff tests passed; scoped Ruff, strict source BasedPyright,
+and diff checks were clean. The source/target snapshot and output filesystem
+still require protection against direct instance mutation and external writers;
+no repository-wide Jig verdict is asserted by these tests.
+
 Compatible authoring, correction binding, and materialization now also
 construct internal `CompatibleInstruction`, `CompatibleAuthoringPlan`,
 `_BuildContext`, `_MaterializeContext`, and routed `SemanticAuthoringPlan`

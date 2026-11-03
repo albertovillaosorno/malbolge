@@ -706,6 +706,15 @@ format.
   live integrated diff suite passed 3,172 tests; scoped Ruff, strict source/test
   BasedPyright, and diff checks were clean. Jig doctor remains degraded because
   its graph is absent.
+- Compatible entrypoints now rerun pinned native validators for build and
+  materialization requests and plan/instruction records before callbacks or
+  output publication (`9418fc2eb`). Correction binding validates raw native
+  correction records before allowing edit indexes. Eight red-first cases
+  reproduced invalid or missing fields, omitted target files, substituted
+  created bytes, and negative correction routes; all 273 compatible and 3,180
+  integrated diff tests passed. Scoped Ruff, strict source BasedPyright, and
+  diff checks were clean. Direct storage mutation, external writers, and the
+  unresolved global Jig verdict remain outside this evidence.
 - The DOOM C mapper is identity-equivalent to the established canonicalizer
   across a
   read-only 273-file / 549,978-unit source+oracle smoke with zero mismatches.
