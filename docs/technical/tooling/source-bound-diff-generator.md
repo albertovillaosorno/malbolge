@@ -1801,6 +1801,19 @@ precommit integrated diff tests passed, with scoped Ruff, strict BasedPyright,
 and whitespace checks clean. This guards reader admission rather than direct
 trusted instance mutation or concurrent external writes.
 
+Compatible semantic instructions now unconditionally validate their native
+`SemanticAuthoringPlan` and nested edits before accepting an instruction,
+including when no named correction IDs are supplied (`d8a036fa6`). Invalid
+semantic evidence raises the compatible API's `CompatiblePlanError`, preserving
+the original semantic rejection as the cause instead of leaking a different
+error family. Seven red-first cases cover mutable/missing plans, malformed
+nested edits, and late validator replacement with and without correction IDs.
+All 290 postcommit compatible tests and 3,468 precommit integrated diff tests
+passed; scoped Ruff, strict source typing, and diff checks passed. The global
+Jig check timed out after 145 seconds without a green verdict; Jig doctor
+reported a degraded, absent graph. Direct trusted instance mutation and
+concurrent filesystem writers remain outside this guard.
+
 Semantic authoring now additionally constructs `SemanticLocator`,
 `SemanticEdit`, `SemanticAuthoringPlan`, and `_SemanticBuildContext` with
 captured native allocation and original initializer guards (`fa60753bb`).

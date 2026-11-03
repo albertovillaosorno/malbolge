@@ -887,6 +887,15 @@ format.
   passed, with scoped Ruff, strict BasedPyright and diff checks green.
   Direct trusted storage mutation and external source races remain outside
   this guarantee.
+- Compatible semantic instruction admission now always revalidates native
+  `SemanticAuthoringPlan` and nested edits, even without named correction IDs
+  (`d8a036fa6`). Invalid plans fail with owned `CompatiblePlanError`, chaining
+  their semantic cause. Seven red-first cases, 290 postcommit compatible, and
+  3,468 precommit integrated diff tests passed; scoped Ruff, strict source
+  typing and diff checks passed. A bounded 145-second global Jig check had no
+  green verdict, and doctor reported a degraded/absent graph. Trusted direct
+  storage edits and concurrent writers remain outside scope.
+
 - Generic mapped semantic placement now hashes canonical units, uniquely locates
   them
   in candidate source, maps them back to raw spans, preserves unrelated raw
