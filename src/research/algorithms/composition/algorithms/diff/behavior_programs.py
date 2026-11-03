@@ -720,7 +720,7 @@ def _admit_observation_mirror(
         raise ProbeExecutionError(message) from error
     if (
         _NATIVE_TYPE(completion) is not _NATIVE_TYPE(Path())
-        or completion != mirror
+        or _NATIVE_PATH_STR(completion) != _NATIVE_PATH_STR(mirror)
     ):
         message = "behavior candidate mirror copy reported non-native completion"
         raise ProbeExecutionError(message)

@@ -1404,6 +1404,55 @@ def test_observation_mirror_requires_native_copy_completion(
     )
 
 
+@pytest.mark.parametrize("wrong_completion", [False, True])
+def test_mirror_copy_completion_ignores_late_path_equality(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, wrong_completion: bool
+) -> None:
+    """Mirror copy attestation cannot be forged or denied by Path equality."""
+    source, _ = _trees(tmp_path)
+    context = _context(source, tmp_path)
+    admitted = behavior_module._snapshot_observed_source(source)
+    mirror = tmp_path / "mirror"
+    forged_receipt = tmp_path / "other-mirror"
+    original_copy = shutil.copytree
+    original_equal = Path.__eq__
+    calls = 0
+
+    def forged_copy(
+        source_root: Path, destination: Path, *, symlinks: bool = False
+    ) -> Path:
+        _ = original_copy(source_root, destination, symlinks=symlinks)
+        return forged_receipt if wrong_completion else destination
+
+    def forged_equal(left: Path, right: object) -> bool:
+        nonlocal calls
+        if left is forged_receipt and right is mirror:
+            calls += 1
+            return True
+        if left is mirror and right is mirror:
+            calls += 1
+            return False
+        return original_equal(left, right)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, "_NATIVE_COPYTREE", forged_copy)
+        patched.setattr(Path, "__eq__", forged_equal)
+        if wrong_completion:
+            with pytest.raises(
+                ProbeExecutionError, match="non-native completion"
+            ):
+                _ = behavior_module._admit_observation_mirror(
+                    context, mirror, admitted
+                )
+        else:
+            verified = behavior_module._admit_observation_mirror(
+                context, mirror, admitted
+            )
+            assert verified.source_root is mirror
+    assert calls == 0, "mirror attestation consulted late path equality"
+    assert mirror.joinpath("identity.txt").read_bytes() == b"stable"
+
+
 @pytest.mark.parametrize(
     "mutation", ["missing-compatibility", "duplicate", "extra", "foreign"]
 )
