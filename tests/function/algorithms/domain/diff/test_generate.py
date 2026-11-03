@@ -548,6 +548,45 @@ def test_generator_rejects_replaced_host_realpath_containment(
     assert calls == 0
 
 
+def test_generator_rejects_late_host_splitroot_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Uncached native source paths must not consult a replaced path parser."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    source_label = str(recipe.source_root)
+    recipe = replace(recipe, source_root=Path(source_label))
+    native_splitroot = os.path.splitroot
+    redirected_label = str(tmp_path / "unrelated-source")
+    calls = 0
+
+    def forged_splitroot(raw: str) -> tuple[str, str, str]:
+        nonlocal calls
+        if raw == source_label:
+            calls += 1
+            return native_splitroot(redirected_label)
+        return native_splitroot(raw)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, "splitroot", forged_splitroot)
+        with pytest.raises(ValueError, match="host path hooks changed"):
+            _validate_realpath_recipe(recipe)
+    assert calls == 0, "mutable host parser redirected the source root"
+
+
+@pytest.mark.parametrize("hook", ["splitdrive", "sep", "altsep", "join"])
+def test_generator_rejects_changed_native_host_parser_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Even a valid recipe must fail before mutable host path dispatch."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    original = getattr(os.path, hook)
+    forged = "\\" if hook in {"sep", "altsep"} else lambda *args: original(*args)
+    with monkeypatch.context() as patched:
+        patched.setattr(os.path, hook, forged)
+        with pytest.raises(ValueError, match="host path hooks changed"):
+            _validate_realpath_recipe(recipe)
+
+
 def test_generator_rejects_replaced_host_realpath_denial(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

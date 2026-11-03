@@ -117,6 +117,14 @@ _NATIVE_OS_READLINK = os.readlink
 _NATIVE_OS_GETCWD = os.getcwd
 _NATIVE_STAT_ISLNK = stat.S_ISLNK
 _NATIVE_REALPATH = os.path.realpath
+# The original Path resolver still parses uncached raw components through
+# mutable host parser names. Pin that dependency chain before resolving.
+_NATIVE_HOST_PARSER = os.path
+_NATIVE_HOST_SPLITROOT = os.path.splitroot
+_NATIVE_HOST_SPLITDRIVE = os.path.splitdrive
+_NATIVE_HOST_JOIN = os.path.join
+_NATIVE_HOST_SEP = os.path.sep
+_NATIVE_HOST_ALTSEP = os.path.altsep
 _MAX_SHARES = 255
 _NUL = "\x00"
 _PARENT = ".."
@@ -398,7 +406,13 @@ def _require_native_host_realpath(name: str) -> None:
     # Path.resolve calls realpath with a Path value. The original resolver
     # still delegates to these mutable conversion hooks before containment.
     if (
-        os.fspath is not _NATIVE_OS_FSPATH
+        os.path is not _NATIVE_HOST_PARSER
+        or os.path.splitroot is not _NATIVE_HOST_SPLITROOT
+        or os.path.splitdrive is not _NATIVE_HOST_SPLITDRIVE
+        or os.path.join is not _NATIVE_HOST_JOIN
+        or os.path.sep is not _NATIVE_HOST_SEP
+        or os.path.altsep is not _NATIVE_HOST_ALTSEP
+        or os.fspath is not _NATIVE_OS_FSPATH
         or os.lstat is not _NATIVE_OS_LSTAT
         or os.readlink is not _NATIVE_OS_READLINK
         or os.getcwd is not _NATIVE_OS_GETCWD
