@@ -62,7 +62,6 @@ _NATIVE_ZIP = zip
 _NATIVE_RANGE = range
 _NATIVE_LEN = len
 _NATIVE_FROM_BYTES = int.from_bytes
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 _KEY_BYTES = 32
 _NONCE_BYTES = 12
@@ -97,8 +96,8 @@ class AuthenticatedPayload:
 
     def __init__(self, ciphertext: bytes, tag: bytes) -> None:
         """Validate detached authenticated bytes with the original guard."""
-        _NATIVE_OBJECT_SETATTR(self, "ciphertext", ciphertext)
-        _NATIVE_OBJECT_SETATTR(self, "tag", tag)
+        _PAYLOAD_CIPHERTEXT_SLOT.__set__(self, ciphertext)
+        _PAYLOAD_TAG_SLOT.__set__(self, tag)
         _AUTHENTICATED_PAYLOAD_VALIDATOR(self)
 
     def __post_init__(self) -> None:

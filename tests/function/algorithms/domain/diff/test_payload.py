@@ -680,3 +680,49 @@ def test_decrypt_ignores_late_payload_descriptor_forgery(
             recovered = chacha20_poly1305_decrypt(key, nonce, authentic)
             assert recovered == plaintext
     assert calls == 0, "late descriptor changed authenticated payload metadata"
+
+
+@pytest.mark.parametrize("field", ["ciphertext", "tag"])
+def test_payload_constructor_rejects_forged_field_setter(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A late setter must not repair invalid ciphertext or tag metadata."""
+    slot = AuthenticatedPayload.__dict__[field]
+    calls = 0
+
+    def sanitize(self: AuthenticatedPayload, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(self, b"safe" if field == "ciphertext" else bytes(16))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(AuthenticatedPayload, field, property(fset=sanitize))
+        with pytest.raises(PayloadCryptoError):
+            _ = AuthenticatedPayload(
+                cast("bytes", cast("object", bytearray(b"unsafe")))
+                if field == "ciphertext"
+                else b"payload",
+                b"short" if field == "tag" else bytes(16),
+            )
+    assert calls == 0, "invalid payload was laundered by late field setter"
+
+
+@pytest.mark.parametrize("field", ["ciphertext", "tag"])
+def test_payload_constructor_writes_original_fields(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Valid authenticated metadata bypasses substituted class setters."""
+    calls = 0
+
+    def forbidden_setter(_self: AuthenticatedPayload, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("constructor invoked foreign payload setter")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            AuthenticatedPayload, field, property(fset=forbidden_setter)
+        )
+        payload = AuthenticatedPayload(b"payload", bytes(16))
+    assert type(payload) is AuthenticatedPayload
+    assert calls == 0, "valid payload dispatched late field setter"
