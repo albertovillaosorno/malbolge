@@ -306,6 +306,8 @@ def test_domain_import_preparation_errors_are_typed(
         "get_data",
         "get_filename",
         "source_to_code",
+        "__init__",
+        "create_module",
     ],
 )
 def test_domain_rejects_late_native_import_loader_substitution(
@@ -325,6 +327,7 @@ def test_domain_rejects_late_native_import_loader_substitution(
     original_module = importlib.util.module_from_spec
     original_exec = importlib.machinery.SourceFileLoader.exec_module
     original_data = importlib.machinery.SourceFileLoader.get_data
+    original_init = importlib.machinery.SourceFileLoader.__init__
     before = frozenset(sys.modules)
 
     def forged_spec(
@@ -371,6 +374,21 @@ def test_domain_rejects_late_native_import_loader_substitution(
         del loader, data, path, _optimize
         return compile(rogue.read_text(encoding="utf-8"), str(rogue), "exec")
 
+    def forged_init(
+        loader: importlib.machinery.SourceFileLoader,
+        name: str,
+        path: str,
+    ) -> None:
+        del path
+        original_init(loader, name, str(rogue))
+
+    def forged_create_module(
+        loader: importlib.machinery.SourceFileLoader,
+        spec: importlib.machinery.ModuleSpec,
+    ) -> None:
+        del loader, spec
+        _ = marker.touch()
+
     with monkeypatch.context() as patched:
         if replacement == "spec_from_file_location":
             patched.setattr(importlib.util, replacement, forged_spec)
@@ -383,6 +401,8 @@ def test_domain_rejects_late_native_import_loader_substitution(
                 "get_data": forged_get_data,
                 "get_filename": forged_get_filename,
                 "source_to_code": forged_source_to_code,
+                "__init__": forged_init,
+                "create_module": forged_create_module,
             }
             patched.setattr(
                 importlib.machinery.SourceFileLoader,

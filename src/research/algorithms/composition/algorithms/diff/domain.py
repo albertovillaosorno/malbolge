@@ -96,6 +96,8 @@ _NATIVE_SOURCE_LOADER_GET_CODE = importlib.machinery.SourceFileLoader.get_code
 _NATIVE_SOURCE_LOADER_GET_DATA = importlib.machinery.SourceFileLoader.get_data
 _NATIVE_SOURCE_LOADER_GET_FILENAME = importlib.machinery.SourceFileLoader.get_filename
 _NATIVE_SOURCE_LOADER_SOURCE_TO_CODE = importlib.machinery.SourceFileLoader.source_to_code
+_NATIVE_SOURCE_LOADER_INIT = importlib.machinery.SourceFileLoader.__init__
+_NATIVE_SOURCE_LOADER_CREATE_MODULE = importlib.machinery.SourceFileLoader.create_module
 _NATIVE_OBJECT_NEW = object.__new__
 
 
@@ -412,6 +414,10 @@ def _prepare_module(
         is not _NATIVE_SOURCE_LOADER_GET_FILENAME
         or importlib.machinery.SourceFileLoader.source_to_code
         is not _NATIVE_SOURCE_LOADER_SOURCE_TO_CODE
+        or importlib.machinery.SourceFileLoader.__init__
+        is not _NATIVE_SOURCE_LOADER_INIT
+        or importlib.machinery.SourceFileLoader.create_module
+        is not _NATIVE_SOURCE_LOADER_CREATE_MODULE
     ):
         message = "diff domain module execution reported non-native completion"
         raise DomainContractError(message)
