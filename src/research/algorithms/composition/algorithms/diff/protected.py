@@ -51,6 +51,7 @@ from algorithms.diff.model import (
     ExactAuthoringPlan,
     ExactInstruction,
     ExactInstructionKind,
+    FileRecord,
     OracleLiteral,
     SourceSlice,
     TreeSnapshot,
@@ -110,6 +111,14 @@ _IDENTITY_PATH_SLOT = cast("MemberDescriptorType", IdentityFile.__dict__["path"]
 _IDENTITY_CANONICAL_SLOT = cast(
     "MemberDescriptorType", IdentityFile.__dict__["canonical"]
 )
+# AAD must serialize precisely the fields validated by tree model admission.
+# Read original slots rather than caller-mutable TreeSnapshot/FileRecord getters.
+_SNAPSHOT_FILES_SLOT = cast("MemberDescriptorType", TreeSnapshot.__dict__["files"])
+_FILE_PATH_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["path"])
+_FILE_SHA256_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["sha256"])
+_FILE_SIZE_SLOT = cast("MemberDescriptorType", FileRecord.__dict__["size"])
+_SOURCE_SLICE_OFFSET_SLOT = cast("MemberDescriptorType", SourceSlice.__dict__["offset"])
+_SOURCE_SLICE_LENGTH_SLOT = cast("MemberDescriptorType", SourceSlice.__dict__["length"])
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
 _NATIVE_ISINSTANCE = builtins.isinstance
@@ -423,8 +432,9 @@ def _require_static_target_outside_passthrough(
     target: TreeSnapshot, roots: tuple[str, ...]
 ) -> None:
     if _NATIVE_ANY(
-        record.path == root or record.path.startswith(root + "/")
-        for record in target.files
+        path == root or path.startswith(root + "/")
+        for record in _stored_snapshot_files(target)
+        for path in (_stored_file_fields(record)[0],)
         for root in roots
     ):
         message = "protected static target conflicts with passthrough roots"
@@ -448,7 +458,7 @@ def _require_instructions_match_target(
         for item in instructions
     )
     target_outputs = _NATIVE_TUPLE(
-        (item.path, item.sha256) for item in target.files
+        _stored_file_fields(item)[:2] for item in _stored_snapshot_files(target)
     )
     if authored_outputs != target_outputs:
         message = "protected instructions must match the target snapshot"
@@ -839,20 +849,34 @@ def _u64(value: int) -> bytes:
     return value.to_bytes(_FRAME_BYTES, byteorder="big")
 
 
+def _stored_snapshot_files(snapshot: TreeSnapshot) -> tuple[FileRecord, ...]:
+    return cast(
+        "tuple[FileRecord, ...]", _SNAPSHOT_FILES_SLOT.__get__(snapshot, TreeSnapshot)
+    )
+
+
+def _stored_file_fields(record: FileRecord) -> tuple[str, str, int]:
+    return (
+        cast("str", _FILE_PATH_SLOT.__get__(record, FileRecord)),
+        cast("str", _FILE_SHA256_SLOT.__get__(record, FileRecord)),
+        cast("int", _FILE_SIZE_SLOT.__get__(record, FileRecord)),
+    )
+
+
 def _snapshot_bytes(snapshot: TreeSnapshot) -> bytes:
-    parts = [_u64(_NATIVE_LEN(snapshot.files))]
-    for record in snapshot.files:
-        parts.extend((
-            _frame_text(record.path),
-            _frame_text(record.sha256),
-            _u64(record.size),
-        ))
+    files = _stored_snapshot_files(snapshot)
+    parts = [_u64(_NATIVE_LEN(files))]
+    for record in files:
+        path, sha256, size = _stored_file_fields(record)
+        parts.extend((_frame_text(path), _frame_text(sha256), _u64(size)))
     return b"".join(parts)
 
 
 def _segment_bytes(segment: ProtectedSegment) -> bytes:
     if _NATIVE_ISINSTANCE(segment, SourceSlice):
-        return b"S" + _u64(segment.offset) + _u64(segment.length)
+        offset = cast("int", _SOURCE_SLICE_OFFSET_SLOT.__get__(segment, SourceSlice))
+        length = cast("int", _SOURCE_SLICE_LENGTH_SLOT.__get__(segment, SourceSlice))
+        return b"S" + _u64(offset) + _u64(length)
     offset, length = _payload_slice_fields(segment)
     return b"P" + _u64(offset) + _u64(length)
 

@@ -1981,3 +1981,96 @@ def test_protected_authoring_ignores_late_reference_identity_getters(
         )
     assert observed == baseline, "late identity hook rewrote the derived payload key"
     assert calls == 0, "late source identity getter participated in key derivation"
+
+
+@pytest.mark.parametrize("hook", ["descriptor", "getattribute"])
+@pytest.mark.parametrize(
+    "field", ["files", "path", "sha256", "size", "offset", "length"]
+)
+def test_protected_aad_reads_original_nested_snapshot_and_slice_fields(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str, field: str
+) -> None:
+    """AAD must encode stored snapshots and source spans, not late getters."""
+    _, _, _, _, plan = _protected(tmp_path)
+    metadata = ProtectedMetadata(
+        source=plan.source,
+        target=plan.target,
+        instructions=plan.instructions,
+        passthrough_roots=plan.passthrough_roots,
+    )
+    baseline = protected_plan_aad(metadata, context=_CONTEXT)
+    if field == "files":
+        record: object = plan.source
+    elif field in ("path", "sha256", "size"):
+        record = plan.source.files[0]
+    else:
+        record = next(
+            segment
+            for instruction in plan.instructions
+            for segment in instruction.segments
+            if type(segment) is SourceSlice
+        )
+    owner = type(record)
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    replacement: object = {
+        "files": (),
+        "path": "foreign.c",
+        "sha256": "f" * 64,
+        "size": 999999,
+        "offset": 999999,
+        "length": 999999,
+    }[field]
+    original_getattribute = cast(
+        "Callable[[object, str], object]", owner.__getattribute__
+    )
+    calls = 0
+
+    def forged_field(value: object) -> object:
+        nonlocal calls
+        if value is record:
+            calls += 1
+            return replacement
+        return cast("object", slot.__get__(value, owner))
+
+    def forged_attribute(value: object, name: str) -> object:
+        if name == field:
+            return forged_field(value)
+        return original_getattribute(value, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "descriptor":
+            patched.setattr(owner, field, property(forged_field))
+        else:
+            patched.setattr(owner, "__getattribute__", forged_attribute)
+        observed = protected_plan_aad(metadata, context=_CONTEXT)
+    assert observed == baseline, "late nested getter changed authenticated AAD"
+    assert calls == 0, "mutable nested metadata getter was consulted"
+
+
+def test_protected_metadata_rejects_late_target_digest_forgery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Instruction admission cannot trust a late target digest getter."""
+    _, _, _, _, plan = _protected(tmp_path)
+    wrong_digest = "0" * 64
+    mismatched = (
+        replace(plan.instructions[0], expected_sha256=wrong_digest),
+        *plan.instructions[1:],
+    )
+    target_record = plan.target.files[0]
+    owner = type(target_record)
+    original_slot = cast("MemberDescriptorType", owner.__dict__["sha256"])
+    calls = 0
+
+    def forged_digest(record: object) -> str:
+        nonlocal calls
+        if record is target_record:
+            calls += 1
+            return wrong_digest
+        return cast("str", original_slot.__get__(record, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, "sha256", property(forged_digest))
+        with pytest.raises(ProtectedPlanError, match="match the target snapshot"):
+            _ = ProtectedMetadata(plan.source, plan.target, mismatched)
+    assert calls == 0, "late target digest getter promoted invalid instructions"
