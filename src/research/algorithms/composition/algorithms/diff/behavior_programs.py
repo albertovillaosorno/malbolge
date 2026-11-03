@@ -378,11 +378,17 @@ def _require_digest(transcript: ProbeTranscript) -> bytes:
 
 def _resolved_context_path(path: Path, description: str) -> Path:
     try:
-        return path.resolve()
+        resolved = path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
         detail = _behavior_error_detail(error)
         message = f"behavior {description} resolution failed: {path}: {detail}"
         raise BehaviorProgramError(message) from error
+    if type(resolved) is not type(Path()):
+        message = (
+            f"behavior {description} resolution requires native resolved Path"
+        )
+        raise BehaviorProgramError(message)
+    return resolved
 
 
 def _context_signature(

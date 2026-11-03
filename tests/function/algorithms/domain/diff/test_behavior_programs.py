@@ -368,6 +368,46 @@ def test_context_tool_resolution_error_fails_closed(
         )
 
 
+@pytest.mark.parametrize("role", ["repository", "tool"])
+def test_behavior_authoring_rejects_foreign_resolved_context_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, role: str
+) -> None:
+    """Foreign Path equality cannot forge matching repository/tool bindings."""
+    source, oracle = _trees(tmp_path)
+    source_context = _context(source, tmp_path)
+    foreign_path = tmp_path / "other-binding"
+    oracle_context = ProbeRunContext(
+        source_root=oracle,
+        repository_root=foreign_path if role == "repository" else tmp_path,
+        tools=(
+            ((_PYTHON_TOOL, foreign_path),)
+            if role == "tool"
+            else source_context.tools
+        ),
+    )
+    programs = BehaviorPrograms(
+        identity=(_read_program("identity-stable", "identity.txt"),),
+        compatibility=(),
+        bugs=(),
+    )
+    native_resolve = Path.resolve
+
+    class ForgedResolvedPath(type(Path())):
+        @override
+        def __eq__(self, other: object) -> bool:
+            _ = other
+            return True
+
+    def return_foreign_path(path: Path, *, strict: bool = False) -> Path:
+        if path == foreign_path:
+            return ForgedResolvedPath(path)
+        return native_resolve(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", return_foreign_path)
+    with pytest.raises(BehaviorProgramError, match="native resolved Path"):
+        _ = author_behavior_programs(programs, source_context, oracle_context)
+
+
 def test_behavior_program_records_reject_foreign_mutable_inputs() -> None:
     """Validate metadata before dereferencing program records."""
     program = _read_program("identity", "identity.txt")
