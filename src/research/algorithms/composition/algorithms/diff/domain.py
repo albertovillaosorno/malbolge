@@ -70,6 +70,10 @@ if TYPE_CHECKING:
 
 _NUL = "\x00"
 # Domain validation must not trust builtins replaced by imported consumers.
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_FILE_NOT_FOUND_ERROR = builtins.FileNotFoundError
 _NATIVE_CALLABLE = builtins.callable
 _NATIVE_ANY = builtins.any
 _NATIVE_TUPLE = tuple
@@ -335,7 +339,7 @@ def _require_module_path_without_nul(path: Path) -> None:
 def _module_is_junction(path: Path) -> bool:
     try:
         verdict = _NATIVE_PATH_IS_JUNCTION(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = (
             "diff domain module junction status failed: "
             f"{_NATIVE_PATH_STRING(path)!r}"
@@ -372,7 +376,7 @@ def _reject_linked_module_ancestors(path: Path) -> None:
     ):
         try:
             receipt = _NATIVE_PATH_LSTAT(current)
-        except (OSError, ValueError, RuntimeError) as error:
+        except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
             message = (
                 "diff domain module parent status failed: "
                 f"{_NATIVE_PATH_STRING(current)!r}"
@@ -402,7 +406,7 @@ def _resolved_native_module_path(
     """
     try:
         resolved = _NATIVE_PATH_RESOLVE(path, strict=True)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"diff domain module resolution failed: {_NATIVE_PATH_STRING(path)!r}"
         raise DomainContractError(message) from error
     if _NATIVE_TYPE(resolved) is not _NATIVE_PATH_TYPE:
@@ -420,7 +424,7 @@ def _resolved_native_module_path(
         resolved_status = _require_native_module_status(
             _NATIVE_PATH_LSTAT(resolved), "resolved module"
         )
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = "diff domain module resolution status failed"
         raise DomainContractError(message) from error
     if (
@@ -437,13 +441,13 @@ def _regular_module_path(path: Path) -> Path:
     _require_module_path_without_nul(path)
     try:
         receipt = _NATIVE_PATH_LSTAT(path)
-    except FileNotFoundError as error:
+    except _NATIVE_FILE_NOT_FOUND_ERROR as error:
         message = (
             "diff domain module is not a regular file: "
             f"{_NATIVE_PATH_STRING(path)}"
         )
         raise DomainContractError(message) from error
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"diff domain module status failed: {_NATIVE_PATH_STRING(path)!r}"
         raise DomainContractError(message) from error
     receipt = _require_native_module_status(receipt, "module")

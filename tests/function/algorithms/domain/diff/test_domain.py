@@ -124,6 +124,44 @@ def test_domain_loader_rejects_foreign_path_before_filesystem() -> None:
         _ = load_diff_domain(cast("Path", cast("object", "domain.py")))
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX filename length contract")
+def test_domain_loader_rejects_overlong_path_after_late_oserror_alias(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Native filesystem errors retain typed domain admission diagnostics."""
+    module_path = tmp_path / ("a" * 300 + ".py")
+    native_os_error = builtins.OSError
+    caught: DomainContractError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "OSError", RuntimeError)
+        try:
+            _ = load_diff_domain(module_path)
+        except DomainContractError as error:
+            caught = error
+        finally:
+            builtins.__dict__["OSError"] = native_os_error
+    assert type(caught) is DomainContractError, caught
+    assert "module status failed" in str(caught)
+
+
+def test_domain_loader_preserves_missing_file_reason_after_late_alias(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A missing module remains a missing file after builtin substitution."""
+    native_not_found = builtins.FileNotFoundError
+    caught: DomainContractError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "FileNotFoundError", RuntimeError)
+        try:
+            _ = load_diff_domain(tmp_path / "does-not-exist.py")
+        except DomainContractError as error:
+            caught = error
+        finally:
+            builtins.__dict__["FileNotFoundError"] = native_not_found
+    assert type(caught) is DomainContractError, caught
+    assert "not a regular file" in str(caught)
+
+
 class _ForeignDomainModulePath(type(Path())):
     """A module path override cannot establish domain execution authority."""
 
