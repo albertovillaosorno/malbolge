@@ -105,7 +105,6 @@ _NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_ISFINITE = math.isfinite
 _NATIVE_CEIL = math.ceil
 _NATIVE_ZIP = builtins.zip
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
     selection_modulus=64,
@@ -162,10 +161,10 @@ class SourceBindingPolicy:
         anchor_policy: AnchorPolicy = _DEFAULT_BINDING_ANCHOR_POLICY,
     ) -> None:
         """Validate source quorum policy through the captured native guard."""
-        _NATIVE_OBJECT_SETATTR(self, "threshold_fraction", threshold_fraction)
-        _NATIVE_OBJECT_SETATTR(self, "maximum_anchors", maximum_anchors)
-        _NATIVE_OBJECT_SETATTR(self, "minimum_anchor_files", minimum_anchor_files)
-        _NATIVE_OBJECT_SETATTR(self, "anchor_policy", anchor_policy)
+        _POLICY_FRACTION_SLOT.__set__(self, threshold_fraction)
+        _POLICY_MAXIMUM_SLOT.__set__(self, maximum_anchors)
+        _POLICY_MINIMUM_SLOT.__set__(self, minimum_anchor_files)
+        _POLICY_ANCHORS_SLOT.__set__(self, anchor_policy)
         _SOURCE_BINDING_POLICY_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -227,7 +226,7 @@ def _policy_fields(
     )
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class BoundShare:
     """One masked threshold share bound to one canonical source anchor."""
 
@@ -236,8 +235,21 @@ class BoundShare:
     x: int
     masked_share: bytes
 
+    def __init__(
+        self,
+        source_path: str,
+        anchor_digest: bytes,
+        x: int,
+        masked_share: bytes,
+    ) -> None:
+        """Store the supplied share through original class slots."""
+        _SHARE_PATH_SLOT.__set__(self, source_path)
+        _SHARE_DIGEST_SLOT.__set__(self, anchor_digest)
+        _SHARE_X_SLOT.__set__(self, x)
+        _SHARE_MASKED_SLOT.__set__(self, masked_share)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class ThresholdBinding:
     """Distributable source-bound secret metadata without plaintext secret."""
 
@@ -249,19 +261,50 @@ class ThresholdBinding:
     anchor_policy: AnchorPolicy
     shares: tuple[BoundShare, ...]
 
+    def __init__(
+        self,
+        context: bytes,
+        threshold: int,
+        minimum_anchor_files: int,
+        secret_length: int,
+        secret_commitment: bytes,
+        anchor_policy: AnchorPolicy,
+        shares: tuple[BoundShare, ...],
+    ) -> None:
+        """Store the exact envelope fields without invoking class setters."""
+        _BINDING_CONTEXT_SLOT.__set__(self, context)
+        _BINDING_THRESHOLD_SLOT.__set__(self, threshold)
+        _BINDING_MINIMUM_FILES_SLOT.__set__(self, minimum_anchor_files)
+        _BINDING_SECRET_LENGTH_SLOT.__set__(self, secret_length)
+        _BINDING_COMMITMENT_SLOT.__set__(self, secret_commitment)
+        _BINDING_ANCHOR_POLICY_SLOT.__set__(self, anchor_policy)
+        _BINDING_SHARES_SLOT.__set__(self, shares)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class _AnchorMaterial:
     source_path: str
     digest: bytes
     window: bytes
 
+    def __init__(self, source_path: str, digest: bytes, window: bytes) -> None:
+        """Pin internal anchor material to its supplied bytes."""
+        _ANCHOR_PATH_SLOT.__set__(self, source_path)
+        _ANCHOR_DIGEST_SLOT.__set__(self, digest)
+        _ANCHOR_WINDOW_SLOT.__set__(self, window)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class _RecoveredShare:
     source_path: str
     x: int
     value: bytes
+
+    def __init__(self, source_path: str, x: int, value: bytes) -> None:
+        """Pin internal recovered evidence to its supplied fields."""
+        _RECOVERED_PATH_SLOT.__set__(self, source_path)
+        _RECOVERED_X_SLOT.__set__(self, x)
+        _RECOVERED_VALUE_SLOT.__set__(self, value)
 
 
 # Imported fingerprint records and the window policy are also evidence.

@@ -41,7 +41,7 @@ import ntpath
 import os
 from dataclasses import replace
 from pathlib import PurePosixPath, PureWindowsPath
-from types import SimpleNamespace
+from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -1631,3 +1631,209 @@ def test_binding_policy_keeps_valid_data_after_validator_override(
     assert policy.threshold_fraction == 0.6
     assert policy.maximum_anchors == 5
     assert calls == 0, "late class checker rejected a valid binding policy"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "replacement"),
+    [
+        ("threshold_fraction", 0.0, 0.6),
+        ("maximum_anchors", 0, 5),
+        ("minimum_anchor_files", 0, 3),
+        ("anchor_policy", object(), _policy().anchor_policy),
+    ],
+)
+def test_binding_policy_constructor_rejects_property_setter_substitution(
+    monkeypatch: pytest.MonkeyPatch, field: str, invalid: object,
+    replacement: object,
+) -> None:
+    """A class property setter cannot replace invalid quorum policy inputs."""
+    valid_policy = _policy()
+    original_slot = cast(
+        "MemberDescriptorType", SourceBindingPolicy.__dict__[field]
+    )
+    calls = 0
+
+    def forged_setter(value: SourceBindingPolicy, _supplied: object) -> None:
+        nonlocal calls
+        calls += 1
+        original_slot.__set__(value, replacement)
+
+    def stored_field(value: object) -> object:
+        return cast("object", original_slot.__get__(value, SourceBindingPolicy))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            SourceBindingPolicy,
+            field,
+            property(stored_field, forged_setter),
+        )
+        with pytest.raises(SourceBindingPolicyError):
+            _ = replace(
+                valid_policy, **{field: invalid}
+            )
+    assert calls == 0, "late policy property setter intercepted construction"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("source_path", "../unsafe.c"),
+        ("anchor_digest", b"short"),
+        ("x", 0),
+        ("masked_share", b"short"),
+    ],
+)
+def test_bound_share_constructor_rejects_property_setter_substitution(
+    monkeypatch: pytest.MonkeyPatch, field: str, invalid: object
+) -> None:
+    """A share setter cannot launder malformed distributable evidence."""
+    reference = _reference()
+    binding = bind_secret(
+        reference, _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    original = binding.shares[0]
+    owner = type(original)
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    valid = cast("object", slot.__get__(original, owner))
+    calls = 0
+
+    def forged_setter(value: object, _supplied: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(value, valid)
+
+    def stored_field(value: object) -> object:
+        return cast("object", slot.__get__(value, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            owner, field,
+            property(stored_field, forged_setter),
+        )
+        changed = replace(original, **{field: invalid})
+        malformed = replace(
+            binding, shares=(changed, *binding.shares[1:])
+        )
+        with pytest.raises(SourceBindingError):
+            _ = validate_threshold_binding(malformed)
+    assert calls == 0, "late share property setter intercepted construction"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("context", b""),
+        ("threshold", 0),
+        ("minimum_anchor_files", 0),
+        ("secret_length", 0),
+        ("secret_commitment", b"short"),
+        ("anchor_policy", object()),
+        ("shares", ()),
+    ],
+)
+def test_threshold_binding_constructor_rejects_property_setter_substitution(
+    monkeypatch: pytest.MonkeyPatch, field: str, invalid: object
+) -> None:
+    """An envelope setter cannot replace evidence before admission."""
+    reference = _reference()
+    binding = bind_secret(
+        reference, _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    owner = type(binding)
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    valid = cast("object", slot.__get__(binding, owner))
+    calls = 0
+
+    def forged_setter(value: object, _supplied: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(value, valid)
+
+    def stored_field(value: object) -> object:
+        return cast("object", slot.__get__(value, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            owner, field,
+            property(stored_field, forged_setter),
+        )
+        malformed = replace(binding, **{field: invalid})
+        with pytest.raises(SourceBindingError):
+            _ = validate_threshold_binding(malformed)
+    assert calls == 0, "late binding property setter intercepted construction"
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("source_path", "src/foreign.c"),
+        ("digest", b"forged"),
+        ("window", b"forged anchor bytes"),
+    ],
+)
+def test_anchor_material_constructor_ignores_property_setters(
+    monkeypatch: pytest.MonkeyPatch, field: str, replacement: object
+) -> None:
+    """Internal material creation must store real path, digest, and window."""
+    reference = _reference()
+    policy = _policy()
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    owner = cast("type[object]", vars(binding_module)["_AnchorMaterial"])
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    calls = 0
+
+    def forged_setter(value: object, _supplied: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(value, replacement)
+
+    def stored_field(value: object) -> object:
+        return cast("object", slot.__get__(value, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            owner, field,
+            property(stored_field, forged_setter),
+        )
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+    assert observed == expected
+    assert calls == 0, "late material property setter intercepted construction"
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("source_path", "src/foreign.c"),
+        ("x", 254),
+        ("value", b"forged recovered key bytes"),
+    ],
+)
+def test_recovered_share_constructor_ignores_property_setters(
+    monkeypatch: pytest.MonkeyPatch, field: str, replacement: object
+) -> None:
+    """Recovered shares must not be rewritten by class field properties."""
+    reference = _reference()
+    binding = bind_secret(
+        reference, _SECRET, policy=_policy(), context=_CONTEXT
+    )
+    owner = cast("type[object]", vars(binding_module)["_RecoveredShare"])
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    calls = 0
+
+    def forged_setter(value: object, _supplied: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(value, replacement)
+
+    def stored_field(value: object) -> object:
+        return cast("object", slot.__get__(value, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            owner, field,
+            property(stored_field, forged_setter),
+        )
+        assert recover_secret(binding, reference) == _SECRET
+    assert calls == 0, "late recovered share setter intercepted construction"
