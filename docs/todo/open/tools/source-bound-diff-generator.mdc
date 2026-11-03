@@ -391,6 +391,16 @@ format.
   BasedPyright reports zero errors, and pinned Ruff added no diagnostics
   relative to the existing 55 across the source/test pair. Direct mutation of
   stored fields remains out of scope.
+- Protected-plan metadata and recovery now revalidate exact native nested
+  evidence (`fbbbe62ac`): 18 new cases, ten red-first, 184 postcommit focused
+  tests and 3,136 integrated tests before final validator-hook cases.
+- The Rust emitter reruns the import-captured protected-plan validator before
+  loading its template or staging output (`c02bb9626`). Four red-first and
+  thirteen total negative cases cover malformed native plans, missing slots,
+  and late class validator replacement. All 150 postcommit emitter tests and
+  3,148 integrated diff tests passed; Ruff and source BasedPyright reported
+  zero errors. Neither guard isolates direct trusted-state mutation or
+  concurrent filesystem writers.
 - A historical read-only DOOM smoke protected 2,116,232 literal bytes across 152
   instructions and materialized the then-current 152-file oracle snapshot. That
   snapshot is now known to include one accidental PowerShell root entry. The

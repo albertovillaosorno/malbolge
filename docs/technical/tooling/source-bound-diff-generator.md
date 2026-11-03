@@ -1136,6 +1136,20 @@ and pinned Ruff retains its 55 pre-existing diagnostics across the source and
 test pair with no new findings. This does not isolate direct changes to valid
 stored fields or process-global trusted internals.
 
+Native protected-plan admission now reruns the original nested validators
+at authenticated metadata and recovery boundaries (`fbbbe62ac`). Eighteen
+new tests include ten red-first constructor-bypass cases; all 184 focused
+protected tests passed postcommit, and 3,136 integrated diff tests passed
+before the final three validator-hook cases. The Rust emitter separately
+reruns the import-captured protected-plan validator before reading its runtime
+template or staging output (`c02bb9626`). Four red-first malformed-plan
+cases and thirteen new regressions cover missing slots, invalid binding,
+metadata, context, nonce, and replaced class validators. All 150 emitter
+tests passed postcommit; the integrated diff suite passed 3,145 tests before
+commit and 3,148 on the live postcommit checkout. Scoped Ruff and strict
+source BasedPyright reported zero errors. Both guards protect in-process
+admission, not external filesystem races or direct trusted-state mutation.
+
 `protected.py` now combines key binding and authenticated encryption for exact
 authoring plans. Every `OracleLiteral` is moved into one deterministic plaintext
 stream. Protected instructions retain only source slices or offsets into that
