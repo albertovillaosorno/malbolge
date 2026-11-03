@@ -42,7 +42,7 @@ from hashlib import sha256 as _native_sha256
 from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
-from algorithms.diff.admission import IdentityTree
+from algorithms.diff.admission import IdentityFile, IdentityTree
 from algorithms.diff.exact import (
     materialize_exact_plan,
     snapshot_tree_excluding,
@@ -103,6 +103,13 @@ _NATIVE_ENUMERATE = builtins.enumerate
 _NATIVE_BOOL = builtins.bool
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_BYTEARRAY = builtins.bytearray
+# The authoring key schedule must hash the admitted identity's original
+# storage, not mutable dataclass field getters installed after import.
+_IDENTITY_FILES_SLOT = cast("MemberDescriptorType", IdentityTree.__dict__["files"])
+_IDENTITY_PATH_SLOT = cast("MemberDescriptorType", IdentityFile.__dict__["path"])
+_IDENTITY_CANONICAL_SLOT = cast(
+    "MemberDescriptorType", IdentityFile.__dict__["canonical"]
+)
 _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
 _NATIVE_ISINSTANCE = builtins.isinstance
@@ -987,10 +994,18 @@ def _protect_instruction(
 def _source_identity_digest(reference_identity: IdentityTree) -> bytes:
     digest = _native_sha256()
     digest.update(b"source-bound-exact-plan-identity-v1\0")
-    digest.update(_u64(_NATIVE_LEN(reference_identity.files)))
-    for identity_file in reference_identity.files:
-        digest.update(_frame_text(identity_file.path))
-        digest.update(_frame_bytes(identity_file.canonical))
+    files = cast(
+        "tuple[IdentityFile, ...]",
+        _IDENTITY_FILES_SLOT.__get__(reference_identity, IdentityTree),
+    )
+    digest.update(_u64(_NATIVE_LEN(files)))
+    for identity_file in files:
+        path = cast("str", _IDENTITY_PATH_SLOT.__get__(identity_file, IdentityFile))
+        canonical = cast(
+            "bytes", _IDENTITY_CANONICAL_SLOT.__get__(identity_file, IdentityFile)
+        )
+        digest.update(_frame_text(path))
+        digest.update(_frame_bytes(canonical))
     return digest.digest()
 
 

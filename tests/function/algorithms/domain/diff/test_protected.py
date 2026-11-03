@@ -43,11 +43,12 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import PurePosixPath
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, SupportsIndex, cast, override
 
 import pytest
 from algorithms.diff import protected as protected_module
-from algorithms.diff.admission import identity_tree
+from algorithms.diff.admission import IdentityFile, IdentityTree, identity_tree
 from algorithms.diff.exact import build_exact_plan, snapshot_tree
 from algorithms.diff.fingerprints import AnchorPolicy
 from algorithms.diff.model import OracleLiteral, SourceSlice, TreeSnapshot
@@ -72,7 +73,6 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Iterable
     from pathlib import Path
 
-    from algorithms.diff.admission import IdentityTree
     from algorithms.diff.model import ExactAuthoringPlan
     from algorithms.diff.protected import ProtectedExactPlan
     from algorithms.diff.source_binding import ThresholdBinding
@@ -1936,3 +1936,48 @@ def test_protected_authoring_ignores_late_payload_builder_append(
         )
         assert observed == baseline
     assert calls == 0, "late payload builder append redirected source payload"
+
+
+@pytest.mark.parametrize("hook", ["descriptor", "getattribute"])
+@pytest.mark.parametrize("field", ["files", "path", "canonical"])
+def test_protected_authoring_ignores_late_reference_identity_getters(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str, field: str
+) -> None:
+    """Authenticated key derivation must read sealed canonical identity bytes."""
+    _, _, source_files, exact, baseline = _protected(tmp_path)
+    reference = _identity(source_files)
+    record: object = reference if field == "files" else reference.files[0]
+    owner: type[object] = IdentityTree if field == "files" else IdentityFile
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    replacement: object = {
+        "files": _identity({"other.c": b"foreign bytes"}).files,
+        "path": "src/foreign.c",
+        "canonical": b"foreign canonical source bytes",
+    }[field]
+    original_getattribute = cast(
+        "Callable[[object, str], object]", owner.__getattribute__
+    )
+    calls = 0
+
+    def forged_field(value: object) -> object:
+        nonlocal calls
+        if value is record:
+            calls += 1
+            return replacement
+        return cast("object", slot.__get__(value, owner))
+
+    def forged_attribute(value: object, name: str) -> object:
+        if name == field:
+            return forged_field(value)
+        return original_getattribute(value, name)
+
+    with monkeypatch.context() as patched:
+        if hook == "descriptor":
+            patched.setattr(owner, field, property(forged_field))
+        else:
+            patched.setattr(owner, "__getattribute__", forged_attribute)
+        observed = protect_exact_plan(
+            exact, reference, binding_policy=_policy(), context=_CONTEXT
+        )
+    assert observed == baseline, "late identity hook rewrote the derived payload key"
+    assert calls == 0, "late source identity getter participated in key derivation"
