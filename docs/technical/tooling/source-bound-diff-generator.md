@@ -1298,6 +1298,20 @@ degraded with its compiled graph absent; there is no global green verdict.
 Direct edits to already stored records and concurrent writers remain outside
 this admission guarantee.
 
+Behavior context resolution now also pins the original lazy `PurePath` string,
+parser, and path-factory hooks along the native path class hierarchy
+(`2dde5bc60`). A replaced `_tail` descriptor had redirected a fresh
+repository binding to a different path despite using the captured native
+`Path.__str__` method. One red-first redirection test and 21 additional
+base/concrete-hook and mid-resolution cases now fail closed with
+`BehaviorProgramError`; replacing the unused `Path.__str__` class method
+remains safe and does not prevent preserving an original resolution error.
+All 231 postcommit behavior tests and 3,560 precommit integrated diff tests
+passed; scoped Ruff, strict source/test BasedPyright, and diff checks were
+clean. Global Jig validation still has no passing verdict, and external
+filesystem races and direct edits to trusted native objects remain out of
+scope.
+
 Compatibility programs contribute success/failure rather than an identity
 digest. Application-specific harnesses and logical tool resolution
 remain

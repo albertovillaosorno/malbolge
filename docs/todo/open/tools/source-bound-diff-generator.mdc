@@ -904,6 +904,15 @@ format.
   as did scoped Ruff and strict typing. Jig doctor remains degraded (graph
   absent); the bounded 130-second global check did not produce a verdict.
   Direct stored-field mutations and external filesystem races remain open.
+- Behavior context paths now pin original lazy `PurePath` pathname and parser
+  dependencies before and after repository/tool resolution (`2dde5bc60`). A
+  forged `_tail` getter previously redirected a fresh repository binding.
+  One red-first case plus 21 base/concrete/mid-call regressions now reject the
+  change without invoking the hostile hook; 231 postcommit behavior and 3,560
+  precommit integrated diff tests passed. Ruff, strict source/test
+  BasedPyright, and diff checks were clean. The global Jig gate remains
+  unverified; direct trusted-object mutation and external filesystem races
+  are not covered.
 - Mapped-unit/view metadata and semantic locator/edit/plan records now read
   their original frozen slot descriptors at construction and during placement.
   Red-first regressions cover forged canonical identities, mutable evidence,
