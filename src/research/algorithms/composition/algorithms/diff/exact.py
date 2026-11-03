@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
 from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.model import (
@@ -116,7 +117,7 @@ class ExactTreeError(RuntimeError):
     """Raised when exact planning or materialization cannot proceed safely."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class _MatchContext:
     """Immutable byte-matching inputs shared across one file diff."""
 
@@ -124,8 +125,16 @@ class _MatchContext:
     target: bytes
     index: dict[bytes, int]
 
+    def __init__(
+        self, source: bytes, target: bytes, index: dict[bytes, int]
+    ) -> None:
+        """Preserve exact byte-matching data despite class setter changes."""
+        _MATCH_SOURCE_SLOT.__set__(self, source)
+        _MATCH_TARGET_SLOT.__set__(self, target)
+        _MATCH_INDEX_SLOT.__set__(self, index)
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, init=False)
 class _PlanningContext:
     """Immutable tree indexes shared across target-file planning."""
 
@@ -133,6 +142,87 @@ class _PlanningContext:
     oracle_root: Path
     source_by_path: dict[str, FileRecord]
     source_by_content: dict[tuple[str, int], tuple[str, ...]]
+
+    def __init__(
+        self,
+        source_root: Path,
+        oracle_root: Path,
+        source_by_path: dict[str, FileRecord],
+        source_by_content: dict[tuple[str, int], tuple[str, ...]],
+    ) -> None:
+        """Preserve admitted roots and file indexes against class setters."""
+        _PLANNING_SOURCE_ROOT_SLOT.__set__(self, source_root)
+        _PLANNING_ORACLE_ROOT_SLOT.__set__(self, oracle_root)
+        _PLANNING_BY_PATH_SLOT.__set__(self, source_by_path)
+        _PLANNING_BY_CONTENT_SLOT.__set__(self, source_by_content)
+
+
+# Captured original descriptors prevent late getter or setter substitution.
+_MATCH_SOURCE_SLOT = cast(
+    "MemberDescriptorType", _MatchContext.__dict__["source"]
+)
+_MATCH_TARGET_SLOT = cast(
+    "MemberDescriptorType", _MatchContext.__dict__["target"]
+)
+_MATCH_INDEX_SLOT = cast(
+    "MemberDescriptorType", _MatchContext.__dict__["index"]
+)
+_PLANNING_SOURCE_ROOT_SLOT = cast(
+    "MemberDescriptorType", _PlanningContext.__dict__["source_root"]
+)
+_PLANNING_ORACLE_ROOT_SLOT = cast(
+    "MemberDescriptorType", _PlanningContext.__dict__["oracle_root"]
+)
+_PLANNING_BY_PATH_SLOT = cast(
+    "MemberDescriptorType", _PlanningContext.__dict__["source_by_path"]
+)
+_PLANNING_BY_CONTENT_SLOT = cast(
+    "MemberDescriptorType", _PlanningContext.__dict__["source_by_content"]
+)
+
+
+def _match_source(context: _MatchContext) -> bytes:
+    return cast("bytes", _MATCH_SOURCE_SLOT.__get__(context, _MatchContext))
+
+
+def _match_target(context: _MatchContext) -> bytes:
+    return cast("bytes", _MATCH_TARGET_SLOT.__get__(context, _MatchContext))
+
+
+def _match_index(context: _MatchContext) -> dict[bytes, int]:
+    return cast(
+        "dict[bytes, int]", _MATCH_INDEX_SLOT.__get__(context, _MatchContext)
+    )
+
+
+def _planning_source_root(context: _PlanningContext) -> Path:
+    return cast(
+        "Path", _PLANNING_SOURCE_ROOT_SLOT.__get__(context, _PlanningContext)
+    )
+
+
+def _planning_oracle_root(context: _PlanningContext) -> Path:
+    return cast(
+        "Path", _PLANNING_ORACLE_ROOT_SLOT.__get__(context, _PlanningContext)
+    )
+
+
+def _planning_by_path(
+    context: _PlanningContext,
+) -> dict[str, FileRecord]:
+    return cast(
+        "dict[str, FileRecord]",
+        _PLANNING_BY_PATH_SLOT.__get__(context, _PlanningContext),
+    )
+
+
+def _planning_by_content(
+    context: _PlanningContext,
+) -> dict[tuple[str, int], tuple[str, ...]]:
+    return cast(
+        "dict[tuple[str, int], tuple[str, ...]]",
+        _PLANNING_BY_CONTENT_SLOT.__get__(context, _PlanningContext),
+    )
 
 
 def _native_path_inside(path: Path, root: Path) -> bool:
@@ -706,8 +796,8 @@ def _extend_match_backward(
     while (
         source_offset > _ZERO
         and target_offset > literal_start
-        and context.source[source_offset - 1]
-        == context.target[target_offset - 1]
+        and _match_source(context)[source_offset - 1]
+        == _match_target(context)[target_offset - 1]
     ):
         source_offset -= 1
         target_offset -= 1
@@ -721,10 +811,10 @@ def _extend_match_forward(
 ) -> int:
     length = _MATCH_BLOCK_BYTES
     while (
-        source_offset + length < _NATIVE_LEN(context.source)
-        and target_offset + length < _NATIVE_LEN(context.target)
-        and context.source[source_offset + length]
-        == context.target[target_offset + length]
+        source_offset + length < _NATIVE_LEN(_match_source(context))
+        and target_offset + length < _NATIVE_LEN(_match_target(context))
+        and _match_source(context)[source_offset + length]
+        == _match_target(context)[target_offset + length]
     ):
         length += 1
     return length
@@ -736,10 +826,10 @@ def _matching_slice(
     literal_start: int,
 ) -> tuple[int, int, int] | None:
     block_end = target_offset + _MATCH_BLOCK_BYTES
-    if block_end > _NATIVE_LEN(context.target):
+    if block_end > _NATIVE_LEN(_match_target(context)):
         return None
-    block = context.target[target_offset:block_end]
-    source_offset = context.index.get(block)
+    block = _match_target(context)[target_offset:block_end]
+    source_offset = _match_index(context).get(block)
     if source_offset is None:
         return None
     source_offset, target_offset = _extend_match_backward(
@@ -771,7 +861,7 @@ def _build_patch_segments(
         target=target,
         index=_block_index(source),
     )
-    if not context.index:
+    if not _match_index(context):
         return (OracleLiteral(target),)
     segments: list[ExactSegment] = []
     literal_start = _ZERO
@@ -836,7 +926,7 @@ def _instruction_for_target(
 ) -> ExactInstruction:
     path, digest, size = _file_fields(target_record)
     key = (digest, size)
-    candidates = context.source_by_content.get(key, ())
+    candidates = _planning_by_content(context).get(key, ())
     if candidates:
         source_path = path if path in candidates else candidates[0]
         return ExactInstruction(
@@ -845,10 +935,10 @@ def _instruction_for_target(
             source_path=source_path,
             expected_sha256=digest,
         )
-    target_bytes = _oracle_bytes(context.oracle_root, target_record)
-    if path in context.source_by_path:
+    target_bytes = _oracle_bytes(_planning_oracle_root(context), target_record)
+    if path in _planning_by_path(context):
         return _patch_instruction(
-            context.source_root,
+            _planning_source_root(context),
             target_record,
             target_bytes,
         )

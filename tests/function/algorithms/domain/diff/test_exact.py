@@ -46,7 +46,7 @@ import sys
 import textwrap
 from dataclasses import replace
 from pathlib import Path, PurePosixPath
-from types import SimpleNamespace
+from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
 
 if TYPE_CHECKING:
@@ -3216,3 +3216,52 @@ def test_exact_materialization_rejects_foreign_plan_before_tree_reads(
     with pytest.raises(ExactTreeError, match="exact authoring plan"):
         materialize_exact_plan(source, cast("ExactAuthoringPlan", object()), output)
     assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("_MatchContext", "source"),
+        ("_MatchContext", "target"),
+        ("_MatchContext", "index"),
+        ("_PlanningContext", "source_root"),
+        ("_PlanningContext", "oracle_root"),
+        ("_PlanningContext", "source_by_path"),
+        ("_PlanningContext", "source_by_content"),
+    ],
+)
+def test_exact_transient_contexts_preserve_fields_under_late_setters(
+    monkeypatch: pytest.MonkeyPatch, case: tuple[str, str]
+) -> None:
+    """Class properties must not redirect exact patch or tree-planning data."""
+    name, field = case
+    values: dict[str, dict[str, object]] = {
+        "_MatchContext": {
+            "source": b"source evidence",
+            "target": b"target evidence",
+            "index": {b"source": 0},
+        },
+        "_PlanningContext": {
+            "source_root": Path("source"),
+            "oracle_root": Path("oracle"),
+            "source_by_path": {},
+            "source_by_content": {},
+        },
+    }
+    owner = cast("type[object]", vars(exact_module)[name])
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    intercepted: list[object] = []
+    forged = object()
+
+    def forged_setter(value: object, supplied: object) -> None:
+        intercepted.append(supplied)
+        slot.__set__(value, forged)
+
+    def read_original(value: object) -> object:
+        return cast("object", slot.__get__(value, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, field, property(read_original, forged_setter))
+        created = cast("Callable[..., object]", owner)(**values[name])
+    assert not intercepted, "late context field setter changed internal storage"
+    assert slot.__get__(created, owner) is values[name][field]
