@@ -977,3 +977,101 @@ def test_behavior_evidence_constructor_rejects_late_field_forgery(
                 minimum_similarity=cast("float", values["minimum_similarity"]),
             )
     assert calls == 0, "late behavior getter participated in admission"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+@pytest.mark.parametrize("field", ["identity", "compatibility", "bugs"])
+@pytest.mark.parametrize("kind", ["profile", "observations"])
+def test_behavior_collection_constructor_ignores_late_getters(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    field: str,
+    hook: str,
+) -> None:
+    """Behavior collections must validate the original tuple slots."""
+    model = _profile() if kind == "profile" else _observations()
+    owner = BehaviorProfile if kind == "profile" else BehaviorObservations
+    expected = cast("object", object.__getattribute__(model, field))
+    other = {
+        name: getattr(model, name)
+        for name in ("identity", "compatibility", "bugs")
+    }
+    other[field] = []
+    calls = 0
+
+    def forged_attribute(value: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return expected
+        return cast("object", object.__getattribute__(value, name))
+
+    def forged_property(value: object) -> object:
+        return forged_attribute(value, field)
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            original_slot = cast("MemberDescriptorType", owner.__dict__[field])
+
+            def store(value: object, stored: object) -> None:
+                original_slot.__set__(value, stored)
+
+            patch.setattr(owner, field, property(forged_property, store))
+        else:
+            patch.setattr(owner, "__getattribute__", forged_attribute)
+        with pytest.raises(BehaviorPolicyError):
+            if kind == "profile":
+                _ = BehaviorProfile(
+                    cast("tuple[IdentityProbe, ...]", other["identity"]),
+                    cast(
+                        "tuple[CompatibilityProbe, ...]",
+                        other["compatibility"],
+                    ),
+                    cast("tuple[BugProbe, ...]", other["bugs"]),
+                )
+            else:
+                _ = BehaviorObservations(
+                    cast("tuple[IdentityObservation, ...]", other["identity"]),
+                    cast(
+                        "tuple[CompatibilityObservation, ...]",
+                        other["compatibility"],
+                    ),
+                    cast("tuple[BugObservation, ...]", other["bugs"]),
+                )
+    assert calls == 0, "class getter participated in collection admission"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+@pytest.mark.parametrize("field", ["identity", "compatibility", "bugs"])
+@pytest.mark.parametrize("kind", ["profile", "observations"])
+def test_behavior_evaluation_ignores_late_collection_getter(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    field: str,
+    hook: str,
+) -> None:
+    """An admitted profile or observation set cannot change via class hooks."""
+    profile = _profile()
+    observations = _observations()
+    expected = require_behavior(profile, observations, 0.8)
+    owner = BehaviorProfile if kind == "profile" else BehaviorObservations
+    calls = 0
+
+    def forged_attribute(value: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return ()
+        return cast("object", object.__getattribute__(value, name))
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            def forged_property(value: object) -> object:
+                return forged_attribute(value, field)
+
+            patch.setattr(owner, field, property(forged_property))
+        else:
+            patch.setattr(owner, "__getattribute__", forged_attribute)
+        actual = require_behavior(profile, observations, 0.8)
+    assert actual == expected
+    assert calls == 0, "late collection getter participated in behavior verdict"

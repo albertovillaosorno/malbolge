@@ -194,20 +194,19 @@ class BehaviorProfile:
             BehaviorPolicyError: Probe identifiers violate profile policy.
 
         """
-        _require_probe_tuple(self.identity, IdentityProbe, "identity probes")
+        identity, compatibility, bugs = _profile_fields(self)
+        _require_probe_tuple(identity, IdentityProbe, "identity probes")
         _require_probe_tuple(
-            self.compatibility,
-            CompatibilityProbe,
-            "compatibility probes",
+            compatibility, CompatibilityProbe, "compatibility probes"
         )
-        _require_probe_tuple(self.bugs, BugProbe, "bug probes")
-        if not self.identity:
+        _require_probe_tuple(bugs, BugProbe, "bug probes")
+        if not identity:
             message = "behavior profile requires at least one identity probe"
             raise BehaviorPolicyError(message)
         groups = (
-            _probe_ids(self.identity),
-            _probe_ids(self.compatibility),
-            _probe_ids(self.bugs),
+            _probe_ids(identity),
+            _probe_ids(compatibility),
+            _probe_ids(bugs),
         )
         all_ids = _NATIVE_TUPLE(
             identifier for group in groups for identifier in group
@@ -215,7 +214,41 @@ class BehaviorProfile:
         _validate_unique(
             all_ids, "behavior probe identifiers must be globally unique"
         )
-        _validate_correction_ids(self.bugs)
+        _validate_correction_ids(bugs)
+
+
+_PROFILE_IDENTITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorProfile.__dict__["identity"]
+)
+_PROFILE_COMPATIBILITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorProfile.__dict__["compatibility"]
+)
+_PROFILE_BUGS_SLOT = cast(
+    "MemberDescriptorType", BehaviorProfile.__dict__["bugs"]
+)
+
+
+def _profile_fields(
+    profile: BehaviorProfile,
+) -> tuple[
+    tuple[IdentityProbe, ...],
+    tuple[CompatibilityProbe, ...],
+    tuple[BugProbe, ...],
+]:
+    owner = BehaviorProfile
+    return (
+        cast(
+            "tuple[IdentityProbe, ...]",
+            _PROFILE_IDENTITY_SLOT.__get__(profile, owner),
+        ),
+        cast(
+            "tuple[CompatibilityProbe, ...]",
+            _PROFILE_COMPATIBILITY_SLOT.__get__(profile, owner),
+        ),
+        cast(
+            "tuple[BugProbe, ...]", _PROFILE_BUGS_SLOT.__get__(profile, owner)
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -301,17 +334,51 @@ class BehaviorObservations:
 
     def __post_init__(self) -> None:
         """Require immutable exact observation records for every category."""
+        identity, compatibility, bugs = _observations_fields(self)
         _require_observation_tuple(
-            self.identity, IdentityObservation, "identity observations"
+            identity, IdentityObservation, "identity observations"
         )
         _require_observation_tuple(
-            self.compatibility,
+            compatibility,
             CompatibilityObservation,
             "compatibility observations",
         )
-        _require_observation_tuple(
-            self.bugs, BugObservation, "bug observations"
-        )
+        _require_observation_tuple(bugs, BugObservation, "bug observations")
+
+
+_OBSERVATIONS_IDENTITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorObservations.__dict__["identity"]
+)
+_OBSERVATIONS_COMPATIBILITY_SLOT = cast(
+    "MemberDescriptorType", BehaviorObservations.__dict__["compatibility"]
+)
+_OBSERVATIONS_BUGS_SLOT = cast(
+    "MemberDescriptorType", BehaviorObservations.__dict__["bugs"]
+)
+
+
+def _observations_fields(
+    observations: BehaviorObservations,
+) -> tuple[
+    tuple[IdentityObservation, ...],
+    tuple[CompatibilityObservation, ...],
+    tuple[BugObservation, ...],
+]:
+    owner = BehaviorObservations
+    return (
+        cast(
+            "tuple[IdentityObservation, ...]",
+            _OBSERVATIONS_IDENTITY_SLOT.__get__(observations, owner),
+        ),
+        cast(
+            "tuple[CompatibilityObservation, ...]",
+            _OBSERVATIONS_COMPATIBILITY_SLOT.__get__(observations, owner),
+        ),
+        cast(
+            "tuple[BugObservation, ...]",
+            _OBSERVATIONS_BUGS_SLOT.__get__(observations, owner),
+        ),
+    )
 
 
 def _require_evidence_similarity(value: object) -> float:
@@ -525,14 +592,15 @@ def _identity_evidence(
     profile: BehaviorProfile,
     observations: BehaviorObservations,
 ) -> tuple[int, tuple[str, ...]]:
-    observed = _observation_map(observations.identity)
-    expected_ids = _NATIVE_TUPLE(item.probe_id for item in profile.identity)
+    observed = _observation_map(_observations_fields(observations)[0])
+    expected = _profile_fields(profile)[0]
+    expected_ids = _NATIVE_TUPLE(item.probe_id for item in expected)
     _require_observation_shape(
         expected_ids, _NATIVE_TUPLE(observed), "identity"
     )
     matched = 0
     reasons: list[str] = []
-    for probe in profile.identity:
+    for probe in expected:
         observation = observed[probe.probe_id]
         if _NATIVE_TYPE(observation) is not IdentityObservation:
             message = "internal identity observation type mismatch"
@@ -548,15 +616,14 @@ def _compatibility_reasons(
     profile: BehaviorProfile,
     observations: BehaviorObservations,
 ) -> tuple[str, ...]:
-    observed = _observation_map(observations.compatibility)
-    expected_ids = _NATIVE_TUPLE(
-        item.probe_id for item in profile.compatibility
-    )
+    observed = _observation_map(_observations_fields(observations)[1])
+    expected = _profile_fields(profile)[1]
+    expected_ids = _NATIVE_TUPLE(item.probe_id for item in expected)
     _require_observation_shape(
         expected_ids, _NATIVE_TUPLE(observed), "compatibility"
     )
     reasons: list[str] = []
-    for probe in profile.compatibility:
+    for probe in expected:
         observation = observed[probe.probe_id]
         if _NATIVE_TYPE(observation) is not CompatibilityObservation:
             message = "internal compatibility observation type mismatch"
@@ -570,13 +637,14 @@ def _bug_routing(
     profile: BehaviorProfile,
     observations: BehaviorObservations,
 ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
-    observed = _observation_map(observations.bugs)
-    expected_ids = _NATIVE_TUPLE(item.probe_id for item in profile.bugs)
+    observed = _observation_map(_observations_fields(observations)[2])
+    expected = _profile_fields(profile)[2]
+    expected_ids = _NATIVE_TUPLE(item.probe_id for item in expected)
     _require_observation_shape(expected_ids, _NATIVE_TUPLE(observed), "bug")
     apply: list[str] = []
     skip: list[str] = []
     reasons: list[str] = []
-    for probe in profile.bugs:
+    for probe in expected:
         observation = observed[probe.probe_id]
         if _NATIVE_TYPE(observation) is not BugObservation:
             message = "internal bug observation type mismatch"
@@ -597,7 +665,7 @@ def _behavior_decision(
 ) -> tuple[int, tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
     matched, identity_reasons = _identity_evidence(profile, observations)
     reasons = _NATIVE_LIST(identity_reasons)
-    if matched / _NATIVE_LEN(profile.identity) < minimum_similarity:
+    if matched / _NATIVE_LEN(_profile_fields(profile)[0]) < minimum_similarity:
         reasons.append("insufficient behavior identity similarity")
     reasons.extend(_compatibility_reasons(profile, observations))
     apply, skip, bug_reasons = _bug_routing(profile, observations)
@@ -634,7 +702,10 @@ def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
     matched, apply, skip, reasons = _behavior_decision(
         profile, observations, minimum
     )
-    if matched != matched_count or _NATIVE_LEN(profile.identity) != total_count:
+    if (
+        matched != matched_count
+        or _NATIVE_LEN(_profile_fields(profile)[0]) != total_count
+    ):
         message = "behavior evidence probe counts do not match observations"
         raise BehaviorPolicyError(message)
     if (apply, skip) != (apply_values, skip_values):
@@ -680,7 +751,7 @@ def evaluate_behavior(
     matched, apply, skip, reasons = _behavior_decision(
         profile, observations, validated_minimum
     )
-    total = _NATIVE_LEN(profile.identity)
+    total = _NATIVE_LEN(_profile_fields(profile)[0])
     return BehaviorEvidence(
         similarity=matched / total,
         matched_identity_probes=matched,
