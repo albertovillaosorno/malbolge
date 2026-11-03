@@ -1428,6 +1428,41 @@ def test_exact_tree_containment_ignores_mutated_path_relative_to(
 
 
 @pytest.mark.parametrize("operation", ["author-read", "materialize-path"])
+def test_exact_accepted_paths_ignore_late_joinpath_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """A valid label cannot be redirected by a consumer Path join hook."""
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    _ = (nested / "source.bin").write_bytes(b"admitted")
+    decoy = tmp_path / "decoy.bin"
+    _ = decoy.write_bytes(b"substituted")
+    original_joinpath = Path.joinpath
+
+    def forged_joinpath(path: Path, *other: str) -> Path:
+        if path == tmp_path and other == ("nested", "source.bin"):
+            return decoy
+        return original_joinpath(path, *other)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "joinpath", forged_joinpath)
+        if operation == "author-read":
+            reader = cast(
+                "Callable[[Path, str], bytes]",
+                vars(exact_module)["_tree_bytes"],
+            )
+            assert reader(tmp_path, "nested/source.bin") == b"admitted"
+        else:
+            safe = cast(
+                "Callable[[Path, str], Path]",
+                vars(exact_module)["_safe_tree_path"],
+            )
+            assert safe(tmp_path, "nested/source.bin") == nested / "source.bin"
+
+
+@pytest.mark.parametrize("operation", ["author-read", "materialize-path"])
 def test_exact_accepted_paths_ignore_late_posix_parts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

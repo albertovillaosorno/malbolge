@@ -94,6 +94,7 @@ _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_PATH_JOINPATH = Path.joinpath
 _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
@@ -652,7 +653,7 @@ def _source_paths_by_content(
 
 
 def _tree_bytes(root: Path, relative_path: str) -> bytes:
-    path = root.joinpath(*relative_path.split("/"))
+    path = _NATIVE_PATH_JOINPATH(root, *relative_path.split("/"))
     return read_exact_regular_file(path, "tree file")
 
 
@@ -896,7 +897,7 @@ def build_exact_plan(
 def _reject_linked_tree_ancestors(root: Path, relative_path: str) -> None:
     current = root
     for component in relative_path.split("/")[:-1]:
-        current /= component
+        current = _NATIVE_PATH_JOINPATH(current, component)
         mode = _entry_mode(current, "tree path component")
         if mode is not None and _is_redirect(current, mode):
             message = f"linked tree path component is not supported: {current}"
@@ -905,7 +906,7 @@ def _reject_linked_tree_ancestors(root: Path, relative_path: str) -> None:
 
 def _safe_tree_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
-    path = root.joinpath(*normalized.split("/"))
+    path = _NATIVE_PATH_JOINPATH(root, *normalized.split("/"))
     try:
         resolved_path = _require_native_resolved_path(
             _NATIVE_PATH_RESOLVE(path), "tree path"
