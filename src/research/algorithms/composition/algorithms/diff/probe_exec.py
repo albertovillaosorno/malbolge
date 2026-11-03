@@ -51,6 +51,7 @@ from pathlib import Path
 from stat import S_ISREG
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from sys import getfilesystemencoding as _get_filesystem_encoding
+from types import MemberDescriptorType
 from typing import IO, TYPE_CHECKING, Callable, Protocol, cast
 
 from algorithms.diff.exact import ExactTreeError, snapshot_tree
@@ -103,7 +104,6 @@ _NATIVE_ALL = builtins.all
 _NATIVE_MIN = builtins.min
 _NATIVE_MAX = builtins.max
 _NATIVE_ENUMERATE = builtins.enumerate
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 
 def _native_path_stat(path: Path) -> os.stat_result:
@@ -160,8 +160,8 @@ class PathArgument:
         relative_path: str,
     ) -> None:
         """Admit portable probe evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "root", root)
-        _NATIVE_OBJECT_SETATTR(self, "relative_path", relative_path)
+        _PROBE_RECORD_SLOTS[PathArgument]["root"].__set__(self, root)
+        _PROBE_RECORD_SLOTS[PathArgument]["relative_path"].__set__(self, relative_path)
         _PATH_ARGUMENT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -209,7 +209,7 @@ class ToolExecutable:
         tool_id: str,
     ) -> None:
         """Admit portable probe evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "tool_id", tool_id)
+        _PROBE_RECORD_SLOTS[ToolExecutable]["tool_id"].__set__(self, tool_id)
         _TOOL_EXECUTABLE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -238,8 +238,10 @@ class RootedExecutable:
         relative_path: str,
     ) -> None:
         """Admit portable probe evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "root", root)
-        _NATIVE_OBJECT_SETATTR(self, "relative_path", relative_path)
+        _PROBE_RECORD_SLOTS[RootedExecutable]["root"].__set__(self, root)
+        _PROBE_RECORD_SLOTS[RootedExecutable]["relative_path"].__set__(
+            self, relative_path
+        )
         _ROOTED_EXECUTABLE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -369,15 +371,23 @@ class ProbeCommand:
         digest_exit_code: bool = False,
     ) -> None:
         """Admit portable probe evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "executable", executable)
-        _NATIVE_OBJECT_SETATTR(self, "arguments", arguments)
-        _NATIVE_OBJECT_SETATTR(self, "stdin", stdin)
-        _NATIVE_OBJECT_SETATTR(self, "expected_exit_code", expected_exit_code)
-        _NATIVE_OBJECT_SETATTR(self, "timeout_ms", timeout_ms)
-        _NATIVE_OBJECT_SETATTR(self, "max_stdout_bytes", max_stdout_bytes)
-        _NATIVE_OBJECT_SETATTR(self, "max_stderr_bytes", max_stderr_bytes)
-        _NATIVE_OBJECT_SETATTR(self, "digest_stdout", digest_stdout)
-        _NATIVE_OBJECT_SETATTR(self, "digest_exit_code", digest_exit_code)
+        _PROBE_RECORD_SLOTS[ProbeCommand]["executable"].__set__(self, executable)
+        _PROBE_RECORD_SLOTS[ProbeCommand]["arguments"].__set__(self, arguments)
+        _PROBE_RECORD_SLOTS[ProbeCommand]["stdin"].__set__(self, stdin)
+        _PROBE_RECORD_SLOTS[ProbeCommand]["expected_exit_code"].__set__(
+            self, expected_exit_code
+        )
+        _PROBE_RECORD_SLOTS[ProbeCommand]["timeout_ms"].__set__(self, timeout_ms)
+        _PROBE_RECORD_SLOTS[ProbeCommand]["max_stdout_bytes"].__set__(
+            self, max_stdout_bytes
+        )
+        _PROBE_RECORD_SLOTS[ProbeCommand]["max_stderr_bytes"].__set__(
+            self, max_stderr_bytes
+        )
+        _PROBE_RECORD_SLOTS[ProbeCommand]["digest_stdout"].__set__(self, digest_stdout)
+        _PROBE_RECORD_SLOTS[ProbeCommand]["digest_exit_code"].__set__(
+            self, digest_exit_code
+        )
         _PROBE_COMMAND_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -405,8 +415,8 @@ class ProbeProgram:
         commands: tuple[ProbeCommand, ...],
     ) -> None:
         """Admit portable probe evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "probe_id", probe_id)
-        _NATIVE_OBJECT_SETATTR(self, "commands", commands)
+        _PROBE_RECORD_SLOTS[ProbeProgram]["probe_id"].__set__(self, probe_id)
+        _PROBE_RECORD_SLOTS[ProbeProgram]["commands"].__set__(self, commands)
         _PROBE_PROGRAM_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -499,11 +509,13 @@ class ProbeRunContext:
         enforce_source_immutable: bool = True,
     ) -> None:
         """Admit portable probe evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "source_root", source_root)
-        _NATIVE_OBJECT_SETATTR(self, "repository_root", repository_root)
-        _NATIVE_OBJECT_SETATTR(self, "tools", tools)
-        _NATIVE_OBJECT_SETATTR(
-            self, "enforce_source_immutable", enforce_source_immutable
+        _PROBE_RECORD_SLOTS[ProbeRunContext]["source_root"].__set__(self, source_root)
+        _PROBE_RECORD_SLOTS[ProbeRunContext]["repository_root"].__set__(
+            self, repository_root
+        )
+        _PROBE_RECORD_SLOTS[ProbeRunContext]["tools"].__set__(self, tools)
+        _PROBE_RECORD_SLOTS[ProbeRunContext]["enforce_source_immutable"].__set__(
+            self, enforce_source_immutable
         )
         _PROBE_RUN_CONTEXT_VALIDATOR(self)
 
@@ -544,9 +556,11 @@ class ProbeTranscript:
         digested_commands: int,
     ) -> None:
         """Admit portable probe evidence with the original validator."""
-        _NATIVE_OBJECT_SETATTR(self, "probe_id", probe_id)
-        _NATIVE_OBJECT_SETATTR(self, "digest", digest)
-        _NATIVE_OBJECT_SETATTR(self, "digested_commands", digested_commands)
+        _PROBE_RECORD_SLOTS[ProbeTranscript]["probe_id"].__set__(self, probe_id)
+        _PROBE_RECORD_SLOTS[ProbeTranscript]["digest"].__set__(self, digest)
+        _PROBE_RECORD_SLOTS[ProbeTranscript]["digested_commands"].__set__(
+            self, digested_commands
+        )
         _PROBE_TRANSCRIPT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -578,6 +592,26 @@ class ProbeTranscript:
 _PROBE_TRANSCRIPT_VALIDATOR = cast(
     "Callable[[ProbeTranscript], None]", ProbeTranscript.__dict__["__post_init__"]
 )
+
+# Original C-level slot writers protect admitted records from late mutable
+# class property setters. Capture all seven record types before consumer code
+# can receive any constructor through the completed module import.
+_PROBE_RECORD_SLOTS: dict[type, dict[str, MemberDescriptorType]] = {
+    owner: {
+        name: cast("MemberDescriptorType", owner.__dict__[name])
+        for name in owner.__slots__
+    }
+    for owner in (
+        PathArgument,
+        ToolExecutable,
+        RootedExecutable,
+        ProbeCommand,
+        ProbeProgram,
+        ProbeRunContext,
+        ProbeTranscript,
+    )
+}
+
 
 @dataclass(frozen=True, slots=True)
 class _CommandResult:

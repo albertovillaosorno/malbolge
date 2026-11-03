@@ -3421,3 +3421,120 @@ def test_probe_record_constructor_preserves_valid_after_validator_override(
         clone = replace(base)
     assert clone == base
     assert calls == 0, "late class hook rejected valid probe evidence"
+
+
+@pytest.mark.parametrize(
+    ("record", "field", "invalid", "repaired"),
+    [
+        ("path", "relative_path", "../unsafe", "safe"),
+        ("tool", "tool_id", "", "python"),
+        ("rooted", "root", object(), ProbeRoot.SCRATCH),
+        ("command", "timeout_ms", 0, 1000),
+        ("program", "commands", (), "default"),
+        ("context", "enforce_source_immutable", 1, True),
+        ("transcript", "digest", b"short", bytes(32)),
+    ],
+)
+def test_probe_constructor_rejects_forged_property_setter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+    field: str,
+    invalid: object,
+    repaired: object,
+) -> None:
+    """A post-import property setter cannot launder invalid probe metadata."""
+    tool = ToolExecutable(_PYTHON_TOOL)
+    command = ProbeCommand(tool)
+    baseline = {
+        "path": PathArgument(ProbeRoot.SOURCE, "safe"),
+        "tool": tool,
+        "rooted": RootedExecutable(ProbeRoot.SCRATCH, "tool.exe"),
+        "command": command,
+        "program": ProbeProgram("probe", (command,)),
+        "context": ProbeRunContext(tmp_path, tmp_path, ()),
+        "transcript": ProbeTranscript("probe", bytes(32), 1),
+    }[record]
+    owner = type(baseline)
+    slot = owner.__dict__[field]
+    valid_value = (command,) if repaired == "default" else repaired
+    calls = 0
+
+    def original_getter(value: object) -> object:
+        return slot.__get__(value, owner)
+
+    def repairing_setter(value: object, _ignored: object) -> None:
+        nonlocal calls
+        calls += 1
+        slot.__set__(value, valid_value)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(original_getter, repairing_setter))
+        with pytest.raises(ProbeProgramError):
+            _ = replace(baseline, **{field: invalid})
+    assert calls == 0, f"forged {record}.{field} setter executed"
+
+
+@pytest.mark.parametrize(
+    ("record", "field"),
+    [
+        ("path", "root"),
+        ("path", "relative_path"),
+        ("tool", "tool_id"),
+        ("rooted", "root"),
+        ("rooted", "relative_path"),
+        ("command", "executable"),
+        ("command", "arguments"),
+        ("command", "stdin"),
+        ("command", "expected_exit_code"),
+        ("command", "timeout_ms"),
+        ("command", "max_stdout_bytes"),
+        ("command", "max_stderr_bytes"),
+        ("command", "digest_stdout"),
+        ("command", "digest_exit_code"),
+        ("program", "probe_id"),
+        ("program", "commands"),
+        ("context", "source_root"),
+        ("context", "repository_root"),
+        ("context", "tools"),
+        ("context", "enforce_source_immutable"),
+        ("transcript", "probe_id"),
+        ("transcript", "digest"),
+        ("transcript", "digested_commands"),
+    ],
+)
+def test_probe_valid_constructor_uses_original_field_slots(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record: str,
+    field: str,
+) -> None:
+    """Every admitted field bypasses a substituted class property setter."""
+    tool = ToolExecutable(_PYTHON_TOOL)
+    command = ProbeCommand(tool)
+    baseline = {
+        "path": PathArgument(ProbeRoot.SOURCE, "safe"),
+        "tool": tool,
+        "rooted": RootedExecutable(ProbeRoot.SCRATCH, "tool.exe"),
+        "command": command,
+        "program": ProbeProgram("probe", (command,)),
+        "context": ProbeRunContext(tmp_path, tmp_path, ()),
+        "transcript": ProbeTranscript("probe", bytes(32), 1),
+    }[record]
+    owner = type(baseline)
+    slot = owner.__dict__[field]
+    calls = 0
+
+    def original_getter(value: object) -> object:
+        return slot.__get__(value, owner)
+
+    def forbidden_setter(_value: object, _supplied: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("forged probe field setter reached construction")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(owner, field, property(original_getter, forbidden_setter))
+        clone = replace(baseline)
+    assert clone == baseline
+    assert calls == 0, f"valid {record}.{field} invoked forged setter"
