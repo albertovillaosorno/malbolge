@@ -44,7 +44,7 @@ import stat
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import cast, override
+from typing import Protocol, cast, override
 from unittest.mock import Mock
 
 import pytest
@@ -62,6 +62,13 @@ def _simulate_host(
     """Inject an internal test host without changing public runtime policy."""
     monkeypatch.setattr(publication, "_HOST_OS_NAME", os_name)
     monkeypatch.setattr(publication, "_HOST_PLATFORM", platform)
+
+
+class _NativeRenameSignature(Protocol):
+    """Inspectable Linux renameat2 call signature in a fake native loader."""
+
+    argtypes: tuple[object, ...]
+    restype: object
 
 
 class _ForeignPath(type(Path())):
@@ -889,6 +896,44 @@ def test_linux_publication_ignores_post_import_loader_overwrite_shim(
     assert calls == 0, "late C loader replaced an existing output directory"
     assert (staging / "new").read_bytes() == _OURS
     assert list(destination.iterdir()) == []
+
+
+@pytest.mark.parametrize("alias", ["c_int", "c_char_p", "c_uint"])
+def test_linux_publication_ignores_post_import_ctypes_abi_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Consumer hooks cannot change the native renameat2 argument ABI."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    native = Mock(return_value=-1)
+    expected = (
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_uint,
+    )
+
+    def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+        _ = (_name, _options)
+        return SimpleNamespace(renameat2=native)
+
+    monkeypatch.setattr(publication, "_NATIVE_CDLL", fake_cdll)
+    _fake_linux_host(monkeypatch)
+    _ = ctypes.set_errno(errno.EEXIST)
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(ctypes, alias, object())
+            with pytest.raises(FileExistsError):
+                publication.publish_directory_no_replace(staging, destination)
+    finally:
+        _ = ctypes.set_errno(0)
+    native_abi = cast("_NativeRenameSignature", native)
+    assert native_abi.argtypes == expected
+    assert native_abi.restype is expected[0]
+    assert native.call_count == 1
+    assert staging.is_dir() and not destination.exists()
 
 
 @pytest.mark.parametrize("status", [False, None, "no rename"])

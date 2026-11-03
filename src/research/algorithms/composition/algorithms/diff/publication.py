@@ -64,6 +64,10 @@ _NATIVE_OS_LSTAT: Final = os.lstat
 _NATIVE_OS_RENAME: Final = os.rename
 _FILESYSTEM_ENCODING: Final = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS: Final = sys.getfilesystemencodeerrors()
+# Pin the Linux syscall ABI before a consumer can replace ctypes aliases.
+_NATIVE_C_INT: Final = ctypes.c_int
+_NATIVE_C_CHAR_P: Final = ctypes.c_char_p
+_NATIVE_C_UINT: Final = ctypes.c_uint
 _NATIVE_CDLL: Final = ctypes.CDLL
 _NATIVE_GET_ERRNO: Final = ctypes.get_errno
 _NATIVE_STRERROR: Final = os.strerror
@@ -119,13 +123,13 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
         library = _NATIVE_CDLL(None, use_errno=True)
         renameat2 = cast("_RenameAt2", cast("object", library.renameat2))
         renameat2.argtypes = (
-            ctypes.c_int,
-            ctypes.c_char_p,
-            ctypes.c_int,
-            ctypes.c_char_p,
-            ctypes.c_uint,
+            _NATIVE_C_INT,
+            _NATIVE_C_CHAR_P,
+            _NATIVE_C_INT,
+            _NATIVE_C_CHAR_P,
+            _NATIVE_C_UINT,
         )
-        renameat2.restype = ctypes.c_int
+        renameat2.restype = _NATIVE_C_INT
     except (
         AttributeError,
         OSError,
