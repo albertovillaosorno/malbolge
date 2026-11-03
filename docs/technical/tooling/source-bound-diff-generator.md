@@ -1412,6 +1412,36 @@ were clean. Six pre-existing test typing errors remain outside this patch.
 These identity checks are not atomic against
 concurrent host-code mutation or external filesystem writers.
 
+Native probe containment additionally pins the original `pathlib.chain`,
+`builtins.enumerate`, and `builtins.hasattr` references (`e0a1baf69`).
+The native `PurePath.relative_to` consulted those replaceable globals after
+root and symlink resolution, letting forged iterators falsely admit a source
+symlink that resolved outside its authorized root. Two red-first false-admit
+regressions and a third callback rejection now pass. The existing late
+`enumerate` probe test now expects fail-closed preflight rather than a
+successful execution through mutable host globals. All 425 focused probe
+tests passed postcommit, with clean Ruff, strict source typing, and diff
+checks. The stable integrated diff suite passed 3,706 tests after this fix.
+
+Original native parent enumeration still used mutable `PurePath` factory
+methods `_from_parsed_parts` and `_from_parsed_string` (`f7dc8f09f`).
+A forged parsed-parts method reproduced a source alias resolving to an
+external file that was falsely admitted by structured rooted-path preflight.
+Four red-first factory cases cover original base and concrete platform class
+hooks; all 429 postcommit focused probe tests passed. Ruff, strict probe
+source BasedPyright, and diff checks passed. The 3,706-test integrated run
+preceded this subsequent factory fix and is not a claim of new full-suite
+validation. Six inherited test type errors, repository-wide Jig validation,
+and external filesystem or concurrent host-code races remain unresolved.
+
+Behavior-program context resolution also now pins transitive
+`os.path.realpath` dependencies: late `builtins.len`, `bytes`, `isinstance`,
+and `stat.S_ISDIR` changes reject before the original resolver can consult
+them (`6687ce8f3`). Four red-first native host-hook regressions passed, as
+did 244 postcommit focused behavior-program tests. Scoped Ruff, strict source
+and test BasedPyright, and diff checks were clean. External host/filesystem
+races and the repository-wide Jig gate remain outside this evidence.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record

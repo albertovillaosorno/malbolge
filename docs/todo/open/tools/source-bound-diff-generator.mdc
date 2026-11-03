@@ -541,6 +541,25 @@ format.
   now fail closed; all 422 postcommit probe tests pass. Scoped Ruff, strict
   source typing, and diff checks were clean; six inherited test typing errors
   and host/filesystem races remain outside this guard.
+- Probe native `relative_to` now pins host `pathlib.chain` and builtin
+  `enumerate`/`hasattr` (`e0a1baf69`), preventing late callbacks from
+  approving symlink paths outside the source. Two red-first false-admit
+  cases and one callback rejection passed; 425 postcommit probe and 3,706
+  post-fix integrated diff tests passed, with Ruff, strict source typing,
+  and diff checks clean. Host and filesystem races remain outside scope.
+- Probe native parent enumeration now pins original `_from_parsed_parts` and
+  `_from_parsed_string` on base/concrete `PurePath` classes (`f7dc8f09f`).
+  Four red-first cases caught forged containment for source symlink escapes.
+  All 429 focused probe tests passed postcommit; Ruff, strict source typing,
+  and diff checks were clean. The 3,706 integrated passes predate this newer
+  patch; six inherited test typing errors and full Jig validation remain
+  unverified, along with external mutation races.
+- Behavior-program context path preflight now rejects late native realpath
+  helpers (`builtins.len`, `bytes`, `isinstance`, and `stat.S_ISDIR`)
+  (`6687ce8f3`). Four red-first cases and all 244 focused postcommit
+  behavior-program tests passed; scoped Ruff, strict source/test typing,
+  and diff checks were clean. External races and the global Jig gate remain
+  unverified.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.
