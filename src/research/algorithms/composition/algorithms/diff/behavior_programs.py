@@ -153,6 +153,13 @@ _NATIVE_BYTES = builtins.bytes
 _NATIVE_BOOL = builtins.bool
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
+_NATIVE_OS_ERROR = builtins.OSError
+_NATIVE_PERMISSION_ERROR = builtins.PermissionError
+_NATIVE_VALUE_ERROR = builtins.ValueError
+_NATIVE_RUNTIME_ERROR = builtins.RuntimeError
+_NATIVE_EXCEPTION = builtins.Exception
+_NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
+_NATIVE_BASE_EXCEPTION_GETATTRIBUTE = BaseException.__getattribute__
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
 _NATIVE_OBJECT_NEW = object.__new__
@@ -308,10 +315,10 @@ class BehaviorProgramError(ValueError):
 def _behavior_error_detail(error: BaseException) -> str:
     """Keep host and delegated error display hooks outside probe admission."""
     if _NATIVE_TYPE(error) in (
-        OSError,
-        PermissionError,
-        ValueError,
-        RuntimeError,
+        _NATIVE_OS_ERROR,
+        _NATIVE_PERMISSION_ERROR,
+        _NATIVE_VALUE_ERROR,
+        _NATIVE_RUNTIME_ERROR,
         ExactTreeError,
         ProbeExecutionError,
         BehaviorProgramError,
@@ -320,9 +327,7 @@ def _behavior_error_detail(error: BaseException) -> str:
         # Use the BaseException slot rather than late __getattribute__ hooks.
         arguments = cast(
             "tuple[object, ...]",
-            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
-                error, "args"
-            ),
+            _NATIVE_BASE_EXCEPTION_GETATTRIBUTE(error, "args"),
         )
         if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR:
             return arguments[0]
@@ -575,7 +580,7 @@ def _require_correction_identifier(value: object, context: str) -> str:
         raise BehaviorProgramError(message)
     try:
         _ = value.encode("utf-8")
-    except UnicodeEncodeError as error:
+    except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"{context} correction identifier must use UTF-8 text"
         raise BehaviorProgramError(message) from error
     return value
@@ -976,7 +981,7 @@ def _resolved_context_path(path: Path, description: str) -> Path:
     _require_native_context_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _behavior_error_detail(error)
         native_path = _NATIVE_PATH_STR(path)
         message = f"behavior {description} resolution failed: {native_path}: {detail}"
@@ -1319,7 +1324,7 @@ def _admit_observation_mirror(
             mirror,
             symlinks=True,
         )
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         detail = _behavior_error_detail(error)
         message = f"behavior candidate mirror failed: {detail}"
         raise ProbeExecutionError(message) from error
@@ -1382,7 +1387,7 @@ def _temporary_observation_root() -> tempfile.TemporaryDirectory[str]:
         raise ProbeExecutionError(message)
     try:
         return _NATIVE_TEMPORARY_DIRECTORY(prefix="diff-behavior-source-")
-    except (OSError, ValueError, RuntimeError) as error:
+    except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _behavior_error_detail(error)
         message = f"behavior observation temporary root failed: {detail}"
         raise ProbeExecutionError(message) from error

@@ -3283,3 +3283,121 @@ def test_native_behavior_receipts_reject_late_exception_class_aliases(
             builtins.__dict__["TypeError"] = native_type_error
     assert type(caught) is BehaviorProgramError, (route, caught)
     assert detail in str(caught)
+
+
+def test_behavior_error_detail_ignores_late_base_exception_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged builtin base class cannot supply trusted diagnostic args."""
+    native_base_exception = builtins.BaseException
+    calls = 0
+
+    class ForeignBase:
+        @override
+        def __getattribute__(self, name: str) -> object:
+            nonlocal calls
+            calls += 1
+            return ("forged diagnostic",) if name == "args" else object()
+
+    observed: str | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "BaseException", ForeignBase)
+        try:
+            observed = behavior_module._behavior_error_detail(  # pyright: ignore[reportPrivateUsage]
+                RuntimeError("trusted diagnostic")
+            )
+        finally:
+            builtins.__dict__["BaseException"] = native_base_exception
+    assert observed == "trusted diagnostic"
+    assert calls == 0, "foreign base-exception getter executed"
+
+
+def test_behavior_error_detail_rejects_late_error_class_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only import-original native errors may expose their stored text."""
+
+    class ForeignError(Exception):
+        pass
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "RuntimeError", ForeignError)
+        detail = behavior_module._behavior_error_detail(  # pyright: ignore[reportPrivateUsage]
+            ForeignError("untrusted diagnostic")
+        )
+    assert detail == "ForeignError"
+
+
+@pytest.mark.parametrize("route", ["context", "temporary-root", "mirror"])
+def test_behavior_host_errors_ignore_late_builtin_exception_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """Host failure handlers preserve typed rejection after late class swaps."""
+    native_os_error = builtins.OSError
+    native_value_error = builtins.ValueError
+    native_runtime_error = builtins.RuntimeError
+    native_exception = builtins.Exception
+    failure = native_runtime_error("native host failure")
+    expected = BehaviorProgramError if route == "context" else ProbeExecutionError
+    caught: Exception | None = None
+
+    def deny(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise failure
+
+    class ForeignError(Exception):
+        pass
+
+    with monkeypatch.context() as patched:
+        if route == "context":
+            patched.setattr(behavior_module, "_NATIVE_PATH_RESOLVE", deny)
+        elif route == "temporary-root":
+            patched.setattr(behavior_module, "_NATIVE_TEMPORARY_DIRECTORY", deny)
+        else:
+            patched.setattr(behavior_module, "_NATIVE_COPYTREE", deny)
+        patched.setattr(builtins, "OSError", ForeignError)
+        patched.setattr(builtins, "ValueError", ForeignError)
+        patched.setattr(builtins, "RuntimeError", ForeignError)
+        patched.setattr(builtins, "Exception", ForeignError)
+        try:
+            if route == "context":
+                _ = behavior_module._resolved_context_path(  # pyright: ignore[reportPrivateUsage]
+                    tmp_path, "repository"
+                )
+            elif route == "temporary-root":
+                _ = behavior_module._temporary_observation_root()  # pyright: ignore[reportPrivateUsage]
+            else:
+                _ = behavior_module._admit_observation_mirror(  # pyright: ignore[reportPrivateUsage]
+                    _context(tmp_path, tmp_path),
+                    tmp_path / "mirror",
+                    cast("TreeSnapshot", object()),
+                )
+        except (BehaviorProgramError, ProbeExecutionError) as error:
+            caught = error
+        finally:
+            builtins.__dict__["OSError"] = native_os_error
+            builtins.__dict__["ValueError"] = native_value_error
+            builtins.__dict__["RuntimeError"] = native_runtime_error
+            builtins.__dict__["Exception"] = native_exception
+    assert type(caught) is expected, (route, caught)
+    assert caught is not None and caught.__cause__ is failure
+
+
+def test_behavior_correction_rejects_late_unicode_error_class_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid UTF-8 correction ID still raises its domain error."""
+    native_unicode_error = builtins.UnicodeEncodeError
+    caught: BehaviorProgramError | None = None
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "UnicodeEncodeError", RuntimeError)
+        try:
+            _ = behavior_module._require_correction_identifier(  # pyright: ignore[reportPrivateUsage]
+                chr(0xD800), "bug program"
+            )
+        except BehaviorProgramError as error:
+            caught = error
+        finally:
+            builtins.__dict__["UnicodeEncodeError"] = native_unicode_error
+    assert type(caught) is BehaviorProgramError
+    assert "UTF-8" in str(caught)
