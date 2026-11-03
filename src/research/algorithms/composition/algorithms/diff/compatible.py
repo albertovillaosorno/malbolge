@@ -111,6 +111,8 @@ _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_IS_SYMLINK = S_ISLNK
 _NATIVE_ISRESERVED = ntpath.isreserved
+# Cleanup must not use a consumer-replaced global filesystem helper.
+_NATIVE_RMTREE = shutil.rmtree
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -1396,7 +1398,7 @@ def _safe_compatible_error_detail(error: Exception) -> str:
 
 def _cleanup_compatible_staging(path: Path) -> str | None:
     try:
-        shutil.rmtree(path)
+        _NATIVE_RMTREE(path)
     except FileNotFoundError:
         return None
     except (OSError, ValueError, RuntimeError) as error:

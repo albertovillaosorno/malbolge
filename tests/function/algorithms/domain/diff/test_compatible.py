@@ -2056,6 +2056,32 @@ def test_compatible_materialization_wraps_path_resolution_error(
     )
 
 
+def test_compatible_cleanup_ignores_post_import_rmtree_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A late library hook must not suppress deletion of owned staging."""
+    staging = tmp_path / "owned-staging"
+    staging.mkdir()
+    _ = (staging / "payload.bin").write_bytes(b"temporary")
+    calls = 0
+
+    def forged_rmtree(path: Path) -> None:
+        nonlocal calls
+        _ = path
+        calls += 1
+
+    cleanup = cast(
+        "Callable[[Path], str | None]",
+        vars(compatible_module)["_cleanup_compatible_staging"],
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(shutil, "rmtree", forged_rmtree)
+        detail = cleanup(staging)
+    assert detail is None
+    assert calls == 0, "late cleanup hook executed"
+    assert not staging.exists(), "owned staging remained after cleanup"
+
+
 @pytest.mark.parametrize(
     "failure_type", [PermissionError, ValueError, RuntimeError]
 )
@@ -2083,7 +2109,7 @@ def test_compatible_cleanup_failure_preserves_primary_error(
         raise failure_type(message)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
-    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    monkeypatch.setattr(compatible_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         CompatiblePlanError,
         match=r"instruction output write failed.*staging cleanup failed",
@@ -2110,7 +2136,7 @@ def test_compatible_cleanup_does_not_format_hostile_primary(
         raise PermissionError(message)
 
     monkeypatch.setattr(compatible_module, "_populate_staging", fail_populate)
-    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    monkeypatch.setattr(compatible_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         CompatiblePlanError, match="staging cleanup failed"
     ) as caught:
@@ -2141,7 +2167,7 @@ def test_compatible_cleanup_does_not_format_hostile_cleanup(
         raise _HostileFormattingError(message)
 
     monkeypatch.setattr(Path, "write_bytes", fail_write)
-    monkeypatch.setattr(shutil, "rmtree", fail_cleanup)
+    monkeypatch.setattr(compatible_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         CompatiblePlanError, match="staging cleanup failed"
     ) as caught:
