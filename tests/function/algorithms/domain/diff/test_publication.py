@@ -1391,6 +1391,42 @@ def test_publication_ignores_late_raw_path_fspath_redirection(
 
 
 @pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME,
+    reason="native Windows path conversion does not inspect raw part lists",
+)
+@pytest.mark.parametrize("foreign_list", [tuple, dict])
+def test_native_publication_path_parts_ignore_late_builtin_list_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, foreign_list: type[object]
+) -> None:
+    """The native path parser must not trust a consumer's list type alias."""
+    path = tmp_path / "source"
+    expected = publication._native_path_string(path)
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "list", foreign_list)
+        actual = publication._native_path_string(path)
+    assert actual == expected
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires Linux native no-replace publication",
+)
+def test_linux_publication_ignores_late_builtin_list_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed list builtin must not veto valid native directory paths."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "list", tuple)
+        publication.publish_directory_no_replace(staging, destination)
+    assert not staging.exists()
+    assert (destination / "payload").read_bytes() == _OURS
+
+
+@pytest.mark.skipif(
     os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
     reason="requires native POSIX path parsing",
 )

@@ -57,6 +57,7 @@ _NATIVE_TYPE: Final = builtins.type
 _NATIVE_ANY: Final = builtins.any
 _NATIVE_STR_TYPE: Final = builtins.str
 _NATIVE_INT_TYPE: Final = builtins.int
+_NATIVE_LIST_TYPE: Final = builtins.list
 _NATIVE_PATH_TYPE: Final = _NATIVE_TYPE(Path())
 _NATIVE_STAT_RESULT: Final = os.stat_result
 _NATIVE_IS_DIR: Final = stat.S_ISDIR
@@ -164,7 +165,7 @@ class _RenameAt2(Protocol):
 def _native_posix_path_string(path: Path) -> str:
     """Normalize original POSIX raw parts without mutable os.fspath hooks."""
     parts = _NATIVE_PATH_RAW_SLOT.__get__(path, PurePath)
-    if _NATIVE_TYPE(parts) is not list:
+    if _NATIVE_TYPE(parts) is not _NATIVE_LIST_TYPE:
         raise OSError(errno.EINVAL, "directory publication requires native path parts")
     joined = ""
     for part in parts:
