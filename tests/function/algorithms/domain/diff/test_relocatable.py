@@ -1003,6 +1003,62 @@ def test_exact_model_rejects_boolean_and_foreign_segment_metadata() -> None:
         _ = OracleLiteral(cast("bytes", cast("object", bytearray(b"x"))))
 
 
+def test_relocatable_rejects_forged_process_global_sha256(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Foreign hash hooks cannot relocate source ranges into unrelated bytes."""
+    original = b"REFERENCE!"
+    unrelated = b"UNRELATED!"
+    assert len(original) == len(unrelated)
+    digest = hashlib.sha256(original).digest()
+    locator = RangeLocator(len(original), len(original), digest)
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            output_path="result.bin",
+            source_path="input.bin",
+            copy_candidate_file=False,
+            segments=(RelocatableSourceRange(locator),),
+        ),
+    ))
+    candidate = tmp_path / "candidate"
+    _write(candidate, "input.bin", unrelated)
+    output = tmp_path / "out"
+
+    class ForgedSha256:
+        digest_size: int = 32
+
+        def digest(self) -> bytes:
+            return digest[: self.digest_size]
+
+    def forged_sha256(data: bytes = b"") -> ForgedSha256:
+        _ = data
+        return ForgedSha256()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(hashlib, "sha256", forged_sha256)
+        with pytest.raises(RelocationError, match="boundary is missing"):
+            materialize_relocatable_plan(candidate, plan, output)
+    assert not output.exists()
+    assert not (tmp_path / ".out.relocatable-staging").exists()
+
+
+def test_relocatable_locator_digest_size_is_not_mutable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced hash factory cannot weaken exact 32-byte locator admission."""
+
+    class ForgedSha256:
+        digest_size: int = 1
+
+    def forged_sha256() -> ForgedSha256:
+        return ForgedSha256()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(hashlib, "sha256", forged_sha256)
+        with pytest.raises(RelocationError, match="exact SHA-256 bytes"):
+            _ = RangeLocator(1, 1, b"x")
+
+
 def test_relocatable_locator_requires_exact_boundary_shape() -> None:
     """Incomplete or redundant end boundaries cannot admit source ranges."""
     digest = hashlib.sha256(b"x").digest()

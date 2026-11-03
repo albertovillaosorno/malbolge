@@ -70,6 +70,9 @@ if TYPE_CHECKING:
 _ZERO = 0
 _ONE = 1
 _BOUNDARY_BYTES = 32
+# A loaded domain must not redefine the relocation hash primitive.
+_SHA256_FACTORY = hashlib.sha256
+_SHA256_DIGEST_BYTES = _SHA256_FACTORY().digest_size
 _STAGING_SUFFIX = ".relocatable-staging"
 _BACKSLASH = "\\"
 _NUL = "\x00"
@@ -124,13 +127,13 @@ class RangeLocator:
             raise RelocationError(message)
         if (
             type(self.start_digest) is not bytes
-            or len(self.start_digest) != hashlib.sha256().digest_size
+            or len(self.start_digest) != _SHA256_DIGEST_BYTES
         ):
             message = "relocatable start digest must be exact SHA-256 bytes"
             raise RelocationError(message)
         if self.end_digest is not None and (
             type(self.end_digest) is not bytes
-            or len(self.end_digest) != hashlib.sha256().digest_size
+            or len(self.end_digest) != _SHA256_DIGEST_BYTES
         ):
             message = "relocatable end digest must be exact SHA-256 bytes"
             raise RelocationError(message)
@@ -276,7 +279,7 @@ class RelocatableAuthoringPlan:
 
 
 def _sha256(data: bytes) -> bytes:
-    return hashlib.sha256(data).digest()
+    return _SHA256_FACTORY(data).digest()
 
 
 def _range_locator(source: bytes, segment: SourceSlice) -> RangeLocator:
