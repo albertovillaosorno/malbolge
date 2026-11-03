@@ -40,7 +40,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from hashlib import sha256 as _native_sha256
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from stat import S_ISDIR, S_ISLNK, S_ISREG
 from typing import TYPE_CHECKING, cast
 
@@ -652,8 +652,7 @@ def _source_paths_by_content(
 
 
 def _tree_bytes(root: Path, relative_path: str) -> bytes:
-    relative = PurePosixPath(relative_path)
-    path = root.joinpath(*relative.parts)
+    path = root.joinpath(*relative_path.split("/"))
     return read_exact_regular_file(path, "tree file")
 
 
@@ -896,7 +895,7 @@ def build_exact_plan(
 
 def _reject_linked_tree_ancestors(root: Path, relative_path: str) -> None:
     current = root
-    for component in PurePosixPath(relative_path).parts[:-1]:
+    for component in relative_path.split("/")[:-1]:
         current /= component
         mode = _entry_mode(current, "tree path component")
         if mode is not None and _is_redirect(current, mode):
@@ -906,7 +905,7 @@ def _reject_linked_tree_ancestors(root: Path, relative_path: str) -> None:
 
 def _safe_tree_path(root: Path, relative_path: str) -> Path:
     normalized = _validate_relative_path(relative_path)
-    path = root.joinpath(*PurePosixPath(normalized).parts)
+    path = root.joinpath(*normalized.split("/"))
     try:
         resolved_path = _require_native_resolved_path(
             _NATIVE_PATH_RESOLVE(path), "tree path"

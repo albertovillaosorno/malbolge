@@ -1427,6 +1427,41 @@ def test_exact_tree_containment_ignores_mutated_path_relative_to(
         _ = safe_path(root, "alias/secret.txt")
 
 
+@pytest.mark.parametrize("operation", ["author-read", "materialize-path"])
+def test_exact_accepted_paths_ignore_late_posix_parts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    operation: str,
+) -> None:
+    """A valid source label must not resolve to a consumer-selected file."""
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    _ = (nested / "source.bin").write_bytes(b"admitted")
+    _ = (tmp_path / "decoy.bin").write_bytes(b"substituted")
+    native_parts = PurePosixPath.parts
+
+    def forged_parts(value: PurePosixPath) -> tuple[str, ...]:
+        if type(value) is PurePosixPath:
+            return ("decoy.bin",)
+        return cast("tuple[str, ...]", native_parts.__get__(value))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(PurePosixPath, "parts", property(forged_parts))
+        if operation == "author-read":
+            read = cast(
+                "Callable[[Path, str], bytes]",
+                vars(exact_module)["_tree_bytes"],
+            )
+            assert read(tmp_path, "nested/source.bin") == b"admitted"
+        else:
+            safe = cast(
+                "Callable[[Path, str], Path]",
+                vars(exact_module)["_safe_tree_path"],
+            )
+            actual = safe(tmp_path, "nested/source.bin")
+            assert actual == nested / "source.bin"
+
+
 def test_exact_materialization_rejects_linked_source_root_when_supported(
     tmp_path: Path,
 ) -> None:
