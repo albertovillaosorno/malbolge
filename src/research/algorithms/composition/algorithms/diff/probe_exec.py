@@ -89,6 +89,8 @@ _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_PATH_WITH_SEGMENTS = Path.with_segments
 _NATIVE_PATH_JOINPATH = Path.joinpath
+_NATIVE_PATH_NEW = Path.__new__
+_NATIVE_PURE_PATH_INIT = PurePath.__init__
 _NATIVE_OS_FSPATH = os.fspath
 # Freeze the host filesystem codec before any consumer module can mutate os.
 _FILESYSTEM_ENCODING = _get_filesystem_encoding()
@@ -116,9 +118,11 @@ _NATIVE_MIN = builtins.min
 _NATIVE_MAX = builtins.max
 _NATIVE_ENUMERATE = builtins.enumerate
 # Path.__str__ still reads replaceable Python path metadata, even when its
-# method itself was captured at import time. Freeze only the dependencies
-# used to decode the native path or pass it to host APIs.
+# method itself was captured at import time. Freeze path metadata hooks and
+# constructors inherited or overridden at the native platform class.
 _PATH_CACHE_HOOK_NAMES = (
+    "__new__",
+    "__init__",
     "__getattribute__",
     "__fspath__",
     "_str",
@@ -842,7 +846,11 @@ def _require_native_host_resolver() -> None:
     ):
         message = "probe native path hooks changed"
         raise ProbeExecutionError(message)
-    if Path.joinpath is not _NATIVE_PATH_JOINPATH:
+    if (
+        Path.joinpath is not _NATIVE_PATH_JOINPATH
+        or Path.__new__ is not _NATIVE_PATH_NEW
+        or PurePath.__init__ is not _NATIVE_PURE_PATH_INIT
+    ):
         message = "probe native path hooks changed"
         raise ProbeExecutionError(message)
     if (

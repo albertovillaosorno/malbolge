@@ -3347,6 +3347,99 @@ def test_probe_rooted_path_rejects_late_joinpath_redirection(
     assert calls == 0, "late joinpath hook was consulted"
 
 
+@pytest.mark.parametrize(
+    "case", [(new, root) for new in (True, False) for root in (True, False)]
+)
+def test_probe_rejects_late_path_constructors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[bool, bool],
+) -> None:
+    """Path.resolve cannot trust replaceable native constructor hooks."""
+    new, root = case
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path
+    native_init = PurePath.__init__
+    calls = 0
+
+    def forged_new(owner: type[Path], *args: object, **kwargs: object) -> Path:
+        nonlocal calls
+        _ = (owner, args, kwargs)
+        calls += 1
+        return outside
+
+    def forged_init(path: PurePath, *args: object) -> None:
+        nonlocal calls
+        _ = args
+        calls += 1
+        native_init(path, outside)
+
+    with monkeypatch.context() as patch:
+        if new:
+            patch.setattr(Path, "__new__", forged_new)
+        else:
+            patch.setattr(PurePath, "__init__", forged_init)
+        resolve = cast(
+            "Callable[..., Path]",
+            vars(probe_exec_module)[
+                "_resolved_root" if root else "_resolved_tool_path"
+            ],
+        )
+        with pytest.raises(
+            ProbeExecutionError, match="native path hooks changed"
+        ):
+            _ = resolve(source, "source") if root else resolve(source)
+    assert calls == 0, "late native Path constructor was consulted"
+
+
+@pytest.mark.parametrize(
+    "case", [(new, root) for new in (True, False) for root in (True, False)]
+)
+def test_probe_rejects_late_platform_path_constructors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[bool, bool],
+) -> None:
+    """Concrete path constructors cannot redirect the captured resolver."""
+    new, root = case
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path
+    native_init = PurePath.__init__
+    platform_path = type(source)
+    calls = 0
+
+    def forged_new(owner: type[Path], *args: object, **kwargs: object) -> Path:
+        nonlocal calls
+        _ = (owner, args, kwargs)
+        calls += 1
+        return outside
+
+    def forged_init(path: PurePath, *args: object) -> None:
+        nonlocal calls
+        _ = args
+        calls += 1
+        native_init(path, outside)
+
+    with monkeypatch.context() as patch:
+        if new:
+            patch.setattr(platform_path, "__new__", forged_new)
+        else:
+            patch.setattr(platform_path, "__init__", forged_init)
+        resolve = cast(
+            "Callable[..., Path]",
+            vars(probe_exec_module)[
+                "_resolved_root" if root else "_resolved_tool_path"
+            ],
+        )
+        with pytest.raises(
+            ProbeExecutionError, match="native path hooks changed"
+        ):
+            _ = resolve(source, "source") if root else resolve(source)
+    assert calls == 0, "late concrete Path constructor was consulted"
+
+
 @pytest.mark.parametrize("hook", ["getattribute", "cached-descriptor"])
 def test_probe_context_rejects_late_path_cache_spoof(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
