@@ -93,12 +93,9 @@ _LINK_CREATE_CODE = (
     "import pathlib,sys;pathlib.Path(sys.argv[1]).symlink_to(sys.argv[2])"
 )
 _READ_BYTES_CODE = (
-    "import pathlib,sys;"
-    "sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes())"
+    "import pathlib,sys;sys.stdout.buffer.write(pathlib.Path(sys.argv[1]).read_bytes())"
 )
-_MUTATE_CODE = (
-    "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text('after')"
-)
+_MUTATE_CODE = "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text('after')"
 
 
 def _expect(condition: object, message: str) -> None:
@@ -153,9 +150,7 @@ def _context(source_root: Path, repository_root: Path) -> ProbeRunContext:
     )
 
 
-def _program(
-    probe_id: str, code: str, *, digest_stdout: bool = True
-) -> ProbeProgram:
+def _program(probe_id: str, code: str, *, digest_stdout: bool = True) -> ProbeProgram:
     return ProbeProgram(
         probe_id=probe_id,
         commands=(
@@ -182,6 +177,34 @@ def test_selected_stdout_produces_deterministic_transcript(
 
     _expect(first == second, "repeated process transcript changed")
     _expect(first.digested_commands == 1, "selected stdout was not digested")
+
+
+def test_probe_transcripts_ignore_replaced_global_sha256(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A substituted hash cannot give distinct probe outputs identical digests."""
+    source = tmp_path / "source"
+    source.mkdir()
+    context = _context(source, tmp_path)
+    calls = 0
+
+    class _ForgedHash:
+        def update(self, _data: bytes) -> None:
+            _ = _data
+
+        def digest(self) -> bytes:
+            return bytes(32)
+
+    def forged_sha256(_data: bytes = b"") -> _ForgedHash:
+        nonlocal calls
+        calls += 1
+        return _ForgedHash()
+
+    monkeypatch.setattr(hashlib, "sha256", forged_sha256)
+    first = run_probe_program(_program("first", "print('alpha')"), context)
+    second = run_probe_program(_program("second", "print('bravo')"), context)
+    assert first.digest != second.digest
+    assert calls == 0
 
 
 def test_structured_source_path_is_passed_without_shell(tmp_path: Path) -> None:
@@ -211,9 +234,7 @@ def test_structured_source_path_is_passed_without_shell(tmp_path: Path) -> None:
     expected.update((0).to_bytes(8, byteorder="big"))
     expected.update(len(b"payload").to_bytes(8, byteorder="big"))
     expected.update(b"payload")
-    _expect(
-        transcript.digest == expected.digest(), "structured argv changed bytes"
-    )
+    _expect(transcript.digest == expected.digest(), "structured argv changed bytes")
 
 
 def _standalone_fixture(tmp_path: Path) -> tuple[Path, tuple[str, ...]]:
@@ -268,9 +289,7 @@ def test_scratch_executable_can_be_produced_then_run(tmp_path: Path) -> None:
     _expect(transcript.digested_commands == 1, "scratch executable did not run")
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_repository_root_resolution_error_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -305,9 +324,7 @@ def test_repository_root_resolution_error_fails_closed(
         _ = run_probe_program(program, _context(source, tmp_path))
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_rooted_argument_resolution_error_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -339,9 +356,7 @@ def test_rooted_argument_resolution_error_fails_closed(
             ),
         ),
     )
-    with pytest.raises(
-        ProbeExecutionError, match="probe path resolution failed"
-    ):
+    with pytest.raises(ProbeExecutionError, match="probe path resolution failed"):
         _ = run_probe_program(program, _context(source, tmp_path))
 
 
@@ -405,9 +420,7 @@ def test_missing_tool_executable_fails_closed(tmp_path: Path) -> None:
         _ = run_probe_program(_program("missing-tool", "pass"), context)
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_tool_executable_status_error_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -433,9 +446,7 @@ def test_tool_executable_status_error_fails_closed(
         _ = run_probe_program(_program("blocked-tool", "pass"), context)
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_tool_resolution_error_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -481,9 +492,7 @@ def test_exit_code_can_be_observed_instead_of_required(tmp_path: Path) -> None:
     expected.update(b"E")
     expected.update((0).to_bytes(8, byteorder="big"))
     expected.update((37).to_bytes(8, byteorder="big", signed=True))
-    _expect(
-        transcript.digest == expected.digest(), "exit-code transcript changed"
-    )
+    _expect(transcript.digest == expected.digest(), "exit-code transcript changed")
     _expect(transcript.digested_commands == 1, "exit code was not selected")
 
 
@@ -787,6 +796,7 @@ def test_probe_raw_capture_rejects_non_native_read_evidence(
     receipt: str,
 ) -> None:
     """A forged raw chunk cannot evade the verified byte quota."""
+
     class DeceptiveBytes(bytes):
         def __len__(self) -> int:
             return 1
@@ -1050,7 +1060,9 @@ def test_probe_child_stop_never_formats_foreign_host_faults(
 
     with monkeypatch.context() as patch:
         patch.setattr(probe_exec_module, "_signal_probe_group", lambda *_: group_error)
-        patch.setattr(probe_exec_module, "_kill_direct_probe_child", lambda *_: direct_error)
+        patch.setattr(
+            probe_exec_module, "_kill_direct_probe_child", lambda *_: direct_error
+        )
         with pytest.raises(ProbeExecutionError) as caught:
             probe_exec_module._stop_child(cast("Popen[bytes]", FakeChild()))
 
@@ -1067,7 +1079,8 @@ def test_probe_child_stop_never_formats_foreign_host_faults(
 
 
 @pytest.mark.parametrize(
-    "failure_type", [ValueError, RuntimeError, TypeError, AttributeError, IndexError, OverflowError]
+    "failure_type",
+    [ValueError, RuntimeError, TypeError, AttributeError, IndexError, OverflowError],
 )
 def test_probe_spawn_unexpected_host_fault_remains_typed(
     monkeypatch: pytest.MonkeyPatch,
@@ -1105,7 +1118,9 @@ def test_probe_reap_unexpected_host_fault_remains_typed(
     monkeypatch.setattr(probe_exec_module, "_signal_probe_group", lambda *_: None)
     monkeypatch.setattr(probe_exec_module, "_kill_direct_probe_child", lambda *_: None)
     with pytest.raises(ProbeExecutionError, match="reaping failed") as caught:
-        probe_exec_module._stop_child(cast("Popen[bytes]", cast("object", FakeProcess())))
+        probe_exec_module._stop_child(
+            cast("Popen[bytes]", cast("object", FakeProcess()))
+        )
     assert caught.value.__cause__ is primary
 
 
@@ -1149,7 +1164,8 @@ def test_probe_host_launch_and_worker_failures_reject_foreign_hooks(
         else:
             patch.setattr(probe_exec_module, "_start_capture", reject_host)
             call = lambda: probe_exec_module._start_capture_checked(
-                cast("Popen[bytes]", object()), ProbeCommand(ToolExecutable(_PYTHON_TOOL))
+                cast("Popen[bytes]", object()),
+                ProbeCommand(ToolExecutable(_PYTHON_TOOL)),
             )
             label = "worker startup failed"
         with pytest.raises(ProbeExecutionError, match=label) as caught:
@@ -1436,9 +1452,7 @@ def test_full_duplex_stdin_and_stdout_preserves_transcript(
     expected.update((0).to_bytes(8, byteorder="big"))
     expected.update(len(expected_data).to_bytes(8, byteorder="big"))
     expected.update(expected_data)
-    _expect(
-        transcript.digest == expected.digest(), "stdin/stdout transcript drift"
-    )
+    _expect(transcript.digest == expected.digest(), "stdin/stdout transcript drift")
 
 
 def test_source_mutation_is_isolated_from_user_source(tmp_path: Path) -> None:
@@ -1478,14 +1492,10 @@ def test_source_mirror_checked_after_each_command(
     source.mkdir()
     target = source / "input.txt"
     _ = target.write_text(_ORIGINAL_TEXT, encoding="utf-8")
-    mutation = (
-        "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text('during');"
-    )
+    mutation = "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text('during');"
     if mutator_fails:
         mutation += "raise SystemExit(7)"
-    restore = (
-        "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])"
-    )
+    restore = "import pathlib,sys;pathlib.Path(sys.argv[1]).write_text(sys.argv[2])"
     program = ProbeProgram(
         "transient-source-mutation",
         (
@@ -1542,9 +1552,7 @@ def test_repository_rooted_argument_cannot_modify_original_source(
         except OSError, NotImplementedError:
             pytest.skip("directory symlinks unavailable")
         relative = "alias/input.txt"
-    context = replace(
-        _context(source, tmp_path), enforce_source_immutable=False
-    )
+    context = replace(_context(source, tmp_path), enforce_source_immutable=False)
     program = ProbeProgram(
         "repository-source-alias",
         (
@@ -1580,9 +1588,7 @@ def test_repository_hardlink_to_original_source_is_rejected(
         os.link(target, hardlink)
     except OSError, NotImplementedError:
         pytest.skip("hard links are unavailable")
-    context = replace(
-        _context(source, tmp_path), enforce_source_immutable=False
-    )
+    context = replace(_context(source, tmp_path), enforce_source_immutable=False)
     command = (
         ProbeCommand(
             executable=RootedExecutable(ProbeRoot.REPOSITORY, hardlink.name),
@@ -1639,9 +1645,7 @@ def test_repository_path_status_failure_is_typed(
             ),
         ),
     )
-    with pytest.raises(
-        ProbeExecutionError, match="repository path status failed"
-    ):
+    with pytest.raises(ProbeExecutionError, match="repository path status failed"):
         _ = run_probe_program(program, _context(source, tmp_path))
 
 
@@ -1731,9 +1735,7 @@ def test_repository_rooted_executable_cannot_alias_original_source(
         "repository-source-tool",
         (
             ProbeCommand(
-                executable=RootedExecutable(
-                    ProbeRoot.REPOSITORY, "source/tool.bin"
-                ),
+                executable=RootedExecutable(ProbeRoot.REPOSITORY, "source/tool.bin"),
             ),
         ),
     )
@@ -1757,9 +1759,7 @@ def test_source_symlink_fails_before_mirror_even_without_immutability(
     except OSError, NotImplementedError:
         pytest.skip("directory symlinks unavailable")
 
-    context = replace(
-        _context(source, tmp_path), enforce_source_immutable=False
-    )
+    context = replace(_context(source, tmp_path), enforce_source_immutable=False)
     program = ProbeProgram(
         "linked-input",
         (
@@ -1832,9 +1832,7 @@ def test_probe_rejects_temporary_parent_inside_source_before_copy(
         except OSError, NotImplementedError:
             pytest.skip("temporary-parent symlink creation unavailable")
     before = sorted(path.relative_to(source) for path in source.rglob("*"))
-    context = replace(
-        _context(source, tmp_path), enforce_source_immutable=False
-    )
+    context = replace(_context(source, tmp_path), enforce_source_immutable=False)
 
     def reject_copy(*_args: object, **_kwargs: object) -> Path:
         message = "source-rooted temporary directory reached recursive copy"
@@ -1949,16 +1947,12 @@ def test_mirror_snapshot_catches_copy_time_source_drift(
     def mutate_mirror_after_copy(
         source_root: Path, destination_root: Path, *, symlinks: bool = False
     ) -> Path:
-        copied = actual_copytree(
-            source_root, destination_root, symlinks=symlinks
-        )
+        copied = actual_copytree(source_root, destination_root, symlinks=symlinks)
         _ = (copied / "input.txt").write_bytes(b"injected")
         return copied
 
     monkeypatch.setattr(shutil, "copytree", mutate_mirror_after_copy)
-    context = replace(
-        _context(source, tmp_path), enforce_source_immutable=False
-    )
+    context = replace(_context(source, tmp_path), enforce_source_immutable=False)
     program = ProbeProgram(
         "copy-time-drift",
         (
@@ -1978,9 +1972,7 @@ def test_mirror_snapshot_catches_copy_time_source_drift(
     _expect(input_file.read_bytes() == _ADMITTED_INPUT, "source was modified")
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_probe_mirror_copy_errors_are_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1998,9 +1990,7 @@ def test_probe_mirror_copy_errors_are_typed(
         raise failure_type(message)
 
     monkeypatch.setattr(shutil, "copytree", denied_copy)
-    with pytest.raises(
-        ProbeExecutionError, match="source mirror creation failed"
-    ):
+    with pytest.raises(ProbeExecutionError, match="source mirror creation failed"):
         _ = run_probe_program(
             _program("mirror-failure", "print('unreachable')"),
             _context(source, tmp_path),
@@ -2047,9 +2037,7 @@ def test_missing_source_rejected_before_copy_without_immutability(
 ) -> None:
     """Optional post-run immutability does not disable source admission."""
     missing = tmp_path / "missing"
-    context = replace(
-        _context(missing, tmp_path), enforce_source_immutable=False
-    )
+    context = replace(_context(missing, tmp_path), enforce_source_immutable=False)
     with pytest.raises(ProbeExecutionError, match="source snapshot rejected"):
         _ = run_probe_program(_program("missing", "pass"), context)
 
@@ -2249,9 +2237,7 @@ def test_probe_executable_rejects_foreign_status_receipt(
     native = original_stat(tool)
     foreign = SimpleNamespace(st_mode=native.st_mode)
 
-    def forged_stat(
-        path: Path, *, follow_symlinks: bool = True
-    ) -> os.stat_result:
+    def forged_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
         if path == tool:
             return cast("os.stat_result", cast("object", foreign))
         return original_stat(path, follow_symlinks=follow_symlinks)
@@ -2286,9 +2272,7 @@ def test_probe_inode_status_rejects_forged_foreign_receipts(
     )
     consumed = False
 
-    def fake_stat(
-        path: Path, *, follow_symlinks: bool = True
-    ) -> os.stat_result:
+    def fake_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
         nonlocal consumed
         if path == target:
             consumed = True
@@ -2308,9 +2292,7 @@ def test_probe_inode_status_rejects_forged_foreign_receipts(
             vars(probe_exec_module)["_repository_inode_status"],
         )
         verify = lambda: repository_status(repository_path)
-    with pytest.raises(
-        ProbeExecutionError, match="native.*inode|inode.*native"
-    ):
+    with pytest.raises(ProbeExecutionError, match="native.*inode|inode.*native"):
         _ = verify()
     _expect(consumed, "forged inode status was not tested")
 
@@ -2415,9 +2397,7 @@ def test_probe_host_boundaries_reject_foreign_formatters(
         else:
             require_disjoint = cast(
                 "Callable[[PathArgument, ProbeRunContext, Path], None]",
-                vars(probe_exec_module)[
-                    "_require_repository_argument_disjoint"
-                ],
+                vars(probe_exec_module)["_require_repository_argument_disjoint"],
             )
             invoke = lambda: require_disjoint(
                 PathArgument(ProbeRoot.REPOSITORY, external.name),
@@ -2426,9 +2406,7 @@ def test_probe_host_boundaries_reject_foreign_formatters(
             )
     elif operation == "temporary":
 
-        def fail_temp(
-            *, prefix: str, dir: Path
-        ) -> tempfile.TemporaryDirectory[str]:
+        def fail_temp(*, prefix: str, dir: Path) -> tempfile.TemporaryDirectory[str]:
             _ = prefix, dir
             raise failure
 
@@ -2454,9 +2432,7 @@ def test_probe_host_boundaries_reject_foreign_formatters(
         original_stat = Path.stat
         target = source_leaf if operation == "source_inode" else external
 
-        def fail_stat(
-            path: Path, *, follow_symlinks: bool = True
-        ) -> os.stat_result:
+        def fail_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
             if path == target:
                 raise failure
             return original_stat(path, follow_symlinks=follow_symlinks)
@@ -2520,9 +2496,7 @@ def test_probe_executable_status_error_does_not_format_foreign_exception(
 
     failure = HostileStatusError("untrusted filesystem fault")
 
-    def fail_stat(
-        path: Path, *, follow_symlinks: bool = True
-    ) -> os.stat_result:
+    def fail_stat(path: Path, *, follow_symlinks: bool = True) -> os.stat_result:
         if path == tool:
             raise failure
         return original_stat(path, follow_symlinks=follow_symlinks)

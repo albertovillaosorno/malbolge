@@ -34,7 +34,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 import signal
@@ -46,6 +45,7 @@ import threading
 import time
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from hashlib import sha256 as _native_sha256
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from stat import S_ISREG
 from typing import IO, TYPE_CHECKING, Protocol, cast
@@ -60,7 +60,7 @@ _ONE = 1
 _DEFAULT_TIMEOUT_MS = 10_000
 _DEFAULT_OUTPUT_LIMIT = 1_048_576
 _FRAME_LENGTH_BYTES = 8
-_SHA256_BYTES = hashlib.sha256().digest_size
+_SHA256_BYTES = _native_sha256().digest_size
 _BACKSLASH = "\\"
 _PARENT = ".."
 _TOOL_BINDING_LENGTH = 2
@@ -151,9 +151,7 @@ class ToolExecutable:
 
     def __post_init__(self) -> None:
         """Require a portable logical tool identifier."""
-        _ = _require_portable_probe_identifier(
-            self.tool_id, "probe tool identifier"
-        )
+        _ = _require_portable_probe_identifier(self.tool_id, "probe tool identifier")
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,10 +201,7 @@ def _validate_command_shape(command: ProbeCommand) -> None:
     if type(command.arguments) is not tuple:
         message = "probe arguments must use the exact immutable tuple type"
         raise ProbeProgramError(message)
-    if any(
-        type(argument) not in {str, PathArgument}
-        for argument in command.arguments
-    ):
+    if any(type(argument) not in {str, PathArgument} for argument in command.arguments):
         message = "probe arguments contain a foreign argument record"
         raise ProbeProgramError(message)
     if type(command.stdin) is not bytes:
@@ -215,9 +210,7 @@ def _validate_command_shape(command: ProbeCommand) -> None:
     _validate_argv_strings(command.arguments)
 
 
-def _validate_command_integer(
-    value: object, context: str, *, positive: bool
-) -> None:
+def _validate_command_integer(value: object, context: str, *, positive: bool) -> None:
     if type(value) is not int:
         message = f"{context} must use the exact integer type"
         raise ProbeProgramError(message)
@@ -235,9 +228,7 @@ def _validate_command_limits(command: ProbeCommand) -> None:
             "probe expected exit code",
             positive=False,
         )
-    _validate_command_integer(
-        command.timeout_ms, "probe timeout", positive=True
-    )
+    _validate_command_integer(command.timeout_ms, "probe timeout", positive=True)
     _validate_command_integer(
         command.max_stdout_bytes, "probe stdout limit", positive=False
     )
@@ -321,9 +312,7 @@ def _validate_tool_binding(binding: object) -> tuple[str, Path]:
         message = "probe tool binding must be an exact pair"
         raise ProbeProgramError(message)
     tool_id, tool_path = pair
-    tool_id = _require_portable_probe_identifier(
-        tool_id, "probe tool identifier"
-    )
+    tool_id = _require_portable_probe_identifier(tool_id, "probe tool identifier")
     _validate_path(tool_path, "probe tool path")
     return tool_id, cast("Path", tool_path)
 
@@ -333,9 +322,7 @@ def _validate_tool_bindings(value: object) -> tuple[str, ...]:
         message = "probe tool bindings must use the exact immutable tuple type"
         raise ProbeProgramError(message)
     bindings = cast("tuple[object, ...]", value)
-    identifiers = tuple(
-        _validate_tool_binding(binding)[0] for binding in bindings
-    )
+    identifiers = tuple(_validate_tool_binding(binding)[0] for binding in bindings)
     if identifiers != tuple(sorted(set(identifiers))):
         message = "probe tool bindings must be unique and sorted"
         raise ProbeProgramError(message)
@@ -388,10 +375,7 @@ class ProbeTranscript:
         if type(self.digest) is not bytes or len(self.digest) != _SHA256_BYTES:
             message = "probe transcript digest must be exactly 32 bytes"
             raise ProbeProgramError(message)
-        if (
-            type(self.digested_commands) is not int
-            or self.digested_commands < _ZERO
-        ):
+        if type(self.digested_commands) is not int or self.digested_commands < _ZERO:
             message = "probe transcript selected count must be non-negative int"
             raise ProbeProgramError(message)
 
@@ -427,9 +411,7 @@ def _validate_relative_path(relative_path: object) -> None:
         or candidate.as_posix() != relative_path
     )
     if unsafe:
-        message = (
-            f"unsafe probe relative path (including NUL): {relative_path!r}"
-        )
+        message = f"unsafe probe relative path (including NUL): {relative_path!r}"
         raise ProbeProgramError(message)
 
 
@@ -438,9 +420,7 @@ def _resolved_root(path: Path, description: str) -> Path:
         return path.resolve()
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
-        message = (
-            f"probe {description} root resolution failed: {path}: {detail}"
-        )
+        message = f"probe {description} root resolution failed: {path}: {detail}"
         raise ProbeExecutionError(message) from error
 
 
@@ -472,9 +452,7 @@ def _rooted_path(
     try:
         _ = resolved.relative_to(root)
     except ValueError as error:
-        message = (
-            f"probe path escapes authorized root: {argument.relative_path!r}"
-        )
+        message = f"probe path escapes authorized root: {argument.relative_path!r}"
         raise ProbeExecutionError(message) from error
     return candidate
 
@@ -489,9 +467,7 @@ def _resolved_tool_path(path: Path) -> Path:
 
 
 def _tool_map(context: ProbeRunContext) -> dict[str, Path]:
-    return {
-        tool_id: _resolved_tool_path(path) for tool_id, path in context.tools
-    }
+    return {tool_id: _resolved_tool_path(path) for tool_id, path in context.tools}
 
 
 def _native_executable_status(receipt: object) -> os.stat_result:
@@ -727,9 +703,7 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
         ProbeExecutionError: Group cleanup, direct kill, or reaping failed.
 
     """
-    group_error = (
-        _signal_probe_group(process) if os.name == _POSIX_OS_NAME else None
-    )
+    group_error = _signal_probe_group(process) if os.name == _POSIX_OS_NAME else None
     direct_error = (
         _kill_direct_probe_child(process)
         if os.name != _POSIX_OS_NAME or group_error is not None
@@ -738,12 +712,13 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
     try:
         _ = process.wait(timeout=_CHILD_REAP_SECONDS)
     except (*_PIPE_DEPENDENCY_ERRORS, subprocess.TimeoutExpired) as error:
-        message = "probe direct child reaping failed: " + _safe_probe_error_detail(error)
+        message = "probe direct child reaping failed: " + _safe_probe_error_detail(
+            error
+        )
         raise ProbeExecutionError(message) from error
     if direct_error is not None:
-        message = (
-            "probe direct child termination failed: "
-            + _safe_probe_error_detail(direct_error)
+        message = "probe direct child termination failed: " + _safe_probe_error_detail(
+            direct_error
         )
         failure = ProbeExecutionError(message)
         if group_error is not None:
@@ -754,16 +729,13 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
             )
         raise failure from direct_error
     if group_error is not None:
-        message = (
-            "probe process group cleanup failed: "
-            + _safe_probe_error_detail(group_error)
+        message = "probe process group cleanup failed: " + _safe_probe_error_detail(
+            group_error
         )
         raise ProbeExecutionError(message) from group_error
 
 
-def _spawn_probe(
-    argv: list[str], scratch_root: Path
-) -> subprocess.Popen[bytes]:
+def _spawn_probe(argv: list[str], scratch_root: Path) -> subprocess.Popen[bytes]:
     """Start a no-shell probe, normalizing host launch errors.
 
     Returns:
@@ -873,7 +845,8 @@ def _close_unowned_pipe(
         _close_probe_pipe(stream, "unused pipe")
     except _PIPE_DEPENDENCY_ERRORS as error:
         BaseException.add_note(
-            failure, "probe unused pipe close failed: " + _safe_probe_error_detail(error)
+            failure,
+            "probe unused pipe close failed: " + _safe_probe_error_detail(error),
         )
 
 
@@ -895,12 +868,8 @@ def _start_capture(
     stdout = _PipeCapture(command.max_stdout_bytes)
     stderr = _PipeCapture(command.max_stderr_bytes)
     readers = (
-        threading.Thread(
-            target=_drain_pipe, args=(stdout_pipe, stdout), daemon=True
-        ),
-        threading.Thread(
-            target=_drain_pipe, args=(stderr_pipe, stderr), daemon=True
-        ),
+        threading.Thread(target=_drain_pipe, args=(stdout_pipe, stdout), daemon=True),
+        threading.Thread(target=_drain_pipe, args=(stderr_pipe, stderr), daemon=True),
     )
     try:
         for reader in readers:
@@ -912,9 +881,7 @@ def _start_capture(
         )
     except _PIPE_DEPENDENCY_ERRORS as error:
         # Never close a stream underneath a reader still draining it.
-        for pipe, reader in zip(
-            (stdout_pipe, stderr_pipe), readers, strict=True
-        ):
+        for pipe, reader in zip((stdout_pipe, stderr_pipe), readers, strict=True):
             _close_unowned_pipe(pipe, reader, error)
         _close_unowned_pipe(process.stdin, None, error)
         raise
@@ -1014,9 +981,7 @@ def _start_capture_checked(
         raise ProbeExecutionError(message) from error
 
 
-def _close_failed_running_pipes(
-    running: _RunningProbe, failure: Exception
-) -> None:
+def _close_failed_running_pipes(running: _RunningProbe, failure: Exception) -> None:
     """Reclaim pipes from workers that aborted before their normal close."""
     process = running.process
     _close_unowned_pipe(process.stdin, running.writer, failure)
@@ -1152,11 +1117,9 @@ def _run_program(
     baseline: TreeSnapshot,
     temporary_parent: Path,
 ) -> ProbeTranscript:
-    hasher = hashlib.sha256()
+    hasher = _native_sha256()
     digested_commands = _ZERO
-    with _temporary_probe_root(
-        "diff-probe-", parent=temporary_parent
-    ) as scratch:
+    with _temporary_probe_root("diff-probe-", parent=temporary_parent) as scratch:
         scratch_root = Path(scratch)
         for command_index, command in enumerate(program.commands):
             try:
@@ -1323,9 +1286,7 @@ def _require_repository_paths_disjoint(
     source = _resolved_root(context.source_root, "source")
     for program in programs:
         for command in program.commands:
-            _require_repository_argument_disjoint(
-                command.executable, context, source
-            )
+            _require_repository_argument_disjoint(command.executable, context, source)
             for argument in command.arguments:
                 _require_repository_argument_disjoint(argument, context, source)
 
@@ -1357,9 +1318,7 @@ def _run_isolated_batch(
     if temporary_parent.is_relative_to(original_source):
         message = "probe temporary parent overlaps original source tree"
         raise ProbeExecutionError(message)
-    with _temporary_probe_root(
-        "diff-probe-batch-", parent=temporary_parent
-    ) as batch:
+    with _temporary_probe_root("diff-probe-batch-", parent=temporary_parent) as batch:
         batch_root = Path(batch)
         try:
             mirror_root = Path(
