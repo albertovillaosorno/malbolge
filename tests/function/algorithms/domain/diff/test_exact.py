@@ -39,6 +39,7 @@ import hashlib
 import ntpath
 import os
 import shutil
+import stat
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - bounded no-shell FIFO regression.
@@ -2210,7 +2211,7 @@ def test_exact_snapshot_rejects_linked_root_under_post_import_os_lstat_spoof(
     with monkeypatch.context() as patched:
         patched.setattr(os, "lstat", forged_lstat)
         with pytest.raises(
-            ExactTreeError, match="tree root must not be linked"
+            ExactTreeError, match="exact filesystem path hooks changed"
         ):
             _ = snapshot_tree(linked)
     assert calls == 0
@@ -4185,3 +4186,97 @@ def test_exact_snapshot_rejects_late_host_walk_join_redirection(
         if excluded
         else snapshot_tree(root)
     ) == baseline
+
+
+@pytest.mark.parametrize("dependency", ["lstat", "readlink", "getcwd", "islink"])
+def test_exact_rejects_late_host_realpath_dependencies(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """Captured Path.resolve still consults replaceable realpath helpers."""
+    source = tmp_path / "source"
+    source.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(source, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    output = alias / "generated"
+    assert output.resolve() == source / "generated"
+    native_lstat = os.lstat
+    native_readlink = os.readlink
+
+    def forged_lstat(path: str | os.PathLike[str]) -> os.stat_result:
+        if os.fspath(path) == os.fspath(alias):
+            return native_lstat(outside)
+        return native_lstat(path)
+
+    def forged_readlink(path: str | os.PathLike[str]) -> str:
+        if os.fspath(path) == os.fspath(alias):
+            return os.fspath(outside)
+        return native_readlink(path)
+
+    def forged_getcwd() -> str:
+        return os.fspath(source)
+
+    def forged_islink(_mode: int) -> bool:
+        return False
+
+    owner, attribute, replacement = {
+        "lstat": (os, "lstat", forged_lstat),
+        "readlink": (os, "readlink", forged_readlink),
+        "getcwd": (os, "getcwd", forged_getcwd),
+        "islink": (stat, "S_ISLNK", forged_islink),
+    }[dependency]
+    resolve_output = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_output_root"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, attribute, replacement)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            _ = resolve_output(output)
+    assert output.resolve() == source / "generated"
+
+
+@pytest.mark.parametrize("entrypoint", ["tree", "output", "nested"])
+def test_exact_rejects_host_dependency_changed_during_path_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """Mutating a realpath helper inside original Path.resolve fails closed."""
+    root = tmp_path / "source"
+    root.mkdir()
+    native_resolve = Path.resolve
+    native_readlink = os.readlink
+    changed = False
+
+    def forged_readlink(_path: str | os.PathLike[str]) -> str:
+        return "wrong-tree"
+
+    def mutate_after_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal changed
+        result = native_resolve(path, strict=strict)
+        patched.setattr(os, "readlink", forged_readlink)
+        changed = True
+        return result
+
+    resolve_tree = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_tree_root"]
+    )
+    resolve_output = cast(
+        "Callable[[Path], Path]", vars(exact_module)["_resolved_output_root"]
+    )
+    safe_tree_path = cast(
+        "Callable[[Path, str], Path]", vars(exact_module)["_safe_tree_path"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "_NATIVE_PATH_RESOLVE", mutate_after_resolve)
+        with pytest.raises(ExactTreeError, match="path hooks changed"):
+            if entrypoint == "tree":
+                _ = resolve_tree(root)
+            elif entrypoint == "output":
+                _ = resolve_output(root / "new-output")
+            else:
+                _ = safe_tree_path(root, "child.bin")
+    assert changed, "native resolver was not exercised"
+    assert os.readlink is native_readlink

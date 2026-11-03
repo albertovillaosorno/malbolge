@@ -38,6 +38,7 @@ import builtins
 import io
 import os
 import shutil
+import stat
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -122,6 +123,10 @@ _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_RMTREE = shutil.rmtree
 _NATIVE_OS_FSPATH = os.fspath
 _NATIVE_OS_REALPATH = os.path.realpath
+_NATIVE_OS_LSTAT = os.lstat
+_NATIVE_OS_READLINK = os.readlink
+_NATIVE_OS_GETCWD = os.getcwd
+_NATIVE_STAT_ISLNK = stat.S_ISLNK
 _NATIVE_OS_PATH_JOIN = os.path.join
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Capturing Path.__str__ is insufficient: it reads a mutable cached slot,
@@ -166,6 +171,10 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
                 os.fspath is not _NATIVE_OS_FSPATH
                 or os.path.realpath is not _NATIVE_OS_REALPATH
                 or os.path.join is not _NATIVE_OS_PATH_JOIN
+                or os.lstat is not _NATIVE_OS_LSTAT
+                or os.readlink is not _NATIVE_OS_READLINK
+                or os.getcwd is not _NATIVE_OS_GETCWD
+                or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
             )
         )
         or _NATIVE_ANY(
@@ -916,7 +925,8 @@ def _require_native_resolved_path(value: object, context: str) -> Path:
         ExactTreeError: The resolution callback returned a foreign path.
 
     """
-    if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
+    _require_native_path_hooks()
+    if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{context} resolution must return native Path"
         raise ExactTreeError(message)
     return value
