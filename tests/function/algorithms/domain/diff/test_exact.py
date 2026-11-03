@@ -34,39 +34,41 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 import hashlib
 import os
-from pathlib import Path
 import shutil
 
 # jig-ignore-next-line: indivisible reviewed identifier
 import subprocess  # ruff: ignore[suspicious-subprocess-import] - bounded no-shell FIFO regression.
 import sys
 import textwrap
+from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
-from typing import cast
-from typing import override
+from typing import TYPE_CHECKING, cast, override
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-from algorithms.diff import exact as exact_module
-from algorithms.diff.exact import ExactTreeError
-from algorithms.diff.exact import build_exact_plan
-from algorithms.diff.exact import materialize_exact_plan
-from algorithms.diff.exact import snapshot_tree
-from algorithms.diff.exact import snapshot_tree_excluding
-from algorithms.diff.model import ExactAuthoringPlan
-from algorithms.diff.model import ExactInstruction
-from algorithms.diff.model import ExactInstructionKind
-from algorithms.diff.model import FileRecord
-from algorithms.diff.model import OracleLiteral
-from algorithms.diff.model import SourceSlice
-from algorithms.diff.model import TreeModelError
-from algorithms.diff.model import TreeSnapshot
 import pytest
+from algorithms.diff import exact as exact_module
+from algorithms.diff.exact import (
+    ExactTreeError,
+    build_exact_plan,
+    materialize_exact_plan,
+    snapshot_tree,
+    snapshot_tree_excluding,
+)
+from algorithms.diff.model import (
+    ExactAuthoringPlan,
+    ExactInstruction,
+    ExactInstructionKind,
+    FileRecord,
+    OracleLiteral,
+    SourceSlice,
+    TreeModelError,
+    TreeSnapshot,
+)
 
 _MOVED_SOURCE = "rename-me.txt"
 _PATCH_PATH = "patch.txt"
@@ -248,8 +250,7 @@ def test_exact_plan_reconstructs_synthetic_tree_byte_for_byte(
     _expect(snapshot_tree(output) == snapshot_tree(oracle), "tree mismatch")
     _expect(not (output / "delete.txt").exists(), "deleted file survived")
     by_output = {
-        instruction.output_path: instruction
-        for instruction in plan.instructions
+        instruction.output_path: instruction for instruction in plan.instructions
     }
     moved = by_output["moved.txt"]
     modified = by_output["modify.txt"]
@@ -367,9 +368,7 @@ def test_exact_authoring_rejects_tree_drift_during_instruction_replay(
                 _write(oracle, "new-target-after-snapshot.txt", b"new oracle\n")
         return data
 
-    monkeypatch.setattr(
-        exact_module, "read_exact_regular_file", read_then_mutate
-    )
+    monkeypatch.setattr(exact_module, "read_exact_regular_file", read_then_mutate)
     expected = "source tree" if change_source else "oracle tree"
     with pytest.raises(ExactTreeError, match=expected):
         _ = build_exact_plan(source, oracle)
@@ -518,15 +517,48 @@ def test_direct_exact_plan_rejects_impossible_output_lengths_and_digest(
             source_path="src.bin",
             segments=(SourceSlice(offset=0, length=4), OracleLiteral(b"more!")),
         )
-    target = TreeSnapshot(
-        files=(FileRecord("out.bin", target_digest, target_size),)
-    )
+    target = TreeSnapshot(files=(FileRecord("out.bin", target_digest, target_size),))
     with pytest.raises(TreeModelError, match=error_fragment):
         _ = ExactAuthoringPlan(
             source=source,
             target=target,
             instructions=(instruction,),
         )
+
+
+def test_exact_plan_literal_digest_ignores_replaced_global_sha256(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected hash constructor must not admit a forged oracle literal."""
+    expected = b"authentic"
+    forged = b"forgeries"
+    target_hash = hashlib.sha256(expected).hexdigest()
+    target = TreeSnapshot(files=(FileRecord("out.bin", target_hash, len(expected)),))
+    instruction = ExactInstruction(
+        output_path="out.bin",
+        kind=ExactInstructionKind.LITERAL_ORACLE,
+        expected_sha256=target_hash,
+        literal=forged,
+    )
+    calls = 0
+
+    class _ForgedHash:
+        def hexdigest(self) -> str:
+            return target_hash
+
+    def forged_sha256(_data: bytes) -> _ForgedHash:
+        nonlocal calls
+        calls += 1
+        return _ForgedHash()
+
+    monkeypatch.setattr(hashlib, "sha256", forged_sha256)
+    with pytest.raises(TreeModelError, match="literal-oracle digest"):
+        _ = ExactAuthoringPlan(
+            source=TreeSnapshot(files=()),
+            target=target,
+            instructions=(instruction,),
+        )
+    assert calls == 0
 
 
 @pytest.mark.parametrize(
@@ -606,9 +638,7 @@ def test_exact_rejects_static_source_drift_after_staging(
                 _write(source, "new-after-staging.txt", b"new static file\n")
         return measured
 
-    monkeypatch.setattr(
-        exact_module, "snapshot_tree", snapshot_then_change_source
-    )
+    monkeypatch.setattr(exact_module, "snapshot_tree", snapshot_then_change_source)
     with pytest.raises(ExactTreeError, match="source tree"):
         materialize_exact_plan(source, plan, output)
     _expect(not output.exists(), "source drift published the exact target")
@@ -630,9 +660,7 @@ def test_exact_allows_dynamic_source_changes_after_staging(
             _write(source, "assets/blob.bin", b"new runtime payload")
         return measured
 
-    monkeypatch.setattr(
-        exact_module, "snapshot_tree", snapshot_then_change_runtime
-    )
+    monkeypatch.setattr(exact_module, "snapshot_tree", snapshot_then_change_runtime)
     output = tmp_path / "result"
     materialize_exact_plan(source, plan, output)
     _expect(
@@ -764,9 +792,7 @@ def test_exact_materialization_rejects_linked_source_root_when_supported(
     _expect(not output.exists(), "linked-source rejection published output")
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_exact_materialization_wraps_output_root_resolution_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -790,9 +816,7 @@ def test_exact_materialization_wraps_output_root_resolution_error(
     _expect(not output.exists(), "output resolution failure published output")
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_exact_materialization_wraps_tree_path_resolution_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -839,9 +863,7 @@ def test_exact_publication_collision_preserves_foreign_output(
     assert not (tmp_path / ".result.staging").exists()
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_exact_materialization_wraps_output_write_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -867,9 +889,7 @@ def test_exact_materialization_wraps_output_write_failure(
     _expect(not (tmp_path / ".result.staging").exists(), "staging survived")
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_exact_materialization_wraps_staging_directory_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -901,9 +921,7 @@ def test_exact_materialization_wraps_staging_directory_failure(
     _expect(not staging.exists(), "staging mkdir failure left staging")
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_exact_cleanup_failure_is_reported_with_primary_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -969,9 +987,7 @@ def test_exact_materialization_rejects_existing_output(tmp_path: Path) -> None:
         materialize_exact_plan(source, plan, output)
 
 
-@pytest.mark.parametrize(
-    "failure_type", [PermissionError, ValueError, RuntimeError]
-)
+@pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_exact_tree_root_resolution_failure_stays_typed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1386,9 +1402,7 @@ class _ExactHostileNoteError(OSError):
         return cast("object", super().__getattribute__(name))
 
 
-@pytest.mark.parametrize(
-    "secondary_kind", ["native", "foreign", "hostile-args"]
-)
+@pytest.mark.parametrize("secondary_kind", ["native", "foreign", "hostile-args"])
 def test_exact_descriptor_close_cannot_override_original_read_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1459,9 +1473,7 @@ def test_exact_regular_reader_cannot_dispatch_foreign_host_error_hooks(
 
     with monkeypatch.context() as patch:
         patch.setattr(os, "read", fail_read)
-        with pytest.raises(
-            ExactTreeError, match="tree entry read failed"
-        ) as caught:
+        with pytest.raises(ExactTreeError, match="tree entry read failed") as caught:
             _ = exact_module.read_exact_regular_file(leaf, "tree entry")
 
     _expect(caught.value.__cause__ is fault, "foreign host read cause lost")
@@ -1762,9 +1774,7 @@ def test_exact_reader_rejects_postclose_source_mutation(
 
     with monkeypatch.context() as patch:
         patch.setattr(os, "close", mutate_after_close)
-        with pytest.raises(
-            ExactTreeError, match="changed after descriptor close"
-        ):
+        with pytest.raises(ExactTreeError, match="changed after descriptor close"):
             _ = exact_module.read_exact_regular_file(leaf, "tree entry")
     _expect(changed, "the descriptor close mutation did not execute")
     assert leaf.read_bytes() == _EXACT_TAMPERED
@@ -1830,9 +1840,7 @@ def test_passthrough_root_is_dynamic_after_exact_authoring(
         "passthrough candidate-only file was lost",
     )
     _expect(
-        all(
-            not item.path.startswith("external/") for item in plan.source.files
-        ),
+        all(not item.path.startswith("external/") for item in plan.source.files),
         "passthrough path leaked into static source snapshot",
     )
 
