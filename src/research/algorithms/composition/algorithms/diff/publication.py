@@ -49,6 +49,13 @@ _AT_FDCWD: Final = -100
 _RENAME_NOREPLACE: Final = 1
 _NUL: Final = "\x00"
 _NATIVE_STAT_RESULT: Final = os.stat_result
+# Keep syscall path encoding outside mutable process-global os path hooks.
+_NATIVE_PATH_STRING: Final = Path.__str__
+_FILESYSTEM_ENCODING: Final = sys.getfilesystemencoding()
+_FILESYSTEM_ERRORS: Final = sys.getfilesystemencodeerrors()
+_NATIVE_GET_ERRNO: Final = ctypes.get_errno
+_NATIVE_STRERROR: Final = os.strerror
+_MAX_LINUX_ERRNO: Final = 4095
 
 
 class _RenameAt2(Protocol):
@@ -60,6 +67,18 @@ class _RenameAt2(Protocol):
     def __call__(self, *arguments: int | bytes) -> int:
         """Rename one path with the fixed Linux renameat2 ABI arguments."""
         ...
+
+
+def _native_fsencode_path(path: Path) -> bytes:
+    """Encode a native Path without delegating to mutable os path hooks.
+
+    Returns:
+        The host filesystem encoding of one exact pathlib Path.
+
+    """
+    return _NATIVE_PATH_STRING(path).encode(
+        _FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS
+    )
 
 
 def _linux_rename_noreplace(source: Path, destination: Path) -> None:
@@ -89,9 +108,9 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
     try:
         result = renameat2(
             _AT_FDCWD,
-            os.fsencode(source),
+            _native_fsencode_path(source),
             _AT_FDCWD,
-            os.fsencode(destination),
+            _native_fsencode_path(destination),
             _RENAME_NOREPLACE,
         )
     except (TypeError, ValueError, RuntimeError) as error:
@@ -107,17 +126,27 @@ def _linux_rename_noreplace(source: Path, destination: Path) -> None:
             destination,
         )
     if result != 0:
-        error_number = ctypes.get_errno()
+        error_number = _NATIVE_GET_ERRNO()
+        if (
+            type(error_number) is not int
+            or error_number < 1
+            or error_number > _MAX_LINUX_ERRNO
+        ):
+            raise OSError(
+                errno.EIO,
+                "Linux renameat2 returned an invalid errno status",
+                destination,
+            )
         raise OSError(
             error_number,
-            os.strerror(error_number),
+            _NATIVE_STRERROR(error_number),
             destination,
         )
 
 
 def _require_fs_encodable_path(path: Path) -> None:
     try:
-        _ = os.fsencode(path)
+        _ = _native_fsencode_path(path)
     except UnicodeError as error:
         raise OSError(
             errno.EINVAL,

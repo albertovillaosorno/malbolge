@@ -298,6 +298,54 @@ def test_linux_route_uses_renameat2(
     assert calls == [(staging, destination)]
 
 
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux renameat2",
+)
+@pytest.mark.parametrize("hook", ["fsencode", "fspath"])
+def test_linux_publication_ignores_mutated_path_encoder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A domain may not redirect the C-ABI target through os path hooks."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    redirected = tmp_path / "redirected"
+    staging.mkdir()
+    _ = (staging / "payload").write_bytes(_OURS)
+    native_encode = os.fsencode
+    native_fspath = os.fspath
+    calls = 0
+
+    def forged_fsencode(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+    ) -> bytes:
+        nonlocal calls
+        if path == destination:
+            calls += 1
+            return native_encode(redirected)
+        return native_encode(path)
+
+    def forged_fspath(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+    ) -> str | bytes:
+        nonlocal calls
+        if path == destination:
+            calls += 1
+            return str(redirected)
+        return native_fspath(path)
+
+    with monkeypatch.context() as patched:
+        if hook == "fsencode":
+            patched.setattr(os, "fsencode", forged_fsencode)
+        else:
+            patched.setattr(os, "fspath", forged_fspath)
+        publication.publish_directory_no_replace(staging, destination)
+    assert calls == 0
+    assert not staging.exists()
+    assert (destination / "payload").read_bytes() == _OURS
+    assert not redirected.exists()
+
+
 def test_unsupported_host_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -522,6 +570,86 @@ def test_linux_publication_rejects_foreign_native_status(
     with pytest.raises(OSError, match="invalid status") as rejected:
         publication.publish_directory_no_replace(staging, destination)
     assert rejected.value.errno == errno.EINVAL
+    assert native.call_count == 1
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux renameat2 error boundary",
+)
+@pytest.mark.parametrize("hook", ["get_errno", "strerror"])
+def test_linux_publication_ignores_mutated_error_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Native rename failure reporting must not execute foreign OS hooks."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    native = Mock(return_value=-1)
+
+    def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+        _ = (_name, _options)
+        return SimpleNamespace(renameat2=native)
+
+    def forged_errno() -> int:
+        message = "foreign errno hook executed"
+        raise AssertionError(message)
+
+    def forged_strerror(number: int) -> str:
+        _ = number
+        message = "foreign strerror hook executed"
+        raise AssertionError(message)
+
+    expected = errno.EIO if hook == "get_errno" else errno.EEXIST
+    _ = ctypes.set_errno(0 if hook == "get_errno" else errno.EEXIST)
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(ctypes, "CDLL", fake_cdll)
+            if hook == "get_errno":
+                patched.setattr(ctypes, "get_errno", forged_errno)
+            else:
+                patched.setattr(os, "strerror", forged_strerror)
+            with pytest.raises(OSError) as caught:
+                publication.publish_directory_no_replace(staging, destination)
+    finally:
+        _ = ctypes.set_errno(0)
+    assert caught.value.errno == expected
+    assert native.call_count == 1
+    assert staging.is_dir()
+    assert not destination.exists()
+
+
+@pytest.mark.skipif(
+    os.name == _WINDOWS_OS_NAME or sys.platform != _LINUX_PLATFORM,
+    reason="requires native Linux renameat2 error boundary",
+)
+@pytest.mark.parametrize("reported_errno", [0, -1, 4096])
+def test_linux_publication_rejects_invalid_native_errno(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reported_errno: int
+) -> None:
+    """A failed native call must report a valid Linux errno or fail closed."""
+    staging = tmp_path / "staging"
+    destination = tmp_path / "destination"
+    staging.mkdir()
+    native = Mock(return_value=-1)
+
+    def fake_cdll(_name: object, **_options: bool) -> SimpleNamespace:
+        _ = (_name, _options)
+        return SimpleNamespace(renameat2=native)
+
+    _ = ctypes.set_errno(reported_errno)
+    try:
+        with monkeypatch.context() as patched:
+            patched.setattr(ctypes, "CDLL", fake_cdll)
+            with pytest.raises(
+                OSError, match="invalid errno status"
+            ) as rejected:
+                publication.publish_directory_no_replace(staging, destination)
+    finally:
+        _ = ctypes.set_errno(0)
+    assert rejected.value.errno == errno.EIO
     assert native.call_count == 1
     assert staging.is_dir()
     assert not destination.exists()
