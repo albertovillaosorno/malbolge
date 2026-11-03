@@ -44,6 +44,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from stat import S_ISLNK
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
 # jig-ignore-next-line: canonical Ruff import grouping requires one statement
@@ -96,6 +97,7 @@ _NATIVE_INT = builtins.int
 _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_ZIP = builtins.zip
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 # Keep digest evidence independent of later mutable process-global hooks.
 _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
@@ -139,13 +141,22 @@ class CompatibleFileKind(StrEnum):
     CREATE_LITERAL = "create-literal"
 
 
-@dataclass(frozen=True, slots=True, order=True)
+@dataclass(frozen=True, slots=True, order=True, init=False)
 class CompatibleCorrectionBinding:
     """One named bug correction attached to one semantic edit index."""
 
     output_path: str
     edit_index: int
     correction_id: str
+
+    def __init__(
+        self, output_path: str, edit_index: int, correction_id: str
+    ) -> None:
+        """Validate correction routing with the captured original guard."""
+        _NATIVE_OBJECT_SETATTR(self, "output_path", output_path)
+        _NATIVE_OBJECT_SETATTR(self, "edit_index", edit_index)
+        _NATIVE_OBJECT_SETATTR(self, "correction_id", correction_id)
+        _CORRECTION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require deterministic path, edit index, and correction identity.
@@ -154,24 +165,43 @@ class CompatibleCorrectionBinding:
             CompatiblePlanError: Correction metadata is malformed.
 
         """
-        if _NATIVE_TYPE(self.output_path) is not _NATIVE_STR:
+        output_path = _CORRECTION_PATH_SLOT.__get__(self, CompatibleCorrectionBinding)
+        edit_index = _CORRECTION_INDEX_SLOT.__get__(self, CompatibleCorrectionBinding)
+        correction_id = _CORRECTION_ID_SLOT.__get__(self, CompatibleCorrectionBinding)
+        if _NATIVE_TYPE(output_path) is not _NATIVE_STR:
             message = (
                 "compatible correction path must use the exact string type"
             )
             raise CompatiblePlanError(message)
-        _ = _validate_relative_path(self.output_path)
+        _ = _validate_relative_path(output_path)
         if (
-            _NATIVE_TYPE(self.edit_index) is not _NATIVE_INT
-            or self.edit_index < 0
+            _NATIVE_TYPE(edit_index) is not _NATIVE_INT
+            or edit_index < 0
         ):
             message = "compatible correction edit index must be non-negative"
             raise CompatiblePlanError(message)
         if (
-            _NATIVE_TYPE(self.correction_id) is not _NATIVE_STR
-            or not self.correction_id
+            _NATIVE_TYPE(correction_id) is not _NATIVE_STR
+            or not correction_id
         ):
             message = "compatible correction ID must be a non-empty string"
             raise CompatiblePlanError(message)
+
+
+# Capture original admission and slot readers before consumer class hooks.
+_CORRECTION_VALIDATOR = cast(
+    "Callable[[CompatibleCorrectionBinding], None]",
+    CompatibleCorrectionBinding.__dict__["__post_init__"],
+)
+_CORRECTION_PATH_SLOT = cast(
+    "MemberDescriptorType", CompatibleCorrectionBinding.__dict__["output_path"]
+)
+_CORRECTION_INDEX_SLOT = cast(
+    "MemberDescriptorType", CompatibleCorrectionBinding.__dict__["edit_index"]
+)
+_CORRECTION_ID_SLOT = cast(
+    "MemberDescriptorType", CompatibleCorrectionBinding.__dict__["correction_id"]
+)
 
 
 @dataclass(frozen=True, slots=True)

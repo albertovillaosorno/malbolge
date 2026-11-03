@@ -3017,3 +3017,69 @@ def test_compatible_correction_cardinality_ignores_late_semantic_getter(
         ):
             _ = replace(instruction, correction_ids=("fix",))
     assert calls == 0, "late semantic getter hid correction-count mismatch"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid"),
+    [
+        ("output_path", "../unsafe"),
+        ("edit_index", -1),
+        ("correction_id", ""),
+    ],
+)
+def test_correction_constructor_rejects_late_validator_override(
+    monkeypatch: pytest.MonkeyPatch, field: str, invalid: object
+) -> None:
+    """A class-hook override cannot forge compatible correction metadata."""
+    baseline = CompatibleCorrectionBinding("code.src", 0, "fix")
+    calls = 0
+
+    def skip_validation(_value: CompatibleCorrectionBinding) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(CompatibleCorrectionBinding, "__post_init__", skip_validation)
+        with pytest.raises(CompatiblePlanError):
+            _ = replace(baseline, **{field: invalid})
+    assert calls == 0, "late correction class hook admitted invalid metadata"
+
+
+def test_correction_constructor_preserves_valid_after_validator_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late class hook cannot reject native compatible correction metadata."""
+    baseline = CompatibleCorrectionBinding("code.src", 0, "fix")
+    calls = 0
+
+    def reject_valid(_value: CompatibleCorrectionBinding) -> None:
+        nonlocal calls
+        calls += 1
+        raise CompatiblePlanError("forged rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(CompatibleCorrectionBinding, "__post_init__", reject_valid)
+        clone = replace(baseline)
+    assert clone == baseline
+    assert calls == 0, "late correction class hook rejected valid metadata"
+
+
+def test_correction_constructor_reads_original_path_after_getter_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A getter cannot conceal unsafe stored compatible correction paths."""
+    original_getattribute = CompatibleCorrectionBinding.__getattribute__
+    calls = 0
+
+    def forged_path(value: CompatibleCorrectionBinding, name: str) -> object:
+        nonlocal calls
+        if name == "output_path":
+            calls += 1
+            return "code.src"
+        return cast("object", original_getattribute(value, name))
+
+    with monkeypatch.context() as patch:
+        patch.setattr(CompatibleCorrectionBinding, "__getattribute__", forged_path)
+        with pytest.raises(CompatiblePlanError, match="unsafe compatible tree path"):
+            _ = CompatibleCorrectionBinding("../unsafe", 0, "fix")
+    assert calls == 0, "late correction getter concealed unsafe routing"
