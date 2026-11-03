@@ -3349,3 +3349,75 @@ def test_native_filesystem_encoding_captures_platform_errors() -> None:
         text=True,
     )
     assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.parametrize(
+    "record", ["path", "tool", "rooted", "command", "program", "context", "transcript"]
+)
+def test_probe_record_constructor_rejects_late_validator_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Late class post-init hooks cannot admit invalid portable probe records."""
+    tool = ToolExecutable(_PYTHON_TOOL)
+    command = ProbeCommand(executable=tool)
+    base = {
+        "path": PathArgument(ProbeRoot.SOURCE, "source.bin"),
+        "tool": tool,
+        "rooted": RootedExecutable(ProbeRoot.SCRATCH, "tool.exe"),
+        "command": command,
+        "program": ProbeProgram("probe", (command,)),
+        "context": _context(tmp_path / "source", tmp_path),
+        "transcript": ProbeTranscript("probe", bytes(32), 1),
+    }[record]
+    invalid = cast("dict[str, object]", {
+        "path": {"relative_path": "../unsafe"},
+        "tool": {"tool_id": ""},
+        "rooted": {"root": object()},
+        "command": {"timeout_ms": 0},
+        "program": {"commands": ()},
+        "context": {"enforce_source_immutable": 1},
+        "transcript": {"digest": b"short"},
+    }[record])
+    calls = 0
+
+    def skip_validation(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(base), "__post_init__", skip_validation)
+        with pytest.raises(ProbeProgramError):
+            _ = replace(base, **invalid)
+    assert calls == 0, "late class hook admitted invalid probe evidence"
+
+
+@pytest.mark.parametrize(
+    "record", ["path", "tool", "rooted", "command", "program", "context", "transcript"]
+)
+def test_probe_record_constructor_preserves_valid_after_validator_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, record: str
+) -> None:
+    """Late class post-init hooks cannot reject valid portable probe metadata."""
+    tool = ToolExecutable(_PYTHON_TOOL)
+    command = ProbeCommand(executable=tool)
+    base = {
+        "path": PathArgument(ProbeRoot.SOURCE, "source.bin"),
+        "tool": tool,
+        "rooted": RootedExecutable(ProbeRoot.SCRATCH, "tool.exe"),
+        "command": command,
+        "program": ProbeProgram("probe", (command,)),
+        "context": _context(tmp_path / "source", tmp_path),
+        "transcript": ProbeTranscript("probe", bytes(32), 1),
+    }[record]
+    calls = 0
+
+    def reject_valid(_value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise ProbeProgramError("forged rejection")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(type(base), "__post_init__", reject_valid)
+        clone = replace(base)
+    assert clone == base
+    assert calls == 0, "late class hook rejected valid probe evidence"

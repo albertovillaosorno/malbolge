@@ -51,7 +51,7 @@ from pathlib import Path
 from stat import S_ISREG
 from sys import getfilesystemencodeerrors as _get_filesystem_encode_errors
 from sys import getfilesystemencoding as _get_filesystem_encoding
-from typing import IO, TYPE_CHECKING, Protocol, cast
+from typing import IO, TYPE_CHECKING, Callable, Protocol, cast
 
 from algorithms.diff.exact import ExactTreeError, snapshot_tree
 from algorithms.diff.model import reserved_windows_component
@@ -103,6 +103,7 @@ _NATIVE_ALL = builtins.all
 _NATIVE_MIN = builtins.min
 _NATIVE_MAX = builtins.max
 _NATIVE_ENUMERATE = builtins.enumerate
+_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 
 def _native_path_stat(path: Path) -> os.stat_result:
@@ -146,18 +147,34 @@ class ProbeRoot(StrEnum):
     SCRATCH = "scratch"
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class PathArgument:
     """One argv path resolved beneath an authorized probe root."""
 
     root: ProbeRoot
     relative_path: str
 
+    def __init__(
+        self,
+        root: ProbeRoot,
+        relative_path: str,
+    ) -> None:
+        """Admit portable probe evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "root", root)
+        _NATIVE_OBJECT_SETATTR(self, "relative_path", relative_path)
+        _PATH_ARGUMENT_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject foreign roots and unsafe relative paths."""
         _validate_probe_root(self.root)
         _validate_relative_path(self.relative_path)
 
+
+# Generated dataclass init methods consult mutable class post-init hooks.
+# Bind the original constructor validator before consumer code can replace it.
+_PATH_ARGUMENT_VALIDATOR = cast(
+    "Callable[[PathArgument], None]", PathArgument.__dict__["__post_init__"]
+)
 
 ProbeArgument = str | PathArgument
 
@@ -181,11 +198,19 @@ def _require_portable_utf8_text(value: str, context: str) -> None:
         raise ProbeProgramError(message) from error
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ToolExecutable:
     """Executable resolved through a logical consumer tool identifier."""
 
     tool_id: str
+
+    def __init__(
+        self,
+        tool_id: str,
+    ) -> None:
+        """Admit portable probe evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "tool_id", tool_id)
+        _TOOL_EXECUTABLE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require a portable logical tool identifier."""
@@ -194,18 +219,40 @@ class ToolExecutable:
         )
 
 
-@dataclass(frozen=True, slots=True)
+# Generated dataclass init methods consult mutable class post-init hooks.
+# Bind the original constructor validator before consumer code can replace it.
+_TOOL_EXECUTABLE_VALIDATOR = cast(
+    "Callable[[ToolExecutable], None]", ToolExecutable.__dict__["__post_init__"]
+)
+
+@dataclass(frozen=True, slots=True, init=False)
 class RootedExecutable:
     """Executable artifact produced or stored beneath an authorized root."""
 
     root: ProbeRoot
     relative_path: str
 
+    def __init__(
+        self,
+        root: ProbeRoot,
+        relative_path: str,
+    ) -> None:
+        """Admit portable probe evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "root", root)
+        _NATIVE_OBJECT_SETATTR(self, "relative_path", relative_path)
+        _ROOTED_EXECUTABLE_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject foreign roots and unsafe executable paths."""
         _validate_probe_root(self.root)
         _validate_relative_path(self.relative_path)
 
+
+# Generated dataclass init methods consult mutable class post-init hooks.
+# Bind the original constructor validator before consumer code can replace it.
+_ROOTED_EXECUTABLE_VALIDATOR = cast(
+    "Callable[[RootedExecutable], None]", RootedExecutable.__dict__["__post_init__"]
+)
 
 ProbeExecutable = ToolExecutable | RootedExecutable
 
@@ -295,7 +342,7 @@ def _validate_command_limits(command: ProbeCommand) -> None:
         raise ProbeProgramError(message)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ProbeCommand:
     """One bounded no-shell process invocation in a portable probe program."""
 
@@ -309,18 +356,58 @@ class ProbeCommand:
     digest_stdout: bool = False
     digest_exit_code: bool = False
 
+    def __init__(
+        self,
+        executable: ProbeExecutable,
+        arguments: tuple[ProbeArgument, ...] = (),
+        stdin: bytes = b"",
+        expected_exit_code: int | None = _ZERO,
+        timeout_ms: int = _DEFAULT_TIMEOUT_MS,
+        max_stdout_bytes: int = _DEFAULT_OUTPUT_LIMIT,
+        max_stderr_bytes: int = _DEFAULT_OUTPUT_LIMIT,
+        digest_stdout: bool = False,
+        digest_exit_code: bool = False,
+    ) -> None:
+        """Admit portable probe evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "executable", executable)
+        _NATIVE_OBJECT_SETATTR(self, "arguments", arguments)
+        _NATIVE_OBJECT_SETATTR(self, "stdin", stdin)
+        _NATIVE_OBJECT_SETATTR(self, "expected_exit_code", expected_exit_code)
+        _NATIVE_OBJECT_SETATTR(self, "timeout_ms", timeout_ms)
+        _NATIVE_OBJECT_SETATTR(self, "max_stdout_bytes", max_stdout_bytes)
+        _NATIVE_OBJECT_SETATTR(self, "max_stderr_bytes", max_stderr_bytes)
+        _NATIVE_OBJECT_SETATTR(self, "digest_stdout", digest_stdout)
+        _NATIVE_OBJECT_SETATTR(self, "digest_exit_code", digest_exit_code)
+        _PROBE_COMMAND_VALIDATOR(self)
+
     def __post_init__(self) -> None:
         """Reject unbounded or nonsensical process limits."""
         _validate_command_shape(self)
         _validate_command_limits(self)
 
 
-@dataclass(frozen=True, slots=True)
+# Generated dataclass init methods consult mutable class post-init hooks.
+# Bind the original constructor validator before consumer code can replace it.
+_PROBE_COMMAND_VALIDATOR = cast(
+    "Callable[[ProbeCommand], None]", ProbeCommand.__dict__["__post_init__"]
+)
+
+@dataclass(frozen=True, slots=True, init=False)
 class ProbeProgram:
     """Bounded command sequence for one behavior observation."""
 
     probe_id: str
     commands: tuple[ProbeCommand, ...]
+
+    def __init__(
+        self,
+        probe_id: str,
+        commands: tuple[ProbeCommand, ...],
+    ) -> None:
+        """Admit portable probe evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "probe_id", probe_id)
+        _NATIVE_OBJECT_SETATTR(self, "commands", commands)
+        _PROBE_PROGRAM_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require an identifier and at least one command.
@@ -345,6 +432,12 @@ class ProbeProgram:
             message = "probe program contains a foreign command record"
             raise ProbeProgramError(message)
 
+
+# Generated dataclass init methods consult mutable class post-init hooks.
+# Bind the original constructor validator before consumer code can replace it.
+_PROBE_PROGRAM_VALIDATOR = cast(
+    "Callable[[ProbeProgram], None]", ProbeProgram.__dict__["__post_init__"]
+)
 
 def _validate_path(value: object, context: str) -> None:
     # Path subclasses can override conversion, resolution or status checks.
@@ -389,7 +482,7 @@ def _validate_tool_bindings(value: object) -> tuple[str, ...]:
     return identifiers
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class ProbeRunContext:
     """Roots and logical tool bindings used while executing probe programs."""
 
@@ -397,6 +490,22 @@ class ProbeRunContext:
     repository_root: Path
     tools: tuple[tuple[str, Path], ...]
     enforce_source_immutable: bool = True
+
+    def __init__(
+        self,
+        source_root: Path,
+        repository_root: Path,
+        tools: tuple[tuple[str, Path], ...],
+        enforce_source_immutable: bool = True,
+    ) -> None:
+        """Admit portable probe evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "source_root", source_root)
+        _NATIVE_OBJECT_SETATTR(self, "repository_root", repository_root)
+        _NATIVE_OBJECT_SETATTR(self, "tools", tools)
+        _NATIVE_OBJECT_SETATTR(
+            self, "enforce_source_immutable", enforce_source_immutable
+        )
+        _PROBE_RUN_CONTEXT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require deterministic unique tool bindings.
@@ -414,13 +523,31 @@ class ProbeRunContext:
             raise ProbeProgramError(message)
 
 
-@dataclass(frozen=True, slots=True)
+# Generated dataclass init methods consult mutable class post-init hooks.
+# Bind the original constructor validator before consumer code can replace it.
+_PROBE_RUN_CONTEXT_VALIDATOR = cast(
+    "Callable[[ProbeRunContext], None]", ProbeRunContext.__dict__["__post_init__"]
+)
+
+@dataclass(frozen=True, slots=True, init=False)
 class ProbeTranscript:
     """Stable digest of explicitly selected process observations."""
 
     probe_id: str
     digest: bytes
     digested_commands: int
+
+    def __init__(
+        self,
+        probe_id: str,
+        digest: bytes,
+        digested_commands: int,
+    ) -> None:
+        """Admit portable probe evidence with the original validator."""
+        _NATIVE_OBJECT_SETATTR(self, "probe_id", probe_id)
+        _NATIVE_OBJECT_SETATTR(self, "digest", digest)
+        _NATIVE_OBJECT_SETATTR(self, "digested_commands", digested_commands)
+        _PROBE_TRANSCRIPT_VALIDATOR(self)
 
     def __post_init__(self) -> None:
         """Require exact immutable and coherent transcript metadata.
@@ -445,6 +572,12 @@ class ProbeTranscript:
             message = "probe transcript selected count must be non-negative int"
             raise ProbeProgramError(message)
 
+
+# Generated dataclass init methods consult mutable class post-init hooks.
+# Bind the original constructor validator before consumer code can replace it.
+_PROBE_TRANSCRIPT_VALIDATOR = cast(
+    "Callable[[ProbeTranscript], None]", ProbeTranscript.__dict__["__post_init__"]
+)
 
 @dataclass(frozen=True, slots=True)
 class _CommandResult:
