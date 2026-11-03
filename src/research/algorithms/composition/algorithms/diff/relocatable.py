@@ -103,7 +103,6 @@ _NATIVE_SET = builtins.set
 _NATIVE_SUM = builtins.sum
 _NATIVE_MIN = builtins.min
 _NATIVE_RANGE = builtins.range
-_NATIVE_OBJECT_SETATTR = object.__setattr__
 
 
 def _native_path_lstat(path: Path) -> os.stat_result:
@@ -155,10 +154,10 @@ class RangeLocator:
         end_digest: bytes | None = None,
     ) -> None:
         """Initialize slots and invoke the captured native validator."""
-        _NATIVE_OBJECT_SETATTR(self, "source_length", source_length)
-        _NATIVE_OBJECT_SETATTR(self, "window_bytes", window_bytes)
-        _NATIVE_OBJECT_SETATTR(self, "start_digest", start_digest)
-        _NATIVE_OBJECT_SETATTR(self, "end_digest", end_digest)
+        _LOCATOR_LENGTH_SLOT.__set__(self, source_length)
+        _LOCATOR_WIDTH_SLOT.__set__(self, window_bytes)
+        _LOCATOR_START_SLOT.__set__(self, start_digest)
+        _LOCATOR_END_SLOT.__set__(self, end_digest)
         _LOCATOR_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -244,7 +243,7 @@ class RelocatableSourceRange:
 
     def __init__(self, locator: RangeLocator) -> None:
         """Initialize and validate stored source-range metadata."""
-        _NATIVE_OBJECT_SETATTR(self, "locator", locator)
+        _SOURCE_RANGE_LOCATOR_SLOT.__set__(self, locator)
         _SOURCE_RANGE_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -358,11 +357,11 @@ class RelocatableInstruction:
         segments: tuple[RelocatableSegment, ...] = (),
     ) -> None:
         """Initialize stored output instruction and run pinned validation."""
-        _NATIVE_OBJECT_SETATTR(self, "output_path", output_path)
-        _NATIVE_OBJECT_SETATTR(self, "source_path", source_path)
-        _NATIVE_OBJECT_SETATTR(self, "copy_candidate_file", copy_candidate_file)
-        _NATIVE_OBJECT_SETATTR(self, "literal", literal)
-        _NATIVE_OBJECT_SETATTR(self, "segments", segments)
+        _INSTRUCTION_OUTPUT_SLOT.__set__(self, output_path)
+        _INSTRUCTION_SOURCE_SLOT.__set__(self, source_path)
+        _INSTRUCTION_COPY_SLOT.__set__(self, copy_candidate_file)
+        _INSTRUCTION_LITERAL_SLOT.__set__(self, literal)
+        _INSTRUCTION_SEGMENTS_SLOT.__set__(self, segments)
         _INSTRUCTION_VALIDATOR(self)
 
     def __post_init__(self) -> None:
@@ -415,7 +414,7 @@ class RelocatableAuthoringPlan:
         self, instructions: tuple[RelocatableInstruction, ...]
     ) -> None:
         """Preserve construction checks under late validator replacement."""
-        _NATIVE_OBJECT_SETATTR(self, "instructions", instructions)
+        _PLAN_INSTRUCTIONS_SLOT.__set__(self, instructions)
         _PLAN_VALIDATOR(self)
 
     def __post_init__(self) -> None:

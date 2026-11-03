@@ -40,6 +40,7 @@ import ntpath
 import os
 from pathlib import Path
 import shutil
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING
 from typing import cast
 from typing import override
@@ -2726,3 +2727,72 @@ def test_relocatable_constructor_cannot_skip_late_post_init_validation(
             constructor = cast("Callable[..., object]", record_type)
             _ = constructor(**fields)
     assert calls == 0, "late __post_init__ replaced record validation"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("locator", "source_length", 0, "positive integer"),
+        ("locator", "window_bytes", 0, "valid integer"),
+        ("locator", "start_digest", b"short", "start digest"),
+        ("locator", "end_digest", b"short", "end digest"),
+        ("range", "locator", object(), "exact locator"),
+        ("instruction", "output_path", "../escape.bin", "unsafe"),
+        ("instruction", "source_path", "../escape.bin", "unsafe"),
+        ("instruction", "copy_candidate_file", 1, "exact boolean"),
+        ("instruction", "literal", "foreign string", "exact bytes"),
+        ("instruction", "segments", [OracleLiteral(b"data")], "tuple"),
+        ("plan", "instructions", [], "immutable tuple"),
+    ],
+)
+def test_relocatable_constructors_reject_late_property_setters(
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[str, str, object, str],
+) -> None:
+    """A class field setter cannot launder malformed placement evidence."""
+    record, field, invalid, expected = case
+    owner, defaults = {
+        "locator": (
+            RangeLocator,
+            {
+                "source_length": 2,
+                "window_bytes": 1,
+                "start_digest": b"x" * 32,
+                "end_digest": b"y" * 32,
+            },
+        ),
+        "range": (
+            RelocatableSourceRange,
+            {"locator": RangeLocator(2, 1, b"x" * 32, b"y" * 32)},
+        ),
+        "instruction": (
+            RelocatableInstruction,
+            {
+                "output_path": "target.bin",
+                "source_path": None,
+                "copy_candidate_file": False,
+                "literal": b"data",
+                "segments": (),
+            },
+        ),
+        "plan": (
+            relocatable_module.RelocatableAuthoringPlan,
+            {"instructions": ()},
+        ),
+    }[record]
+    values = {**defaults, field: invalid}
+    slot = cast("MemberDescriptorType", owner.__dict__[field])
+    intercepted: list[object] = []
+
+    def sanitize(value: object, supplied: object) -> None:
+        intercepted.append(supplied)
+        slot.__set__(value, defaults[field])
+
+    def read_original(value: object) -> object:
+        return cast("object", slot.__get__(value, owner))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(owner, field, property(read_original, sanitize))
+        with pytest.raises(RelocationError, match=expected):
+            _ = cast("Callable[..., object]", owner)(**values)
+    assert not intercepted, "late placement setter intercepted construction"
