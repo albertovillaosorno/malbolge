@@ -78,6 +78,12 @@ format.
   `source_to_code` (`1eb1b012a`). Four additional red-first substitutions
   now fail closed; 97 focused domain and 3,240 integrated diff tests passed.
   Trusted direct mutations and filesystem races remain excluded.
+- The native source-loader initializer and module factory are pinned
+  (`46985396c`); two red-first constructor/factory substitutions fail closed.
+  Cache-statistics lookup is also pinned (`d89be2aa0`) after a red-first case
+  showed that forged source metadata executed bytecode from another file.
+  All 100 focused domain and 3,255 integrated diff tests passed, with scoped
+  Ruff and strict BasedPyright clean. External filesystem races remain excluded.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode
@@ -230,6 +236,10 @@ format.
   includes concurrently authored protected code and domain documentation).
   Twenty-two red-first cases, 206 protected and 3,240 integrated tests passed;
   direct storage mutation and filesystem races remain excluded.
+- Protected recovery now invokes original native exact-record allocation and
+  initialization helpers (`be12bdbd5`). Six red-first constructor cases,
+  212 focused protected and 3,254 integrated tests passed. Direct stored
+  record mutation remains outside this guarantee.
 - Semantic authoring now pins original allocation and initializers for
   locators, edits, plans, and build contexts (`fa60753bb`). Eight red-first
   constructor-hook tests, all 127 focused tests, and 2,724 integrated diff

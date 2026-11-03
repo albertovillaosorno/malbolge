@@ -224,6 +224,13 @@ The same boundary pins source-loader `get_code`, `get_data`,
 cases proved that each mutable reader could execute unselected source bytes.
 All 97 focused domain and 3,240 integrated diff tests passed. The check does
 not isolate direct trusted-state mutation or concurrent filesystem writers.
+The loader also pins the source-loader initializer and module factory
+(`46985396c`): two red-first cases reject path redirection and a pre-execution
+side effect. Its `path_stats` hook is now pinned (`d89be2aa0`); one red-first
+case proved that forged source metadata could authorize cached bytecode from an
+unselected file. All 100 focused domain and 3,255 integrated diff tests pass;
+scoped Ruff and strict BasedPyright report zero errors. Direct trusted-state
+mutation and concurrent filesystem or bytecode-cache writes remain out of scope.
 Neither status check nor import is atomic against external filesystem writes;
 this is not a sandbox for trusted consumer-domain code.
 A frozen, slotted Python evidence record still permits its *class* slot
@@ -1260,6 +1267,11 @@ descriptor/getattribute tests cover forged authoring metadata and source or
 payload redirection. All 206 focused protected and 3,240 integrated diff tests
 passed on the shared checkout. Direct stored-object mutation and filesystem
 races remain outside the boundary.
+Protected recovery now invokes original native exact-record allocation and
+initialization helpers for recovered literals, instructions, and plans
+(`be12bdbd5`). Six red-first constructor substitutions, 212 focused protected
+and 3,254 integrated diff tests passed; direct stored-record mutation remains
+outside this protection.
 
 A read-only DOOM exact-baseline smoke generated 152 protected instructions and a
 2,116,232-byte ciphertext with a 16-byte tag. The binding contained 127 shares
