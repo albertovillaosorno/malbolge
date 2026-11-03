@@ -54,7 +54,7 @@ from algorithms.diff.generate import (
     TransformMode,
     write_algorithm,
 )
-from algorithms.diff.model import FileRecord
+from algorithms.diff.model import FileRecord, TreeSnapshot
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
 
@@ -1840,3 +1840,95 @@ def test_recipe_constructor_writes_original_slots_without_class_setters(
             observed
         )
     assert calls == 0
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_generator_replay_reader_uses_stored_digest_after_late_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    changed: bool,
+) -> None:
+    """Late file-record metadata hooks cannot admit stale replay bytes."""
+    original = b"original source"
+    modified = b"modified source"
+    path = tmp_path / "source.bin"
+    _ = path.write_bytes(modified if changed else original)
+    record = FileRecord(
+        path="source.bin",
+        sha256=hashlib.sha256(original).hexdigest(),
+        size=len(original),
+    )
+    forged_digest = hashlib.sha256(modified if changed else b"other").hexdigest()
+    with monkeypatch.context() as patched:
+        patched.setattr(FileRecord, "sha256", property(lambda _: forged_digest))
+        if changed:
+            with pytest.raises(ExactTreeError, match="source identity changed"):
+                _ = generate_module._read_exact_identity_file(path, record)
+        else:
+            assert generate_module._read_exact_identity_file(path, record) == original
+
+
+@pytest.mark.parametrize("field", ["path", "files"])
+def test_generator_raw_identity_uses_stored_snapshot_fields_after_late_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Source-bound identity labels cannot be replaced through class getters."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    content = b"same source bytes"
+    _write(recipe.source_root, "a.bin", content)
+    _write(recipe.source_root, "b.bin", content)
+    digest = hashlib.sha256(content).hexdigest()
+    original = FileRecord(path="a.bin", sha256=digest, size=len(content))
+    substituted = FileRecord(path="b.bin", sha256=digest, size=len(content))
+    source = TreeSnapshot(files=(original,))
+    with monkeypatch.context() as patched:
+        if field == "path":
+            patched.setattr(FileRecord, "path", property(lambda _: "b.bin"))
+        else:
+            patched.setattr(
+                TreeSnapshot, "files", property(lambda _: (substituted,))
+            )
+        identity = generate_module._raw_exact_identity(recipe, source)
+    assert tuple(item.path for item in identity.files) == ("a.bin",)
+
+
+@pytest.mark.parametrize("record_type", [TreeSnapshot, FileRecord])
+def test_generator_post_protection_replay_ignores_late_model_equality(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    record_type: type[TreeSnapshot | FileRecord],
+) -> None:
+    """A forged dataclass equality cannot certify a changed source tree."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    source_file = recipe.source_root / "b.bin"
+    emitted: list[str] = []
+
+    def change_after_protection(
+        _exact: ExactAuthoringPlan,
+        _identity: IdentityTree,
+        *,
+        binding_policy: SourceBindingPolicy,
+        context: bytes,
+    ) -> ProtectedExactPlan:
+        _ = (binding_policy, context)
+        original = source_file.read_bytes()
+        _ = source_file.write_bytes(b"changed" + original[7:])
+        patched.setattr(record_type, "__eq__", lambda _left, _right: True)
+        return cast("ProtectedExactPlan", object())
+
+    def capture_emission(
+        _protected: ProtectedExactPlan, _identity: str, _path: Path
+    ) -> None:
+        emitted.append("unexpected")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            generate_module, "protect_exact_plan", change_after_protection
+        )
+        patched.setattr(generate_module, "write_rust_transform", capture_emission)
+        with pytest.raises(ExactTreeError, match="source tree changed"):
+            write_algorithm(recipe)
+    assert not emitted, "a stale protected source reached the emitter"

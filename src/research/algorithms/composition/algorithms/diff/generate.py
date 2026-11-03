@@ -49,12 +49,17 @@ from algorithms.diff.domain import DiffDomain, DomainContractError, load_diff_do
 from algorithms.diff.emit_rust import write_rust_transform
 from algorithms.diff.exact import (
     ExactTreeError,
+    _snapshots_match,
     build_exact_plan,
     read_exact_regular_file,
     snapshot_tree_excluding,
 )
 from algorithms.diff.fingerprints import AnchorPolicy
-from algorithms.diff.model import reserved_windows_component
+from algorithms.diff.model import (
+    _file_fields,
+    _snapshot_files,
+    reserved_windows_component,
+)
 from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinEvidence
 from algorithms.diff.source_binding import SourceBindingPolicy
@@ -484,11 +489,12 @@ def _validate_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
 
 def _read_exact_identity_file(path: Path, record: FileRecord) -> bytes:
     replay = read_exact_regular_file(path, "exact source identity")
+    relative_path, expected_digest, expected_size = _file_fields(record)
     if (
-        _NATIVE_LEN(replay) != record.size
-        or _SHA256_FACTORY(replay).hexdigest() != record.sha256
+        _NATIVE_LEN(replay) != expected_size
+        or _SHA256_FACTORY(replay).hexdigest() != expected_digest
     ):
-        message = f"exact source identity changed after planning: {record.path}"
+        message = f"exact source identity changed after planning: {relative_path}"
         raise ExactTreeError(message)
     return replay
 
@@ -497,12 +503,12 @@ def _raw_exact_identity(
     recipe: _RecipeLike,
     source: TreeSnapshot,
 ) -> IdentityTree:
-    files = {
-        record.path: _read_exact_identity_file(
-            recipe.source_root / record.path, record
+    files: dict[str, bytes] = {}
+    for record in _snapshot_files(source):
+        relative = _file_fields(record)[0]
+        files[relative] = _read_exact_identity_file(
+            recipe.source_root / relative, record
         )
-        for record in source.files
-    }
     return identity_tree(files)
 
 
@@ -516,7 +522,7 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
     replayed_source = snapshot_tree_excluding(
         recipe.source_root, recipe.passthrough_roots
     )
-    if replayed_source != exact.source:
+    if not _snapshots_match(replayed_source, exact.source):
         message = "exact source tree changed after identity replay"
         raise ExactTreeError(message)
     policy = SourceBindingPolicy(
@@ -538,7 +544,9 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
         ("source", recipe.source_root, exact.source),
         ("oracle", recipe.oracle_root, exact.target),
     ):
-        if snapshot_tree_excluding(root, recipe.passthrough_roots) != expected:
+        if not _snapshots_match(
+            snapshot_tree_excluding(root, recipe.passthrough_roots), expected
+        ):
             message = f"exact {name} tree changed during payload protection"
             raise ExactTreeError(message)
     write_rust_transform(
