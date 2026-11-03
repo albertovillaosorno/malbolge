@@ -40,8 +40,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import MemberDescriptorType
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, TypeVar, cast
 
 from algorithms.diff.behavior import (
     BehaviorObservations,
@@ -66,6 +65,9 @@ from algorithms.diff.probe_exec import (
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from types import MemberDescriptorType
+
     from algorithms.diff.behavior import BehaviorEvidence
     from algorithms.diff.model import TreeSnapshot
 
@@ -81,6 +83,7 @@ _NATIVE_STR = builtins.str
 _NATIVE_BYTES = builtins.bytes
 _NATIVE_SORTED = builtins.sorted
 _NATIVE_SET = builtins.set
+_NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_COPYTREE = shutil.copytree
 _NATIVE_TEMPORARY_DIRECTORY = tempfile.TemporaryDirectory
 _NUL = "\x00"
@@ -139,10 +142,7 @@ def _behavior_error_detail(error: BaseException) -> str:
         BehaviorProgramError,
     ):
         arguments = cast("tuple[object, ...]", error.args)
-        if (
-            _NATIVE_LEN(arguments) == 1
-            and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR
-        ):
+        if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR:
             return arguments[0]
     return _NATIVE_TYPE(error).__name__
 
@@ -503,6 +503,44 @@ def read_authored_behavior(
     )
 
 
+# A probe runner can replace process-global class hooks before its transcript
+# is consumed. Pin the original record initializers, not just their validators,
+# and allocate native instances without dispatching through late __new__.
+_RecordT = TypeVar("_RecordT")
+_IDENTITY_PROBE_INIT = cast("Callable[..., None]", IdentityProbe.__dict__["__init__"])
+_COMPATIBILITY_PROBE_INIT = cast(
+    "Callable[..., None]", CompatibilityProbe.__dict__["__init__"]
+)
+_BUG_PROBE_INIT = cast("Callable[..., None]", BugProbe.__dict__["__init__"])
+_BEHAVIOR_PROFILE_INIT = cast(
+    "Callable[..., None]", BehaviorProfile.__dict__["__init__"]
+)
+_AUTHORED_BUG_INIT = cast(
+    "Callable[..., None]", AuthoredBugProgram.__dict__["__init__"]
+)
+_AUTHORED_BEHAVIOR_INIT = cast(
+    "Callable[..., None]", AuthoredBehaviorPrograms.__dict__["__init__"]
+)
+_IDENTITY_OBSERVATION_INIT = cast(
+    "Callable[..., None]", IdentityObservation.__dict__["__init__"]
+)
+_COMPATIBILITY_OBSERVATION_INIT = cast(
+    "Callable[..., None]", CompatibilityObservation.__dict__["__init__"]
+)
+_BUG_OBSERVATION_INIT = cast("Callable[..., None]", BugObservation.__dict__["__init__"])
+_BEHAVIOR_OBSERVATIONS_INIT = cast(
+    "Callable[..., None]", BehaviorObservations.__dict__["__init__"]
+)
+
+
+def _new_receipt(
+    record_type: type[_RecordT], initializer: Callable[..., None], /, **fields: object
+) -> _RecordT:
+    result = _NATIVE_OBJECT_NEW(record_type)
+    initializer(result, **fields)
+    return result
+
+
 def _require_authored_bug_tuple(value: object) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "authored bugs must use the exact immutable tuple type"
@@ -617,15 +655,10 @@ def _resolved_context_path(path: Path, description: str) -> Path:
     except (OSError, ValueError, RuntimeError) as error:
         detail = _behavior_error_detail(error)
         native_path = _NATIVE_PATH_STR(path)
-        message = (
-            f"behavior {description} resolution failed: "
-            f"{native_path}: {detail}"
-        )
+        message = f"behavior {description} resolution failed: {native_path}: {detail}"
         raise BehaviorProgramError(message) from error
     if _NATIVE_TYPE(resolved) is not _NATIVE_TYPE(Path()):
-        message = (
-            f"behavior {description} resolution requires native resolved Path"
-        )
+        message = f"behavior {description} resolution requires native resolved Path"
         raise BehaviorProgramError(message)
     return resolved
 
@@ -678,7 +711,9 @@ def _author_bug_programs(
             message = f"bug probe {probe_id!r} cannot distinguish present from fixed"
             raise BehaviorProgramError(message)
         authored.append(
-            AuthoredBugProgram(
+            _new_receipt(
+                AuthoredBugProgram,
+                _AUTHORED_BUG_INIT,
                 program=program,
                 correction_id=correction,
                 present_digest=present_digest,
@@ -768,21 +803,25 @@ def author_behavior_programs(
     source_context = _require_run_context(source_context, "source behavior context")
     oracle_context = _require_run_context(oracle_context, "oracle behavior context")
     _require_matching_contexts(source_context, oracle_context)
-    identity_programs, compatibility_programs, bug_programs = (
-        read_behavior_programs(programs)
+    identity_programs, compatibility_programs, bug_programs = read_behavior_programs(
+        programs
     )
     source_transcripts, oracle_transcripts = _run_authored_baselines(
         programs, source_context, oracle_context
     )
     identity = _NATIVE_TUPLE(
-        IdentityProbe(
+        _new_receipt(
+            IdentityProbe,
+            _IDENTITY_PROBE_INIT,
             probe_id=_program_id(program),
             expected_digest=_require_digest(source_transcripts[_program_id(program)]),
         )
         for program in identity_programs
     )
     compatibility = _NATIVE_TUPLE(
-        CompatibilityProbe(probe_id=_program_id(program))
+        _new_receipt(
+            CompatibilityProbe, _COMPATIBILITY_PROBE_INIT, probe_id=_program_id(program)
+        )
         for program in compatibility_programs
     )
     authored_bugs = _author_bug_programs(
@@ -791,14 +830,20 @@ def author_behavior_programs(
         oracle_transcripts,
     )
     bug_profile = _NATIVE_TUPLE(
-        BugProbe(
+        _new_receipt(
+            BugProbe,
+            _BUG_PROBE_INIT,
             probe_id=_program_id(read_authored_bug(item)[0]),
             correction_id=read_authored_bug(item)[1],
         )
         for item in authored_bugs
     )
-    return AuthoredBehaviorPrograms(
-        profile=BehaviorProfile(
+    return _new_receipt(
+        AuthoredBehaviorPrograms,
+        _AUTHORED_BEHAVIOR_INIT,
+        profile=_new_receipt(
+            BehaviorProfile,
+            _BEHAVIOR_PROFILE_INIT,
             identity=identity,
             compatibility=compatibility,
             bugs=bug_profile,
@@ -827,7 +872,14 @@ def _observe_identity(
     for program in programs:
         transcript = _try_transcript(program, context)
         digest = _transcript_fields(transcript)[1] if transcript is not None else None
-        observations.append(IdentityObservation(_program_id(program), digest))
+        observations.append(
+            _new_receipt(
+                IdentityObservation,
+                _IDENTITY_OBSERVATION_INIT,
+                probe_id=_program_id(program),
+                digest=digest,
+            )
+        )
     return _NATIVE_TUPLE(observations)
 
 
@@ -836,7 +888,9 @@ def _observe_compatibility(
     context: ProbeRunContext,
 ) -> tuple[CompatibilityObservation, ...]:
     return _NATIVE_TUPLE(
-        CompatibilityObservation(
+        _new_receipt(
+            CompatibilityObservation,
+            _COMPATIBILITY_OBSERVATION_INIT,
             probe_id=_program_id(program),
             compatible=_try_transcript(program, context) is not None,
         )
@@ -864,7 +918,9 @@ def _observe_bugs(
     context: ProbeRunContext,
 ) -> tuple[BugObservation, ...]:
     return _NATIVE_TUPLE(
-        BugObservation(
+        _new_receipt(
+            BugObservation,
+            _BUG_OBSERVATION_INIT,
             probe_id=_program_id(read_authored_bug(item)[0]),
             state=_bug_state(
                 item, _try_transcript(read_authored_bug(item)[0], context)
@@ -924,10 +980,9 @@ def _admit_observation_mirror(
         detail = _behavior_error_detail(error)
         message = f"behavior candidate mirror failed: {detail}"
         raise ProbeExecutionError(message) from error
-    if (
-        _NATIVE_TYPE(completion) is not _NATIVE_TYPE(Path())
-        or _NATIVE_PATH_STR(completion) != _NATIVE_PATH_STR(mirror)
-    ):
+    if _NATIVE_TYPE(completion) is not _NATIVE_TYPE(Path()) or _NATIVE_PATH_STR(
+        completion
+    ) != _NATIVE_PATH_STR(mirror):
         message = "behavior candidate mirror copy reported non-native completion"
         raise ProbeExecutionError(message)
     if _snapshot_observed_source(mirror) != admitted:
@@ -971,8 +1026,8 @@ def observe_behavior_programs(
         message = "behavior observation requires exact AuthoredBehaviorPrograms"
         raise BehaviorProgramError(message)
     context = _require_run_context(context, "behavior observation context")
-    _, identity_programs, compatibility_programs, bug_programs = (
-        read_authored_behavior(authored)
+    _, identity_programs, compatibility_programs, bug_programs = read_authored_behavior(
+        authored
     )
     admitted = _snapshot_observed_source(context.source_root)
     with _temporary_observation_root() as temporary:
@@ -984,7 +1039,9 @@ def observe_behavior_programs(
         _require_observation_sources_unchanged(context.source_root, mirror, admitted)
         bugs = _observe_bugs(bug_programs, mirrored)
         _require_observation_sources_unchanged(context.source_root, mirror, admitted)
-        return BehaviorObservations(
+        return _new_receipt(
+            BehaviorObservations,
+            _BEHAVIOR_OBSERVATIONS_INIT,
             identity=identity,
             compatibility=compatibility,
             bugs=bugs,

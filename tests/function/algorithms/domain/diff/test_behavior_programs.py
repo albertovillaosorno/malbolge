@@ -38,16 +38,29 @@ import builtins
 import math
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
+from contextlib import ExitStack
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, cast, override
+from unittest.mock import patch
 
 import pytest
 from algorithms.diff import behavior_programs as behavior_module
-from algorithms.diff.behavior import BugState
+from algorithms.diff.behavior import (
+    BehaviorObservations,
+    BehaviorProfile,
+    BugObservation,
+    BugProbe,
+    BugState,
+    CompatibilityObservation,
+    CompatibilityProbe,
+    IdentityObservation,
+    IdentityProbe,
+)
 from algorithms.diff.behavior_programs import (
     AuthoredBehaviorPrograms,
     AuthoredBugProgram,
@@ -75,7 +88,6 @@ from algorithms.diff.probe_exec import (
 if TYPE_CHECKING:
     from collections.abc import Callable, Sized
 
-    from algorithms.diff.behavior import BehaviorProfile
     from algorithms.diff.model import TreeSnapshot
 
 _PYTHON_TOOL = "python"
@@ -782,9 +794,7 @@ def test_bug_program_rejects_late_str_alias_before_foreign_hooks(
         except BehaviorProgramError:
             rejected = True
     assert rejected, "late str alias admitted foreign correction ID"
-    assert foreign.calls == 0, (
-        "foreign correction hooks executed before rejection"
-    )
+    assert foreign.calls == 0, "foreign correction hooks executed before rejection"
 
 
 @pytest.mark.parametrize("kind", ["program", "correction"])
@@ -1891,3 +1901,130 @@ def test_behavior_program_ids_ignore_late_program_id_getter(
         observed = behavior_module._program_ids((program,))
     assert observed == ("original",)
     assert calls == 0
+
+
+def _isolate_late_receipt_new(test_name: str, record_type: type[object]) -> bool:
+    """Do not poison CPython's cached native __new__ slots in other tests."""
+    if os.environ.get("_DIFF_BEHAVIOR_RECEIPT_CHILD") == "1":
+        return False
+    environment = os.environ.copy()
+    environment["_DIFF_BEHAVIOR_RECEIPT_CHILD"] = "1"
+    environment["PYTHONPATH"] = os.pathsep.join(
+        [*sys.path, "tests/function/algorithms/domain/diff"]
+    )
+    node = f"{__file__}::{test_name}[{record_type.__name__}-__new__]"
+    completed = subprocess.run(
+        [sys.executable, "-B", "-m", "pytest", node, "-q"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=20,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return True
+
+
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+@pytest.mark.parametrize(
+    "record_type",
+    [
+        IdentityProbe,
+        CompatibilityProbe,
+        BugProbe,
+        BehaviorProfile,
+        AuthoredBugProgram,
+        AuthoredBehaviorPrograms,
+    ],
+)
+def test_behavior_authoring_ignores_late_receipt_constructors(
+    tmp_path: Path, hook: str, record_type: type[object]
+) -> None:
+    """A completed source/oracle probe must not forge authored evidence."""
+    if hook == "__new__" and _isolate_late_receipt_new(
+        "test_behavior_authoring_ignores_late_receipt_constructors", record_type
+    ):
+        return
+    source, oracle = _trees(tmp_path)
+    original_run = run_probe_programs
+    calls = 0
+    installed = False
+
+    def forbidden_constructor(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late authored receipt constructor executed")
+
+    with ExitStack() as stack:
+
+        def run_then_replace(
+            programs: tuple[ProbeProgram, ...], context: ProbeRunContext
+        ) -> tuple[ProbeTranscript, ...]:
+            nonlocal installed
+            results = original_run(programs, context)
+            if context.source_root == oracle and not installed:
+                _ = stack.enter_context(
+                    patch.object(record_type, hook, forbidden_constructor)
+                )
+                installed = True
+            return results
+
+        _ = stack.enter_context(
+            patch.object(behavior_module, "run_probe_programs", run_then_replace)
+        )
+        authored = author_behavior_programs(
+            _programs(), _context(source, tmp_path), _context(oracle, tmp_path)
+        )
+        assert authored.profile.identity[0].probe_id == "identity-stable"
+        assert authored.bugs[0].present_digest != authored.bugs[0].fixed_digest
+    assert installed and calls == 0
+
+
+@pytest.mark.parametrize("hook", ["__init__", "__new__"])
+@pytest.mark.parametrize(
+    "record_type",
+    [
+        IdentityObservation,
+        CompatibilityObservation,
+        BugObservation,
+        BehaviorObservations,
+    ],
+)
+def test_behavior_observation_ignores_late_receipt_constructors(
+    tmp_path: Path, hook: str, record_type: type[object]
+) -> None:
+    """An executed probe cannot swap observations used for admission."""
+    if hook == "__new__" and _isolate_late_receipt_new(
+        "test_behavior_observation_ignores_late_receipt_constructors", record_type
+    ):
+        return
+    authored, source, _ = _authored(tmp_path)
+    original_run = run_probe_program
+    calls = 0
+    installed = False
+
+    def forbidden_constructor(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late observation receipt constructor executed")
+
+    with ExitStack() as stack:
+
+        def run_then_replace(
+            program: ProbeProgram, context: ProbeRunContext
+        ) -> ProbeTranscript:
+            nonlocal installed
+            result = original_run(program, context)
+            if not installed:
+                _ = stack.enter_context(
+                    patch.object(record_type, hook, forbidden_constructor)
+                )
+                installed = True
+            return result
+
+        _ = stack.enter_context(
+            patch.object(behavior_module, "run_probe_program", run_then_replace)
+        )
+        observations = observe_behavior_programs(authored, _context(source, tmp_path))
+        assert observations.bugs[0].state is BugState.PRESENT
+    assert installed and calls == 0
