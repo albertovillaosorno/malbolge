@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import builtins
 import hashlib
+import io
 import os
 import shutil
 import sys
@@ -43,7 +44,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from stat import S_ISLNK
+from stat import S_ISDIR, S_ISLNK
 from types import MemberDescriptorType, SimpleNamespace
 from typing import TYPE_CHECKING, cast
 
@@ -116,6 +117,11 @@ _NATIVE_RELATIVE_TO = _NATIVE_PATH_TYPE.relative_to
 _NATIVE_IS_JUNCTION = _NATIVE_PATH_TYPE.is_junction
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
+_NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
+_NATIVE_PATH_JOINPATH = Path.joinpath
+_NATIVE_IO_OPEN = io.open
+_NATIVE_OS_MKDIR = os.mkdir
 _NATIVE_FS_ENCODING = sys.getfilesystemencoding()
 _NATIVE_FS_ERRORS = sys.getfilesystemencodeerrors()
 _NATIVE_STAT_RESULT = os.stat_result
@@ -1117,10 +1123,45 @@ def _read_compatible_bytes(path: Path, context: str) -> bytes:
         raise failure from error
 
 
+def _native_write_compatible_bytes(path: Path, data: bytes) -> int:
+    """Exclusively create staged bytes without late Path/io.open hooks."""
+    with _NATIVE_IO_OPEN(_NATIVE_PATH_STRING(path), "xb") as stream:
+        return stream.write(data)
+
+
+_NATIVE_WRITE_COMPATIBLE_BYTES = _native_write_compatible_bytes
+
+
+def _native_make_compatible_directory(
+    path: Path, *, parents: bool, exist_ok: bool
+) -> None:
+    """Create compatible directories without mutable pathlib/os.mkdir hooks."""
+    try:
+        _NATIVE_OS_MKDIR(_NATIVE_PATH_STRING(path))
+    except FileNotFoundError:
+        parent = _NATIVE_PATH_PARENT(path)
+        if not parents or _NATIVE_PATH_STRING(parent) == _NATIVE_PATH_STRING(path):
+            raise
+        _native_make_compatible_directory(parent, parents=True, exist_ok=True)
+        _native_make_compatible_directory(path, parents=False, exist_ok=exist_ok)
+    except OSError:
+        if not exist_ok:
+            raise
+        status = _path_status(path, "compatible directory")
+        if (
+            status is None
+            or not S_ISDIR(status.st_mode)
+            or _is_linked_ancestor(path, status)
+        ):
+            raise
+
+
 def _write_compatible_bytes(path: Path, data: bytes, context: str) -> None:
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        written = path.write_bytes(data)
+        _native_make_compatible_directory(
+            _NATIVE_PATH_PARENT(path), parents=True, exist_ok=True
+        )
+        written = _NATIVE_WRITE_COMPATIBLE_BYTES(path, data)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} write failed: {path}: {detail}"
@@ -1138,7 +1179,7 @@ def _make_compatible_directory(
     exist_ok: bool,
 ) -> None:
     try:
-        path.mkdir(parents=parents, exist_ok=exist_ok)
+        _native_make_compatible_directory(path, parents=parents, exist_ok=exist_ok)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_compatible_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
@@ -1543,7 +1584,10 @@ def _prepare_staging(output_root: Path) -> Path:
     if _path_present(output_root, "compatible output root"):
         message = f"compatible output root already exists: {output_root}"
         raise CompatiblePlanError(message)
-    staging = output_root.with_name(f".{output_root.name}{_STAGING_SUFFIX}")
+    staging = _NATIVE_PATH_JOINPATH(
+        _NATIVE_PATH_PARENT(output_root),
+        f".{_NATIVE_PATH_NAME(output_root)}{_STAGING_SUFFIX}",
+    )
     if _path_present(staging, "compatible staging root"):
         message = f"compatible staging root already exists: {staging}"
         raise CompatiblePlanError(message)

@@ -1904,29 +1904,30 @@ def test_compatible_host_faults_do_not_format_foreign_errors(
             compatible_module, "_NATIVE_PATH_LSTAT", fail_status
         )
     elif operation == "staging_create":
-        original = Path.mkdir
+        original = cast(
+            "Callable[[str], None]", vars(compatible_module)["_NATIVE_OS_MKDIR"]
+        )
 
-        def fail_mkdir(
-            path: Path,
-            mode: int = 0o777,
-            *,
-            parents: bool = False,
-            exist_ok: bool = False,
-        ) -> None:
-            if path == staging:
+        def fail_mkdir(path: str) -> None:
+            if Path(path) == staging:
                 raise _HostileFormattingError("host directory creation")
-            original(path, mode=mode, parents=parents, exist_ok=exist_ok)
+            original(path)
 
-        monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+        monkeypatch.setattr(compatible_module, "_NATIVE_OS_MKDIR", fail_mkdir)
     elif operation == "write":
-        original = Path.write_bytes
+        original = cast(
+            "Callable[[Path, bytes], int]",
+            vars(compatible_module)["_NATIVE_WRITE_COMPATIBLE_BYTES"],
+        )
 
         def fail_write(path: Path, data: bytes) -> int:
             if path == staging / "created.bin":
                 raise _HostileFormattingError("host output write")
             return original(path, data)
 
-        monkeypatch.setattr(Path, "write_bytes", fail_write)
+        monkeypatch.setattr(
+            compatible_module, "_NATIVE_WRITE_COMPATIBLE_BYTES", fail_write
+        )
     elif operation == "publish":
 
         def fail_publish(staged: Path, destination: Path) -> None:
@@ -2102,7 +2103,10 @@ def test_compatible_cleanup_failure_preserves_primary_error(
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
     blocked = tmp_path / ".out.compatible-staging" / "created.bin"
-    original_write = Path.write_bytes
+    original_write = cast(
+        "Callable[[Path, bytes], int]",
+        vars(compatible_module)["_NATIVE_WRITE_COMPATIBLE_BYTES"],
+    )
 
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
@@ -2115,7 +2119,9 @@ def test_compatible_cleanup_failure_preserves_primary_error(
         message = "blocked compatible cleanup"
         raise failure_type(message)
 
-    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(
+            compatible_module, "_NATIVE_WRITE_COMPATIBLE_BYTES", fail_write
+        )
     monkeypatch.setattr(compatible_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         CompatiblePlanError,
@@ -2159,7 +2165,10 @@ def test_compatible_cleanup_does_not_format_hostile_cleanup(
     plan = _plan(tmp_path)
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
-    original_write = Path.write_bytes
+    original_write = cast(
+        "Callable[[Path, bytes], int]",
+        vars(compatible_module)["_NATIVE_WRITE_COMPATIBLE_BYTES"],
+    )
     blocked = tmp_path / ".out.compatible-staging" / "created.bin"
 
     def fail_write(path: Path, data: bytes) -> int:
@@ -2173,7 +2182,9 @@ def test_compatible_cleanup_does_not_format_hostile_cleanup(
         message = "untrusted cleanup failure"
         raise _HostileFormattingError(message)
 
-    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(
+            compatible_module, "_NATIVE_WRITE_COMPATIBLE_BYTES", fail_write
+        )
     monkeypatch.setattr(compatible_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         CompatiblePlanError, match="staging cleanup failed"
@@ -2210,6 +2221,202 @@ def test_compatible_staging_status_error_fails_closed(
     _expect(not output.exists(), "status failure published compatible output")
 
 
+def test_compatible_writer_ignores_late_path_write_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An in-process hook cannot write compatible bytes outside staging."""
+    target = tmp_path / "stage" / "target"
+    target.parent.mkdir()
+    victim = tmp_path / "victim"
+    _ = victim.write_bytes(b"untouched")
+    original_write = Path.write_bytes
+    calls = 0
+
+    def forged_write(path: Path, data: bytes) -> int:
+        nonlocal calls
+        if path == target:
+            calls += 1
+            return original_write(victim, data)
+        return original_write(path, data)
+
+    writer = cast(
+        "Callable[[Path, bytes, str], None]",
+        vars(compatible_module)["_write_compatible_bytes"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "write_bytes", forged_write)
+        writer(target, b"expected", "compatible staged file")
+    assert calls == 0, "late compatible write redirected to foreign file"
+    assert target.read_bytes() == b"expected"
+    assert victim.read_bytes() == b"untouched"
+
+
+def test_compatible_writer_ignores_late_parent_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An output parent class hook may not reroute stage directory creation."""
+    target = tmp_path / "stage" / "nested" / "target"
+    outside = tmp_path / "outside"
+    original_parent = Path.parent
+    calls = 0
+
+    def forged_parent(path: Path) -> Path:
+        nonlocal calls
+        if path == target:
+            calls += 1
+            return outside
+        return original_parent.__get__(path, type(path))
+
+    writer = cast(
+        "Callable[[Path, bytes, str], None]",
+        vars(compatible_module)["_write_compatible_bytes"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "parent", property(forged_parent))
+        writer(target, b"expected", "compatible staged file")
+    assert calls == 0, "late compatible parent hook executed"
+    assert target.read_bytes() == b"expected"
+    assert not outside.exists()
+
+
+def test_compatible_staging_ignores_late_with_name_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged Path.with_name cannot select an unrelated staging root."""
+    output = tmp_path / "target"
+    outside = tmp_path / "outside"
+    original_with_name = Path.with_name
+    calls = 0
+
+    def forged_with_name(path: Path, name: str) -> Path:
+        nonlocal calls
+        if path == output:
+            calls += 1
+            return outside
+        return original_with_name(path, name)
+
+    prepare = cast(
+        "Callable[[Path], Path]", vars(compatible_module)["_prepare_staging"]
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "with_name", forged_with_name)
+        staging = prepare(output)
+    assert calls == 0, "late compatible staging hook executed"
+    assert staging == tmp_path / ".target.compatible-staging"
+    assert staging.is_dir()
+    assert not outside.exists()
+
+
+@pytest.mark.parametrize("hook", ["path-mkdir", "os-mkdir"])
+def test_compatible_staging_ignores_late_directory_builder_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Staging directories are created without late host hooks."""
+    output = tmp_path / "nested" / "target"
+    calls = 0
+
+    def forged_path_mkdir(_path: Path, *_args: object, **_kw: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late Path.mkdir executed")
+
+    def forged_os_mkdir(
+        _path: str | bytes | os.PathLike[str], _mode: int = 0o777
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late os.mkdir executed")
+
+    prepare = cast(
+        "Callable[[Path], Path]", vars(compatible_module)["_prepare_staging"]
+    )
+    with monkeypatch.context() as patch:
+        if hook == "path-mkdir":
+            patch.setattr(Path, "mkdir", forged_path_mkdir)
+        else:
+            patch.setattr(os, "mkdir", forged_os_mkdir)
+        staging = prepare(output)
+    assert calls == 0, "late directory builder executed"
+    assert staging == tmp_path / "nested" / ".target.compatible-staging"
+    assert staging.is_dir()
+
+
+def test_compatible_writer_ignores_late_io_open_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An overwritten io.open alias cannot intercept staged byte output."""
+    import io
+
+    target = tmp_path / "stage" / "output"
+    target.parent.mkdir()
+    calls = 0
+
+    def forged_open(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late io.open executed")
+
+    writer = cast(
+        "Callable[[Path, bytes, str], None]",
+        vars(compatible_module)["_write_compatible_bytes"],
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(io, "open", forged_open)
+        writer(target, b"expected", "compatible staged file")
+    assert calls == 0, "late native open alias executed"
+    assert target.read_bytes() == b"expected"
+
+
+def test_compatible_staging_ignores_late_path_name_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The original output basename selects compatible staging."""
+    output = tmp_path / "target"
+    original_name = Path.name
+    calls = 0
+
+    def forged_name(path: Path) -> str:
+        nonlocal calls
+        if path == output:
+            calls += 1
+            return "outside"
+        return original_name.__get__(path, type(path))
+
+    prepare = cast(
+        "Callable[[Path], Path]", vars(compatible_module)["_prepare_staging"]
+    )
+    with monkeypatch.context() as patch:
+        patch.setattr(Path, "name", property(forged_name))
+        staging = prepare(output)
+    assert calls == 0, "late output basename getter executed"
+    assert staging == tmp_path / ".target.compatible-staging"
+    assert staging.is_dir()
+    assert not (tmp_path / ".outside.compatible-staging").exists()
+
+
+def test_compatible_staging_writer_rejects_existing_or_linked_file(
+    tmp_path: Path
+) -> None:
+    """A staged duplicate or symlink cannot overwrite existing target bytes."""
+    directory = tmp_path / "stage"
+    directory.mkdir()
+    target = directory / "output"
+    _ = target.write_bytes(b"existing")
+    victim = tmp_path / "victim"
+    _ = victim.write_bytes(b"victim")
+    linked = directory / "linked"
+    linked.symlink_to(victim)
+    writer = cast(
+        "Callable[[Path, bytes, str], None]",
+        vars(compatible_module)["_write_compatible_bytes"],
+    )
+    for candidate in (target, linked):
+        with pytest.raises(CompatiblePlanError, match="write failed"):
+            writer(candidate, b"tampered", "compatible staged file")
+    assert target.read_bytes() == b"existing"
+    assert victim.read_bytes() == b"victim"
+
+
 @pytest.mark.parametrize(
     "failure_type", [PermissionError, ValueError, RuntimeError]
 )
@@ -2223,7 +2430,10 @@ def test_compatible_output_write_error_fails_closed(
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
     blocked = tmp_path / ".out.compatible-staging" / "created.bin"
-    original_write = Path.write_bytes
+    original_write = cast(
+        "Callable[[Path, bytes], int]",
+        vars(compatible_module)["_NATIVE_WRITE_COMPATIBLE_BYTES"],
+    )
 
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
@@ -2231,7 +2441,9 @@ def test_compatible_output_write_error_fails_closed(
             raise failure_type(message)
         return original_write(path, data)
 
-    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(
+            compatible_module, "_NATIVE_WRITE_COMPATIBLE_BYTES", fail_write
+        )
     with pytest.raises(
         CompatiblePlanError,
         match="compatible instruction output write failed",
@@ -2253,14 +2465,19 @@ def test_compatible_short_write_must_not_publish_truncated_output(
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
     blocked = tmp_path / ".out.compatible-staging" / "created.bin"
-    original_write = Path.write_bytes
+    original_write = cast(
+        "Callable[[Path, bytes], int]",
+        vars(compatible_module)["_NATIVE_WRITE_COMPATIBLE_BYTES"],
+    )
 
     def short_write(path: Path, data: bytes) -> int:
         if path == blocked:
             return original_write(path, data[:1])
         return original_write(path, data)
 
-    monkeypatch.setattr(Path, "write_bytes", short_write)
+    monkeypatch.setattr(
+        compatible_module, "_NATIVE_WRITE_COMPATIBLE_BYTES", short_write
+    )
     with pytest.raises(
         CompatiblePlanError, match="short or invalid byte count"
     ):
@@ -2280,7 +2497,10 @@ def test_compatible_invalid_write_count_fails_closed(
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
     blocked = tmp_path / ".out.compatible-staging" / "created.bin"
-    original_write = Path.write_bytes
+    original_write = cast(
+        "Callable[[Path, bytes], int]",
+        vars(compatible_module)["_NATIVE_WRITE_COMPATIBLE_BYTES"],
+    )
 
     def invalid_write(path: Path, data: bytes) -> int:
         written = original_write(path, data)
@@ -2288,7 +2508,9 @@ def test_compatible_invalid_write_count_fails_closed(
             return cast("int", returned)
         return written
 
-    monkeypatch.setattr(Path, "write_bytes", invalid_write)
+    monkeypatch.setattr(
+        compatible_module, "_NATIVE_WRITE_COMPATIBLE_BYTES", invalid_write
+    )
     with pytest.raises(
         CompatiblePlanError, match="short or invalid byte count"
     ):
@@ -2308,21 +2530,17 @@ def test_compatible_staging_creation_errors_are_typed(
     candidate = _candidate(tmp_path)
     output = tmp_path / "out"
     blocked = tmp_path / ".out.compatible-staging"
-    original_mkdir = Path.mkdir
+    original_mkdir = cast(
+        "Callable[[str], None]", vars(compatible_module)["_NATIVE_OS_MKDIR"]
+    )
 
-    def fail_staging_mkdir(
-        path: Path,
-        mode: int = 0o777,
-        *,
-        parents: bool = False,
-        exist_ok: bool = False,
-    ) -> None:
-        if path == blocked:
+    def fail_staging_mkdir(path: str) -> None:
+        if Path(path) == blocked:
             message = "injected staging directory failure"
             raise failure_type(message)
-        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        original_mkdir(path)
 
-    monkeypatch.setattr(Path, "mkdir", fail_staging_mkdir)
+    monkeypatch.setattr(compatible_module, "_NATIVE_OS_MKDIR", fail_staging_mkdir)
     with pytest.raises(
         CompatiblePlanError, match="staging root creation failed"
     ):
@@ -2757,7 +2975,7 @@ def test_compatible_writer_rejects_late_integer_alias_for_boolean_receipt(
     rejected = False
     with monkeypatch.context() as patch:
         patch.setattr(builtins, "int", bool)
-        patch.setattr(Path, "write_bytes", fake_write)
+        patch.setattr(compatible_module, "_NATIVE_WRITE_COMPATIBLE_BYTES", fake_write)
         try:
             write_bytes(output, _CREATED[:1], "compatible materialization")
         except CompatiblePlanError:
