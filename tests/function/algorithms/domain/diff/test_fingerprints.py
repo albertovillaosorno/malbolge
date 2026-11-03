@@ -257,6 +257,127 @@ def test_anchor_selection_rejects_mutable_data_after_type_swap(
     _expect(calls == 0, "mutable type was consulted")
 
 
+def test_anchor_policy_rejects_late_int_alias_for_bool(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late integer aliases cannot admit Boolean anchor dimensions."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            _ = AnchorPolicy(window_bytes=True, selection_modulus=True)
+        except FingerprintPolicyError:
+            rejected = True
+    assert rejected, "late int alias admitted Boolean dimensions"
+
+
+def test_stable_anchor_rejects_late_int_alias_for_bool_offset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late integer aliases cannot certify Boolean source offsets."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            _ = StableAnchor(digest=b"x" * 32, offset=True)
+        except FingerprintPolicyError:
+            rejected = True
+    assert rejected, "late int alias admitted a Boolean offset"
+
+
+def test_anchor_coverage_rejects_late_int_alias_for_bool_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late integer aliases cannot certify Boolean coverage counts."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        try:
+            _ = AnchorCoverage(matched=True, total=True, ratio=1.0)
+        except FingerprintPolicyError:
+            rejected = True
+    assert rejected, "late int alias admitted Boolean coverage counts"
+
+
+@pytest.mark.parametrize("entry", ["digest", "input"])
+def test_stable_anchors_reject_late_bytes_alias_for_mutable_evidence(
+    monkeypatch: pytest.MonkeyPatch, entry: str
+) -> None:
+    """Late bytes aliases cannot certify mutable source or digest evidence."""
+    foreign = bytearray(b"x" * 32) if entry == "digest" else bytearray()
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        try:
+            if entry == "digest":
+                _ = StableAnchor(
+                    digest=cast("bytes", cast("object", foreign)), offset=0
+                )
+            else:
+                _ = stable_anchors(cast("bytes", cast("object", foreign)))
+        except FingerprintPolicyError:
+            rejected = True
+    assert rejected, f"late bytes alias admitted mutable {entry}"
+
+
+def test_anchor_coverage_rejects_late_tuple_alias_for_list_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late tuple aliases cannot certify mutable anchor collections."""
+    anchors = [StableAnchor(digest=b"x" * 32, offset=0)]
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        try:
+            _ = anchor_coverage(
+                cast("tuple[StableAnchor, ...]", cast("object", anchors)),
+                cast("tuple[StableAnchor, ...]", cast("object", anchors)),
+            )
+        except FingerprintPolicyError:
+            rejected = True
+    assert rejected, "late tuple alias admitted mutable anchor collections"
+
+
+def test_anchor_coverage_rejects_late_float_alias_for_boolean_ratio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late float aliases cannot certify a Boolean coverage ratio."""
+    rejected = False
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "float", bool)
+        try:
+            _ = AnchorCoverage(matched=1, total=1, ratio=True)
+        except FingerprintPolicyError:
+            rejected = True
+    assert rejected, "late float alias admitted a Boolean coverage ratio"
+
+
+def test_valid_fingerprint_metadata_resists_late_type_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native records remain admissible after foreign builtin names change."""
+    original = stable_anchors(b"lineage bytes")
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "int", bool)
+        policy = AnchorPolicy(window_bytes=32, selection_modulus=64)
+        anchor = StableAnchor(digest=b"x" * 32, offset=0)
+        coverage = AnchorCoverage(matched=1, total=1, ratio=1.0)
+    assert policy == AnchorPolicy()
+    assert anchor.offset == 0
+    assert coverage.ratio == 1.0
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "float", bool)
+        assert AnchorCoverage(matched=1, total=1, ratio=1.0) == coverage
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "bytes", bytearray)
+        assert stable_anchors(b"lineage bytes") == original
+        assert StableAnchor(digest=b"x" * 32, offset=0) == anchor
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "tuple", list)
+        assert anchor_coverage((anchor,), (anchor,)).ratio == 1.0
+
+
 def test_content_defined_anchors_survive_insertion_shift() -> None:
     """Insertion offsets may move while unchanged content digests survive."""
     source = _synthetic_bytes("source")

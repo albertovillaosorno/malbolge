@@ -51,7 +51,10 @@ _SHA256_FACTORY = hashlib.sha256
 _SHA256_BYTES = _SHA256_FACTORY().digest_size
 _NATIVE_POW = builtins.pow
 _NATIVE_SORTED = builtins.sorted
-_NATIVE_TYPE = type
+_NATIVE_TYPE = builtins.type
+_NATIVE_INT = builtins.int
+_NATIVE_FLOAT = builtins.float
+_NATIVE_BYTES = builtins.bytes
 _NATIVE_LEN = len
 _NATIVE_RANGE = range
 _NATIVE_TUPLE = tuple
@@ -76,8 +79,8 @@ class AnchorPolicy:
 
         """
         if (
-            _NATIVE_TYPE(self.window_bytes) is not int
-            or _NATIVE_TYPE(self.selection_modulus) is not int
+            _NATIVE_TYPE(self.window_bytes) is not _NATIVE_INT
+            or _NATIVE_TYPE(self.selection_modulus) is not _NATIVE_INT
         ):
             message = "anchor window and selection modulus must be integers"
             raise FingerprintPolicyError(message)
@@ -105,24 +108,24 @@ class StableAnchor:
             FingerprintPolicyError: Digest or offset metadata is invalid.
 
         """
-        native_bytes = _NATIVE_TYPE(self.digest) is bytes
+        native_bytes = _NATIVE_TYPE(self.digest) is _NATIVE_BYTES
         if not native_bytes or _NATIVE_LEN(self.digest) != _SHA256_BYTES:
             message = "stable anchor digest must be exactly 32 bytes"
             raise FingerprintPolicyError(message)
-        if _NATIVE_TYPE(self.offset) is not int or self.offset < _ZERO:
+        if _NATIVE_TYPE(self.offset) is not _NATIVE_INT or self.offset < _ZERO:
             message = "stable anchor offset must be a non-negative integer"
             raise FingerprintPolicyError(message)
 
 
 def _require_coverage_count(value: object, context: str) -> int:
-    if _NATIVE_TYPE(value) is not int or value < _ZERO:
+    if _NATIVE_TYPE(value) is not _NATIVE_INT or value < _ZERO:
         message = f"{context} must be a non-negative integer"
         raise FingerprintPolicyError(message)
     return value
 
 
 def _require_coverage_ratio(value: object) -> float:
-    if _NATIVE_TYPE(value) is not float or not 0.0 <= value <= 1.0:
+    if _NATIVE_TYPE(value) is not _NATIVE_FLOAT or not 0.0 <= value <= 1.0:
         message = "anchor coverage ratio must be an exact float in [0, 1]"
         raise FingerprintPolicyError(message)
     return value
@@ -247,7 +250,7 @@ def stable_anchors(
         FingerprintPolicyError: Input bytes or policy metadata is invalid.
 
     """
-    if _NATIVE_TYPE(data) is not bytes:
+    if _NATIVE_TYPE(data) is not _NATIVE_BYTES:
         message = "stable anchor input must use exact bytes"
         raise FingerprintPolicyError(message)
     if _NATIVE_TYPE(policy) is not AnchorPolicy:
@@ -279,7 +282,9 @@ def anchor_coverage(
     """
     reference_type = _NATIVE_TYPE(reference)
     candidate_type = _NATIVE_TYPE(candidate)
-    if reference_type is not tuple or candidate_type is not tuple:
+    native_reference = reference_type is _NATIVE_TUPLE
+    native_candidate = candidate_type is _NATIVE_TUPLE
+    if not native_reference or not native_candidate:
         message = "anchor coverage inputs must use exact immutable tuples"
         raise FingerprintPolicyError(message)
     for anchor in (*reference, *candidate):
