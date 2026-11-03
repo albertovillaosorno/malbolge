@@ -41,10 +41,11 @@ import sys
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from types import MemberDescriptorType
 from typing import TYPE_CHECKING, cast
 
 from algorithms.diff.admission import identity_tree
-from algorithms.diff.domain import DomainContractError, load_diff_domain
+from algorithms.diff.domain import DiffDomain, DomainContractError, load_diff_domain
 from algorithms.diff.emit_rust import write_rust_transform
 from algorithms.diff.exact import (
     ExactTreeError,
@@ -88,8 +89,20 @@ _PARENT = ".."
 _DOT = "."
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from algorithms.diff.admission import IdentityTree
     from algorithms.diff.model import FileRecord, TreeSnapshot
+
+
+# A domain loader may execute consumer code. Pin the original hook storage
+# before it can replace class getters after a validated bundle is returned.
+_DOMAIN_SOURCE_HOOK_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["validate_source_provenance"]
+)
+_DOMAIN_ORACLE_HOOK_SLOT = cast(
+    "MemberDescriptorType", DiffDomain.__dict__["validate_authoring_oracle"]
+)
 
 
 class TransformMode(StrEnum):
@@ -419,11 +432,22 @@ def _preflight_domain(recipe: DiffRecipe) -> None:
         message = "domain preflight requires a domain module"
         raise DiffGeneratorUnavailableError(message)
     domain = load_diff_domain(recipe.domain_module)
-    evidence = domain.validate_source_provenance(recipe.source_root)
+    if _NATIVE_TYPE(domain) is not DiffDomain:
+        message = "domain loader must return exact DiffDomain"
+        raise DomainContractError(message)
+    source_hook = cast(
+        "Callable[[Path], SourcePinEvidence]",
+        _DOMAIN_SOURCE_HOOK_SLOT.__get__(domain, DiffDomain),
+    )
+    oracle_hook = cast(
+        "Callable[[Path], None]",
+        _DOMAIN_ORACLE_HOOK_SLOT.__get__(domain, DiffDomain),
+    )
+    evidence = source_hook(recipe.source_root)
     if _NATIVE_TYPE(evidence) is not SourcePinEvidence:
         message = "domain source provenance hook must return SourcePinEvidence"
         raise DomainContractError(message)
-    oracle_result = domain.validate_authoring_oracle(recipe.oracle_root)
+    oracle_result = oracle_hook(recipe.oracle_root)
     if oracle_result is not None:
         message = "domain oracle preflight hook must return None"
         raise DomainContractError(message)

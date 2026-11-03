@@ -1567,3 +1567,50 @@ def test_recipe_native_metadata_survives_late_type_aliases(
     with monkeypatch.context() as patch:
         patch.setattr(builtins, "bool", int)
         _VALIDATE_IDENTITY_FLAGS(recipe)
+
+
+@pytest.mark.parametrize(
+    ("field", "marker", "diagnostic"),
+    [
+        ("validate_source_provenance", "reject-source", "source pin rejected"),
+        ("validate_authoring_oracle", "reject-oracle", "oracle preflight rejected"),
+    ],
+)
+def test_domain_preflight_uses_stored_hooks_after_late_class_getter(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    marker: str,
+    diagnostic: str,
+) -> None:
+    """A late class getter cannot skip admitted source/oracle guards."""
+    from algorithms.diff.domain import DiffDomain, load_diff_domain
+
+    recipe = replace(
+        _recipe(tmp_path, mode=TransformMode.COMPATIBLE),
+        domain_module=_domain_module(tmp_path),
+    )
+    assert recipe.domain_module is not None
+    domain = load_diff_domain(recipe.domain_module)
+    guard_root = (
+        recipe.source_root
+        if field == "validate_source_provenance"
+        else recipe.oracle_root
+    )
+    _write(guard_root, marker, b"")
+    fake_calls = 0
+
+    def fake_validator(_root: Path) -> object:
+        nonlocal fake_calls
+        fake_calls += 1
+        if field == "validate_source_provenance":
+            return SourcePinEvidence(file_count=1, snapshot_sha256="0" * 64)
+        return None
+
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "load_diff_domain", lambda _: domain)
+        patched.setattr(DiffDomain, field, property(lambda _: fake_validator))
+        with pytest.raises(RuntimeError, match=diagnostic):
+            write_algorithm(recipe)
+    assert fake_calls == 0, "late class getter redirected domain validation"
+    assert not recipe.output_algorithm.exists()
