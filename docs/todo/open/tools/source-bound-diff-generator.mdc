@@ -143,6 +143,12 @@ format.
   and 565 combined compatible/relocatable tests pass postcommit; scoped Ruff
   and diff checks are clean. The existing 14 source and 106 test typing
   diagnostics, degraded global Jig gate, and external races remain open.
+- Compatible output/source path preflight pins the native `os.path` parser,
+  splitters/separators, `builtins.bytes`/`len`, and `stat.S_ISDIR`
+  (`23785531a`). Seven red-first parser/alias cases block uncached output
+  redirection; all 316 compatible tests pass postcommit. Ruff, strict source
+  typing, and diff checks pass. Seventeen inherited test typing diagnostics,
+  global Jig, and external host/filesystem races remain unresolved.
 - Relocatable output and nested source path resolution now checks pinned
   host realpath, `os.fspath`/`os.lstat`/`os.readlink`/`os.getcwd`/`stat.S_ISLNK`,
   and native `Path` factories before and after trusted resolution (`57870f21c`).
@@ -184,6 +190,12 @@ format.
   combined changed-domain suite passed 845 tests. Scoped Ruff, strict
   source/test typing, and diff checks pass. Global Jig check timed out at
   75 seconds; host and filesystem races remain outside this guard.
+- Exact tree path resolution also checks import-original host `os.path`
+  parser, `builtins.bytes`/`isinstance`/`len`, and `stat.S_ISDIR`
+  (`a3069e595`). Nine red-first forged-parser/alias cases and 309 postcommit
+  exact tests pass. Ruff, strict source typing, and diff checks are clean;
+  one inherited test typing diagnostic persists. Descriptor-bound file reads
+  remain intact; host/filesystem races remain outside the guarantee.
 - Exact tree source/output resolution now pins import-original
   `os.path.realpath` (`97f5f2a30`). Three red-first redirection/false-denial
   cases fail closed while direct descriptor reads still work; 270 focused
@@ -1239,6 +1251,12 @@ format.
   typing, and diff checks pass. The older 51 provenance-test typing errors,
   global Jig gate, and external filesystem races remain unresolved.
 
+- Source-pin public snapshot and revision checks now guard import-original
+  `os.path` parser/builtin helpers before the first `Path.__str__`
+  (`5d2a0214a`). Eight red-first cases block a foreign source-tree digest
+  from late `splitroot` redirection; all 199 provenance tests pass postcommit.
+  Ruff, strict source/test typing, and diff checks pass. Direct trusted-state
+  changes, global Jig, and external writer races remain outside scope.
 - Source-binding policies now verify original stored `AnchorPolicy`
   dimensions, and bind/recover preflight rejects incomplete native binding,
   share, and source identity records with typed errors (`04d9a6a3c`,

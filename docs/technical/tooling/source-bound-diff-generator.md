@@ -173,6 +173,17 @@ relying on coercion or leaking `TypeError`, `AttributeError`, or
 `OverflowError`. Compatible consumer mappers and output postconditions also
 wrap callback failures and reject foreign return records before publication.
 
+Exact-tree root, nested path, and output resolution now checks import-original
+`os.path.splitroot`, `splitdrive`, `join`, separators, `builtins.bytes`,
+`isinstance`, `len`, and `stat.S_ISDIR` before host `Path.resolve`
+(`a3069e595`). A late splitter previously changed the native output path to
+another location despite an unchanged realpath entry point. Nine red-first
+parser/alias cases and all 309 postcommit exact tests pass. Scoped Ruff, source
+strict BasedPyright, and diff checks are clean; one inherited test-file typing
+diagnostic remains. Snapshot resolution now rejects late `len` changes, while
+descriptor-bound file reads still preserve admitted bytes. These identity
+checks are not atomic against host hooks or concurrent filesystem writers.
+
 ### Exact Authoring Baseline
 
 The implemented exact layer snapshots regular files by normalized relative path,
@@ -603,6 +614,15 @@ clean, while 51 previously existing provenance-test typing errors remain.
 External filesystem races, direct trusted-state mutation, and global Jig
 verification are not closed by this in-process guard.
 
+Public source-pin snapshot and revision checks now validate native host
+parser helpers before the first `Path.__str__`, not only around later
+`Path.resolve` (`5d2a0214a`). A late `splitroot` replacement could silently
+hash a foreign source tree under the requested pin. Eight red-first public
+snapshot/pin parser and builtin alias cases now fail closed; all 199
+postcommit provenance tests pass, with Ruff, strict source/test BasedPyright,
+and diff checks clean. These in-process guards are not an atomic filesystem
+snapshot or protection against direct trusted-module edits.
+
 The seven portable probe record constructors likewise write their twenty-three
 fields through captured native descriptors. Seven red-first malformed-input
 cases and twenty-three valid-field cases stop class property setters from
@@ -784,6 +804,16 @@ scoped Ruff and diff checks clean. Strict BasedPyright still reports 14
 older source and 106 older test diagnostics, none in the modified ranges;
 there is no clean global Jig verdict. Direct trusted-state mutation and
 concurrent host/filesystem races remain outside this guard.
+
+Compatible source/output and nested-file resolution now also verifies its
+import-original host `os.path` parser, splitter, join, separators,
+`builtins.bytes` and `len`, and `stat.S_ISDIR` (`23785531a`). A replaced
+`splitroot` previously redirected an uncached candidate-contained output to
+an unrelated location before containment. Seven red-first parser/helper
+cases and all 316 postcommit compatible tests pass, with Ruff, strict source
+typing, and diff checks clean. Seventeen inherited compatible-test typing
+diagnostics remain outside changed lines; external writers and host mutation
+races remain unisolated.
 
 Generator exact replay separately reads stored native file and snapshot
 fields, and its output checks use original path-ancestry comparisons rather
