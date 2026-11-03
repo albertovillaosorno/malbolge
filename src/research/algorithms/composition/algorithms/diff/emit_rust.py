@@ -78,6 +78,8 @@ _PRINTABLE_ASCII_END = 0x7E
 _NATIVE_STAT_RESULT = os.stat_result
 # Keep emitter input admission independent of late consumer type hooks.
 _NATIVE_TYPE = type
+# Read the original exception slot without later builtin name substitution.
+_NATIVE_ERROR_ARGS_GETATTRIBUTE = BaseException.__getattribute__
 _NATIVE_STR_TYPE = str
 _NATIVE_INT_TYPE = int
 _NATIVE_BOOL_TYPE = bool
@@ -582,7 +584,7 @@ def _safe_emission_error_detail(error: Exception) -> str:
         # Read the BaseException slot without invoking the mutable getter.
         arguments = cast(
             "tuple[object, ...]",
-            BaseException.__getattribute__(  # ruff: ignore[unnecessary-dunder-call]
+            _NATIVE_ERROR_ARGS_GETATTRIBUTE(  # ruff: ignore[unnecessary-dunder-call]
                 error, "args"
             ),
         )

@@ -171,3 +171,23 @@ def test_emitter_rejects_late_junction_classifier_hook(
     assert callbacks == 0
     if role == "leaf":
         assert destination.read_bytes() == b"preserved"
+
+
+def test_emitter_error_detail_pins_original_base_exception_accessor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native error causes cannot be rewritten by a late builtin class alias."""
+    failure = emit_rust.RustEmissionError("trusted native reason")
+    callbacks = 0
+
+    class ForgedBaseException:
+        def __getattribute__(self, _name: str) -> tuple[str]:
+            nonlocal callbacks
+            callbacks += 1
+            return ("forged reason",)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "BaseException", ForgedBaseException)
+        detail = emit_rust._safe_emission_error_detail(failure)
+    assert detail == "trusted native reason"
+    assert callbacks == 0
