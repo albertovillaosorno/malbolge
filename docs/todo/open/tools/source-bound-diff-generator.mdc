@@ -656,6 +656,14 @@ format.
   passed; the pinned Ruff/strict BasedPyright findings remain outside
   added lines. The global Jig check is blocked by ChkTeX version drift,
   and external host/filesystem races remain outside the local guard.
+- Probe group cleanup also pins the original numeric `SIGKILL` value
+  (`8a587b7c5`), not just the host `os.kill` entrypoint. Two red-first
+  cases showed late `signal.Signals` replacement downgraded the group
+  signal to zero or `SIGTERM`, bypassing the intended termination.
+  Both variants now pass with 445 postcommit focused probe tests and
+  3,827 precommit integrated diff tests. Pinned Ruff and strict typing
+  report zero added-line findings. Direct trusted state mutation,
+  external process races, and global Jig acceptance remain unverified.
 - Portable process probes now execute without shell interpolation, with
   structured
   roots, bounded time/output, isolated source mirrors, and deterministic

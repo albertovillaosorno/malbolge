@@ -1356,6 +1356,15 @@ check cannot complete because the resolved ChkTeX version is 1.7.9 rather
 than required 1.7.10. This is not protection against direct trusted state
 mutation, concurrent host edits, or detached descendants.
 
+The group signal itself is now captured as an original numeric `SIGKILL`
+value at module import (`8a587b7c5`). Even with original `os.kill`, a
+late replacement of `signal.Signals` could silently send signal zero or
+`SIGTERM` instead of terminating the process group. Both red-first
+signal-alias regressions now pass, as do 445 postcommit probe tests and
+3,827 precommit integrated diff tests. No pinned Ruff or strict typing
+findings occur on the added lines. The guard assumes trusted module state
+and does not provide atomic isolation against external process races.
+
 The six transient `_PipeCapture` fields (quota, fragments, byte count, overflow,
 error, completion) and seven `_RunningProbe` fields (process, pipes, workers,
 stdin errors and acknowledgment) now construct through captured native slots.
