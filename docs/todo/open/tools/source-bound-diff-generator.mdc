@@ -1669,9 +1669,10 @@ format.
   import rollback (`ad231003f`): four red-first cases, 146 focused and 958
   adjacent tests passed, with scoped source typing and Ruff/diff clean.
   Both DCO commits were pushed on `main`.
-- Provenance/source-revision checks now pin native error classes
-  (`f25c5ae9e`), preventing late alias swaps from leaking malformed pin and
-  evidence failures. Eight red-first cases, 216 focused and 3,996 integrated
+- Provenance/source-revision checks pin native file-status, traversal,
+  receipt, resolver, and Unicode exception classes (`f25c5ae9e`). A late
+  `FileNotFoundError` alias could mistake permission denial for an absent
+  source. Eight red-first cases, 216 focused and 3,996 integrated
   tests passed, with scoped source typing/Ruff/diff clean. Tree-model path
   admission (`82a4fd012`) uses original Unicode error handling as well:
   three red-first cases, 108 focused and 3,999 integrated tests passed,

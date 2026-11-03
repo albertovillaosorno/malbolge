@@ -2921,8 +2921,9 @@ Four red-first cases, 146 postcommit domain tests, and 958 adjacent tests
 passed; scoped source typing, Ruff, and diff checks were clean.
 
 Source-revision provenance now preserves original native error-class catches
-(`f25c5ae9e`) when malformed pin and evidence receipts pass through the
-public verification interface. Eight red-first cases passed, along with
+(`f25c5ae9e`) across file status, traversal, receipts, resolution, and
+UTF-8 path validation. A late `FileNotFoundError` alias previously treated
+permission denial as a missing file. Eight red-first cases passed, with
 216 postcommit focused and 3,996 integrated diff tests. The tree-model path
 codec guard similarly retains native encoding failures after late aliases
 (`82a4fd012`), with three red-first cases, 108 focused and 3,999 integrated
