@@ -81,6 +81,15 @@ format.
   also pin thirty original slot writers, with five red-first rejection and
   thirty valid-field cases. This blocks late class property setter laundering
   at construction; it is not complete downstream getter or instance isolation.
+- Five subsequent repairs pin seven consumer-domain hooks, both authenticated
+  payload fields, three conjunctive gate fields, thirteen behavior-program
+  fields, and four transient aggregate source-admission fields. The aggregate
+  reason builder now reads its original slots: forged class getters previously
+  admitted an empty candidate source tree. Fifty-five red-first and valid
+  constructor cases lock these boundaries across `12b1c897b`, `2d38d3b73`,
+  `3332c420b`, `321a99ba7`, and `44b31171a`. The full diff suite passed
+  2,464 tests at validation time. These guards do not isolate direct
+  instance mutation or racing source writers.
 - The exact authoring planner/materializer reconstructs deterministic byte
   trees,
   reuses whole source files and source spans, and publishes only after full

@@ -227,6 +227,22 @@ validate through their existing captured slot-reading views. These setter
 fixes do not claim to shield all later consumer getters, direct record mutation,
 or concurrent filesystem writers.
 
+Five further class-hook admission repairs close late setter and getter
+redirection in the trusted consumer and decision records. The seven `DiffDomain`
+hooks (`12b1c897b`) now construct through their original descriptors, as do
+ciphertext and tag in `AuthenticatedPayload` (`2d38d3b73`), and source,
+behavior, and rejection reasons in `TransformAdmissionEvidence` (`3332c420b`).
+The four behavior-program records write thirteen fields through captured slots
+(`321a99ba7`). The internal `_AggregateEvidence` scores and file counts
+(`44b31171a`) now use four original descriptors for both constructor writes
+and reason computation. Previously, late aggregate getters could make a tree
+with *no candidate source files* pass source-lineage admission. Fifty-five
+red-first and valid-input regression cases cover these five changes. These
+repairs isolate late class-property replacement, not arbitrary instance
+storage rewriting or concurrent source-tree mutations. The complete synthetic
+diff suite passed 2,464 tests after these changes; this is bounded regression
+evidence, not an unconditional compatibility or security proof.
+
 Pinned-source snapshots also require native `os.stat_result` receipts for the
 source root, selected paths and parent components, and file-identity rechecks.
 Foreign mode and inode records cannot certify pinned provenance. Filesystem
