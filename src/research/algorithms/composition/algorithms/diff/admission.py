@@ -895,12 +895,49 @@ def _mean(values: tuple[float, ...]) -> float:
     return _NATIVE_FSUM(values) / _NATIVE_LEN(values)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class _AggregateEvidence:
     source_similarity: float
     anchor_average: float
     eligible_files: int
     satisfied_files: int
+
+    def __init__(
+        self,
+        source_similarity: float,
+        anchor_average: float,
+        eligible_files: int,
+        satisfied_files: int,
+    ) -> None:
+        """Capture aggregate values without mutable class property setters."""
+        _AGGREGATE_SOURCE_SLOT.__set__(self, source_similarity)
+        _AGGREGATE_ANCHOR_SLOT.__set__(self, anchor_average)
+        _AGGREGATE_ELIGIBLE_SLOT.__set__(self, eligible_files)
+        _AGGREGATE_SATISFIED_SLOT.__set__(self, satisfied_files)
+
+
+_AGGREGATE_SOURCE_SLOT = cast(
+    "MemberDescriptorType", _AggregateEvidence.__dict__["source_similarity"]
+)
+_AGGREGATE_ANCHOR_SLOT = cast(
+    "MemberDescriptorType", _AggregateEvidence.__dict__["anchor_average"]
+)
+_AGGREGATE_ELIGIBLE_SLOT = cast(
+    "MemberDescriptorType", _AggregateEvidence.__dict__["eligible_files"]
+)
+_AGGREGATE_SATISFIED_SLOT = cast(
+    "MemberDescriptorType", _AggregateEvidence.__dict__["satisfied_files"]
+)
+
+
+def _aggregate_fields(aggregate: _AggregateEvidence) -> tuple[float, float, int, int]:
+    """Read original score storage without replaceable class getters."""
+    return (
+        cast("float", _AGGREGATE_SOURCE_SLOT.__get__(aggregate, _AggregateEvidence)),
+        cast("float", _AGGREGATE_ANCHOR_SLOT.__get__(aggregate, _AggregateEvidence)),
+        cast("int", _AGGREGATE_ELIGIBLE_SLOT.__get__(aggregate, _AggregateEvidence)),
+        cast("int", _AGGREGATE_SATISFIED_SLOT.__get__(aggregate, _AggregateEvidence)),
+    )
 
 
 def _reason_tuple(
@@ -909,13 +946,14 @@ def _reason_tuple(
 ) -> tuple[str, ...]:
     reasons: list[str] = []
     source, coverage, minimum_files, _, _, _ = _policy_fields(policy)
-    if aggregate.source_similarity < source:
+    similarity, average, eligible, satisfied = _aggregate_fields(aggregate)
+    if similarity < source:
         reasons.append("insufficient structural source similarity")
-    if aggregate.anchor_average < coverage:
+    if average < coverage:
         reasons.append("insufficient stable-anchor coverage")
-    if aggregate.eligible_files < minimum_files:
+    if eligible < minimum_files:
         reasons.append("insufficient files with anchor evidence")
-    if aggregate.satisfied_files < minimum_files:
+    if satisfied < minimum_files:
         reasons.append("stable-anchor evidence is not sufficiently distributed")
     return _NATIVE_TUPLE(reasons)
 

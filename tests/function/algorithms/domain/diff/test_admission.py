@@ -44,6 +44,7 @@ from types import MemberDescriptorType
 from typing import cast
 
 import pytest
+from algorithms.diff import admission as admission_module
 from algorithms.diff.admission import (
     AdmissionError,
     AdmissionPolicy,
@@ -1747,3 +1748,64 @@ def test_admission_constructors_ignore_late_class_setters(
         with pytest.raises(AdmissionPolicyError):
             _ = factory(**values)
     assert calls == 0, "mutable class setter rewrote source-admission storage"
+
+
+_AGGREGATE_FIELDS = (
+    "source_similarity",
+    "anchor_average",
+    "eligible_files",
+    "satisfied_files",
+)
+
+
+def test_admission_rejects_late_aggregate_getter_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An internal aggregate cannot be made to approve missing source files."""
+    reference = identity_tree(_reference_files())
+    candidate = identity_tree({})
+    policy = _policy()
+    expected = evaluate_admission(reference, candidate, policy).reasons
+    assert expected
+    aggregate_type = admission_module._AggregateEvidence
+    calls = 0
+
+    with monkeypatch.context() as patch:
+        for name in _AGGREGATE_FIELDS:
+            original_slot = aggregate_type.__dict__[name]
+            forged = 1.0 if name in {"source_similarity", "anchor_average"} else 999
+
+            def getter(_self: object, value: object = forged) -> object:
+                nonlocal calls
+                calls += 1
+                return value
+
+            def setter(
+                self: object, value: object, slot: object = original_slot
+            ) -> None:
+                slot.__set__(self, value)
+
+            patch.setattr(aggregate_type, name, property(getter, setter))
+        with pytest.raises(AdmissionError):
+            _ = require_admission(reference, candidate, policy)
+    assert calls == 0, "late aggregate getter influenced source admission"
+
+
+@pytest.mark.parametrize("field", _AGGREGATE_FIELDS)
+def test_aggregate_constructor_ignores_late_property_setter(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """Constructing valid intermediate evidence never executes a class setter."""
+    aggregate_type = admission_module._AggregateEvidence
+    calls = 0
+
+    def forbidden(_self: object, _value: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("aggregate constructor dispatched a late setter")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(aggregate_type, field, property(fset=forbidden))
+        value = aggregate_type(0.25, 0.5, 2, 1)
+    assert type(value) is aggregate_type
+    assert calls == 0
