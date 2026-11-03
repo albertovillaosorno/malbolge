@@ -32,14 +32,17 @@
 
 """RFC and synthetic tests for authenticated literal payload primitives."""
 
+import hmac
 from dataclasses import replace
 from typing import cast
 
-from algorithms.diff.payload import AuthenticatedPayload
-from algorithms.diff.payload import PayloadCryptoError
-from algorithms.diff.payload import chacha20_poly1305_decrypt
-from algorithms.diff.payload import chacha20_poly1305_encrypt
 import pytest
+from algorithms.diff.payload import (
+    AuthenticatedPayload,
+    PayloadCryptoError,
+    chacha20_poly1305_decrypt,
+    chacha20_poly1305_encrypt,
+)
 
 _RFC_KEY = bytes.fromhex(
     "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f"
@@ -49,9 +52,7 @@ _RFC_AAD = bytes.fromhex("50515253c0c1c2c3c4c5c6c7")
 _RFC_PLAINTEXT_PREFIX = (
     b"Ladies and Gentlemen of the class of '99: If I could offer you only one "
 )
-_RFC_PLAINTEXT = _RFC_PLAINTEXT_PREFIX + (
-    b"tip for the future, sunscreen would be it."
-)
+_RFC_PLAINTEXT = _RFC_PLAINTEXT_PREFIX + (b"tip for the future, sunscreen would be it.")
 _RFC_CIPHERTEXT_HEX = (
     "d31a8d34648e60db7b86afbc53ef7ec2",
     "a4aded51296e08fea9e2b5a736ee62d6",
@@ -101,9 +102,7 @@ def test_empty_and_multiblock_payloads_round_trip() -> None:
     for plaintext in (b"", b"x", bytes(range(251)) * 3):
         payload = chacha20_poly1305_encrypt(key, nonce, plaintext, aad=b"aad")
         recovered = chacha20_poly1305_decrypt(key, nonce, payload, aad=b"aad")
-        _expect(
-            recovered == plaintext, "authenticated payload round-trip changed"
-        )
+        _expect(recovered == plaintext, "authenticated payload round-trip changed")
 
 
 def test_ciphertext_tampering_fails_before_plaintext_release() -> None:
@@ -118,6 +117,48 @@ def test_ciphertext_tampering_fails_before_plaintext_release() -> None:
 
     with pytest.raises(PayloadCryptoError, match="authentication failed"):
         _ = chacha20_poly1305_decrypt(key, nonce, tampered, aad=b"context")
+
+
+def test_authentication_ignores_replaced_process_global_comparator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A domain hook cannot turn a forged tag into authenticated plaintext."""
+    key = bytes(range(32))
+    nonce = bytes(range(12))
+    payload = chacha20_poly1305_encrypt(key, nonce, b"not-for-release")
+    tampered = replace(
+        payload,
+        tag=bytes([payload.tag[0] ^ 1]) + payload.tag[1:],
+    )
+    calls = 0
+
+    def approve_any_tag(_expected: bytes, _received: bytes) -> bool:
+        nonlocal calls
+        calls += 1
+        return True
+
+    monkeypatch.setattr(hmac, "compare_digest", approve_any_tag)
+    with pytest.raises(PayloadCryptoError, match="authentication failed"):
+        _ = chacha20_poly1305_decrypt(key, nonce, tampered)
+    _expect(calls == 0, "mutable process-global comparison was consulted")
+
+
+def test_authentication_preserves_valid_tag_after_global_comparator_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced module function cannot reject a genuine RFC-vector tag."""
+    payload = AuthenticatedPayload(_RFC_CIPHERTEXT, _RFC_TAG)
+    calls = 0
+
+    def reject_any_tag(_expected: bytes, _received: bytes) -> bool:
+        nonlocal calls
+        calls += 1
+        return False
+
+    monkeypatch.setattr(hmac, "compare_digest", reject_any_tag)
+    recovered = chacha20_poly1305_decrypt(_RFC_KEY, _RFC_NONCE, payload, aad=_RFC_AAD)
+    _expect(recovered == _RFC_PLAINTEXT, "valid RFC payload was rejected")
+    _expect(calls == 0, "mutable process-global comparison was consulted")
 
 
 def test_tag_and_aad_tampering_fail_closed() -> None:
@@ -159,15 +200,9 @@ def test_payload_api_rejects_non_bytes_without_crypto_work() -> None:
         _ = chacha20_poly1305_encrypt(
             key, cast("bytes", cast("object", bytearray(nonce))), b"payload"
         )
-    with pytest.raises(
-        PayloadCryptoError, match="plaintext must use exact bytes"
-    ):
-        _ = chacha20_poly1305_encrypt(
-            key, nonce, cast("bytes", cast("object", ""))
-        )
-    with pytest.raises(
-        PayloadCryptoError, match="plaintext must use exact bytes"
-    ):
+    with pytest.raises(PayloadCryptoError, match="plaintext must use exact bytes"):
+        _ = chacha20_poly1305_encrypt(key, nonce, cast("bytes", cast("object", "")))
+    with pytest.raises(PayloadCryptoError, match="plaintext must use exact bytes"):
         _ = chacha20_poly1305_encrypt(key, nonce, foreign)
     with pytest.raises(
         PayloadCryptoError, match="associated data must use exact bytes"
@@ -177,9 +212,7 @@ def test_payload_api_rejects_non_bytes_without_crypto_work() -> None:
 
 def test_authenticated_payload_rejects_foreign_ciphertext_and_tag() -> None:
     """Detached payload metadata cannot carry mutable or foreign byte values."""
-    with pytest.raises(
-        PayloadCryptoError, match="ciphertext must use exact bytes"
-    ):
+    with pytest.raises(PayloadCryptoError, match="ciphertext must use exact bytes"):
         _ = AuthenticatedPayload(
             ciphertext=cast("bytes", cast("object", bytearray(b"x"))),
             tag=bytes(16),

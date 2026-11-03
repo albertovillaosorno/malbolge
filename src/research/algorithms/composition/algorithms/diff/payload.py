@@ -47,7 +47,7 @@ and verification, not as the eventual distributable runtime implementation.
 from __future__ import annotations
 
 from dataclasses import dataclass
-import hmac
+from hmac import compare_digest as _native_compare_digest
 
 _KEY_BYTES = 32
 _NONCE_BYTES = 12
@@ -110,9 +110,7 @@ def _rotate_left(value: int, amount: int) -> int:
     return ((value << amount) | (value >> (32 - amount))) & _WORD_MASK
 
 
-def _quarter_round(
-    state: list[int], indexes: tuple[int, int, int, int]
-) -> None:
+def _quarter_round(state: list[int], indexes: tuple[int, int, int, int]) -> None:
     a, b, c, d = indexes
     state[a] = (state[a] + state[b]) & _WORD_MASK
     state[d] ^= state[a]
@@ -218,14 +216,16 @@ def _mac_data(aad: bytes, ciphertext: bytes) -> bytes:
     if len(aad) > maximum or len(ciphertext) > maximum:
         message = "ChaCha20-Poly1305 length exceeds 64-bit AEAD encoding"
         raise PayloadCryptoError(message)
-    return b"".join((
-        aad,
-        _pad16(aad),
-        ciphertext,
-        _pad16(ciphertext),
-        len(aad).to_bytes(8, byteorder="little"),
-        len(ciphertext).to_bytes(8, byteorder="little"),
-    ))
+    return b"".join(
+        (
+            aad,
+            _pad16(aad),
+            ciphertext,
+            _pad16(ciphertext),
+            len(aad).to_bytes(8, byteorder="little"),
+            len(ciphertext).to_bytes(8, byteorder="little"),
+        )
+    )
 
 
 def chacha20_poly1305_encrypt(
@@ -273,9 +273,7 @@ def chacha20_poly1305_decrypt(
     """
     _require_key_nonce(key, nonce)
     if type(payload) is not AuthenticatedPayload:
-        message = (
-            "ChaCha20-Poly1305 payload must use the exact authenticated type"
-        )
+        message = "ChaCha20-Poly1305 payload must use the exact authenticated type"
         raise PayloadCryptoError(message)
     _ = _require_bytes(payload.ciphertext, "ChaCha20-Poly1305 ciphertext")
     _ = _require_bytes(payload.tag, "ChaCha20-Poly1305 tag")
@@ -285,7 +283,9 @@ def chacha20_poly1305_decrypt(
         _mac_data(aad, payload.ciphertext),
         one_time_key,
     )
-    if not hmac.compare_digest(expected, payload.tag):
+    # Keep the authenticated verifier independent of later domain hooks that
+    # replace the process-global hmac function during source evaluation.
+    if not _native_compare_digest(expected, payload.tag):
         message = "ChaCha20-Poly1305 authentication failed"
         raise PayloadCryptoError(message)
     return _chacha20_xor(
