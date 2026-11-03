@@ -1782,3 +1782,112 @@ def test_behavior_constructor_writes_original_slots(
         reconstructed = replace(valid, **{field: original_field})
     assert type(reconstructed) is record_type
     assert calls == 0, "valid behavior constructor invoked late setter"
+
+
+def test_behavior_transcript_map_rejects_late_id_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign transcript cannot spoof a requested probe after construction."""
+    expected = _read_program("expected", "identity.txt")
+    foreign = ProbeTranscript("foreign", bytes(range(32)), 1)
+    calls = 0
+
+    def forged_id(_transcript: object) -> str:
+        nonlocal calls
+        calls += 1
+        return "expected"
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ProbeTranscript, "probe_id", property(forged_id))
+        with pytest.raises(BehaviorProgramError, match="transcript batch"):
+            _ = behavior_module._transcript_map((foreign,), (expected,))
+    assert calls == 0, "late transcript ID getter admitted foreign evidence"
+
+
+@pytest.mark.parametrize("field", ("digest", "digested_commands", "probe_id"))
+def test_behavior_digest_reader_uses_original_transcript_slots(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """A late class getter cannot forge transcript hash or selection count."""
+    digest = bytes(range(32))
+    transcript = ProbeTranscript("identity", digest, 1)
+    calls = 0
+
+    def forged(_transcript: object) -> object:
+        nonlocal calls
+        calls += 1
+        return {
+            "digest": bytes(reversed(range(32))),
+            "digested_commands": 0,
+            "probe_id": "foreign",
+        }[field]
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ProbeTranscript, field, property(forged))
+        observed = behavior_module._require_digest(transcript)
+    assert observed == digest
+    assert calls == 0, f"late transcript {field} getter changed selected digest"
+
+
+def test_behavior_digest_reader_rejects_hidden_empty_selection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unselected transcript cannot become identity evidence via a getter."""
+    transcript = ProbeTranscript("identity", bytes(range(32)), 0)
+    calls = 0
+
+    def forged_count(_transcript: object) -> int:
+        nonlocal calls
+        calls += 1
+        return 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            ProbeTranscript, "digested_commands", property(forged_count)
+        )
+        with pytest.raises(BehaviorProgramError, match="selects no stdout"):
+            behavior_module._require_digest(transcript)
+    assert calls == 0
+
+
+def test_behavior_bug_state_uses_original_transcript_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late digest getter cannot classify a present bug as already fixed."""
+    program = _read_program("historical-bug", "bug-state.txt")
+    present = bytes(range(32))
+    fixed = bytes(reversed(range(32)))
+    authored = AuthoredBugProgram(program, "fix", present, fixed)
+    transcript = ProbeTranscript("historical-bug", present, 1)
+    calls = 0
+
+    def forged_digest(_transcript: object) -> bytes:
+        nonlocal calls
+        calls += 1
+        return fixed
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ProbeTranscript, "digest", property(forged_digest))
+        observed = behavior_module._bug_state(authored, transcript)
+    assert observed is BugState.PRESENT
+    assert calls == 0
+
+
+def test_behavior_program_ids_ignore_late_program_id_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late program getter cannot redefine the selected probe identity."""
+    program = _read_program("original", "identity.txt")
+    calls = 0
+
+    def forged_id(_program: object) -> str:
+        nonlocal calls
+        calls += 1
+        return "substituted"
+
+    with monkeypatch.context() as patched:
+        patched.setattr(ProbeProgram, "probe_id", property(forged_id))
+        observed = behavior_module._program_ids((program,))
+    assert observed == ("original",)
+    assert calls == 0

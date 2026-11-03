@@ -95,6 +95,34 @@ def _native_path_resolve(path: Path, *, strict: bool = False) -> Path:
 _NATIVE_PATH_RESOLVE = _native_path_resolve
 
 
+# Probe identities and transcript receipts remain authoritative after a
+# consumer replaces late class properties or __getattribute__ methods.
+_PROGRAM_ID_SLOT = cast(
+    "MemberDescriptorType", ProbeProgram.__dict__["probe_id"]
+)
+_TRANSCRIPT_ID_SLOT = cast(
+    "MemberDescriptorType", ProbeTranscript.__dict__["probe_id"]
+)
+_TRANSCRIPT_DIGEST_SLOT = cast(
+    "MemberDescriptorType", ProbeTranscript.__dict__["digest"]
+)
+_TRANSCRIPT_COUNT_SLOT = cast(
+    "MemberDescriptorType", ProbeTranscript.__dict__["digested_commands"]
+)
+
+
+def _program_id(program: ProbeProgram) -> str:
+    return cast("str", _PROGRAM_ID_SLOT.__get__(program, ProbeProgram))
+
+
+def _transcript_fields(transcript: ProbeTranscript) -> tuple[str, bytes, int]:
+    return (
+        cast("str", _TRANSCRIPT_ID_SLOT.__get__(transcript, ProbeTranscript)),
+        cast("bytes", _TRANSCRIPT_DIGEST_SLOT.__get__(transcript, ProbeTranscript)),
+        cast("int", _TRANSCRIPT_COUNT_SLOT.__get__(transcript, ProbeTranscript)),
+    )
+
+
 class BehaviorProgramError(ValueError):
     """Raised when behavior programs cannot form an unambiguous profile."""
 
@@ -493,14 +521,14 @@ def _require_authored_profile_alignment(
     profile, identity, compatibility, authored_bugs = read_authored_behavior(
         authored
     )
-    identity_ids = _NATIVE_TUPLE(item.probe_id for item in identity)
+    identity_ids = _NATIVE_TUPLE(_program_id(item) for item in identity)
     profile_identity_ids = _NATIVE_TUPLE(item.probe_id for item in profile.identity)
-    compatibility_ids = _NATIVE_TUPLE(item.probe_id for item in compatibility)
+    compatibility_ids = _NATIVE_TUPLE(_program_id(item) for item in compatibility)
     profile_compatibility_ids = _NATIVE_TUPLE(
         item.probe_id for item in profile.compatibility
     )
     bugs = _NATIVE_TUPLE(
-        (read_authored_bug(item)[0].probe_id, read_authored_bug(item)[1])
+        (_program_id(read_authored_bug(item)[0]), read_authored_bug(item)[1])
         for item in authored_bugs
     )
     profile_bugs = _NATIVE_TUPLE(
@@ -532,13 +560,13 @@ def _sorted_unique(identifiers: tuple[str, ...], kind: str) -> tuple[str, ...]:
 
 
 def _program_ids(programs: tuple[ProbeProgram, ...]) -> tuple[str, ...]:
-    identifiers = _NATIVE_TUPLE(program.probe_id for program in programs)
+    identifiers = _NATIVE_TUPLE(_program_id(program) for program in programs)
     return _sorted_unique(identifiers, "probe")
 
 
 def _bug_program_ids(programs: tuple[BugProgram, ...]) -> tuple[str, ...]:
     identifiers = _NATIVE_TUPLE(
-        read_bug_program(program)[0].probe_id for program in programs
+        _program_id(read_bug_program(program)[0]) for program in programs
     )
     return _sorted_unique(identifiers, "bug")
 
@@ -551,7 +579,7 @@ def _all_programs(programs: BehaviorPrograms) -> tuple[ProbeProgram, ...]:
         *(read_bug_program(item)[0] for item in bugs),
     )
     return _NATIVE_TUPLE(
-        _NATIVE_SORTED(flattened, key=lambda item: item.probe_id)
+        _NATIVE_SORTED(flattened, key=_program_id)
     )
 
 
@@ -565,21 +593,22 @@ def _transcript_map(
     ):
         message = "behavior transcript batch must use exact immutable records"
         raise BehaviorProgramError(message)
-    observed = _NATIVE_TUPLE(transcript.probe_id for transcript in transcripts)
-    expected = _NATIVE_TUPLE(program.probe_id for program in programs)
+    observed = _NATIVE_TUPLE(
+        _transcript_fields(transcript)[0] for transcript in transcripts
+    )
+    expected = _NATIVE_TUPLE(_program_id(program) for program in programs)
     if observed != expected:
         message = "behavior transcript batch differs from requested programs"
         raise BehaviorProgramError(message)
-    return {transcript.probe_id: transcript for transcript in transcripts}
+    return {_transcript_fields(transcript)[0]: transcript for transcript in transcripts}
 
 
 def _require_digest(transcript: ProbeTranscript) -> bytes:
-    if transcript.digested_commands < 1:
-        message = (
-            f"behavior probe {transcript.probe_id!r} selects no stdout for identity"
-        )
+    probe_id, digest, selected = _transcript_fields(transcript)
+    if selected < 1:
+        message = f"behavior probe {probe_id!r} selects no stdout for identity"
         raise BehaviorProgramError(message)
-    return transcript.digest
+    return digest
 
 
 def _resolved_context_path(path: Path, description: str) -> Path:
@@ -642,7 +671,7 @@ def _author_bug_programs(
     authored: list[AuthoredBugProgram] = []
     for item in programs:
         program, correction = read_bug_program(item)
-        probe_id = program.probe_id
+        probe_id = _program_id(program)
         present_digest = _require_digest(source_transcripts[probe_id])
         fixed_digest = _require_digest(oracle_transcripts[probe_id])
         if present_digest == fixed_digest:
@@ -747,13 +776,13 @@ def author_behavior_programs(
     )
     identity = _NATIVE_TUPLE(
         IdentityProbe(
-            probe_id=program.probe_id,
-            expected_digest=_require_digest(source_transcripts[program.probe_id]),
+            probe_id=_program_id(program),
+            expected_digest=_require_digest(source_transcripts[_program_id(program)]),
         )
         for program in identity_programs
     )
     compatibility = _NATIVE_TUPLE(
-        CompatibilityProbe(probe_id=program.probe_id)
+        CompatibilityProbe(probe_id=_program_id(program))
         for program in compatibility_programs
     )
     authored_bugs = _author_bug_programs(
@@ -763,7 +792,7 @@ def author_behavior_programs(
     )
     bug_profile = _NATIVE_TUPLE(
         BugProbe(
-            probe_id=read_authored_bug(item)[0].probe_id,
+            probe_id=_program_id(read_authored_bug(item)[0]),
             correction_id=read_authored_bug(item)[1],
         )
         for item in authored_bugs
@@ -797,8 +826,8 @@ def _observe_identity(
     observations: list[IdentityObservation] = []
     for program in programs:
         transcript = _try_transcript(program, context)
-        digest = transcript.digest if transcript is not None else None
-        observations.append(IdentityObservation(program.probe_id, digest))
+        digest = _transcript_fields(transcript)[1] if transcript is not None else None
+        observations.append(IdentityObservation(_program_id(program), digest))
     return _NATIVE_TUPLE(observations)
 
 
@@ -808,7 +837,7 @@ def _observe_compatibility(
 ) -> tuple[CompatibilityObservation, ...]:
     return _NATIVE_TUPLE(
         CompatibilityObservation(
-            probe_id=program.probe_id,
+            probe_id=_program_id(program),
             compatible=_try_transcript(program, context) is not None,
         )
         for program in programs
@@ -822,9 +851,10 @@ def _bug_state(
     state = BugState.UNKNOWN
     if transcript is not None:
         _, _, present, fixed = read_authored_bug(program)
-        if transcript.digest == present:
+        digest = _transcript_fields(transcript)[1]
+        if digest == present:
             state = BugState.PRESENT
-        elif transcript.digest == fixed:
+        elif digest == fixed:
             state = BugState.FIXED
     return state
 
@@ -835,7 +865,7 @@ def _observe_bugs(
 ) -> tuple[BugObservation, ...]:
     return _NATIVE_TUPLE(
         BugObservation(
-            probe_id=read_authored_bug(item)[0].probe_id,
+            probe_id=_program_id(read_authored_bug(item)[0]),
             state=_bug_state(
                 item, _try_transcript(read_authored_bug(item)[0], context)
             ),
