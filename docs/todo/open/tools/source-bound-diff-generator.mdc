@@ -644,6 +644,14 @@ format.
   tests passed; scoped Ruff and source BasedPyright reported zero errors
   (nine existing type warnings). Direct stored-record mutation and
   concurrent filesystem writers are not isolated; Jig remains unverified.
+- Exact native behavior records now revalidate nested `BugProgram` and
+  `AuthoredBugProgram` evidence in aggregate constructors, before portable
+  authoring probes, and before source observation (`395616c75`). Missing
+  slots use `BehaviorProgramError` instead of raw `AttributeError`. Nine
+  red-first failures and one already rejected case now pass; all 159
+  postcommit focused and 3,172 precommit integrated diff tests passed.
+  Strict source BasedPyright is clean and pinned Ruff has no new findings
+  (54 source, 149 tests). Direct stored-record mutation remains out of scope.
 - Observed behavior mirrors now preserve original `ProbeRunContext` source,
   repository, and tool slots across copy callbacks and use the captured
   initializer plus native allocation (`b7f2df5f9`), not `dataclasses.replace`.

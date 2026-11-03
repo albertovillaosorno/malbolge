@@ -971,6 +971,17 @@ reported zero errors (nine existing type warnings). The boundary is late
 class-hook substitution, not directly rewritten record storage or races
 with external filesystem writers. Repository-wide Jig is not verified.
 
+Portable and authored behavior-bundle entry points now rerun pinned original
+validators on exact native bug and aggregate receipts (`395616c75`). Native
+slot absence raises `BehaviorProgramError` rather than `AttributeError`;
+malformed nested correction/digest evidence and empty identity bundles are
+rejected before source probe or observation access. Nine new scenarios failed
+before the fix and one was already rejected. All ten new regressions and 159
+postcommit behavior tests passed; the full diff suite passed 3,172 tests
+before commit. Strict source BasedPyright is clean and pinned Ruff retained
+its unchanged existing 54 source and 149 test findings. This does not isolate
+direct stored-object mutation during concurrent execution.
+
 Behavior mirror creation also now pins the admitted `ProbeRunContext`
 source, repository, and tool-binding slots and builds the derived mirror
 context with its original initializer and native allocation (`b7f2df5f9`).
