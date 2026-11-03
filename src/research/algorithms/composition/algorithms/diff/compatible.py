@@ -80,6 +80,7 @@ from algorithms.diff.publication import publish_directory_no_replace
 from algorithms.diff.semantic import (
     SemanticAuthoringPlan,
     SemanticEdit,
+    SemanticPlacementError,
     apply_semantic_plan,
     build_semantic_plan,
     read_semantic_plan,
@@ -810,11 +811,16 @@ def _validate_semantic(instruction: CompatibleInstruction) -> None:
     if instruction.semantic is None:
         message = "compatible semantic patch lost its semantic plan"
         raise CompatiblePlanError(message)
-    if (
+    # A native plan can bypass its constructor; validate even when no named
+    # correction IDs are attached to this semantic patch.
+    try:
+        edits = read_semantic_plan(instruction.semantic)
+    except SemanticPlacementError as error:
+        message = "compatible semantic evidence is invalid"
+        raise CompatiblePlanError(message) from error
+    if instruction.correction_ids and _NATIVE_LEN(
         instruction.correction_ids
-        and _NATIVE_LEN(instruction.correction_ids)
-        != _NATIVE_LEN(read_semantic_plan(instruction.semantic))
-    ):
+    ) != _NATIVE_LEN(edits):
         message = "compatible correction IDs must align with semantic edits"
         raise CompatiblePlanError(message)
     if _NATIVE_ANY(

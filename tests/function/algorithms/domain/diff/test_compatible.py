@@ -88,7 +88,11 @@ from algorithms.diff.model import (
     OracleLiteral,
     SourceSlice,
 )
-from algorithms.diff.semantic import SemanticAuthoringPlan
+from algorithms.diff.semantic import (
+    SemanticAuthoringPlan,
+    SemanticEdit,
+    SemanticLocator,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Iterator, Sized
@@ -4623,3 +4627,57 @@ def test_compatible_binding_revalidates_native_negative_edit_index(
         _ = bind_compatible_corrections(
             plan, (cast("CompatibleCorrectionBinding", forged),)
         )
+
+
+@pytest.mark.parametrize("corrections", [(), ("bug",)])
+@pytest.mark.parametrize("invalid", ["mutable", "nested", "missing"])
+def test_compatible_instruction_rejects_forged_semantic_evidence(
+    corrections: tuple[str, ...], invalid: str
+) -> None:
+    """Compatible plan admission owns errors for invalid nested semantic data."""
+    semantic = object.__new__(SemanticAuthoringPlan)
+    if invalid != "missing":
+        edits: object = []
+        if invalid == "nested":
+            locator = SemanticLocator((bytes(32),), (), ())
+            edit = object.__new__(SemanticEdit)
+            for field, value in {
+                "locator": locator,
+                "replacement": bytearray(b"mutable"),
+                "replacement_digests": (),
+            }.items():
+                SemanticEdit.__dict__[field].__set__(edit, value)
+            edits = (edit,)
+        SemanticAuthoringPlan.__dict__["edits"].__set__(semantic, edits)
+    with pytest.raises(CompatiblePlanError, match="compatible semantic evidence"):
+        _ = CompatibleInstruction(
+            output_path="code.src",
+            kind=CompatibleFileKind.SEMANTIC_PATCH,
+            source_path="code.src",
+            semantic=semantic,
+            correction_ids=corrections,
+        )
+
+
+def test_compatible_rejects_forged_semantic_after_late_validator_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced plan validator cannot authorize untyped nested edits."""
+    forged = object.__new__(SemanticAuthoringPlan)
+    SemanticAuthoringPlan.__dict__["edits"].__set__(forged, [])
+    calls = 0
+
+    def skip_validation(_value: SemanticAuthoringPlan) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(SemanticAuthoringPlan, "__post_init__", skip_validation)
+        with pytest.raises(CompatiblePlanError, match="compatible semantic evidence"):
+            _ = CompatibleInstruction(
+                output_path="code.src",
+                kind=CompatibleFileKind.SEMANTIC_PATCH,
+                source_path="code.src",
+                semantic=forged,
+            )
+    assert calls == 0, "a late semantic validator admitted invalid evidence"
