@@ -43,6 +43,7 @@ from algorithms.diff.behavior import BehaviorEvidence
 # Conjunctive gate validation must not trust late global builtins hooks.
 _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = type
+_NATIVE_STR = builtins.str
 _NATIVE_TUPLE = tuple
 
 
@@ -64,7 +65,7 @@ class TransformAdmissionEvidence:
         source = _require_source_evidence(self.source)
         behavior = _require_behavior_evidence(self.behavior)
         if _NATIVE_TYPE(self.reasons) is not _NATIVE_TUPLE or _NATIVE_ANY(
-            _NATIVE_TYPE(reason) is not str for reason in self.reasons
+            _NATIVE_TYPE(reason) is not _NATIVE_STR for reason in self.reasons
         ):
             message = "transform admission reasons must use exact strings"
             raise AdmissionError(message)

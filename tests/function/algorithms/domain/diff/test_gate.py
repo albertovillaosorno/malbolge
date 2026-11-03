@@ -73,6 +73,12 @@ _FILE_COUNT = 3
 _BLOCK_COUNT = 96
 
 
+class _ForeignReason(str):
+    """Non-native string alias impersonating a canonical gate reason."""
+
+    __slots__: tuple[str, ...] = ()
+
+
 def _expect(condition: object, message: str) -> None:
     if not condition:
         raise AssertionError(message)
@@ -276,9 +282,6 @@ def test_gate_rejects_foreign_reason_after_late_any_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Forged text subclasses cannot authenticate a combined gate verdict."""
-    class ForeignReason(str):
-        """A non-exact reason masquerading as validated text."""
-
     source = _source_evidence("unrelated")
     behavior = _behavior_evidence()
     valid = combine_admission(source, behavior)
@@ -286,7 +289,7 @@ def test_gate_rejects_foreign_reason_after_late_any_override(
     with monkeypatch.context() as patched:
         patched.setattr(builtins, "any", lambda values: False)
         try:
-            _ = replace(valid, reasons=(ForeignReason(valid.reasons[0]),))
+            _ = replace(valid, reasons=(_ForeignReason(valid.reasons[0]),))
         except AdmissionError:
             rejected = True
     assert rejected, "late any hook admitted a foreign gate reason"
@@ -299,3 +302,33 @@ def test_combined_gate_accepts_only_when_both_families_pass() -> None:
         _behavior_evidence(),
     )
     _expect(evidence.admitted, "passing evidence was rejected")
+
+
+def test_gate_rejects_late_string_alias_for_foreign_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late string aliases cannot certify non-native rejection reasons."""
+    source = _source_evidence("unrelated")
+    evidence = combine_admission(source, _behavior_evidence())
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "str", _ForeignReason)
+        try:
+            _ = replace(
+                evidence, reasons=(_ForeignReason(evidence.reasons[0]),)
+            )
+        except AdmissionError:
+            rejected = True
+    assert rejected, "foreign reason passed a late string alias"
+
+
+def test_gate_accepts_native_reasons_after_late_string_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Late consumer aliases cannot reject valid native gate evidence."""
+    source = _source_evidence("unrelated")
+    behavior = _behavior_evidence()
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "str", _ForeignReason)
+        evidence = combine_admission(source, behavior)
+    assert evidence.reasons == ("source lineage admission failed",)
