@@ -60,6 +60,11 @@ format.
   `os.path.realpath` before and after `Path.resolve` (`f15620ff7`). Two
   red-first laundering/denial cases and 152 focused emitter tests passed.
   External filesystem races remain outside this admission guarantee.
+- Domain-module import now rejects late replacements of importlib
+  spec/module constructors or source-file loader execution (`97ea0cdff`),
+  blocking substitutions of unselected module code after native path checks.
+  Three red-first cases, 93 domain tests, and 3,210 integrated diff tests pass;
+  direct trusted-state mutation and external filesystem races are not covered.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode

@@ -196,6 +196,13 @@ host filesystem codec captured before domain hooks execute. Imported
 confirms that the resolved regular file still has the admitted device and
 inode before import. Five red-first regressions cover forged namespace
 names, redirected module files, same-inode hardlinks, and CWD/link hooks.
+The domain import boundary now pins the original importlib spec constructor,
+module constructor, and source-file loader execution method (`97ea0cdff`).
+Late replacements that previously loaded an unselected Python module despite
+native filesystem identity checks fail before module registration or execution.
+Three red-first substitution tests passed, with 93 focused domain and 3,210
+integrated diff tests green. This is a local post-import hook guard, not
+protection from direct internal mutation or concurrent host filesystem writers.
 Neither status check nor import is atomic against external filesystem writes;
 this is not a sandbox for trusted consumer-domain code.
 A frozen, slotted Python evidence record still permits its *class* slot
