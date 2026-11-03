@@ -264,6 +264,70 @@ def test_gate_rejects_failed_evidence_after_admitted_descriptor_spoof(
             _ = TransformAdmissionEvidence(source, behavior, reasons=())
 
 
+@pytest.mark.parametrize("failing_family", ["source", "behavior"])
+def test_gate_rejects_late_reasons_slot_spoof(
+    monkeypatch: pytest.MonkeyPatch, failing_family: str
+) -> None:
+    """A replaced evidence slot descriptor cannot erase a failed gate."""
+    source = _source_evidence(
+        "unrelated" if failing_family == "source" else "reference"
+    )
+    behavior = _behavior_evidence(compatible=failing_family != "behavior")
+    family = type(source) if failing_family == "source" else type(behavior)
+    reason = (
+        "source lineage admission failed"
+        if failing_family == "source"
+        else "behavior admission failed"
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(family, "reasons", property(lambda _: ()))
+        with pytest.raises(AdmissionError, match=reason):
+            _ = require_transform_admission(source, behavior)
+        with pytest.raises(AdmissionError, match="do not match evidence"):
+            _ = TransformAdmissionEvidence(source, behavior, reasons=())
+
+
+@pytest.mark.parametrize("failing_family", ["source", "behavior"])
+def test_gate_rejects_late_reason_getattribute_spoof(
+    monkeypatch: pytest.MonkeyPatch, failing_family: str
+) -> None:
+    """Late class attribute hooks cannot hide recorded admission failures."""
+    source = _source_evidence(
+        "unrelated" if failing_family == "source" else "reference"
+    )
+    behavior = _behavior_evidence(compatible=failing_family != "behavior")
+    family = type(source) if failing_family == "source" else type(behavior)
+    calls = 0
+
+    def forged_attribute(value: object, name: str) -> object:
+        nonlocal calls
+        if name == "reasons":
+            calls += 1
+            return ()
+        return object.__getattribute__(value, name)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(family, "__getattribute__", forged_attribute)
+        with pytest.raises(AdmissionError, match="admission failed"):
+            _ = require_transform_admission(source, behavior)
+    assert calls == 0, "late evidence attribute hook was consulted"
+
+
+def test_gate_admitted_ignores_late_own_reasons_slot_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A constructed rejected gate cannot be promoted through a slot hook."""
+    rejected = combine_admission(
+        _source_evidence("unrelated"), _behavior_evidence()
+    )
+    assert not rejected.admitted
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            TransformAdmissionEvidence, "reasons", property(lambda _: ())
+        )
+        assert not rejected.admitted
+
+
 def test_gate_rejects_after_its_own_admitted_property_is_spoofed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

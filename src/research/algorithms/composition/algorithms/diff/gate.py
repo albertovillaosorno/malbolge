@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import builtins
 from dataclasses import dataclass
+from types import MemberDescriptorType
+from typing import cast
 
 from algorithms.diff.admission import AdmissionError, TreeAdmissionEvidence
 from algorithms.diff.behavior import BehaviorEvidence
@@ -45,6 +47,14 @@ _NATIVE_ANY = builtins.any
 _NATIVE_TYPE = type
 _NATIVE_STR = builtins.str
 _NATIVE_TUPLE = tuple
+# Slotted frozen dataclass fields still have mutable *class* descriptors.
+# Retain the original slot readers before loading any consumer hooks.
+_SOURCE_REASONS_SLOT = cast(
+    "MemberDescriptorType", TreeAdmissionEvidence.__dict__["reasons"]
+)
+_BEHAVIOR_REASONS_SLOT = cast(
+    "MemberDescriptorType", BehaviorEvidence.__dict__["reasons"]
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,7 +79,9 @@ class TransformAdmissionEvidence:
         ):
             message = "transform admission reasons must use exact strings"
             raise AdmissionError(message)
-        if self.reasons != _canonical_reasons(source, behavior):
+        if _GATE_REASONS_SLOT.__get__(
+            self, TransformAdmissionEvidence
+        ) != _canonical_reasons(source, behavior):
             message = "transform admission reasons do not match evidence"
             raise AdmissionError(message)
 
@@ -81,7 +93,12 @@ class TransformAdmissionEvidence:
             True exactly when neither evidence family rejected the candidate.
 
         """
-        return not self.reasons
+        return not _GATE_REASONS_SLOT.__get__(self, TransformAdmissionEvidence)
+
+
+_GATE_REASONS_SLOT = cast(
+    "MemberDescriptorType", TransformAdmissionEvidence.__dict__["reasons"]
+)
 
 
 def _require_source_evidence(value: object) -> TreeAdmissionEvidence:
@@ -105,9 +122,9 @@ def _canonical_reasons(
     reasons: list[str] = []
     # Evidence records validate their immutable rejection reasons at creation.
     # Do not delegate gate authority to late-bound consumer-visible properties.
-    if source.reasons:
+    if _SOURCE_REASONS_SLOT.__get__(source, TreeAdmissionEvidence):
         reasons.append("source lineage admission failed")
-    if behavior.reasons:
+    if _BEHAVIOR_REASONS_SLOT.__get__(behavior, BehaviorEvidence):
         reasons.append("behavior admission failed")
     return _NATIVE_TUPLE(reasons)
 
@@ -146,7 +163,8 @@ def require_transform_admission(
 
     """
     evidence = combine_admission(source, behavior)
-    if evidence.reasons:
-        message = "; ".join(evidence.reasons)
+    reasons = _GATE_REASONS_SLOT.__get__(evidence, TransformAdmissionEvidence)
+    if reasons:
+        message = "; ".join(reasons)
         raise AdmissionError(message)
     return evidence
