@@ -3095,6 +3095,116 @@ def test_probe_rejects_foreign_resolved_receipt(
     assert calls >= 1
 
 
+@pytest.mark.parametrize(
+    "case", ["root", "tool", "rooted-escape", "repository-source-alias"]
+)
+def test_probe_rejects_late_host_realpath_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    """Pinned Path.resolve must not consume a late host realpath callback."""
+    source = tmp_path / "source"
+    source.mkdir()
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "private.txt").write_bytes(b"outside")
+    _ = (source / "private.txt").write_bytes(b"source")
+    alias = repository / "alias"
+    try:
+        alias.symlink_to(
+            source if case == "repository-source-alias" else outside,
+            target_is_directory=True,
+        )
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks unavailable")
+    context = _context(source, repository)
+    original_realpath = os.path.realpath
+    forged_calls = 0
+    targeted = {
+        "root": source,
+        "tool": outside / "private.txt",
+        "rooted-escape": alias / "private.txt",
+        "repository-source-alias": alias / "private.txt",
+    }[case]
+
+    def forged_realpath(path: str | os.PathLike[str], *, strict: bool = False) -> str:
+        nonlocal forged_calls
+        if os.fspath(path) == os.fspath(targeted):
+            forged_calls += 1
+            if case == "root":
+                return os.fspath(outside)
+            if case == "tool":
+                return os.fspath(source / "private.txt")
+            return os.fspath(targeted)
+        return cast("str", original_realpath(path, strict=strict))
+
+    if case == "root":
+        require_root = cast(
+            "Callable[[Path, str], Path]", vars(probe_exec_module)["_resolved_root"]
+        )
+        invoke: Callable[[], object] = lambda: require_root(source, "source")
+    elif case == "tool":
+        require_tool = cast(
+            "Callable[[Path], Path]", vars(probe_exec_module)["_resolved_tool_path"]
+        )
+        invoke = lambda: require_tool(targeted)
+    elif case == "rooted-escape":
+        rooted = cast(
+            "Callable[[PathArgument, ProbeRunContext, Path], Path]",
+            vars(probe_exec_module)["_rooted_path"],
+        )
+        invoke = lambda: rooted(
+            PathArgument(ProbeRoot.REPOSITORY, "alias/private.txt"),
+            context,
+            tmp_path / "scratch",
+        )
+    else:
+        require_disjoint = cast(
+            "Callable[[PathArgument, ProbeRunContext, Path], None]",
+            vars(probe_exec_module)["_require_repository_argument_disjoint"],
+        )
+        invoke = lambda: require_disjoint(
+            PathArgument(ProbeRoot.REPOSITORY, "alias/private.txt"),
+            context,
+            source,
+        )
+
+    with monkeypatch.context() as patch:
+        patch.setattr(os.path, "realpath", forged_realpath)
+        with pytest.raises(ProbeExecutionError, match="native host resolver changed"):
+            _ = invoke()
+    assert forged_calls == 0, "late host realpath callback was consulted"
+
+
+def test_probe_rejects_host_resolver_mutation_during_native_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A host resolver changed mid-preflight cannot survive attestation."""
+    source = tmp_path / "source"
+    source.mkdir()
+    native_resolve = Path.resolve
+    native_realpath = os.path.realpath
+    changed = False
+
+    def replace_host_resolver(path: Path, *, strict: bool = False) -> Path:
+        nonlocal changed
+        resolved = native_resolve(path, strict=strict)
+        patch.setattr(os.path, "realpath", lambda value, **_: value)
+        changed = True
+        return resolved
+
+    with monkeypatch.context() as patch:
+        patch.setattr(probe_exec_module, "_NATIVE_PATH_RESOLVE", replace_host_resolver)
+        require_root = cast(
+            "Callable[[Path, str], Path]", vars(probe_exec_module)["_resolved_root"]
+        )
+        with pytest.raises(ProbeExecutionError, match="native host resolver changed"):
+            _ = require_root(source, "source")
+    assert changed, "native resolution hook was not exercised"
+    assert os.path.realpath is native_realpath
+
+
 def test_probe_program_and_context_require_immutable_exact_records(
     tmp_path: Path,
 ) -> None:

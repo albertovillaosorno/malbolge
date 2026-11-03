@@ -78,6 +78,7 @@ _MIN_HARDLINK_COUNT = 2
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
 _NATIVE_PATH_RESOLVE = Path.resolve
+_NATIVE_HOST_REALPATH = os.path.realpath
 # Inode disjointness and executable admission cannot trust late host hooks.
 _NATIVE_OS_STAT = os.stat
 _NATIVE_PATH_STRING = Path.__str__
@@ -783,7 +784,15 @@ def _native_resolved_path(result: Path, description: str) -> Path:
     return result
 
 
+def _require_native_host_resolver() -> None:
+    """Reject late host realpath hooks beneath the original Path.resolve."""
+    if os.path.realpath is not _NATIVE_HOST_REALPATH:
+        message = "probe native host resolver changed"
+        raise ProbeExecutionError(message)
+
+
 def _resolved_root(path: Path, description: str) -> Path:
+    _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
@@ -792,6 +801,7 @@ def _resolved_root(path: Path, description: str) -> Path:
             f"probe {description} root resolution failed: {path}: {detail}"
         )
         raise ProbeExecutionError(message) from error
+    _require_native_host_resolver()
     return _native_resolved_path(resolved, f"{description} root")
 
 
@@ -823,12 +833,14 @@ def _rooted_path(
     )
     root = _root_path(root_kind, context, scratch_root)
     candidate = root.joinpath(*relative_path.split("/"))
+    _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(candidate)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe path resolution failed: {candidate}: {detail}"
         raise ProbeExecutionError(message) from error
+    _require_native_host_resolver()
     resolved = _native_resolved_path(resolved, "rooted path")
     try:
         _ = _NATIVE_RELATIVE_TO(resolved, root)
@@ -839,12 +851,14 @@ def _rooted_path(
 
 
 def _resolved_tool_path(path: Path) -> Path:
+    _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe tool resolution failed: {path}: {detail}"
         raise ProbeExecutionError(message) from error
+    _require_native_host_resolver()
     return _native_resolved_path(resolved, "tool")
 
 
@@ -1895,12 +1909,14 @@ def _require_repository_argument_disjoint(
     ):
         return
     path = _rooted_path(argument, context, original_source)
+    _require_native_host_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe repository argument resolution failed: {detail}"
         raise ProbeExecutionError(message) from error
+    _require_native_host_resolver()
     resolved = _native_resolved_path(resolved, "repository argument")
     if _native_path_inside(resolved, original_source):
         message = "probe repository path overlaps original source tree"
@@ -1953,11 +1969,13 @@ def _run_isolated_batch(
     )
     # A host TMPDIR inside the source would copy the new batch directory into
     # itself recursively. Reject before creating any temporary directories.
+    _require_native_host_resolver()
     try:
         temporary_parent = _NATIVE_PATH_RESOLVE(Path(_NATIVE_GETTEMPDIR()))
     except (OSError, ValueError, RuntimeError) as error:
         message = "probe temporary parent resolution failed"
         raise ProbeExecutionError(message) from error
+    _require_native_host_resolver()
     temporary_parent = _native_resolved_path(
         temporary_parent, "temporary parent"
     )
