@@ -261,8 +261,19 @@ class IdentityObservation:
     def __post_init__(self) -> None:
         """Require canonical identity evidence or explicit unavailability."""
         _ = _require_identifier(self.probe_id, "identity observation ID")
-        if self.digest is not None:
-            _ = _require_digest(self.digest, "identity observation digest")
+        digest = cast(
+            "bytes | None",
+            _IDENTITY_OBSERVATION_DIGEST_SLOT.__get__(
+                self, IdentityObservation
+            ),
+        )
+        if digest is not None:
+            _ = _require_digest(digest, "identity observation digest")
+
+
+_IDENTITY_OBSERVATION_DIGEST_SLOT = cast(
+    "MemberDescriptorType", IdentityObservation.__dict__["digest"]
+)
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -280,12 +291,23 @@ class CompatibilityObservation:
 
         """
         _ = _require_identifier(self.probe_id, "compatibility observation ID")
+        compatible = cast(
+            "bool | None",
+            _COMPATIBILITY_OBSERVATION_VALUE_SLOT.__get__(
+                self, CompatibilityObservation
+            ),
+        )
         if (
-            self.compatible is not None
-            and _NATIVE_TYPE(self.compatible) is not _NATIVE_BOOL
+            compatible is not None
+            and _NATIVE_TYPE(compatible) is not _NATIVE_BOOL
         ):
             message = "compatibility observation must be bool or None"
             raise BehaviorPolicyError(message)
+
+
+_COMPATIBILITY_OBSERVATION_VALUE_SLOT = cast(
+    "MemberDescriptorType", CompatibilityObservation.__dict__["compatible"]
+)
 
 
 @dataclass(frozen=True, slots=True, order=True)
@@ -303,9 +325,18 @@ class BugObservation:
 
         """
         _ = _require_identifier(self.probe_id, "bug observation ID")
-        if _NATIVE_TYPE(self.state) is not BugState:
+        state = cast(
+            "BugState",
+            _BUG_OBSERVATION_STATE_SLOT.__get__(self, BugObservation),
+        )
+        if _NATIVE_TYPE(state) is not BugState:
             message = "bug observation state must use the exact BugState type"
             raise BehaviorPolicyError(message)
+
+
+_BUG_OBSERVATION_STATE_SLOT = cast(
+    "MemberDescriptorType", BugObservation.__dict__["state"]
+)
 
 
 def _require_observation_tuple(
@@ -605,10 +636,16 @@ def _identity_evidence(
         if _NATIVE_TYPE(observation) is not IdentityObservation:
             message = "internal identity observation type mismatch"
             raise BehaviorPolicyError(message)
-        if observation.digest is None:
+        digest = cast(
+            "bytes | None",
+            _IDENTITY_OBSERVATION_DIGEST_SLOT.__get__(
+                observation, IdentityObservation
+            ),
+        )
+        if digest is None:
             reasons.append(f"identity probe unavailable: {probe.probe_id}")
             continue
-        matched += observation.digest == probe.expected_digest
+        matched += digest == probe.expected_digest
     return matched, _NATIVE_TUPLE(reasons)
 
 
@@ -628,7 +665,9 @@ def _compatibility_reasons(
         if _NATIVE_TYPE(observation) is not CompatibilityObservation:
             message = "internal compatibility observation type mismatch"
             raise BehaviorPolicyError(message)
-        if observation.compatible is not True:
+        if _COMPATIBILITY_OBSERVATION_VALUE_SLOT.__get__(
+            observation, CompatibilityObservation
+        ) is not True:
             reasons.append(f"compatibility probe failed: {probe.probe_id}")
     return _NATIVE_TUPLE(reasons)
 
@@ -649,9 +688,13 @@ def _bug_routing(
         if _NATIVE_TYPE(observation) is not BugObservation:
             message = "internal bug observation type mismatch"
             raise BehaviorPolicyError(message)
-        if observation.state is BugState.PRESENT:
+        state = cast(
+            "BugState",
+            _BUG_OBSERVATION_STATE_SLOT.__get__(observation, BugObservation),
+        )
+        if state is BugState.PRESENT:
             apply.append(probe.correction_id)
-        elif observation.state is BugState.FIXED:
+        elif state is BugState.FIXED:
             skip.append(probe.correction_id)
         else:
             reasons.append(f"bug probe unresolved: {probe.probe_id}")

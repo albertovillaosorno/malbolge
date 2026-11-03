@@ -1075,3 +1075,99 @@ def test_behavior_evaluation_ignores_late_collection_getter(
         actual = require_behavior(profile, observations, 0.8)
     assert actual == expected
     assert calls == 0, "late collection getter participated in behavior verdict"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+@pytest.mark.parametrize("kind", ["identity", "compatibility", "bug"])
+@pytest.mark.parametrize("phase", ["constructor", "evaluation"])
+def test_behavior_observation_outcomes_ignore_late_getters(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    hook: str,
+    phase: str,
+) -> None:
+    """Probe results must use stored outcomes, not late class getters."""
+    profile = _profile()
+    valid = _observations()
+    forged: object
+    bad: object
+    field: str
+    if kind == "identity":
+        owner = IdentityObservation
+        field = "digest"
+        forged = bytes([0])
+        bad = b"" if phase == "constructor" else b"different"
+        args: tuple[object, ...] = ("identity-0", bad)
+    elif kind == "compatibility":
+        owner = CompatibilityObservation
+        field = "compatible"
+        forged = True
+        bad = 1 if phase == "constructor" else False
+        args = ("can-transform", bad)
+    else:
+        owner = BugObservation
+        field = "state"
+        forged = BugState.PRESENT
+        bad = "present" if phase == "constructor" else BugState.UNKNOWN
+        args = ("historical-bug", bad)
+
+    invalid = valid
+    if phase == "evaluation":
+        if kind == "identity":
+            invalid = replace(
+                valid,
+                identity=(IdentityObservation("identity-0", b"different"),)
+                + valid.identity[1:],
+            )
+        elif kind == "compatibility":
+            invalid = replace(
+                valid,
+                compatibility=(
+                    CompatibilityObservation("can-transform", False),
+                ),
+            )
+        else:
+            invalid = replace(
+                valid,
+                bugs=(BugObservation("historical-bug", BugState.UNKNOWN),),
+            )
+    calls = 0
+
+    def forged_attribute(value: object, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", object.__getattribute__(value, name))
+
+    def forged_property(value: object) -> object:
+        return forged_attribute(value, field)
+
+    with monkeypatch.context() as patch:
+        if hook == "slot":
+            original_slot = cast("MemberDescriptorType", owner.__dict__[field])
+
+            def store(value: object, stored: object) -> None:
+                original_slot.__set__(value, stored)
+
+            patch.setattr(owner, field, property(forged_property, store))
+        else:
+            patch.setattr(owner, "__getattribute__", forged_attribute)
+        if phase == "constructor":
+            with pytest.raises(BehaviorPolicyError):
+                if kind == "identity":
+                    _ = IdentityObservation(
+                        cast("str", args[0]), cast("bytes | None", args[1])
+                    )
+                elif kind == "compatibility":
+                    _ = CompatibilityObservation(
+                        cast("str", args[0]), cast("bool | None", args[1])
+                    )
+                else:
+                    _ = BugObservation(
+                        cast("str", args[0]), cast("BugState", args[1])
+                    )
+        else:
+            with pytest.raises(BehaviorAdmissionError):
+                _ = require_behavior(profile, invalid, 1.0)
+    assert calls == 0, "late outcome getter participated in behavior evidence"
