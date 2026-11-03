@@ -1586,6 +1586,188 @@ def test_exact_publication_collision_preserves_foreign_output(
     assert not (tmp_path / ".result.staging").exists()
 
 
+def test_exact_output_writer_ignores_late_path_write_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Staging writes must not touch a foreign file through a class hook."""
+    target = tmp_path / "stage" / "payload.bin"
+    target.parent.mkdir()
+    victim = tmp_path / "victim.bin"
+    _ = victim.write_bytes(b"untouched")
+    original_write = Path.write_bytes
+    calls = 0
+
+    def forged_write(path: Path, data: bytes) -> int:
+        nonlocal calls
+        if path == target:
+            calls += 1
+            return original_write(victim, data)
+        return original_write(path, data)
+
+    writer = cast(
+        "Callable[[Path, bytes, str], None]", vars(exact_module)["_write_output_file"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "write_bytes", forged_write)
+        writer(target, b"trusted", "staging output")
+    assert calls == 0, "late Path.write_bytes redirected a staged write"
+    assert target.read_bytes() == b"trusted"
+    assert victim.read_bytes() == b"untouched"
+
+
+def test_exact_output_writer_ignores_late_parent_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Staged parent creation must use the original path parent."""
+    target = tmp_path / "stage" / "nested" / "payload.bin"
+    victim = tmp_path / "foreign"
+    original_parent = Path.parent
+    calls = 0
+
+    def forged_parent(path: Path) -> Path:
+        nonlocal calls
+        if path == target:
+            calls += 1
+            return victim
+        return original_parent.__get__(path, type(path))
+
+    writer = cast(
+        "Callable[[Path, bytes, str], None]", vars(exact_module)["_write_output_file"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "parent", property(forged_parent))
+        writer(target, b"trusted", "staging output")
+    assert calls == 0, "late parent hook redirected staging directory"
+    assert target.read_bytes() == b"trusted"
+    assert not victim.exists()
+
+
+def test_exact_staging_ignores_late_path_with_name_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A consumer must not redirect the temporary directory before checks."""
+    output = tmp_path / "target"
+    victim = tmp_path / "outside"
+    original_with_name = Path.with_name
+    calls = 0
+
+    def forged_with_name(path: Path, name: str) -> Path:
+        nonlocal calls
+        if path == output:
+            calls += 1
+            return victim
+        return original_with_name(path, name)
+
+    prepare = cast("Callable[[Path], Path]", vars(exact_module)["_prepare_staging"])
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "with_name", forged_with_name)
+        staging = prepare(output)
+    assert calls == 0, "late with_name hook redirected staging root"
+    assert staging == tmp_path / ".target.staging"
+    assert staging.is_dir()
+    assert not victim.exists()
+
+
+@pytest.mark.parametrize("hook", ["path-mkdir", "os-mkdir"])
+def test_exact_staging_ignores_late_directory_creation_hooks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Hostile directory builders cannot redirect an owned staging root."""
+    output = tmp_path / "nested" / "target"
+    calls = 0
+
+    def forged_path_mkdir(_path: Path, *_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late pathlib mkdir reached")
+
+    def forged_os_mkdir(
+        _path: str | bytes | os.PathLike[str], _mode: int = 0o777
+    ) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late os.mkdir reached")
+
+    prepare = cast("Callable[[Path], Path]", vars(exact_module)["_prepare_staging"])
+    with monkeypatch.context() as patched:
+        if hook == "path-mkdir":
+            patched.setattr(Path, "mkdir", forged_path_mkdir)
+        else:
+            patched.setattr(os, "mkdir", forged_os_mkdir)
+        staging = prepare(output)
+    assert calls == 0, "late directory hook executed"
+    assert staging == tmp_path / "nested" / ".target.staging"
+    assert staging.is_dir()
+    assert not output.exists()
+
+
+def test_exact_writer_ignores_late_io_open_redirection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Staging bytes must not be routed through a replaced io.open alias."""
+    import io
+
+    stage = tmp_path / "stage"
+    stage.mkdir()
+    output = stage / "result"
+    victim = tmp_path / "victim"
+    _ = victim.write_bytes(b"untouched")
+    calls = 0
+
+    def forged_open(*_args: object, **_kwargs: object) -> None:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late io.open reached")
+
+    writer = cast(
+        "Callable[[Path, bytes, str], None]", vars(exact_module)["_write_output_file"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(io, "open", forged_open)
+        writer(output, b"trusted", "staging output")
+    assert calls == 0, "late io.open hook executed"
+    assert output.read_bytes() == b"trusted"
+    assert victim.read_bytes() == b"untouched"
+
+
+def test_exact_staging_ignores_late_path_name_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Staging uses the original basename, even after a class name hook."""
+    output = tmp_path / "target"
+    calls = 0
+    original_name = Path.name
+
+    def forged_name(path: Path) -> str:
+        nonlocal calls
+        if path == output:
+            calls += 1
+            return "foreign"
+        return original_name.__get__(path, type(path))
+
+    prepare = cast("Callable[[Path], Path]", vars(exact_module)["_prepare_staging"])
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "name", property(forged_name))
+        staging = prepare(output)
+    assert calls == 0, "late name hook chose staging root"
+    assert staging == tmp_path / ".target.staging"
+    assert staging.is_dir()
+    assert not (tmp_path / ".foreign.staging").exists()
+
+
+def test_exact_writer_never_replaces_existing_staged_file(tmp_path: Path) -> None:
+    """One staged file should only be created once, without truncation."""
+    target = tmp_path / "staging" / "existing"
+    target.parent.mkdir()
+    _ = target.write_bytes(b"existing")
+    writer = cast(
+        "Callable[[Path, bytes, str], None]", vars(exact_module)["_write_output_file"]
+    )
+    with pytest.raises(ExactTreeError, match="write failed"):
+        writer(target, b"replacement", "staging output")
+    assert target.read_bytes() == b"existing"
+
+
 @pytest.mark.parametrize("failure_type", [PermissionError, ValueError, RuntimeError])
 def test_exact_materialization_wraps_output_write_failure(
     tmp_path: Path,
@@ -1597,7 +1779,9 @@ def test_exact_materialization_wraps_output_write_failure(
     plan = build_exact_plan(source, oracle)
     output = tmp_path / "result"
     blocked = tmp_path / ".result.staging" / "created.txt"
-    original_write = Path.write_bytes
+    original_write = cast(
+        "Callable[[Path, bytes], int]", vars(exact_module)["_NATIVE_WRITE_OUTPUT_BYTES"]
+    )
 
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
@@ -1605,7 +1789,7 @@ def test_exact_materialization_wraps_output_write_failure(
             raise failure_type(message)
         return original_write(path, data)
 
-    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(exact_module, "_NATIVE_WRITE_OUTPUT_BYTES", fail_write)
     with pytest.raises(ExactTreeError, match="instruction output write failed"):
         materialize_exact_plan(source, plan, output)
     _expect(not output.exists(), "write failure published output")
@@ -1623,21 +1807,17 @@ def test_exact_materialization_wraps_staging_directory_failure(
     plan = build_exact_plan(source, oracle)
     output = tmp_path / "result"
     staging = tmp_path / ".result.staging"
-    original_mkdir = Path.mkdir
+    original_mkdir = cast(
+        "Callable[[str], None]", vars(exact_module)["_NATIVE_OS_MKDIR"]
+    )
 
-    def fail_mkdir(
-        path: Path,
-        mode: int = 0o777,
-        *,
-        parents: bool = False,
-        exist_ok: bool = False,
-    ) -> None:
-        if path == staging:
+    def fail_mkdir(path: str) -> None:
+        if Path(path) == staging:
             message = "blocked staging directory"
             raise failure_type(message)
-        original_mkdir(path, mode=mode, parents=parents, exist_ok=exist_ok)
+        original_mkdir(path)
 
-    monkeypatch.setattr(Path, "mkdir", fail_mkdir)
+    monkeypatch.setattr(exact_module, "_NATIVE_OS_MKDIR", fail_mkdir)
     with pytest.raises(ExactTreeError, match="staging root creation failed"):
         materialize_exact_plan(source, plan, output)
     _expect(not output.exists(), "staging mkdir failure published output")
@@ -1681,7 +1861,9 @@ def test_exact_cleanup_failure_is_reported_with_primary_error(
     plan = build_exact_plan(source, oracle)
     output = tmp_path / "result"
     blocked = tmp_path / ".result.staging" / "created.txt"
-    original_write = Path.write_bytes
+    original_write = cast(
+        "Callable[[Path, bytes], int]", vars(exact_module)["_NATIVE_WRITE_OUTPUT_BYTES"]
+    )
 
     def fail_write(path: Path, data: bytes) -> int:
         if path == blocked:
@@ -1694,7 +1876,7 @@ def test_exact_cleanup_failure_is_reported_with_primary_error(
         message = "blocked staging cleanup"
         raise failure_type(message)
 
-    monkeypatch.setattr(Path, "write_bytes", fail_write)
+    monkeypatch.setattr(exact_module, "_NATIVE_WRITE_OUTPUT_BYTES", fail_write)
     monkeypatch.setattr(exact_module, "_NATIVE_RMTREE", fail_cleanup)
     with pytest.raises(
         ExactTreeError,
@@ -2768,7 +2950,9 @@ def test_passthrough_write_count_must_not_publish_incomplete_dynamic_bytes(
     output = tmp_path / "passthrough-out"
     staging = tmp_path / ".passthrough-out.staging"
     blocked = staging / "external/game.bin"
-    original_write = Path.write_bytes
+    original_write = cast(
+        "Callable[[Path, bytes], int]", vars(exact_module)["_NATIVE_WRITE_OUTPUT_BYTES"]
+    )
 
     def misreported_write(path: Path, data: bytes) -> int:
         if path == blocked and reported == _SHORT_WRITE:
@@ -2778,7 +2962,7 @@ def test_passthrough_write_count_must_not_publish_incomplete_dynamic_bytes(
             return cast("int", reported)
         return written
 
-    monkeypatch.setattr(Path, "write_bytes", misreported_write)
+    monkeypatch.setattr(exact_module, "_NATIVE_WRITE_OUTPUT_BYTES", misreported_write)
     with pytest.raises(ExactTreeError, match="short or invalid byte count"):
         materialize_exact_plan(source, plan, output)
     assert not output.exists()

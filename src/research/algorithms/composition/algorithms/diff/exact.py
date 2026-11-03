@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import builtins
+import io
 import os
 import shutil
 import sys
@@ -65,7 +66,7 @@ from algorithms.diff.model import (
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
     from algorithms.diff.model import ExactSegment
 
@@ -106,6 +107,10 @@ _NATIVE_PATH_LSTAT = os.lstat
 _NATIVE_PATH_WALK = Path.walk
 _NATIVE_PATH_IS_JUNCTION = Path.is_junction
 _NATIVE_PATH_STRING = Path.__str__
+_NATIVE_PATH_PARENT = cast("Callable[[Path], Path]", Path.parent.fget)
+_NATIVE_PATH_NAME = cast("Callable[[Path], str]", Path.name.fget)
+_NATIVE_IO_OPEN = io.open
+_NATIVE_OS_MKDIR = os.mkdir
 # Encode native Path strings without mutable late pathlib/os conversion hooks.
 _FILESYSTEM_ENCODING = sys.getfilesystemencoding()
 _FILESYSTEM_ERRORS = sys.getfilesystemencodeerrors()
@@ -1075,10 +1080,39 @@ def _instruction_bytes(
     return _patch_bytes(source, segments)
 
 
+def _native_write_output_bytes(path: Path, data: bytes) -> int:
+    """Create one staged file through the import-pinned native file writer."""
+    with _NATIVE_IO_OPEN(_NATIVE_PATH_STRING(path), "xb") as stream:
+        return stream.write(data)
+
+
+_NATIVE_WRITE_OUTPUT_BYTES = _native_write_output_bytes
+
+
+def _native_make_output_directory(path: Path, *, parents: bool, exist_ok: bool) -> None:
+    """Create output directories without later class or os.mkdir hooks."""
+    try:
+        _NATIVE_OS_MKDIR(_NATIVE_PATH_STRING(path))
+    except FileNotFoundError:
+        parent = _NATIVE_PATH_PARENT(path)
+        if not parents or _NATIVE_PATH_STRING(parent) == _NATIVE_PATH_STRING(path):
+            raise
+        _native_make_output_directory(parent, parents=True, exist_ok=True)
+        _native_make_output_directory(path, parents=False, exist_ok=exist_ok)
+    except OSError:
+        if not exist_ok:
+            raise
+        mode = _entry_mode(path, "output directory")
+        if mode is None or not S_ISDIR(mode) or _is_redirect(path, mode):
+            raise
+
+
 def _write_output_file(path: Path, data: bytes, context: str) -> None:
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        written = path.write_bytes(data)
+        _native_make_output_directory(
+            _NATIVE_PATH_PARENT(path), parents=True, exist_ok=True
+        )
+        written = _NATIVE_WRITE_OUTPUT_BYTES(path, data)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"{context} write failed: {path}: " + _safe_host_error_detail(
             error
@@ -1097,7 +1131,7 @@ def _make_output_directory(
     exist_ok: bool,
 ) -> None:
     try:
-        path.mkdir(parents=parents, exist_ok=exist_ok)
+        _native_make_output_directory(path, parents=parents, exist_ok=exist_ok)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_host_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
@@ -1133,13 +1167,13 @@ def _prepare_staging(output_root: Path) -> Path:
     if _entry_mode(output_root, "output root") is not None:
         message = f"output root already exists: {output_root}"
         raise ExactTreeError(message)
-    staging_name = f".{output_root.name}{_STAGING_SUFFIX}"
-    staging_root = output_root.with_name(staging_name)
+    staging_name = f".{_NATIVE_PATH_NAME(output_root)}{_STAGING_SUFFIX}"
+    staging_root = _NATIVE_PATH_JOINPATH(_NATIVE_PATH_PARENT(output_root), staging_name)
     if _entry_mode(staging_root, "staging root") is not None:
         message = f"staging root already exists: {staging_root}"
         raise ExactTreeError(message)
     _make_output_directory(
-        output_root.parent,
+        _NATIVE_PATH_PARENT(output_root),
         "output parent",
         parents=True,
         exist_ok=True,
