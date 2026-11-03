@@ -312,7 +312,9 @@ def test_generator_recipe_resolution_failures_are_typed(
             raise failure_type(message)
         return original_resolve(path, strict=strict)
 
-    monkeypatch.setattr(Path, "resolve", blocked_resolve)
+    monkeypatch.setattr(
+        generate_module, "_NATIVE_PATH_RESOLVE", blocked_resolve
+    )
     with pytest.raises(
         ValueError, match=f"{name} could not be resolved safely"
     ):
@@ -364,7 +366,7 @@ def test_generator_rejects_foreign_resolved_path_receipts(
         message = "foreign resolved path entered domain preflight"
         raise AssertionError(message)
 
-    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(generate_module, "_NATIVE_PATH_RESOLVE", forged_resolve)
     monkeypatch.setattr(
         generate_module, "_preflight_domain", unexpected_preflight
     )
@@ -373,6 +375,71 @@ def test_generator_rejects_foreign_resolved_path_receipts(
     ):
         write_algorithm(recipe)
     assert not recipe.output_algorithm.exists()
+
+
+def _input_output_destination(
+    tmp_path: Path, input_root: Path, *, via_alias: bool
+) -> Path:
+    """Locate a synthetic forbidden output via a direct or symlink path.
+
+    Returns:
+        A source-or-oracle-contained output path.
+
+    """
+    if not via_alias:
+        return input_root / "forged-generated.rs"
+    alias = tmp_path / "input-alias"
+    try:
+        alias.symlink_to(input_root, target_is_directory=True)
+    except OSError, NotImplementedError:
+        pytest.skip("directory symlinks unavailable")
+    return alias / "forged-generated.rs"
+
+
+@pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])
+@pytest.mark.parametrize("via_alias", [False, True])
+def test_generator_rejects_forged_native_output_resolution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    input_name: str,
+    *,
+    via_alias: bool,
+) -> None:
+    """A late native Path receipt cannot hide output inside an input tree."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    protected = {
+        "source_root": recipe.source_root,
+        "oracle_root": recipe.oracle_root,
+    }[input_name]
+    destination = _input_output_destination(
+        tmp_path, protected, via_alias=via_alias
+    )
+    recipe = replace(recipe, output_algorithm=destination)
+    native_resolve = Path.resolve
+    calls = 0
+
+    def forged_resolve(path: Path, *, strict: bool = False) -> Path:
+        nonlocal calls
+        if path == destination:
+            calls += 1
+            return tmp_path / "unrelated-safe.rs"
+        return native_resolve(path, strict=strict)
+
+    def unexpected_emission(_recipe: DiffRecipe) -> None:
+        del _recipe
+        message = "forged output resolution reached unsafe generator emission"
+        raise AssertionError(message)
+
+    monkeypatch.setattr(Path, "resolve", forged_resolve)
+    monkeypatch.setattr(
+        generate_module, "_write_exact_algorithm", unexpected_emission
+    )
+    with pytest.raises(ValueError, match=f"output_algorithm.*{input_name}"):
+        write_algorithm(recipe)
+    _expect(calls == 0, "mutable global resolver was consulted")
+    _expect(
+        not (protected / destination.name).exists(), "input tree was changed"
+    )
 
 
 @pytest.mark.parametrize("input_name", ["source_root", "oracle_root"])

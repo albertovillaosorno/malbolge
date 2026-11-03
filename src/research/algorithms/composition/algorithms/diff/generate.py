@@ -63,6 +63,7 @@ from algorithms.diff.source_binding import SourceBindingPolicy
 _SHA256_FACTORY = hashlib.sha256
 # Domain callbacks cannot redefine the host path containment verdict.
 _NATIVE_IS_RELATIVE_TO = Path.is_relative_to
+_NATIVE_PATH_RESOLVE = Path.resolve
 _MAX_SHARES = 255
 _NUL = "\x00"
 _BACKSLASH = "\\"
@@ -176,7 +177,7 @@ def _validate_path(value: object, name: str) -> None:
 
 def _resolve_recipe_path(path: Path, name: str) -> Path:
     try:
-        resolved = path.resolve()
+        resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         message = f"{name} could not be resolved safely"
         raise ValueError(message) from error
