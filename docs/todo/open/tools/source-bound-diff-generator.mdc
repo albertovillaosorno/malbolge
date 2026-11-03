@@ -44,6 +44,11 @@ format.
   callbacks. The emitted Rust runtime also rejects output roots inside its
   candidate source (including linked ancestors) before staging. External
   writer coordination remains necessary for full input immutability.
+- Generator recipe path preflight now reads captured original native
+  `PurePath` metadata (`db9606154`) to reject late class hooks that sanitize
+  NUL/surrogate components or reject valid paths. Six red-first cases, 219
+  focused generator tests, and 3,190 integrated diff tests passed; direct
+  storage tampering and external path races remain out of scope.
 - The public `DiffRecipe` now requires explicit `EXACT_BASELINE` or `COMPATIBLE`
   mode. `write_algorithm()` generates exact standalone Rust today; compatible
   mode
@@ -258,6 +263,13 @@ format.
   typed-path source mirror bypass even with immutability checks disabled;
   raw argv and
   executable behavior remain trusted consumer inputs, not a sandbox.
+- Probe batch preflight now validates constructor-bypassed exact native
+  `ProbeRunContext`, `ProbeProgram`, command, executable, and nested structured
+  path records before I/O (`5d6a19de9`). Nine red-first cases reject bad or
+  absent slots with owned `ProbeProgramError`; 366 focused probe tests and
+  3,201 integrated diff tests passed. Scoped Ruff, strict source typing, and
+  diff checks were clean. No claim is made for direct memory mutation,
+  consumer command sandboxing, filesystem races, or full Jig validation.
 - Probe run contexts now reject custom `Path` subclasses at source-root,
   repository-root and executable-tool bindings before any path method executes;
   three red-first regressions prevent source/execution redirection hooks.

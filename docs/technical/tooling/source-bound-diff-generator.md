@@ -71,6 +71,14 @@ roots (including symlinked parent aliases) before creating staging directories.
 Neither preflight is atomic against concurrent path replacement; external
 writer coordination remains necessary.
 
+Generator preflight now reads native recipe paths from their import-captured
+original `PurePath` storage, instead of relying on replaceable class getters
+(`db9606154`). Six red-first tests cover NUL/surrogate path components being
+laundered or valid paths rejected by late `_raw_paths`/`__getattribute__`
+patches. All 219 focused generator and 3,190 integrated diff tests passed after
+publication. Original-slot path admission does not prevent direct stored-object
+mutation or racing external filesystem writers.
+
 All implemented public metadata boundaries now admit exact runtime types before
 using them as evidence or touching output. Numeric thresholds and counts reject
 boolean aliases. Identity trees, anchors, behavior observations, probe programs,
@@ -900,6 +908,19 @@ copying, or launching anything: roots/enums, executable records, argv tuples,
 NUL-free portable UTF-8 argv strings, relative paths, and tool identifiers,
 stdin bytes, exit codes, timeout/output limits, digest flags, program batches,
 tool bindings, and source-immutability flags all use exact admitted types.
+Public probe-batch admission now reruns import-captured validators on
+`ProbeRunContext`, every `ProbeProgram`, and nested `ProbeCommand`, executable,
+and structured path-argument records (`5d6a19de9`). Exact native instances
+allocated without constructors previously entered host preflight with invalid
+limits, digest selectors, roots, identifiers, or traversal paths; incomplete
+program slots leaked raw `AttributeError`. Nine red-first regressions now fail
+closed with `ProbeProgramError` before filesystem/process work. All 366 focused
+probe tests and 3,201 integrated diff tests passed, with clean scoped Ruff,
+strict source BasedPyright, and diff checks. This does not sandbox arbitrary
+consumer commands, prevent direct stored-object mutation, or make filesystem
+snapshots atomic against external writers. A repository-wide Jig pass remains
+unverified.
+
 The `ProbeRunContext` admission further requires exact host-native `Path`
 values for the source root, repository root, and bound tool executable paths,
 so user-defined string, resolution, or status overrides cannot run at record
