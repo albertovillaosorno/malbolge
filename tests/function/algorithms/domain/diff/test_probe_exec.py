@@ -45,6 +45,7 @@ import sys
 import tempfile
 import threading
 import time
+from collections import UserString
 from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
@@ -2962,3 +2963,139 @@ def test_probe_program_and_context_require_immutable_exact_records(
         _ = run_probe_programs((cast("ProbeProgram", object()),), context)
     with pytest.raises(ProbeProgramError, match="exact ProbeRunContext"):
         _ = run_probe_programs((program,), cast("ProbeRunContext", object()))
+
+
+def test_probe_command_rejects_late_type_spoofed_stdin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged type verdict cannot admit mutable process stdin."""
+    foreign = bytearray(b"input")
+    native_type = type
+    rejected = False
+    executable = ToolExecutable(_PYTHON_TOOL)
+
+    def forged_type(value: object) -> type:
+        return bytes if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = ProbeCommand(
+                executable=executable,
+                stdin=cast("bytes", cast("object", foreign)),
+            )
+        except ProbeProgramError:
+            rejected = True
+    assert rejected, "late type hook admitted mutable process stdin"
+
+
+def test_probe_command_rejects_late_type_spoofed_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged type verdict cannot admit fractional process timeouts."""
+    foreign = 1.5
+    native_type = type
+    rejected = False
+    executable = ToolExecutable(_PYTHON_TOOL)
+
+    def forged_type(value: object) -> type:
+        return int if value is foreign else native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "type", forged_type)
+        try:
+            _ = ProbeCommand(
+                executable=executable,
+                timeout_ms=cast("int", cast("object", foreign)),
+            )
+        except ProbeProgramError:
+            rejected = True
+    assert rejected, "late type hook admitted a fractional timeout"
+
+
+def test_probe_transcript_rejects_late_len_spoofed_digest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged digest length cannot admit a truncated probe transcript."""
+    foreign = b"short"
+    native_len = len
+    rejected = False
+
+    def forged_len(value: object) -> int:
+        if value is foreign:
+            return hashlib.sha256().digest_size
+        return native_len(cast("bytes", value))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        try:
+            _ = ProbeTranscript("probe", foreign, 1)
+        except ProbeProgramError:
+            rejected = True
+    assert rejected, "late len hook admitted a truncated transcript digest"
+
+
+def test_probe_stdout_digest_ignores_late_len_framing_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Transcript frames must use native output length after tool hooks."""
+    update = cast(
+        "Callable[[object, int, bytes], None]",
+        vars(probe_exec_module)["_update_stdout_digest"],
+    )
+    stdout = b"stable output"
+    original = hashlib.sha256()
+    update(original, 0, stdout)
+    expected = original.digest()
+    native_len = len
+
+    def forged_len(value: object) -> int:
+        if value is stdout:
+            return native_len(stdout) + 1
+        return native_len(cast("bytes", value))
+
+    altered = hashlib.sha256()
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "len", forged_len)
+        update(altered, 0, stdout)
+    assert altered.digest() == expected, (
+        "late len hook changed transcript framing"
+    )
+
+
+def test_probe_tool_identifier_rejects_late_string_type_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign string-compatible identifiers cannot masquerade as exact str."""
+    foreign = cast("str", cast("object", UserString("python")))
+    rejected = False
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "str", UserString)
+        try:
+            _ = ToolExecutable(foreign)
+        except ProbeProgramError:
+            rejected = True
+    assert rejected, "late str class swap admitted a foreign tool identifier"
+
+
+def test_probe_exit_digest_ignores_late_int_framing_spoof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """External integer conversion cannot rewrite selected exit status."""
+    update = cast(
+        "Callable[[object, int, int], None]",
+        vars(probe_exec_module)["_update_exit_digest"],
+    )
+    original = hashlib.sha256()
+    update(original, 0, 37)
+    expected = original.digest()
+
+    def forged_int(value: object) -> int:
+        del value
+        return 0
+
+    altered = hashlib.sha256()
+    with monkeypatch.context() as patched:
+        patched.setattr(builtins, "int", forged_int)
+        update(altered, 0, 37)
+    assert altered.digest() == expected, "late int hook rewrote exit framing"

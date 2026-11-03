@@ -81,6 +81,18 @@ _NATIVE_PATH_STRING = Path.__str__
 _NATIVE_ANY = builtins.any
 _NATIVE_SET = builtins.set
 _NATIVE_SORTED = builtins.sorted
+_NATIVE_TYPE = builtins.type
+_NATIVE_LEN = builtins.len
+_NATIVE_TUPLE = builtins.tuple
+_NATIVE_STR = builtins.str
+_NATIVE_BYTES = builtins.bytes
+_NATIVE_BOOL = builtins.bool
+_NATIVE_INT = builtins.int
+_NATIVE_ISINSTANCE = builtins.isinstance
+_NATIVE_ZIP = builtins.zip
+_NATIVE_ALL = builtins.all
+_NATIVE_MIN = builtins.min
+_NATIVE_MAX = builtins.max
 
 
 def _native_path_stat(path: Path) -> os.stat_result:
@@ -141,7 +153,7 @@ ProbeArgument = str | PathArgument
 
 
 def _require_portable_probe_identifier(value: object, context: str) -> str:
-    if type(value) is not str or not value:
+    if _NATIVE_TYPE(value) is not _NATIVE_STR or not value:
         message = f"{context} must be a non-empty string"
         raise ProbeProgramError(message)
     if _NUL in value:
@@ -167,7 +179,9 @@ class ToolExecutable:
 
     def __post_init__(self) -> None:
         """Require a portable logical tool identifier."""
-        _ = _require_portable_probe_identifier(self.tool_id, "probe tool identifier")
+        _ = _require_portable_probe_identifier(
+            self.tool_id, "probe tool identifier"
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,36 +215,43 @@ def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
         ProbeProgramError: An argument contains a NUL character.
 
     """
-    if _NATIVE_ANY(_NUL in item for item in arguments if type(item) is str):
+    if _NATIVE_ANY(
+        _NUL in item for item in arguments if _NATIVE_TYPE(item) is _NATIVE_STR
+    ):
         message = "probe argv strings must not contain NUL bytes"
         raise ProbeProgramError(message)
     for argument in arguments:
-        if type(argument) is str:
+        if _NATIVE_TYPE(argument) is _NATIVE_STR:
             _require_fs_encodable(argument, "probe argv string")
             _require_portable_utf8_text(argument, "probe argv string")
 
 
 def _validate_command_shape(command: ProbeCommand) -> None:
-    if type(command.executable) not in {ToolExecutable, RootedExecutable}:
+    if _NATIVE_TYPE(command.executable) not in {
+        ToolExecutable,
+        RootedExecutable,
+    }:
         message = "probe executable must use an exact executable record"
         raise ProbeProgramError(message)
-    if type(command.arguments) is not tuple:
+    if _NATIVE_TYPE(command.arguments) is not _NATIVE_TUPLE:
         message = "probe arguments must use the exact immutable tuple type"
         raise ProbeProgramError(message)
     if _NATIVE_ANY(
-        type(argument) not in {str, PathArgument}
+        _NATIVE_TYPE(argument) not in {_NATIVE_STR, PathArgument}
         for argument in command.arguments
     ):
         message = "probe arguments contain a foreign argument record"
         raise ProbeProgramError(message)
-    if type(command.stdin) is not bytes:
+    if _NATIVE_TYPE(command.stdin) is not _NATIVE_BYTES:
         message = "probe stdin must use exact bytes"
         raise ProbeProgramError(message)
     _validate_argv_strings(command.arguments)
 
 
-def _validate_command_integer(value: object, context: str, *, positive: bool) -> None:
-    if type(value) is not int:
+def _validate_command_integer(
+    value: object, context: str, *, positive: bool
+) -> None:
+    if _NATIVE_TYPE(value) is not _NATIVE_INT:
         message = f"{context} must use the exact integer type"
         raise ProbeProgramError(message)
     minimum = _ONE if positive else _ZERO
@@ -247,17 +268,19 @@ def _validate_command_limits(command: ProbeCommand) -> None:
             "probe expected exit code",
             positive=False,
         )
-    _validate_command_integer(command.timeout_ms, "probe timeout", positive=True)
+    _validate_command_integer(
+        command.timeout_ms, "probe timeout", positive=True
+    )
     _validate_command_integer(
         command.max_stdout_bytes, "probe stdout limit", positive=False
     )
     _validate_command_integer(
         command.max_stderr_bytes, "probe stderr limit", positive=False
     )
-    if type(command.digest_stdout) is not bool:
+    if _NATIVE_TYPE(command.digest_stdout) is not _NATIVE_BOOL:
         message = "probe stdout digest selector must use an exact boolean"
         raise ProbeProgramError(message)
-    if type(command.digest_exit_code) is not bool:
+    if _NATIVE_TYPE(command.digest_exit_code) is not _NATIVE_BOOL:
         message = "probe exit digest selector must use an exact boolean"
         raise ProbeProgramError(message)
 
@@ -299,14 +322,15 @@ class ProbeProgram:
         _ = _require_portable_probe_identifier(
             self.probe_id, "probe program identifier"
         )
-        if type(self.commands) is not tuple:
+        if _NATIVE_TYPE(self.commands) is not _NATIVE_TUPLE:
             message = "probe commands must use the exact immutable tuple type"
             raise ProbeProgramError(message)
         if not self.commands:
             message = "probe program requires at least one command"
             raise ProbeProgramError(message)
         if _NATIVE_ANY(
-            type(command) is not ProbeCommand for command in self.commands
+            _NATIVE_TYPE(command) is not ProbeCommand
+            for command in self.commands
         ):
             message = "probe program contains a foreign command record"
             raise ProbeProgramError(message)
@@ -315,36 +339,40 @@ class ProbeProgram:
 def _validate_path(value: object, context: str) -> None:
     # Path subclasses can override conversion, resolution or status checks.
     # The probe execution authority must use an exact native host path.
-    if type(value) is not type(Path()):
+    if _NATIVE_TYPE(value) is not _NATIVE_TYPE(Path()):
         message = f"{context} must use exact pathlib Path"
         raise ProbeProgramError(message)
-    if _NUL in str(value):
+    if _NUL in _NATIVE_STR(value):
         message = f"{context} must not contain NUL bytes"
         raise ProbeProgramError(message)
-    _require_fs_encodable(str(value), context)
+    _require_fs_encodable(_NATIVE_STR(value), context)
 
 
 def _validate_tool_binding(binding: object) -> tuple[str, Path]:
-    if type(binding) is not tuple:
+    if _NATIVE_TYPE(binding) is not _NATIVE_TUPLE:
         message = "probe tool binding must be an exact pair"
         raise ProbeProgramError(message)
     pair = cast("tuple[object, ...]", binding)
-    if len(pair) != _TOOL_BINDING_LENGTH:
+    if _NATIVE_LEN(pair) != _TOOL_BINDING_LENGTH:
         message = "probe tool binding must be an exact pair"
         raise ProbeProgramError(message)
     tool_id, tool_path = pair
-    tool_id = _require_portable_probe_identifier(tool_id, "probe tool identifier")
+    tool_id = _require_portable_probe_identifier(
+        tool_id, "probe tool identifier"
+    )
     _validate_path(tool_path, "probe tool path")
     return tool_id, cast("Path", tool_path)
 
 
 def _validate_tool_bindings(value: object) -> tuple[str, ...]:
-    if type(value) is not tuple:
+    if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "probe tool bindings must use the exact immutable tuple type"
         raise ProbeProgramError(message)
     bindings = cast("tuple[object, ...]", value)
-    identifiers = tuple(_validate_tool_binding(binding)[0] for binding in bindings)
-    if identifiers != tuple(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
+    identifiers = _NATIVE_TUPLE(
+        _validate_tool_binding(binding)[0] for binding in bindings
+    )
+    if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = "probe tool bindings must be unique and sorted"
         raise ProbeProgramError(message)
     return identifiers
@@ -370,7 +398,7 @@ class ProbeRunContext:
         _validate_path(self.source_root, "probe source root")
         _validate_path(self.repository_root, "probe repository root")
         _ = _validate_tool_bindings(self.tools)
-        if type(self.enforce_source_immutable) is not bool:
+        if _NATIVE_TYPE(self.enforce_source_immutable) is not _NATIVE_BOOL:
             message = "probe source-immutability flag must use an exact boolean"
             raise ProbeProgramError(message)
 
@@ -393,10 +421,16 @@ class ProbeTranscript:
         _ = _require_portable_probe_identifier(
             self.probe_id, "probe transcript identifier"
         )
-        if type(self.digest) is not bytes or len(self.digest) != _SHA256_BYTES:
+        if (
+            _NATIVE_TYPE(self.digest) is not _NATIVE_BYTES
+            or _NATIVE_LEN(self.digest) != _SHA256_BYTES
+        ):
             message = "probe transcript digest must be exactly 32 bytes"
             raise ProbeProgramError(message)
-        if type(self.digested_commands) is not int or self.digested_commands < _ZERO:
+        if (
+            _NATIVE_TYPE(self.digested_commands) is not _NATIVE_INT
+            or self.digested_commands < _ZERO
+        ):
             message = "probe transcript selected count must be non-negative int"
             raise ProbeProgramError(message)
 
@@ -408,13 +442,13 @@ class _CommandResult:
 
 
 def _validate_probe_root(root: object) -> None:
-    if type(root) is not ProbeRoot:
+    if _NATIVE_TYPE(root) is not ProbeRoot:
         message = "probe root must use the exact ProbeRoot type"
         raise ProbeProgramError(message)
 
 
 def _validate_relative_path(relative_path: object) -> None:
-    if type(relative_path) is not str:
+    if _NATIVE_TYPE(relative_path) is not _NATIVE_STR:
         message = "probe relative path must use the exact string type"
         raise ProbeProgramError(message)
     candidate = PurePosixPath(relative_path)
@@ -432,7 +466,9 @@ def _validate_relative_path(relative_path: object) -> None:
         or candidate.as_posix() != relative_path
     )
     if unsafe:
-        message = f"unsafe probe relative path (including NUL): {relative_path!r}"
+        message = (
+            f"unsafe probe relative path (including NUL): {relative_path!r}"
+        )
         raise ProbeProgramError(message)
 
 
@@ -447,7 +483,7 @@ def _native_path_inside(path: Path, root: Path) -> bool:
 
 def _native_resolved_path(result: Path, description: str) -> Path:
     """Reject a foreign Path subtype before containment or process use."""
-    if type(result) is not type(Path()):
+    if _NATIVE_TYPE(result) is not _NATIVE_TYPE(Path()):
         message = f"probe {description} requires native resolved Path"
         raise ProbeExecutionError(message)
     return result
@@ -458,7 +494,9 @@ def _resolved_root(path: Path, description: str) -> Path:
         resolved = _NATIVE_PATH_RESOLVE(path)
     except (OSError, ValueError, RuntimeError) as error:
         detail = _safe_probe_error_detail(error)
-        message = f"probe {description} root resolution failed: {path}: {detail}"
+        message = (
+            f"probe {description} root resolution failed: {path}: {detail}"
+        )
         raise ProbeExecutionError(message) from error
     return _native_resolved_path(resolved, f"{description} root")
 
@@ -492,7 +530,9 @@ def _rooted_path(
     try:
         _ = _NATIVE_RELATIVE_TO(resolved, root)
     except ValueError as error:
-        message = f"probe path escapes authorized root: {argument.relative_path!r}"
+        message = (
+            f"probe path escapes authorized root: {argument.relative_path!r}"
+        )
         raise ProbeExecutionError(message) from error
     return candidate
 
@@ -508,7 +548,9 @@ def _resolved_tool_path(path: Path) -> Path:
 
 
 def _tool_map(context: ProbeRunContext) -> dict[str, Path]:
-    return {tool_id: _resolved_tool_path(path) for tool_id, path in context.tools}
+    return {
+        tool_id: _resolved_tool_path(path) for tool_id, path in context.tools
+    }
 
 
 def _native_executable_status(receipt: object) -> os.stat_result:
@@ -521,7 +563,7 @@ def _native_executable_status(receipt: object) -> os.stat_result:
         ProbeExecutionError: The status is foreign metadata.
 
     """
-    if type(receipt) is not _NATIVE_STAT_RESULT:
+    if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = "probe executable requires native filesystem status"
         raise ProbeExecutionError(message)
     return receipt
@@ -547,7 +589,7 @@ def _resolve_executable(
     context: ProbeRunContext,
     scratch_root: Path,
 ) -> Path:
-    if isinstance(executable, ToolExecutable):
+    if _NATIVE_ISINSTANCE(executable, ToolExecutable):
         path = _tool_map(context).get(executable.tool_id)
         if path is None:
             message = f"unresolved probe tool: {executable.tool_id}"
@@ -563,9 +605,9 @@ def _resolve_argument(
     context: ProbeRunContext,
     scratch_root: Path,
 ) -> str:
-    if isinstance(argument, str):
+    if _NATIVE_ISINSTANCE(argument, str):
         return argument
-    return str(_rooted_path(argument, context, scratch_root))
+    return _NATIVE_STR(_rooted_path(argument, context, scratch_root))
 
 
 def _command_argv(
@@ -578,7 +620,7 @@ def _command_argv(
         _resolve_argument(argument, context, scratch_root)
         for argument in command.arguments
     )
-    return [str(executable), *arguments]
+    return [_NATIVE_STR(executable), *arguments]
 
 
 @dataclass(slots=True)
@@ -614,26 +656,29 @@ def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
 
     """
     remaining = capture.limit - capture.size
-    amount = max(_ONE, min(_READ_CHUNK_BYTES, remaining + _ONE))
+    amount = _NATIVE_MAX(_ONE, _NATIVE_MIN(_READ_CHUNK_BYTES, remaining + _ONE))
     descriptor = stream.fileno()
     if (
-        type(descriptor) is not int
+        _NATIVE_TYPE(descriptor) is not _NATIVE_INT
         or descriptor < _ZERO
         or descriptor > _MAX_NATIVE_FILE_DESCRIPTOR
     ):
         message = "probe raw read descriptor must be a native C int"
         raise ValueError(message)
     fragment = os.read(descriptor, amount)
-    if type(fragment) is not bytes or len(fragment) > amount:
+    if (
+        _NATIVE_TYPE(fragment) is not _NATIVE_BYTES
+        or _NATIVE_LEN(fragment) > amount
+    ):
         message = "probe raw read reported non-native or overlong bytes"
         raise ValueError(message)
     if not fragment:
         return False
-    if len(fragment) > remaining:
+    if _NATIVE_LEN(fragment) > remaining:
         capture.exceeded = True
         return False
     capture.fragments.append(fragment)
-    capture.size += len(fragment)
+    capture.size += _NATIVE_LEN(fragment)
     return True
 
 
@@ -670,7 +715,7 @@ def _drain_pipe(stream: IO[bytes], capture: _PipeCapture) -> None:
 
 def _write_complete_probe_stdin(stream: IO[bytes], data: bytes) -> None:
     written = stream.write(data)
-    if type(written) is not int or written != len(data):
+    if _NATIVE_TYPE(written) is not _NATIVE_INT or written != _NATIVE_LEN(data):
         message = "probe stdin reported short or invalid byte count"
         raise ValueError(message)
 
@@ -708,7 +753,7 @@ def _signal_probe_group(process: subprocess.Popen[bytes]) -> OSError | None:
 
     """
     try:
-        os.kill(-process.pid, int(signal.Signals["SIGKILL"]))
+        os.kill(-process.pid, _NATIVE_INT(signal.Signals["SIGKILL"]))
     except ProcessLookupError:
         return None
     except OSError as error:
@@ -744,7 +789,9 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
         ProbeExecutionError: Group cleanup, direct kill, or reaping failed.
 
     """
-    group_error = _signal_probe_group(process) if os.name == _POSIX_OS_NAME else None
+    group_error = (
+        _signal_probe_group(process) if os.name == _POSIX_OS_NAME else None
+    )
     direct_error = (
         _kill_direct_probe_child(process)
         if os.name != _POSIX_OS_NAME or group_error is not None
@@ -753,13 +800,15 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
     try:
         _ = process.wait(timeout=_CHILD_REAP_SECONDS)
     except (*_PIPE_DEPENDENCY_ERRORS, subprocess.TimeoutExpired) as error:
-        message = "probe direct child reaping failed: " + _safe_probe_error_detail(
-            error
+        message = (
+            "probe direct child reaping failed: "
+            + _safe_probe_error_detail(error)
         )
         raise ProbeExecutionError(message) from error
     if direct_error is not None:
-        message = "probe direct child termination failed: " + _safe_probe_error_detail(
-            direct_error
+        message = (
+            "probe direct child termination failed: "
+            + _safe_probe_error_detail(direct_error)
         )
         failure = ProbeExecutionError(message)
         if group_error is not None:
@@ -770,13 +819,16 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
             )
         raise failure from direct_error
     if group_error is not None:
-        message = "probe process group cleanup failed: " + _safe_probe_error_detail(
-            group_error
+        message = (
+            "probe process group cleanup failed: "
+            + _safe_probe_error_detail(group_error)
         )
         raise ProbeExecutionError(message) from group_error
 
 
-def _spawn_probe(argv: list[str], scratch_root: Path) -> subprocess.Popen[bytes]:
+def _spawn_probe(
+    argv: list[str], scratch_root: Path
+) -> subprocess.Popen[bytes]:
     """Start a no-shell probe, normalizing host launch errors.
 
     Returns:
@@ -798,7 +850,9 @@ def _spawn_probe(argv: list[str], scratch_root: Path) -> subprocess.Popen[bytes]
             start_new_session=os.name == _POSIX_OS_NAME,
         )
     except _PIPE_DEPENDENCY_ERRORS as error:
-        message = "probe command launch failed: " + _safe_probe_error_detail(error)
+        message = "probe command launch failed: " + _safe_probe_error_detail(
+            error
+        )
         raise ProbeExecutionError(message) from error
 
 
@@ -861,7 +915,7 @@ def _safe_probe_error_detail(error: BaseException) -> str:
         A native single-string reason or an exception class name.
 
     """
-    if type(error) in (
+    if _NATIVE_TYPE(error) in (
         OSError,
         RuntimeError,
         ValueError,
@@ -869,9 +923,12 @@ def _safe_probe_error_detail(error: BaseException) -> str:
         ProbeExecutionError,
     ):
         arguments = cast("tuple[object, ...]", error.args)
-        if len(arguments) == 1 and type(arguments[0]) is str:
+        if (
+            _NATIVE_LEN(arguments) == 1
+            and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR
+        ):
             return arguments[0]
-    return type(error).__name__
+    return _NATIVE_TYPE(error).__name__
 
 
 def _close_unowned_pipe(
@@ -887,7 +944,8 @@ def _close_unowned_pipe(
     except _PIPE_DEPENDENCY_ERRORS as error:
         BaseException.add_note(
             failure,
-            "probe unused pipe close failed: " + _safe_probe_error_detail(error),
+            "probe unused pipe close failed: "
+            + _safe_probe_error_detail(error),
         )
 
 
@@ -909,8 +967,12 @@ def _start_capture(
     stdout = _PipeCapture(command.max_stdout_bytes)
     stderr = _PipeCapture(command.max_stderr_bytes)
     readers = (
-        threading.Thread(target=_drain_pipe, args=(stdout_pipe, stdout), daemon=True),
-        threading.Thread(target=_drain_pipe, args=(stderr_pipe, stderr), daemon=True),
+        threading.Thread(
+            target=_drain_pipe, args=(stdout_pipe, stdout), daemon=True
+        ),
+        threading.Thread(
+            target=_drain_pipe, args=(stderr_pipe, stderr), daemon=True
+        ),
     )
     try:
         for reader in readers:
@@ -922,7 +984,9 @@ def _start_capture(
         )
     except _PIPE_DEPENDENCY_ERRORS as error:
         # Never close a stream underneath a reader still draining it.
-        for pipe, reader in zip((stdout_pipe, stderr_pipe), readers, strict=True):
+        for pipe, reader in _NATIVE_ZIP(
+            (stdout_pipe, stderr_pipe), readers, strict=True
+        ):
             _close_unowned_pipe(pipe, reader, error)
         _close_unowned_pipe(process.stdin, None, error)
         raise
@@ -964,7 +1028,9 @@ def _require_finished_workers(running: _RunningProbe) -> None:
     captures = (running.stdout, running.stderr)
     reader_failed = _NATIVE_ANY(
         not reader.is_alive() and not capture.finished
-        for reader, capture in zip(running.readers, captures, strict=True)
+        for reader, capture in _NATIVE_ZIP(
+            running.readers, captures, strict=True
+        )
     )
     writer = running.writer
     writer_failed = (
@@ -981,7 +1047,7 @@ def _capture_complete(running: _RunningProbe) -> bool:
     writer = running.writer
     return (
         running.process.poll() is not None
-        and all(not reader.is_alive() for reader in running.readers)
+        and _NATIVE_ALL(not reader.is_alive() for reader in running.readers)
         and (writer is None or not writer.is_alive())
     )
 
@@ -1018,15 +1084,19 @@ def _start_capture_checked(
     try:
         return _start_capture(process, command)
     except _PIPE_DEPENDENCY_ERRORS as error:
-        message = "probe worker startup failed: " + _safe_probe_error_detail(error)
+        message = "probe worker startup failed: " + _safe_probe_error_detail(
+            error
+        )
         raise ProbeExecutionError(message) from error
 
 
-def _close_failed_running_pipes(running: _RunningProbe, failure: Exception) -> None:
+def _close_failed_running_pipes(
+    running: _RunningProbe, failure: Exception
+) -> None:
     """Reclaim pipes from workers that aborted before their normal close."""
     process = running.process
     _close_unowned_pipe(process.stdin, running.writer, failure)
-    for pipe, reader in zip(
+    for pipe, reader in _NATIVE_ZIP(
         (process.stdout, process.stderr), running.readers, strict=True
     ):
         _close_unowned_pipe(pipe, reader, failure)
@@ -1096,10 +1166,10 @@ def _run_command(
 ) -> _CommandResult:
     argv = _command_argv(command, context, scratch_root)
     completed = _launch_command(argv, command, scratch_root)
-    if len(completed.stdout) > command.max_stdout_bytes:
+    if _NATIVE_LEN(completed.stdout) > command.max_stdout_bytes:
         message = "probe command exceeded stdout limit"
         raise ProbeExecutionError(message)
-    if len(completed.stderr) > command.max_stderr_bytes:
+    if _NATIVE_LEN(completed.stderr) > command.max_stderr_bytes:
         message = "probe command exceeded stderr limit"
         raise ProbeExecutionError(message)
     if (
@@ -1120,7 +1190,9 @@ def _update_stdout_digest(
     stdout: bytes,
 ) -> None:
     index_bytes = command_index.to_bytes(_FRAME_LENGTH_BYTES, byteorder="big")
-    length_bytes = len(stdout).to_bytes(_FRAME_LENGTH_BYTES, byteorder="big")
+    length_bytes = _NATIVE_LEN(stdout).to_bytes(
+        _FRAME_LENGTH_BYTES, byteorder="big"
+    )
     hasher.update(b"O")
     hasher.update(index_bytes)
     hasher.update(length_bytes)
@@ -1133,7 +1205,7 @@ def _update_exit_digest(
     returncode: int,
 ) -> None:
     index_bytes = command_index.to_bytes(_FRAME_LENGTH_BYTES, byteorder="big")
-    code_bytes = int(returncode).to_bytes(
+    code_bytes = _NATIVE_INT(returncode).to_bytes(
         _FRAME_LENGTH_BYTES, byteorder="big", signed=True
     )
     hasher.update(b"E")
@@ -1160,7 +1232,9 @@ def _run_program(
 ) -> ProbeTranscript:
     hasher = _native_sha256()
     digested_commands = _ZERO
-    with _temporary_probe_root("diff-probe-", parent=temporary_parent) as scratch:
+    with _temporary_probe_root(
+        "diff-probe-", parent=temporary_parent
+    ) as scratch:
         scratch_root = Path(scratch)
         for command_index, command in enumerate(program.commands):
             try:
@@ -1186,19 +1260,21 @@ def _run_program(
 def _validate_probe_batch(
     programs: object, context: object
 ) -> tuple[ProbeProgram, ...]:
-    if type(programs) is not tuple:
+    if _NATIVE_TYPE(programs) is not _NATIVE_TUPLE:
         message = "probe program batch must use the exact immutable tuple type"
         raise ProbeProgramError(message)
     items = cast("tuple[object, ...]", programs)
-    if _NATIVE_ANY(type(program) is not ProbeProgram for program in items):
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(program) is not ProbeProgram for program in items
+    ):
         message = "probe program batch contains a foreign program record"
         raise ProbeProgramError(message)
     admitted = cast("tuple[ProbeProgram, ...]", programs)
-    if type(context) is not ProbeRunContext:
+    if _NATIVE_TYPE(context) is not ProbeRunContext:
         message = "probe run context must use the exact ProbeRunContext type"
         raise ProbeProgramError(message)
-    identifiers = tuple(program.probe_id for program in admitted)
-    if identifiers != tuple(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
+    identifiers = _NATIVE_TUPLE(program.probe_id for program in admitted)
+    if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = "probe programs must have unique sorted identifiers"
         raise ProbeProgramError(message)
     return admitted
@@ -1224,7 +1300,7 @@ def _snapshot_probe_tree(root: Path, context: str) -> TreeSnapshot:
 
 def _native_inode_status(receipt: object, context: str) -> os.stat_result:
     """Require an OS-provided identity receipt before trusting inode fields."""
-    if type(receipt) is not _NATIVE_STAT_RESULT:
+    if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"probe {context} inode status must be native"
         raise ProbeExecutionError(message)
     return receipt
@@ -1305,7 +1381,7 @@ def _require_repository_argument_disjoint(
         ProbeExecutionError: The path resolves inside the original source tree.
 
     """
-    if not isinstance(argument, (PathArgument, RootedExecutable)):
+    if not _NATIVE_ISINSTANCE(argument, (PathArgument, RootedExecutable)):
         return
     if argument.root is not ProbeRoot.REPOSITORY:
         return
@@ -1330,7 +1406,9 @@ def _require_repository_paths_disjoint(
     source = _resolved_root(context.source_root, "source")
     for program in programs:
         for command in program.commands:
-            _require_repository_argument_disjoint(command.executable, context, source)
+            _require_repository_argument_disjoint(
+                command.executable, context, source
+            )
             for argument in command.arguments:
                 _require_repository_argument_disjoint(argument, context, source)
 
@@ -1365,7 +1443,9 @@ def _run_isolated_batch(
     if _native_path_inside(temporary_parent, original_source):
         message = "probe temporary parent overlaps original source tree"
         raise ProbeExecutionError(message)
-    with _temporary_probe_root("diff-probe-batch-", parent=temporary_parent) as batch:
+    with _temporary_probe_root(
+        "diff-probe-batch-", parent=temporary_parent
+    ) as batch:
         batch_root = Path(batch)
         try:
             mirror_root = Path(
@@ -1392,7 +1472,7 @@ def _run_isolated_batch(
                 _run_program(program, isolated, baseline, temporary_parent)
             )
             _require_mirror_unchanged(mirror_root, baseline)
-        return tuple(transcripts)
+        return _NATIVE_TUPLE(transcripts)
 
 
 def _require_original_source_unchanged(
