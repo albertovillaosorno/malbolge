@@ -38,26 +38,26 @@ import builtins
 import hashlib
 import ntpath
 import os
-import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, cast, override
+import shutil
+from typing import TYPE_CHECKING
+from typing import cast
+from typing import override
 
-import pytest
 from algorithms.diff import relocatable as relocatable_module
-from algorithms.diff.exact import (
-    ExactTreeError,
-    build_exact_plan,
-    read_exact_regular_file,
-)
-from algorithms.diff.model import OracleLiteral, SourceSlice, TreeModelError
-from algorithms.diff.relocatable import (
-    RangeLocator,
-    RelocatableInstruction,
-    RelocatableSourceRange,
-    RelocationError,
-    build_relocatable_plan,
-    materialize_relocatable_plan,
-)
+from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.exact import build_exact_plan
+from algorithms.diff.exact import read_exact_regular_file
+from algorithms.diff.model import OracleLiteral
+from algorithms.diff.model import SourceSlice
+from algorithms.diff.model import TreeModelError
+from algorithms.diff.relocatable import RangeLocator
+from algorithms.diff.relocatable import RelocatableInstruction
+from algorithms.diff.relocatable import RelocatableSourceRange
+from algorithms.diff.relocatable import RelocationError
+from algorithms.diff.relocatable import build_relocatable_plan
+from algorithms.diff.relocatable import materialize_relocatable_plan
+import pytest
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -2153,3 +2153,245 @@ def test_relocatable_rejects_late_ntpath_dependencies(
                     source_path=unsafe,
                     copy_candidate_file=True,
                 )
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "forged"),
+    [
+        ("source_length", True, 1),
+        ("window_bytes", True, 1),
+        ("start_digest", bytearray(b"x" * 32), b"x" * 32),
+        ("end_digest", bytearray(b"y" * 32), b"y" * 32),
+    ],
+)
+def test_relocation_locator_constructor_ignores_late_field_getter(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+    forged: object,
+) -> None:
+    """A late class getter cannot conceal malformed stored locator evidence."""
+    values: dict[str, object] = {
+        "source_length": 2,
+        "window_bytes": 1,
+        "start_digest": b"x" * 32,
+        "end_digest": b"y" * 32,
+    }
+    values[field] = invalid
+    original = RangeLocator.__getattribute__
+    calls = 0
+
+    def getter(value: RangeLocator, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(RangeLocator, "__getattribute__", getter)
+        with pytest.raises(RelocationError):
+            constructor = cast("Callable[..., RangeLocator]", RangeLocator)
+            _ = constructor(**values)
+    assert calls == 0, "late getter concealed malformed locator storage"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_relocation_range_placement_ignores_late_digest_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """A late locator getter cannot redirect an admitted source boundary."""
+    locator = RangeLocator(3, 3, hashlib.sha256(b"abc").digest())
+    plan = relocatable_module.RelocatableAuthoringPlan((
+        RelocatableInstruction(
+            "target.bin", "source.bin", False,
+            segments=(RelocatableSourceRange(locator),),
+        ),
+    ))
+    _write(tmp_path / "candidate", "source.bin", b"abcXYZ")
+    original = RangeLocator.__getattribute__
+    calls = 0
+
+    def getter(value: RangeLocator, name: str) -> object:
+        nonlocal calls
+        if value is locator and name == "start_digest":
+            calls += 1
+            return hashlib.sha256(b"XYZ").digest()
+        return cast("object", original(value, name))
+
+    def forged_property(_value: RangeLocator) -> bytes:
+        return hashlib.sha256(b"XYZ").digest()
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(
+                RangeLocator, "start_digest", property(forged_property)
+            )
+        else:
+            patched.setattr(RangeLocator, "__getattribute__", getter)
+        materialize_relocatable_plan(
+            tmp_path / "candidate", plan, tmp_path / "out"
+        )
+    assert (tmp_path / "out/target.bin").read_bytes() == b"abc"
+    assert calls == 0, "late getter redirected range placement"
+
+
+@pytest.mark.parametrize(
+    ("field", "invalid", "forged"),
+    [
+        ("output_path", "../escape.bin", "safe.bin"),
+        ("source_path", "../escape.bin", "source.bin"),
+        ("copy_candidate_file", 1, True),
+        ("segments", [OracleLiteral(b"data")], (OracleLiteral(b"data"),)),
+    ],
+)
+def test_relocation_instruction_constructor_ignores_late_field_getter(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    invalid: object,
+    forged: object,
+) -> None:
+    """Malformed instruction fields must not be laundered by getters."""
+    values: dict[str, object] = {
+        "output_path": "safe.bin",
+        "source_path": "source.bin",
+        "copy_candidate_file": False,
+        "segments": (OracleLiteral(b"data"),),
+    }
+    values[field] = invalid
+    original = RelocatableInstruction.__getattribute__
+    calls = 0
+
+    def getter(value: RelocatableInstruction, name: str) -> object:
+        nonlocal calls
+        if name == field:
+            calls += 1
+            return forged
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(RelocatableInstruction, "__getattribute__", getter)
+        with pytest.raises(RelocationError):
+            constructor = cast(
+                "Callable[..., RelocatableInstruction]", RelocatableInstruction
+            )
+            _ = constructor(**values)
+    assert calls == 0, "late getter concealed malformed instruction storage"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_relocation_materialization_ignores_late_instruction_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Materialization reads the originally admitted output destination."""
+    instruction = RelocatableInstruction(
+        "target.bin", None, copy_candidate_file=False, literal=b"target"
+    )
+    plan = relocatable_module.RelocatableAuthoringPlan((instruction,))
+    original = RelocatableInstruction.__getattribute__
+    calls = 0
+
+    def getter(value: RelocatableInstruction, name: str) -> object:
+        nonlocal calls
+        if value is instruction and name == "output_path":
+            calls += 1
+            return "forged.bin"
+        return cast("object", original(value, name))
+
+    def forged_property(_value: RelocatableInstruction) -> str:
+        return "forged.bin"
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(
+                RelocatableInstruction,
+                "output_path",
+                property(forged_property),
+            )
+        else:
+            patched.setattr(RelocatableInstruction, "__getattribute__", getter)
+        materialize_relocatable_plan(
+            tmp_path / "candidate", plan, tmp_path / "out"
+        )
+    assert (tmp_path / "out/target.bin").read_bytes() == b"target"
+    assert not (tmp_path / "out/forged.bin").exists()
+    assert calls == 0, "late getter redirected output publication"
+
+
+def test_relocation_plan_constructor_ignores_late_instructions_getter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable stored plan cannot be hidden by a forged class getter."""
+    instruction = RelocatableInstruction(
+        "target.bin", None, copy_candidate_file=False, literal=b"target"
+    )
+    original = relocatable_module.RelocatableAuthoringPlan.__getattribute__
+    calls = 0
+
+    def getter(
+        value: relocatable_module.RelocatableAuthoringPlan, name: str
+    ) -> object:
+        nonlocal calls
+        if name == "instructions":
+            calls += 1
+            return (instruction,)
+        return cast("object", original(value, name))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            relocatable_module.RelocatableAuthoringPlan,
+            "__getattribute__",
+            getter,
+        )
+        with pytest.raises(RelocationError, match="immutable tuple"):
+            _ = relocatable_module.RelocatableAuthoringPlan(
+                cast(
+                    "tuple[RelocatableInstruction, ...]",
+                    cast("object", [instruction]),
+                )
+            )
+    assert calls == 0, "late getter concealed mutable plan storage"
+
+
+@pytest.mark.parametrize("hook", ["getattribute", "slot"])
+def test_relocation_materialization_ignores_late_plan_getter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, hook: str
+) -> None:
+    """Plan construction cannot be followed by omission of output evidence."""
+    instruction = RelocatableInstruction(
+        "target.bin", None, copy_candidate_file=False, literal=b"target"
+    )
+    plan = relocatable_module.RelocatableAuthoringPlan((instruction,))
+    original = relocatable_module.RelocatableAuthoringPlan.__getattribute__
+    calls = 0
+
+    def getter(
+        value: relocatable_module.RelocatableAuthoringPlan, name: str
+    ) -> object:
+        nonlocal calls
+        if value is plan and name == "instructions":
+            calls += 1
+            return ()
+        return cast("object", original(value, name))
+
+    def forged_property(
+        _value: relocatable_module.RelocatableAuthoringPlan,
+    ) -> tuple[RelocatableInstruction, ...]:
+        return ()
+
+    with monkeypatch.context() as patched:
+        if hook == "slot":
+            patched.setattr(
+                relocatable_module.RelocatableAuthoringPlan,
+                "instructions", property(forged_property),
+            )
+        else:
+            patched.setattr(
+                relocatable_module.RelocatableAuthoringPlan,
+                "__getattribute__", getter,
+            )
+        materialize_relocatable_plan(
+            tmp_path / "candidate", plan, tmp_path / "out"
+        )
+    assert (tmp_path / "out/target.bin").read_bytes() == b"target"
+    assert calls == 0, "late getter suppressed output instructions"

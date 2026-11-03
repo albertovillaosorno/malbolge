@@ -42,34 +42,30 @@ compatible-plan layer is implemented.
 from __future__ import annotations
 
 import builtins
+from dataclasses import dataclass
 import hashlib
 import os
-import shutil
-import sys
-from dataclasses import dataclass
 from pathlib import Path
+import shutil
 from stat import S_ISLNK
-from typing import TYPE_CHECKING, cast
+import sys
+from types import MemberDescriptorType
+from typing import TYPE_CHECKING
+from typing import cast
 
-from algorithms.diff.exact import (
-    ExactTreeError,
-    read_exact_regular_file,
-    snapshot_tree_excluding,
-)
-from algorithms.diff.model import (
-    ExactAuthoringPlan,
-    ExactInstructionKind,
-    OracleLiteral,
-    reserved_windows_component,
-)
+from algorithms.diff.exact import ExactTreeError
+from algorithms.diff.exact import read_exact_regular_file
+from algorithms.diff.exact import snapshot_tree_excluding
+from algorithms.diff.model import ExactAuthoringPlan
+from algorithms.diff.model import ExactInstructionKind
+from algorithms.diff.model import OracleLiteral
+from algorithms.diff.model import reserved_windows_component
 from algorithms.diff.publication import publish_directory_no_replace
 
 if TYPE_CHECKING:
-    from algorithms.diff.model import (
-        ExactInstruction,
-        ExactSegment,
-        SourceSlice,
-    )
+    from algorithms.diff.model import ExactInstruction
+    from algorithms.diff.model import ExactSegment
+    from algorithms.diff.model import SourceSlice
 
 _ZERO = 0
 _ONE = 1
@@ -154,38 +150,62 @@ class RangeLocator:
             RelocationError: Locator widths or digests are invalid.
 
         """
-        if (
-            _NATIVE_TYPE(self.source_length) is not _NATIVE_INT
-            or self.source_length <= _ZERO
-        ):
+        length, width, start_digest, end_digest = _locator_fields(self)
+        if _NATIVE_TYPE(length) is not _NATIVE_INT or length <= _ZERO:
             message = "relocatable source length must be a positive integer"
             raise RelocationError(message)
         if (
-            _NATIVE_TYPE(self.window_bytes) is not _NATIVE_INT
-            or self.window_bytes <= _ZERO
-            or self.window_bytes > self.source_length
+            _NATIVE_TYPE(width) is not _NATIVE_INT
+            or width <= _ZERO
+            or width > length
         ):
             message = "relocatable boundary width must be a valid integer"
             raise RelocationError(message)
         if (
-            _NATIVE_TYPE(self.start_digest) is not _NATIVE_BYTES
-            or _NATIVE_LEN(self.start_digest) != _SHA256_DIGEST_BYTES
+            _NATIVE_TYPE(start_digest) is not _NATIVE_BYTES
+            or _NATIVE_LEN(start_digest) != _SHA256_DIGEST_BYTES
         ):
             message = "relocatable start digest must be exact SHA-256 bytes"
             raise RelocationError(message)
-        if self.end_digest is not None and (
-            _NATIVE_TYPE(self.end_digest) is not _NATIVE_BYTES
-            or _NATIVE_LEN(self.end_digest) != _SHA256_DIGEST_BYTES
+        if end_digest is not None and (
+            _NATIVE_TYPE(end_digest) is not _NATIVE_BYTES
+            or _NATIVE_LEN(end_digest) != _SHA256_DIGEST_BYTES
         ):
             message = "relocatable end digest must be exact SHA-256 bytes"
             raise RelocationError(message)
         _validate_range_end_shape(self)
 
 
+# Frozen slots still allow later class getter replacement. Original descriptors
+# are the authority for both direct validation and downstream placement.
+_LOCATOR_LENGTH_SLOT = cast(
+    "MemberDescriptorType", RangeLocator.__dict__["source_length"]
+)
+_LOCATOR_WIDTH_SLOT = cast(
+    "MemberDescriptorType", RangeLocator.__dict__["window_bytes"]
+)
+_LOCATOR_START_SLOT = cast(
+    "MemberDescriptorType", RangeLocator.__dict__["start_digest"]
+)
+_LOCATOR_END_SLOT = cast(
+    "MemberDescriptorType", RangeLocator.__dict__["end_digest"]
+)
+
+
+def _locator_fields(
+    locator: RangeLocator,
+) -> tuple[int, int, bytes, bytes | None]:
+    return (
+        _LOCATOR_LENGTH_SLOT.__get__(locator, RangeLocator),
+        _LOCATOR_WIDTH_SLOT.__get__(locator, RangeLocator),
+        _LOCATOR_START_SLOT.__get__(locator, RangeLocator),
+        _LOCATOR_END_SLOT.__get__(locator, RangeLocator),
+    )
+
+
 def _validate_range_end_shape(locator: RangeLocator) -> None:
-    if (locator.end_digest is None) != (
-        locator.source_length == locator.window_bytes
-    ):
+    length, width, _, end_digest = _locator_fields(locator)
+    if (end_digest is None) != (length == width):
         message = (
             "relocatable end boundary digest must exist exactly when "
             "the source range exceeds its boundary window"
@@ -206,36 +226,54 @@ class RelocatableSourceRange:
             RelocationError: Locator metadata is foreign.
 
         """
-        if _NATIVE_TYPE(self.locator) is not RangeLocator:
+        if _NATIVE_TYPE(_range_locator_field(self)) is not RangeLocator:
             message = "relocatable source range must use the exact locator type"
             raise RelocationError(message)
+
+
+_SOURCE_RANGE_LOCATOR_SLOT = cast(
+    "MemberDescriptorType", RelocatableSourceRange.__dict__["locator"]
+)
+
+
+def _range_locator_field(source_range: RelocatableSourceRange) -> RangeLocator:
+    return cast(
+        "RangeLocator",
+        _SOURCE_RANGE_LOCATOR_SLOT.__get__(
+            source_range, RelocatableSourceRange
+        ),
+    )
 
 
 RelocatableSegment = RelocatableSourceRange | OracleLiteral
 
 
 def _validate_relocatable_paths(instruction: RelocatableInstruction) -> None:
-    _ = _validate_relative_path(instruction.output_path)
-    if instruction.source_path is not None:
-        _ = _validate_relative_path(instruction.source_path)
+    output_path, source_path, _, _, _ = _instruction_fields(instruction)
+    _ = _validate_relative_path(output_path)
+    if source_path is not None:
+        _ = _validate_relative_path(source_path)
 
 
 def _validate_relocatable_payload(instruction: RelocatableInstruction) -> None:
-    if _NATIVE_TYPE(instruction.copy_candidate_file) is not _NATIVE_BOOL:
+    _, _, copy_candidate_file, literal, segments = (
+        _instruction_fields(instruction)
+    )
+    if _NATIVE_TYPE(copy_candidate_file) is not _NATIVE_BOOL:
         message = "relocatable copy flag must use the exact boolean type"
         raise RelocationError(message)
     if (
-        instruction.literal is not None
-        and _NATIVE_TYPE(instruction.literal) is not _NATIVE_BYTES
+        literal is not None
+        and _NATIVE_TYPE(literal) is not _NATIVE_BYTES
     ):
         message = "relocatable literal must use exact bytes or None"
         raise RelocationError(message)
-    if _NATIVE_TYPE(instruction.segments) is not _NATIVE_TUPLE:
+    if _NATIVE_TYPE(segments) is not _NATIVE_TUPLE:
         message = "relocatable segments must use the immutable tuple type"
         raise RelocationError(message)
     if _NATIVE_ANY(
         _NATIVE_TYPE(segment) not in {RelocatableSourceRange, OracleLiteral}
-        for segment in instruction.segments
+        for segment in segments
     ):
         message = "relocatable instruction contains a foreign segment"
         raise RelocationError(message)
@@ -247,21 +285,24 @@ def _validate_relocatable_shape(instruction: RelocatableInstruction) -> None:
 
 
 def _validate_relocatable_form(instruction: RelocatableInstruction) -> None:
+    _, source_path, copy_candidate_file, literal, segments = (
+        _instruction_fields(instruction)
+    )
     forms = _NATIVE_SUM((
-        instruction.copy_candidate_file,
-        instruction.literal is not None,
-        _NATIVE_BOOL(instruction.segments),
+        copy_candidate_file,
+        literal is not None,
+        _NATIVE_BOOL(segments),
     ))
     if forms != _ONE:
         message = "relocatable instruction requires exactly one payload form"
         raise RelocationError(message)
-    if instruction.copy_candidate_file and instruction.source_path is None:
+    if copy_candidate_file and source_path is None:
         message = "candidate-file copy requires a source path"
         raise RelocationError(message)
-    if instruction.segments and instruction.source_path is None:
+    if segments and source_path is None:
         message = "relocatable segments require a source path"
         raise RelocationError(message)
-    if instruction.literal is not None and instruction.source_path is not None:
+    if literal is not None and source_path is not None:
         message = "literal relocatable instruction cannot require source"
         raise RelocationError(message)
 
@@ -282,6 +323,36 @@ class RelocatableInstruction:
         _validate_relocatable_form(self)
 
 
+_INSTRUCTION_OUTPUT_SLOT = cast(
+    "MemberDescriptorType", RelocatableInstruction.__dict__["output_path"]
+)
+_INSTRUCTION_SOURCE_SLOT = cast(
+    "MemberDescriptorType", RelocatableInstruction.__dict__["source_path"]
+)
+_INSTRUCTION_COPY_SLOT = cast(
+    "MemberDescriptorType",
+    RelocatableInstruction.__dict__["copy_candidate_file"],
+)
+_INSTRUCTION_LITERAL_SLOT = cast(
+    "MemberDescriptorType", RelocatableInstruction.__dict__["literal"]
+)
+_INSTRUCTION_SEGMENTS_SLOT = cast(
+    "MemberDescriptorType", RelocatableInstruction.__dict__["segments"]
+)
+
+
+def _instruction_fields(
+    instruction: RelocatableInstruction,
+) -> tuple[str, str | None, bool, bytes | None, tuple[RelocatableSegment, ...]]:
+    return (
+        _INSTRUCTION_OUTPUT_SLOT.__get__(instruction, RelocatableInstruction),
+        _INSTRUCTION_SOURCE_SLOT.__get__(instruction, RelocatableInstruction),
+        _INSTRUCTION_COPY_SLOT.__get__(instruction, RelocatableInstruction),
+        _INSTRUCTION_LITERAL_SLOT.__get__(instruction, RelocatableInstruction),
+        _INSTRUCTION_SEGMENTS_SLOT.__get__(instruction, RelocatableInstruction),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RelocatableAuthoringPlan:
     """Non-distributable placement plan derived from an exact baseline."""
@@ -295,18 +366,21 @@ class RelocatableAuthoringPlan:
             RelocationError: Plan records are mutable or foreign.
 
         """
-        if _NATIVE_TYPE(self.instructions) is not _NATIVE_TUPLE:
+        instructions = _plan_instructions(self)
+        if _NATIVE_TYPE(instructions) is not _NATIVE_TUPLE:
             message = (
                 "relocatable plan instructions must use an immutable tuple"
             )
             raise RelocationError(message)
         if _NATIVE_ANY(
             _NATIVE_TYPE(instruction) is not RelocatableInstruction
-            for instruction in self.instructions
+            for instruction in instructions
         ):
             message = "relocatable plan contains a foreign instruction record"
             raise RelocationError(message)
-        paths = _NATIVE_TUPLE(item.output_path for item in self.instructions)
+        paths = _NATIVE_TUPLE(
+            _instruction_fields(item)[0] for item in instructions
+        )
         if _NATIVE_LEN(paths) != _NATIVE_LEN(_NATIVE_SET(paths)):
             message = "relocatable plan requires unique output paths"
             raise RelocationError(message)
@@ -318,6 +392,20 @@ class RelocatableAuthoringPlan:
         ):
             message = "relocatable output files have ancestor path overlap"
             raise RelocationError(message)
+
+
+_PLAN_INSTRUCTIONS_SLOT = cast(
+    "MemberDescriptorType", RelocatableAuthoringPlan.__dict__["instructions"]
+)
+
+
+def _plan_instructions(
+    plan: RelocatableAuthoringPlan,
+) -> tuple[RelocatableInstruction, ...]:
+    return cast(
+        "tuple[RelocatableInstruction, ...]",
+        _PLAN_INSTRUCTIONS_SLOT.__get__(plan, RelocatableAuthoringPlan),
+    )
 
 
 def _lexical_ancestors(path: str) -> tuple[str, ...]:
@@ -634,13 +722,14 @@ def _unique_offset(
 
 
 def _locate_range(candidate: bytes, locator: RangeLocator) -> tuple[int, int]:
-    index = _window_index(candidate, locator.window_bytes)
-    start = _unique_offset(index, locator.start_digest, "start")
-    if locator.end_digest is None:
-        return start, start + locator.source_length
-    end_start = _unique_offset(index, locator.end_digest, "end")
-    end = end_start + locator.window_bytes
-    if end <= start or end - start < locator.source_length:
+    length, width, start_digest, end_digest = _locator_fields(locator)
+    index = _window_index(candidate, width)
+    start = _unique_offset(index, start_digest, "start")
+    if end_digest is None:
+        return start, start + length
+    end_start = _unique_offset(index, end_digest, "end")
+    end = end_start + width
+    if end <= start or end - start < length:
         message = "relocatable source boundaries are reversed or contracted"
         raise RelocationError(message)
     return start, end
@@ -657,7 +746,7 @@ def _patch_bytes(
             parts.append(segment.data)
             continue
         relocated = cast("RelocatableSourceRange", segment)
-        start, end = _locate_range(candidate, relocated.locator)
+        start, end = _locate_range(candidate, _range_locator_field(relocated))
         if start < previous_end:
             message = "relocatable source ranges overlap or reorder"
             raise RelocationError(message)
@@ -670,16 +759,19 @@ def _instruction_bytes(
     candidate_root: Path,
     instruction: RelocatableInstruction,
 ) -> bytes:
-    if instruction.literal is not None:
-        return instruction.literal
-    if instruction.source_path is None:
+    _, source_path, copy_candidate_file, literal, segments = (
+        _instruction_fields(instruction)
+    )
+    if literal is not None:
+        return literal
+    if source_path is None:
         message = "relocatable instruction lost source path"
         raise RelocationError(message)
-    candidate_path = _safe_path(candidate_root, instruction.source_path)
+    candidate_path = _safe_path(candidate_root, source_path)
     candidate = _read_relocatable_bytes(candidate_path, "relocatable candidate")
-    if instruction.copy_candidate_file:
+    if copy_candidate_file:
         return candidate
-    return _patch_bytes(candidate, instruction.segments)
+    return _patch_bytes(candidate, segments)
 
 
 def _prepare_staging(output_root: Path) -> Path:
@@ -776,9 +868,9 @@ def materialize_relocatable_plan(
     _require_external_output_root(candidate_root, output_root)
     staging = _prepare_staging(output_root)
     try:
-        for instruction in plan.instructions:
+        for instruction in _plan_instructions(plan):
             data = _instruction_bytes(candidate_root, instruction)
-            output = _safe_path(staging, instruction.output_path)
+            output = _safe_path(staging, _instruction_fields(instruction)[0])
             _write_relocatable_bytes(output, data, "relocatable output")
         _publish_relocatable_output(staging, output_root)
     except Exception as error:
