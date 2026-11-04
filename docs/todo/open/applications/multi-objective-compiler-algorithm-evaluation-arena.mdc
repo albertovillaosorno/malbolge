@@ -145,6 +145,12 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   requested command. Red-first fake-receipt and real-child regressions cover
   these three boundaries. None independently attests OS execution, detached
   descendant cleanup, or the authenticity of guest measurements.
+- Completion construction now uses an import-bound native
+  `subprocess.CompletedProcess` factory rather than the mutable public alias.
+  Four red-first substitutions changed reported argv, exit status, stdout or
+  stderr after real child capture; the substituted factory is bypassed.
+  This protects local report construction, not independently authenticated
+  execution. The separate exact-command identity requirement is unchanged.
 - The target producer now binds native emitter and VM completion argument
   lists to exact prepared guest commands before interpreting their output;
   the emitter receives a copy so in-place mutation cannot rewrite the expected

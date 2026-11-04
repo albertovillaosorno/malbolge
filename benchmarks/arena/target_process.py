@@ -71,6 +71,9 @@ RSS_REPORT_LIMIT = 32
 KIB_BYTES = 1024
 SYSTEM_TOOL_SEARCH_PATH = os.defpath
 NUL_CHARACTER = "\0"
+# Preserve the standard-library completion constructor before dependency hooks
+# can substitute receipts for the child streams and status we just checked.
+_NATIVE_COMPLETED_PROCESS = sp.CompletedProcess
 
 
 @dataclass(frozen=True, slots=True)
@@ -673,7 +676,7 @@ def _run(
             or status != child.returncode
         ):
             _fail("bounded target child wait returned unverified exit status")
-        return sp.CompletedProcess(command, status, stdout, stderr)
+        return _NATIVE_COMPLETED_PROCESS(command, status, stdout, stderr)
     finally:
         _finish_child(child)
 

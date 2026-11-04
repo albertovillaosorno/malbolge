@@ -372,6 +372,11 @@ result cannot redirect bytes after setup. The `malbolge` CLI now accepts
 ordinary no-argument EOF mode. An end-to-end real 256-byte plus EOF CLI test
 verifies exact classic byte values; a separate capsule test verifies current
 profile binary I/O. The transport alone is not a guest semantic verifier.
+The child transport constructs completion receipts with the original
+standard-library constructor rather than a replaceable public factory. Four
+red-first substitutions previously changed command, exit code or output bytes
+after a real child had finished; all now retain the captured native values.
+This protects local report construction, not the authenticity of OS execution.
 
 To measure a second **real non-EOF classic target pilot**, use:
 

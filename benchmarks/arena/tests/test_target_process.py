@@ -4184,3 +4184,38 @@ def test_selector_capture_keeps_original_failure_over_context_exit_fault(
             raise original
     assert caught.value is original
     assert "selector context cleanup also failed" in original.__notes__[0]
+
+
+@pytest.mark.parametrize("field", ["args", "returncode", "stdout", "stderr"])
+def test_native_completed_process_factory_cannot_forge_child_receipt(
+    monkeypatch: pytest.MonkeyPatch, field: str
+) -> None:
+    """A replaced completion factory cannot rewrite captured child evidence."""
+    native_completed_process = sp.CompletedProcess
+    command = _child("import sys; sys.stdout.buffer.write(b'actual\\n')")
+    invoked: list[str] = []
+
+    def forged_completion(
+        args: list[str], returncode: int, stdout: bytes, stderr: bytes
+    ) -> sp.CompletedProcess[bytes]:
+        invoked.append(field)
+        if field == "args":
+            args = ["/unrelated/binary"]
+        elif field == "returncode":
+            returncode = 99
+        elif field == "stdout":
+            stdout = b"forged\\n"
+        else:
+            stderr = b"forged diagnostics"
+        return native_completed_process(args, returncode, stdout, stderr)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(sp, "CompletedProcess", forged_completion)
+        result = target_process.invoke(command, timeout_seconds=3)
+
+    assert invoked == []
+    assert type(result) is native_completed_process
+    assert result.args == command
+    assert result.returncode == 0
+    assert result.stdout == b"actual\n"
+    assert result.stderr == b""
