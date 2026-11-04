@@ -43,11 +43,11 @@ use serde::Deserialize;
 use std::iter::once;
 use std::str;
 use typed::{
-    BasicBlock, BasicBlockSpec, FrontendArtifact, FrontendArtifactSpec,
-    FrontendFallthroughVoidFunctionSpec, FrontendPosition, FrontendReturnVoidFunction,
-    FrontendReturnVoidFunctionSpec, FrontendSpan, Function, FunctionSpec, Instruction,
-    IntegerConstant, LocatedInstruction, Module, ModuleSpec, TypeId, ValueId, canonical_bytes,
-    canonical_module, lower_frontend_artifact,
+    canonical_bytes, canonical_module, lower_frontend_artifact, BasicBlock, BasicBlockSpec,
+    FrontendArtifact, FrontendArtifactSpec, FrontendFallthroughVoidFunctionSpec, FrontendPosition,
+    FrontendReturnVoidFunction, FrontendReturnVoidFunctionSpec, FrontendSpan, Function,
+    FunctionSpec, Instruction, IntegerConstant, LocatedInstruction, Module, ModuleSpec, TypeId,
+    ValueId,
 };
 
 const EXPECTED_ABI: &str = "malbolge-c32-v1";
@@ -158,7 +158,7 @@ struct LiteralOutputNodes<'node> {
     byte: u8,
     calls: Vec<(&'node Node, &'node Node)>,
     function: &'node Node,
-    returned: &'node Node,
+    returned: Option<&'node Node>,
 }
 
 const fn position(value: &Position) -> FrontendPosition {
@@ -465,7 +465,7 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
 
 // Each direct `putchar(N)` child must have the exact source-bound Clang
 // four-node preorder: call -> function decay -> declaration ref, and call
-// -> canonical decimal byte literal. Calls are ordered siblings, never discarded.
+// -> evaluated byte literal. Calls are ordered siblings, never discarded.
 #[expect(
     clippy::too_many_lines,
     reason = "exact Clang node metadata and positional proof stay together"
@@ -480,17 +480,36 @@ fn admitted_output_byte(
         return None;
     };
     let digits = literal.literal.as_deref()?;
-    // Literal spelling must agree with Clang's evaluated i32 constant. The
-    // native frontend obtains this metadata from Clang, not C text scanning.
+    // Clang reports a canonical decimal evaluated i32 value for either source
+    // spelling. The compiler never infers this value by scanning C text.
     let byte = digits.parse::<u8>().ok()?;
     if digits != byte.to_string() || literal.constant_integer.as_deref() != Some(digits) {
         return None;
     }
-    let width = u32::try_from(digits.len()).ok()?;
     let call_span = &call.span;
     let cast_span = &cast.span;
     let callee_span = &callee.span;
     let literal_span = &literal.span;
+    let source_width = literal_span.end.byte.checked_sub(literal_span.begin.byte)?;
+    // Clang serializes both integer and character literal *values* as canonical
+    // decimal strings. Only decimal C integer tokens have that same source
+    // width; character tokens include quotes and possibly C escapes. Trust
+    // Clang's evaluated value, but require a bounded complete source token.
+    let width = match literal.kind.as_str() {
+        "integer-literal" if source_width == u32::try_from(digits.len()).ok()? => source_width,
+        "character-literal"
+            if (3..=10).contains(&source_width)
+                && literal_span.begin.line == literal_span.end.line
+                && literal_span
+                    .end
+                    .column
+                    .checked_sub(literal_span.begin.column)
+                    == Some(source_width) =>
+        {
+            source_width
+        }
+        _ => return None,
+    };
     let valid = call.id == expected_id
         && call.parent == body.id
         && call.kind == "call-expression"
@@ -508,7 +527,6 @@ fn admitted_output_byte(
         && callee.reference.as_deref() == Some("external:putchar")
         && literal.id == expected_id.saturating_add(3)
         && literal.parent == call.id
-        && literal.kind == "integer-literal"
         && literal.type_name.as_deref() == Some("i32")
         && [call, cast, callee, literal].iter().all(|node| {
             node.name.is_none()
@@ -559,8 +577,9 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let [function, body, rest @ ..] = nodes else {
         return Err(FrontendJsonError::Unsupported);
     };
-    let Some((returned, call_nodes)) = rest.split_last() else {
-        return Err(FrontendJsonError::Unsupported);
+    let (returned, call_nodes) = match rest.split_last() {
+        Some((last, preceding)) if last.kind == "return-statement" => (Some(last), preceding),
+        _ => (None, rest),
     };
     let (groups, leftover) = call_nodes.as_chunks::<4>();
     if groups.is_empty()
@@ -582,10 +601,13 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         || body.id != 2
         || body.parent != 1
         || body.kind != "compound-statement"
-        || returned.id != u32::try_from(nodes.len()).unwrap_or(u32::MAX)
-        || returned.parent != body.id
-        || returned.kind != "return-statement"
-        || [body, returned].iter().any(|node| {
+        || returned.is_some_and(|node| {
+            node.id != u32::try_from(nodes.len()).unwrap_or(u32::MAX)
+                || node.parent != body.id
+                || node.span.begin.byte <= body.span.begin.byte
+                || node.span.end.byte >= body.span.end.byte
+        })
+        || once(body).chain(returned).any(|node| {
             node.name.is_some()
                 || node.definition.is_some()
                 || node.inline_specified.is_some()
@@ -599,9 +621,8 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         })
         || function.span.begin.byte > body.span.begin.byte
         || function.span.end.byte < body.span.end.byte
-        || body.span.begin.byte >= returned.span.begin.byte
-        || returned.span.end.byte >= body.span.end.byte
-        || [body, returned].iter().any(|node| {
+        || body.span.begin.byte >= body.span.end.byte
+        || once(body).chain(returned).any(|node| {
             node.span.begin.line == 0
                 || node.span.begin.column == 0
                 || node.span.end.line == 0
@@ -632,7 +653,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         previous_end = call.span.end.byte;
         calls.push((call, literal));
     }
-    if previous_end >= returned.span.begin.byte {
+    if previous_end >= returned.map_or(body.span.end.byte, |node| node.span.begin.byte) {
         return Err(FrontendJsonError::Unsupported);
     }
     Ok(LiteralOutputNodes {
@@ -644,8 +665,8 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     })
 }
 
-/// Compile one through 32 identical source-proven decimal `putchar(N)` calls
-/// and final return into a successful-output trace with exact provenance.
+/// Compile one through 32 identical source-proven byte `putchar(N)` calls
+/// and explicit or implicit void return with exact source provenance.
 #[expect(
     clippy::too_many_lines,
     reason = "canonical typed-effect projection and re-admission"
@@ -676,20 +697,34 @@ fn canonical_literal_output_typed_ir(
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
-    let void_function = FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
-        body_span: span(&body.span),
-        definition: String::from("definition"),
-        function_span: span(&function.span),
-        inline_specified: false,
-        linkage: String::from("external"),
-        name: function
-            .name
-            .clone()
-            .ok_or(FrontendJsonError::Unsupported)?,
-        return_span: span(&returned.span),
-        signature: String::from("fn()->void"),
-        storage_class: String::from("none"),
-    });
+    let name = function
+        .name
+        .clone()
+        .ok_or(FrontendJsonError::Unsupported)?;
+    let void_function = if let Some(returned) = returned {
+        FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
+            body_span: span(&body.span),
+            definition: String::from("definition"),
+            function_span: span(&function.span),
+            inline_specified: false,
+            linkage: String::from("external"),
+            name,
+            return_span: span(&returned.span),
+            signature: String::from("fn()->void"),
+            storage_class: String::from("none"),
+        })
+    } else {
+        FrontendReturnVoidFunction::new_fallthrough(FrontendFallthroughVoidFunctionSpec {
+            body_span: span(&body.span),
+            definition: String::from("definition"),
+            function_span: span(&function.span),
+            inline_specified: false,
+            linkage: String::from("external"),
+            name,
+            signature: String::from("fn()->void"),
+            storage_class: String::from("none"),
+        })
+    };
     let artifact = FrontendArtifact::new_void(
         FrontendArtifactSpec {
             abi_id: input.profile.abi_id,

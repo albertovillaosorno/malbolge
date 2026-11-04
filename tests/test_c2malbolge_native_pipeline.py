@@ -231,6 +231,97 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
             self.assertEqual(executed.stdout, b"\x00\x00")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:3\n")
 
+    def test_real_clang_character_literals_emit_witnessed_guest_bytes(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            # This must pass through real pinned Clang, the JSON adapter, and
+            # independently validated Malbolge guest code, not a source parser.
+            cases = (
+                (b"putchar('A'); putchar('A');", b"AA", 27),
+                (b"putchar('\\x41'); putchar('\\x41');", b"AA", 27),
+                (b"putchar('A'); putchar(65);", b"AA", 27),
+                (b"putchar('\\0');", b"\x00", 2),
+                (b"putchar(0); putchar('\\0');", b"\x00\x00", 3),
+            )
+            for index, (calls, expected, steps) in enumerate(cases):
+                with self.subTest(calls=calls):
+                    source = Path(temporary) / f"char-{index}.c"
+                    target = Path(temporary) / f"char-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + calls
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
+                    )
+
+    def test_real_clang_implicit_void_return_after_output(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for index, (calls, expected, steps) in enumerate(
+                (
+                    (b"putchar(0);", b"\x00", 2),
+                    (b"putchar('A'); putchar('A');", b"AA", 27),
+                )
+            ):
+                with self.subTest(calls=calls):
+                    source = Path(temporary) / f"implicit-emit-{index}.c"
+                    target = Path(temporary) / f"implicit-emit-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { " + calls + b" }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
+                    )
+
+    def test_real_clang_unsupported_character_operations_do_not_publish(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            cases = (
+                b"putchar('A'); putchar('B');",
+                b"putchar('A' + 1); putchar('A' + 1);",
+                b"putchar('\\x100');",
+            )
+            for index, calls in enumerate(cases):
+                with self.subTest(calls=calls):
+                    source = Path(temporary) / f"invalid-char-{index}.c"
+                    target = Path(temporary) / f"invalid-char-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + calls
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target)
+                    self.assertNotEqual(compiled.returncode, 0)
+                    self.assertFalse(target.exists())
+                    self.assertIn(
+                        b"native C frontend failed"
+                        if index == 2
+                        else b"normalized frontend rejected",
+                        compiled.stderr,
+                    )
+
     def test_real_clang_nonzero_or_mixed_output_rejects_guest(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

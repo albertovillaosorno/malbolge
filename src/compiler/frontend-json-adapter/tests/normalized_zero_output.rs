@@ -35,12 +35,12 @@
 pub mod adapter;
 
 use adapter::compile_canonical_typed_initial_zero_outputs;
-use malbolge::{ProfileMachine, RunOutcome, target_profile};
+use malbolge::{target_profile, ProfileMachine, RunOutcome};
 use malbolge_c_frontend_json_adapter::{
-    FrontendGuestMode, canonical_guest_typed_ir, canonical_void_typed_ir, typed,
+    canonical_guest_typed_ir, canonical_void_typed_ir, typed, FrontendGuestMode,
 };
 use serde as _;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 fn span(begin: u32, end: u32, line: u32, line_begin: u32) -> Value {
     json!({"begin":{"byte":begin,"line":line,"column":begin.saturating_sub(line_begin).saturating_add(1)},
@@ -77,7 +77,16 @@ fn input() -> Value {
 }
 
 // Exact pinned-Clang preorder is four children per direct output call.
-// The source spelling uses canonical decimal literals of one to three digits.
+// Source spelling and normalized decimal value are independent for characters.
+fn repeated_literal_input(byte: u8, outputs: u32) -> Value {
+    let width = u32::try_from(byte.to_string().len()).unwrap_or_default();
+    repeated_output_input(byte, outputs, "integer-literal", width)
+}
+
+fn repeated_character_input(byte: u8, outputs: u32, width: u32) -> Value {
+    repeated_output_input(byte, outputs, "character-literal", width)
+}
+
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::indexing_slicing,
@@ -85,12 +94,11 @@ fn input() -> Value {
     clippy::default_numeric_fallback,
     reason = "closed synthetic Clang fixture spans for at most 33 bounded calls"
 )]
-fn repeated_literal_input(byte: u8, outputs: u32) -> Value {
+fn repeated_output_input(byte: u8, outputs: u32, kind: &str, width: u32) -> Value {
     let mut source = input();
     let literal = byte.to_string();
-    let digits = u32::try_from(literal.len()).unwrap_or_default();
-    let call_width = 9 + digits;
-    let total_extra = outputs.saturating_mul(digits.saturating_sub(1))
+    let call_width = 9 + width;
+    let total_extra = outputs.saturating_mul(width.saturating_sub(1))
         + outputs.saturating_sub(1).saturating_mul(12);
     let end = 58 + total_extra;
     source["nodes"][0]["span"] = span(19, end, 2, 19);
@@ -115,8 +123,8 @@ fn repeated_literal_input(byte: u8, outputs: u32) -> Value {
             "span":source_span(begin,begin+7),"type":"fn(i32)->i32","reference":"external:putchar"
         }));
         nodes.push(json!({
-            "id":id+3,"parent":id,"kind":"integer-literal",
-            "span":source_span(begin+8,begin+8+digits),
+            "id":id+3,"parent":id,"kind":kind,
+            "span":source_span(begin+8,begin+8+width),
             "type":"i32","constant_integer":literal,"literal":literal
         }));
     }
@@ -159,12 +167,10 @@ fn repeated_zero_calls_preserve_source_and_emit_order() -> Result<(), String> {
             effects.first().map(typed::LocatedInstruction::instruction),
             Some(typed::Instruction::ConstantInteger { .. })
         ));
-        assert!(
-            effects.iter().skip(1).all(|effect| matches!(
-                effect.instruction(),
-                typed::Instruction::ByteOutput { .. }
-            ))
-        );
+        assert!(effects
+            .iter()
+            .skip(1)
+            .all(|effect| matches!(effect.instruction(), typed::Instruction::ByteOutput { .. })));
         let compiled = compile_canonical_typed_initial_zero_outputs(&wire, profile)
             .map_err(|error| format!("compile guest: {error:?}"))?;
         let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
@@ -221,6 +227,168 @@ fn witnessed_nonzero_literals_reach_real_guest_byte_output() -> Result<(), Strin
         );
     }
     Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent guest execution proves real character-literal byte effects"
+)]
+fn pinned_clang_character_literals_emit_real_guest_bytes() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    // Clang's normalized i32 value is decimal even for a source character
+    // token. ASCII 'A' is three bytes, \0 four, and \x41 six.
+    for (byte, outputs, width) in [(65u8, 2u32, 3u32), (0, 1, 4), (65, 2, 6)] {
+        let source = repeated_character_input(byte, outputs, width);
+        let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+            .map_err(|error| format!("C character {byte}: {error:?}"))?;
+        assert_eq!(
+            mode,
+            if byte == 0 {
+                FrontendGuestMode::InitialZeroOutput
+            } else {
+                FrontendGuestMode::SeededByteLiteral
+            }
+        );
+        let compiled = if byte == 0 {
+            compile_canonical_typed_initial_zero_outputs(&wire, profile)
+        } else {
+            adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile)
+        }
+        .map_err(|error| format!("compile character guest: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("load character guest: {error:?}"))?;
+        let steps = compiled.layout().executed_code_positions().len();
+        assert!(matches!(vm.run(steps), Ok(RunOutcome::Terminated { .. })));
+        assert_eq!(
+            vm.output(),
+            vec![byte; usize::try_from(outputs).unwrap_or_default()]
+        );
+    }
+    Ok(())
+}
+
+// A native void function can end at its closing brace without a ReturnStmt.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::default_numeric_fallback,
+    reason = "fixed pinned Clang output spans for omitted final return"
+)]
+fn implicit_void_return(mut source: Value) -> Value {
+    let removed = source["nodes"].as_array_mut().unwrap().pop();
+    assert!(removed.is_some());
+    for index in [0, 1] {
+        let end = source["nodes"][index]["span"]["end"]["byte"]
+            .as_u64()
+            .unwrap();
+        let new_end = u32::try_from(end).unwrap().saturating_sub(8);
+        source["nodes"][index]["span"] = span(if index == 0 { 19 } else { 35 }, new_end, 2, 19);
+    }
+    source
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source true implicit return must preserve real guest byte effects"
+)]
+fn implicit_void_returns_after_output_reach_real_guest() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    for (byte, outputs) in [(0u8, 1u32), (65, 2)] {
+        let source = implicit_void_return(repeated_literal_input(byte, outputs));
+        let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+            .map_err(|error| format!("implicit C return {byte}: {error:?}"))?;
+        let compiled = if mode == FrontendGuestMode::InitialZeroOutput {
+            compile_canonical_typed_initial_zero_outputs(&wire, profile)
+        } else {
+            adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile)
+        }
+        .map_err(|error| format!("compile implicit C return: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("load implicit-return guest: {error:?}"))?;
+        let steps = compiled.layout().executed_code_positions().len();
+        assert!(matches!(vm.run(steps), Ok(RunOutcome::Terminated { .. })));
+        assert_eq!(
+            vm.output(),
+            vec![byte; usize::try_from(outputs).unwrap_or_default()]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::unwrap_used,
+    clippy::default_numeric_fallback,
+    reason = "exact no-return source boundary and trailing-effect mutations"
+)]
+fn implicit_output_return_requires_closed_body_and_complete_call_groups() {
+    let base = implicit_void_return(repeated_literal_input(0, 1));
+    let mut mutations = Vec::new();
+    let mut truncated_body = base.clone();
+    truncated_body["nodes"][1]["span"]["end"]["byte"] = json!(47);
+    mutations.push(truncated_body);
+    let mut unmatched_line = base.clone();
+    unmatched_line["nodes"][5]["span"]["end"]["line"] = json!(3);
+    mutations.push(unmatched_line);
+    let mut extra_effect = base.clone();
+    extra_effect["nodes"].as_array_mut().unwrap().push(json!({
+        "id":7, "parent":2, "kind":"null-statement", "span":span(48,49,2,19)
+    }));
+    mutations.push(extra_effect);
+    let mut lost_operand = base;
+    let _removed = lost_operand["nodes"].as_array_mut().unwrap().pop();
+    mutations.push(lost_operand);
+    for (index, source) in mutations.iter().enumerate() {
+        assert!(
+            canonical_guest_typed_ir(&bytes(source)).is_err(),
+            "implicit source boundary mutation {index} reached guest"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::default_numeric_fallback,
+    reason = "fixed-shape pinned Clang character source metadata mutations"
+)]
+fn malformed_character_literal_evidence_fails_closed() {
+    let base = repeated_character_input(65, 2, 3);
+    let mut mutations = Vec::new();
+    let mut changed = base.clone();
+    changed["nodes"][5]["kind"] = json!("string-literal");
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["constant_integer"] = json!("66");
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["literal"] = json!("0x41");
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["type"] = json!("u8");
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["span"]["end"]["byte"] = json!(47);
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["span"]["end"]["column"] = json!(29);
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["span"]["end"]["line"] = json!(3);
+    mutations.push(changed);
+    let mut changed = base;
+    changed["nodes"][9]["literal"] = json!("66");
+    changed["nodes"][9]["constant_integer"] = json!("66");
+    mutations.push(changed);
+    for (index, mutated) in mutations.iter().enumerate() {
+        assert!(
+            canonical_guest_typed_ir(&bytes(mutated)).is_err(),
+            "forged Clang character literal {index} was admitted"
+        );
+    }
 }
 
 #[test]
