@@ -483,6 +483,39 @@ def test_bundle_replay_rejects_jointly_substituted_sha256_providers(
         challenge_bundles.verify_bundle(case, PROFILE, files)
 
 
+def test_bundle_replay_rejects_jointly_forged_hash_constructors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two replaced digest constructors must not invent a workload identity."""
+    case, files = _direct_bundle()
+    false_digest = "0" * challenge_bundles.SHA256_HEX_LENGTH
+    assert case["workload_sha256"] != false_digest
+    case["workload_sha256"] = false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    def forged_sha256(_source: bytes) -> ForgedHash:
+        return ForgedHash()
+
+    def forged_named_hash(_algorithm: str, _source: bytes) -> ForgedHash:
+        return ForgedHash()
+
+    # Swap only the consumer's provider namespace; the source generator's
+    # original hash routines are unaffected. Both returned digests agree.
+    monkeypatch.setattr(challenge_bundles, "sha256", forged_sha256)
+    monkeypatch.setattr(
+        challenge_bundles,
+        "hashlib",
+        SimpleNamespace(sha256=forged_sha256, new=forged_named_hash),
+    )
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="source SHA-256 receipt differs"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
 @pytest.mark.parametrize("stage", ["digest", "hexdigest"])
 def test_direct_bundle_types_unexpected_source_hash_fault(
     monkeypatch: pytest.MonkeyPatch,
