@@ -4138,3 +4138,152 @@ def test_relocation_read_keeps_native_exact_error_after_import_alias_swap(
     assert getattr(caught.value, "__notes__", []) == (
         ["trusted read note"] if with_note else []
     )
+
+
+def _native_range_with_foreign_locator() -> RelocatableSourceRange:
+    record = object.__new__(RelocatableSourceRange)
+    # Bypass frozen dataclass initialization to exercise native nested checks.
+    setter = cast(
+        "Callable[[object, str, object], None]", vars(object)["__setattr__"]
+    )
+    setter(record, "locator", object())
+    return record
+
+
+@pytest.mark.parametrize(
+    ("route", "operation", "message"),
+    [
+        (
+            "length",
+            lambda: RangeLocator(0, 1, bytes(32)),
+            "source length must be a positive integer",
+        ),
+        (
+            "width",
+            lambda: RangeLocator(2, 3, bytes(32)),
+            "boundary width must be a valid integer",
+        ),
+        (
+            "digest",
+            lambda: RangeLocator(2, 1, b"bad"),
+            "start digest must be exact SHA-256 bytes",
+        ),
+        (
+            "end digest",
+            lambda: RangeLocator(2, 1, bytes(32)),
+            "end boundary digest must exist exactly",
+        ),
+        (
+            "source range",
+            lambda: RelocatableSourceRange(cast("RangeLocator", object())),
+            "source range must use the exact locator type",
+        ),
+        (
+            "path",
+            lambda: RelocatableInstruction(
+                "../unsafe", None, copy_candidate_file=False, literal=b"safe"
+            ),
+            "unsafe relocatable tree path",
+        ),
+        (
+            "copy source",
+            lambda: RelocatableInstruction(
+                "out", None, copy_candidate_file=True
+            ),
+            "candidate-file copy requires a source path",
+        ),
+        (
+            "instruction form",
+            lambda: RelocatableInstruction(
+                "out", None, copy_candidate_file=False
+            ),
+            "exactly one payload form",
+        ),
+        (
+            "literal",
+            lambda: RelocatableInstruction(
+                "out", None, copy_candidate_file=False,
+                literal=cast("bytes", cast("object", bytearray(b"unsafe"))),
+            ),
+            "literal must use exact bytes",
+        ),
+        (
+            "plan records",
+            lambda: relocatable_module.RelocatableAuthoringPlan(
+                cast("tuple[RelocatableInstruction, ...]", cast("object", []))
+            ),
+            "immutable tuple",
+        ),
+        (
+            "plan overlap",
+            lambda: relocatable_module.RelocatableAuthoringPlan((
+                RelocatableInstruction(
+                    "out", None, copy_candidate_file=False, literal=b"a"
+                ),
+                RelocatableInstruction(
+                    "out", None, copy_candidate_file=False, literal=b"b"
+                ),
+            )),
+            "unique output paths",
+        ),
+        (
+            "nested range",
+            lambda: RelocatableInstruction(
+                "out", "source", copy_candidate_file=False,
+                segments=(_native_range_with_foreign_locator(),),
+            ),
+            "invalid native segment",
+        ),
+        (
+            "unicode path",
+            lambda: RelocatableInstruction(
+                "broken\ud800", None, copy_candidate_file=False, literal=b"safe"
+            ),
+            "unsafe relocatable tree path",
+        ),
+    ],
+)
+def test_relocatable_native_rejection_ignores_late_error_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    route: str,
+    operation: Callable[[], object],
+    message: str,
+) -> None:
+    """Untrusted public error aliases must not execute at native boundaries."""
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign error callback: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "RelocationError", foreign_error)
+        with pytest.raises(RelocationError, match=message):
+            _ = operation()
+    assert calls == 0, f"{route} invoked foreign error callback"
+
+
+def test_relocatable_native_error_detail_ignores_late_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Original relocation exceptions retain trusted native detail."""
+    expected = "trusted relocation failure"
+    error = RelocationError(expected)
+    detail = cast(
+        "Callable[[BaseException], str]",
+        vars(relocatable_module)["_host_error_detail"],
+    )
+    calls = 0
+
+    def foreign_error(_message: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign {_message}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(relocatable_module, "RelocationError", foreign_error)
+        observed = detail(error)
+    assert observed == expected
+    assert not calls

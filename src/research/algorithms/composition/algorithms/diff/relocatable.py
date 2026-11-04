@@ -265,7 +265,7 @@ def _require_native_host_resolution() -> None:
         )
     ):
         message = "relocatable path resolution hooks changed"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
 
 
 def _trusted_resolve(path: Path) -> Path:
@@ -290,6 +290,10 @@ class RelocationError(RuntimeError):
     """Raised when compatible source placement is unsafe or ambiguous."""
 
 
+# Preserve typed native placement failures after public alias substitutions.
+_NATIVE_RELOCATION_ERROR = RelocationError
+
+
 def _host_error_detail(error: BaseException) -> str:
     """Contain untrusted exception formatting within typed host failures."""
     if _NATIVE_TYPE(error) in (
@@ -297,7 +301,7 @@ def _host_error_detail(error: BaseException) -> str:
         _NATIVE_VALUE_ERROR,
         _NATIVE_RUNTIME_ERROR,
         ExactTreeError,
-        RelocationError,
+        _NATIVE_RELOCATION_ERROR,
     ):
         arguments = cast(
             "tuple[object, ...]",
@@ -347,26 +351,26 @@ class RangeLocator:
         length, width, start_digest, end_digest = _locator_fields(self)
         if _NATIVE_TYPE(length) is not _NATIVE_INT or length <= _ZERO:
             message = "relocatable source length must be a positive integer"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         if (
             _NATIVE_TYPE(width) is not _NATIVE_INT
             or width <= _ZERO
             or width > length
         ):
             message = "relocatable boundary width must be a valid integer"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         if (
             _NATIVE_TYPE(start_digest) is not _NATIVE_BYTES
             or _NATIVE_LEN(start_digest) != _SHA256_DIGEST_BYTES
         ):
             message = "relocatable start digest must be exact SHA-256 bytes"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         if end_digest is not None and (
             _NATIVE_TYPE(end_digest) is not _NATIVE_BYTES
             or _NATIVE_LEN(end_digest) != _SHA256_DIGEST_BYTES
         ):
             message = "relocatable end digest must be exact SHA-256 bytes"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         _validate_range_end_shape(self)
 
 
@@ -409,7 +413,7 @@ def _validate_range_end_shape(locator: RangeLocator) -> None:
             "relocatable end boundary digest must exist exactly when "
             "the source range exceeds its boundary window"
         )
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -433,12 +437,12 @@ class RelocatableSourceRange:
         locator = _range_locator_field(self)
         if _NATIVE_TYPE(locator) is not RangeLocator:
             message = "relocatable source range must use the exact locator type"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         try:
             _LOCATOR_VALIDATOR(locator)
         except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "relocatable source range has incomplete locator metadata"
-            raise RelocationError(message) from error
+            raise _NATIVE_RELOCATION_ERROR(message) from error
 
 
 _SOURCE_RANGE_VALIDATOR = cast(
@@ -475,22 +479,22 @@ def _validate_relocatable_payload(instruction: RelocatableInstruction) -> None:
     )
     if _NATIVE_TYPE(copy_candidate_file) is not _NATIVE_BOOL:
         message = "relocatable copy flag must use the exact boolean type"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     if (
         literal is not None
         and _NATIVE_TYPE(literal) is not _NATIVE_BYTES
     ):
         message = "relocatable literal must use exact bytes or None"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     if _NATIVE_TYPE(segments) is not _NATIVE_TUPLE:
         message = "relocatable segments must use the immutable tuple type"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     if _NATIVE_ANY(
         _NATIVE_TYPE(segment) not in {RelocatableSourceRange, OracleLiteral}
         for segment in segments
     ):
         message = "relocatable instruction contains a foreign segment"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     _require_valid_segments(segments)
 
 
@@ -507,9 +511,9 @@ def _require_valid_segments(segments: tuple[RelocatableSegment, ...]) -> None:
                 _SOURCE_RANGE_VALIDATOR(segment)
             else:
                 _ORACLE_LITERAL_VALIDATOR(cast("OracleLiteral", segment))
-    except (_NATIVE_ATTRIBUTE_ERROR, RelocationError, _NATIVE_TREE_MODEL_ERROR) as error:
+    except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_RELOCATION_ERROR, _NATIVE_TREE_MODEL_ERROR) as error:
         message = "relocatable instruction contains invalid native segment"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
 
 
 def _validate_relocatable_shape(instruction: RelocatableInstruction) -> None:
@@ -528,16 +532,16 @@ def _validate_relocatable_form(instruction: RelocatableInstruction) -> None:
     ))
     if forms != _ONE:
         message = "relocatable instruction requires exactly one payload form"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     if copy_candidate_file and source_path is None:
         message = "candidate-file copy requires a source path"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     if segments and source_path is None:
         message = "relocatable segments require a source path"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     if literal is not None and source_path is not None:
         message = "literal relocatable instruction cannot require source"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -631,20 +635,20 @@ class RelocatableAuthoringPlan:
             message = (
                 "relocatable plan instructions must use an immutable tuple"
             )
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         if _NATIVE_ANY(
             _NATIVE_TYPE(instruction) is not RelocatableInstruction
             for instruction in instructions
         ):
             message = "relocatable plan contains a foreign instruction record"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         _require_valid_relocatable_instructions(instructions)
         paths = _NATIVE_TUPLE(
             _instruction_fields(item)[0] for item in instructions
         )
         if _NATIVE_LEN(paths) != _NATIVE_LEN(_NATIVE_SET(paths)):
             message = "relocatable plan requires unique output paths"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         known_paths = _NATIVE_SET(paths)
         if _NATIVE_ANY(
             ancestor in known_paths
@@ -652,7 +656,7 @@ class RelocatableAuthoringPlan:
             for ancestor in _lexical_ancestors(path)
         ):
             message = "relocatable output files have ancestor path overlap"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
 
 
 def _require_valid_relocatable_instructions(
@@ -669,7 +673,7 @@ def _require_valid_relocatable_instructions(
             _INSTRUCTION_VALIDATOR(instruction)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "relocatable plan has incomplete native instruction metadata"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
 
 
 _PLAN_VALIDATOR = cast(
@@ -825,7 +829,7 @@ def _snapshot_evidence(
     """Compare stored path, digest and size without late record hooks."""
     if _NATIVE_TYPE(snapshot) is not TreeSnapshot:
         message = "relocatable snapshot must use exact tree evidence"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     files = cast(
         "tuple[FileRecord, ...]",
         _SNAPSHOT_FILES_SLOT.__get__(snapshot, TreeSnapshot),
@@ -834,7 +838,7 @@ def _snapshot_evidence(
         _NATIVE_TYPE(item) is not FileRecord for item in files
     ):
         message = "relocatable snapshot contains foreign file evidence"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     return _NATIVE_TUPLE(
         (
             _FILE_PATH_SLOT.__get__(item, FileRecord),
@@ -889,7 +893,7 @@ def _range_locator(source: bytes, segment: SourceSlice) -> RangeLocator:
     end = offset + length
     if end > _NATIVE_LEN(source):
         message = "exact source slice exceeds authoring source file"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     data = source[offset:end]
     window_bytes = _NATIVE_MIN(_BOUNDARY_BYTES, _NATIVE_LEN(data))
     start_digest = _sha256(data[:window_bytes])
@@ -929,7 +933,7 @@ def _instruction(
     if kind is ExactInstructionKind.LITERAL_ORACLE:
         if literal is None:
             message = "exact literal instruction lost authoring bytes"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         return _new_relocatable_instruction(
             output_path=output_path,
             source_path=None,
@@ -938,7 +942,7 @@ def _instruction(
         )
     if source_path is None:
         message = "exact patch instruction lost source path"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     source = _read_relocatable_bytes(
         _safe_path(source_root, source_path), "relocatable source"
     )
@@ -962,10 +966,10 @@ def _path_status(path: Path, context: str) -> os.stat_result | None:
     ) as error:
         detail = _host_error_detail(error)
         message = f"{context} status failed: {path}: {detail}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     if _NATIVE_TYPE(status) is not _NATIVE_STAT_RESULT:
         message = f"{context} requires native filesystem status: {path}"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     return status
 
 
@@ -979,7 +983,7 @@ def _read_relocatable_bytes(path: Path, context: str) -> bytes:
     except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _host_error_detail(error)
         message = f"{context} read failed: {path}: {detail}"
-        failure = RelocationError(message)
+        failure = _NATIVE_RELOCATION_ERROR(message)
         if _NATIVE_TYPE(error) is _NATIVE_EXACT_TREE_ERROR:
             # Read native exception notes without invoking a late class getter.
             try:
@@ -1038,10 +1042,10 @@ def _write_relocatable_bytes(path: Path, data: bytes, context: str) -> None:
     ) as error:
         detail = _host_error_detail(error)
         message = f"{context} write failed: {path}: {detail}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     if _NATIVE_TYPE(written) is not _NATIVE_INT or written != _NATIVE_LEN(data):
         message = f"{context} short or invalid byte count: {path}"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
 
 
 def _make_relocatable_directory(
@@ -1060,24 +1064,24 @@ def _make_relocatable_directory(
     ) as error:
         detail = _host_error_detail(error)
         message = f"{context} creation failed: {path}: {detail}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
 
 
 def _validate_path(value: object, context: str) -> None:
     # A foreign Path subclass can redirect byte reads or output staging.
     if _NATIVE_TYPE(value) is not _NATIVE_PATH_TYPE:
         message = f"{context} must use exact pathlib Path"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     _require_native_host_resolution()
     text = _NATIVE_PATH_STRING(value)
     if _NUL in text:
         message = f"{context} is not a representable filesystem path"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     try:
         _ = text.encode(_NATIVE_FS_ENCODING, _NATIVE_FS_ERRORS)
     except _NATIVE_UNICODE_ERROR as error:
         message = f"{context} is not a representable filesystem path"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
 
 
 def _require_exact_source_snapshot(
@@ -1095,10 +1099,10 @@ def _require_exact_source_snapshot(
     except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _host_error_detail(error)
         message = f"relocatable source snapshot failed: {detail}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     if _snapshot_evidence(current) != _snapshot_evidence(source):
         message = "relocatable source snapshot differs from exact plan"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
 
 
 def build_relocatable_plan(
@@ -1119,12 +1123,12 @@ def build_relocatable_plan(
         message = (
             "relocatable source plan must use the exact authoring-plan type"
         )
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     try:
         _EXACT_PLAN_VALIDATOR(exact_plan)
     except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TREE_MODEL_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "relocatable exact plan has invalid native metadata"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     _require_exact_source_snapshot(source_root, exact_plan)
     instructions = _NATIVE_TUPLE(
         _instruction(source_root, instruction)
@@ -1137,12 +1141,12 @@ def build_relocatable_plan(
 def _validate_relative_path(relative_path: object) -> str:
     if _NATIVE_TYPE(relative_path) is not _NATIVE_STR:
         message = "relocatable path must use the exact string type"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     try:
         _ = relative_path.encode("utf-8")
     except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"unsafe relocatable tree path: {relative_path!r}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     # Pathlib class methods and parsers remain mutable after import. Keep
     # canonical relative-path admission independent of consumer callbacks.
     unsafe = (
@@ -1156,7 +1160,7 @@ def _validate_relative_path(relative_path: object) -> str:
     )
     if unsafe:
         message = f"unsafe relocatable tree path: {relative_path!r}"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     return relative_path
 
 
@@ -1169,13 +1173,13 @@ def _is_linked_ancestor(path: Path, status: os.stat_result) -> bool:
     ) as error:
         detail = _host_error_detail(error)
         message = f"ancestor inspection failed: {path}: {detail}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     if (
         _NATIVE_TYPE(symlink) is not _NATIVE_BOOL
         or _NATIVE_TYPE(junction) is not _NATIVE_BOOL
     ):
         message = f"ancestor inspection failed: {path}: non-native verdict"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     return symlink or junction
 
 
@@ -1188,7 +1192,7 @@ def _reject_linked_ancestors(root: Path, relative_path: str) -> None:
             message = (
                 f"relocatable linked path component is not supported: {current}"
             )
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
 
 
 def _safe_path(root: Path, relative_path: str) -> Path:
@@ -1205,18 +1209,18 @@ def _safe_path(root: Path, relative_path: str) -> Path:
         message = (
             f"relocatable path resolution failed: {relative_path!r}: {detail}"
         )
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     if (
         _NATIVE_TYPE(resolved_path) is not _NATIVE_PATH_TYPE
         or _NATIVE_TYPE(resolved_root) is not _NATIVE_PATH_TYPE
     ):
         message = "relocatable path resolution requires native resolved Path"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     try:
         _ = _NATIVE_RELATIVE_TO(resolved_path, resolved_root)
     except _NATIVE_VALUE_ERROR as error:
         message = f"relocatable path escapes tree root: {relative_path!r}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     _reject_linked_ancestors(root, normalized)
     return path
 
@@ -1245,7 +1249,7 @@ def _unique_offset(
     offsets = index.get(digest, ())
     if _NATIVE_LEN(offsets) != _ONE:
         message = f"relocatable {label} boundary is missing or ambiguous"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     return offsets[0]
 
 
@@ -1259,7 +1263,7 @@ def _locate_range(candidate: bytes, locator: RangeLocator) -> tuple[int, int]:
     end = end_start + width
     if end <= start or end - start < length:
         message = "relocatable source boundaries are reversed or contracted"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     return start, end
 
 
@@ -1277,7 +1281,7 @@ def _patch_bytes(
         start, end = _locate_range(candidate, _range_locator_field(relocated))
         if start < previous_end:
             message = "relocatable source ranges overlap or reorder"
-            raise RelocationError(message)
+            raise _NATIVE_RELOCATION_ERROR(message)
         parts.append(candidate[start:end])
         previous_end = end
     return b"".join(parts)
@@ -1294,7 +1298,7 @@ def _instruction_bytes(
         return literal
     if source_path is None:
         message = "relocatable instruction lost source path"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     candidate_path = _safe_path(candidate_root, source_path)
     candidate = _read_relocatable_bytes(candidate_path, "relocatable candidate")
     if copy_candidate_file:
@@ -1305,13 +1309,13 @@ def _instruction_bytes(
 def _prepare_staging(output_root: Path) -> Path:
     if _path_present(output_root, "relocatable output root"):
         message = f"output root already exists: {output_root}"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     staging = _NATIVE_PATH_WITH_NAME(
         output_root, f".{_NATIVE_PATH_NAME(output_root)}{_STAGING_SUFFIX}"
     )
     if _path_present(staging, "relocatable staging root"):
         message = f"relocatable staging root already exists: {staging}"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     _make_relocatable_directory(
         staging,
         "relocatable staging root",
@@ -1338,7 +1342,7 @@ def _raise_relocatable_cleanup_failure(
 ) -> None:
     detail = _host_error_detail(error)
     message = f"{detail}; relocatable staging cleanup failed: {cleanup_error}"
-    raise RelocationError(message) from error
+    raise _NATIVE_RELOCATION_ERROR(message) from error
 
 
 def _publish_relocatable_output(staging: Path, destination: Path) -> None:
@@ -1349,7 +1353,7 @@ def _publish_relocatable_output(staging: Path, destination: Path) -> None:
     ) as error:
         detail = _host_error_detail(error)
         message = f"relocatable output publication failed: {detail}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
 
 
 def _require_external_output_root(
@@ -1369,13 +1373,13 @@ def _require_external_output_root(
     ) as error:
         detail = _host_error_detail(error)
         message = f"relocatable root resolution failed: {detail}"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
     if (
         _NATIVE_TYPE(candidate) is not _NATIVE_PATH_TYPE
         or _NATIVE_TYPE(output) is not _NATIVE_PATH_TYPE
     ):
         message = "relocatable root resolution requires native resolved Path"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     # The original is_relative_to delegates to mutable Path.parents and
     # equality/parent-sequence methods, not only to the captured function.
     _require_native_host_resolution()
@@ -1383,7 +1387,7 @@ def _require_external_output_root(
     _require_native_host_resolution()
     if contained:
         message = "relocatable output must not be inside the candidate source"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
 
 
 def _require_valid_native_relocatable_plan(
@@ -1399,7 +1403,7 @@ def _require_valid_native_relocatable_plan(
         _PLAN_VALIDATOR(plan)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "relocatable plan has incomplete native metadata"
-        raise RelocationError(message) from error
+        raise _NATIVE_RELOCATION_ERROR(message) from error
 
 
 def materialize_relocatable_plan(
@@ -1421,7 +1425,7 @@ def materialize_relocatable_plan(
     _validate_path(output_root, "relocatable output root")
     if _NATIVE_TYPE(plan) is not RelocatableAuthoringPlan:
         message = "relocatable materialization requires the exact plan type"
-        raise RelocationError(message)
+        raise _NATIVE_RELOCATION_ERROR(message)
     _require_valid_native_relocatable_plan(plan)
     _require_external_output_root(candidate_root, output_root)
     staging = _prepare_staging(output_root)
