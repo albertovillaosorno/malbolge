@@ -224,6 +224,13 @@ emission.
   checks still match. Other OSes keep the pre-open path check plus independent
   descriptor admission and retain a pathname race limitation; the stress
   fixture is not exhaustive proof of every scheduling interleave.
+  Canonical wire read admission now also corroborates the collected buffer
+  through an independent bounded reread of the originally opened descriptor.
+  Four red-first typed/ternary equal-length foreign-buffer substitutions
+  reject even when the reported count and source metadata agree; valid
+  source bytes and existing change-detection cases still pass. Checks repeat
+  after the reread; later external mutation and source authentication remain
+  outside the demonstrated boundary.
 - The separate `--seeded-byte-literal` compiler publisher admits one
   complete current-profile typed/MCTR `u8` literal-output function for
   14 independently verified nonzero guest rotation seeds. Real `j`, `*`,

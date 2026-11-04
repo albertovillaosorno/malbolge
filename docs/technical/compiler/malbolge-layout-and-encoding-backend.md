@@ -140,6 +140,14 @@ same original inode during an injected read, even when every timestamp, byte
 and inode check remains equal. The bounded reader also requires the returned
 byte count to equal the collected buffer length; an injected short, zero, or
 exaggerated receipt cannot authorize otherwise unchanged compiler-wire bytes.
+After that count check, the publisher rewinds and independently rereads the
+same opened descriptor within the 1 MiB cap. Four red-first typed/ternary
+reader substitutions that returned exact counts with foreign equal-length
+bytes now reject, both without reading and after reading the original bytes.
+The unchanged regular-file reader remains admitted. Descriptor/path metadata
+and Linux pathname checks repeat after the corroboration read. This guards
+buffer/source consistency at admission, not source authentication or races
+after the last check.
 The requested path is also resolved again after the read: rebinding an
 initially stable parent symlink to a second hard link
 of the same inode now rejects even if the original open-descriptor path is

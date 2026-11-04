@@ -270,6 +270,41 @@ fn rejects_mismatched_canonical_read_receipts() -> Result<(), String> {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "test rejects foreign reader bytes"
+)]
+fn forged_equal_length_reader_bytes_cannot_replace_opened_wire() -> Result<(), String> {
+    let fixture = Fixture::new().map_err(|error| error.to_string())?;
+    let wire = fixture.path("wire.mctr");
+    fs::write(&wire, b"abcdefgh").map_err(|error| error.to_string())?;
+    for kind in ["ternary", "typed"] {
+        for after_real_read in [false, true] {
+            let result = read_canonical_wire_with_reader(&wire, kind, |file, bytes| {
+                if after_real_read {
+                    let count = read_and_then(file, bytes, || Ok(()))?;
+                    assert_eq!(count, 8);
+                    bytes.clear();
+                }
+                bytes.extend_from_slice(b"ABCDEFGH");
+                Ok(8)
+            });
+            assert!(
+                result
+                    .as_ref()
+                    .is_err_and(|error| error.contains("reader bytes")),
+                "foreign {kind} bytes (read first: {after_real_read}) admitted: {result:?}"
+            );
+        }
+    }
+    assert_eq!(
+        fs::read(&wire).map_err(|error| error.to_string())?,
+        b"abcdefgh"
+    );
+    Ok(())
+}
+
+#[test]
 #[expect(clippy::panic_in_result_fn, reason = "test asserts admission behavior")]
 fn unchanged_file_remains_admitted() -> Result<(), String> {
     let fixture = Fixture::new().map_err(|error| error.to_string())?;

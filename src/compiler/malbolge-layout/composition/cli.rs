@@ -792,6 +792,38 @@ fn read_canonical_wire_with_reader(
             "ternary wire read length disagrees with bounded file",
         ));
     }
+    // Reject observed source or pathname mutation before attributing any
+    // mismatch to the reader's returned bytes.
+    let after = file
+        .metadata()
+        .map_err(|error| format!("cannot recheck canonical {kind} wire: {error}"))?;
+    let current = fs::metadata(path)
+        .map_err(|error| format!("cannot recheck canonical {kind} path: {error}"))?;
+    if !canonical_wire_metadata_matches(&metadata, &after)
+        || !canonical_wire_metadata_matches(&metadata, &current)
+    {
+        return Err(String::from("canonical wire changed during read"));
+    }
+    #[cfg(target_os = "linux")]
+    {
+        verify_opened_canonical_path(&file, &expected_opened_path, kind)?;
+        verify_requested_canonical_path(path, &expected_opened_path, kind)?;
+    }
+    // A correct byte count alone does not bind a replaceable reader's
+    // returned buffer to the opened descriptor. Independently reread the
+    // same bounded file before accepting compiler input bytes.
+    file.rewind()
+        .map_err(|error| format!("cannot rewind canonical {kind} wire: {error}"))?;
+    let mut source_bytes = Vec::new();
+    let _count = (&mut file)
+        .take(MAX_CANONICAL_WIRE_BYTES.saturating_add(1))
+        .read_to_end(&mut source_bytes)
+        .map_err(|error| format!("cannot corroborate canonical {kind} wire: {error}"))?;
+    if source_bytes != bytes {
+        return Err(format!(
+            "canonical {kind} wire reader bytes disagree with opened source",
+        ));
+    }
     let after = file
         .metadata()
         .map_err(|error| format!("cannot recheck canonical {kind} wire: {error}"))?;
