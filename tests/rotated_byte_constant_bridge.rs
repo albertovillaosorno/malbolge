@@ -1118,10 +1118,43 @@ fn witnessed_single_ascii_a_uses_guest_crazy_not_rotation() -> Result<(), String
 }
 
 #[test]
+fn witnessed_single_ascii_b_uses_guest_crazy_not_rotation() -> Result<(), String> {
+    let program = source(66, 1)?;
+    let profile = current_profile();
+    let layout = encode_rotated_byte_literal(&program, profile)
+        .map_err(|error| format!("single ASCII B guest rejected: {error:?}"))?;
+    if layout.source().len() != 69
+        || layout.executed_code_positions().len() != 69
+        || layout
+            .data_write_positions()
+            .iter()
+            .filter(|write| write.is_some())
+            .count()
+            != 1
+        || layout
+            .source()
+            .get(66)
+            .and_then(|cell| malbolge::decode_profile_instruction(u32::from(*cell), 66))
+            != Some(b'p')
+    {
+        return Err(String::from("ASCII B crazy-data guest layout drift"));
+    }
+    let mut vm = ProfileMachine::from_source(profile, layout.source(), vec![255, 0, 128])
+        .map_err(|error| format!("ASCII B guest load: {error:?}"))?;
+    if !matches!(vm.run(69), Ok(RunOutcome::Terminated { steps, .. }) if steps == 69)
+        || vm.input_consumed() != 0
+        || vm.output() != b"B"
+    {
+        return Err(String::from("ASCII B guest did not emit exactly one byte"));
+    }
+    Ok(())
+}
+
+#[test]
 fn seeded_literals_refuse_unsupported_values_and_profiles() -> Result<(), String> {
     const WITNESSED: &[u8] = &[
         4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 29, 36, 37, 38, 39,
-        43, 44, 65, 157, 158, 159, 160, 161, 162, 251, 253,
+        43, 44, 65, 66, 157, 158, 159, 160, 161, 162, 251, 253,
     ];
     for byte in u8::MIN..=u8::MAX {
         if WITNESSED.contains(&byte) {

@@ -117,8 +117,11 @@ current-profile nonzero bytes are available: `4, 5, 6, 9, 10, 11, 12, 13,
 independently checked prefix lengths between 27 and 64; no value is inferred
 from a different output count. A separate, exact one-output witness emits
 ASCII `A` (`65`) using 27 no-ops, data relocation, then a guest `p` crazy
-operation rather than rotation. Its 31 source cells are checked against the
-normative VM; this does not extend the one-rotation table or prove more bytes.
+operation rather than rotation. A separate one-output witness emits ASCII `B`
+(`66`) with 65 no-ops, data relocation, and guest `p`; the 69-cell guest is
+executed by the normative VM and consumes no stdin even when input is present.
+Both exact one-output witnesses are revalidated on every bridge invocation;
+they do not extend the rotation table or authorize other bytes or counts.
 For exactly two identical outputs, a **different** table
 admits `55, 64, 65, 66, 163, 164, 165, 182, 183, 200`. For exactly three
 identical outputs, an independently witnessed table admits `3, 4, 5, 6, 7,

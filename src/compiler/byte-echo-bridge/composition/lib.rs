@@ -1335,9 +1335,10 @@ pub fn encode_rotated_byte_literal(
         .find(|(byte, _)| *byte == scalar.bits());
     let (byte, padding, arithmetic) = match witness {
         Some((byte, padding)) => (byte, padding, LinearOpcode::RotateData),
-        // A separate actual-VM witness: 27 'o' cells, 'j', 'p', '<', 'v'.
-        // Keep this source/data phase and output multiplicity exact.
+        // Exact one-output actual-VM witnesses use 'j', 'p', '<', 'v',
+        // not the distinct and count-sensitive rotation seed table.
         None if outputs.len() == 1 && scalar.bits() == 65 => (65, 27, LinearOpcode::CrazyData),
+        None if outputs.len() == 1 && scalar.bits() == 66 => (66, 65, LinearOpcode::CrazyData),
         None => return Err(ByteEchoBridgeError::UnsupportedEffectTrace),
     };
     let mut operations = vec![LinearOpcode::NoOperation; padding];
