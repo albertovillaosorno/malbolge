@@ -593,3 +593,78 @@ fn empty_and_sibling_compounds_preserve_fallthrough_in_guest() -> Result<(), Str
     );
     Ok(())
 }
+
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    reason = "fixed native Clang standalone-zero AST with source spans"
+)]
+fn standalone_zero_input() -> Value {
+    let mut artifact = input();
+    artifact["source"]["id"] = json!("fixtures/noop-zero.c");
+    artifact["source"]["sha256"] =
+        json!("dbcf86a62de1b759bfeda91f5ff266d4149009c330e538798d67e1293abf741c");
+    artifact["nodes"] = json!([
+        {"id":1, "parent":0, "kind":"function-declaration", "span":span(0,30),
+         "name":"noop", "type":"fn()->void", "definition":"definition",
+         "inline_specified":false, "linkage":"external", "storage_class":"none"},
+        {"id":2, "parent":1, "kind":"compound-statement", "span":span(16,30)},
+        {"id":3, "parent":2, "kind":"integer-literal", "span":span(18,19),
+         "type":"i32", "constant_integer":"0", "literal":"0"},
+        {"id":4, "parent":2, "kind":"return-statement", "span":span(21,27)}
+    ]);
+    artifact
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "verified two-cell guest execution from a real source AST shape"
+)]
+fn standalone_zero_expression_is_semantically_inert_on_real_guest() -> Result<(), String> {
+    let artifact = standalone_zero_input();
+    let wire = canonical_void_typed_ir(&bytes(&artifact))
+        .map_err(|error| format!("zero-expression C projection: {error:?}"))?;
+    let admitted = typed::canonical_module(&wire)
+        .map_err(|error| format!("zero-expression MCTI admission: {error:?}"))?;
+    assert_eq!(admitted.source_id(), "fixtures/noop-zero.c");
+    let profile = target_profile("malbolge-2026").ok_or("current profile missing")?;
+    let compiled = compile_canonical_typed_empty_void(&wire, profile)
+        .map_err(|error| format!("zero-expression guest compilation: {error:?}"))?;
+    let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+        .map_err(|error| format!("zero-expression guest load: {error:?}"))?;
+    assert!(matches!(
+        vm.run(2),
+        Ok(RunOutcome::Terminated { steps: 2, .. })
+    ));
+    assert!(vm.output().is_empty());
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    reason = "exact standalone literal metadata and parent/source bounds"
+)]
+fn standalone_zero_expression_rejects_changed_values_and_forged_effects() {
+    let artifact = standalone_zero_input();
+    for (index, field, value) in [
+        (2, "kind", json!("call-expression")),
+        (2, "type", json!("u32")),
+        (2, "literal", json!("1")),
+        (2, "constant_integer", json!("1")),
+        (2, "parent", json!(1)),
+        (2, "span", span(18, 20)),
+        (3, "literal", json!("0")),
+        (1, "constant_integer", json!("0")),
+    ] {
+        let mut changed = artifact.clone();
+        changed["nodes"][index][field] = value;
+        assert_eq!(
+            canonical_void_typed_ir(&bytes(&changed)),
+            Err(FrontendJsonError::Unsupported),
+            "unsupported altered zero-expression {index} {field}"
+        );
+    }
+}

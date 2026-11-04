@@ -9,19 +9,19 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Closed normalized Clang-JSON to typed frontend void-return adapter.
+//   - Closed normalized Clang-JSON to typed frontend no-effect void adapter.
 // - Must-Not:
 //   - Parse C, reinterpret Clang semantics, or bypass typed-IR admission.
 // - Allows:
 //   - Inputs: bounded version-one normalized frontend JSON bytes.
-//   - Outputs: canonical MCTI for one explicitly returned void function.
+//   - Outputs: canonical MCTI for one admitted no-effect void function.
 //   - Side effects: none.
 // - Split-When:
 //   - Another normalized function family gains an executable typed lowering.
 // - Merge-When:
 //   - Native frontend composition owns equivalent validated JSON decoding.
 // - Summary:
-//   - Connects actual frontend wire shape to the tested typed-IR void slice.
+//   - Connects exact frontend semantics to the tested typed-IR void slice.
 // - Description:
 //   - Unknown nodes, fields, extra effects, identities and profile drift fail.
 // - Usage:
@@ -105,11 +105,13 @@ struct Span {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Node {
+    constant_integer: Option<String>,
     definition: Option<String>,
     id: u32,
     inline_specified: Option<bool>,
     kind: String,
     linkage: Option<String>,
+    literal: Option<String>,
     name: Option<String>,
     parent: u32,
     span: Span,
@@ -157,9 +159,9 @@ fn source_digest(value: &str) -> Result<[u8; 32], FrontendJsonError> {
     Ok(digest)
 }
 
-// NullStmt has exactly one source semicolon. We discard its *effect*, not its
-// provenance: every omitted node must be an ordered child in its own scope.
-fn valid_null_statement_span(node: &Node, body: &Node, preceding_end: u32) -> bool {
+// Clang NullStmt spans one semicolon, and standalone integer zero spans one
+// digit. Discard only their proven no-effect semantics, not source provenance.
+fn valid_single_byte_statement_span(node: &Node, body: &Node, preceding_end: u32) -> bool {
     let start = &node.span.begin;
     let end = &node.span.end;
     start.byte >= preceding_end
@@ -173,10 +175,14 @@ fn valid_null_statement_span(node: &Node, body: &Node, preceding_end: u32) -> bo
 }
 
 // Clang's semantic preorder contains compound scopes and their children.
-// Discard only proven effect-free NullStmt/CompoundStmt nodes, checking the
-// actual ancestor IDs and nonoverlapping source ranges at every depth. A
+// Discard only proven effect-free nulls, literal zero and compound scopes,
+// checking actual ancestor IDs and nonoverlapping source ranges at every depth. A
 // terminal ReturnStmt may belong to any active compound scope, but no node
 // can follow it. Scope bounds include braces; child ranges must be interior.
+#[expect(
+    clippy::too_many_lines,
+    reason = "nested source-preorder and no-effect statements share one admission gate"
+)]
 fn admit_effect_free_body(body: &Node, statements: &[Node]) -> Result<(), FrontendJsonError> {
     let mut scopes = vec![(body, body.span.begin.byte)];
     for (index, node) in statements.iter().enumerate() {
@@ -204,7 +210,20 @@ fn admit_effect_free_body(body: &Node, statements: &[Node]) -> Result<(), Fronte
             return Err(FrontendJsonError::Unsupported);
         }
         match node.kind.as_str() {
-            "null-statement" if valid_null_statement_span(node, parent, *next_child_byte) => {
+            "null-statement"
+                if valid_single_byte_statement_span(node, parent, *next_child_byte) =>
+            {
+                *next_child_byte = end.byte;
+            }
+            // A literal zero directly inside a compound statement is a
+            // one-byte expression statement with no reads, writes or effects.
+            // It is not safe to discard arbitrary literal descendants or casts.
+            "integer-literal"
+                if node.type_name.as_deref() == Some("i32")
+                    && node.constant_integer.as_deref() == Some("0")
+                    && node.literal.as_deref() == Some("0")
+                    && valid_single_byte_statement_span(node, parent, *next_child_byte) =>
+            {
                 *next_child_byte = end.byte;
             }
             "compound-statement"
@@ -282,12 +301,17 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
         || function.inline_specified != Some(false)
         || function.linkage.as_deref() != Some("external")
         || function.storage_class.as_deref() != Some("none")
+        || function.constant_integer.is_some()
+        || function.literal.is_some()
         || body.kind != "compound-statement"
         || body.parent != function.id
         || body.id != 2
         || once(body).chain(statements.iter()).any(|node| {
+            let is_standalone_zero = node.kind == "integer-literal";
             node.name.is_some()
-                || node.type_name.is_some()
+                || (!is_standalone_zero && node.type_name.is_some())
+                || (!is_standalone_zero && node.constant_integer.is_some())
+                || (!is_standalone_zero && node.literal.is_some())
                 || node.definition.is_some()
                 || node.inline_specified.is_some()
                 || node.linkage.is_some()
