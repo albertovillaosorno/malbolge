@@ -100,6 +100,14 @@ CASES = (
         21,
         1215,
     ),
+    Case(
+        "emit-qesc79",
+        "5a753a10b51b5211022694a2b3f9c45fe4afb92cd8e0ebf7f9cc37876953688d",
+        "09be18cd3358663cf7c8434f4b4c910f9ae2a87f0e6b799238372d2110fae2b6",
+        b'Q"\x1b79',
+        23,
+        1231,
+    ),
 )
 
 
