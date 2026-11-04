@@ -2199,3 +2199,70 @@ def test_historical_source_column_preflight_preserves_quoted_commas() -> None:
         registered_fields=frozenset({"repetition", "strategy_id"}),
         expected_rows=1,
     ) == [{"repetition": "0", "strategy_id": "left,right"}]
+
+
+class _ForgedHistoricalNumber:
+    """A forged integer whose string projection mimics source decimal text."""
+
+    def __str__(self) -> str:
+        return "7"
+
+
+@pytest.mark.parametrize("provider", ["set", "str", "int", "type"])
+def test_historical_integer_rejects_mutated_numeric_admission_provider(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Original decimal source, not mutable module hooks, owns run counts."""
+    if provider == "set":
+        source: str = "-2"
+        monkeypatch.setattr(
+            historical_pairs, "set", lambda _value: set(), raising=False
+        )
+    elif provider == "str":
+        source = "007"
+        monkeypatch.setattr(
+            historical_pairs, "str", lambda _value: source, raising=False
+        )
+    elif provider == "int":
+        source = "007"
+        monkeypatch.setattr(
+            historical_pairs,
+            "int",
+            lambda _value: _ForgedHistoricalNumber(),
+            raising=False,
+        )
+        monkeypatch.setattr(
+            historical_pairs, "str", lambda _value: source, raising=False
+        )
+    else:
+        class ForeignDigits(str):
+            def __iter__(self) -> Iterator[str]:
+                return iter("1")
+
+        source = ForeignDigits("-1")
+        native_type = type
+        monkeypatch.setattr(
+            historical_pairs,
+            "type",
+            lambda value: str if value is source else native_type(value),
+            raising=False,
+        )
+    with pytest.raises(historical_pairs.HistoricalEvidenceError):
+        historical_pairs._integer(source, "repetition")
+
+
+@pytest.mark.parametrize("provider", ["set", "str", "int", "type"])
+def test_historical_integer_preserves_valid_source_under_alias_mutation(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """A valid numeric field survives late replacement of native aliases."""
+    replacements: dict[str, object] = {
+        "set": lambda _value: {"-"},
+        "str": lambda _value: "forged",
+        "int": lambda _value: 99,
+        "type": lambda _value: object,
+    }
+    monkeypatch.setattr(
+        historical_pairs, provider, replacements[provider], raising=False
+    )
+    assert historical_pairs._integer("12", "repetition") == 12

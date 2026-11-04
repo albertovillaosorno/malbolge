@@ -56,8 +56,12 @@ if TYPE_CHECKING:
 from benchmarks.arena import analyze, csv_admission, evidence, report_output
 from scripts.validate import benchmark_protocol, experiment_manifest
 
-# Keep an import-bound source digest constructor across public alias changes.
+# Keep import-bound source providers across public alias changes.
 _NATIVE_SHA256 = sha256
+_NATIVE_TYPE = type
+_NATIVE_STR = str
+_NATIVE_INT = int
+_NATIVE_SET = set
 
 # Preserve source parsing and report encoding despite mutable providers.
 _SOURCE_TOML_LOADS = tomllib.loads
@@ -219,12 +223,12 @@ def _recheck_source_fingerprints(
 
 
 def _integer(text: object, field: str) -> int:
-    if type(text) is not str or not text:
+    if _NATIVE_TYPE(text) is not _NATIVE_STR or not text:
         _fail(f"invalid historical numeric field: {field}")
-    if not set(text) <= _SOURCE_ASCII_DIGITS:
+    if not _NATIVE_SET(text) <= _SOURCE_ASCII_DIGITS:
         _fail(f"invalid historical numeric field: {field}")
-    value = int(text)
-    if str(value) != text:
+    value = _NATIVE_INT(text)
+    if _NATIVE_STR(value) != text:
         _fail(f"noncanonical historical numeric field: {field}")
     return value
 
