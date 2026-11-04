@@ -54,12 +54,15 @@ Each call proves its direct `putchar` reference, one exact literal argument
 and function-to-pointer decay;
 the complete normalized preorder contains four or five nodes per call, plus
 two structural nodes and optional explicit `return;`, preserving exact source
-ancestry and ordered nonoverlapping spans. Up to 128 direct-child inert
-statements (`;`, `0;`, or `(void)0;`) may occur before, between or after the
-calls; the adapter checks each complete source-bound semantic node and preserves
-the output effects without inventing any guest I/O for those statements.
-Nonzero literal expressions, unexpected metadata, nested bodies and other
-side effects still reject. The adapter emits one canonical `u8` constant and
+ancestry and ordered nonoverlapping spans. Lexical compound scopes may contain
+these calls and inert statements; each nested scope preserves its own Clang
+parent ID, checked source span and original output order. The adapter admits at
+most 128 nested scopes with depth at most 64. Up to 128 inert statements
+(`;`, `0;`, or `(void)0;`) may occur before, between or after calls at any
+admitted depth. Each complete source-bound node is checked without inventing
+guest I/O for an inert statement. Nonzero literal expressions, early nested
+returns, unexpected metadata, effectful nested bodies and other side effects
+still reject. The adapter emits one canonical `u8` constant and
 the corresponding number of `ByteOutput` effects.
 For zero, the downstream publisher uses `--initial-zero-output --typed-stdin`,
 which independently verifies guest stdout of one to 32 NUL bytes. Nonzero

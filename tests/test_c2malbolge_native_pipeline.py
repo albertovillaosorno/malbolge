@@ -426,6 +426,63 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                         executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
                     )
 
+    def test_real_clang_nested_scopes_preserve_guest_output_order(self) -> None:
+        tools = self._tools()
+        cases = (
+            (b"putchar(65); { putchar(65); }", b"AA", 27),
+            (b"{putchar(65);}putchar(65);", b"AA", 27),
+            (b"{ ; { putchar(65); } } putchar(65);", b"AA", 27),
+            (b"putchar(0); { 0; { putchar(0); } }", b"\x00\x00", 3),
+            (b"putchar(65); { (void)0; ; } putchar(65);", b"AA", 27),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for index, (body, expected, steps) in enumerate(cases):
+                with self.subTest(body=body):
+                    source = Path(temporary) / f"nested-output-{index}.c"
+                    target = Path(temporary) / f"nested-output-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + body
+                        + b"return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
+                    )
+
+    def test_real_clang_nested_scopes_reject_early_return_or_effects(self) -> None:
+        tools = self._tools()
+        bodies = (
+            b"putchar(65); { putchar(66); }",
+            b"putchar(65); { return; } putchar(65);",
+            b"putchar(65); { volatile int value = 1; } putchar(65);",
+            b"putchar(65); { 1; putchar(65); }",
+            b"putchar(65); { putchar(65); return; } putchar(65);",
+            b"putchar(65);" + b"{}" * 129 + b"putchar(65);",
+            b"putchar(65);" + b"{" * 64 + b"putchar(65);" + b"}" * 64,
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for index, body in enumerate(bodies):
+                with self.subTest(body=body):
+                    source = Path(temporary) / f"nested-rejected-{index}.c"
+                    target = Path(temporary) / f"nested-rejected-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { " + body + b" }\n"
+                    )
+                    compiled = self._compile(tools, source, target)
+                    self.assertNotEqual(compiled.returncode, 0)
+                    self.assertFalse(target.exists())
+                    self.assertIn(b"normalized frontend rejected", compiled.stderr)
+
     def test_real_clang_effectful_or_nonzero_statements_between_outputs_reject(
         self,
     ) -> None:

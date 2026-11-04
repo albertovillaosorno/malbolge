@@ -58,6 +58,7 @@ const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
 const MAX_COMPOUND_DEPTH: usize = 64;
 const MAX_ZERO_OUTPUT_CALLS: usize = 32;
 const MAX_INERT_OUTPUT_STATEMENTS: usize = 128;
+const MAX_NESTED_OUTPUT_SCOPES: usize = 128;
 
 /// Which independently checked guest effect trace can realize this C source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -160,6 +161,15 @@ struct LiteralOutputNodes<'node> {
     calls: Vec<(&'node Node, &'node Node)>,
     function: &'node Node,
     returned: Option<&'node Node>,
+}
+
+// Track the Clang semantic preorder through nested lexical compound blocks.
+// Each scope owns its source cursor, so closing a block cannot re-admit
+// a child outside its original parent span or reorder an emitted effect.
+struct OutputScope<'node> {
+    node: &'node Node,
+    previous_end: u32,
+    previous_span_has_terminator: bool,
 }
 
 const fn position(value: &Position) -> FrontendPosition {
@@ -478,7 +488,7 @@ fn admitted_output_byte(
     body: &Node,
     previous_end: u32,
     expected_id: u32,
-    previous_was_null: bool,
+    previous_span_has_terminator: bool,
 ) -> Option<u8> {
     let (call, cast, callee, wrapper, literal) = match group {
         [call, cast, callee, literal] => (call, cast, callee, None, literal),
@@ -619,10 +629,10 @@ fn admitted_output_byte(
             .iter()
             .all(|node| node.operation.is_none())
         && [cast, literal].iter().all(|node| node.reference.is_none())
-        // A Clang NullStmt already spans its terminator semicolon. Its
-        // following call can begin at precisely the end of that span.
+        // Clang NullStmt and CompoundStmt spans include their final delimiter.
+        // The next call may begin exactly where that span ends.
         && (call_span.begin.byte > previous_end
-            || (previous_was_null && call_span.begin.byte == previous_end))
+            || (previous_span_has_terminator && call_span.begin.byte == previous_end))
         && call_span.end.byte < body.span.end.byte
         && call_span.begin.byte == cast_span.begin.byte
         && cast_span.begin.byte == callee_span.begin.byte
@@ -733,6 +743,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
             > MAX_ZERO_OUTPUT_CALLS
                 .saturating_mul(5)
                 .saturating_add(MAX_INERT_OUTPUT_STATEMENTS.saturating_mul(2))
+                .saturating_add(MAX_NESTED_OUTPUT_SCOPES)
         || function.kind != "function-declaration"
         || function.id != 1
         || function.parent != 0
@@ -784,9 +795,13 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     }
     let mut calls = Vec::new();
     let mut selected_byte = None;
-    let mut previous_end = body.span.begin.byte;
-    let mut previous_was_null = false;
+    let mut scopes = vec![OutputScope {
+        node: body,
+        previous_end: body.span.begin.byte,
+        previous_span_has_terminator: false,
+    }];
     let mut inert_count = 0usize;
+    let mut nested_count = 0usize;
     let mut offset = 0usize;
     while offset < call_nodes.len() {
         let id = u32::try_from(offset)
@@ -796,15 +811,69 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         let remaining = call_nodes
             .get(offset..)
             .ok_or(FrontendJsonError::Unsupported)?;
-        if let Some((consumed, end)) = inert_output_statement(remaining, body, previous_end, id) {
+        let node = remaining.first().ok_or(FrontendJsonError::Unsupported)?;
+        // A child of an earlier block cannot re-enter that closed block.
+        while scopes
+            .last()
+            .is_some_and(|scope| scope.node.id != node.parent)
+        {
+            let _closed = scopes.pop();
+        }
+        let scope_depth = scopes.len();
+        let scope = scopes.last_mut().ok_or(FrontendJsonError::Unsupported)?;
+        if node.kind == "compound-statement" {
+            let start = &node.span.begin;
+            let end = &node.span.end;
+            if node.id != id
+                || node.name.is_some()
+                || node.reference.is_some()
+                || node.definition.is_some()
+                || node.inline_specified.is_some()
+                || node.linkage.is_some()
+                || node.storage_class.is_some()
+                || node.type_name.is_some()
+                || node.operation.is_some()
+                || node.constant_integer.is_some()
+                || node.literal.is_some()
+                || start.byte < scope.previous_end
+                || start.byte <= scope.node.span.begin.byte
+                || end.byte >= scope.node.span.end.byte
+                || start.byte.checked_add(2).is_none_or(|min| end.byte < min)
+                || start.line == 0
+                || start.column == 0
+                || end.line < start.line
+                || end.column == 0
+                || start.line < scope.node.span.begin.line
+                || end.line > scope.node.span.end.line
+                || (start.line == end.line
+                    && (end.column.checked_sub(start.column) != end.byte.checked_sub(start.byte)))
+                || scope_depth >= MAX_COMPOUND_DEPTH
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            nested_count = nested_count.saturating_add(1);
+            if nested_count > MAX_NESTED_OUTPUT_SCOPES {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            scope.previous_end = end.byte;
+            scope.previous_span_has_terminator = true;
+            scopes.push(OutputScope {
+                node,
+                previous_end: start.byte,
+                previous_span_has_terminator: false,
+            });
+            offset = offset.saturating_add(1);
+            continue;
+        }
+        if let Some((consumed, end)) =
+            inert_output_statement(remaining, scope.node, scope.previous_end, id)
+        {
             inert_count = inert_count.saturating_add(1);
             if inert_count > MAX_INERT_OUTPUT_STATEMENTS {
                 return Err(FrontendJsonError::Unsupported);
             }
-            previous_end = end;
-            previous_was_null = remaining
-                .first()
-                .is_some_and(|node| node.kind == "null-statement");
+            scope.previous_end = end;
+            scope.previous_span_has_terminator = node.kind == "null-statement";
             offset = offset.saturating_add(consumed);
             continue;
         }
@@ -828,20 +897,31 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         let group = call_nodes
             .get(offset..end)
             .ok_or(FrontendJsonError::Unsupported)?;
-        let byte = admitted_output_byte(group, body, previous_end, id, previous_was_null)
-            .ok_or(FrontendJsonError::Unsupported)?;
+        let byte = admitted_output_byte(
+            group,
+            scope.node,
+            scope.previous_end,
+            id,
+            scope.previous_span_has_terminator,
+        )
+        .ok_or(FrontendJsonError::Unsupported)?;
         if selected_byte.is_some_and(|previous| previous != byte) {
             return Err(FrontendJsonError::Unsupported);
         }
         selected_byte = Some(byte);
         let call = group.first().ok_or(FrontendJsonError::Unsupported)?;
         let literal = group.last().ok_or(FrontendJsonError::Unsupported)?;
-        previous_end = call.span.end.byte;
-        previous_was_null = false;
+        scope.previous_end = call.span.end.byte;
+        scope.previous_span_has_terminator = false;
         calls.push((call, literal));
         offset = end;
     }
-    if previous_end >= returned.map_or(body.span.end.byte, |node| node.span.begin.byte) {
+    let root = scopes.first().ok_or(FrontendJsonError::Unsupported)?;
+    let next_begin = returned.map_or(body.span.end.byte, |node| node.span.begin.byte);
+    if root.previous_end > next_begin
+        || (root.previous_end == next_begin
+            && (returned.is_none() || !root.previous_span_has_terminator))
+    {
         return Err(FrontendJsonError::Unsupported);
     }
     Ok(LiteralOutputNodes {
