@@ -97,8 +97,16 @@ class _ForeignTargetFingerprint(str):
 
 @pytest.mark.parametrize(
     "receipt",
-    [None, False, 1, "a" * 63, "G" * 64, "F" * 64,
-     _ForeignTargetFingerprint("a" * 64), "a" * 64],
+    [
+        None,
+        False,
+        1,
+        "a" * 63,
+        "G" * 64,
+        "F" * 64,
+        _ForeignTargetFingerprint("a" * 64),
+        "a" * 64,
+    ],
 )
 def test_target_source_rejects_invalid_or_forged_hash_receipt(
     monkeypatch: pytest.MonkeyPatch, receipt: object
@@ -131,7 +139,8 @@ def test_target_source_rejects_jointly_forged_hash_constructors(
 
     monkeypatch.setattr(audit, "sha256", lambda _data: ForgedHash())
     monkeypatch.setattr(
-        audit, "hashlib",
+        audit,
+        "hashlib",
         SimpleNamespace(new=lambda _name, _data: ForgedHash()),
     )
     with pytest.raises(audit.TargetEchoAuditError, match="SHA-256"):
@@ -690,7 +699,9 @@ def test_retained_rss_manifest_contains_foreign_decoder_faults(
     def forbidden_format(_self: Exception) -> str:
         raise AssertionError("foreign decoder exception formatter executed")
 
-    hostile_type = type("HostileTomlFault", (fault_type,), {"__str__": forbidden_format})
+    hostile_type = type(
+        "HostileTomlFault", (fault_type,), {"__str__": forbidden_format}
+    )
     fault = hostile_type("untrusted TOML decoder failure")
 
     def failing_decoder(_text: str) -> Never:
@@ -1148,14 +1159,17 @@ def test_tool_fingerprint_rejects_unverified_hash_provider_receipts(
             }[receipt]
 
     monkeypatch.setattr(audit, "sha256", lambda: ForgedHash())
-    with pytest.raises(audit.TargetEchoAuditError, match="SHA-256|executable identity") as caught:
+    with pytest.raises(
+        audit.TargetEchoAuditError, match="SHA-256|executable identity"
+    ) as caught:
         audit._tool_identity(emitter, runner)
     if receipt == "fault":
         assert caught.value.__cause__ is failure
 
 
 def test_target_tool_rejects_jointly_forged_hash_constructors(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Two forged digest constructors cannot certify uninspected tool bytes."""
     emitter = tmp_path / "emitter"
@@ -1178,7 +1192,9 @@ def test_target_tool_rejects_jointly_forged_hash_constructors(
 
     monkeypatch.setattr(audit, "sha256", ForgedHash)
     monkeypatch.setattr(
-        audit, "hashlib", SimpleNamespace(new=lambda _name: ForgedHash()),
+        audit,
+        "hashlib",
+        SimpleNamespace(new=lambda _name: ForgedHash()),
     )
     with pytest.raises(audit.TargetEchoAuditError, match="SHA-256"):
         audit._tool_identity(emitter, runner)
@@ -3072,7 +3088,9 @@ def test_target_audit_foreign_native_argument_keeps_status_two(
         monkeypatch.setattr(audit.report_output, "publish", reject)
         monkeypatch.setattr(audit, "audit", lambda *_args, **_kwargs: {})
     monkeypatch.setattr(
-        audit.sys, "argv", ["target-audit", ".temp/arena-target-echo-foreign/study.json"]
+        audit.sys,
+        "argv",
+        ["target-audit", ".temp/arena-target-echo-foreign/study.json"],
     )
     with pytest.raises(SystemExit) as caught:
         audit.main()
@@ -3124,9 +3142,11 @@ def test_target_audit_requires_native_executable_metadata_before_field_access(
         nonlocal path_calls
         if path == emitter:
             path_calls += 1
-            if phase == "admit" or (
-                phase == "path-before" and path_calls == 1
-            ) or (phase == "path-after" and path_calls == 2):
+            if (
+                phase == "admit"
+                or (phase == "path-before" and path_calls == 1)
+                or (phase == "path-after" and path_calls == 2)
+            ):
                 return foreign
         return real_lstat(path)
 
@@ -3169,9 +3189,7 @@ def test_audit_git_rejects_mutated_launch_command(
         else:
             command.append("--unexpected")
         launched.append(expected)
-        return audit.sp.CompletedProcess(
-            command, 0, stdout=b"commit\n", stderr=b""
-        )
+        return audit.sp.CompletedProcess(command, 0, stdout=b"commit\n", stderr=b"")
 
     monkeypatch.setattr(audit.sp, "run", forged)
     with pytest.raises(audit.TargetEchoAuditError, match="local Git commit object"):
@@ -3263,3 +3281,261 @@ def test_rss_receipt_accepts_original_canonical_source_bytes() -> None:
         "utf-8"
     )
     audit._validate_rss_stage_bytes(data, row, raw=False)
+
+
+@pytest.mark.parametrize(
+    ("policy_name", "replacement", "foreign_path"),
+    [
+        ("ROOT_PART", "other", "other/arena-target-echo-1/study.json"),
+        ("RUN_PREFIX", "foreign-", ".temp/foreign-1/study.json"),
+        ("STUDY_LEAF", "payload.json", ".temp/arena-target-echo-1/payload.json"),
+        ("UNDERSCORE", "-", ".temp/arena-target-echo-a-b/study.json"),
+    ],
+)
+def test_target_audit_path_policy_cannot_be_rebound_by_public_names(
+    monkeypatch: pytest.MonkeyPatch,
+    policy_name: str,
+    replacement: str,
+    foreign_path: str,
+) -> None:
+    """A changed module spelling cannot authorize another evidence namespace."""
+    monkeypatch.setattr(audit, policy_name, replacement)
+    with pytest.raises(audit.TargetEchoAuditError, match="canonical|directory|study"):
+        audit._prefix(foreign_path)
+    assert audit._prefix(".temp/arena-target-echo-1/study.json") == (
+        ".temp/arena-target-echo-1"
+    )
+
+
+def test_target_audit_study_byte_cap_cannot_be_raised_by_public_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged read receipt larger than the fixed 16 MiB cap cannot pass."""
+    oversized = b"{}" + b" " * (audit.MAX_STUDY_BYTES - 1)
+    monkeypatch.setattr(audit, "MAX_STUDY_BYTES", len(oversized))
+    monkeypatch.setattr(
+        audit.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: oversized,
+    )
+    monkeypatch.setattr(audit.analyze, "parse_document", lambda _text: {})
+    with pytest.raises(audit.TargetEchoAuditError, match="bounded bytes"):
+        audit._document(".temp/arena-target-echo-1/study.json")
+
+
+def _three_cell_target_source() -> tuple[bytes, dict[str, Any]]:
+    """Use the frozen classic decode to construct an independently valid trace."""
+    operations = ("input", "output", "halt")
+    source = bytes(
+        next(
+            cell
+            for cell in range(33, 127)
+            if audit.CLASSIC_DECODE[(cell - 33 + position) % 94]
+            == {"input": ord("/"), "output": ord("<"), "halt": ord("v")}[token]
+        )
+        for position, token in enumerate(operations)
+    )
+    row = {
+        "algorithm": producer.BASELINE,
+        "case": {"difficulty": 1},
+        "metrics": {"artifact_bytes": len(source)},
+    }
+    return source, row
+
+
+@pytest.mark.parametrize("policy_name", ["SOURCE_INSTRUCTIONS", "CLASSIC_DECODE"])
+def test_target_audit_decoder_cannot_be_rebound_to_accept_corrupt_source(
+    monkeypatch: pytest.MonkeyPatch, policy_name: str
+) -> None:
+    """Corrupted graphical code is not certified by a mutable decode table."""
+    source, row = _three_cell_target_source()
+    audit._admit_source_bytes(source, row, producer.EOF_MODE)
+    wrong_halt = next(
+        cell
+        for cell in range(33, 127)
+        if audit.CLASSIC_DECODE[(cell - 33 + 2) % 94] == ord("o")
+    )
+    corrupt = source[:-1] + bytes((wrong_halt,))
+    if policy_name == "SOURCE_INSTRUCTIONS":
+        monkeypatch.setitem(audit.SOURCE_INSTRUCTIONS, "halt", ord("o"))
+    else:
+        changed_decoder = bytearray(audit.CLASSIC_DECODE)
+        changed_decoder[(wrong_halt - 33 + 2) % 94] = ord("v")
+        monkeypatch.setattr(audit, "CLASSIC_DECODE", bytes(changed_decoder))
+    with pytest.raises(audit.TargetEchoAuditError, match="source instruction"):
+        audit._admit_source_bytes(corrupt, row, producer.EOF_MODE)
+
+
+@pytest.mark.parametrize("limit_name", ["MAX_TARGET_BYTES", "MAX_PAIRS"])
+def test_target_forward_input_caps_cannot_be_raised_through_producer(
+    monkeypatch: pytest.MonkeyPatch, limit_name: str
+) -> None:
+    """The direct source gate retains its own immutable size and pair limits."""
+    original = getattr(producer, limit_name)
+    monkeypatch.setattr(producer, limit_name, original + 1)
+
+    def forbidden_operations(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("forged forward request reached operation allocation")
+
+    monkeypatch.setattr(audit, "_expected_operations", forbidden_operations)
+    with pytest.raises(audit.TargetEchoAuditError, match="bounded"):
+        audit.check_forward_candidate_source(
+            b"x" * (original + 1) if limit_name == "MAX_TARGET_BYTES" else b"x",
+            pairs=1 if limit_name == "MAX_TARGET_BYTES" else original + 1,
+            algorithm=audit.WALK,
+        )
+
+
+@pytest.mark.parametrize("policy_name", ["MAX_LEVELS", "MAX_PAIRS"])
+def test_target_audit_level_policy_cannot_be_raised_through_producer(
+    monkeypatch: pytest.MonkeyPatch, policy_name: str
+) -> None:
+    """Source-bound research capacity is not increased by producer aliases."""
+    original = getattr(producer, policy_name)
+    monkeypatch.setattr(producer, policy_name, original + 1)
+    values = range(1, original + 2) if policy_name == "MAX_LEVELS" else [original + 1]
+    rows = [{"case": {"difficulty": value}} for value in values]
+    with pytest.raises(audit.TargetEchoAuditError, match="difficulty|pair"):
+        audit._check_levels(rows)
+
+
+def test_target_audit_trial_policy_cannot_be_raised_through_producer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fixed study cannot silently gain additional repetition indices."""
+    trials = producer.MAX_TRIALS + 1
+    monkeypatch.setattr(producer, "MAX_TRIALS", trials)
+    rows = [{"case": {"difficulty": 1}, "trial": n} for n in range(trials)]
+    with pytest.raises(audit.TargetEchoAuditError, match="trial indices"):
+        audit._check_plan(rows, algorithm_count=1)
+
+
+def test_target_audit_rss_budget_cannot_be_raised_through_producer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A reported peak above the original 1 GiB ceiling remains invalid."""
+    original = producer.BUDGET_MIB
+    monkeypatch.setattr(producer, "BUDGET_MIB", original + 1)
+    document = {
+        "study": {"id": audit.FORWARD_RSS_STUDY},
+        "observations": [
+            {
+                "outcome": analyze.VERIFIED,
+                "metrics": {"peak_rss_bytes": (original + 1) * 1024 * 1024},
+            }
+        ],
+    }
+    with pytest.raises(audit.TargetEchoAuditError, match="peak RSS"):
+        audit._check_peak_rss_claims(document)
+
+
+def test_target_audit_tool_size_cap_cannot_be_raised_through_producer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A sparse executable beyond the agreed 128 MiB limit cannot be admitted."""
+    tool = tmp_path / "tool"
+    original = producer.MAX_TOOL_BYTES
+    with tool.open("wb") as file:
+        file.truncate(original + 1)
+    monkeypatch.setattr(producer, "MAX_TOOL_BYTES", original + 1)
+    with pytest.raises(audit.TargetEchoAuditError, match="128 MiB"):
+        audit._admit_tool(tool)
+
+
+def test_target_audit_pattern_oracle_ignores_rebound_public_vector(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller cannot replace the expected bytes for fixed patterned trials."""
+    original = audit._pattern_bytes(8)
+    monkeypatch.setattr(audit, "PATTERN_BYTES", b"\x00" * 8)
+    assert audit._pattern_bytes(8) == original
+
+
+def test_target_audit_eof_oracle_ignores_rebound_producer_byte(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The independent replay oracle still expects the historical EOF byte."""
+    monkeypatch.setattr(producer, "CLASSIC_EOF_BYTE", 0)
+    command = ["runner", "program.malbolge"]
+    monkeypatch.setattr(
+        audit,
+        "_invoke_runner",
+        lambda *_args: sp.CompletedProcess(command, 0, b"\xa8", b""),
+    )
+    row = {
+        "case": {"difficulty": 1, "family": producer.FAMILY},
+        "metrics": {},
+    }
+    result, expected = audit._replay_execution(
+        row, Path("runner"), Path("program.malbolge")
+    )
+    assert result.stdout == expected == b"\xa8"
+
+
+@pytest.mark.parametrize(
+    ("policy_name", "field"),
+    [
+        ("METHOD_CLASS", "method_class"),
+        ("PRODUCER_IMPLEMENTATION", "implementation"),
+        ("PRODUCER_CONFIGURATION", "configuration"),
+        ("ACCELERATOR", "accelerator"),
+    ],
+)
+def test_target_audit_manifest_provenance_cannot_follow_rebound_policy(
+    monkeypatch: pytest.MonkeyPatch, policy_name: str, field: str
+) -> None:
+    """Audit provenance is independent of caller-mutable expected fields."""
+    prefix = ".temp/arena-target-echo-1"
+    run = SimpleNamespace(accelerator="none", commit="a" * 40)
+    manifest = SimpleNamespace(
+        run=run,
+        record_kind=audit.experiment_manifest.RUN_RECORD_KIND,
+        method_class="benchmarking",
+        implementation="benchmarks/arena/target_echo_reference.py",
+        configuration="benchmarks/arena/README.md",
+        output=prefix,
+    )
+    monkeypatch.setattr(audit, policy_name, "forged")
+    if field == "accelerator":
+        run.accelerator = "forged"
+    else:
+        setattr(manifest, field, "forged")
+    monkeypatch.setattr(
+        audit, "_native_regular_bytes", lambda *_args, **_kwargs: b"manifest"
+    )
+    monkeypatch.setattr(
+        audit.experiment_manifest, "parse_manifest", lambda _text: manifest
+    )
+    document = {"observations": [{"experiment_manifest": "runs/1.toml"}]}
+    with pytest.raises(audit.TargetEchoAuditError, match="foreign producer provenance"):
+        audit._check_provenance(document, prefix)
+
+
+def test_target_audit_linked_input_caps_do_not_follow_mutable_dependencies(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retained manifest, raw and RSS input limits stay at original sizes."""
+    manifest_cap = audit.evidence.MAX_MANIFEST_BYTES
+    raw_cap = audit.raw_samples.MAX_RAW_BYTES
+    rss_cap = audit.RSS_REPORT_LIMIT
+    monkeypatch.setattr(audit.evidence, "MAX_MANIFEST_BYTES", manifest_cap + 1)
+    monkeypatch.setattr(audit.raw_samples, "MAX_RAW_BYTES", raw_cap + 1)
+    monkeypatch.setattr(audit, "RSS_REPORT_LIMIT", rss_cap + 1)
+    monkeypatch.setattr(audit, "_rss_receipt_paths", lambda *_args: {"rss/sample.json"})
+    monkeypatch.setattr(
+        audit, "_native_regular_bytes", lambda *_args, **_kwargs: b"same"
+    )
+    document = {
+        "observations": [
+            {
+                "experiment_manifest": "runs/sample.toml",
+                "raw_sample": "raw/sample.csv",
+            }
+        ],
+    }
+    retained = audit._snapshot_linked_inputs(
+        document, ".temp/arena-target-echo-1/study.json", "study digest"
+    )
+    assert retained["runs/sample.toml"][1] == manifest_cap
+    assert retained["raw/sample.csv"][1] == raw_cap
+    assert retained["rss/sample.json"][1] == rss_cap

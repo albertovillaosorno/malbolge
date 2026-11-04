@@ -138,6 +138,50 @@ CLASSIC_DECODE = (
     b".v%{gJh4G\\-=O@5`_3i<?Z';FNQuY]szf$!BS/|t:Pn6^Ha"
 )
 
+# This auditor is tied to the original fixed classic study, not to mutable
+# producer exports or public constants that callers may replace after import.
+_SOURCE_STUDY_BYTES = MAX_STUDY_BYTES
+_SOURCE_STUDY_LEAF = STUDY_LEAF
+_SOURCE_PATH_PART_COUNT = PATH_PART_COUNT
+_SOURCE_RUN_PREFIX = RUN_PREFIX
+_SOURCE_ROOT_PART = ROOT_PART
+_SOURCE_UNDERSCORE = UNDERSCORE
+_SOURCE_TARGET_BYTES = producer.MAX_TARGET_BYTES
+_SOURCE_MAX_PAIRS = producer.MAX_PAIRS
+_SOURCE_GRAPHICAL_LOW = producer.GRAPHICAL_LOW
+_SOURCE_GRAPHICAL_HIGH = producer.GRAPHICAL_HIGH
+_SOURCE_PHASES = PHASES
+_SOURCE_CLASSIC_DECODE = CLASSIC_DECODE
+_SOURCE_INSTRUCTIONS = SOURCE_INSTRUCTIONS.copy()
+
+_SOURCE_MAX_LEVELS = producer.MAX_LEVELS
+_SOURCE_MAX_TRIALS = producer.MAX_TRIALS
+_SOURCE_BUDGET_MIB = producer.BUDGET_MIB
+_SOURCE_BUDGET_SECONDS = producer.BUDGET_SECONDS
+_SOURCE_TOOL_BYTES = producer.MAX_TOOL_BYTES
+_SOURCE_TIMEOUT_SECONDS = producer.TIMEOUT_SECONDS
+_SOURCE_CLASSIC_EOF_BYTE = producer.CLASSIC_EOF_BYTE
+_SOURCE_PATTERN_BYTES = PATTERN_BYTES
+_SOURCE_PROFILE = producer.PROFILE
+_SOURCE_ALGORITHMS = producer.ALGORITHMS
+_SOURCE_BASELINE = producer.BASELINE
+_SOURCE_CANDIDATE = producer.CANDIDATE
+_SOURCE_EOF_MODE = producer.EOF_MODE
+_SOURCE_PATTERNED_MODE = producer.PATTERNED_MODE
+_SOURCE_FAMILY = producer.FAMILY
+_SOURCE_VERIFIER = producer.VERIFIER
+
+_SOURCE_METHOD_CLASS = METHOD_CLASS
+_SOURCE_ACCELERATOR = ACCELERATOR
+_SOURCE_PRODUCER_IMPLEMENTATION = PRODUCER_IMPLEMENTATION
+_SOURCE_PRODUCER_CONFIGURATION = PRODUCER_CONFIGURATION
+_SOURCE_RUN_RECORD_KIND = experiment_manifest.RUN_RECORD_KIND
+_SOURCE_MANIFEST_BYTES = evidence.MAX_MANIFEST_BYTES
+_SOURCE_RAW_BYTES = raw_samples.MAX_RAW_BYTES
+_SOURCE_RSS_REPORT_BYTES = RSS_REPORT_LIMIT
+_SOURCE_TARGET_RSS_REPORT_BYTES = target_process.RSS_REPORT_LIMIT
+_SOURCE_RSS_MEASURED_STAGES = producer.RSS_MEASURED_STAGES
+
 
 class TargetEchoAuditError(ValueError):
     """Retained target echo evidence is inconsistent or unverifiable."""
@@ -165,7 +209,6 @@ def _fail(message: str) -> Never:
     raise TargetEchoAuditError(message)
 
 
-
 def _source_sha256(data: bytes) -> str:
     """Bind every reported source fingerprint to exact native source bytes.
 
@@ -181,12 +224,16 @@ def _source_sha256(data: bytes) -> str:
     except Exception as error:
         message = "target audit source hash computation failed"
         raise TargetEchoAuditError(message) from error
-    if any(
-        type(value) is not str
-        or len(value) != DIGEST_HEX_LENGTH
-        or not set(value) <= analyze.SHA256_ALPHABET
-        for value in (digest, independent, source_bound)
-    ) or digest != source_bound or independent != source_bound:
+    if (
+        any(
+            type(value) is not str
+            or len(value) != DIGEST_HEX_LENGTH
+            or not set(value) <= analyze.SHA256_ALPHABET
+            for value in (digest, independent, source_bound)
+        )
+        or digest != source_bound
+        or independent != source_bound
+    ):
         _fail("target audit source returned invalid SHA-256 fingerprint")
     return digest
 
@@ -265,14 +312,18 @@ def _prefix(relative: str) -> str:
     if type(relative) is not str:
         _fail("target audit requires a canonical study path")
     parts = relative.split("/")
-    if len(parts) != PATH_PART_COUNT or parts[0] != ROOT_PART or parts[2] != STUDY_LEAF:
+    if (
+        len(parts) != _SOURCE_PATH_PART_COUNT
+        or parts[0] != _SOURCE_ROOT_PART
+        or parts[2] != _SOURCE_STUDY_LEAF
+    ):
         _fail("target audit requires .temp/arena-target-echo-*/study.json")
     label = parts[1]
-    suffix = label.removeprefix(RUN_PREFIX)
-    if not label.startswith(RUN_PREFIX) or not suffix:
+    suffix = label.removeprefix(_SOURCE_RUN_PREFIX)
+    if not label.startswith(_SOURCE_RUN_PREFIX) or not suffix:
         _fail("target audit requires an arena-target-echo study directory")
     if not suffix.isascii() or not all(
-        character.isalnum() or character == UNDERSCORE for character in suffix
+        character.isalnum() or character == _SOURCE_UNDERSCORE for character in suffix
     ):
         _fail("target audit requires a canonical generated directory")
     return "/".join(parts[:2])
@@ -282,7 +333,7 @@ def _document(relative: str) -> tuple[dict[str, Any], str]:
     data = _native_regular_bytes(
         _ROOT,
         relative,
-        limit=MAX_STUDY_BYTES,
+        limit=_SOURCE_STUDY_BYTES,
     )
     return analyze.parse_document(data.decode("utf-8")), _source_sha256(data)
 
@@ -300,9 +351,9 @@ def _mode(document: dict[str, Any]) -> str:
         FORWARD_RSS_RECEIPTS_STUDY,
         FORWARD_RAW_RSS_STUDY,
     }:
-        return producer.PATTERNED_MODE
+        return _SOURCE_PATTERNED_MODE
     if study_id in {EOF_STUDY, EOF_STEPS_STUDY}:
-        return producer.EOF_MODE
+        return _SOURCE_EOF_MODE
     _fail("target audit has unrecognized classic echo study mode")
 
 
@@ -344,18 +395,19 @@ def _has_verifier_cost(document: dict[str, Any]) -> bool:
 
 
 def _algorithms(document: dict[str, Any]) -> tuple[str, str]:
-    return FORWARD_ALGORITHMS if _forward(document) else producer.ALGORITHMS
+    return FORWARD_ALGORITHMS if _forward(document) else _SOURCE_ALGORITHMS
 
 
 def _pattern_bytes(pairs: int) -> bytes:
-    return (PATTERN_BYTES * ((pairs + len(PATTERN_BYTES) - 1) // len(PATTERN_BYTES)))[
-        :pairs
-    ]
+    return (
+        _SOURCE_PATTERN_BYTES
+        * ((pairs + len(_SOURCE_PATTERN_BYTES) - 1) // len(_SOURCE_PATTERN_BYTES))
+    )[:pairs]
 
 
 def _producer_study(document: dict[str, Any]) -> None:
     study = document["study"]
-    patterned = _mode(document) == producer.PATTERNED_MODE
+    patterned = _mode(document) == _SOURCE_PATTERNED_MODE
     steps = _has_steps(document)
     forward = _forward(document)
     study_id = (
@@ -400,12 +452,12 @@ def _producer_study(document: dict[str, Any]) -> None:
             if patterned
             else "Padded code is not larger or direct fails its EOF oracle."
         ),
-        "baseline": WALK if forward else producer.BASELINE,
+        "baseline": WALK if forward else _SOURCE_BASELINE,
         "stage": "measured-classic-malbolge-code-and-vm",
-        "target_profile": producer.PROFILE,
+        "target_profile": _SOURCE_PROFILE,
         "budget": {
-            "time_ns": producer.BUDGET_SECONDS * 1_000_000_000,
-            "memory_bytes": producer.BUDGET_MIB * 1_048_576,
+            "time_ns": _SOURCE_BUDGET_SECONDS * 1_000_000_000,
+            "memory_bytes": _SOURCE_BUDGET_MIB * 1_048_576,
         },
         "objectives": (
             [
@@ -440,7 +492,7 @@ def _producer_study(document: dict[str, Any]) -> None:
 
 
 def _expected_case(
-    pairs: int, mode: str = producer.EOF_MODE, *, forward: bool = False
+    pairs: int, mode: str = _SOURCE_EOF_MODE, *, forward: bool = False
 ) -> dict[str, Any]:
     if forward:
         payload = _pattern_bytes(pairs)
@@ -448,7 +500,7 @@ def _expected_case(
             f"classic-forward-skip-byte-v1:pairs={pairs}:"
             f"input={payload.hex()}:eof-after"
         ).encode("ascii")
-    elif mode == producer.EOF_MODE:
+    elif mode == _SOURCE_EOF_MODE:
         identity = f"classic-eof-echo-v1:pairs={pairs}:empty-input".encode("ascii")
     else:
         payload = _pattern_bytes(pairs)
@@ -460,8 +512,8 @@ def _expected_case(
         "family": (
             FORWARD_FAMILY
             if forward
-            else producer.FAMILY
-            if mode == producer.EOF_MODE
+            else _SOURCE_FAMILY
+            if mode == _SOURCE_EOF_MODE
             else PATTERNED_FAMILY
         ),
         "version": 1,
@@ -474,7 +526,7 @@ def _expected_case(
 def _expected_operations(
     pairs: int,
     algorithm: str,
-    mode: str = producer.EOF_MODE,
+    mode: str = _SOURCE_EOF_MODE,
     *,
     forward: bool = False,
 ) -> list[str]:
@@ -486,9 +538,9 @@ def _expected_operations(
             else ["jump", *["nop"] * SKIPPED_NOOPS, *echo]
         )
     chunk = ["input", "output"]
-    if algorithm == producer.CANDIDATE:
+    if algorithm == _SOURCE_CANDIDATE:
         chunk = ["nop", *chunk]
-    count = pairs + int(mode == producer.PATTERNED_MODE)
+    count = pairs + int(mode == _SOURCE_PATTERNED_MODE)
     return chunk * count + ["halt"]
 
 
@@ -507,7 +559,7 @@ def _check_row(
     forward, replay_cost, limited, rss, receipt, raw_rss = protocol
     case = row["case"]
     algorithm = row["algorithm"]
-    if algorithm not in (FORWARD_ALGORITHMS if forward else producer.ALGORITHMS):
+    if algorithm not in (FORWARD_ALGORITHMS if forward else _SOURCE_ALGORITHMS):
         _fail("target audit trial has a foreign algorithm")
     if case != _expected_case(case["difficulty"], mode, forward=forward):
         _fail("target audit trial differs from the fixed echo case")
@@ -524,8 +576,8 @@ def _check_row(
         if replay_cost
         else FORWARD_VERIFIER
         if forward
-        else producer.VERIFIER
-        if mode == producer.EOF_MODE
+        else _SOURCE_VERIFIER
+        if mode == _SOURCE_EOF_MODE
         else PATTERNED_VERIFIER
     )
     if row["verifier"] != expected_verifier:
@@ -541,9 +593,9 @@ def _check_row(
 
 def _check_levels(rows: list[dict[str, Any]]) -> set[int]:
     levels = {row["case"]["difficulty"] for row in rows}
-    if not 1 <= len(levels) <= producer.MAX_LEVELS:
+    if not 1 <= len(levels) <= _SOURCE_MAX_LEVELS:
         _fail("target audit requires one to four difficulty levels")
-    if any(not 1 <= level <= producer.MAX_PAIRS for level in levels):
+    if any(not 1 <= level <= _SOURCE_MAX_PAIRS for level in levels):
         _fail("target audit difficulty exceeds the producer's 64-pair bound")
     return levels
 
@@ -553,7 +605,7 @@ def _check_plan(
 ) -> tuple[set[int], set[int]]:
     levels = _check_levels(rows)
     trials = {row["trial"] for row in rows}
-    if not 1 <= len(trials) <= producer.MAX_TRIALS:
+    if not 1 <= len(trials) <= _SOURCE_MAX_TRIALS:
         _fail("target audit requires one to three trial indices")
     if trials != set(range(len(trials))):
         _fail("target audit requires consecutive repetition indices")
@@ -610,7 +662,7 @@ def _check_peak_rss_claims(document: dict[str, Any]) -> None:
         if measured and row["outcome"] == analyze.VERIFIED:
             if (
                 type(peak) is not int
-                or not 0 < peak <= producer.BUDGET_MIB * 1024 * 1024
+                or not 0 < peak <= _SOURCE_BUDGET_MIB * 1024 * 1024
                 or peak % target_process.KIB_BYTES != 0
             ):
                 _fail("target peak RSS observation is missing or invalid")
@@ -693,7 +745,7 @@ def _check_directory(prefix: str, folder: str, expected: set[str]) -> None:
         _fail(f"target audit has missing or unexpected {folder} files")
     for name in names:
         relative = f"{prefix}/{folder}/{name}"
-        _ = evidence.regular_path(_ROOT, relative, limit=MAX_STUDY_BYTES)
+        _ = evidence.regular_path(_ROOT, relative, limit=_SOURCE_STUDY_BYTES)
 
 
 def _check_provenance(document: dict[str, Any], prefix: str) -> str:
@@ -703,19 +755,19 @@ def _check_provenance(document: dict[str, Any], prefix: str) -> str:
         raw = _native_regular_bytes(
             _ROOT,
             relative,
-            limit=evidence.MAX_MANIFEST_BYTES,
+            limit=_SOURCE_MANIFEST_BYTES,
         )
         manifest = experiment_manifest.parse_manifest(raw.decode("utf-8"))
         run = manifest.run
         if run is None:
             _fail("target audit requires a recorded run manifest")
         expected = (
-            experiment_manifest.RUN_RECORD_KIND,
-            METHOD_CLASS,
-            PRODUCER_IMPLEMENTATION,
-            PRODUCER_CONFIGURATION,
+            _SOURCE_RUN_RECORD_KIND,
+            _SOURCE_METHOD_CLASS,
+            _SOURCE_PRODUCER_IMPLEMENTATION,
+            _SOURCE_PRODUCER_CONFIGURATION,
             prefix,
-            ACCELERATOR,
+            _SOURCE_ACCELERATOR,
         )
         observed = (
             manifest.record_kind,
@@ -827,10 +879,10 @@ def _require_git_commit(commit: str) -> None:
 
 
 def _decoded_instruction(cell: int, position: int) -> int:
-    if not producer.GRAPHICAL_LOW <= cell <= producer.GRAPHICAL_HIGH:
+    if not _SOURCE_GRAPHICAL_LOW <= cell <= _SOURCE_GRAPHICAL_HIGH:
         _fail("target audit source contains nongraphical code")
-    phase = (cell - producer.GRAPHICAL_LOW + position) % PHASES
-    return CLASSIC_DECODE[phase]
+    phase = (cell - _SOURCE_GRAPHICAL_LOW + position) % _SOURCE_PHASES
+    return _SOURCE_CLASSIC_DECODE[phase]
 
 
 def _check_forward_jump(source: bytes, row: dict[str, Any]) -> None:
@@ -849,9 +901,9 @@ def check_forward_candidate_source(
         TargetEchoAuditError: Invalid bytes, requested geometry, or algorithm.
 
     """
-    if type(source) is not bytes or not 0 < len(source) <= producer.MAX_TARGET_BYTES:
+    if type(source) is not bytes or not 0 < len(source) <= _SOURCE_TARGET_BYTES:
         _fail("target forward source requires bounded native bytes")
-    if type(pairs) is not int or not 1 <= pairs <= producer.MAX_PAIRS:
+    if type(pairs) is not int or not 1 <= pairs <= _SOURCE_MAX_PAIRS:
         _fail("target forward source requires bounded integer pairs")
     if type(algorithm) is not str or algorithm not in FORWARD_ALGORITHMS:
         _fail("target forward source requires a canonical algorithm")
@@ -860,7 +912,7 @@ def check_forward_candidate_source(
         "case": {"difficulty": pairs},
         "metrics": {"artifact_bytes": len(source)},
     }
-    _admit_source_bytes(source, row, producer.PATTERNED_MODE, forward=True)
+    _admit_source_bytes(source, row, _SOURCE_PATTERNED_MODE, forward=True)
 
 
 def _admit_source_bytes(
@@ -881,7 +933,7 @@ def _admit_source_bytes(
     if len(source) != len(operations):
         _fail("target audit source length differs from echo layout")
     if any(
-        _decoded_instruction(cell, position) != SOURCE_INSTRUCTIONS[token]
+        _decoded_instruction(cell, position) != _SOURCE_INSTRUCTIONS[token]
         for position, (cell, token) in enumerate(zip(source, operations, strict=True))
     ):
         _fail("target audit source instruction differs from echo layout")
@@ -900,7 +952,7 @@ def _check_source(
     source = _native_regular_bytes(
         _ROOT,
         relative,
-        limit=producer.MAX_TARGET_BYTES,
+        limit=_SOURCE_TARGET_BYTES,
     )
     _admit_source_bytes(source, row, mode, forward=forward)
     return relative, _source_sha256(source)
@@ -920,7 +972,7 @@ def _candidate_files(prefix: str, names: set[str]) -> None:
         _ = evidence.regular_path(
             _ROOT,
             f"{prefix}/candidates/{name}",
-            limit=producer.MAX_TARGET_BYTES,
+            limit=_SOURCE_TARGET_BYTES,
         )
 
 
@@ -948,7 +1000,7 @@ def _admit_tool(path: Path) -> Path:
         _fail("target audit requires regular native executable metadata")
     if not stat.S_ISREG(details.st_mode) or details.st_size <= 0:
         _fail("target audit requires regular nonempty executable files")
-    if details.st_size > producer.MAX_TOOL_BYTES:
+    if details.st_size > _SOURCE_TOOL_BYTES:
         _fail("target audit executable exceeds 128 MiB limit")
     return path
 
@@ -982,7 +1034,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 _fail("target audit executable identity changed: invalid metadata")
             if not stat.S_ISREG(original.st_mode) or original.st_size <= 0:
                 _fail("target audit executable identity changed")
-            if original.st_size > producer.MAX_TOOL_BYTES:
+            if original.st_size > _SOURCE_TOOL_BYTES:
                 _fail("target audit executable exceeds 128 MiB limit")
             flags = (
                 os.O_RDONLY
@@ -1093,7 +1145,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
 
 
 def _invoke_runner_command(command: list[str]) -> sp.CompletedProcess[bytes]:
-    return target_process.invoke(command, timeout_seconds=producer.TIMEOUT_SECONDS)
+    return target_process.invoke(command, timeout_seconds=_SOURCE_TIMEOUT_SECONDS)
 
 
 def _invoke_runner(runner: Path, source: Path) -> sp.CompletedProcess[bytes]:
@@ -1111,7 +1163,7 @@ def _replay_execution(
         execution = _invoke_runner(runner, source)
         return (
             _admit_vm_replay_receipt(execution, command=tuple(command)),
-            bytes([producer.CLASSIC_EOF_BYTE]) * pairs,
+            bytes([_SOURCE_CLASSIC_EOF_BYTE]) * pairs,
         )
     if patterned:
         command.append("--input-stdin")
@@ -1122,17 +1174,17 @@ def _replay_execution(
         execution = _invoke_runner_command(command)
         return (
             _admit_vm_replay_receipt(execution, command=expected_command),
-            bytes([producer.CLASSIC_EOF_BYTE]) * pairs,
+            bytes([_SOURCE_CLASSIC_EOF_BYTE]) * pairs,
         )
     payload = _pattern_bytes(pairs)
     execution = (
         target_process.invoke_with_input_limited
         if limited
         else target_process.invoke_with_input
-    )(command, payload, timeout_seconds=producer.TIMEOUT_SECONDS)
+    )(command, payload, timeout_seconds=_SOURCE_TIMEOUT_SECONDS)
     return (
         _admit_vm_replay_receipt(execution, command=expected_command),
-        payload + bytes([producer.CLASSIC_EOF_BYTE]),
+        payload + bytes([_SOURCE_CLASSIC_EOF_BYTE]),
     )
 
 
@@ -1180,7 +1232,7 @@ def _check_forward_replay_result(
     if result.stderr != receipt:
         message = "target replay VM step receipt is invalid"
         raise TargetReplayToolError(message)
-    if result.stdout != payload + bytes([producer.CLASSIC_EOF_BYTE]):
+    if result.stdout != payload + bytes([_SOURCE_CLASSIC_EOF_BYTE]):
         _fail("target replay VM output differs from independent byte oracle")
 
 
@@ -1194,20 +1246,20 @@ def _run_forward_guest(
     limited, measured = mode
     if measured and raw_rss is not None:
         result, peak, raw = target_process.invoke_with_input_limited_measured_raw(
-            command, payload, timeout_seconds=producer.TIMEOUT_SECONDS
+            command, payload, timeout_seconds=_SOURCE_TIMEOUT_SECONDS
         )
         raw_rss.append(raw)
         return result, peak
     if measured:
         return target_process.invoke_with_input_limited_measured(
-            command, payload, timeout_seconds=producer.TIMEOUT_SECONDS
+            command, payload, timeout_seconds=_SOURCE_TIMEOUT_SECONDS
         )
     method = (
         target_process.invoke_with_input_limited
         if limited
         else target_process.invoke_with_input
     )
-    result = method(command, payload, timeout_seconds=producer.TIMEOUT_SECONDS)
+    result = method(command, payload, timeout_seconds=_SOURCE_TIMEOUT_SECONDS)
     return result, None
 
 
@@ -1234,9 +1286,7 @@ def _replay_forward_result(
 
 def _assert_forward_source_stable(source: Path, original: bytes) -> None:
     relative = source.relative_to(_ROOT).as_posix()
-    after = _native_regular_bytes(
-        _ROOT, relative, limit=producer.MAX_TARGET_BYTES
-    )
+    after = _native_regular_bytes(_ROOT, relative, limit=_SOURCE_TARGET_BYTES)
     if after != original:
         _fail("target replay changed candidate source after admission")
 
@@ -1275,7 +1325,7 @@ def check_forward_vm_replay(
     pairs, algorithm = case
     if (
         type(pairs) is not int
-        or not 1 <= pairs <= producer.MAX_PAIRS
+        or not 1 <= pairs <= _SOURCE_MAX_PAIRS
         or type(algorithm) is not str
         or algorithm not in FORWARD_ALGORITHMS
     ):
@@ -1296,14 +1346,12 @@ def check_forward_vm_replay(
         not measure_rss
         or type(raw_rss) is not list
         or len(raw_rss)
-        > producer.MAX_LEVELS * producer.MAX_TRIALS * producer.RSS_MEASURED_STAGES
+        > _SOURCE_MAX_LEVELS * _SOURCE_MAX_TRIALS * _SOURCE_RSS_MEASURED_STAGES
         or any(type(entry) is not bytes for entry in raw_rss)
     ):
         _fail("target replay requires a bounded native raw RSS witness list")
     relative = source.relative_to(_ROOT).as_posix()
-    original = _native_regular_bytes(
-        _ROOT, relative, limit=producer.MAX_TARGET_BYTES
-    )
+    original = _native_regular_bytes(_ROOT, relative, limit=_SOURCE_TARGET_BYTES)
     check_forward_candidate_source(original, pairs=pairs, algorithm=algorithm)
     payload = _pattern_bytes(pairs)
     peak = _replay_forward_result(
@@ -1344,7 +1392,7 @@ def _replay_one(
     current = _native_regular_bytes(
         _ROOT,
         relative,
-        limit=producer.MAX_TARGET_BYTES,
+        limit=_SOURCE_TARGET_BYTES,
     )
     if _source_sha256(current) != digest:
         _fail("target audit retained source changed during VM replay")
@@ -1452,7 +1500,7 @@ def _rss_digest(
     manifest = _native_regular_bytes(
         _ROOT,
         record["experiment_manifest"],
-        limit=evidence.MAX_MANIFEST_BYTES,
+        limit=_SOURCE_MANIFEST_BYTES,
     )
     try:
         text = manifest.decode("utf-8")
@@ -1541,7 +1589,7 @@ def _read_original_time_line(raw: object) -> int:
         _fail("v7 raw GNU time RSS must be ASCII text")
     encoded = raw.encode("ascii")
     if (
-        not MIN_TIME_LINE_BYTES <= len(encoded) <= target_process.RSS_REPORT_LIMIT
+        not MIN_TIME_LINE_BYTES <= len(encoded) <= _SOURCE_TARGET_RSS_REPORT_BYTES
         or not encoded.endswith(b"\n")
         or not encoded[:-1].isdigit()
     ):
@@ -1612,7 +1660,7 @@ def _check_rss_receipts(document: dict[str, Any], prefix: str) -> None:
         if not required:
             continue
         relative = f"{prefix}/{RSS_RECEIPT_DIR}/{_row_stem(row)}.json"
-        data = _native_regular_bytes(_ROOT, relative, limit=RSS_REPORT_LIMIT)
+        data = _native_regular_bytes(_ROOT, relative, limit=_SOURCE_RSS_REPORT_BYTES)
         if _source_sha256(data) != digest:
             _fail("v6 RSS receipt digest differs from linked run manifest")
         _validate_rss_stage_bytes(data, row, raw=raw)
@@ -1629,20 +1677,17 @@ def _snapshot_linked_inputs(
         Original SHA-256 and read limit for each retained input path.
 
     """
-    snapshots = {relative_study: (study_hash, MAX_STUDY_BYTES)}
+    snapshots = {relative_study: (study_hash, _SOURCE_STUDY_BYTES)}
     linked = {
-        (row["experiment_manifest"], evidence.MAX_MANIFEST_BYTES)
+        (row["experiment_manifest"], _SOURCE_MANIFEST_BYTES)
         for row in document["observations"]
     }
     linked.update(
-        {
-            (row["raw_sample"], raw_samples.MAX_RAW_BYTES)
-            for row in document["observations"]
-        }
+        {(row["raw_sample"], _SOURCE_RAW_BYTES) for row in document["observations"]}
     )
     linked.update(
         {
-            (relative, RSS_REPORT_LIMIT)
+            (relative, _SOURCE_RSS_REPORT_BYTES)
             for relative in _rss_receipt_paths(document, _prefix(relative_study))
         }
     )
@@ -1721,7 +1766,7 @@ def _recheck_sources(source_hashes: dict[str, str]) -> None:
         current = _native_regular_bytes(
             _ROOT,
             relative,
-            limit=producer.MAX_TARGET_BYTES,
+            limit=_SOURCE_TARGET_BYTES,
         )
         if _source_sha256(current) != recorded:
             _fail("target audit retained source changed before report")
@@ -1748,7 +1793,7 @@ def _stage_rss_values(
     raw: bool,
 ) -> dict[str, int]:
     path = f"{prefix}/{RSS_RECEIPT_DIR}/{_row_stem(row)}.json"
-    data = _native_regular_bytes(_ROOT, path, limit=RSS_REPORT_LIMIT)
+    data = _native_regular_bytes(_ROOT, path, limit=_SOURCE_RSS_REPORT_BYTES)
     _validate_rss_stage_bytes(data, row, raw=raw)
     record = _rss_record(data, raw=raw)
     return {key: record["stages"][key] for key in RSS_STAGE_NAMES}
