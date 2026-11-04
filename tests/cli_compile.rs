@@ -73,6 +73,17 @@ fn run_cli(arguments: &[&str]) -> Result<std::process::Output, String> {
         .map_err(|error| format!("start public CLI: {error}"))
 }
 
+fn run_public_compile(source: &Path, target: &Path) -> Result<std::process::Output, String> {
+    Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .env("MALBOLGE_ROOT", ROOT)
+        .arg("compile")
+        .arg(source)
+        .arg("-o")
+        .arg(target)
+        .output()
+        .map_err(|error| format!("invoke public C compiler: {error}"))
+}
+
 #[cfg(unix)]
 #[test]
 fn installed_unix_shim_forwards_public_compile_argument_contract() -> Result<(), String> {
@@ -228,6 +239,63 @@ fn one_command_compiles_a_real_c_byte_and_preserves_existing_output() -> Result<
         .map_err(|error| format!("compile invalid C: {error}"))?;
     if rejected.status.success() || rejected_target.exists() {
         return Err(format!("invalid C published output: {rejected:?}"));
+    }
+    Ok(())
+}
+
+#[test]
+fn public_compile_executes_guest_crazy_s_and_rejects_unwitnessed_repeat() -> Result<(), String> {
+    let root = Path::new(ROOT);
+    let suffix = if cfg!(windows) { ".exe" } else { "" };
+    if ![
+        root.join(".dependencies/compiler-c-frontend/22.1.8/bin")
+            .join(format!("malbolge-c-frontend{suffix}")),
+        root.join(".cache/rust/target/debug")
+            .join(format!("c2malbolge_json{suffix}")),
+        root.join(".cache/rust/target/debug")
+            .join(format!("malbolge_layout{suffix}")),
+    ]
+    .iter()
+    .all(|binary| binary.is_file())
+        || !root.join(".dependencies/llvm/22.1.8/lib/clang/22").is_dir()
+    {
+        return Ok(());
+    }
+
+    let fixture = FixtureDirectory::create()?;
+    let source = fixture.path.join("single-S.c");
+    let target = fixture.path.join("single-S.malbolge");
+    write(
+        &source,
+        b"#include <stdio.h>\nvoid emit(void) { putchar('S'); }\n",
+    )
+    .map_err(|error| format!("write verified S C fixture: {error}"))?;
+    let compiled = run_public_compile(&source, &target)?;
+    if !compiled.status.success() || !compiled.stdout.is_empty() || !target.is_file() {
+        return Err(format!("public S compiler failed: {compiled:?}"));
+    }
+    let executed = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+        .arg(&target)
+        .arg("--report-steps")
+        .output()
+        .map_err(|error| format!("execute S Malbolge guest: {error}"))?;
+    if !executed.status.success()
+        || executed.stdout != b"S"
+        || executed.stderr != b"malbolge-steps-v1:4\n"
+    {
+        return Err(format!("S guest output/steps diverged: {executed:?}"));
+    }
+
+    let unsupported = fixture.path.join("unsupported-double-S.c");
+    let rejected_target = fixture.path.join("must-not-publish.malbolge");
+    write(
+        &unsupported,
+        b"#include <stdio.h>\nvoid emit(void) { putchar('S'); putchar('S'); }\n",
+    )
+    .map_err(|error| format!("write unproved two-S fixture: {error}"))?;
+    let rejected = run_public_compile(&unsupported, &rejected_target)?;
+    if rejected.status.success() || rejected_target.exists() {
+        return Err(format!("unwitnessed two-S guest published: {rejected:?}"));
     }
     Ok(())
 }
