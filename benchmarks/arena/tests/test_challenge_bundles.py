@@ -1306,3 +1306,57 @@ def test_challenge_replay_keeps_native_policy_after_public_limits_lowered(
     ):
         monkeypatch.setattr(challenge_bundles, policy, substitute)
     assert challenge_bundles.verify_bundle(case, PROFILE, files) == case["workload_sha256"]
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["correct-false-workload", "rewrite-family", "replace-source-bytes"],
+)
+def test_bundle_replay_rejects_input_mutation_during_hashing(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """A digest provider cannot change already-admitted caller-owned inputs."""
+    case, files = _direct_bundle()
+    correct_digest = case["workload_sha256"]
+    if mutation == "correct-false-workload":
+        case["workload_sha256"] = "0" * 64
+        assert case["workload_sha256"] != correct_digest
+    native_sha256 = challenge_bundles.sha256
+
+    def mutate_on_hash(source: bytes):
+        if mutation == "correct-false-workload":
+            case["workload_sha256"] = correct_digest
+        elif mutation == "rewrite-family":
+            case["family"] = "branch-mix"
+        else:
+            files["program.c"] = b"forged caller-owned source"
+        return native_sha256(source)
+
+    monkeypatch.setattr(challenge_bundles, "sha256", mutate_on_hash)
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match="input.*changed"):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+@pytest.mark.parametrize("target", ["case", "files"])
+def test_late_non_native_bundle_mutation_cannot_run_equality_hooks(
+    monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    """Late foreign values fail native admission before dictionary comparison."""
+    case, files = _direct_bundle()
+    native_sha256 = challenge_bundles.sha256
+
+    class ForeignValue:
+        def __eq__(self, _other: object) -> bool:
+            message = "foreign comparison must not run"
+            raise AssertionError(message)
+
+    def mutate_on_hash(source: bytes):
+        if target == "case":
+            case["family"] = ForeignValue()
+        else:
+            files["program.c"] = cast("bytes", ForeignValue())
+        return native_sha256(source)
+
+    monkeypatch.setattr(challenge_bundles, "sha256", mutate_on_hash)
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match="challenge"):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
