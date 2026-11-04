@@ -2439,3 +2439,57 @@ def test_source_binding_identity_validator_ignores_late_error_alias(
     )
     assert type(rejected.__cause__) is AdmissionPolicyError
     assert "invalid identity metadata" in str(rejected)
+
+
+@pytest.mark.parametrize(
+    "route", ["constructor", "bind", "hkdf"]
+)
+def test_source_binding_policy_error_preserves_native_class_after_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """Late public error aliases cannot replace a native policy rejection."""
+    with monkeypatch.context() as patched:
+        patched.setattr(binding_module, "SourceBindingPolicyError", object)
+        with pytest.raises(SourceBindingPolicyError):
+            if route == "constructor":
+                _ = SourceBindingPolicy(threshold_fraction=0.0)
+            elif route == "bind":
+                _ = bind_secret(
+                    cast("IdentityTree", object()), _SECRET,
+                    policy=_policy(), context=_CONTEXT,
+                )
+            else:
+                _ = hkdf_extract_sha256(
+                    cast("bytes", cast("object", "bad")), _SECRET
+                )
+
+
+@pytest.mark.parametrize(
+    "route", ["header", "share", "recovery"]
+)
+def test_source_binding_recovery_error_preserves_native_class_after_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """Late public error aliases cannot leak raw TypeError in admission."""
+    reference = _reference()
+    valid = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
+    invalid = replace(
+        valid,
+        shares=(
+            replace(valid.shares[0], source_path="../escape"),
+            *valid.shares[1:],
+        ),
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(binding_module, "SourceBindingError", object)
+        with pytest.raises(SourceBindingError):
+            if route == "header":
+                _ = validate_threshold_binding(
+                    cast("ThresholdBinding", object())
+                )
+            elif route == "share":
+                _ = validate_threshold_binding(invalid)
+            else:
+                _ = recover_secret(
+                    valid, cast("IdentityTree", object())
+                )
