@@ -56,6 +56,7 @@ const EXPECTED_PROFILE: &str = "malbolge-2026";
 const MAX_FRONTEND_JSON_BYTES: usize = 1_048_576;
 const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
 const MAX_COMPOUND_DEPTH: usize = 64;
+const DISTINCT_ELEVEN_BYTES: &[u8; 11] = b"P\x1d\x1a6\x05\xb4\xba\xb3\x84\xcf\x9e";
 const MAX_LITERAL_OUTPUT_CALLS: usize = 33;
 const MAX_OUTPUT_PARENTHESES: usize = 3;
 const MAX_OUTPUT_ARGUMENT_WRAPPERS: usize = MAX_OUTPUT_PARENTHESES + 1;
@@ -85,6 +86,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralNine,
     /// Ten independent guest-computed binary bytes.
     DistinctLiteralTen,
+    /// Eleven independent guest-computed binary bytes.
+    DistinctLiteralEleven,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -193,6 +196,7 @@ struct LiteralOutputNodes<'node> {
     eighth_byte: Option<u8>,
     ninth_byte: Option<u8>,
     tenth_byte: Option<u8>,
+    eleventh_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -923,6 +927,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut eighth_byte = None;
     let mut ninth_byte = None;
     let mut tenth_byte = None;
+    let mut eleventh_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1042,7 +1047,43 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         )
         .ok_or(FrontendJsonError::Unsupported)?;
         if selected_byte.is_some_and(|previous| previous != byte) {
-            if calls.len() == 1 && mixed_byte.is_none() {
+            // Accept only the exact source-ordered eleven-byte VM witness.
+            // This alternate branch cannot weaken any prior finite recipe.
+            let witnessed: Vec<_> = [
+                selected_byte,
+                mixed_byte,
+                third_byte,
+                fourth_byte,
+                fifth_byte,
+                sixth_byte,
+                seventh_byte,
+                eighth_byte,
+                ninth_byte,
+                tenth_byte,
+                eleventh_byte,
+            ]
+            .into_iter()
+            .flatten()
+            .collect();
+            let next_eleven = witnessed.len() == calls.len()
+                && witnessed.len() < DISTINCT_ELEVEN_BYTES.len()
+                && witnessed == DISTINCT_ELEVEN_BYTES[..witnessed.len()]
+                && byte == DISTINCT_ELEVEN_BYTES[witnessed.len()];
+            if next_eleven {
+                match calls.len() {
+                    1 => mixed_byte = Some(byte),
+                    2 => third_byte = Some(byte),
+                    3 => fourth_byte = Some(byte),
+                    4 => fifth_byte = Some(byte),
+                    5 => sixth_byte = Some(byte),
+                    6 => seventh_byte = Some(byte),
+                    7 => eighth_byte = Some(byte),
+                    8 => ninth_byte = Some(byte),
+                    9 => tenth_byte = Some(byte),
+                    10 => eleventh_byte = Some(byte),
+                    _ => return Err(FrontendJsonError::Unsupported),
+                }
+            } else if calls.len() == 1 && mixed_byte.is_none() {
                 let is_zero_then_literal =
                     selected_byte == Some(0) && matches!(byte, b'Z' | b'P' | b'T' | b'S');
                 let is_distinct_nonzero = matches!(
@@ -1469,6 +1510,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         eighth_byte,
         ninth_byte,
         tenth_byte,
+        eleventh_byte,
     ]
     .into_iter()
     .flatten()
@@ -1488,6 +1530,10 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    // No proper eleven-byte prefix is an independently proven guest mode.
+    if (2..11).contains(&observed.len()) && observed == DISTINCT_ELEVEN_BYTES[..observed.len()] {
+        return Err(FrontendJsonError::Unsupported);
+    }
     Ok(LiteralOutputNodes {
         body,
         byte: selected_byte.ok_or(FrontendJsonError::Unsupported)?,
@@ -1502,6 +1548,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         eighth_byte,
         ninth_byte,
         tenth_byte,
+        eleventh_byte,
         returned,
     })
 }
@@ -1544,6 +1591,7 @@ fn canonical_literal_output_typed_ir(
         eighth_byte,
         ninth_byte,
         tenth_byte,
+        eleventh_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -1719,9 +1767,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 10
+            && let Some(eleventh) = eleventh_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![eleventh]),
+                    result: ValueId::new(10),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 9 && tenth_byte.is_some() {
+                value: ValueId::new(if index == 10 && eleventh_byte.is_some() {
+                    10
+                } else if index == 9 && tenth_byte.is_some() {
                     9
                 } else if index == 8 && ninth_byte.is_some() {
                     8
@@ -1775,7 +1837,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if tenth_byte.is_some() {
+    let mode = if eleventh_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralEleven
+    } else if tenth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralTen
     } else if ninth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralNine

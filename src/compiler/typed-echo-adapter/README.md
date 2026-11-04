@@ -366,3 +366,9 @@ The normative VM verifies ten distinct bytes, 23 total steps, ten disjoint
 post-source data writes and zero consumed input before publication. Incomplete
 prefixes, reordered bytes, altered SSA, foreign profiles and extra writes
 reject; this is a finite source witness, not generic byte-string lowering.
+
+The eleven-byte C witness is separately admitted as an exact source-bound
+`P`, GS, SUB, `6`, ENQ and six binary values. Eleven guest writes
+produce 11 distinct bytes in 24 VM steps; the normative VM verifies
+raw and capsule outputs without host computation substitution. This
+finite trace is not general C byte-stream lowering.
