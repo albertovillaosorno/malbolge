@@ -110,6 +110,12 @@ FAILED_OUTCOME = "tool_failed"
 ASCII_LOW = " "
 ASCII_HIGH = "~"
 GIT_HASH_WIDTH = 40
+# Failure classification, printable text and Git revision identity are policy,
+# not runtime knobs that may be expanded when publishing retained evidence.
+_SOURCE_FAILED_OUTCOME = FAILED_OUTCOME
+_SOURCE_ASCII_LOW = ASCII_LOW
+_SOURCE_ASCII_HIGH = ASCII_HIGH
+_SOURCE_GIT_HASH_WIDTH = GIT_HASH_WIDTH
 
 
 class ReferenceStudyError(ValueError):
@@ -310,7 +316,7 @@ def _commit() -> str:
     if type(output) is not str:
         _fail("host reference study has invalid source commit output")
     if (
-        len(output) != GIT_HASH_WIDTH + 1
+        len(output) != _SOURCE_GIT_HASH_WIDTH + 1
         or not output.endswith("\n")
         or not set(output[:-1]) <= analyze.SHA256_ALPHABET
     ):
@@ -570,7 +576,7 @@ def _failure_diagnostic(error: host_c_oracle.HostOracleError) -> str:
         if len(arguments) == 1 and type(arguments[0]) is str:
             raw = arguments[0]
     ascii_message = "".join(
-        character if ASCII_LOW <= character <= ASCII_HIGH else "?"
+        character if _SOURCE_ASCII_LOW <= character <= _SOURCE_ASCII_HIGH else "?"
         for character in raw
     )[:_SOURCE_MAX_FAILURE_DIAGNOSTIC_BYTES]
     return ascii_message or "host-C reference failed without diagnostic"
@@ -598,7 +604,7 @@ def _measure(
         metrics, artifact = _successful(root, identity, name, mode=mode)
     except host_c_oracle.HostOracleError as error:
         diagnostic = _failure_diagnostic(error)
-        outcome = FAILED_OUTCOME
+        outcome = _SOURCE_FAILED_OUTCOME
         metrics, artifact = (
             {"elapsed_ns": time.perf_counter_ns() - started},
             {},
@@ -843,7 +849,7 @@ def _retained_trial_rows(document: object) -> list[dict[str, Any]]:
         outcome = row.get("outcome")
         if type(outcome) is not str or outcome not in {
             analyze.VERIFIED,
-            FAILED_OUTCOME,
+            _SOURCE_FAILED_OUTCOME,
         }:
             _fail("host-C reference contains a non-runner outcome")
         manifest = row.get("experiment_manifest")
@@ -921,7 +927,7 @@ def check_retained_failures(
     _admit_retained_sidecars(failures, kind="failures")
     expected: set[str] = set()
     for row in rows:
-        if row["outcome"] != FAILED_OUTCOME:
+        if row["outcome"] != _SOURCE_FAILED_OUTCOME:
             continue
         manifest = row["experiment_manifest"]
         if manifest in expected:
@@ -935,7 +941,7 @@ def check_retained_failures(
     if any(
         type(message) is not str
         or not 1 <= len(message) <= cap
-        or any(not ASCII_LOW <= character <= ASCII_HIGH for character in message)
+        or any(not _SOURCE_ASCII_LOW <= character <= _SOURCE_ASCII_HIGH for character in message)
         for message in failures.values()
     ):
         _fail("host-C failure diagnostics must be bounded printable ASCII")
@@ -947,7 +953,7 @@ def _retained_write_failure(path: Path, error: Exception) -> Never:
     message = f"host-C retained {path.name} write failed"
     if (detail := _native_error_detail(error)) is not None:
         safe = "".join(
-            char if ASCII_LOW <= char <= ASCII_HIGH else "?"
+            char if _SOURCE_ASCII_LOW <= char <= _SOURCE_ASCII_HIGH else "?"
             for char in detail[:_SOURCE_MAX_FAILURE_DIAGNOSTIC_BYTES]
         )
         if safe:
@@ -1035,7 +1041,7 @@ def _host_identity() -> str:
         type(component) is not str
         or not 1 <= len(component) <= cap
         or component.strip() != component
-        or any(not ASCII_LOW <= char <= ASCII_HIGH for char in component)
+        or any(not _SOURCE_ASCII_LOW <= char <= _SOURCE_ASCII_HIGH for char in component)
         for component in components
     ):
         _fail("host-C reference host identity requires bounded printable components")

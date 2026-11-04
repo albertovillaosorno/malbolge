@@ -3311,3 +3311,65 @@ def test_host_c_run_manifest_verifier_cannot_be_relabelled(
     }
     text = reference_study._manifest(row, meta)
     assert f'oracle = "{original}"' in text
+
+
+def test_host_c_git_revision_width_cannot_be_relaxed_through_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted one-digit SHA cannot authenticate the source commit."""
+    monkeypatch.setattr(reference_study, "GIT_HASH_WIDTH", 1)
+
+    def forged(command: list[str], **_kwargs: object) -> object:
+        return reference_study.sp.CompletedProcess(command, 0, stdout="a\n", stderr="")
+
+    monkeypatch.setattr(reference_study.sp, "run", forged)
+    with pytest.raises(reference_study.ReferenceStudyError, match="source commit"):
+        reference_study._commit()
+
+
+def test_host_c_retained_failure_outcome_cannot_be_relabelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A verified trial must not be silently counted as a failed trial."""
+    monkeypatch.setattr(reference_study, "FAILED_OUTCOME", analyze.VERIFIED)
+    manifest = "runs/verified.toml"
+    with pytest.raises(reference_study.ReferenceStudyError, match="failed trial"):
+        reference_study.check_retained_failures(
+            {
+                "observations": [
+                    {"outcome": analyze.VERIFIED, "experiment_manifest": manifest}
+                ]
+            },
+            {manifest: "this was never a failed trial"},
+        )
+
+
+@pytest.mark.parametrize("source", ["host", "retained", "diagnostic"])
+def test_host_c_ascii_bounds_cannot_admit_control_characters(
+    monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    """Mutable ASCII bounds cannot admit non-printable retained provenance."""
+    monkeypatch.setattr(reference_study, "ASCII_LOW", "\x00")
+    monkeypatch.setattr(reference_study, "ASCII_HIGH", "\x7f")
+    if source == "host":
+        monkeypatch.setattr(reference_study.platform, "node", lambda: "host\nspoof")
+        with pytest.raises(reference_study.ReferenceStudyError, match="host identity"):
+            reference_study._host_identity()
+    elif source == "retained":
+        manifest = "runs/failed.toml"
+        with pytest.raises(
+            reference_study.ReferenceStudyError, match="printable ASCII"
+        ):
+            reference_study.check_retained_failures(
+                {
+                    "observations": [
+                        {"outcome": "tool_failed", "experiment_manifest": manifest}
+                    ]
+                },
+                {manifest: "failed\nspoof"},
+            )
+    else:
+        diagnostic = reference_study._failure_diagnostic(
+            host_c_oracle.HostOracleError("failed\nspoof")
+        )
+        assert diagnostic == "failed?spoof"
