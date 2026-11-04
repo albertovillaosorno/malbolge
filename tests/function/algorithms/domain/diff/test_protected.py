@@ -2741,3 +2741,109 @@ def test_protected_native_policy_errors_ignore_late_module_alias(
             caught = error
     assert caught is not None, "late error alias leaked native policy failure"
     assert detail in str(caught)
+
+
+_NATIVE_PROTECT_VALIDATOR = cast(
+    "Callable[[object, object, object], None]",
+    vars(protected_module)["_validate_protect_inputs"],
+)
+
+
+@pytest.mark.parametrize(
+    ("route", "operation", "message"),
+    [
+        (
+            "slice",
+            lambda: PayloadSlice(-1, 0),
+            "non-negative offset and length",
+        ),
+        (
+            "instruction path",
+            lambda: ProtectedInstruction(
+                "../unsafe", ProtectedInstructionKind.COPY_SOURCE,
+                "0" * 64, source_path="source",
+            ),
+            "canonical relative path",
+        ),
+        (
+            "instruction shape",
+            lambda: ProtectedInstruction(
+                "output", ProtectedInstructionKind.COPY_SOURCE, "0" * 64
+            ),
+            "invalid protected instruction fields",
+        ),
+        (
+            "metadata records",
+            lambda: ProtectedMetadata(
+                TreeSnapshot(()), TreeSnapshot(()),
+                cast("tuple[ProtectedInstruction, ...]", cast("object", [])),
+            ),
+            "exact immutable records",
+        ),
+        (
+            "metadata aad",
+            lambda: protected_plan_aad(
+                object.__new__(ProtectedMetadata), context=_CONTEXT
+            ),
+            "incomplete native evidence",
+        ),
+        (
+            "aad context",
+            lambda: protected_plan_aad(
+                ProtectedMetadata(TreeSnapshot(()), TreeSnapshot(()), ()),
+                context=b"",
+            ),
+            "non-empty exact bytes",
+        ),
+        (
+            "authoring plan",
+            lambda: _NATIVE_PROTECT_VALIDATOR(
+                object(), identity_tree({}), _CONTEXT
+            ),
+            "exact ExactAuthoringPlan type",
+        ),
+        (
+            "context",
+            lambda: _NATIVE_PROTECT_VALIDATOR(
+                ExactAuthoringPlan(TreeSnapshot(()), TreeSnapshot(()), ()),
+                identity_tree({}), b"",
+            ),
+            "non-empty exact bytes",
+        ),
+        (
+            "recovery",
+            lambda: recover_exact_plan(
+                cast("ProtectedExactPlan", object()), identity_tree({})
+            ),
+            "exact ProtectedExactPlan type",
+        ),
+        (
+            "unicode path",
+            lambda: ProtectedInstruction(
+                "broken\ud800", ProtectedInstructionKind.COPY_SOURCE,
+                "0" * 64, source_path="source",
+            ),
+            "UTF-8-encodable",
+        ),
+    ],
+)
+def test_protected_native_rejection_ignores_late_error_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    route: str,
+    operation: Callable[[], object],
+    message: str,
+) -> None:
+    """Protected metadata cannot dispatch a substituted exception callback."""
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign callback invoked: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(protected_module, "ProtectedPlanError", foreign_error)
+        with pytest.raises(ProtectedPlanError, match=message):
+            _ = operation()
+    assert calls == 0, f"{route} reached a substituted exception callback"

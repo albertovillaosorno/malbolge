@@ -167,6 +167,10 @@ class ProtectedPlanError(ValueError):
     """Raised when protected-plan framing or payload references are invalid."""
 
 
+# Native rejection must not dispatch a consumer-rebound public class name.
+_NATIVE_PROTECTED_PLAN_ERROR = ProtectedPlanError
+
+
 class ProtectedInstructionKind(StrEnum):
     """How a protected exact output instruction obtains target bytes."""
 
@@ -178,12 +182,12 @@ class ProtectedInstructionKind(StrEnum):
 def _require_utf8_path(value: str, context: str) -> None:
     if _NUL in value:
         message = f"{context} must not contain NUL"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     try:
         _ = value.encode("utf-8")
     except _NATIVE_UNICODE_ERROR as error:
         message = f"{context} must use UTF-8-encodable text"
-        raise ProtectedPlanError(message) from error
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
     # Lexical canonicalization must not delegate to mutable pathlib methods.
     # Empty, dot, or parent components are never valid portable file labels.
     unsafe = (
@@ -196,7 +200,7 @@ def _require_utf8_path(value: str, context: str) -> None:
     )
     if unsafe:
         message = f"{context} must be a canonical relative path"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
 
 def _require_optional_utf8_path(value: str | None, context: str) -> None:
@@ -209,14 +213,14 @@ def _require_utf8_roots(roots: tuple[str, ...]) -> None:
         _require_utf8_path(root, "protected passthrough root")
     if roots != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(roots))):
         message = "protected passthrough roots must be unique and sorted"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     for index, root in _NATIVE_ENUMERATE(roots):
         prefix = root + "/"
         if _NATIVE_ANY(
             other.startswith(prefix) for other in roots[index + 1 :]
         ):
             message = "protected passthrough roots must not overlap"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
 
 def _require_sha256_hex(value: object, context: str) -> None:
@@ -225,23 +229,23 @@ def _require_sha256_hex(value: object, context: str) -> None:
         or _NATIVE_LEN(value) != _SHA256_HEX_LENGTH
     ):
         message = f"{context} must be 64 lowercase hex digits"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     if _NATIVE_ANY(char not in _HEX_DIGITS for char in value):
         message = f"{context} must be 64 lowercase hex digits"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
 
 def _validate_protected_segments(value: object) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "protected instruction segments must use an immutable tuple"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     segments = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(
         _NATIVE_TYPE(item) not in {SourceSlice, PayloadSlice}
         for item in segments
     ):
         message = "protected instruction contains a foreign segment record"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     for item in segments:
         try:
             if _NATIVE_TYPE(item) is SourceSlice:
@@ -250,7 +254,7 @@ def _validate_protected_segments(value: object) -> None:
                 _PAYLOAD_SLICE_VALIDATOR(cast("PayloadSlice", item))
         except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TREE_MODEL_ERROR) as error:
             message = "protected instruction contains an invalid native segment"
-            raise ProtectedPlanError(message) from error
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -279,10 +283,10 @@ class PayloadSlice:
             or _NATIVE_TYPE(length) is not _NATIVE_INT
         ):
             message = "payload slice coordinates must use exact integers"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         if offset < _ZERO or length < _ZERO:
             message = "payload slices require non-negative offset and length"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
 
 # Generated dataclass constructors dispatch post-init through mutable class
@@ -351,7 +355,7 @@ class ProtectedInstruction:
         if not _INSTRUCTION_SHAPE_IS_VALID(self):
             kind = _instruction_fields(self)[1]
             message = f"invalid protected instruction fields for {kind!r}"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
     def _validate_metadata(self) -> None:
         (
@@ -367,13 +371,13 @@ class ProtectedInstruction:
             or not output_path
         ):
             message = "protected instruction output path must be non-empty"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         _require_utf8_path(
             output_path, "protected instruction output path"
         )
         if _NATIVE_TYPE(kind) is not ProtectedInstructionKind:
             message = "protected instruction kind must use the exact enum type"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         _require_sha256_hex(
             expected_sha256, "protected instruction sha256"
         )
@@ -384,7 +388,7 @@ class ProtectedInstruction:
             message = (
                 "protected instruction source path must be non-empty or None"
             )
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         _require_optional_utf8_path(
             source_path, "protected instruction source path"
         )
@@ -393,12 +397,12 @@ class ProtectedInstruction:
                 message = (
                     "protected instruction payload slice must use the exact record"
                 )
-                raise ProtectedPlanError(message)
+                raise _NATIVE_PROTECTED_PLAN_ERROR(message)
             try:
                 _PAYLOAD_SLICE_VALIDATOR(payload_slice)
             except _NATIVE_ATTRIBUTE_ERROR as error:
                 message = "protected instruction contains an incomplete native payload slice"
-                raise ProtectedPlanError(message) from error
+                raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
         _validate_protected_segments(segments)
 
     def _shape_is_valid(self) -> bool:
@@ -492,7 +496,7 @@ def _require_static_target_outside_passthrough(
         for root in roots
     ):
         message = "protected static target conflicts with passthrough roots"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
 
 def _require_unique_instruction_outputs(
@@ -501,7 +505,7 @@ def _require_unique_instruction_outputs(
     paths = _NATIVE_TUPLE(_instruction_fields(item)[0] for item in instructions)
     if _NATIVE_LEN(paths) != _NATIVE_LEN(_NATIVE_SET(paths)):
         message = "protected instructions require unique output paths"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
 
 def _require_instructions_match_target(
@@ -516,7 +520,7 @@ def _require_instructions_match_target(
     )
     if authored_outputs != target_outputs:
         message = "protected instructions must match the target snapshot"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -555,13 +559,13 @@ class ProtectedMetadata:
             or _NATIVE_TYPE(target) is not TreeSnapshot
         ):
             message = "protected metadata snapshots must use exact TreeSnapshot records"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         if _NATIVE_TYPE(instructions) is not _NATIVE_TUPLE or _NATIVE_ANY(
             _NATIVE_TYPE(item) is not ProtectedInstruction
             for item in instructions
         ):
             message = "protected metadata instructions must be exact immutable records"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         try:
             for snapshot in (source, target):
                 _TREE_SNAPSHOT_VALIDATOR(snapshot)
@@ -569,18 +573,18 @@ class ProtectedMetadata:
                 _PROTECTED_INSTRUCTION_VALIDATOR(instruction)
         except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TREE_MODEL_ERROR) as error:
             message = "protected metadata contains invalid or incomplete native evidence"
-            raise ProtectedPlanError(message) from error
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
         _require_unique_instruction_outputs(instructions)
         _require_instructions_match_target(instructions, target)
         if _NATIVE_TYPE(roots) is not _NATIVE_TUPLE:
             message = "protected passthrough roots must use an immutable tuple"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         if _NATIVE_ANY(
             _NATIVE_TYPE(root) is not _NATIVE_STR or not root
             for root in roots
         ):
             message = "protected passthrough roots must be non-empty strings"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         _require_utf8_roots(roots)
         _require_static_target_outside_passthrough(target, roots)
 
@@ -679,17 +683,17 @@ class ProtectedExactPlan:
         )
         if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
             message = "protected plan context must use non-empty exact bytes"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         if _NATIVE_TYPE(nonce) is not _NATIVE_BYTES or _NATIVE_LEN(
             nonce
         ) != _NATIVE_LEN(_SINGLE_MESSAGE_NONCE):
             message = "protected plan nonce must use exact 12-byte input"
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         if _NATIVE_TYPE(payload) is not AuthenticatedPayload:
             message = (
                 "protected plan payload must use the exact authenticated type"
             )
-            raise ProtectedPlanError(message)
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message)
         try:
             _ = validate_threshold_binding(binding)
         except _NATIVE_SOURCE_BINDING_ERROR as error:
@@ -708,7 +712,7 @@ class ProtectedExactPlan:
                 ):
                     detail = arguments[0]
             message = f"protected plan binding is invalid: {detail}"
-            raise ProtectedPlanError(message) from error
+            raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
 
 
 _PROTECTED_EXACT_PLAN_VALIDATOR = cast(
@@ -911,7 +915,7 @@ def _frame_text(value: str) -> bytes:
 def _u64(value: int) -> bytes:
     if value < _ZERO or value >= (1 << 64):
         message = "protected-plan integer exceeds unsigned 64-bit framing"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     return value.to_bytes(_FRAME_BYTES, byteorder="big")
 
 
@@ -1005,15 +1009,15 @@ def protected_plan_aad(
     """
     if _NATIVE_TYPE(metadata) is not ProtectedMetadata:
         message = "protected metadata must use the exact ProtectedMetadata type"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     try:
         _PROTECTED_METADATA_VALIDATOR(metadata)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "protected metadata has incomplete native evidence"
-        raise ProtectedPlanError(message) from error
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
     if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "protected-plan context must be non-empty exact bytes"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     source, target, instructions, roots = _metadata_fields(metadata)
     instruction_bytes = b"".join(
         _instruction_bytes(instruction) for instruction in instructions
@@ -1086,7 +1090,7 @@ def _protect_instruction(
         )
     if literal is None:
         message = "literal instruction lost authoring bytes before protection"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     return _new_protected_instruction(
         output_path=output_path,
         kind=ProtectedInstructionKind.PAYLOAD,
@@ -1148,25 +1152,25 @@ def _validate_protect_inputs(
 ) -> None:
     if _NATIVE_TYPE(plan) is not ExactAuthoringPlan:
         message = "protected authoring plan must use the exact ExactAuthoringPlan type"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     try:
         _EXACT_AUTHORING_PLAN_VALIDATOR(plan)
     except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TREE_MODEL_ERROR) as error:
         message = "protected authoring plan contains invalid native exact evidence"
-        raise ProtectedPlanError(message) from error
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
     if _NATIVE_TYPE(reference_identity) is not IdentityTree:
         message = "protected reference must use the exact IdentityTree type"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     try:
         _IDENTITY_TREE_VALIDATOR(reference_identity)
     except (_NATIVE_ADMISSION_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = (
             "protected reference contains invalid native identity evidence"
         )
-        raise ProtectedPlanError(message) from error
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
     if _NATIVE_TYPE(context) is not _NATIVE_BYTES or not context:
         message = "protected authoring context must use non-empty exact bytes"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
 
 
 def protect_exact_plan(
@@ -1237,7 +1241,7 @@ def _payload_slice(plaintext: bytes, reference: PayloadSlice) -> bytes:
     end = offset + length
     if end > _NATIVE_LEN(plaintext):
         message = "protected payload slice exceeds authenticated plaintext"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     return plaintext[offset:end]
 
 
@@ -1282,7 +1286,7 @@ def _exact_instruction(
         )
     if payload_slice is None:
         message = "protected payload instruction lost its payload range"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     return _new_exact_instruction(
         output_path=output_path,
         kind=ExactInstructionKind.LITERAL_ORACLE,
@@ -1294,12 +1298,12 @@ def _exact_instruction(
 def _require_protected_exact_plan(value: object) -> ProtectedExactPlan:
     if _NATIVE_TYPE(value) is not ProtectedExactPlan:
         message = "protected plan must use the exact ProtectedExactPlan type"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     try:
         _PROTECTED_EXACT_PLAN_VALIDATOR(value)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "protected plan has incomplete native envelope evidence"
-        raise ProtectedPlanError(message) from error
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message) from error
     return value
 
 
@@ -1362,6 +1366,6 @@ def materialize_protected_exact_plan(
     source, _, _, passthrough_roots, _, _, _, _ = _plan_fields(plan)
     if snapshot_tree_excluding(source_root, passthrough_roots) != source:
         message = "source tree does not match protected exact source snapshot"
-        raise ProtectedPlanError(message)
+        raise _NATIVE_PROTECTED_PLAN_ERROR(message)
     exact = recover_exact_plan(plan, candidate_identity)
     materialize_exact_plan(source_root, exact, output_root)
