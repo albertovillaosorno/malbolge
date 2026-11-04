@@ -48,7 +48,9 @@ MAX_NATIVE_DESCRIPTOR = 2**31 - 1
 _SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
 # Read directly from the original opened descriptor to cross-check any
 # replaceable buffered-reader receipt against source bytes, not just metadata.
-_NATIVE_PREAD = getattr(os, "pread", None)
+_SOURCE_GETATTR = getattr
+_SOURCE_TYPE = type
+_NATIVE_PREAD = _SOURCE_GETATTR(os, "pread", None)
 _NATIVE_READ = os.read
 _NATIVE_LSEEK = os.lseek
 # A swapped module builtin cannot skip the source-byte reread, forge a read
@@ -69,7 +71,7 @@ class StudyFileError(ValueError):
 def _native_stat(info: os.stat_result) -> os.stat_result:
     # Filesystem calls normally return an exact native stat_result. Reject a
     # substituted dependency receipt before consulting attacker-owned fields.
-    if type(info) is not os.stat_result:
+    if _SOURCE_TYPE(info) is not os.stat_result:
         _fail("arena input returned invalid file metadata")
     return info
 
@@ -77,7 +79,7 @@ def _native_stat(info: os.stat_result) -> os.stat_result:
 def _native_resolved_path(resolved: Path) -> Path:
     # Only the platform's native Path may supply an opened-file provenance
     # claim. Reject foreign resolve() results before fspath or comparison.
-    if type(resolved) is not type(Path()):
+    if _SOURCE_TYPE(resolved) is not _SOURCE_TYPE(Path()):
         _fail("arena input returned invalid resolved path")
     return resolved
 
@@ -101,13 +103,16 @@ def _admit_descriptor(receipt: object, *, source: str) -> int:
     # A forged os.open/fileno return must not become a procfs lookup, fstat,
     # fdopen, or os.close on an unrelated handle (notably bool 0/1).
     # OS file descriptors use native signed C ints on the supported hosts.
-    if type(receipt) is not int or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR:
+    if (
+        _SOURCE_TYPE(receipt) is not int
+        or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR
+    ):
         _fail(f"arena input {source} descriptor is not a native OS integer")
     return receipt
 
 
 def _admit_limit(limit: int) -> None:
-    if type(limit) is not int or not 0 < limit <= _SOURCE_MAX_STUDY_BYTES:
+    if _SOURCE_TYPE(limit) is not int or not 0 < limit <= _SOURCE_MAX_STUDY_BYTES:
         _fail("arena study byte limit must be a positive integer up to 16 MiB")
 
 
@@ -135,9 +140,9 @@ def _admit_path(path: Path, limit: int) -> os.stat_result:
 def _open_study(path: Path) -> BinaryIO:
     flags = (
         os.O_RDONLY
-        | getattr(os, "O_BINARY", 0)
-        | getattr(os, "O_NONBLOCK", 0)
-        | getattr(os, "O_NOFOLLOW", 0)
+        | _SOURCE_GETATTR(os, "O_BINARY", 0)
+        | _SOURCE_GETATTR(os, "O_NONBLOCK", 0)
+        | _SOURCE_GETATTR(os, "O_NOFOLLOW", 0)
     )
     # A leaf-only O_NOFOLLOW open cannot detect a transient symlinked
     # parent. Freeze the pre-open resolved target and compare it with the
@@ -152,7 +157,7 @@ def _open_study(path: Path) -> BinaryIO:
     try:
         if expected_path is not None:
             opened_path = os.readlink(f"/proc/self/fd/{descriptor}")
-            if type(opened_path) is not str:
+            if _SOURCE_TYPE(opened_path) is not str:
                 _fail("arena input returned invalid opened path")
             if opened_path != expected_path:
                 _fail("arena input opened path changed")
@@ -160,7 +165,10 @@ def _open_study(path: Path) -> BinaryIO:
         # fdopen must transfer ownership of this exact raw descriptor to a
         # native buffered FileIO. A substituted stream can report the correct
         # fileno and inode while returning unrelated bytes from read().
-        if type(stream) is not io.BufferedReader or type(stream.raw) is not io.FileIO:
+        if (
+            _SOURCE_TYPE(stream) is not io.BufferedReader
+            or _SOURCE_TYPE(stream.raw) is not io.FileIO
+        ):
             _fail("arena input stream is not a native buffered file")
         if _admit_descriptor(stream.fileno(), source="stream") != descriptor:
             _fail("arena input stream descriptor differs from opened descriptor")
@@ -197,7 +205,7 @@ def _read_complete(stream: BinaryIO, *, size: int) -> bytes:
         except Exception as error:
             message = "arena input stream read failed"
             raise StudyFileError(message) from error
-        if type(chunk) is not _SOURCE_BYTES or _SOURCE_LEN(chunk) > requested:
+        if _SOURCE_TYPE(chunk) is not _SOURCE_BYTES or _SOURCE_LEN(chunk) > requested:
             _fail("arena input stream read returned invalid bytes")
         if not chunk:
             _fail("arena input read ended before declared file size")
@@ -212,7 +220,7 @@ def _verify_descriptor_bytes(descriptor: int, data: bytes) -> None:
         StudyFileError: The reader's bytes differ from the opened source.
 
     """
-    if type(data) is not _SOURCE_BYTES:
+    if _SOURCE_TYPE(data) is not _SOURCE_BYTES:
         _fail("arena input source bytes differ from opened descriptor")
     try:
         if _NATIVE_PREAD is None:
@@ -226,7 +234,7 @@ def _verify_descriptor_bytes(descriptor: int, data: bytes) -> None:
             else:
                 observed = _NATIVE_READ(descriptor, requested)
             if (
-                type(observed) is not _SOURCE_BYTES
+                _SOURCE_TYPE(observed) is not _SOURCE_BYTES
                 or not observed
                 or observed != data[offset : offset + _SOURCE_LEN(observed)]
             ):
@@ -356,7 +364,7 @@ def read_study_bytes(path: Path, *, limit: int) -> bytes:
     _admit_limit(limit)
     # A Path subclass can override __fspath__ to name a different file than
     # its displayed path. Never perform stat/open/resolve on foreign methods.
-    if type(path) is not type(Path()):
+    if _SOURCE_TYPE(path) is not _SOURCE_TYPE(Path()):
         _fail("arena input path requires an exact native Path")
     try:
         return _read_admitted_study(path, limit=limit)

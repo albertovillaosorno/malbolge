@@ -1916,3 +1916,44 @@ def test_study_reader_preserves_native_byte_operations(
 
     monkeypatch.setattr(study_file, provider, forged_operation, raising=False)
     assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
+
+
+def test_study_reader_rejects_redirected_path_with_replaced_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A false native-type receipt cannot admit bytes from another pathname."""
+    claimed = tmp_path / "claimed.json"
+    alternate = tmp_path / "alternate.json"
+    _ = claimed.write_bytes(b"claimed")
+    _ = alternate.write_bytes(b"foreign")
+
+    class RedirectedPath(type(tmp_path)):
+        def __fspath__(self) -> str:
+            return str(alternate) if str(self) == str(claimed) else str(self)
+
+    redirected = RedirectedPath(claimed)
+    original_type = type
+
+    def forged_type(value: object) -> type[object]:
+        if isinstance(value, RedirectedPath):
+            return original_type(tmp_path)
+        return original_type(value)
+
+    monkeypatch.setattr(study_file, "type", forged_type, raising=False)
+    with pytest.raises(study_file.StudyFileError, match="exact native Path"):
+        _ = study_file.read_study_bytes(redirected, limit=1024)
+
+
+@pytest.mark.parametrize("provider", ["type", "getattr"])
+def test_study_reader_preserves_native_admission_operations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Public type and flag resolvers cannot change admission of valid files."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+
+    def forged_operation(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail(f"public {provider} was called instead of source native")
+
+    monkeypatch.setattr(study_file, provider, forged_operation, raising=False)
+    assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
