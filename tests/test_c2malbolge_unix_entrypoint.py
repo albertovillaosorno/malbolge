@@ -208,6 +208,15 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
             b"malbolge-steps-v1:27\n",
         )
 
+    def test_installed_compiler_accepts_wrapped_unsigned_literals(self) -> None:
+        # Both installed shims must preserve implicit void return and byte output.
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\n"
+            + b"void emit(void) { putchar((65)); putchar(65u); }\n",
+            b"AA",
+            b"malbolge-steps-v1:27\n",
+        )
+
     def test_installed_compiler_emits_witnessed_ascii_output(self) -> None:
         self._assert_installed_guest_output(
             b"#include <stdio.h>\nvoid emit(void) { putchar(65); putchar(65); return; }\n",
