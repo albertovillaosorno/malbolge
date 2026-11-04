@@ -44,6 +44,9 @@ _SOURCE_TOML_LOADS = tomllib.loads
 
 NANOSECONDS_PER_SECOND = 1_000_000_000
 BYTES_PER_MIB = 1_048_576
+# Canonical unit semantics must survive substitutions of public module values.
+_SOURCE_NANOSECONDS_PER_SECOND = NANOSECONDS_PER_SECOND
+_SOURCE_BYTES_PER_MIB = BYTES_PER_MIB
 MAX_RUN_MANIFEST_BYTES = 1_048_576
 
 
@@ -131,6 +134,6 @@ def parse_run_budgets(text: str) -> RunBudgets:
     ):
         _fail("experiment run budget differs from source TOML")
     return RunBudgets(
-        time_ns=seconds * NANOSECONDS_PER_SECOND,
-        memory_bytes=memory_mib * BYTES_PER_MIB,
+        time_ns=seconds * _SOURCE_NANOSECONDS_PER_SECOND,
+        memory_bytes=memory_mib * _SOURCE_BYTES_PER_MIB,
     )

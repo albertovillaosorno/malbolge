@@ -171,7 +171,11 @@ A separate opt-in `--require-budget-agreement` mode reads every governed
 experiment run's `[budget]` table and requires explicit positive integer
 `seconds` and `memory_mib` declarations. Those values must convert exactly to
 the study's declared `time_ns` and `memory_bytes`, without rounding or allowing
-one algorithm a different recorded resource budget. This is a reporting
+one algorithm a different recorded resource budget. The conversion from
+whole seconds and MiB to nanoseconds and bytes now retains its import-bound
+canonical factors instead of mutable public module values. Two red-first unit
+substitutions previously changed accepted native limits despite unchanged TOML;
+they now preserve the exact canonical quantities. This is a reporting
 consistency check only, not physical runtime or peak-memory enforcement.
 
 Both optional run-extension readers reparse the exact TOML source with an
