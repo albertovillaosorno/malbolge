@@ -37,7 +37,7 @@
 #[path = "../src/compiler/typed-ir/composition/lib.rs"]
 pub mod typed_ir;
 
-use std::env::temp_dir;
+use std::env::{temp_dir, var_os};
 use std::fmt::Write as _;
 use std::fs::{
     copy, create_dir_all, read_to_string, remove_dir_all, remove_file, write,
@@ -53,7 +53,8 @@ use typed_ir::{
     CanonicalDecodeError, CanonicalError, CastOp, CompareOp, FrontendArtifact,
     FrontendArtifactSpec, FrontendLoweringError, FrontendPosition,
     FrontendReturnIntegerFunction, FrontendReturnIntegerFunctionSpec,
-    FrontendSpan, Function, FunctionId, FunctionSpec, Global, GlobalId,
+    FrontendReturnVoidFunction, FrontendReturnVoidFunctionSpec, FrontendSpan,
+    Function, FunctionId, FunctionSpec, Global, GlobalId,
     GlobalSpec, Instruction, IntegerConstant, LocatedInstruction, Module,
     ModuleSpec, Parameter, Phi, PhiIncoming, ProgressCheckpointError,
     ProofObligation, SourcePosition, SourceSpan, TYPED_IR_CODEC_ID, Terminator,
@@ -506,6 +507,38 @@ fn frontend_return_projection() -> FrontendArtifact {
         "i32",
         "7",
     )])
+}
+
+fn frontend_void_projection(signature: &str, returned: FrontendSpan) -> FrontendArtifact {
+    FrontendArtifact::new_void(
+        FrontendArtifactSpec {
+            abi_id: String::from(ABI_ID),
+            artifact_id: String::from("malbolge-c-frontend-v1"),
+            clang_target: String::from("wasm32-unknown-unknown"),
+            clang_version: String::from("22.1.8"),
+            functions: Vec::new(),
+            language: String::from("c23"),
+            schema_version: 1,
+            source_id: String::from("fixtures/void-return.c"),
+            source_sha256: LOWERING_SOURCE_HASH,
+            target_profile: String::from(PROFILE_ID),
+        },
+        FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
+            body_span: frontend_span(1222, 16, 1235, 29),
+            definition: String::from("definition"),
+            function_span: frontend_span(1207, 1, 1235, 29),
+            inline_specified: false,
+            linkage: String::from("external"),
+            name: String::from("noop"),
+            return_span: returned,
+            signature: String::from(signature),
+            storage_class: String::from("none"),
+        }),
+    )
+}
+
+fn supported_void_projection() -> FrontendArtifact {
+    frontend_void_projection("fn()->void", frontend_span(1224, 18, 1232, 26))
 }
 
 fn constant(result: u32, value: u8, source_byte: u32) -> LocatedInstruction {
@@ -1495,6 +1528,175 @@ fn normalized_frontend_return_constant_lowers_with_exact_provenance() {
         .map(|text| text.lines().collect::<String>())
         .map_err(|_error| CanonicalError::TextFormatting);
     assert_eq!(lowered, Ok(expected));
+}
+
+#[test]
+#[expect(clippy::cognitive_complexity, reason = "end-to-end canonical source and typed IR assertions")]
+#[expect(clippy::panic_in_result_fn, reason = "deterministic compiler stage assertions")]
+fn normalized_explicit_void_return_lowers_to_canonical_typed_ir() -> Result<(), String> {
+    let frontend = supported_void_projection();
+    let module = lower_frontend_artifact(&frontend)
+        .map_err(|error| format!("lower explicit void: {error:?}"))?;
+    assert_eq!(module.source_id(), "fixtures/void-return.c");
+    let [byte, signature] = module.types() else {
+        return Err(String::from("expected exactly two void function types"));
+    };
+    assert!(matches!(byte.definition(), TypeDef::U8));
+    assert!(matches!(
+        signature.definition(),
+        TypeDef::Function { parameters, result: None, variadic: false }
+            if parameters.is_empty()
+    ));
+    let [function] = module.functions() else {
+        return Err(String::from("expected one void-return function"));
+    };
+    assert_eq!(function.name(), "noop");
+    let [block] = function.blocks() else {
+        return Err(String::from("expected one void-return block"));
+    };
+    assert!(block.instructions().is_empty());
+    assert!(block.phis().is_empty());
+    assert!(matches!(
+        block.terminator(),
+        Terminator::Return { value: None }
+    ));
+    assert_eq!(
+        block.terminator_span(),
+        SourceSpan::new(
+            SourcePosition::new(1224, 35, 18),
+            SourcePosition::new(1232, 35, 26),
+        )
+    );
+    let bytes =
+        canonical_bytes(&module).map_err(|error| format!("encode explicit void: {error:?}"))?;
+    assert_eq!(
+        canonical_module(&bytes),
+        Ok(module.clone()),
+        "void function must survive exact canonical MCTI roundtrip"
+    );
+    assert_eq!(
+        enter_typed_ir_compiler_stage(TypedIrCompilerStageInput::Fresh(&frontend)),
+        Ok(module)
+    );
+    Ok(())
+}
+
+#[test]
+fn explicit_void_frontend_rejects_foreign_semantics_and_false_source_spans() {
+    let valid_return = frontend_span(1224, 18, 1232, 26);
+    assert!(matches!(
+        lower_frontend_artifact(&frontend_void_projection("fn()->i32", valid_return)),
+        Err(FrontendLoweringError::UnsupportedSemantics)
+    ));
+    assert!(matches!(
+        lower_frontend_artifact(&frontend_void_projection(
+            "fn()->void",
+            frontend_span(1224, 18, 1224, 18),
+        )),
+        Err(FrontendLoweringError::Validation(
+            ValidationError::SourceProvenance
+        ))
+    ));
+    assert!(matches!(
+        lower_frontend_artifact(&frontend_void_projection(
+            "fn()->void",
+            frontend_span(1208, 2, 1215, 9),
+        )),
+        Err(FrontendLoweringError::Validation(
+            ValidationError::SourceProvenance
+        ))
+    ));
+    let mut mixed = frontend_void_projection("fn()->void", valid_return);
+    let expected = FrontendArtifactSpec {
+        abi_id: String::from(mixed.abi_id()),
+        artifact_id: String::from(mixed.artifact_id()),
+        clang_target: String::from(mixed.clang_target()),
+        clang_version: String::from(mixed.clang_version()),
+        functions: vec![frontend_function("fn()->i32", "i32", "7")],
+        language: String::from(mixed.language()),
+        schema_version: mixed.schema_version(),
+        source_id: String::from(mixed.source_id()),
+        source_sha256: *mixed.source_sha256(),
+        target_profile: String::from(mixed.target_profile()),
+    };
+    mixed = FrontendArtifact::new_void(
+        expected,
+        FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
+            body_span: frontend_span(1222, 16, 1235, 29),
+            definition: String::from("definition"),
+            function_span: frontend_span(1207, 1, 1235, 29),
+            inline_specified: false,
+            linkage: String::from("external"),
+            name: String::from("noop"),
+            return_span: valid_return,
+            signature: String::from("fn()->void"),
+            storage_class: String::from("none"),
+        }),
+    );
+    assert_eq!(
+        lower_frontend_artifact(&mixed),
+        Err(FrontendLoweringError::UnsupportedSemantics)
+    );
+}
+
+#[test]
+fn explicit_void_source_bound_checkpoint_matches_only_the_exact_return() -> Result<(), String> {
+    let expected = supported_void_projection();
+    let fresh = lower_frontend_artifact(&expected)
+        .map_err(|error| format!("lower expected void: {error:?}"))?;
+    let directory = compiler_crash_directory("void-source-bound")?;
+    let inspector = temporary_inspector("void-source-bound", INSPECTOR_SUCCESS_SCRIPT)?;
+    let progress = directory.join("void.hex");
+    let result = (|| {
+        write(
+            &progress,
+            canonical_debug_text(&fresh).map_err(|error| format!("serialize void: {error:?}"))?,
+        )
+        .map_err(|error| format!("write void checkpoint: {error}"))?;
+        let interpreter = var_os("MALBOLGE_TEST_PYTHON")
+            .map_or_else(repository_python, PathBuf::from);
+        let direct = resume_typed_ir_from_progress_for_source(
+            &interpreter,
+            &inspector,
+            &progress,
+            &expected,
+        );
+        if direct != Ok(fresh.clone()) {
+            return Err(format!("matching void checkpoint rejected: {direct:?}"));
+        }
+        let restored =
+            enter_typed_ir_compiler_stage(TypedIrCompilerStageInput::ProgressForSource {
+                expected: &expected,
+                inspector: &inspector,
+                interpreter: &interpreter,
+                progress: &progress,
+            });
+        if restored != Ok(fresh.clone()) {
+            return Err(format!("matching void stage rejected: {restored:?}"));
+        }
+        let changed_span =
+            frontend_void_projection("fn()->void", frontend_span(1225, 19, 1232, 26));
+        assert_source_matched_resume_failure(
+            &changed_span,
+            &inspector,
+            (&interpreter, &progress),
+            ProgressCheckpointError::IdentityMismatch,
+        )?;
+        let other = frontend_void_projection("fn()->i32", frontend_span(1224, 18, 1232, 26));
+        assert_source_matched_resume_failure(
+            &other,
+            &inspector,
+            (&interpreter, &progress),
+            ProgressCheckpointError::IdentityMismatch,
+        )
+    })();
+    let remove_inspector =
+        remove_file(&inspector).map_err(|error| format!("remove void inspector: {error}"));
+    let remove_directory =
+        remove_dir_all(&directory).map_err(|error| format!("remove void checkpoint: {error}"));
+    result?;
+    remove_inspector?;
+    remove_directory
 }
 
 #[test]

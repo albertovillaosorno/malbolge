@@ -234,6 +234,117 @@ impl FrontendReturnIntegerFunction {
     }
 }
 
+/// Construction payload for a canonical no-argument explicit `return;`
+/// function. No integer-expression span is invented for a void return.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FrontendReturnVoidFunctionSpec {
+    /// Normalized compound-statement span.
+    pub body_span: FrontendSpan,
+    /// Normalized declaration definition classification.
+    pub definition: String,
+    /// Complete function-declaration span.
+    pub function_span: FrontendSpan,
+    /// Whether the source declaration explicitly specified `inline`.
+    pub inline_specified: bool,
+    /// Normalized declaration linkage classification.
+    pub linkage: String,
+    /// Portable source-level function name.
+    pub name: String,
+    /// Normalized return-statement span.
+    pub return_span: FrontendSpan,
+    /// Canonical normalized function type spelling.
+    pub signature: String,
+    /// Normalized declaration storage-class classification.
+    pub storage_class: String,
+}
+
+/// One frontend function with a single explicit no-value return.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FrontendReturnVoidFunction {
+    body_span: FrontendSpan,
+    definition: String,
+    function_span: FrontendSpan,
+    inline_specified: bool,
+    linkage: String,
+    name: String,
+    return_span: FrontendSpan,
+    signature: String,
+    storage_class: String,
+}
+
+impl FrontendReturnVoidFunction {
+    /// Returns the normalized body span.
+    #[must_use]
+    pub const fn body_span(&self) -> FrontendSpan {
+        self.body_span
+    }
+
+    /// Returns the normalized declaration definition classification.
+    #[must_use]
+    pub fn definition(&self) -> &str {
+        &self.definition
+    }
+
+    /// Returns the complete function span.
+    #[must_use]
+    pub const fn function_span(&self) -> FrontendSpan {
+        self.function_span
+    }
+
+    /// Returns whether the source declaration explicitly specified `inline`.
+    #[must_use]
+    pub const fn inline_specified(&self) -> bool {
+        self.inline_specified
+    }
+
+    /// Returns normalized declaration linkage classification.
+    #[must_use]
+    pub fn linkage(&self) -> &str {
+        &self.linkage
+    }
+
+    /// Returns the portable function name.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Creates one explicitly returned void function projection.
+    #[must_use]
+    pub fn new(spec: FrontendReturnVoidFunctionSpec) -> Self {
+        Self {
+            body_span: spec.body_span,
+            definition: spec.definition,
+            function_span: spec.function_span,
+            inline_specified: spec.inline_specified,
+            linkage: spec.linkage,
+            name: spec.name,
+            return_span: spec.return_span,
+            signature: spec.signature,
+            storage_class: spec.storage_class,
+        }
+    }
+
+    /// Returns the normalized return-statement span.
+    #[must_use]
+    pub const fn return_span(&self) -> FrontendSpan {
+        self.return_span
+    }
+
+    /// Returns the normalized function type spelling.
+    #[must_use]
+    pub fn signature(&self) -> &str {
+        &self.signature
+    }
+
+    /// Returns normalized declaration storage-class classification.
+    #[must_use]
+    pub fn storage_class(&self) -> &str {
+        &self.storage_class
+    }
+
+}
+
 /// Construction payload for one normalized frontend semantic projection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FrontendArtifactSpec {
@@ -272,6 +383,7 @@ pub struct FrontendArtifact {
     source_id: String,
     source_sha256: [u8; 32],
     target_profile: String,
+    void_function: Option<FrontendReturnVoidFunction>,
 }
 
 impl FrontendArtifact {
@@ -325,7 +437,17 @@ impl FrontendArtifact {
             source_id: spec.source_id,
             source_sha256: spec.source_sha256,
             target_profile: spec.target_profile,
+            void_function: None,
         }
+    }
+
+    /// Constructs a single explicit void-return frontend projection.
+    /// Nonempty integer-function input is rejected at lowering.
+    #[must_use]
+    pub fn new_void(spec: FrontendArtifactSpec, function: FrontendReturnVoidFunction) -> Self {
+        let mut artifact = Self::new(spec);
+        artifact.void_function = Some(function);
+        artifact
     }
 
     /// Returns the frontend artifact schema version.
@@ -351,4 +473,11 @@ impl FrontendArtifact {
     pub fn target_profile(&self) -> &str {
         &self.target_profile
     }
+
+    /// Returns the one explicitly returned void function, if selected.
+    #[must_use]
+    pub const fn void_function(&self) -> Option<&FrontendReturnVoidFunction> {
+        self.void_function.as_ref()
+    }
+
 }

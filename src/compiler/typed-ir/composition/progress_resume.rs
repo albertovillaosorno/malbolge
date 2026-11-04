@@ -46,11 +46,12 @@ use super::control::Terminator;
 use super::encode::TYPED_IR_CODEC_ID;
 use super::frontend_semantics::{
     FrontendArtifact, FrontendPosition, FrontendReturnIntegerFunction,
-    FrontendSpan,
+    FrontendReturnVoidFunction, FrontendSpan,
 };
 use super::instruction::Instruction;
 use super::lower_frontend::{
-    admit_disjoint_function_spans, admit_frontend_function, validate_identity,
+    admit_disjoint_function_spans, admit_frontend_function,
+    admit_void_frontend_function, validate_identity,
 };
 use super::module::{Function, Module};
 use super::source::{SourcePosition, SourceSpan};
@@ -239,21 +240,73 @@ fn matches_supported_type_table(saved: &Module) -> bool {
         )
 }
 
+// The explicit no-effect void return must remain a single empty block,
+// with exactly the same two type entries accepted by the downstream
+// canonical MCTI-to-target adapter. Source-bound resume must not interpret
+// a valid but effectful checkpoint as equivalent to a fresh `return;`.
+fn matches_expected_void_function(saved: &Module, source: &FrontendReturnVoidFunction) -> bool {
+    if admit_void_frontend_function(source).is_err() {
+        return false;
+    }
+    let [byte, signature] = saved.types() else {
+        return false;
+    };
+    if byte.id().value() != 0
+        || !matches!(byte.definition(), TypeDef::U8)
+        || signature.id().value() != 1
+        || !matches!(
+            signature.definition(),
+            TypeDef::Function { parameters, result: None, variadic: false }
+                if parameters.is_empty()
+        )
+    {
+        return false;
+    }
+    let [function] = saved.functions() else {
+        return false;
+    };
+    let [block] = function.blocks() else {
+        return false;
+    };
+    function.id().value() == 0
+        && function.signature() == signature.id()
+        && function.name() == source.name()
+        && function.parameters().is_empty()
+        && matches_span(function.span(), source.function_span())
+        && block.id() == function.entry()
+        && block.instructions().is_empty()
+        && block.phis().is_empty()
+        && matches!(block.terminator(), Terminator::Return { value: None })
+        && matches_span(block.span(), source.body_span())
+        && matches_span(block.terminator_span(), source.return_span())
+}
+
 fn matches_expected_frontend(
     saved: &Module,
     expected: &FrontendArtifact,
 ) -> bool {
-    validate_identity(expected).is_ok()
-        && !expected.functions().is_empty()
-        && saved.globals().is_empty()
-        && saved.proof_obligations().is_empty()
+    if validate_identity(expected).is_err()
+        || !saved.globals().is_empty()
+        || !saved.proof_obligations().is_empty()
+        || admit_disjoint_function_spans(expected).is_err()
+    {
+        return false;
+    }
+    if let Some(source) = expected.void_function() {
+        return expected.functions().is_empty()
+            && saved.abi_id() == expected.abi_id()
+            && saved.source_id() == expected.source_id()
+            && saved.source_sha256() == expected.source_sha256()
+            && saved.target_profile() == expected.target_profile()
+            && matches_expected_void_function(saved, source);
+    }
+    !expected.functions().is_empty()
         && matches_supported_type_table(saved)
         && saved.abi_id() == expected.abi_id()
         && saved.source_id() == expected.source_id()
         && saved.source_sha256() == expected.source_sha256()
         && saved.target_profile() == expected.target_profile()
         && saved.functions().len() == expected.functions().len()
-        && admit_disjoint_function_spans(expected).is_ok()
         && saved.functions().iter().zip(expected.functions()).all(
             |(function, source)| {
                 function.name() == source.name()

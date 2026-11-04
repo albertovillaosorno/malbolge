@@ -41,7 +41,7 @@ use super::control::{BasicBlock, BasicBlockSpec, Terminator};
 use super::error::ValidationError;
 use super::frontend_semantics::{
     FrontendArtifact, FrontendPosition, FrontendReturnIntegerFunction,
-    FrontendSpan,
+    FrontendReturnVoidFunction, FrontendSpan,
 };
 use super::ids::{BlockId, FunctionId, TypeId, ValueId};
 use super::instruction::{Instruction, IntegerConstant, LocatedInstruction};
@@ -61,6 +61,7 @@ const FRONTEND_SCHEMA_VERSION: u16 = 1;
 const I32_TYPE: TypeId = TypeId::new(0);
 const I32_FUNCTION_TYPE: TypeId = TypeId::new(1);
 const I32_FUNCTION_SIGNATURE: &str = "fn()->i32";
+const VOID_FUNCTION_SIGNATURE: &str = "fn()->void";
 const I32_FRONTEND_TYPE: &str = "i32";
 const REQUIRED_DEFINITION: &str = "definition";
 const REQUIRED_LINKAGE: &str = "external";
@@ -98,14 +99,19 @@ pub fn lower_frontend_artifact(
     artifact: &FrontendArtifact,
 ) -> Result<Module, FrontendLoweringError> {
     validate_identity(artifact)?;
-    if artifact.functions().is_empty() {
-        return Err(FrontendLoweringError::UnsupportedSemantics);
-    }
-    let mut functions = Vec::with_capacity(artifact.functions().len());
-    for (index, function) in artifact.functions().iter().enumerate() {
-        functions.push(lower_function(index, function)?);
-    }
     admit_disjoint_function_spans(artifact)?;
+    let (functions, types) = if let Some(function) = artifact.void_function() {
+        (vec![lower_void_function(function)?], void_lowered_types())
+    } else {
+        if artifact.functions().is_empty() {
+            return Err(FrontendLoweringError::UnsupportedSemantics);
+        }
+        let mut functions = Vec::with_capacity(artifact.functions().len());
+        for (index, function) in artifact.functions().iter().enumerate() {
+            functions.push(lower_function(index, function)?);
+        }
+        (functions, lowered_types())
+    };
     let module = Module::new(ModuleSpec {
         abi_id: String::from(ABI_ID),
         format_version: TYPED_IR_VERSION,
@@ -115,7 +121,7 @@ pub fn lower_frontend_artifact(
         source_id: String::from(artifact.source_id()),
         source_sha256: *artifact.source_sha256(),
         target_profile: String::from(TARGET_PROFILE),
-        types: lowered_types(),
+        types,
     });
     validate_module(&module)?;
     Ok(module)
@@ -128,6 +134,9 @@ pub fn lower_frontend_artifact(
 pub(super) fn admit_disjoint_function_spans(
     artifact: &FrontendArtifact,
 ) -> Result<(), FrontendLoweringError> {
+    if artifact.void_function().is_some() && !artifact.functions().is_empty() {
+        return Err(FrontendLoweringError::UnsupportedSemantics);
+    }
     if artifact.functions().len() < 2 {
         return Ok(());
     }
@@ -198,6 +207,74 @@ pub(super) fn admit_frontend_function(
         ));
     }
     Ok(value)
+}
+
+// A real normalized `return;` has a statement span but no expression,
+// result value, or integer-literal location. Only the exact empty-effect
+// shape may reach the separately verified two-cell target publisher.
+pub(super) fn admit_void_frontend_function(
+    function: &FrontendReturnVoidFunction,
+) -> Result<(), FrontendLoweringError> {
+    if function.definition() != REQUIRED_DEFINITION
+        || function.inline_specified()
+        || function.linkage() != REQUIRED_LINKAGE
+        || function.signature() != VOID_FUNCTION_SIGNATURE
+        || function.storage_class() != REQUIRED_STORAGE_CLASS
+    {
+        return Err(FrontendLoweringError::UnsupportedSemantics);
+    }
+    let outer = convert_span(function.function_span());
+    let body = convert_span(function.body_span());
+    let returned = convert_span(function.return_span());
+    if !valid_span(outer) {
+        return Err(FrontendLoweringError::Validation(
+            ValidationError::FunctionIdentity,
+        ));
+    }
+    if !valid_span(body)
+        || !span_contains(outer, body)
+        || !valid_span(returned)
+        || returned.begin().byte() == returned.end().byte()
+        || !span_contains(body, returned)
+    {
+        return Err(FrontendLoweringError::Validation(
+            ValidationError::SourceProvenance,
+        ));
+    }
+    Ok(())
+}
+
+fn lower_void_function(
+    function: &FrontendReturnVoidFunction,
+) -> Result<Function, FrontendLoweringError> {
+    admit_void_frontend_function(function)?;
+    let block = BasicBlock::new(BasicBlockSpec {
+        id: BlockId::new(0),
+        instructions: Vec::new(),
+        phis: Vec::new(),
+        span: convert_span(function.body_span()),
+        terminator: Terminator::Return { value: None },
+        terminator_span: convert_span(function.return_span()),
+    });
+    Ok(Function::new(FunctionSpec {
+        blocks: vec![block],
+        entry: BlockId::new(0),
+        id: FunctionId::new(0),
+        name: String::from(function.name()),
+        parameters: Vec::new(),
+        signature: I32_FUNCTION_TYPE,
+        span: convert_span(function.function_span()),
+    }))
+}
+
+fn void_lowered_types() -> Vec<TypeEntry> {
+    vec![
+        TypeEntry::new(I32_TYPE, TypeDef::U8),
+        TypeEntry::new(
+            I32_FUNCTION_TYPE,
+            TypeDef::function(Vec::new(), None, false),
+        ),
+    ]
 }
 
 fn lower_function(
