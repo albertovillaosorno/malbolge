@@ -1573,3 +1573,50 @@ def test_trial_run_rejects_foreign_toml_mapping_keys_before_comparison(
     monkeypatch.setattr(trial_runs.tomllib, "loads", lambda _: document)
     with pytest.raises(trial_runs.TrialRunError, match="native.*keys"):
         trial_runs.parse_trial_run("[arena_trial]\ntrial = 0\n")
+
+
+@pytest.mark.parametrize("version", ["1", "2"])
+@pytest.mark.parametrize("variant", ["header", "version"])
+def test_raw_schema_aliases_cannot_redefine_csv_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: str,
+    variant: str,
+) -> None:
+    """Public schema labels cannot make foreign v1/v2 rows canonical."""
+    observation = sample_study(tmp_path)["observations"][0]
+    if version == "2":
+        observation["metrics"][ENERGY_METRIC] = 17
+    native = _render_v2([observation]) if version == "2" else _render([observation])
+    if variant == "header":
+        foreign = native.replace(b"algorithm,", b"algorithm_alias,", 1)
+        header_name = "HEADER_2" if version == "2" else "HEADER"
+        canonical = getattr(raw_samples, header_name)
+        monkeypatch.setattr(
+            raw_samples,
+            header_name,
+            tuple(
+                "algorithm_alias" if name == "algorithm" else name for name in canonical
+            ),
+        )
+        failure = "CSV header"
+    else:
+        foreign = native.replace(f"\n{version},".encode(), b"\n9,", 1)
+        version_name = (
+            "RAW_SCHEMA_VERSION_2" if version == "2" else "RAW_SCHEMA_VERSION"
+        )
+        monkeypatch.setattr(raw_samples, version_name, "9")
+        failure = "trial/metric rows differ"
+    assert foreign != native
+    with pytest.raises(raw_samples.RawSampleError, match=failure):
+        raw_samples.check_rows(foreign, [observation], ROOT_LABEL)
+
+
+def test_replaced_raw_file_cap_cannot_bypass_16_mib_preflight(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Oversized retained bytes must fail before any parser is invoked."""
+    oversized = b"x" * (raw_samples.MAX_RAW_BYTES + 1)
+    monkeypatch.setattr(raw_samples, "MAX_RAW_BYTES", len(oversized) + 1)
+    with pytest.raises(raw_samples.RawSampleError, match="oversized arena raw CSV"):
+        raw_samples.check_rows(oversized, [], ROOT_LABEL)

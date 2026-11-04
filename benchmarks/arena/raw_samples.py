@@ -74,6 +74,17 @@ METRIC_FIELDS: Final = tuple(sorted(analyze.COST_METRICS - {ENERGY}))
 HEADER: Final = (*IDENTITY_FIELDS, *METRIC_FIELDS)
 METRIC_FIELDS_2: Final = tuple(sorted(analyze.COST_METRICS))
 HEADER_2: Final = (*IDENTITY_FIELDS, *METRIC_FIELDS_2)
+# Keep the admitted v1/v2 wire schema and resource limits stable even if
+# public format metadata is rebound after this module has been imported.
+_SOURCE_RAW_SCHEMA_VERSION = RAW_SCHEMA_VERSION
+_SOURCE_RAW_SCHEMA_VERSION_2 = RAW_SCHEMA_VERSION_2
+_SOURCE_IDENTITY_FIELDS = IDENTITY_FIELDS
+_SOURCE_METRIC_FIELDS = METRIC_FIELDS
+_SOURCE_METRIC_FIELDS_2 = METRIC_FIELDS_2
+_SOURCE_HEADER = HEADER
+_SOURCE_HEADER_2 = HEADER_2
+_SOURCE_MAX_RAW_BYTES = MAX_RAW_BYTES
+_SOURCE_MAX_CSV_HEADER_CHARS = MAX_CSV_HEADER_CHARS
 
 
 class RawSampleError(ValueError):
@@ -124,19 +135,19 @@ def _header_schema(
 ) -> tuple[str, tuple[str, ...]]:
     if header is not None:
         _require_native_csv_row(header, label)
-    if header == list(HEADER):
-        return RAW_SCHEMA_VERSION, METRIC_FIELDS
-    if header == list(HEADER_2):
-        return RAW_SCHEMA_VERSION_2, METRIC_FIELDS_2
+    if header == list(_SOURCE_HEADER):
+        return _SOURCE_RAW_SCHEMA_VERSION, _SOURCE_METRIC_FIELDS
+    if header == list(_SOURCE_HEADER_2):
+        return _SOURCE_RAW_SCHEMA_VERSION_2, _SOURCE_METRIC_FIELDS_2
     _fail(f"{label}: invalid arena-raw-v1/v2 CSV header")
 
 
 def _require_bounded_csv_header(text: str, label: str) -> None:
     # Preflight the first physical line before csv.reader builds a field list.
     # An open quoted field may otherwise consume many newline-delimited rows.
-    prefix = text[: MAX_CSV_HEADER_CHARS + 1]
+    prefix = text[: _SOURCE_MAX_CSV_HEADER_CHARS + 1]
     first_line = prefix.split("\n", maxsplit=1)[0].split("\r", maxsplit=1)[0]
-    if len(first_line) > MAX_CSV_HEADER_CHARS or first_line.count('"') % 2:
+    if len(first_line) > _SOURCE_MAX_CSV_HEADER_CHARS or first_line.count('"') % 2:
         _fail(f"{label}: invalid or oversized arena raw CSV header")
 
 
@@ -160,7 +171,7 @@ def _csv_rows(
 ) -> tuple[str, tuple[str, ...], list[tuple[str, ...]]]:
     _require_bounded_csv_header(text, label)
     try:
-        column_receipt = csv_admission.within_column_limit(text, len(HEADER_2))
+        column_receipt = csv_admission.within_column_limit(text, len(_SOURCE_HEADER_2))
     except Exception as error:
         # A substituted preflight dependency cannot leak arbitrary host faults.
         message = f"{label}: arena raw CSV column preflight failed"
@@ -214,7 +225,7 @@ def _decode_raw(raw: bytes, label: str) -> str:
     # Hash and parse the same actual bytes; subclass decoders can forge rows.
     if type(raw) is not bytes:
         _fail(f"{label}: arena raw CSV requires exact bytes")
-    if not raw or len(raw) > MAX_RAW_BYTES:
+    if not raw or len(raw) > _SOURCE_MAX_RAW_BYTES:
         _fail(f"{label}: missing or oversized arena raw CSV")
     try:
         text = raw.decode("utf-8", errors="strict")
@@ -356,7 +367,7 @@ def check_rows(
         text, label, expected_rows=len(observations)
     )
     if any(
-        len(row) != len(IDENTITY_FIELDS) + len(metrics) for row in actual_rows
+        len(row) != len(_SOURCE_IDENTITY_FIELDS) + len(metrics) for row in actual_rows
     ):
         _fail(f"{label}: malformed arena raw CSV row")
     try:
