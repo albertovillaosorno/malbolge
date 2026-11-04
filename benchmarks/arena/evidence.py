@@ -76,6 +76,9 @@ BUNDLE_FILE_LIMITS = {
     "oracle.bin": challenge_bundles.ORACLE_BYTES,
     "manifest.json": challenge_bundles.MAX_MANIFEST_BYTES,
 }
+# Per-file provenance caps stay fixed even when public aliases are rebound.
+_SOURCE_MAX_MANIFEST_BYTES = MAX_MANIFEST_BYTES
+_SOURCE_BUNDLE_FILE_LIMITS = BUNDLE_FILE_LIMITS.copy()
 RUN_RECORD_KIND = experiment_manifest.RUN_RECORD_KIND
 RUN_OUTCOMES = {
     "verified": "success",
@@ -457,7 +460,7 @@ def _manifest(
     require_trial: bool,
     require_budgets: bool,
 ) -> _ManifestLink:
-    data = _read_admitted(root, relative, limit=MAX_MANIFEST_BYTES)
+    data = _read_admitted(root, relative, limit=_SOURCE_MAX_MANIFEST_BYTES)
     text = data.decode("utf-8")
     return _ManifestLink(
         source_sha256=_checked_sha256(data),
@@ -671,7 +674,7 @@ def _recheck_retained_links(
     # The parsed run manifest remains authoritative only while its retained
     # bytes agree with admission, including after optional host-C execution.
     for relative, link in sorted(context.manifests.items()):
-        now = _read_admitted(context.root, relative, limit=MAX_MANIFEST_BYTES)
+        now = _read_admitted(context.root, relative, limit=_SOURCE_MAX_MANIFEST_BYTES)
         if _checked_sha256(now) != link.source_sha256:
             _fail(f"run manifest changed after admission: {relative}")
 
@@ -744,7 +747,7 @@ def _bundle_inspection(
             _fail("too many distinct challenge bundles for replay")
         files = {
             name: _bundle_source(
-                root, f"{directory}/{name}", limit=BUNDLE_FILE_LIMITS[name]
+                root, f"{directory}/{name}", limit=_SOURCE_BUNDLE_FILE_LIMITS[name]
             )
             for name in challenge_bundles.BUNDLE_FILES
         }
@@ -769,7 +772,7 @@ def _recheck_bundle_files(root: Path, inspection: _BundleInspection) -> None:
     # same-length replacement or a rewrite between distinct pipeline stages.
     for relative, expected in inspection.retained_sha256.items():
         name = relative.rsplit("/", 1)[1]
-        current = _bundle_source(root, relative, limit=BUNDLE_FILE_LIMITS[name])
+        current = _bundle_source(root, relative, limit=_SOURCE_BUNDLE_FILE_LIMITS[name])
         if _checked_sha256(current) != expected:
             _fail(f"challenge bundle changed after replay: {relative}")
 
@@ -965,7 +968,7 @@ def _admit_snapshot(snapshot: EvidenceSnapshot) -> None:
             for name, digest in records.items()
         )
         or any(
-            name.rsplit("/", 1)[-1] not in BUNDLE_FILE_LIMITS
+            name.rsplit("/", 1)[-1] not in _SOURCE_BUNDLE_FILE_LIMITS
             for name in bundle.retained_sha256
         )
     ):

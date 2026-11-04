@@ -951,6 +951,72 @@ def test_evidence_descriptor_cap_cannot_be_lowered_by_public_alias(
     )
 
 
+@pytest.mark.parametrize("raised_cap", [2 * 1024 * 1024, 16 * 1024 * 1024])
+def test_evidence_manifest_cap_cannot_be_raised_by_public_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    raised_cap: int,
+) -> None:
+    """A malformed oversized run manifest rejects before TOML parsing."""
+    document = sample_study(tmp_path)
+    relative = document["observations"][0]["experiment_manifest"]
+    _ = (tmp_path / relative).write_bytes(b"#" * (1024 * 1024 + 1))
+    monkeypatch.setattr(evidence, "MAX_MANIFEST_BYTES", raised_cap)
+    original_read = evidence._read_admitted
+
+    def constrained_read(root: Path, relative: str, *, limit: int) -> bytes:
+        if limit > 1024 * 1024:
+            pytest.fail("oversized run manifest cap reached file access")
+        return original_read(root, relative, limit=limit)
+
+    monkeypatch.setattr(evidence, "_read_admitted", constrained_read)
+    with pytest.raises(evidence.EvidenceError, match="byte limit"):
+        evidence.validate_links(document, tmp_path)
+
+
+def test_evidence_manifest_cap_cannot_be_lowered_by_public_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native valid run manifest remains admissible under the source cap."""
+    document = sample_study(tmp_path)
+    monkeypatch.setattr(evidence, "MAX_MANIFEST_BYTES", 1)
+    assert evidence.validate_links(document, tmp_path)["manifest_links_checked"] == 2
+
+
+def test_evidence_bundle_recheck_cannot_raise_source_manifest_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed public bundle cap must not certify oversized retained bytes."""
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    payload = b"x" * (32 * 1024 + 1)
+    _ = (bundle / "manifest.json").write_bytes(payload)
+    retained = evidence._BundleInspection(
+        {}, {"bundle/manifest.json": sha256(payload).hexdigest()}
+    )
+    monkeypatch.setitem(evidence.BUNDLE_FILE_LIMITS, "manifest.json", 16 * 1024 * 1024)
+    with pytest.raises(evidence.EvidenceError, match="byte limit"):
+        evidence._recheck_bundle_files(tmp_path, retained)
+
+
+def test_evidence_bundle_recheck_ignores_lowered_public_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An otherwise valid retained manifest stays within its source cap."""
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    payload = b"{}"
+    _ = (bundle / "manifest.json").write_bytes(payload)
+    retained = evidence._BundleInspection(
+        {}, {"bundle/manifest.json": sha256(payload).hexdigest()}
+    )
+    monkeypatch.setitem(evidence.BUNDLE_FILE_LIMITS, "manifest.json", 1)
+    evidence._recheck_bundle_files(tmp_path, retained)
+
+
 class _ForgedParentSegment(str):  # ruff: ignore[subclass-builtin]
     """Path traversal component whose equality check lies to the guard."""
 
