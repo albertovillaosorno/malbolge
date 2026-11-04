@@ -363,6 +363,21 @@ descendant containment (detached sessions remain outside the group), or a
 physically enforced study-wide budget. The pilot requires POSIX for this
 subprocess boundary and makes no Windows process-supervision claim.
 
+Signed `55fcf92b8` binds the target child transport's Python type, length,
+minimum, `any` predicate, integer, string, tuple and byte constructors to
+import-time native providers. Late module substitutions can no longer admit
+oversized argv, false native pipe descriptors, forged deadlines, or mutable
+read lengths, nor corrupt captured bytes, child-command identity and peak-RSS
+conversion. The 64-KiB read-chunk policy is also source-native: a late zero
+read length previously converted actual child bytes into apparent EOF. Sixteen
+red-first regression cases now pass, along with all 525 bounded-process tests;
+scoped arena BasedPyright returns zero diagnostics and basic Ruff checks pass.
+A wider integration run passed 766 target tests before a retained echo fixture
+reported a missing verifier metric; that case passed in isolation, so the
+wider gate has no complete green verdict. These protections test local Python
+admission under post-import substitution, not pre-import runtime integrity,
+OS child attestation or authenticated performance measurement.
+
 The target-echo producer also checks each native completed emitter and VM
 receipt against the exact prepared guest command. This rejects a process
 result with a foreign, nonstring, or unrelated argument list; an emitter
