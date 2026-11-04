@@ -1539,6 +1539,14 @@ The original study records remain the result authority.
   408-case host-C suite pass, with no arena BasedPyright diagnostics. These
   preflight caps bound requested work; they do not attest historical child
   execution, reported timing, or original measurement provenance.
+- The direct host-C oracle replay now uses its original ordered `-O0`,
+  `-O2` optimization modes even when public mode metadata is replaced. Its
+  reference-generation path also admits only the original two modes. Six
+  red-first cases showed that an empty list previously returned a replay
+  digest without either compiler check; dropped, reordered or duplicated
+  modes changed the checks, and changed lists rejected canonical modes or
+  admitted a foreign one. This protects local required-mode dispatch and
+  admission; it does not authenticate the external compiler or its results.
 - Research evidence pending: raw sample content authentication,
   protocol-level manifest linkage, bibliography-backed context, real experiment
   configurations, retained negative/null results, and a reviewed conclusion

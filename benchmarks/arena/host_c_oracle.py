@@ -80,6 +80,8 @@ RSS_TEMP_SUFFIX = ".txt"
 SYSTEM_TOOL_SEARCH_PATH = os.defpath
 KIB_BYTES = 1024
 OPTIMIZATION_MODES = ("-O0", "-O2")
+# Retain both audited native compiler modes despite mutable reporting aliases.
+_SOURCE_OPTIMIZATION_MODES = OPTIMIZATION_MODES
 REQUIRED_CASE_FIELDS = frozenset({"family", "version", "seed", "difficulty"})
 _ROOT = Path(__file__).resolve().parents[2]
 _PINNED_CLANG = _ROOT / ".dependencies/llvm/22.1.8/jig-bin/clang.bin"
@@ -821,7 +823,7 @@ def replay_one(
     try:
         with _checked_native_workspace("arena-host-c-oracle-") as directory:
             _write_canonical_source(directory, generated)
-            for mode in OPTIMIZATION_MODES:
+            for mode in _SOURCE_OPTIMIZATION_MODES:
                 _replay_mode(directory, mode)
     except Exception as error:
         if type(error) is HostOracleError:
@@ -835,7 +837,7 @@ def _reference_source(
     identity: generate.ChallengeIdentity,
     mode: str,
 ) -> generate.GeneratedChallenge:
-    if type(mode) is not str or mode not in OPTIMIZATION_MODES:
+    if type(mode) is not str or mode not in _SOURCE_OPTIMIZATION_MODES:
         _fail("unsupported host-C reference optimization mode")
     if type(identity) is not _CANONICAL_IDENTITY:
         _fail("host-C reference identity requires canonical challenge fields")

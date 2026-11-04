@@ -1056,6 +1056,70 @@ def test_host_c_source_node_cap_survives_public_alias_mutation(
         assert called == 1
 
 
+@pytest.mark.parametrize(
+    "substituted_modes",
+    [(), ("-O0",), ("-O2", "-O0"), ("-O0", "-O0")],
+    ids=["empty", "omit-O2", "reverse", "duplicate-O0"],
+)
+def test_host_c_direct_replay_always_runs_both_source_modes(
+    monkeypatch: pytest.MonkeyPatch, substituted_modes: tuple[str, ...]
+) -> None:
+    """No mutable public mode list can report replay without both O0 and O2."""
+    native_calls: list[str] = []
+
+    def capture_mode(_directory: Path, mode: str) -> int:
+        native_calls.append(mode)
+        return 1024
+
+    monkeypatch.setattr(host_c_oracle, "OPTIMIZATION_MODES", substituted_modes)
+    monkeypatch.setattr(host_c_oracle, "_replay_mode", capture_mode)
+    assert host_c_oracle.replay_one(_case(), PROFILE, _digest()) == _digest()
+    assert native_calls == ["-O0", "-O2"]
+
+
+@pytest.mark.parametrize(
+    ("substituted_modes", "requested_mode", "rejected"),
+    [((), "-O0", False), (("-O9",), "-O9", True)],
+    ids=["missing-source-mode", "foreign-mode"],
+)
+def test_host_c_reference_mode_admission_preserves_source_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    substituted_modes: tuple[str, ...],
+    requested_mode: str,
+    rejected: bool,
+) -> None:
+    """Reference builds admit only the two original compiler modes."""
+    case = _case()
+    identity = generate.ChallengeIdentity(
+        family=case["family"],
+        version=case["version"],
+        seed=case["seed"],
+        profile=PROFILE,
+        nodes=case["difficulty"],
+    )
+    generated = generate.generate(identity)
+    invoked = False
+
+    def regeneration(
+        _identity: generate.ChallengeIdentity, *, scope: str
+    ) -> generate.GeneratedChallenge:
+        nonlocal invoked
+        assert scope == "reference"
+        invoked = True
+        return generated
+
+    monkeypatch.setattr(host_c_oracle, "OPTIMIZATION_MODES", substituted_modes)
+    monkeypatch.setattr(host_c_oracle, "_generate_canonical", regeneration)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    if rejected:
+        with pytest.raises(host_c_oracle.HostOracleError, match="optimization mode"):
+            host_c_oracle._reference_source(identity, requested_mode)
+        assert not invoked
+    else:
+        assert host_c_oracle._reference_source(identity, requested_mode) is generated
+        assert invoked
+
+
 def test_host_c_replay_rejects_large_difficulty_before_execution() -> None:
     """Host execution has a smaller bounded node count than source replay."""
     case = _case()
