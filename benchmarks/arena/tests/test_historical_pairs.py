@@ -1892,6 +1892,53 @@ def test_historical_budget_units_ignore_mutable_public_factors(
     assert document["study"]["budget"] == original["study"]["budget"]
 
 
+@pytest.mark.parametrize("negative", ["-1", "-12"])
+def test_historical_paired_repetitions_reject_rebound_signed_digits(
+    monkeypatch: pytest.MonkeyPatch,
+    negative: str,
+) -> None:
+    """Changing public digits cannot certify a negative source trial index."""
+    records = [
+        {"strategy_id": "baseline", "repetition": negative},
+        {"strategy_id": "candidate", "repetition": negative},
+    ]
+    monkeypatch.setattr(historical_pairs, "ASCII_DIGITS", frozenset("0123456789-"))
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="numeric field"):
+        historical_pairs._paired_rows(records, "baseline", "candidate", repetitions=1)
+
+
+def test_historical_structural_counts_reject_rebound_signed_digits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable digit policy cannot admit negative verifier-call samples."""
+    records = [
+        {"strategy_id": "baseline", "independent_verifier_calls": "-3"},
+        {"strategy_id": "candidate", "independent_verifier_calls": "4"},
+    ]
+    monkeypatch.setattr(historical_pairs, "ASCII_DIGITS", frozenset("0123456789-"))
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="numeric field"):
+        historical_pairs._structural_counts(records, "baseline", "candidate")
+
+
+def test_historical_number_rejects_foreign_str_iterator() -> None:
+    """A str subclass cannot falsify its character stream to admit a sign."""
+
+    class ForgedDigits(str):
+        def __iter__(self) -> Iterator[str]:
+            return iter("1")
+
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="numeric field"):
+        historical_pairs._integer(ForgedDigits("-1"), "repetition")
+
+
+def test_historical_native_numeric_inputs_ignore_reduced_public_digits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid native decimal data must not depend on a replaced public alias."""
+    monkeypatch.setattr(historical_pairs, "ASCII_DIGITS", frozenset("-"))
+    assert historical_pairs._integer("12", "verifier calls") == 12
+
+
 def test_historical_quality_digest_ignores_mutable_hex_alphabet(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -103,6 +103,7 @@ EXTENSION_CONFIG = {
 _SOURCE_MAX_SOURCE_BYTES = MAX_SOURCE_BYTES
 _SOURCE_MAX_CSV_HEADER_CHARS = MAX_CSV_HEADER_CHARS
 _SOURCE_MAX_HISTORICAL_REPETITIONS = MAX_HISTORICAL_REPETITIONS
+_SOURCE_ASCII_DIGITS = ASCII_DIGITS
 _SOURCE_HEX_DIGITS = HEX_DIGITS
 _SOURCE_SECONDS_TO_NS = SECONDS_TO_NS
 _SOURCE_MIB_TO_BYTES = MIB_TO_BYTES
@@ -218,9 +219,9 @@ def _recheck_source_fingerprints(
 
 
 def _integer(text: object, field: str) -> int:
-    if not isinstance(text, str) or not text:
+    if type(text) is not str or not text:
         _fail(f"invalid historical numeric field: {field}")
-    if not set(text) <= ASCII_DIGITS:
+    if not set(text) <= _SOURCE_ASCII_DIGITS:
         _fail(f"invalid historical numeric field: {field}")
     value = int(text)
     if str(value) != text:
