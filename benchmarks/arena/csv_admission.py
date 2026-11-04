@@ -42,7 +42,10 @@ CSV_NEWLINES = "\r\n"
 _SOURCE_CSV_QUOTE = CSV_QUOTE
 _SOURCE_CSV_COMMA = CSV_COMMA
 _SOURCE_CSV_NEWLINES = CSV_NEWLINES
-# Full input traversal must use the native length, not a late global lookup.
+# Input shape and full traversal must use native providers, not late aliases.
+_NATIVE_TYPE = type
+_NATIVE_STR = str
+_NATIVE_INT = int
 _NATIVE_LEN = len
 
 
@@ -60,7 +63,11 @@ def within_column_limit(  # ruff: ignore[complex-structure,too-many-branches,too
         Whether each logical record has at most the admitted column count.
 
     """
-    if type(text) is not str or type(maximum) is not int or maximum < 1:
+    if (
+        _NATIVE_TYPE(text) is not _NATIVE_STR
+        or _NATIVE_TYPE(maximum) is not _NATIVE_INT
+        or maximum < 1
+    ):
         return False
     columns = 1
     at_start = True

@@ -201,3 +201,83 @@ def test_csv_column_limit_cannot_overrun_valid_source_from_replaced_length(
         csv_admission, "len", lambda value: native_len(value) + 5, raising=False
     )
     assert csv_admission.within_column_limit(source, 2)
+
+
+class _ForeignCsvText:
+    """An object that pretends to be an empty sequence despite foreign content."""
+
+    def __len__(self) -> int:
+        return 0
+
+
+class _ForeignCsvLimit:
+    """A fake positive limit whose comparison suppresses the native bound."""
+
+    def __lt__(self, _other: object) -> bool:
+        return False
+
+
+@pytest.mark.parametrize(
+    ("source", "limit"),
+    [
+        (_ForeignCsvText(), 2),
+        ("a,b,c\n", _ForeignCsvLimit()),
+        ("a,b,c\n", True),
+    ],
+    ids=["foreign-text", "foreign-limit", "boolean-limit"],
+)
+def test_csv_column_preflight_rejects_forged_native_types(
+    monkeypatch: pytest.MonkeyPatch, source: object, limit: object
+) -> None:
+    """A replaced public type lookup cannot certify foreign CSV inputs."""
+    native_type = type
+
+    def forged_type(value: object) -> type[object]:
+        if value is source and native_type(value) is not str:
+            return str
+        if value is limit and native_type(value) is not int:
+            return int
+        return native_type(value)
+
+    monkeypatch.setattr(csv_admission, "type", forged_type, raising=False)
+    assert not csv_admission.within_column_limit(
+        cast("str", source), cast("int", limit)
+    )
+
+
+def test_csv_column_preflight_preserves_native_types_under_public_replacement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing the exported type name cannot reject valid CSV input."""
+    monkeypatch.setattr(csv_admission, "type", lambda _value: object, raising=False)
+    assert csv_admission.within_column_limit('"a,b",c\n', 2)
+
+
+@pytest.mark.parametrize(
+    ("token", "replacement", "source", "limit"),
+    [
+        ("str", _ForeignCsvText, _ForeignCsvText(), 2),
+        ("int", _ForeignCsvLimit, "a,b,c\n", _ForeignCsvLimit()),
+    ],
+)
+def test_csv_preflight_rejects_forged_public_native_shape_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    token: str,
+    replacement: type[object],
+    source: object,
+    limit: object,
+) -> None:
+    """Replaced native type identities cannot admit foreign CSV objects."""
+    monkeypatch.setattr(csv_admission, token, replacement, raising=False)
+    assert not csv_admission.within_column_limit(
+        cast("str", source), cast("int", limit)
+    )
+
+
+@pytest.mark.parametrize("token", ["str", "int"])
+def test_csv_preflight_ignores_public_native_shape_alias_replacement(
+    monkeypatch: pytest.MonkeyPatch, token: str
+) -> None:
+    """Native inputs remain admitted under late str/int substitution."""
+    monkeypatch.setattr(csv_admission, token, object, raising=False)
+    assert csv_admission.within_column_limit('"a,b",c\n', 2)
