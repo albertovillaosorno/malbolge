@@ -2044,6 +2044,16 @@ format.
   degraded (compiled graph absent); bounded global check timed out after
   60 seconds. External races and direct trusted state changes remain open.
 
+
+- Probe pipe input and capture now preserve the import-original `ValueError`
+  for foreign raw descriptors, non-native/overlong reads, invalid close
+  receipts, and short stdin writes. Eight red-first alias substitutions
+  previously yielded `RuntimeError` or an untyped `TypeError`. All 479 focused
+  and 1,517 adjacent probe/behavior/provenance/generator tests passed after
+  the fix; scoped Ruff and production strict BasedPyright passed. Six older
+  probe test typing findings remain outside the changes. A complete diff
+  rerun after this fix and Jig global governance acceptance remain open.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle

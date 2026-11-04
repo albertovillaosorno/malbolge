@@ -1317,11 +1317,11 @@ def _capture_fragment(stream: IO[bytes], capture: _PipeCapture) -> bool:
         or descriptor > _MAX_NATIVE_FILE_DESCRIPTOR
     ):
         message = "probe raw read descriptor must be a native C int"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     fragment = _NATIVE_OS_READ(descriptor, amount)
     if _NATIVE_TYPE(fragment) is not _NATIVE_BYTES or _NATIVE_LEN(fragment) > amount:
         message = "probe raw read reported non-native or overlong bytes"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     if not fragment:
         return False
     if _NATIVE_LEN(fragment) > remaining:
@@ -1340,7 +1340,7 @@ def _close_probe_pipe(stream: IO[bytes], context: str) -> None:
     """Require native completion from a probe pipe teardown."""
     if stream.close() is not None:
         message = f"probe {context} close reported non-native completion"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _drain_pipe(stream: IO[bytes], capture: _PipeCapture) -> None:
@@ -1372,7 +1372,7 @@ def _write_complete_probe_stdin(stream: IO[bytes], data: bytes) -> None:
     written = stream.write(data)
     if _NATIVE_TYPE(written) is not _NATIVE_INT or written != _NATIVE_LEN(data):
         message = "probe stdin reported short or invalid byte count"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _feed_stdin(

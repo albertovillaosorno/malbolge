@@ -3427,6 +3427,25 @@ mutation, and global Jig acceptance remain unproven; `jig doctor --root .`
 is degraded by the absent compiled graph, and a bounded 60-second
 `jig check --root .` timed out without a verdict.
 
+
+## Native probe pipe exception boundary (2026-11-03)
+
+The bounded probe pipe capture and input writer now use the import-original
+`ValueError` for invalid raw descriptors, non-native/oversized fragments,
+foreign stream-close receipts, and incomplete stdin write counts. These four
+paths formerly resolved a mutable `builtins.ValueError` at rejection time;
+a consumer substitution could redirect worker failure to `RuntimeError` or
+leak `TypeError` from a non-exception constructor. The original native class
+now keeps the existing captured worker dependency-error handling authoritative.
+
+Eight red-first cases cover the four sites under two late global class
+substitutions. The probe module passes **479 tests** and a combined probe,
+behavior, provenance, and generator check passes **1,517 tests**. Scoped Ruff
+and source strict BasedPyright pass; six older strict typing diagnostics
+remain elsewhere in the probe test file, with none on new lines. The earlier
+integrated diff run predates these checks, and Jig governance remains open
+because the compiled graph is absent and bounded global checks time out.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

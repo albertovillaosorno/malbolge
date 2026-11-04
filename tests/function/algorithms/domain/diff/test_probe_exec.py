@@ -973,6 +973,64 @@ def test_probe_raw_capture_rejects_foreign_file_descriptors(
     assert capture.fragments == []
 
 
+@pytest.mark.parametrize("site", ["descriptor", "fragment", "close", "stdin"])
+@pytest.mark.parametrize("alias", [RuntimeError, object])
+def test_probe_pipe_rejection_keeps_native_value_error_after_builtin_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    site: str,
+    alias: type[object],
+) -> None:
+    """Foreign process-global errors must not replace native pipe failures."""
+
+    class ForeignDescriptor:
+        def fileno(self) -> bool:
+            return True
+
+    class ForeignClose:
+        def close(self) -> bool:
+            return False
+
+    class ShortWriter:
+        def write(self, data: bytes) -> int:
+            del data
+            return 0
+
+    original_error = builtins.ValueError
+    captured: ValueError | None = None
+    capture = probe_exec_module._PipeCapture(limit=32)
+    with tempfile.TemporaryFile() as stream, monkeypatch.context() as patched:
+        if site == "fragment":
+            patched.setattr(
+                probe_exec_module,
+                "_NATIVE_OS_READ",
+                lambda *_args: memoryview(b"foreign"),
+            )
+        patched.setattr(builtins, "ValueError", alias)
+        try:
+            if site == "descriptor":
+                probe_exec_module._capture_fragment(
+                    cast("IO[bytes]", cast("object", ForeignDescriptor())),
+                    capture,
+                )
+            elif site == "fragment":
+                probe_exec_module._capture_fragment(stream, capture)
+            elif site == "close":
+                probe_exec_module._close_probe_pipe(
+                    cast("IO[bytes]", cast("object", ForeignClose())),
+                    "capture pipe",
+                )
+            else:
+                probe_exec_module._write_complete_probe_stdin(
+                    cast("IO[bytes]", cast("object", ShortWriter())),
+                    b"trusted",
+                )
+        except original_error as error:
+            captured = error
+        finally:
+            builtins.__dict__["ValueError"] = original_error
+    assert type(captured) is original_error
+
+
 def test_unexpected_pipe_reader_failure_rejects_probe(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
