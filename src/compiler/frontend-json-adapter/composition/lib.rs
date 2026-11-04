@@ -75,6 +75,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralQuad,
     /// Five distinct source-proven bytes, including one escape byte.
     DistinctLiteralQuint,
+    /// Six VM-computed distinct binary bytes.
+    DistinctLiteralSix,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -178,6 +180,7 @@ struct LiteralOutputNodes<'node> {
     third_byte: Option<u8>,
     fourth_byte: Option<u8>,
     fifth_byte: Option<u8>,
+    sixth_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -903,6 +906,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut third_byte = None;
     let mut fourth_byte = None;
     let mut fifth_byte = None;
+    let mut sixth_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1032,7 +1036,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 let is_triple_prefix = matches!(
                     (selected_byte, byte),
                     (Some(b'Z'), b'%')
-                        | (Some(b'Q'), b'.' | b'"')
+                        | (Some(b'Q'), b'.' | b'"' | 28)
                         | (Some(b'Y'), b'-')
                         | (Some(b'T'), b'"' | b'=')
                 );
@@ -1044,7 +1048,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 if !matches!(
                     (selected_byte, mixed_byte, byte),
                     (Some(b'Z'), Some(b'%'), b'H')
-                        | (Some(b'Q'), Some(b'.'), b'O')
+                        | (Some(b'Q'), Some(b'.' | 28), b'O')
                         | (Some(b'Q'), Some(b'"'), 27)
                         | (Some(b'Y'), Some(b'-'), b'P')
                         | (Some(b'T'), Some(b'"'), b'O' | b'Q')
@@ -1058,17 +1062,33 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     (selected_byte, mixed_byte, third_byte, byte),
                     (Some(b'T'), Some(b'='), Some(b'4'), b'>')
                         | (Some(b'Q'), Some(b'"'), Some(27), b'7')
+                        | (Some(b'Q'), Some(28), Some(b'O'), 29)
                 ) {
                     return Err(FrontendJsonError::Unsupported);
                 }
                 fourth_byte = Some(byte);
             } else if calls.len() == 4 && fifth_byte.is_none() {
-                if (selected_byte, mixed_byte, third_byte, fourth_byte, byte)
-                    != (Some(b'Q'), Some(b'"'), Some(27), Some(b'7'), b'9')
-                {
+                if !matches!(
+                    (selected_byte, mixed_byte, third_byte, fourth_byte, byte),
+                    (Some(b'Q'), Some(b'"'), Some(27), Some(b'7'), b'9')
+                        | (Some(b'Q'), Some(28), Some(b'O'), Some(29), b'P')
+                ) {
                     return Err(FrontendJsonError::Unsupported);
                 }
                 fifth_byte = Some(byte);
+            } else if calls.len() == 5 && sixth_byte.is_none() {
+                if (
+                    selected_byte,
+                    mixed_byte,
+                    third_byte,
+                    fourth_byte,
+                    fifth_byte,
+                    byte,
+                ) != (Some(b'Q'), Some(28), Some(b'O'), Some(29), Some(b'P'), 27)
+                {
+                    return Err(FrontendJsonError::Unsupported);
+                }
+                sixth_byte = Some(byte);
             } else {
                 return Err(FrontendJsonError::Unsupported);
             }
@@ -1108,7 +1128,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
             (Some(b'Z'), Some(b'%'))
                 | (Some(b'Y'), Some(b'-'))
                 | (Some(b'T'), Some(b'"' | b'='))
-                | (Some(b'Q'), Some(b'"'))
+                | (Some(b'Q'), Some(b'"' | 28))
         )
     {
         return Err(FrontendJsonError::Unsupported);
@@ -1116,14 +1136,30 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     if fourth_byte.is_none()
         && matches!(
             (selected_byte, mixed_byte, third_byte),
-            (Some(b'T'), Some(b'='), Some(b'4')) | (Some(b'Q'), Some(b'"'), Some(27))
+            (Some(b'T'), Some(b'='), Some(b'4'))
+                | (Some(b'Q'), Some(b'"'), Some(27))
+                | (Some(b'Q'), Some(28), Some(b'O'))
         )
     {
         return Err(FrontendJsonError::Unsupported);
     }
     if fifth_byte.is_none()
-        && (selected_byte, mixed_byte, third_byte, fourth_byte)
-            == (Some(b'Q'), Some(b'"'), Some(27), Some(b'7'))
+        && matches!(
+            (selected_byte, mixed_byte, third_byte, fourth_byte),
+            (Some(b'Q'), Some(b'"'), Some(27), Some(b'7'))
+                | (Some(b'Q'), Some(28), Some(b'O'), Some(29))
+        )
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    if sixth_byte.is_none()
+        && (
+            selected_byte,
+            mixed_byte,
+            third_byte,
+            fourth_byte,
+            fifth_byte,
+        ) == (Some(b'Q'), Some(28), Some(b'O'), Some(29), Some(b'P'))
     {
         return Err(FrontendJsonError::Unsupported);
     }
@@ -1136,6 +1172,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         third_byte,
         fourth_byte,
         fifth_byte,
+        sixth_byte,
         returned,
     })
 }
@@ -1173,6 +1210,7 @@ fn canonical_literal_output_typed_ir(
         third_byte,
         fourth_byte,
         fifth_byte,
+        sixth_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -1288,9 +1326,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 5
+            && let Some(sixth) = sixth_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![sixth]),
+                    result: ValueId::new(5),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 4 && fifth_byte.is_some() {
+                value: ValueId::new(if index == 5 && sixth_byte.is_some() {
+                    5
+                } else if index == 4 && fifth_byte.is_some() {
                     4
                 } else if index == 3 && fourth_byte.is_some() {
                     3
@@ -1334,7 +1386,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if fifth_byte.is_some() {
+    let mode = if sixth_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralSix
+    } else if fifth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralQuint
     } else if fourth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralQuad

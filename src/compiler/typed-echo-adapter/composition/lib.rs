@@ -98,6 +98,7 @@ enum ByteTraceMode {
     DistinctLiteralTriple,
     DistinctLiteralQuad,
     DistinctLiteralQuint,
+    DistinctLiteralSix,
     EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
@@ -338,7 +339,8 @@ fn project_literal_pair_effects(
             }
             ByteTraceMode::DistinctLiteralTriple
             | ByteTraceMode::DistinctLiteralQuad
-            | ByteTraceMode::DistinctLiteralQuint => false,
+            | ByteTraceMode::DistinctLiteralQuint
+            | ByteTraceMode::DistinctLiteralSix => false,
             ByteTraceMode::DistinctLiteralPair => matches!(
                 (zero.little_endian(), literal.little_endian()),
                 ([b'Y'], [b'/' | b'$']) | ([b'Q'], [b'.'])
@@ -546,6 +548,56 @@ fn project_literal_quint_effects(
             || !ids.insert(*id)
             || literal.little_endian()
                 != b"Q\"\x1b79"
+                    .get(index)
+                    .map(std::slice::from_ref)
+                    .unwrap_or(&[])
+        {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+        instructions.push(InputInstruction::ConstantInteger {
+            bit_width: 8,
+            little_endian: literal.little_endian().to_vec(),
+            result: id.value(),
+            span: project_span(constant.span()),
+            type_kind: InputScalarType::U8,
+        });
+        instructions.push(InputInstruction::ByteOutput {
+            span: project_span(output.span()),
+            value: value.value(),
+        });
+    }
+    Ok(instructions)
+}
+
+// Six exact byte constants, each with its own source-derived SSA value.
+fn project_literal_six_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    let (pairs, remainder) = original.as_chunks::<2>();
+    if pairs.len() != 6 || !remainder.is_empty() {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    let mut instructions = Vec::with_capacity(12);
+    let mut ids = BTreeSet::new();
+    for (index, [constant, output]) in pairs.iter().enumerate() {
+        let (
+            Instruction::ConstantInteger {
+                constant: literal,
+                result: id,
+                type_id,
+            },
+            Instruction::ByteOutput { value },
+        ) = (constant.instruction(), output.instruction())
+        else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        };
+        if !is_byte_type(module, *type_id)
+            || literal.bit_width() != 8
+            || id != value
+            || !ids.insert(*id)
+            || literal.little_endian()
+                != b"Q\x1cO\x1dP\x1b"
                     .get(index)
                     .map(std::slice::from_ref)
                     .unwrap_or(&[])
@@ -783,6 +835,9 @@ fn project_byte_trace(
         ByteTraceMode::DistinctLiteralQuint => {
             project_literal_quint_effects(module, block.instructions())?
         }
+        ByteTraceMode::DistinctLiteralSix => {
+            project_literal_six_effects(module, block.instructions())?
+        }
     };
     Ok(TypedIrInput {
         abi_id: module.abi_id().to_owned(),
@@ -873,6 +928,9 @@ fn compile_byte_trace(
         }
         ByteTraceMode::DistinctLiteralQuint => {
             bridge::encode_distinct_literal_quint(&independently_admitted, profile)
+        }
+        ByteTraceMode::DistinctLiteralSix => {
+            bridge::encode_distinct_literal_six(&independently_admitted, profile)
         }
     }
     .map_err(TypedEchoAdapterError::Layout)?;
@@ -1061,6 +1119,18 @@ pub fn compile_canonical_typed_distinct_literal_quint(
     profile: &'static ProfileDescriptor,
 ) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
     compile_byte_trace(canonical, profile, ByteTraceMode::DistinctLiteralQuint)
+}
+
+/// Compile six distinct guest bytes `Q`, FS, `O`, GS, `P`, ESC.
+///
+/// # Errors
+///
+/// Rejects stale SSA, foreign profiles, unwitnessed values or VM disagreement.
+pub fn compile_canonical_typed_distinct_literal_six(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::DistinctLiteralSix)
 }
 
 /// Compile exactly four distinct source-proven guest bytes `T=4>`.

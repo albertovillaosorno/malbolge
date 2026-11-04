@@ -305,3 +305,15 @@ Canonical typed/MCTR identity, all five SSA bindings, profile, input-free
 execution, and the raw/capsule publisher are independently rechecked.
 Incomplete prefixes, different five-byte outputs, and additional effects
 fail without output; this witness is not general C string compilation.
+
+### Six distinct guest-computed bytes (bounded binary witness)
+
+The opt-in `--distinct-literal-six` path admits the exact current-profile
+source byte trace `51 1c 4f 1d 50 1b` (hex). Six independent source-bound
+`u8` SSA definitions and output uses survive canonical typed/MCTR admission.
+A single inert prefix and data-pointer relocation precede six guest
+`CrazyData` writes and six byte outputs, all outside the source region.
+The normative VM independently emits all six binary bytes in 15 steps with
+no consumed input. Both raw and capsule publishers recheck this witness;
+unsupported values, partial prefixes, extra output, or stale SSA fail closed.
+This does not implement general C string output or the guest C runtime.
