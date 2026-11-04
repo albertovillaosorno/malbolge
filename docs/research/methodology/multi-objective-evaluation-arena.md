@@ -1808,6 +1808,16 @@ The original study records remain the result authority.
   adjacent host-C oracle cases passed; arena BasedPyright remained at zero
   errors. These fixes do not verify compiled Malbolge programs or provide an
   end-to-end Jig acceptance verdict.
+- Independent retained host-C audit errors now retain the original
+  `ReferenceAuditError` for direct study admission, JSON duplicate-field
+  rejection, source-Git object checks, and nested catch/cleanup paths
+  (`033b73299`). Fourteen red-first alias substitutions previously changed
+  exception types or lost original JSON diagnostics; two valid-source cases
+  remain admitted. All 369 collected auditor tests passed in six bounded
+  batches, and the 16 new cases passed again after commit, with zero arena
+  BasedPyright errors. These are local audit consistency checks, not
+  authentication of original experiments, independent target verification,
+  or a whole-repository Jig verdict.
 
 ## Results
 
