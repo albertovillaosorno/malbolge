@@ -1086,6 +1086,13 @@ before annotating any paired test. Unexpected helper exceptions retain a typed
 failure with the original cause; the accepted report owns numeric copies and
 neither CLI publishes JSON on rejection. This validates correction arithmetic,
 not the underlying marginal p-values or sampling assumptions.
+
+The correction and independent receipt now retain the original `sorted`,
+`enumerate`, `min` and `max` providers rather than sharing mutable aliases.
+Eight red-first substitutions that could forge adjusted fractions fail under
+`c0e281be2`; 965 integrated tests and arena type checking passed. This only
+protects local arithmetic admission, not p-value provenance or independence.
+
 Holm controls family-wise error under arbitrary test dependence *only when*
 its marginal p-values are valid. It does not establish pair independence,
 honest verifier execution, representative workload selection, or physical
@@ -1330,6 +1337,13 @@ The original study records remain the result authority.
   mutations during either stage reject before returning a preflight report;
   these two bounded reads do not establish an atomic snapshot against ongoing
   writers or promise post-return filesystem immutability.
+  The replay function separately freezes original native case and file-map
+  entries before generator/hash dependencies run, re-admits the native maps,
+  and rejects subsequent identity changes or foreign equality hooks. Five
+  red-first cases under signed `6853e6e34` prevent a digest provider from
+  rewriting workload, family or source after preflight. The 1,097-case
+  challenge/evidence/raw integration subset and arena type checking passed;
+  none of this authenticates the generator, hashing backend or host.
 - The challenge-bundle replay, host-C reference-study producer, and host-C
   canonical source oracle now corroborate SHA-256 using `hashlib.new` rather
   than mutable aliases of one `hashlib.sha256` provider. In each boundary, a
@@ -1364,6 +1378,13 @@ The original study records remain the result authority.
   Deterministic broken writer fixtures reject short/overstated/malformed counts
   and flush errors, distinguishing nonzero operator failure from impossible
   stdout rollback once actual writing has begun.
+  Signed `c98eca658` additionally binds the original report's canonical
+  serialization *before* calling the replaceable public JSON writer. Four
+  red-first mutations (scalar, nested list, added and removed fields) had
+  made all subsequent encoders agree on forged contents; these now reject
+  without a write. A 936-test analyzer/evidence/report subset and arena
+  type checking passed. This is original-input consistency, not sink or OS
+  attestation, and does not make stdout atomic.
   Two further red-first provider-corruption checks showed that replacing
   the single shared JSON ASCII string escaper, or jointly replacing the
   native C and Python iterator factories, could make all three local encoder

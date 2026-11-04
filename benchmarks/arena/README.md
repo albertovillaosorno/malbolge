@@ -168,6 +168,15 @@ previously forged matching report text after the original one-time check;
 these now fail as typed serialization errors with no stdout publication.
 This establishes local provider consistency during encoding, not protection
 against a compromised native library at module import or an unfaithful sink.
+The arena JSON report publisher independently renders the native input
+before calling the replaceable public `json.dumps`. This original-record
+snapshot prevents the serializer from mutating scalar, nested-list, added or
+removed fields and then making later encoders agree on the forged report.
+Four red-first regressions cover those cases; signed fix `c98eca658` passed
+936 analyzer/evidence/report integration tests and arena type checking. No
+stdout rollback, sink authentication or independent producer attestation is
+claimed by this local prepublication check.
+
 Any ordinary write/flush exception becomes a typed `ReportOutputError` with its
 original cause preserved, without invoking caller-defined error formatting.
 An already-emitted prefix on a failed output stream **cannot be rolled back**;
@@ -1251,6 +1260,13 @@ not certify statistical significance or change any Pareto, capacity, or tier
 promotion decision. With no opt-in adjustment, the previous unadjusted view
 remains byte-identical.
 
+The Holm producer and independent analyzer receipt use import-bound original
+ranking and arithmetic helpers. Eight red-first regressions replace the
+public `sorted`, `enumerate`, `min`, and `max` aliases separately in both
+modules: a forged adjustment cannot change the accepted rational family.
+Signed fix `c0e281be2` passed 965 scoped integration tests and arena type
+checking. It does not authenticate marginal p-values or null assumptions.
+
 For an optional inferential view of the *reported* success fraction, both
 arena CLIs also accept `--success-intervals-95`. It adds a conservative
 Clopper-Pearson binomial confidence interval to each capacity point, using
@@ -1489,6 +1505,15 @@ The generator and its oracle can share a common-mode defect, and byte-exact
 replay does not establish that the compiler used the retained source, that the
 named verifier executed, or that a measured candidate was correct. This
 checks **workload provenance**, not measured performance or guest semantics.
+
+Replay also snapshots the admitted native case and bundle maps before calling
+replaceable generator/hash dependencies. It revalidates their native types and
+rejects changed identities before accepting the source digest; a substituted
+hash provider cannot rewrite the claimed workload, family or retained source
+in place. Five red-first cases cover the false admissions and foreign
+comparison hooks. Signed fix `6853e6e34` passed 1,097 challenge/evidence/raw
+integration tests with zero arena type errors. This is input consistency, not
+an independent trust guarantee for the generator or host hash implementation.
 
 ## Optional accelerator cohort agreement
 
