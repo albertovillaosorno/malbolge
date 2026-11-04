@@ -1360,3 +1360,34 @@ def test_late_non_native_bundle_mutation_cannot_run_equality_hooks(
     monkeypatch.setattr(challenge_bundles, "sha256", mutate_on_hash)
     with pytest.raises(challenge_bundles.ChallengeBundleError, match="challenge"):
         challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+@pytest.mark.parametrize("replacement", [None, int, object(), Exception])
+@pytest.mark.parametrize("failure", ["canonical", "unexpected"])
+def test_mutable_generator_error_alias_cannot_change_replay_failure_type(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    failure: str,
+) -> None:
+    """The generator's public exception alias cannot rewrite typed failure."""
+    case, files = _direct_bundle()
+    original_error = generate.ChallengeError
+    cause: Exception = (
+        original_error("synthetic canonical failure")
+        if failure == "canonical"
+        else RuntimeError("synthetic dependency failure")
+    )
+
+    def fail_generation(_identity: generate.ChallengeIdentity) -> None:
+        raise cause
+
+    monkeypatch.setattr(generate, "ChallengeError", replacement)
+    monkeypatch.setattr(generate, "generate", fail_generation)
+    message = (
+        "challenge identity cannot regenerate"
+        if failure == "canonical"
+        else "challenge canonical regeneration dependency failed"
+    )
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match=message) as caught:
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+    assert caught.value.__cause__ is cause

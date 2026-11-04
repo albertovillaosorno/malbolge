@@ -46,6 +46,8 @@ _NATIVE_SHA256 = sha256
 _CANONICAL_GENERATE = generate.generate
 _CANONICAL_IDENTITY = generate.ChallengeIdentity
 _CANONICAL_RESULT = generate.GeneratedChallenge
+# A substituted public error alias must not break the typed failure boundary.
+_CANONICAL_ERROR = generate.ChallengeError
 
 MAX_BUNDLE_CASES = 64
 MAX_BUNDLE_NODES = 4096
@@ -124,7 +126,7 @@ def _regenerate(
             nodes=case["difficulty"],
         )
         produced = generate.generate(identity)
-    except generate.ChallengeError as error:
+    except _CANONICAL_ERROR as error:
         message = "challenge identity cannot regenerate"
         raise ChallengeBundleError(message) from error
     except Exception as error:
