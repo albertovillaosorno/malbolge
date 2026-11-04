@@ -61,6 +61,22 @@ from benchmarks.arena import (
 from benchmarks.arena import target_echo_reference as producer
 from scripts.validate import experiment_manifest
 
+# Keep source-native admission helpers independent of replaceable public
+# built-in names; source evidence may not forge shape, length or full scans.
+_NATIVE_TYPE = type
+_NATIVE_LEN = len
+_NATIVE_ANY = any
+_NATIVE_ALL = all
+_NATIVE_STR = str
+_NATIVE_INT = int
+_NATIVE_BOOL = bool
+_NATIVE_BYTES = bytes
+_NATIVE_LIST = list
+_NATIVE_TUPLE = tuple
+_NATIVE_DICT = dict
+_NATIVE_COMPLETED_PROCESS = sp.CompletedProcess
+_NATIVE_STAT_RESULT = os.stat_result
+
 # Keep an original source-digest constructor alongside the public providers.
 _NATIVE_SHA256 = sha256
 
@@ -225,6 +241,7 @@ class AuditOptions:
     stage_rss_breakdown: bool = False
 
 
+_SOURCE_AUDIT_OPTIONS = AuditOptions
 DEFAULT_AUDIT_OPTIONS = AuditOptions()
 
 
@@ -238,7 +255,7 @@ def _source_sha256(data: bytes) -> str:
     The separately accessed standard SHA-256 entrypoint detects plausible but
     unrelated receipts returned by a substituted imported hash function.
     """
-    if type(data) is not bytes:
+    if _NATIVE_TYPE(data) is not _NATIVE_BYTES:
         _fail("target audit source hash requires native bytes")
     try:
         digest = sha256(data).hexdigest()
@@ -248,9 +265,9 @@ def _source_sha256(data: bytes) -> str:
         message = "target audit source hash computation failed"
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if (
-        any(
-            type(value) is not str
-            or len(value) != DIGEST_HEX_LENGTH
+        _NATIVE_ANY(
+            _NATIVE_TYPE(value) is not _NATIVE_STR
+            or _NATIVE_LEN(value) != DIGEST_HEX_LENGTH
             or not set(value) <= analyze.SHA256_ALPHABET
             for value in (digest, independent, source_bound)
         )
@@ -269,7 +286,7 @@ def _native_regular_bytes(root: Path, relative: str, *, limit: int) -> bytes:
 
     """
     data = evidence.read_bounded_regular(root, relative, limit=limit)
-    if type(data) is not bytes or len(data) > limit:
+    if _NATIVE_TYPE(data) is not _NATIVE_BYTES or _NATIVE_LEN(data) > limit:
         _fail("target audit evidence reader requires native bounded bytes")
     return data
 
@@ -281,26 +298,26 @@ def _safe_error_detail(error: Exception) -> str:
         Trusted error text or the name of an untrusted exception type.
 
     """
-    if type(error) in _SOURCE_DIAGNOSTIC_ERRORS:
+    if _NATIVE_TYPE(error) in _SOURCE_DIAGNOSTIC_ERRORS:
         # The exception class is native, but caller-owned arguments are not.
         # Never invoke their __str__ or __repr__ while reporting rejection.
         arguments = error.args
-        if len(arguments) == 1 and type(arguments[0]) is str:
+        if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR:
             return arguments[0]
         if (
-            type(error) in (OSError, PermissionError, FileNotFoundError)
-            and len(arguments) == 2
-            and type(arguments[0]) is int
-            and type(arguments[1]) is str
+            _NATIVE_TYPE(error) in (OSError, PermissionError, FileNotFoundError)
+            and _NATIVE_LEN(arguments) == 2
+            and _NATIVE_TYPE(arguments[0]) is _NATIVE_INT
+            and _NATIVE_TYPE(arguments[1]) is _NATIVE_STR
         ):
             return f"[Errno {arguments[0]}] {arguments[1]}"
-    return type(error).__name__
+    return _NATIVE_TYPE(error).__name__
 
 
 def _admit_options(options: AuditOptions) -> None:
     """Require exact replay/provenance opt-ins before reading retained files."""
-    if type(options) is not AuditOptions or any(
-        type(value) is not bool
+    if _NATIVE_TYPE(options) is not _SOURCE_AUDIT_OPTIONS or _NATIVE_ANY(
+        _NATIVE_TYPE(value) is not _NATIVE_BOOL
         for value in (
             options.replay_candidates,
             options.require_source_commit_object,
@@ -308,20 +325,20 @@ def _admit_options(options: AuditOptions) -> None:
         )
     ):
         _fail("target echo audit options require exact booleans")
-    native_path_type = type(Path())
-    if any(
-        value is not None and type(value) is not native_path_type
+    native_path_type = _NATIVE_TYPE(Path())
+    if _NATIVE_ANY(
+        value is not None and _NATIVE_TYPE(value) is not native_path_type
         for value in (options.emitter, options.runner)
     ):
         _fail("target echo audit tool overrides require exact Paths")
 
 
 def _prefix(relative: str) -> str:
-    if type(relative) is not str:
+    if _NATIVE_TYPE(relative) is not _NATIVE_STR:
         _fail("target audit requires a canonical study path")
     parts = relative.split("/")
     if (
-        len(parts) != _SOURCE_PATH_PART_COUNT
+        _NATIVE_LEN(parts) != _SOURCE_PATH_PART_COUNT
         or parts[0] != _SOURCE_ROOT_PART
         or parts[2] != _SOURCE_STUDY_LEAF
     ):
@@ -330,7 +347,7 @@ def _prefix(relative: str) -> str:
     suffix = label.removeprefix(_SOURCE_RUN_PREFIX)
     if not label.startswith(_SOURCE_RUN_PREFIX) or not suffix:
         _fail("target audit requires an arena-target-echo study directory")
-    if not suffix.isascii() or not all(
+    if not suffix.isascii() or not _NATIVE_ALL(
         character.isalnum() or character == _SOURCE_UNDERSCORE for character in suffix
     ):
         _fail("target audit requires a canonical generated directory")
@@ -409,7 +426,10 @@ def _algorithms(document: dict[str, Any]) -> tuple[str, str]:
 def _pattern_bytes(pairs: int) -> bytes:
     return (
         _SOURCE_PATTERN_BYTES
-        * ((pairs + len(_SOURCE_PATTERN_BYTES) - 1) // len(_SOURCE_PATTERN_BYTES))
+        * (
+            (pairs + _NATIVE_LEN(_SOURCE_PATTERN_BYTES) - 1)
+            // _NATIVE_LEN(_SOURCE_PATTERN_BYTES)
+        )
     )[:pairs]
 
 
@@ -488,13 +508,15 @@ def _producer_study(document: dict[str, Any]) -> None:
             else ["elapsed_ns", "artifact_bytes"]
         ),
     }
-    if any(study[name] != value for name, value in expected.items()):
+    if _NATIVE_ANY(study[name] != value for name, value in expected.items()):
         _fail("target study differs from the classic echo producer policy")
     fingerprint = study["toolchain"].removeprefix("local-compiler-vm-sha256:")
     if (
         study["toolchain"] != f"local-compiler-vm-sha256:{fingerprint}"
-        or len(fingerprint) != DIGEST_HEX_LENGTH
-        or any(character not in analyze.SHA256_ALPHABET for character in fingerprint)
+        or _NATIVE_LEN(fingerprint) != DIGEST_HEX_LENGTH
+        or _NATIVE_ANY(
+            character not in analyze.SHA256_ALPHABET for character in fingerprint
+        )
     ):
         _fail("target study has an invalid producer toolchain fingerprint")
 
@@ -601,9 +623,9 @@ def _check_row(
 
 def _check_levels(rows: list[dict[str, Any]]) -> set[int]:
     levels = {row["case"]["difficulty"] for row in rows}
-    if not 1 <= len(levels) <= _SOURCE_MAX_LEVELS:
+    if not 1 <= _NATIVE_LEN(levels) <= _SOURCE_MAX_LEVELS:
         _fail("target audit requires one to four difficulty levels")
-    if any(not 1 <= level <= _SOURCE_MAX_PAIRS for level in levels):
+    if _NATIVE_ANY(not 1 <= level <= _SOURCE_MAX_PAIRS for level in levels):
         _fail("target audit difficulty exceeds the producer's 64-pair bound")
     return levels
 
@@ -613,11 +635,11 @@ def _check_plan(
 ) -> tuple[set[int], set[int]]:
     levels = _check_levels(rows)
     trials = {row["trial"] for row in rows}
-    if not 1 <= len(trials) <= _SOURCE_MAX_TRIALS:
+    if not 1 <= _NATIVE_LEN(trials) <= _SOURCE_MAX_TRIALS:
         _fail("target audit requires one to three trial indices")
-    if trials != set(range(len(trials))):
+    if trials != set(range(_NATIVE_LEN(trials))):
         _fail("target audit requires consecutive repetition indices")
-    if len(rows) != len(levels) * len(trials) * algorithm_count:
+    if _NATIVE_LEN(rows) != _NATIVE_LEN(levels) * _NATIVE_LEN(trials) * algorithm_count:
         _fail("target audit requires complete matched echo repetitions")
     return levels, trials
 
@@ -630,7 +652,7 @@ def _check_one_step_claim(
         if actual is not None:
             _fail("unmeasured or failed target trial claims guest steps")
     else:
-        expected = len(
+        expected = _NATIVE_LEN(
             _expected_operations(
                 row["case"]["difficulty"],
                 row["algorithm"],
@@ -650,7 +672,7 @@ def _check_verifier_cost_claims(document: dict[str, Any]) -> None:
         actual = row["metrics"].get(VERIFIER_NS)
         if timed and row["outcome"] == analyze.VERIFIED:
             if (
-                type(actual) is not int
+                _NATIVE_TYPE(actual) is not _NATIVE_INT
                 or actual <= 0
                 or actual > row["metrics"]["elapsed_ns"]
             ):
@@ -669,7 +691,7 @@ def _check_peak_rss_claims(document: dict[str, Any]) -> None:
         peak = row["metrics"].get(PEAK_RSS)
         if measured and row["outcome"] == analyze.VERIFIED:
             if (
-                type(peak) is not int
+                _NATIVE_TYPE(peak) is not _NATIVE_INT
                 or not 0 < peak <= _SOURCE_BUDGET_MIB * 1024 * 1024
                 or peak % target_process.KIB_BYTES != 0
             ):
@@ -721,7 +743,7 @@ def _protocol(
 def _producer_rows(document: dict[str, Any], prefix: str) -> set[str]:
     rows = document["observations"]
     algorithms = _algorithms(document)
-    levels, trials = _check_plan(rows, algorithm_count=len(algorithms))
+    levels, trials = _check_plan(rows, algorithm_count=_NATIVE_LEN(algorithms))
     _check_runtime_step_claims(document)
     _check_verifier_cost_claims(document)
     _check_peak_rss_claims(document)
@@ -788,7 +810,7 @@ def _check_provenance(document: dict[str, Any], prefix: str) -> str:
         if observed != expected:
             _fail("target audit manifest has foreign producer provenance")
         commits.add(run.commit)
-    if len(commits) != 1:
+    if _NATIVE_LEN(commits) != 1:
         _fail("target audit run manifests disagree on source commit")
     return next(iter(commits))
 
@@ -808,7 +830,7 @@ def _require_git_commit(commit: str) -> None:
     if executable is None:
         _fail("target audit source commit admission requires local Git")
     if (
-        type(executable) is not str
+        _NATIVE_TYPE(executable) is not _NATIVE_STR
         or not executable
         or "\0" in executable
         or not Path(executable).is_absolute()
@@ -828,7 +850,7 @@ def _require_git_commit(commit: str) -> None:
     ) as error:
         message = "target audit Git commit object executable unavailable"
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
-    if type(metadata) is not os.stat_result:
+    if _NATIVE_TYPE(metadata) is not _NATIVE_STAT_RESULT:
         _fail("target audit Git commit object requires native executable metadata")
     if not stat.S_ISREG(metadata.st_mode) or allowed is not True:
         _fail("target audit Git commit object requires physical executable")
@@ -838,7 +860,10 @@ def _require_git_commit(commit: str) -> None:
     try:
         clean_env: dict[str, str] = {}
         for name, value in os.environ.items():
-            if type(name) is not str or type(value) is not str:
+            if (
+                _NATIVE_TYPE(name) is not _NATIVE_STR
+                or _NATIVE_TYPE(value) is not _NATIVE_STR
+            ):
                 _fail("target audit Git environment requires native strings")
             if not name.startswith("GIT_"):
                 clean_env[name] = value
@@ -871,16 +896,18 @@ def _require_git_commit(commit: str) -> None:
         message = "target audit Git commit object lookup failed"
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if (
-        type(completed) is not sp.CompletedProcess
-        or type(completed.args) is not list
+        _NATIVE_TYPE(completed) is not _NATIVE_COMPLETED_PROCESS
+        or _NATIVE_TYPE(completed.args) is not _NATIVE_LIST
         or completed.args is not prepared
-        or any(type(argument) is not str for argument in completed.args)
+        or _NATIVE_ANY(
+            _NATIVE_TYPE(argument) is not _NATIVE_STR for argument in completed.args
+        )
         or completed.args != command
-        or type(completed.returncode) is not int
+        or _NATIVE_TYPE(completed.returncode) is not _NATIVE_INT
         or completed.returncode != 0
-        or type(completed.stdout) is not bytes
+        or _NATIVE_TYPE(completed.stdout) is not _NATIVE_BYTES
         or completed.stdout != GIT_COMMIT_TYPE + b"\n"
-        or type(completed.stderr) is not bytes
+        or _NATIVE_TYPE(completed.stderr) is not _NATIVE_BYTES
         or completed.stderr != b""
     ):
         _fail("target audit source revision is not a local Git commit object")
@@ -909,16 +936,22 @@ def check_forward_candidate_source(
         TargetEchoAuditError: Invalid bytes, requested geometry, or algorithm.
 
     """
-    if type(source) is not bytes or not 0 < len(source) <= _SOURCE_TARGET_BYTES:
+    if (
+        _NATIVE_TYPE(source) is not _NATIVE_BYTES
+        or not 0 < _NATIVE_LEN(source) <= _SOURCE_TARGET_BYTES
+    ):
         _fail("target forward source requires bounded native bytes")
-    if type(pairs) is not int or not 1 <= pairs <= _SOURCE_MAX_PAIRS:
+    if _NATIVE_TYPE(pairs) is not _NATIVE_INT or not 1 <= pairs <= _SOURCE_MAX_PAIRS:
         _fail("target forward source requires bounded integer pairs")
-    if type(algorithm) is not str or algorithm not in FORWARD_ALGORITHMS:
+    if (
+        _NATIVE_TYPE(algorithm) is not _NATIVE_STR
+        or algorithm not in FORWARD_ALGORITHMS
+    ):
         _fail("target forward source requires a canonical algorithm")
     row = {
         "algorithm": algorithm,
         "case": {"difficulty": pairs},
-        "metrics": {"artifact_bytes": len(source)},
+        "metrics": {"artifact_bytes": _NATIVE_LEN(source)},
     }
     _admit_source_bytes(source, row, _SOURCE_PATTERNED_MODE, forward=True)
 
@@ -938,14 +971,14 @@ def _admit_source_bytes(
     )
     if forward:
         _check_forward_jump(source, row)
-    if len(source) != len(operations):
+    if _NATIVE_LEN(source) != _NATIVE_LEN(operations):
         _fail("target audit source length differs from echo layout")
-    if any(
+    if _NATIVE_ANY(
         _decoded_instruction(cell, position) != _SOURCE_INSTRUCTIONS[token]
         for position, (cell, token) in enumerate(zip(source, operations, strict=True))
     ):
         _fail("target audit source instruction differs from echo layout")
-    if row["metrics"]["artifact_bytes"] != len(source):
+    if row["metrics"]["artifact_bytes"] != _NATIVE_LEN(source):
         _fail("target audit artifact size differs from source")
 
 
@@ -1004,7 +1037,7 @@ def _admit_tool(path: Path) -> Path:
     if not path.is_absolute():
         _fail("target audit requires absolute binary paths")
     details = path.lstat()
-    if type(details) is not os.stat_result:
+    if _NATIVE_TYPE(details) is not _NATIVE_STAT_RESULT:
         _fail("target audit requires regular native executable metadata")
     if not stat.S_ISREG(details.st_mode) or details.st_size <= 0:
         _fail("target audit requires regular nonempty executable files")
@@ -1014,7 +1047,7 @@ def _admit_tool(path: Path) -> Path:
 
 
 def _tool_file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
-    if type(details) is not os.stat_result:
+    if _NATIVE_TYPE(details) is not _NATIVE_STAT_RESULT:
         _fail("target audit executable identity changed: invalid metadata")
     return (
         details.st_dev,
@@ -1038,7 +1071,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
     for path in (emitter, runner):
         try:
             original = path.lstat()
-            if type(original) is not os.stat_result:
+            if _NATIVE_TYPE(original) is not _NATIVE_STAT_RESULT:
                 _fail("target audit executable identity changed: invalid metadata")
             if not stat.S_ISREG(original.st_mode) or original.st_size <= 0:
                 _fail("target audit executable identity changed")
@@ -1051,13 +1084,13 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             )
             descriptor = os.open(path, flags)
             if (
-                type(descriptor) is not int
+                _NATIVE_TYPE(descriptor) is not _NATIVE_INT
                 or not 0 <= descriptor <= MAX_NATIVE_DESCRIPTOR
             ):
                 _fail("target audit executable identity changed: invalid descriptor")
             try:
                 opened = os.fstat(descriptor)
-                if type(opened) is not os.stat_result:
+                if _NATIVE_TYPE(opened) is not _NATIVE_STAT_RESULT:
                     _fail("target audit executable identity changed: invalid metadata")
                 if not stat.S_ISREG(opened.st_mode) or (
                     _tool_file_identity(opened) != _tool_file_identity(original)
@@ -1071,15 +1104,18 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 while remaining:
                     requested = min(remaining, 1024 * 1024)
                     chunk = os.read(descriptor, requested)
-                    if type(chunk) is not bytes or not 0 < len(chunk) <= requested:
+                    if (
+                        _NATIVE_TYPE(chunk) is not _NATIVE_BYTES
+                        or not 0 < _NATIVE_LEN(chunk) <= requested
+                    ):
                         _fail("target audit executable identity changed")
                     digest.update(chunk)
                     independent.update(chunk)
                     source_bound.update(chunk)
-                    remaining -= len(chunk)
+                    remaining -= _NATIVE_LEN(chunk)
                 trailer = os.read(descriptor, 1)
                 if (
-                    type(trailer) is not bytes
+                    _NATIVE_TYPE(trailer) is not _NATIVE_BYTES
                     or trailer
                     or (
                         _tool_file_identity(os.fstat(descriptor))
@@ -1108,10 +1144,10 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                     BaseException.add_note(
                         primary,
                         "target audit executable descriptor cleanup failed: "
-                        + type(cleanup_error).__name__,
+                        + _NATIVE_TYPE(cleanup_error).__name__,
                     )
             latest = path.lstat()
-            if type(latest) is not os.stat_result:
+            if _NATIVE_TYPE(latest) is not _NATIVE_STAT_RESULT:
                 _fail("target audit executable identity changed: invalid metadata")
             if not stat.S_ISREG(latest.st_mode) or (
                 _tool_file_identity(latest) != _tool_file_identity(original)
@@ -1124,7 +1160,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             TypeError,
             AttributeError,
         ) as error:
-            if type(error) is _SOURCE_TARGET_ECHO_AUDIT_ERROR:
+            if _NATIVE_TYPE(error) is _SOURCE_TARGET_ECHO_AUDIT_ERROR:
                 raise
             message = "target audit executable identity changed"
             raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
@@ -1136,12 +1172,12 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
         message = "target audit executable SHA-256 completion failed"
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if (
-        type(reported) is not str
-        or type(verified) is not str
-        or type(source_bound_receipt) is not str
-        or len(reported) != analyze.SHA256_HEX_LENGTH
-        or len(verified) != analyze.SHA256_HEX_LENGTH
-        or len(source_bound_receipt) != analyze.SHA256_HEX_LENGTH
+        _NATIVE_TYPE(reported) is not _NATIVE_STR
+        or _NATIVE_TYPE(verified) is not _NATIVE_STR
+        or _NATIVE_TYPE(source_bound_receipt) is not _NATIVE_STR
+        or _NATIVE_LEN(reported) != analyze.SHA256_HEX_LENGTH
+        or _NATIVE_LEN(verified) != analyze.SHA256_HEX_LENGTH
+        or _NATIVE_LEN(source_bound_receipt) != analyze.SHA256_HEX_LENGTH
         or not set(reported) <= analyze.SHA256_ALPHABET
         or not set(verified) <= analyze.SHA256_ALPHABET
         or not set(source_bound_receipt) <= analyze.SHA256_ALPHABET
@@ -1204,12 +1240,14 @@ def _admit_vm_replay_receipt(
 ) -> sp.CompletedProcess[bytes]:
     """Admit native child streams and, when supplied, the launched VM argv."""
     if (
-        type(result) is not sp.CompletedProcess
-        or type(result.args) is not list
-        or any(type(argument) is not str for argument in result.args)
-        or type(result.returncode) is not int
-        or type(result.stdout) is not bytes
-        or type(result.stderr) is not bytes
+        _NATIVE_TYPE(result) is not _NATIVE_COMPLETED_PROCESS
+        or _NATIVE_TYPE(result.args) is not _NATIVE_LIST
+        or _NATIVE_ANY(
+            _NATIVE_TYPE(argument) is not _NATIVE_STR for argument in result.args
+        )
+        or _NATIVE_TYPE(result.returncode) is not _NATIVE_INT
+        or _NATIVE_TYPE(result.stdout) is not _NATIVE_BYTES
+        or _NATIVE_TYPE(result.stderr) is not _NATIVE_BYTES
     ):
         _fail("target VM replay returned nonnative completed process receipt")
     if command is not None:
@@ -1218,9 +1256,9 @@ def _admit_vm_replay_receipt(
         # the full measured command; here bind its final guest invocation.
         if measured:
             matching = (
-                len(actual) > len(command)
-                and actual[-len(command) - 1] == "--"
-                and actual[-len(command) :] == command
+                _NATIVE_LEN(actual) > _NATIVE_LEN(command)
+                and actual[-_NATIVE_LEN(command) - 1] == "--"
+                and actual[-_NATIVE_LEN(command) :] == command
             )
         else:
             matching = actual == command
@@ -1319,43 +1357,46 @@ def check_forward_vm_replay(
         TargetEchoAuditError: The path, geometry, or replay policy is invalid.
 
     """
-    native_path = type(Path())
+    native_path = _NATIVE_TYPE(Path())
     if (
-        type(source) is not native_path
+        _NATIVE_TYPE(source) is not native_path
         or not source.is_absolute()
         or not source.is_relative_to(_ROOT)
-        or type(runner) is not native_path
+        or _NATIVE_TYPE(runner) is not native_path
         or not runner.is_absolute()
     ):
         _fail("target replay requires native absolute source and runner paths")
-    if type(case) is not tuple or len(case) != 2:
+    if _NATIVE_TYPE(case) is not _NATIVE_TUPLE or _NATIVE_LEN(case) != 2:
         _fail("target replay requires an exact bounded case pair")
     pairs, algorithm = case
     if (
-        type(pairs) is not int
+        _NATIVE_TYPE(pairs) is not _NATIVE_INT
         or not 1 <= pairs <= _SOURCE_MAX_PAIRS
-        or type(algorithm) is not str
+        or _NATIVE_TYPE(algorithm) is not _NATIVE_STR
         or algorithm not in FORWARD_ALGORITHMS
     ):
         _fail("target replay requires a canonical bounded case")
-    if type(replay_options) is not tuple or len(replay_options) != 4:
+    if (
+        _NATIVE_TYPE(replay_options) is not _NATIVE_TUPLE
+        or _NATIVE_LEN(replay_options) != 4
+    ):
         _fail("target replay requires an exact four-field replay policy")
     steps, limit_child_resources, measure_rss, raw_rss = replay_options
     expected_steps = 2 * pairs + (102 if algorithm == WALK else 4)
-    if type(steps) is not int or steps != expected_steps:
+    if _NATIVE_TYPE(steps) is not _NATIVE_INT or steps != expected_steps:
         _fail("target replay requested inconsistent guest instruction count")
     if (
-        type(limit_child_resources) is not bool
-        or type(measure_rss) is not bool
+        _NATIVE_TYPE(limit_child_resources) is not _NATIVE_BOOL
+        or _NATIVE_TYPE(measure_rss) is not _NATIVE_BOOL
         or (measure_rss and not limit_child_resources)
     ):
         _fail("target replay requires consistent exact resource booleans")
     if raw_rss is not None and (
         not measure_rss
-        or type(raw_rss) is not list
-        or len(raw_rss)
+        or _NATIVE_TYPE(raw_rss) is not _NATIVE_LIST
+        or _NATIVE_LEN(raw_rss)
         > _SOURCE_MAX_LEVELS * _SOURCE_MAX_TRIALS * _SOURCE_RSS_MEASURED_STAGES
-        or any(type(entry) is not bytes for entry in raw_rss)
+        or _NATIVE_ANY(_NATIVE_TYPE(entry) is not _NATIVE_BYTES for entry in raw_rss)
     ):
         _fail("target replay requires a bounded native raw RSS witness list")
     relative = source.relative_to(_ROOT).as_posix()
@@ -1387,7 +1428,7 @@ def _replay_one(
         else _replay_execution(row, runner, _ROOT / relative)
     )
     _admit_vm_replay_receipt(execution)
-    if type(expected) is not bytes:
+    if _NATIVE_TYPE(expected) is not _NATIVE_BYTES:
         _fail("target VM replay returned nonnative expected output receipt")
     if execution.returncode != 0 or execution.stdout != expected:
         _fail(f"target audit VM replay rejected retained source: {relative}")
@@ -1442,7 +1483,7 @@ def _replay(
         )
     if _tool_identity(emitter, runner) != claimed:
         _fail("target audit replay executables changed during execution")
-    return len(source_hashes)
+    return _NATIVE_LEN(source_hashes)
 
 
 def _retained_rss_document(document: dict[str, Any]) -> bool:
@@ -1475,7 +1516,7 @@ def _check_rss_receipt_inventory(
     expected = {
         f"{stem}.json"
         for stem in names
-        if any(
+        if _NATIVE_ANY(
             _row_stem(row) == stem and row["outcome"] == analyze.VERIFIED
             for row in document["observations"]
         )
@@ -1485,15 +1526,21 @@ def _check_rss_receipt_inventory(
 
 def _admit_rss_manifest_table(table: object, *, version: int) -> str:
     if (
-        type(table) is not dict
-        or any(type(key) is not str for key in table)
+        _NATIVE_TYPE(table) is not _NATIVE_DICT
+        or _NATIVE_ANY(_NATIVE_TYPE(key) is not _NATIVE_STR for key in table)
         or set(table) != {"schema_version", "sha256"}
     ):
         _fail("v6 target run is missing exact RSS receipt link")
-    if type(table["schema_version"]) is not int or table["schema_version"] != version:
+    if (
+        _NATIVE_TYPE(table["schema_version"]) is not _NATIVE_INT
+        or table["schema_version"] != version
+    ):
         _fail("target RSS receipt manifest schema_version differs from study")
     digest = table["sha256"]
-    if type(digest) is not str or len(digest) != DIGEST_HEX_LENGTH:
+    if (
+        _NATIVE_TYPE(digest) is not _NATIVE_STR
+        or _NATIVE_LEN(digest) != DIGEST_HEX_LENGTH
+    ):
         _fail("v6 RSS receipt manifest requires lowercase SHA-256")
     if not set(digest) <= analyze.SHA256_ALPHABET:
         _fail("v6 RSS receipt manifest digest is not lowercase SHA-256")
@@ -1518,7 +1565,7 @@ def _rss_digest(
         # never format its exception or let it escape the typed audit API.
         message = "target RSS run manifest is invalid TOML"
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
-    if type(decoded) is not dict:
+    if _NATIVE_TYPE(decoded) is not _NATIVE_DICT:
         _fail("target RSS run manifest has invalid native TOML root")
     table = decoded.get(RSS_HASH_TABLE)
     # The retained source bytes, rather than a substituted decoder's native-
@@ -1549,23 +1596,29 @@ def _rss_record(data: bytes, *, raw: bool) -> dict[str, Any]:
     except Exception as error:
         message = "v6 RSS stage receipt is not canonical JSON"
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
-    if type(observed) is not dict or type(source) is not dict:
+    if (
+        _NATIVE_TYPE(observed) is not _NATIVE_DICT
+        or _NATIVE_TYPE(source) is not _NATIVE_DICT
+    ):
         _fail("v6 RSS stage receipt source decoder returned a foreign root")
     try:
         same_document = observed == source
     except Exception as error:
         message = "v6 RSS receipt JSON decoder comparison failed"
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
-    if type(same_document) is not bool or not same_document:
+    if _NATIVE_TYPE(same_document) is not _NATIVE_BOOL or not same_document:
         _fail("v6 RSS receipt JSON decoder differs from source")
     record = source
     expected = {"schema_version", "identity", "stages"}
     if raw:
         expected.add("raw_kib")
-    if type(record) is not dict or set(record) != expected:
+    if _NATIVE_TYPE(record) is not _NATIVE_DICT or set(record) != expected:
         _fail("target RSS stage receipt must have exact fields")
     version = 2 if raw else 1
-    if type(record["schema_version"]) is not int or record["schema_version"] != version:
+    if (
+        _NATIVE_TYPE(record["schema_version"]) is not _NATIVE_INT
+        or record["schema_version"] != version
+    ):
         _fail("target RSS stage receipt schema version differs from study")
     return record
 
@@ -1581,23 +1634,28 @@ def _validate_rss_identity(
         "trial": row["trial"],
         "workload_sha256": case["workload_sha256"],
     }
-    if type(identity) is not dict or identity != expected:
+    if _NATIVE_TYPE(identity) is not _NATIVE_DICT or identity != expected:
         _fail("v6 RSS stage receipt differs from recorded trial identity")
-    if type(identity["pairs"]) is not int or type(identity["trial"]) is not int:
+    if (
+        _NATIVE_TYPE(identity["pairs"]) is not _NATIVE_INT
+        or _NATIVE_TYPE(identity["trial"]) is not _NATIVE_INT
+    ):
         _fail("v6 RSS stage receipt trial/difficulty must be integers")
     if (
-        type(identity["algorithm"]) is not str
-        or type(identity["workload_sha256"]) is not str
+        _NATIVE_TYPE(identity["algorithm"]) is not _NATIVE_STR
+        or _NATIVE_TYPE(identity["workload_sha256"]) is not _NATIVE_STR
     ):
         _fail("v6 RSS stage receipt algorithm/workload must be strings")
 
 
 def _read_original_time_line(raw: object) -> int:
-    if type(raw) is not str or not raw.isascii():
+    if _NATIVE_TYPE(raw) is not _NATIVE_STR or not raw.isascii():
         _fail("v7 raw GNU time RSS must be ASCII text")
     encoded = raw.encode("ascii")
     if (
-        not MIN_TIME_LINE_BYTES <= len(encoded) <= _SOURCE_TARGET_RSS_REPORT_BYTES
+        not MIN_TIME_LINE_BYTES
+        <= _NATIVE_LEN(encoded)
+        <= _SOURCE_TARGET_RSS_REPORT_BYTES
         or not encoded.endswith(b"\n")
         or not encoded[:-1].isdigit()
     ):
@@ -1616,7 +1674,9 @@ def _validate_original_time_readings(
     raw_kib: object,
     stages: dict[str, int],
 ) -> None:
-    if type(raw_kib) is not dict or set(raw_kib) != set(RSS_STAGE_NAMES):
+    if _NATIVE_TYPE(raw_kib) is not _NATIVE_DICT or set(raw_kib) != set(
+        RSS_STAGE_NAMES
+    ):
         _fail("v7 GNU time raw RSS receipt has foreign stage names")
     for stage in RSS_STAGE_NAMES:
         if _read_original_time_line(raw_kib[stage]) != stages[stage]:
@@ -1632,10 +1692,10 @@ def _validate_rss_stage_bytes(
     record = _rss_record(data, raw=raw)
     _validate_rss_identity(record["identity"], row)
     stages = record["stages"]
-    if type(stages) is not dict or set(stages) != set(RSS_STAGE_NAMES):
+    if _NATIVE_TYPE(stages) is not _NATIVE_DICT or set(stages) != set(RSS_STAGE_NAMES):
         _fail("v6 RSS stage receipt has foreign stage names")
-    if any(
-        type(value) is not int
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(value) is not _NATIVE_INT
         or not 0 < value <= target_process.CHILD_VIRTUAL_MEMORY_BYTES
         or value % target_process.KIB_BYTES != 0
         for value in stages.values()
@@ -1651,7 +1711,7 @@ def _validate_rss_stage_bytes(
     except Exception as error:
         message = "v6 RSS receipt JSON writer failed"
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
-    if type(observed_text) is not str or observed_text != source_text:
+    if _NATIVE_TYPE(observed_text) is not _NATIVE_STR or observed_text != source_text:
         _fail("v6 RSS receipt JSON writer differs from source")
     canonical = (source_text + "\n").encode("utf-8")
     if data != canonical or max(stages.values()) != row["metrics"][PEAK_RSS]:
@@ -1816,7 +1876,7 @@ def _stage_rss_group(
     results: dict[str, Any] = {
         "difficulty": difficulty,
         "algorithm": algorithm,
-        "attempts": len(observations),
+        "attempts": _NATIVE_LEN(observations),
         "verified": sum(entry["stages"] is not None for entry in observations),
         "not_verified": sum(entry["stages"] is None for entry in observations),
     }
@@ -1864,7 +1924,7 @@ def _stage_rss_pairs(
         report.append(
             {
                 "difficulty": difficulty,
-                "both_verified": len(both),
+                "both_verified": _NATIVE_LEN(both),
                 "median_skip_minus_walk_bytes": deltas,
             }
         )
@@ -1941,7 +2001,7 @@ def audit(
         # Own native failures retain their exact diagnostic and identity;
         # foreign subclasses and unexpected ordinary host/parser failures
         # must not escape the typed boundary or execute __str__ hooks.
-        if type(error) is _SOURCE_TARGET_ECHO_AUDIT_ERROR:
+        if _NATIVE_TYPE(error) is _SOURCE_TARGET_ECHO_AUDIT_ERROR:
             raise
         message = (
             f"target echo retained study audit failed: {_safe_error_detail(error)}"
@@ -1954,10 +2014,10 @@ def audit(
         "source_commit_reported": commit,
         "source_commit_object_verified": options.require_source_commit_object,
         "source_sha256": source_hashes,
-        "verified_target_sources_checked": len(source_hashes),
+        "verified_target_sources_checked": _NATIVE_LEN(source_hashes),
         "target_sources_replayed": replayed,
         "reported_failed_trials_not_replayed": (
-            len(document["observations"]) - len(source_hashes)
+            _NATIVE_LEN(document["observations"]) - _NATIVE_LEN(source_hashes)
         ),
         "evidence_preflight": checked,
         "capacity_curve": report["capacity_curve"],

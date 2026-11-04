@@ -3710,3 +3710,146 @@ def test_target_audit_preserves_native_dependency_diagnostics_after_rebinding(
     assert audit._safe_error_detail(ForeignDependencyError("forged detail")) == (
         "ForeignDependencyError"
     )
+
+
+@pytest.mark.parametrize("provider", ["type", "any"])
+def test_target_audit_options_reject_forged_native_boolean_receipts(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """A public built-in alias cannot convert an invalid replay opt-in."""
+    invalid = "yes"
+    options = audit.AuditOptions(replay_candidates=cast("Any", invalid))
+    if provider == "type":
+        native_type = type
+
+        def forged_type(value: object) -> type[object]:
+            return bool if value is invalid else native_type(value)
+
+        monkeypatch.setattr(audit, "type", forged_type, raising=False)
+    else:
+        monkeypatch.setattr(audit, "any", lambda _items: False, raising=False)
+    with pytest.raises(audit.TargetEchoAuditError, match="exact booleans"):
+        audit._admit_options(options)
+
+
+def test_target_audit_reader_rejects_forged_native_byte_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign bytes subclasses must not enter the source evidence boundary."""
+
+    class ForeignBytes(bytes):
+        pass
+
+    foreign = ForeignBytes(b"forged")
+    native_type = type
+    monkeypatch.setattr(
+        audit,
+        "type",
+        lambda value: bytes if value is foreign else native_type(value),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        audit.evidence, "read_bounded_regular", lambda *_a, **_k: foreign
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="native bounded bytes"):
+        audit._native_regular_bytes(Path("."), "raw/sample", limit=1024)
+
+
+@pytest.mark.parametrize("forged_length", [0, 9999])
+def test_target_audit_reader_retains_native_length_boundary(
+    monkeypatch: pytest.MonkeyPatch, forged_length: int
+) -> None:
+    """Late length substitution cannot alter the bounded-file decision."""
+    source = b"seven!"
+    monkeypatch.setattr(
+        audit.evidence, "read_bounded_regular", lambda *_a, **_k: source
+    )
+    monkeypatch.setattr(audit, "len", lambda _value: forged_length, raising=False)
+    if forged_length == 0:
+        with pytest.raises(audit.TargetEchoAuditError, match="native bounded bytes"):
+            audit._native_regular_bytes(Path("."), "raw/sample", limit=5)
+    else:
+        assert audit._native_regular_bytes(Path("."), "raw/sample", limit=6) == source
+
+
+def test_target_audit_path_rejects_replaced_full_scan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The entire canonical label must pass the native character predicate."""
+    monkeypatch.setattr(audit, "all", lambda _items: True, raising=False)
+    with pytest.raises(audit.TargetEchoAuditError, match="canonical generated"):
+        audit._prefix(".temp/arena-target-echo-bad!/study.json")
+
+
+def test_target_audit_valid_options_ignore_replaced_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged type lookup cannot reject a valid native audit policy."""
+    monkeypatch.setattr(audit, "type", lambda _value: object, raising=False)
+    audit._admit_options(audit.AuditOptions())
+
+
+@pytest.mark.parametrize("native", [False, True], ids=["forged", "original"])
+def test_target_audit_options_use_original_class_identity(
+    monkeypatch: pytest.MonkeyPatch, native: bool
+) -> None:
+    """A replaced exported options constructor cannot define admission."""
+    original = audit.AuditOptions()
+
+    class ForeignOptions:
+        replay_candidates = False
+        require_source_commit_object = False
+        stage_rss_breakdown = False
+        emitter = None
+        runner = None
+
+    monkeypatch.setattr(audit, "AuditOptions", ForeignOptions)
+    if native:
+        audit._admit_options(original)
+    else:
+        with pytest.raises(audit.TargetEchoAuditError, match="exact booleans"):
+            audit._admit_options(cast("Any", ForeignOptions()))
+
+
+@pytest.mark.parametrize("native", [False, True], ids=["forged", "original"])
+def test_target_audit_vm_receipts_use_original_process_class(
+    monkeypatch: pytest.MonkeyPatch, native: bool
+) -> None:
+    """A replaced subprocess class may neither certify nor discard receipts."""
+    original = sp.CompletedProcess(["vm"], 0, b"\xa8", b"")
+
+    class ForeignProcess:
+        def __init__(self) -> None:
+            self.args = ["vm"]
+            self.returncode = 0
+            self.stdout = b"\xa8"
+            self.stderr = b""
+
+    monkeypatch.setattr(audit.sp, "CompletedProcess", ForeignProcess)
+    if native:
+        assert audit._admit_vm_replay_receipt(original) is original
+    else:
+        with pytest.raises(audit.TargetEchoAuditError, match="nonnative"):
+            audit._admit_vm_replay_receipt(ForeignProcess())
+
+
+@pytest.mark.parametrize("native", [False, True], ids=["forged", "original"])
+def test_target_audit_metadata_uses_original_stat_result_class(
+    monkeypatch: pytest.MonkeyPatch, native: bool
+) -> None:
+    """Native executable metadata cannot follow a replaced os type alias."""
+    original = Path(__file__).stat()
+
+    class ForeignStat:
+        st_dev = 1
+        st_ino = 2
+        st_size = 3
+        st_mtime_ns = 4
+        st_ctime_ns = 5
+
+    monkeypatch.setattr(audit.os, "stat_result", ForeignStat)
+    if native:
+        assert audit._tool_file_identity(original)[0] == original.st_dev
+    else:
+        with pytest.raises(audit.TargetEchoAuditError, match="invalid metadata"):
+            audit._tool_file_identity(cast("Any", ForeignStat()))
