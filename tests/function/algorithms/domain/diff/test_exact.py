@@ -5183,3 +5183,67 @@ def test_exact_path_keeps_safe_labels_after_helper_alias(
     with monkeypatch.context() as patched:
         patched.setattr(exact_module, "reserved_windows_component", lambda _part: True)
         assert validate(valid) == valid
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "FileRecord",
+        "TreeSnapshot",
+        "ExactAuthoringPlan",
+        "ExactInstruction",
+        "ExactInstructionKind",
+        "SourceSlice",
+        "OracleLiteral",
+    ],
+)
+def test_exact_plan_keeps_native_model_identities_after_public_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A late module alias cannot alter exact model types or plan semantics."""
+    source, oracle = _synthetic_pair(tmp_path)
+    expected = build_exact_plan(source, oracle)
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, alias, dict)
+        result = build_exact_plan(source, oracle)
+    assert result == expected
+    assert type(result) is ExactAuthoringPlan
+
+
+def test_exact_materialization_rejects_foreign_plan_after_native_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed imported plan class cannot authorize a foreign output plan."""
+    source, _ = _synthetic_pair(tmp_path)
+    output = tmp_path / "published"
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "ExactAuthoringPlan", dict)
+        with pytest.raises(ExactTreeError, match="requires an exact authoring plan"):
+            foreign = cast("ExactAuthoringPlan", cast("object", {}))
+            materialize_exact_plan(source, foreign, output)
+    assert not output.exists()
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "FileRecord",
+        "TreeSnapshot",
+        "ExactAuthoringPlan",
+        "ExactInstruction",
+        "ExactInstructionKind",
+        "SourceSlice",
+        "OracleLiteral",
+    ],
+)
+def test_exact_materialization_keeps_native_model_identities_after_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A late alias cannot reclassify verified instruction bytes on publish."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "published"
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, alias, dict)
+        materialize_exact_plan(source, plan, output)
+    assert snapshot_tree(output) == snapshot_tree(oracle)

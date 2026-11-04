@@ -115,6 +115,15 @@ _NATIVE_EXCEPTION = builtins.Exception
 _NATIVE_TREE_MODEL_ERROR = TreeModelError
 # Portable path policy must not call a late consumer-replaced helper alias.
 _NATIVE_RESERVED_WINDOWS_COMPONENT = reserved_windows_component
+# Model receipt names remain public, but private constructors and dispatch
+# require the classes and enum captured before consumer callbacks run.
+_NATIVE_FILE_RECORD = FileRecord
+_NATIVE_TREE_SNAPSHOT = TreeSnapshot
+_NATIVE_EXACT_AUTHORING_PLAN = ExactAuthoringPlan
+_NATIVE_EXACT_INSTRUCTION = ExactInstruction
+_NATIVE_EXACT_INSTRUCTION_KIND = ExactInstructionKind
+_NATIVE_SOURCE_SLICE = SourceSlice
+_NATIVE_ORACLE_LITERAL = OracleLiteral
 _NUL = "\x00"
 _NATIVE_STAT_RESULT = os.stat_result
 _NATIVE_RELATIVE_TO = Path.relative_to
@@ -276,13 +285,13 @@ _TREE_SNAPSHOT_INIT = cast(
 
 
 def _new_file_record(path: str, sha256: str, size: int) -> FileRecord:
-    record = _NATIVE_OBJECT_NEW(FileRecord)
+    record = _NATIVE_OBJECT_NEW(_NATIVE_FILE_RECORD)
     _FILE_RECORD_INIT(record, path, sha256, size)
     return record
 
 
 def _new_tree_snapshot(files: tuple[FileRecord, ...]) -> TreeSnapshot:
-    snapshot = _NATIVE_OBJECT_NEW(TreeSnapshot)
+    snapshot = _NATIVE_OBJECT_NEW(_NATIVE_TREE_SNAPSHOT)
     _TREE_SNAPSHOT_INIT(snapshot, files)
     return snapshot
 
@@ -315,7 +324,7 @@ def _new_exact_plan(
     passthrough_roots: tuple[str, ...],
 ) -> ExactAuthoringPlan:
     """Construct an internally authored plan without late class hooks."""
-    plan = _NATIVE_OBJECT_NEW(ExactAuthoringPlan)
+    plan = _NATIVE_OBJECT_NEW(_NATIVE_EXACT_AUTHORING_PLAN)
     _EXACT_PLAN_INIT(plan, source, target, instructions, passthrough_roots)
     return plan
 
@@ -348,13 +357,13 @@ _EXACT_INSTRUCTION_INIT = cast(
 
 
 def _new_source_slice(offset: int, length: int) -> SourceSlice:
-    segment = _NATIVE_OBJECT_NEW(SourceSlice)
+    segment = _NATIVE_OBJECT_NEW(_NATIVE_SOURCE_SLICE)
     _SOURCE_SLICE_INIT(segment, offset, length)
     return segment
 
 
 def _new_oracle_literal(data: bytes) -> OracleLiteral:
-    segment = _NATIVE_OBJECT_NEW(OracleLiteral)
+    segment = _NATIVE_OBJECT_NEW(_NATIVE_ORACLE_LITERAL)
     _ORACLE_LITERAL_INIT(segment, data)
     return segment
 
@@ -367,7 +376,7 @@ def _new_exact_instruction(
     literal: bytes | None = None,
     segments: tuple[ExactSegment, ...] = (),
 ) -> ExactInstruction:
-    instruction = _NATIVE_OBJECT_NEW(ExactInstruction)
+    instruction = _NATIVE_OBJECT_NEW(_NATIVE_EXACT_INSTRUCTION)
     _EXACT_INSTRUCTION_INIT(
         instruction,
         output_path,
@@ -1220,7 +1229,7 @@ def _build_patch_segments(
 
 def _contains_source_slice(segments: tuple[ExactSegment, ...]) -> bool:
     return _NATIVE_ANY(
-        _NATIVE_ISINSTANCE(segment, SourceSlice) for segment in segments
+        _NATIVE_ISINSTANCE(segment, _NATIVE_SOURCE_SLICE) for segment in segments
     )
 
 
@@ -1235,14 +1244,14 @@ def _patch_instruction(
     if _contains_source_slice(segments):
         return _new_exact_instruction(
             output_path=path,
-            kind=ExactInstructionKind.PATCH_SOURCE,
+            kind=_NATIVE_EXACT_INSTRUCTION_KIND.PATCH_SOURCE,
             source_path=path,
             segments=segments,
             expected_sha256=digest,
         )
     return _new_exact_instruction(
         output_path=path,
-        kind=ExactInstructionKind.LITERAL_ORACLE,
+        kind=_NATIVE_EXACT_INSTRUCTION_KIND.LITERAL_ORACLE,
         literal=target_bytes,
         expected_sha256=digest,
     )
@@ -1259,7 +1268,7 @@ def _instruction_for_target(
         source_path = path if path in candidates else candidates[0]
         return _new_exact_instruction(
             output_path=path,
-            kind=ExactInstructionKind.COPY_SOURCE,
+            kind=_NATIVE_EXACT_INSTRUCTION_KIND.COPY_SOURCE,
             source_path=source_path,
             expected_sha256=digest,
         )
@@ -1272,7 +1281,7 @@ def _instruction_for_target(
         )
     return _new_exact_instruction(
         output_path=path,
-        kind=ExactInstructionKind.LITERAL_ORACLE,
+        kind=_NATIVE_EXACT_INSTRUCTION_KIND.LITERAL_ORACLE,
         literal=target_bytes,
         expected_sha256=digest,
     )
@@ -1371,7 +1380,7 @@ def _safe_tree_path(root: Path, relative_path: str) -> Path:
 def _patch_bytes(source: bytes, segments: tuple[ExactSegment, ...]) -> bytes:
     parts: list[bytes] = []
     for segment in segments:
-        if _NATIVE_TYPE(segment) is OracleLiteral:
+        if _NATIVE_TYPE(segment) is _NATIVE_ORACLE_LITERAL:
             parts.append(_oracle_literal_data(segment))
             continue
         offset, length = _source_slice_fields(cast("SourceSlice", segment))
@@ -1388,7 +1397,7 @@ def _instruction_bytes(
     instruction: ExactInstruction,
 ) -> bytes:
     _, kind, _, source_path, literal, segments = _instruction_fields(instruction)
-    if kind is ExactInstructionKind.LITERAL_ORACLE:
+    if kind is _NATIVE_EXACT_INSTRUCTION_KIND.LITERAL_ORACLE:
         if literal is None:
             message = "literal-oracle instruction lost its literal bytes"
             raise _NATIVE_EXACT_TREE_ERROR(message)
@@ -1399,7 +1408,7 @@ def _instruction_bytes(
     source = read_exact_regular_file(
         _safe_tree_path(source_root, source_path), "instruction source"
     )
-    if kind is ExactInstructionKind.COPY_SOURCE:
+    if kind is _NATIVE_EXACT_INSTRUCTION_KIND.COPY_SOURCE:
         return source
     return _patch_bytes(source, segments)
 
@@ -1670,7 +1679,7 @@ def materialize_exact_plan(
         ExactTreeError: The source is invalid or the output is not separate.
 
     """
-    if _NATIVE_TYPE(plan) is not ExactAuthoringPlan:
+    if _NATIVE_TYPE(plan) is not _NATIVE_EXACT_AUTHORING_PLAN:
         message = "exact materialization requires an exact authoring plan"
         raise _NATIVE_EXACT_TREE_ERROR(message)
     # Native slotted plans can be allocated without construction. Revalidate
