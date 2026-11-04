@@ -49,6 +49,8 @@ from typing import cast
 MAX_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_JSON_BYTES = 1_048_576
 CHUNK_BYTES = 64 * 1024
+REPOSITORY_ROOT = Path(__file__).resolve().parents[5]
+PINNED_LLVM_VERSION = "22.1.8"
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +170,11 @@ def run_frontend(arguments: Arguments) -> bytes:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    _ = parser.add_argument(
+        "--repository-tools",
+        action="store_true",
+        help="use the built repository-pinned compiler tools and headers",
+    )
     for flag in (
         "frontend",
         "json-adapter",
@@ -175,26 +182,88 @@ def build_parser() -> argparse.ArgumentParser:
         "guest-include",
         "resource-dir",
         "source-id",
-        "output",
     ):
-        _ = parser.add_argument(f"--{flag}", required=True)
+        _ = parser.add_argument(f"--{flag}")
+    _ = parser.add_argument("--output", required=True)
     _ = parser.add_argument("--capsule", action="store_true")
     _ = parser.add_argument("source", help="explicit C source file")
     return parser
 
 
-def parse_arguments() -> Arguments:
-    parsed = build_parser().parse_args()
+def parse_arguments(
+    argv: list[str] | None = None, *, repository_root: Path = REPOSITORY_ROOT
+) -> Arguments:
+    """Select exactly one trusted tool mode before reading any source bytes."""
+    parser = build_parser()
+    parsed = parser.parse_args(argv)
+    configured = {
+        "frontend": cast(str | None, parsed.frontend),
+        "json-adapter": cast(str | None, parsed.json_adapter),
+        "layout-backend": cast(str | None, parsed.layout_backend),
+        "guest-include": cast(str | None, parsed.guest_include),
+        "resource-dir": cast(str | None, parsed.resource_dir),
+    }
+    source_id = cast(str | None, parsed.source_id)
+    source = cast(str, parsed.source)
+    if cast(bool, parsed.repository_tools):
+        if overrides := [
+            flag for flag, value in configured.items() if value is not None
+        ]:
+            parser.error(
+                "--repository-tools cannot be mixed with explicit tool flags: "
+                + ", ".join(f"--{flag}" for flag in overrides)
+            )
+        native_name = (
+            "malbolge-c-frontend.exe" if os.name == "nt" else "malbolge-c-frontend"
+        )
+        native = repository_root / (
+            f".dependencies/compiler-c-frontend/{PINNED_LLVM_VERSION}/bin/{native_name}"
+        )
+        rust_root = repository_root / ".cache/rust/target/debug"
+        rust_suffix = ".exe" if os.name == "nt" else ""
+        configured = {
+            "frontend": str(native),
+            "json-adapter": str(rust_root / f"c2malbolge_json{rust_suffix}"),
+            "layout-backend": str(rust_root / f"malbolge_layout{rust_suffix}"),
+            "guest-include": str(
+                repository_root / "src/runtime/guest-c-library/contract/include"
+            ),
+            "resource-dir": str(
+                repository_root
+                / f".dependencies/llvm/{PINNED_LLVM_VERSION}/lib/clang/22"
+            ),
+        }
+        for flag in ("frontend", "json-adapter", "layout-backend"):
+            binary = Path(configured[flag])
+            if not binary.is_file() or not os.access(binary, os.X_OK):
+                parser.error(
+                    f"repository-pinned {flag} executable is unavailable: {binary}"
+                )
+        for flag in ("guest-include", "resource-dir"):
+            directory = Path(configured[flag])
+            if not directory.is_dir():
+                parser.error(
+                    f"repository-pinned {flag} directory is unavailable: {directory}"
+                )
+        if source_id is None:
+            source_id = Path(source).name
+    elif missing := [flag for flag, value in configured.items() if value is None]:
+        parser.error(
+            "explicit compiler tools required without --repository-tools: "
+            + ", ".join(f"--{flag}" for flag in missing)
+        )
+    if source_id is None:
+        parser.error("--source-id is required without --repository-tools")
     return Arguments(
-        frontend=cast(str, parsed.frontend),
-        json_adapter=cast(str, parsed.json_adapter),
-        layout_backend=cast(str, parsed.layout_backend),
-        guest_include=cast(str, parsed.guest_include),
-        resource_dir=cast(str, parsed.resource_dir),
-        source_id=cast(str, parsed.source_id),
+        frontend=cast(str, configured["frontend"]),
+        json_adapter=cast(str, configured["json-adapter"]),
+        layout_backend=cast(str, configured["layout-backend"]),
+        guest_include=cast(str, configured["guest-include"]),
+        resource_dir=cast(str, configured["resource-dir"]),
+        source_id=source_id,
         output=cast(str, parsed.output),
         capsule=cast(bool, parsed.capsule),
-        source=cast(str, parsed.source),
+        source=source,
     )
 
 

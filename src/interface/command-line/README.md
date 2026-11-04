@@ -85,7 +85,27 @@ python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
   --capsule examples/noop.c
 ```
 
-All three executables are explicit caller-trusted capabilities. This is a
+When the repository-pinned Clang frontend and Rust binaries have already been
+built, an opt-in shortcut selects those exact repository-local tools and
+resources without copying their paths or inventing normalized JSON:
+
+```sh
+python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
+  --repository-tools --capsule --output .temp/noop.malbolge examples/noop.c
+```
+
+`--repository-tools` selects the pinned LLVM 22.1.8 frontend, Clang resource
+directory, guest headers and existing `c2malbolge_json` / `malbolge_layout`
+Rust binaries. It does not install or build them; missing tools fail rather than
+falling back to host Clang or synthetic JSON. The source ID defaults to the
+source filename (use `--source-id` for an explicit portable identity). Tool
+path overrides cannot be mixed with this mode. Source identity checks, guest
+verification, private staging, no-clobber publication and `--capsule` semantics
+are identical to the explicit-tool invocation. This is a repository development
+shortcut, not an automatic production compiler installation.
+
+In explicit-tool mode all three executables are caller-trusted capabilities.
+This is a
 bounded integration entrypoint, **not** the finished turnkey installer or
 arbitrary C compiler. It currently accepts only the normalized Clang shape
 supported by the JSON adapter (one no-effect `void` function with optional
