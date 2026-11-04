@@ -668,3 +668,80 @@ fn standalone_zero_expression_rejects_changed_values_and_forged_effects() {
         );
     }
 }
+
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    reason = "Clang cast-to-void zero source shape with exact direct child"
+)]
+fn cast_zero_input() -> Value {
+    let mut artifact = standalone_zero_input();
+    artifact["source"]["id"] = json!("fixtures/noop-cast-zero.c");
+    artifact["source"]["sha256"] =
+        json!("a3480cbdadb45685425ae23822f8f4f3c462bfc65581f575e3b0ba0257693ae5");
+    artifact["nodes"] = json!([
+        {"id":1, "parent":0, "kind":"function-declaration", "span":span(0,36),
+         "name":"noop", "type":"fn()->void", "definition":"definition",
+         "inline_specified":false, "linkage":"external", "storage_class":"none"},
+        {"id":2, "parent":1, "kind":"compound-statement", "span":span(16,36)},
+        {"id":3, "parent":2, "kind":"cast-expression", "span":span(18,25),
+         "type":"void", "operation":"to-void"},
+        {"id":4, "parent":3, "kind":"integer-literal", "span":span(24,25),
+         "type":"i32", "constant_integer":"0", "literal":"0"},
+        {"id":5, "parent":2, "kind":"return-statement", "span":span(27,33)}
+    ]);
+    artifact
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "exact native Clang cast source shape executes guest VM"
+)]
+fn cast_to_void_of_literal_zero_preserves_guest_halt() -> Result<(), String> {
+    let artifact = cast_zero_input();
+    let wire = canonical_void_typed_ir(&bytes(&artifact))
+        .map_err(|error| format!("cast zero admission: {error:?}"))?;
+    let profile = target_profile("malbolge-2026").ok_or("current profile missing")?;
+    let compiled = compile_canonical_typed_empty_void(&wire, profile)
+        .map_err(|error| format!("cast zero guest compilation: {error:?}"))?;
+    let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+        .map_err(|error| format!("cast zero guest load: {error:?}"))?;
+    assert!(matches!(
+        vm.run(2),
+        Ok(RunOutcome::Terminated { steps: 2, .. })
+    ));
+    assert!(vm.output().is_empty());
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    reason = "fixed cast operand semantic and ancestry mutations"
+)]
+fn cast_zero_rejects_effectful_or_forged_children() {
+    let artifact = cast_zero_input();
+    for (index, field, value) in [
+        (2, "operation", json!("bitcast")),
+        (2, "type", json!("i32")),
+        (2, "kind", json!("call-expression")),
+        (2, "span", span(18, 24)),
+        (3, "kind", json!("call-expression")),
+        (3, "constant_integer", json!("1")),
+        (3, "literal", json!("1")),
+        (3, "type", json!("u32")),
+        (3, "parent", json!(2)),
+        (3, "span", span(23, 24)),
+        (4, "parent", json!(3)),
+    ] {
+        let mut changed = artifact.clone();
+        changed["nodes"][index][field] = value;
+        assert_eq!(
+            canonical_void_typed_ir(&bytes(&changed)),
+            Err(FrontendJsonError::Unsupported),
+            "unsupported cast candidate {index} {field}"
+        );
+    }
+}

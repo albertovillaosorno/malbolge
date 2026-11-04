@@ -56,7 +56,9 @@ EXPLICIT_VOID = b"void noop(void) { return; }\n"
 IMPLICIT_VOID = b"void noop(void) {}\n"
 NESTED_VOID = b"void noop(void) {; { ; return; }}\n"
 STANDALONE_ZERO = b"void noop(void) { 0; return; }\n"
-WRAPPED_ZERO = b"void noop(void) { (void)0; }\n"
+CAST_ZERO = b"void noop(void) { (void)0; return; }\n"
+CAST_ONE = b"void noop(void) { (void)1; return; }\n"
+CAST_BINARY = b"void noop(void) { (void)(1+2); return; }\n"
 EFFECTFUL_VOID = b"void noop(void) { volatile int value = 1; }\n"
 INVALID_C = b"void noop(void) { return\n"
 
@@ -174,11 +176,22 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
             self.assertEqual(target.stat().st_size, 2)
             self._run_guest(tools[4], target)
 
+    def test_real_clang_cast_zero_reaches_guest_without_effects(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            source = Path(temporary) / "cast-zero.c"
+            target = Path(temporary) / "cast-zero.malbolge"
+            _ = source.write_bytes(CAST_ZERO)
+            compiled = self._compile(tools, source, target)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertEqual(target.stat().st_size, 2)
+            self._run_guest(tools[4], target)
+
     def test_real_clang_effects_and_syntax_errors_do_not_publish_guest(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
             for index, source_bytes in enumerate(
-                (EFFECTFUL_VOID, WRAPPED_ZERO, INVALID_C)
+                (EFFECTFUL_VOID, CAST_ONE, CAST_BINARY, INVALID_C)
             ):
                 with self.subTest(source=source_bytes):
                     source = Path(temporary) / f"invalid-{index}.c"
@@ -189,7 +202,7 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                     self.assertFalse(target.exists())
                     self.assertIn(
                         b"normalized frontend rejected"
-                        if index != 2
+                        if index != 3
                         else b"native C frontend failed",
                         compiled.stderr,
                     )

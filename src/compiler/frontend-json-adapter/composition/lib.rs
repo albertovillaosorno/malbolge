@@ -113,6 +113,7 @@ struct Node {
     linkage: Option<String>,
     literal: Option<String>,
     name: Option<String>,
+    operation: Option<String>,
     parent: u32,
     span: Span,
     storage_class: Option<String>,
@@ -174,9 +175,34 @@ fn valid_single_byte_statement_span(node: &Node, body: &Node, preceding_end: u32
         && start.column.checked_add(1) == Some(end.column)
 }
 
+// Admit only the exact Clang semantic preorder for the source `(void)0`:
+// one to-void cast with an immediately nested i32 zero literal. The cast's
+// source end coincides with its literal child's end, unlike compound scopes.
+fn valid_zero_void_cast(cast: &Node, operand: Option<&Node>) -> bool {
+    let Some(child) = operand else { return false };
+    cast.kind == "cast-expression"
+        && cast.type_name.as_deref() == Some("void")
+        && cast.operation.as_deref() == Some("to-void")
+        && child.kind == "integer-literal"
+        && child.parent == cast.id
+        && cast.id.checked_add(1) == Some(child.id)
+        && child.type_name.as_deref() == Some("i32")
+        && child.constant_integer.as_deref() == Some("0")
+        && child.literal.as_deref() == Some("0")
+        && cast.span.begin.byte.checked_add(7) == Some(cast.span.end.byte)
+        && cast.span.begin.line == cast.span.end.line
+        && cast.span.begin.column.checked_add(7) == Some(cast.span.end.column)
+        && child.span.begin.byte.checked_add(1) == Some(child.span.end.byte)
+        && child.span.begin.byte.checked_add(1) == Some(cast.span.end.byte)
+        && child.span.begin.line == cast.span.end.line
+        && child.span.end.line == cast.span.end.line
+        && child.span.begin.column.checked_add(1) == Some(cast.span.end.column)
+        && child.span.end.column == cast.span.end.column
+}
+
 // Clang's semantic preorder contains compound scopes and their children.
-// Discard only proven effect-free nulls, literal zero and compound scopes,
-// checking actual ancestor IDs and nonoverlapping source ranges at every depth. A
+// Discard only proven effect-free nulls, literal zero, cast of zero to
+// void and compound scopes, checking actual ancestor IDs and nonoverlapping source ranges at every depth. A
 // terminal ReturnStmt may belong to any active compound scope, but no node
 // can follow it. Scope bounds include braces; child ranges must be interior.
 #[expect(
@@ -185,7 +211,8 @@ fn valid_single_byte_statement_span(node: &Node, body: &Node, preceding_end: u32
 )]
 fn admit_effect_free_body(body: &Node, statements: &[Node]) -> Result<(), FrontendJsonError> {
     let mut scopes = vec![(body, body.span.begin.byte)];
-    for (index, node) in statements.iter().enumerate() {
+    let mut index = 0;
+    while let Some(node) = statements.get(index) {
         while scopes
             .last()
             .is_some_and(|(parent, _)| parent.id != node.parent)
@@ -226,6 +253,12 @@ fn admit_effect_free_body(body: &Node, statements: &[Node]) -> Result<(), Fronte
             {
                 *next_child_byte = end.byte;
             }
+            "cast-expression"
+                if valid_zero_void_cast(node, statements.get(index.saturating_add(1))) =>
+            {
+                *next_child_byte = end.byte;
+                index = index.saturating_add(1); // consume the literal child
+            }
             "compound-statement"
                 if start
                     .byte
@@ -248,6 +281,7 @@ fn admit_effect_free_body(body: &Node, statements: &[Node]) -> Result<(), Fronte
             }
             _ => return Err(FrontendJsonError::Unsupported),
         }
+        index = index.saturating_add(1);
     }
     Ok(())
 }
@@ -303,15 +337,18 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
         || function.storage_class.as_deref() != Some("none")
         || function.constant_integer.is_some()
         || function.literal.is_some()
+        || function.operation.is_some()
         || body.kind != "compound-statement"
         || body.parent != function.id
         || body.id != 2
         || once(body).chain(statements.iter()).any(|node| {
-            let is_standalone_zero = node.kind == "integer-literal";
+            let is_zero = node.kind == "integer-literal";
+            let is_zero_cast = node.kind == "cast-expression";
             node.name.is_some()
-                || (!is_standalone_zero && node.type_name.is_some())
-                || (!is_standalone_zero && node.constant_integer.is_some())
-                || (!is_standalone_zero && node.literal.is_some())
+                || (!is_zero && !is_zero_cast && node.type_name.is_some())
+                || (!is_zero && node.constant_integer.is_some())
+                || (!is_zero && node.literal.is_some())
+                || (!is_zero_cast && node.operation.is_some())
                 || node.definition.is_some()
                 || node.inline_specified.is_some()
                 || node.linkage.is_some()
