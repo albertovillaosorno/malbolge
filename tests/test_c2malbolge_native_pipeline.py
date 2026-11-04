@@ -314,6 +314,37 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                         executed.stderr, f"malbolge-steps-v1:{steps}\n".encode("ascii")
                     )
 
+    def test_real_clang_four_more_printable_crazy_literals_reach_guest(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for name, call, expected, steps in (
+                ("five", b"putchar('5');", b"5", 43),
+                ("eight", b"putchar(56);", b"8", 40),
+                ("greater-than", b"putchar('>');", b">", 34),
+                ("question", b"putchar(63);", b"?", 51),
+            ):
+                with self.subTest(name=name):
+                    source = Path(temporary) / f"single-{name}.c"
+                    target = Path(temporary) / f"single-{name}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + call
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr, f"malbolge-steps-v1:{steps}\n".encode("ascii")
+                    )
+
     def test_real_clang_33_equal_literal_calls_execute_real_guest(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

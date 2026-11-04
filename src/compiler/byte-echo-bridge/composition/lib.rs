@@ -56,8 +56,12 @@ use ternary::{
 // [NoOperation; padding], RelocateDataPointer, CrazyData, OutputByte, Halt.
 // These are not rotation seeds and do not extend to repeated outputs.
 const SINGLE_OUTPUT_CRAZY_WITNESSES: &[(u8, usize)] = &[
+    (53, 39), // '5'
     (54, 22), // '6'
+    (56, 36), // '8'
     (57, 19), // '9'
+    (62, 30), // '>'
+    (63, 47), // '?'
     (65, 27), // 'A'
     (66, 65), // 'B'
     (80, 3),  // 'P'

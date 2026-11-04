@@ -1154,8 +1154,12 @@ fn witnessed_single_ascii_b_uses_guest_crazy_not_rotation() -> Result<(), String
 fn witnessed_printable_single_literals_use_guest_crazy_with_exact_phases() -> Result<(), String> {
     let profile = current_profile();
     for (byte, padding) in [
+        (b'5', 39),
         (b'6', 22),
+        (b'8', 36),
         (b'9', 19),
+        (b'>', 30),
+        (b'?', 47),
         (b'P', 3),
         (b'Q', 11),
         (b'S', 0),
@@ -1203,7 +1207,8 @@ fn witnessed_printable_single_literals_use_guest_crazy_with_exact_phases() -> Re
 fn seeded_literals_refuse_unsupported_values_and_profiles() -> Result<(), String> {
     const WITNESSED: &[u8] = &[
         4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 29, 36, 37, 38, 39,
-        43, 44, 54, 57, 65, 66, 80, 81, 83, 84, 90, 93, 157, 158, 159, 160, 161, 162, 251, 253,
+        43, 44, 53, 54, 56, 57, 62, 63, 65, 66, 80, 81, 83, 84, 90, 93, 157, 158, 159, 160, 161,
+        162, 251, 253,
     ];
     for byte in u8::MIN..=u8::MAX {
         if WITNESSED.contains(&byte) {

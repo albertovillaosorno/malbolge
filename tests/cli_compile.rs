@@ -244,7 +244,7 @@ fn one_command_compiles_a_real_c_byte_and_preserves_existing_output() -> Result<
 }
 
 #[test]
-fn public_compile_executes_guest_crazy_s_and_rejects_unwitnessed_repeat() -> Result<(), String> {
+fn public_compile_executes_guest_crazy_literals_and_refuses_repeats() -> Result<(), String> {
     let root = Path::new(ROOT);
     let suffix = if cfg!(windows) { ".exe" } else { "" };
     if ![
@@ -263,39 +263,46 @@ fn public_compile_executes_guest_crazy_s_and_rejects_unwitnessed_repeat() -> Res
     }
 
     let fixture = FixtureDirectory::create()?;
-    let source = fixture.path.join("single-S.c");
-    let target = fixture.path.join("single-S.malbolge");
-    write(
-        &source,
-        b"#include <stdio.h>\nvoid emit(void) { putchar('S'); }\n",
-    )
-    .map_err(|error| format!("write verified S C fixture: {error}"))?;
-    let compiled = run_public_compile(&source, &target)?;
-    if !compiled.status.success() || !compiled.stdout.is_empty() || !target.is_file() {
-        return Err(format!("public S compiler failed: {compiled:?}"));
-    }
-    let executed = Command::new(env!("CARGO_BIN_EXE_malbolge"))
-        .arg(&target)
-        .arg("--report-steps")
-        .output()
-        .map_err(|error| format!("execute S Malbolge guest: {error}"))?;
-    if !executed.status.success()
-        || executed.stdout != b"S"
-        || executed.stderr != b"malbolge-steps-v1:4\n"
-    {
-        return Err(format!("S guest output/steps diverged: {executed:?}"));
-    }
+    for (label, byte, steps) in [("S", b'S', 4usize), ("question", b'?', 51)] {
+        let source = fixture.path.join(format!("single-{label}.c"));
+        let target = fixture.path.join(format!("single-{label}.malbolge"));
+        let call = format!(
+            "#include <stdio.h>\nvoid emit(void) {{ putchar('{}'); }}\n",
+            char::from(byte)
+        );
+        write(&source, call).map_err(|error| format!("write verified {label} C: {error}"))?;
+        let compiled = run_public_compile(&source, &target)?;
+        if !compiled.status.success() || !compiled.stdout.is_empty() || !target.is_file() {
+            return Err(format!("public {label} compiler failed: {compiled:?}"));
+        }
+        let executed = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+            .arg(&target)
+            .arg("--report-steps")
+            .output()
+            .map_err(|error| format!("execute {label} Malbolge guest: {error}"))?;
+        if !executed.status.success()
+            || executed.stdout != [byte]
+            || executed.stderr != format!("malbolge-steps-v1:{steps}\n").as_bytes()
+        {
+            return Err(format!("{label} guest output/steps diverged: {executed:?}"));
+        }
 
-    let unsupported = fixture.path.join("unsupported-double-S.c");
-    let rejected_target = fixture.path.join("must-not-publish.malbolge");
-    write(
-        &unsupported,
-        b"#include <stdio.h>\nvoid emit(void) { putchar('S'); putchar('S'); }\n",
-    )
-    .map_err(|error| format!("write unproved two-S fixture: {error}"))?;
-    let rejected = run_public_compile(&unsupported, &rejected_target)?;
-    if rejected.status.success() || rejected_target.exists() {
-        return Err(format!("unwitnessed two-S guest published: {rejected:?}"));
+        let unsupported = fixture.path.join(format!("unsupported-double-{label}.c"));
+        let rejected_target = fixture
+            .path
+            .join(format!("must-not-publish-{label}.malbolge"));
+        let repeated = format!(
+            "#include <stdio.h>\nvoid emit(void) {{ putchar('{0}'); putchar('{0}'); }}\n",
+            char::from(byte)
+        );
+        write(&unsupported, repeated)
+            .map_err(|error| format!("write unwitnessed two-{label}: {error}"))?;
+        let rejected = run_public_compile(&unsupported, &rejected_target)?;
+        if rejected.status.success() || rejected_target.exists() {
+            return Err(format!(
+                "unwitnessed two-{label} guest published: {rejected:?}"
+            ));
+        }
     }
     Ok(())
 }

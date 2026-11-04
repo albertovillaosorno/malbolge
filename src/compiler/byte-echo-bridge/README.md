@@ -118,9 +118,10 @@ independently checked prefix lengths between 27 and 64; no value is inferred
 from a different output count. Separately, exact one-output witnesses use
 guest `p` crazy operations after data relocation rather than rotation. The
 current-profile bytes and no-op
-prefixes are `6` (54/22), `9` (57/19), `A` (65/27), `B` (66/65),
-`P` (80/3), `Q` (81/11), `S` (83/0), `T` (84/7), `Z` (90/1), and
-`]` (93/28). The `B` guest has 69 source cells. Every witness is re-executed
+prefixes are `5` (53/39), `6` (54/22), `8` (56/36), `9` (57/19),
+`>` (62/30), `?` (63/47), `A` (65/27), `B` (66/65), `P` (80/3),
+`Q` (81/11), `S` (83/0), `T` (84/7), `Z` (90/1), and `]` (93/28).
+The `B` guest has 69 source cells. Every witness is re-executed
 with the normative VM on each bridge invocation, and none authorizes another
 byte, output count, or profile.
 For exactly two identical outputs, a **different** table
