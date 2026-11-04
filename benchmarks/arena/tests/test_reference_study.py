@@ -103,6 +103,105 @@ def test_host_reference_quoted_provenance_rejects_forged_json_provider(
             _ = reference_study._quote(source)  # ruff: ignore[private-member-access]
 
 
+JSON_QUOTE_WRITER = "_quote"
+
+
+@pytest.mark.parametrize("method", ["encode", "iterencode"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("_quote", "real-host-commit", '"forged-commit"', "JSON quote"),
+        (
+            "_retained_json_text",
+            {"observations": [{"elapsed_ns": 7}]},
+            '{"observations": [{"elapsed_ns": 900}]}',
+            "retained JSON",
+        ),
+    ],
+)
+def test_host_reference_rejects_shared_encoder_method_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    case: tuple[str, object, str, str],
+) -> None:
+    """Both host-C serializers must reject a shared native method forgery."""
+    writer_name, source, forged, diagnostic = case
+    writer = getattr(reference_study, writer_name)
+    assert writer(source) != forged
+
+    def fake_encode(*args: object, **kwargs: object) -> str:
+        del args, kwargs
+        return forged
+
+    def fake_iterencode(*args: object, **kwargs: object) -> list[str]:
+        del args, kwargs
+        return [forged]
+
+    replacement = {"encode": fake_encode, "iterencode": fake_iterencode}
+    with monkeypatch.context() as patch:
+        patch.setattr(json.JSONEncoder, method, replacement[method])
+        with pytest.raises(
+            reference_study.ReferenceStudyError, match=diagnostic
+        ):
+            _ = writer(source)
+
+
+@pytest.mark.parametrize("writer_name", ["_quote", "_retained_json_text"])
+@pytest.mark.parametrize(
+    "provider",
+    ["encode_basestring_ascii", "c_make_encoder", "_make_iterencode"],
+)
+def test_host_reference_rejects_shared_json_factory_substitution(
+    monkeypatch: pytest.MonkeyPatch, writer_name: str, provider: str,
+) -> None:
+    """Matching mutable JSON factory receipts do not authenticate values."""
+    original = getattr(json.encoder, provider, None)
+    if not callable(original):
+        pytest.skip("native JSON encoder provider unavailable")
+    value = (
+        "source-commit" if writer_name == JSON_QUOTE_WRITER else {"reported": 7}
+    )
+    writer = getattr(reference_study, writer_name)
+
+    def replacement(*args: object, **kwargs: object) -> object:
+        return original(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json.encoder, provider, replacement)
+        with pytest.raises(reference_study.ReferenceStudyError, match="source"):
+            _ = writer(value)
+
+
+@pytest.mark.parametrize("writer_name", ["_quote", "_retained_json_text"])
+def test_host_reference_rejects_midcall_json_factory_swap(
+    monkeypatch: pytest.MonkeyPatch, writer_name: str,
+) -> None:
+    """A public writer cannot swap source factories after its own call."""
+    native_dumps = json.dumps
+    factory_name = "_make_iterencode"
+    native_factory = getattr(json.encoder, factory_name)
+    value = (
+        "real-source" if writer_name == JSON_QUOTE_WRITER else {"elapsed_ns": 7}
+    )
+    writer = getattr(reference_study, writer_name)
+    with monkeypatch.context() as patch:
+
+        def swapped_dumps(*args: object, **kwargs: object) -> str:
+            receipt = native_dumps(*args, **kwargs)
+
+            def replacement(
+                *factory_args: object, **factory_kwargs: object
+            ) -> object:
+                return native_factory(*factory_args, **factory_kwargs)
+
+            patch.setattr(json.encoder, factory_name, replacement)
+            return receipt
+
+        patch.setattr(json, "dumps", swapped_dumps)
+        with pytest.raises(reference_study.ReferenceStudyError, match="source"):
+            _ = writer(value)
+
+
 class _ForeignQuote(str):
     """A hostile writer receipt cannot supply equality hooks."""
 

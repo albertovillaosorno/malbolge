@@ -68,6 +68,15 @@ _NATIVE_SHA256 = sha256
 # Bind source JSON classes before mutable public decoder/writer replacement.
 _SOURCE_JSON_DECODER = json.JSONDecoder
 _SOURCE_JSON_ENCODER = json.JSONEncoder
+# Source class methods and their module-global factories remain mutable even
+# when the public JSONEncoder alias itself has been replaced.
+_SOURCE_JSON_ENCODE_METHOD = json.JSONEncoder.encode
+_SOURCE_JSON_ITERENCODE_METHOD = json.JSONEncoder.iterencode
+_SOURCE_JSON_ASCII_ESCAPER = json.encoder.encode_basestring_ascii
+_SOURCE_C_FACTORY_NAME = "c_make_encoder"
+_SOURCE_PY_FACTORY_NAME = "_make_iterencode"
+_SOURCE_JSON_C_FACTORY = getattr(json.encoder, _SOURCE_C_FACTORY_NAME, None)
+_SOURCE_JSON_PY_FACTORY = getattr(json.encoder, _SOURCE_PY_FACTORY_NAME)
 
 _ROOT = Path(__file__).resolve().parents[2]
 _LOCAL = _ROOT / ".temp"
@@ -94,30 +103,85 @@ def _fail(message: str) -> Never:
     raise ReferenceStudyError(message)
 
 
+def _require_source_json_encoder(message: str) -> None:
+    """Reject a replaced shared JSON encoder provider before publication."""
+    providers_unchanged = (
+        _SOURCE_JSON_ENCODER.encode is _SOURCE_JSON_ENCODE_METHOD,
+        _SOURCE_JSON_ENCODER.iterencode is _SOURCE_JSON_ITERENCODE_METHOD,
+        json.encoder.encode_basestring_ascii is _SOURCE_JSON_ASCII_ESCAPER,
+        getattr(json.encoder, _SOURCE_C_FACTORY_NAME, None)
+        is _SOURCE_JSON_C_FACTORY,
+        getattr(json.encoder, _SOURCE_PY_FACTORY_NAME)
+        is _SOURCE_JSON_PY_FACTORY,
+    )
+    if not all(providers_unchanged):
+        _fail(message)
+
+
 def _quote(text: str) -> str:
+    message = "host-C JSON quote serializer disagrees with source"
+    _require_source_json_encoder(message)
     try:
         # The public dumps function consults mutable JSONEncoder globals.
         # Compare against source-owned canonical text before TOML publication.
         source = _SOURCE_JSON_ENCODER(ensure_ascii=True).encode(text)
+    except Exception as error:
+        diagnostic = (
+            "host-C JSON quote serializer failed: "
+            f"{type(error).__name__}"
+        )
+        raise ReferenceStudyError(diagnostic) from error
+    _require_source_json_encoder(message)
+    try:
         observed = json.dumps(text, ensure_ascii=True)
     except Exception as error:
-        message = f"host-C JSON quote serializer failed: {type(error).__name__}"
-        raise ReferenceStudyError(message) from error
-    if type(observed) is not str or observed != source:
-        _fail("host-C JSON quote serializer disagrees with source")
+        diagnostic = (
+            "host-C JSON quote serializer failed: "
+            f"{type(error).__name__}"
+        )
+        raise ReferenceStudyError(diagnostic) from error
+    _require_source_json_encoder(message)
+    if (
+        type(source) is not str
+        or type(observed) is not str
+        or observed != source
+    ):
+        _fail(message)
     return source
 
 
 def _retained_json_text(payload: object) -> str:
     """Bind published JSON sidecars to the original native report values."""
+    message = "host-C retained JSON serializer disagrees with source"
+    _require_source_json_encoder(message)
     try:
         encoder = _SOURCE_JSON_ENCODER(indent=2, sort_keys=True)
         source = encoder.encode(payload)
+    except Exception as error:
+        diagnostic = (
+            "host-C retained JSON serializer failed: "
+            f"{type(error).__name__}"
+        )
+        raise ReferenceStudyError(diagnostic) from error
+    _require_source_json_encoder(message)
+    try:
         observed = json.dumps(payload, indent=2, sort_keys=True)
+    except Exception as error:
+        diagnostic = (
+            "host-C retained JSON serializer failed: "
+            f"{type(error).__name__}"
+        )
+        raise ReferenceStudyError(diagnostic) from error
+    _require_source_json_encoder(message)
+    try:
         after = encoder.encode(payload)
     except Exception as error:
-        message = f"host-C retained JSON serializer failed: {type(error).__name__}"
-        raise ReferenceStudyError(message) from error
+        diagnostic = (
+            "host-C retained JSON serializer failed: "
+            f"{type(error).__name__}"
+        )
+        raise ReferenceStudyError(diagnostic) from error
+    _require_source_json_encoder(message)
     if (
         type(source) is not str
         or type(observed) is not str
@@ -125,7 +189,7 @@ def _retained_json_text(payload: object) -> str:
         or observed != source
         or after != source
     ):
-        _fail("host-C retained JSON serializer disagrees with source")
+        _fail(message)
     return source + "\n"
 
 
