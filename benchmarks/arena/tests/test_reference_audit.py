@@ -3315,3 +3315,81 @@ def test_host_c_retained_json_rejects_sign_drift_under_replaced_copysign(
             limit=reference_audit.MAX_FAILURES_BYTES,
             fingerprints={},
         )
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("direct", "native audit rejection"),
+        ("path", "requires .temp/"),
+        ("options", "exact booleans"),
+        ("json-parse", "retained JSON is not valid"),
+        ("json-duplicate", "duplicate field"),
+        ("git-missing", "requires local Git"),
+        ("git-fault", "Git lookup failed"),
+    ],
+)
+def test_host_c_audit_error_alias_retains_native_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """Retained source rejection must survive rebinding the public exception."""
+    native_error = reference_audit.ReferenceAuditError
+    bad_json = b'{"a":1,"a":2}' if stage == "json-duplicate" else b'{"a":'
+
+    def fail_git(*_args: object, **_kwargs: object) -> None:
+        raise OSError("missing Git executable")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(reference_audit, "ReferenceAuditError", replacement)
+        if stage.startswith("json-"):
+            patched.setattr(
+                reference_audit, "_read_bounded_evidence", lambda *_a, **_k: bad_json
+            )
+        elif stage.startswith("git-"):
+            patched.setattr(
+                reference_audit.shutil,
+                "which",
+                fail_git if stage == "git-fault" else lambda *_a, **_k: None,
+            )
+        with pytest.raises(native_error, match=diagnostic):
+            if stage == "direct":
+                reference_audit._fail("native audit rejection")
+            elif stage == "path":
+                reference_audit._prefix("not-a-study-path")
+            elif stage == "options":
+                reference_audit._admit_options(
+                    replace(
+                        reference_audit.AuditOptions(),
+                        replay_oracles=cast("bool", 1),
+                    )
+                )
+            elif stage.startswith("json-"):
+                reference_audit._read_json("ignored.json", limit=128, fingerprints={})
+            else:
+                reference_audit._require_git_commit("0" * 40)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_host_c_audit_error_alias_keeps_valid_native_receipts(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Valid JSON and native diagnostic strings are not rejected on alias drift."""
+    native_error = reference_audit.ReferenceAuditError
+    error = native_error("source-native audit diagnostic")
+    with monkeypatch.context() as patched:
+        patched.setattr(reference_audit, "ReferenceAuditError", replacement)
+        patched.setattr(
+            reference_audit,
+            "_read_bounded_evidence",
+            lambda *_a, **_k: b'{"native":1}',
+        )
+        detail = reference_audit._safe_error_detail(error)
+        assert detail == "source-native audit diagnostic"
+        native = reference_audit._read_json(
+            "ignored.json", limit=128, fingerprints={}
+        )
+        assert native == {"native": 1}

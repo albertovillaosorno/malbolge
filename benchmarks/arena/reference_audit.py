@@ -178,9 +178,12 @@ class ReferenceAuditError(ValueError):
     """Retained host-C research evidence is not independently consistent."""
 
 
+# Preserve the declared local rejection class across public alias changes.
+_SOURCE_REFERENCE_AUDIT_ERROR = ReferenceAuditError
+
 # Trust only the error types present at import, not replaced public aliases.
 _SOURCE_DIAGNOSTIC_ERRORS = (
-    ReferenceAuditError,
+    _SOURCE_REFERENCE_AUDIT_ERROR,
     report_output.ReportOutputError,
     analyze.ArenaError,
     evidence.EvidenceError,
@@ -199,7 +202,7 @@ _SOURCE_OS_DIAGNOSTIC_ERRORS = (OSError, PermissionError, FileNotFoundError)
 
 
 def _fail(message: str) -> Never:
-    raise ReferenceAuditError(message)
+    raise _SOURCE_REFERENCE_AUDIT_ERROR(message)
 
 
 def _safe_error_detail(error: Exception) -> str:
@@ -303,7 +306,7 @@ def _source_fingerprint(raw: bytes) -> bytes:
         source_bound = _NATIVE_SHA256(raw).digest()
     except Exception as error:
         message = "host-C audit SHA-256 fingerprint dependency failed"
-        raise ReferenceAuditError(message) from error
+        raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
     if (
         _NATIVE_TYPE(result) is not _NATIVE_BYTES
         or _NATIVE_TYPE(reference) is not _NATIVE_BYTES
@@ -402,12 +405,12 @@ def _read_json(
             _fail(f"host-C retained JSON decoder differs from source: {relative}")
         # Never return a mutable object still owned by a substituted decoder.
         parsed = original
-    except ReferenceAuditError:
+    except _SOURCE_REFERENCE_AUDIT_ERROR:
         raise
     except Exception as error:
         # Any ordinary JSON dependency fault remains a typed admission failure.
         message = f"host-C retained JSON is not valid: {relative}"
-        raise ReferenceAuditError(message) from error
+        raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
     fingerprints[relative] = _source_fingerprint(raw)
     return parsed
 
@@ -623,7 +626,7 @@ def _require_unchanged_sidecars(
                 if type(error) is FileNotFoundError:
                     continue
                 message = f"host-C retained sidecar changed during audit: {relative}"
-                raise ReferenceAuditError(message) from error
+                raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
             _fail(f"host-C retained sidecar changed during audit: {relative}")
         try:
             current = _read_bounded_evidence(relative, limit=limit)
@@ -631,7 +634,7 @@ def _require_unchanged_sidecars(
             # An unanticipated bounded-reader fault must not leak as a raw
             # exception or invoke foreign exception diagnostic hooks.
             message = f"host-C retained sidecar changed during audit: {relative}"
-            raise ReferenceAuditError(message) from error
+            raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
         if _source_fingerprint(current) != original:
             _fail(f"host-C retained sidecar changed during audit: {relative}")
 
@@ -642,7 +645,7 @@ def _require_git_commit(commit: str) -> None:
     except Exception as error:
         # Unexpected ordinary resolver faults remain typed provenance errors.
         message = "host-C source commit Git lookup failed"
-        raise ReferenceAuditError(message) from error
+        raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
     if executable is None:
         _fail("host-C source commit admission requires local Git")
     if (
@@ -656,14 +659,14 @@ def _require_git_commit(commit: str) -> None:
         _ = os.fsencode(executable)
     except UnicodeError as error:
         message = "host-C source commit admission requires encodable Git executable"
-        raise ReferenceAuditError(message) from error
+        raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
     try:
         metadata = Path(executable).lstat()
         is_executable = os.access(executable, os.X_OK)
     except Exception as error:
         # Do not allow a substituted host inspector to escape this boundary.
         message = "host-C source commit Git path inspection failed"
-        raise ReferenceAuditError(message) from error
+        raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
     if type(metadata) is not os.stat_result:
         _fail("host-C source commit has invalid Git metadata")
     if not stat.S_ISREG(metadata.st_mode) or is_executable is not True:
@@ -676,11 +679,11 @@ def _require_git_commit(commit: str) -> None:
                 _fail("host-C source commit requires native Git environment strings")
             if not name.startswith("GIT_"):
                 clean_env[name] = value
-    except ReferenceAuditError:
+    except _SOURCE_REFERENCE_AUDIT_ERROR:
         raise
     except Exception as error:
         message = "host-C source commit Git environment unavailable"
-        raise ReferenceAuditError(message) from error
+        raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
     command = [executable, "cat-file", "-t", commit]
     # Retain the original prepared argv object: an equal copied completion
     # cannot establish that it came from this particular subprocess request.
@@ -699,7 +702,7 @@ def _require_git_commit(commit: str) -> None:
     except Exception as error:
         # Contain child launch and observation faults without foreign formatting.
         message = "host-C source commit object lookup failed"
-        raise ReferenceAuditError(message) from error
+        raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
     if type(completed) is not sp.CompletedProcess:
         _fail("host-C recorded source commit is not a local Git commit object")
     returncode = completed.returncode
@@ -963,13 +966,13 @@ def audit(
         ):
             _fail("host-C retained artifact count changed during audit")
         _check_trial_file_inventory(data.document, data.artifacts, prefix)
-    except ReferenceAuditError:
+    except _SOURCE_REFERENCE_AUDIT_ERROR:
         # Local typed evidence rejections already contain the right diagnostic.
         raise
     except Exception as error:
         # Dependency faults must remain typed and safe to render at the CLI.
         message = f"host-C reference evidence audit failed: {_safe_error_detail(error)}"
-        raise ReferenceAuditError(message) from error
+        raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
     return {
         "schema_version": 1,
         "scope": (
