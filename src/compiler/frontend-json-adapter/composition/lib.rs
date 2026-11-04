@@ -1067,8 +1067,10 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
             .collect();
             let next_eleven = witnessed.len() == calls.len()
                 && witnessed.len() < DISTINCT_ELEVEN_BYTES.len()
-                && witnessed == DISTINCT_ELEVEN_BYTES[..witnessed.len()]
-                && byte == DISTINCT_ELEVEN_BYTES[witnessed.len()];
+                && DISTINCT_ELEVEN_BYTES
+                    .get(..witnessed.len())
+                    .is_some_and(|prefix| witnessed == prefix)
+                && DISTINCT_ELEVEN_BYTES.get(witnessed.len()) == Some(&byte);
             if next_eleven {
                 match calls.len() {
                     1 => mixed_byte = Some(byte),
@@ -1531,7 +1533,11 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         return Err(FrontendJsonError::Unsupported);
     }
     // No proper eleven-byte prefix is an independently proven guest mode.
-    if (2..11).contains(&observed.len()) && observed == DISTINCT_ELEVEN_BYTES[..observed.len()] {
+    if (2..11).contains(&observed.len())
+        && DISTINCT_ELEVEN_BYTES
+            .get(..observed.len())
+            .is_some_and(|prefix| observed == prefix)
+    {
         return Err(FrontendJsonError::Unsupported);
     }
     Ok(LiteralOutputNodes {
