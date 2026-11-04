@@ -2810,3 +2810,71 @@ def test_source_pin_rejects_late_pathlib_os_junction_alias(
         with pytest.raises(SourcePinError, match="junction classifier changed"):
             _ = source_snapshot_evidence(tmp_path, ("README",))
     assert calls == 0, "foreign pathlib module executed during source pin"
+
+
+@pytest.mark.parametrize(
+    ("route", "message"),
+    [
+        ("repository", "repository must be a non-empty string"),
+        ("commit", "commit must be 40 lowercase"),
+        ("roots", "roots must not overlap"),
+        ("evidence", "file_count must be a positive integer"),
+        ("missing", "missing pinned source root"),
+        ("unsafe", "unsafe pinned source path"),
+        ("foreign", "source pin must use the exact SourcePin type"),
+        ("incomplete", "source pin has incomplete native metadata"),
+        ("reader", "pinned source read failed"),
+        ("walk", "symlink is not accepted in pinned source"),
+    ],
+)
+def test_source_pin_native_rejections_ignore_public_error_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    message: str,
+) -> None:
+    """A late public error alias cannot execute a foreign exception factory."""
+    _write(tmp_path, "README", b"trusted source")
+    _write(tmp_path, "src/entry.txt", b"native data")
+    pin = _pin(tmp_path)
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign exception factory: {detail}")
+
+    with monkeypatch.context() as patched:
+        if route == "reader":
+
+            def denied(_path: Path, _label: str) -> bytes:
+                raise ExactTreeError("native source reader denied")
+
+            patched.setattr(provenance_module, "read_exact_regular_file", denied)
+        elif route == "walk":
+            (tmp_path / "src" / "shortcut").symlink_to("entry.txt")
+        patched.setattr(provenance_module, "SourcePinError", foreign_error)
+        with pytest.raises(SourcePinError, match=message):
+            if route == "repository":
+                _ = SourcePin("", _COMMIT, ("src",), 1, "0" * 64)
+            elif route == "commit":
+                _ = SourcePin("repo", "short", ("src",), 1, "0" * 64)
+            elif route == "roots":
+                _ = SourcePin("repo", _COMMIT, ("src", "src/entry.txt"), 1, "0" * 64)
+            elif route == "evidence":
+                _ = SourcePinEvidence(0, "0" * 64)
+            elif route == "missing":
+                _ = source_snapshot_evidence(tmp_path, ("missing",))
+            elif route == "unsafe":
+                _ = source_snapshot_evidence(tmp_path, ("src/../unsafe",))
+            elif route == "foreign":
+                _ = require_source_pin(tmp_path, cast("SourcePin", object()))
+            elif route == "incomplete":
+                _ = require_source_pin(tmp_path, object.__new__(SourcePin))
+            elif route == "reader":
+                _ = provenance_module._read_pinned_source(
+                    tmp_path, tmp_path / "README", "README"
+                )
+            elif route == "walk":
+                _ = source_snapshot_evidence(tmp_path, pin.roots)
+    assert calls == 0, f"{route} executed the foreign error factory"

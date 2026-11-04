@@ -228,7 +228,7 @@ def _require_native_relative_label_hooks() -> None:
         )
     ):
         message = "pinned source relative path hooks changed"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
 
 
 def _native_relative_label(path: Path, root: Path) -> str:
@@ -247,6 +247,10 @@ def _native_relative_label(path: Path, root: Path) -> str:
 
 class SourcePinError(RuntimeError):
     """Raised when a local source tree does not satisfy its pinned snapshot."""
+
+
+# Keep native rejection and traversal catches independent of public aliases.
+_NATIVE_SOURCE_PIN_ERROR = SourcePinError
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -314,15 +318,15 @@ def _source_pin_fields(
 def _validate_repository(repository: object) -> None:
     if _NATIVE_TYPE(repository) is not _NATIVE_STR or not repository:
         message = "source pin repository must be a non-empty string"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     if _NUL in repository:
         message = "source pin repository must not contain NUL"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     try:
         _ = repository.encode("utf-8")
     except _NATIVE_UNICODE_ERROR as error:
         message = "source pin repository must be UTF-8 encodable"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
 
 
 def _is_lower_hex(value: str, length: int) -> bool:
@@ -336,13 +340,13 @@ def _validate_commit(commit: object) -> None:
         commit, _COMMIT_HEX_LENGTH
     ):
         message = "source pin commit must be 40 lowercase hexadecimal characters"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
 
 
 def _validate_file_count(file_count: object) -> None:
     if _NATIVE_TYPE(file_count) is not _NATIVE_INT or file_count < _ONE:
         message = "source pin file_count must be a positive integer"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
 
 
 def _validate_snapshot_sha256(snapshot_sha256: object) -> None:
@@ -350,23 +354,23 @@ def _validate_snapshot_sha256(snapshot_sha256: object) -> None:
         snapshot_sha256, _SHA256_HEX_LENGTH
     ):
         message = "source pin snapshot_sha256 must be lowercase SHA-256"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
 
 
 def _validate_roots(roots: object) -> None:
     if _NATIVE_TYPE(roots) is not _NATIVE_TUPLE:
         message = "source pin roots must use the exact immutable tuple type"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     items = cast("tuple[object, ...]", roots)
     if _NATIVE_ANY(_NATIVE_TYPE(root) is not _NATIVE_STR for root in items):
         message = "source pin roots must contain exact string paths"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     string_roots = cast("tuple[str, ...]", roots)
     if not string_roots or string_roots != _NATIVE_TUPLE(
         _NATIVE_SORTED(_NATIVE_SET(string_roots))
     ):
         message = "source pin roots must be unique and sorted"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     _require_disjoint_roots(string_roots)
 
 
@@ -379,7 +383,7 @@ def _require_disjoint_roots(roots: tuple[str, ...]) -> None:
         for component in components[1:]:
             if parent in selected:
                 message = "source pin roots must not overlap"
-                raise SourcePinError(message)
+                raise _NATIVE_SOURCE_PIN_ERROR(message)
             parent += "/" + component
         selected.add(root)
 
@@ -448,13 +452,13 @@ def _utf8_pinned_path(path: str) -> bytes:
         return path.encode("utf-8")
     except _NATIVE_UNICODE_ERROR as error:
         message = "pinned source paths must be UTF-8 encodable"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
 
 
 def _validate_relative_path(relative_path: object) -> str:
     if _NATIVE_TYPE(relative_path) is not _NATIVE_STR:
         message = "pinned source path must use the exact string type"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     # Root labels are lexical evidence, not mutable pathlib method results.
     # Empty/dot/parent components also reject repeated or trailing slashes.
     unsafe = (
@@ -470,7 +474,7 @@ def _validate_relative_path(relative_path: object) -> str:
     )
     if unsafe:
         message = f"unsafe pinned source path: {relative_path!r}"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     _ = _utf8_pinned_path(relative_path)
     return relative_path
 
@@ -505,7 +509,7 @@ def _require_native_junction_classifier() -> None:
         or _NATIVE_HOST_PATH_MODULE.isjunction is not _NATIVE_HOST_ISJUNCTION
     ):
         message = "pinned source host junction classifier changed"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
 
 
 def _source_mode(path: Path, relative: str) -> int | None:
@@ -517,20 +521,20 @@ def _source_mode(path: Path, relative: str) -> int | None:
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _host_error_detail(error)
         message = f"pinned source status failed for {relative}: {detail}"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
     if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"pinned source status must be native for {relative}"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     mode = receipt.st_mode
     try:
         is_link = S_ISLNK(mode) or _NATIVE_PATH_IS_JUNCTION(path)
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _host_error_detail(error)
         message = f"pinned source status failed for {relative}: {detail}"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
     if is_link:
         message = f"symlink is not accepted in pinned source: {relative}"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     return mode
 
 
@@ -542,7 +546,7 @@ def _require_unlinked_parent_components(root: Path, relative: str) -> None:
         mode = _source_mode(current, label)
         if mode is None or not S_ISDIR(mode):
             message = f"pinned source parent must be a directory: {label}"
-            raise SourcePinError(message)
+            raise _NATIVE_SOURCE_PIN_ERROR(message)
 
 
 def _selected_root(root: Path, relative_root: str) -> tuple[Path, int]:
@@ -551,18 +555,18 @@ def _selected_root(root: Path, relative_root: str) -> tuple[Path, int]:
     mode = _source_mode(selected, relative_root)
     if mode is None:
         message = f"missing pinned source root: {relative_root}"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     if S_ISREG(mode) or S_ISDIR(mode):
         return selected, mode
     message = f"special entry is not accepted in pinned source: {relative_root}"
-    raise SourcePinError(message)
+    raise _NATIVE_SOURCE_PIN_ERROR(message)
 
 
 def _raise_source_walk_error(
     error: OSError | ValueError | RuntimeError,
 ) -> None:
     message = f"pinned source traversal failed: {_host_error_detail(error)}"
-    raise SourcePinError(message) from error
+    raise _NATIVE_SOURCE_PIN_ERROR(message) from error
 
 
 def _directory_paths(selected: Path) -> tuple[Path, ...]:
@@ -579,17 +583,17 @@ def _directory_paths(selected: Path) -> tuple[Path, ...]:
                     mode = _source_mode(child, relative)
                     if mode is None:
                         message = f"pinned source entry disappeared: {relative}"
-                        raise SourcePinError(message)
+                        raise _NATIVE_SOURCE_PIN_ERROR(message)
                     if not (S_ISDIR(mode) or S_ISREG(mode)):
                         message = (
                             "special entry is not accepted in pinned source: "
                             f"{relative}"
                         )
-                        raise SourcePinError(message)
+                        raise _NATIVE_SOURCE_PIN_ERROR(message)
                     paths.append(child)
                     if S_ISDIR(mode):
                         pending.append(child)
-        except SourcePinError:
+        except _NATIVE_SOURCE_PIN_ERROR:
             raise
         except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
             _raise_source_walk_error(error)
@@ -608,13 +612,13 @@ def _directory_files(root: Path, selected: Path) -> tuple[Path, ...]:
         mode = _source_mode(path, relative)
         if mode is None:
             message = f"pinned source entry disappeared: {relative}"
-            raise SourcePinError(message)
+            raise _NATIVE_SOURCE_PIN_ERROR(message)
         if S_ISREG(mode):
             files.append(path)
             continue
         if not S_ISDIR(mode):
             message = f"special entry is not accepted in pinned source: {relative}"
-            raise SourcePinError(message)
+            raise _NATIVE_SOURCE_PIN_ERROR(message)
     return _NATIVE_TUPLE(files)
 
 
@@ -632,7 +636,7 @@ def _pinned_files(root: Path, roots: tuple[str, ...]) -> tuple[Path, ...]:
     unique = {_native_relative_label(path, root) for path in files}
     if _NATIVE_LEN(unique) != _NATIVE_LEN(files):
         message = "pinned source roots overlap"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     return _NATIVE_TUPLE(
         _NATIVE_SORTED(files, key=lambda path: _native_relative_label(path, root))
     )
@@ -642,7 +646,7 @@ def _validate_root_path(root: object) -> None:
     # A foreign Path subclass can override source pin status and byte reads.
     if _NATIVE_TYPE(root) is not _NATIVE_PATH_TYPE:
         message = "pinned source root must use exact pathlib Path"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     # Path.__str__ itself can reparse an uncached root through the mutable
     # host parser, before the later filesystem resolver is reached.
     _require_native_root_resolver()
@@ -652,17 +656,17 @@ def _validate_root_path(root: object) -> None:
         for name, original in hooks
     ):
         message = "pinned source root path hooks changed"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     raw = _NATIVE_PATH_STRING(root)
     if _NUL in raw:
         message = "pinned source root path must not contain NUL"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     try:
         _ = raw.encode("utf-8")
         _ = raw.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
     except _NATIVE_UNICODE_ERROR as error:
         message = "pinned source root path must be filesystem-encodable"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
 
 
 def _require_native_root_resolver() -> None:
@@ -670,7 +674,7 @@ def _require_native_root_resolver() -> None:
     _require_native_junction_classifier()
     if os.path.realpath is not _NATIVE_HOST_REALPATH:
         message = "pinned source root native host resolver changed"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     # Original realpath still calls host functions by their mutable names.
     # Native lstat used for our status check does not protect its internals.
     if (
@@ -691,14 +695,14 @@ def _require_native_root_resolver() -> None:
         or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
     ):
         message = "pinned source root native host resolver dependencies changed"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     if _NATIVE_ANY(
         cls.__dict__.get(name) is not original
         for cls, hooks in _NATIVE_PATH_FACTORY_HOOKS
         for name, original in hooks
     ):
         message = "pinned source root native path factory changed"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
 
 
 def _resolved_source_root(root: Path) -> Path:
@@ -707,14 +711,14 @@ def _resolved_source_root(root: Path) -> Path:
     mode = _source_mode(root, ".")
     if mode is None or not S_ISDIR(mode):
         message = f"pinned source root must be a directory: {root}"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     _require_native_root_resolver()
     try:
         resolved = _NATIVE_PATH_RESOLVE(root, strict=True)
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         detail = _host_error_detail(error)
         message = f"pinned source root resolution failed: {root}: {detail}"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
     _require_native_root_resolver()
     return resolved
 
@@ -726,7 +730,7 @@ def _read_pinned_source(root: Path, path: Path, relative: str) -> bytes:
     except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _host_error_detail(error)
         message = f"pinned source read failed for {relative}: {detail}"
-        failure = SourcePinError(message)
+        failure = _NATIVE_SOURCE_PIN_ERROR(message)
         if _NATIVE_TYPE(error) is _NATIVE_EXACT_TREE_ERROR:
             # Native note access bypasses late exact-error class getters.
             try:
@@ -756,13 +760,13 @@ def _pinned_file_receipt(path: Path, relative: str) -> tuple[int, ...]:
         _NATIVE_TYPE_ERROR,
     ) as error:
         message = f"pinned source file changed during snapshot: {relative}"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
     if _NATIVE_TYPE(status) is not _NATIVE_STAT_RESULT:
         message = f"pinned source status must be native for {relative}"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     if not S_ISREG(status.st_mode):
         message = f"pinned source file changed during snapshot: {relative}"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     return (
         status.st_dev,
         status.st_ino,
@@ -799,12 +803,12 @@ def source_snapshot_evidence(root: Path, roots: tuple[str, ...]) -> SourcePinEvi
     # returned pin just because all initially enumerated bytes were stable.
     if _pinned_files(resolved_root, roots) != files:
         message = "pinned source file set changed during snapshot"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     for path, before in _NATIVE_ZIP(files, receipts, strict=True):
         relative_text = _native_relative_label(path, resolved_root)
         if _pinned_file_receipt(path, relative_text) != before:
             message = f"pinned source file changed during snapshot: {relative_text}"
-            raise SourcePinError(message)
+            raise _NATIVE_SOURCE_PIN_ERROR(message)
     return _new_source_evidence(
         count=_NATIVE_LEN(files),
         digest=digest.hexdigest(),
@@ -823,34 +827,34 @@ def require_source_pin(root: Path, pin: SourcePin) -> SourcePinEvidence:
     """
     if _NATIVE_TYPE(pin) is not SourcePin:
         message = "source pin must use the exact SourcePin type"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     # A caller can allocate this exact frozen class without its constructor.
     # Only the original validator can attest all stored revision metadata.
     try:
         _SOURCE_PIN_VALIDATOR(pin)
     except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source pin has incomplete native metadata"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
     repository, commit, roots, expected_count, expected_digest = (
         _source_pin_fields(pin)
     )
     observed = source_snapshot_evidence(root, roots)
     if _NATIVE_TYPE(observed) is not SourcePinEvidence:
         message = "source pin evidence requires exact native receipt"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     try:
         _SOURCE_EVIDENCE_VALIDATOR(observed)
     except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "source pin evidence has incomplete native metadata"
-        raise SourcePinError(message) from error
+        raise _NATIVE_SOURCE_PIN_ERROR(message) from error
     count, digest = _source_evidence_fields(observed)
     if count != expected_count:
         message = (
             "pinned source file count mismatch: "
             f"expected {expected_count}, found {count}"
         )
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     if digest != expected_digest:
         message = f"pinned source snapshot mismatch for {repository}@{commit}"
-        raise SourcePinError(message)
+        raise _NATIVE_SOURCE_PIN_ERROR(message)
     return observed
