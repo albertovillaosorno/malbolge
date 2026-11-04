@@ -51,6 +51,11 @@ from algorithms.diff.behavior import BehaviorEvidence, BehaviorPolicyError
 _NATIVE_ANY = builtins.any
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_TYPE_ERROR = builtins.TypeError
+# Keep imported receipt classes and the public rejection class immutable at this
+# boundary; a consumer may rebind the module's public aliases after import.
+_NATIVE_SOURCE_RECEIPT_TYPE = TreeAdmissionEvidence
+_NATIVE_BEHAVIOR_RECEIPT_TYPE = BehaviorEvidence
+_NATIVE_ADMISSION_ERROR = AdmissionError
 # Original policy failures must not be replaced by late module aliases.
 _SOURCE_POLICY_ERROR = AdmissionPolicyError
 _BEHAVIOR_POLICY_ERROR = BehaviorPolicyError
@@ -105,7 +110,7 @@ class TransformAdmissionEvidence:
             AdmissionError: Evidence records or reasons are inconsistent.
 
         """
-        owner = TransformAdmissionEvidence
+        owner = _NATIVE_GATE_RECEIPT_TYPE
         source = _require_source_evidence(
             cast("object", _GATE_SOURCE_SLOT.__get__(self, owner))
         )
@@ -119,10 +124,10 @@ class TransformAdmissionEvidence:
             _NATIVE_TYPE(reason) is not _NATIVE_STR for reason in reasons
         ):
             message = "transform admission reasons must use exact strings"
-            raise AdmissionError(message)
+            raise _NATIVE_ADMISSION_ERROR(message)
         if reasons != _canonical_reasons(source, behavior):
             message = "transform admission reasons do not match evidence"
-            raise AdmissionError(message)
+            raise _NATIVE_ADMISSION_ERROR(message)
 
     @property
     def admitted(self) -> bool:
@@ -132,17 +137,21 @@ class TransformAdmissionEvidence:
             True exactly when neither evidence family rejected the candidate.
 
         """
-        if _NATIVE_TYPE(self) is not TransformAdmissionEvidence:
+        if _NATIVE_TYPE(self) is not _NATIVE_GATE_RECEIPT_TYPE:
             message = "transform admission requires exact TransformAdmissionEvidence"
-            raise AdmissionError(message)
+            raise _NATIVE_ADMISSION_ERROR(message)
         # Public verdicts must also reject fabricated native instances that
         # never ran the constructor's conjunctive validation.
         try:
             _TRANSFORM_ADMISSION_VALIDATOR(self)
         except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "transform gate evidence has incomplete native metadata"
-            raise AdmissionError(message) from error
-        return not _GATE_REASONS_SLOT.__get__(self, TransformAdmissionEvidence)
+            raise _NATIVE_ADMISSION_ERROR(message) from error
+        return not _GATE_REASONS_SLOT.__get__(self, _NATIVE_GATE_RECEIPT_TYPE)
+
+
+# The gate's own class name is equally mutable after module import.
+_NATIVE_GATE_RECEIPT_TYPE = TransformAdmissionEvidence
 
 
 # Original admission cannot be weakened or forged via late class hooks.
@@ -181,32 +190,32 @@ def _new_transform_admission(
     reasons: tuple[str, ...],
 ) -> TransformAdmissionEvidence:
     """Construct trusted gate evidence without late class allocation hooks."""
-    evidence = _NATIVE_OBJECT_NEW(TransformAdmissionEvidence)
+    evidence = _NATIVE_OBJECT_NEW(_NATIVE_GATE_RECEIPT_TYPE)
     _GATE_INIT(evidence, source, behavior, reasons)
     return evidence
 
 
 def _require_source_evidence(value: object) -> TreeAdmissionEvidence:
-    if _NATIVE_TYPE(value) is not TreeAdmissionEvidence:
+    if _NATIVE_TYPE(value) is not _NATIVE_SOURCE_RECEIPT_TYPE:
         message = "transform gate requires exact TreeAdmissionEvidence"
-        raise AdmissionError(message)
+        raise _NATIVE_ADMISSION_ERROR(message)
     try:
         _SOURCE_VALIDATOR(value)
     except (_SOURCE_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "transform gate source evidence is invalid"
-        raise AdmissionError(message) from error
+        raise _NATIVE_ADMISSION_ERROR(message) from error
     return value
 
 
 def _require_behavior_evidence(value: object) -> BehaviorEvidence:
-    if _NATIVE_TYPE(value) is not BehaviorEvidence:
+    if _NATIVE_TYPE(value) is not _NATIVE_BEHAVIOR_RECEIPT_TYPE:
         message = "transform gate requires exact BehaviorEvidence"
-        raise AdmissionError(message)
+        raise _NATIVE_ADMISSION_ERROR(message)
     try:
         _BEHAVIOR_VALIDATOR(value)
     except (_BEHAVIOR_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "transform gate behavior evidence is invalid"
-        raise AdmissionError(message) from error
+        raise _NATIVE_ADMISSION_ERROR(message) from error
     return value
 
 
@@ -217,9 +226,9 @@ def _canonical_reasons(
     reasons: list[str] = []
     # Evidence records validate their immutable rejection reasons at creation.
     # Do not delegate gate authority to late-bound consumer-visible properties.
-    if _SOURCE_REASONS_SLOT.__get__(source, TreeAdmissionEvidence):
+    if _SOURCE_REASONS_SLOT.__get__(source, _NATIVE_SOURCE_RECEIPT_TYPE):
         reasons.append("source lineage admission failed")
-    if _BEHAVIOR_REASONS_SLOT.__get__(behavior, BehaviorEvidence):
+    if _BEHAVIOR_REASONS_SLOT.__get__(behavior, _NATIVE_BEHAVIOR_RECEIPT_TYPE):
         reasons.append("behavior admission failed")
     return _NATIVE_TUPLE(reasons)
 
@@ -260,9 +269,9 @@ def require_transform_admission(
     evidence = combine_admission(source, behavior)
     reasons = cast(
         "tuple[str, ...]",
-        _GATE_REASONS_SLOT.__get__(evidence, TransformAdmissionEvidence),
+        _GATE_REASONS_SLOT.__get__(evidence, _NATIVE_GATE_RECEIPT_TYPE),
     )
     if reasons:
         message = "; ".join(reasons)
-        raise AdmissionError(message)
+        raise _NATIVE_ADMISSION_ERROR(message)
     return evidence

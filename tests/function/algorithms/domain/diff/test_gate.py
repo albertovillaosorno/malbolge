@@ -876,3 +876,56 @@ def test_gate_retains_typed_incomplete_receipt_after_late_attribute_error_alias(
             builtins.__dict__["AttributeError"] = native_attribute_error
     assert type(caught) is AdmissionError, caught
     assert "incomplete" in str(caught) or "invalid" in str(caught)
+
+
+@pytest.mark.parametrize(
+    "alias",
+    ["TreeAdmissionEvidence", "BehaviorEvidence", "TransformAdmissionEvidence"],
+)
+@pytest.mark.parametrize("candidate", ["reference", "unrelated"])
+def test_gate_preserves_native_receipts_after_public_class_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: str, candidate: str
+) -> None:
+    """Late imported/public class aliases cannot change conjunctive authority."""
+    source = _source_evidence(candidate)
+    behavior = _behavior_evidence()
+    expected = combine_admission(source, behavior)
+    with monkeypatch.context() as patched:
+        patched.setattr(gate_module, alias, dict)
+        actual = combine_admission(source, behavior)
+        assert type(actual) is TransformAdmissionEvidence
+        assert actual == expected
+        assert actual.admitted is (candidate == "reference")
+        direct = TransformAdmissionEvidence(source, behavior, expected.reasons)
+        assert direct == expected
+        if candidate == "reference":
+            assert require_transform_admission(source, behavior).admitted
+        else:
+            with pytest.raises(AdmissionError, match="source lineage"):
+                _ = require_transform_admission(source, behavior)
+
+
+@pytest.mark.parametrize("alias", [object, RuntimeError])
+@pytest.mark.parametrize(
+    "entrypoint",
+    ["foreign-source", "foreign-behavior", "denied", "forged", "incomplete"],
+)
+def test_gate_retains_native_rejection_after_public_error_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: type[object], entrypoint: str
+) -> None:
+    """Native gate errors must not resolve a consumer-rebound error class."""
+    source = _source_evidence("reference")
+    behavior = _behavior_evidence()
+    with monkeypatch.context() as patched:
+        patched.setattr(gate_module, "AdmissionError", alias)
+        with pytest.raises(AdmissionError):
+            if entrypoint == "foreign-source":
+                _ = combine_admission(cast("TreeAdmissionEvidence", object()), behavior)
+            elif entrypoint == "foreign-behavior":
+                _ = combine_admission(source, cast("BehaviorEvidence", object()))
+            elif entrypoint == "denied":
+                _ = require_transform_admission(_source_evidence("unrelated"), behavior)
+            elif entrypoint == "forged":
+                _ = TransformAdmissionEvidence(source, behavior, ("forged",))
+            else:
+                _ = object.__new__(TransformAdmissionEvidence).admitted
