@@ -39,7 +39,7 @@ from __future__ import annotations
 from fractions import Fraction
 from itertools import product
 from operator import itemgetter
-from typing import cast
+from typing import Never, cast
 
 import pytest
 
@@ -231,3 +231,34 @@ def test_holm_family_length_is_native_after_provider_substitution(
         raising=False,
     )
     assert multiplicity.holm_adjusted(raw) == expected
+
+
+def test_holm_rejects_forged_native_list_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable type alias cannot certify a non-list family as source native."""
+    family = cast("list[Fraction]", cast("object", (Fraction(1, 4), Fraction(1, 2))))
+    native_type = type
+    monkeypatch.setattr(
+        multiplicity,
+        "type",
+        lambda value: list if value is family else native_type(value),
+        raising=False,
+    )
+    with pytest.raises(ValueError, match="exact rational probabilities"):
+        multiplicity.holm_adjusted(family)
+
+
+@pytest.mark.parametrize("provider", ["type", "list"])
+def test_holm_valid_family_uses_native_shape_provider(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Changing a module alias must not reject an exact native family."""
+    family = [Fraction(1, 4), Fraction(1, 2)]
+    expected = multiplicity.holm_adjusted(family)
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail(f"public {provider} called instead of source native")
+
+    monkeypatch.setattr(multiplicity, provider, forbidden, raising=False)
+    assert multiplicity.holm_adjusted(family) == expected

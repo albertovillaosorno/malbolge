@@ -47,6 +47,9 @@ _SOURCE_MIN = min
 _SOURCE_MAX = max
 _SOURCE_ANY = any
 _SOURCE_LEN = len
+# Preserve the native family and per-value shapes under module substitutions.
+_SOURCE_TYPE = type
+_SOURCE_LIST = list
 
 
 def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
@@ -64,8 +67,8 @@ def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
         ValueError: A caller supplied a non-Fraction or out-of-range value.
 
     """
-    if type(p_values) is not list or _SOURCE_ANY(
-        type(value) is not _CANONICAL_FRACTION or not 0 <= value <= 1
+    if _SOURCE_TYPE(p_values) is not _SOURCE_LIST or _SOURCE_ANY(
+        _SOURCE_TYPE(value) is not _CANONICAL_FRACTION or not 0 <= value <= 1
         for value in p_values
     ):
         message = "Holm adjustment requires exact rational probabilities in [0, 1]"
