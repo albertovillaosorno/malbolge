@@ -1376,6 +1376,15 @@ The original study records remain the result authority.
   Jig gates remain unverified due to timeouts. This is local byte/receipt
   consistency, not authenticated
   hashing, independent OS provenance, or physical measurement verification.
+- Direct raw-CSV semantic admission now checks the identity of its
+  imported analyzer validators and their transitive validation helpers before
+  and after reviewing a claimed trial. Malformed but byte-matching records
+  previously passed when a caller replaced the case, digest, pathname,
+  integer or metrics validator (or silenced the analyzer's failure helper).
+  The raw checker also pins the native SHA-256 length/alphabet, so public
+  analyzer policy rebinding cannot reject a valid digest. Ten negative and
+  positive regression variants cover these boundaries, including substituted
+  guard functions. This checks claimed row shape, not raw-file authenticity.
 - One end-to-end synthetic admission test composes strict per-trial run
   identity, exact resource declarations, v2 energy CSV, matched reported
   accelerator identity, and deterministic challenge regeneration. Independent

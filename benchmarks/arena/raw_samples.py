@@ -101,6 +101,25 @@ _SOURCE_VERIFIED = analyze.VERIFIED
 _SOURCE_VERIFIER_REJECTED = analyze.VERIFIER_REJECTED
 _SOURCE_ACCEPTED = analyze.ACCEPTED
 _SOURCE_REJECTED = analyze.REJECTED
+# Direct raw comparison must not certify an invalid row through a replaced
+# analyzer validator or a replaced helper used transitively by that validator.
+_SOURCE_SEMANTIC_GETATTR = getattr
+_SOURCE_SEMANTIC_ANY = any
+_SOURCE_ANALYZER_SEMANTIC_HELPERS = (
+    ("_fail", analyze._fail),  # ruff: ignore[private-member-access]
+    ("_mapping", analyze._mapping),  # ruff: ignore[private-member-access]
+    ("_text", analyze._text),  # ruff: ignore[private-member-access]
+    ("_integer", analyze._integer),  # ruff: ignore[private-member-access]
+    ("_hash", analyze._hash),  # ruff: ignore[private-member-access]
+    ("_relative", analyze._relative),  # ruff: ignore[private-member-access]
+    ("_case", analyze._case),  # ruff: ignore[private-member-access]
+    ("_verdict", analyze._verdict),  # ruff: ignore[private-member-access]
+    ("_metrics_shape", analyze._metrics_shape),  # ruff: ignore[private-member-access]
+)
+# True native hashes cannot become invalid when public analyzer schema names
+# are replaced after raw admission imports its source grammar.
+_SOURCE_SHA256_HEX_LENGTH = analyze.SHA256_HEX_LENGTH
+_SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
 
 
 class RawSampleError(ValueError):
@@ -262,6 +281,16 @@ def _decode_raw(raw: bytes, label: str) -> str:
     return text
 
 
+def _require_analyzer_semantic_helpers(label: str) -> None:
+    # The public module can be rebound while the raw checker remains loaded.
+    # In particular, a replaced _fail would silence downstream source checks.
+    if _SOURCE_SEMANTIC_ANY(
+        _SOURCE_SEMANTIC_GETATTR(analyze, name) is not retained
+        for name, retained in _SOURCE_ANALYZER_SEMANTIC_HELPERS
+    ):
+        _fail(f"{label}: invalid reported trial semantic validator changed")
+
+
 def _validate_trial_semantics(row: dict[str, Any], label: str) -> None:
     """Reuse the analyzer's context-free row rules for direct CSV callers.
 
@@ -271,6 +300,7 @@ def _validate_trial_semantics(row: dict[str, Any], label: str) -> None:
     """
     where = f"{label}: reported trial"
     try:
+        _require_analyzer_semantic_helpers(label)
         analyze._text(row["algorithm"], f"{where}.algorithm")  # ruff: ignore[private-member-access]
         analyze._case(row["case"], where)  # ruff: ignore[private-member-access]
         analyze._integer(row["trial"], f"{where}.trial")  # ruff: ignore[private-member-access]
@@ -278,6 +308,7 @@ def _validate_trial_semantics(row: dict[str, Any], label: str) -> None:
         analyze._relative(row["experiment_manifest"], f"{where}.experiment_manifest")  # ruff: ignore[private-member-access]
         analyze._relative(row["raw_sample"], f"{where}.raw_sample")  # ruff: ignore[private-member-access]
         analyze._metrics_shape(row["metrics"], where)  # ruff: ignore[private-member-access]
+        _require_analyzer_semantic_helpers(label)
     except Exception as error:
         message = f"{label}: invalid reported trial semantics"
         raise RawSampleError(message) from error
@@ -374,10 +405,10 @@ def _checked_sha256(raw: bytes) -> str:
         type(reported) is not str
         or type(independent) is not str
         or type(source_bound) is not str
-        or len(source_bound) != analyze.SHA256_HEX_LENGTH
-        or len(reported) != analyze.SHA256_HEX_LENGTH
-        or len(independent) != analyze.SHA256_HEX_LENGTH
-        or not set(reported) <= analyze.SHA256_ALPHABET
+        or len(source_bound) != _SOURCE_SHA256_HEX_LENGTH
+        or len(reported) != _SOURCE_SHA256_HEX_LENGTH
+        or len(independent) != _SOURCE_SHA256_HEX_LENGTH
+        or not set(reported) <= _SOURCE_SHA256_ALPHABET
         or reported != source_bound
         or independent != source_bound
     ):

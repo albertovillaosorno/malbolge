@@ -1692,3 +1692,79 @@ def test_raw_verdict_policy_aliases_cannot_certify_foreign_claims(
         monkeypatch.setattr(analyze, "NUL", "not-a-nul")
     with pytest.raises(raw_samples.RawSampleError):
         raw_samples.check_rows(_render([record]), [record], ROOT_LABEL)
+
+
+@pytest.mark.parametrize(
+    ("provider", "invalid_field"),
+    [
+        ("_case", "zero-difficulty"),
+        ("_hash", "invalid-digest"),
+        ("_relative", "parent-path"),
+        ("_metrics_shape", "negative-metric"),
+        ("_integer", "negative-trial"),
+        ("_text", "padded-algorithm"),
+        ("_fail", "invalid-digest"),
+    ],
+)
+def test_direct_raw_semantics_reject_rebound_analyzer_helpers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    invalid_field: str,
+) -> None:
+    """Self-consistent CSV cannot bypass semantic checks through a helper swap."""
+    row = sample_study(tmp_path)["observations"][0]
+    if invalid_field == "zero-difficulty":
+        row["case"]["difficulty"] = 0
+    elif invalid_field == "invalid-digest":
+        row["case"]["workload_sha256"] = "not-a-digest"
+    elif invalid_field == "parent-path":
+        row["raw_sample"] = "../escape.csv"
+    elif invalid_field == "negative-metric":
+        row["metrics"]["elapsed_ns"] = -1
+    elif invalid_field == "negative-trial":
+        row["trial"] = -1
+    else:
+        row["algorithm"] = " padded-algorithm "
+    if provider == "_text":
+        monkeypatch.setattr(analyze, provider, lambda value, *_args: value)
+    else:
+        monkeypatch.setattr(analyze, provider, lambda *_args, **_kwargs: None)
+    with pytest.raises(raw_samples.RawSampleError, match="invalid reported trial"):
+        raw_samples.check_rows(_render([row]), [row], ROOT_LABEL)
+
+
+def test_direct_raw_digest_ignores_substituted_analyzer_hash_grammar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Valid raw bytes must not become invalid through mutable hash policy."""
+    row = sample_study(tmp_path)["observations"][0]
+    raw = _render([row])
+    expected = sha256(raw).hexdigest()
+    monkeypatch.setattr(analyze, "SHA256_HEX_LENGTH", 17)
+    monkeypatch.setattr(analyze, "SHA256_ALPHABET", frozenset("abcdef"))
+    assert raw_samples.check_rows(raw, [row], ROOT_LABEL) == expected
+
+
+@pytest.mark.parametrize("provider", ["getattr", "any"])
+def test_raw_semantic_guard_ignores_substituted_builtin_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """A forged guard provider cannot excuse a changed analyzer validator."""
+    row = sample_study(tmp_path)["observations"][0]
+    row["case"]["workload_sha256"] = "invalid-digest"
+    monkeypatch.setattr(analyze, "_hash", lambda *_: None)
+    if provider == "getattr":
+        monkeypatch.setattr(
+            raw_samples,
+            "getattr",
+            lambda module, name: dict(raw_samples._SOURCE_ANALYZER_SEMANTIC_HELPERS)[name],
+            raising=False,
+        )
+    else:
+        monkeypatch.setattr(raw_samples, "any", lambda *_: False, raising=False)
+    with pytest.raises(raw_samples.RawSampleError, match="invalid reported trial"):
+        raw_samples.check_rows(_render([row]), [row], ROOT_LABEL)
