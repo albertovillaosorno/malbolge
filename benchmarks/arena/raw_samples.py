@@ -55,6 +55,9 @@ _SOURCE_TYPE = type
 _SOURCE_ANY = any
 _SOURCE_SET = set
 _SOURCE_LEN = len
+_SOURCE_TUPLE = tuple
+_SOURCE_NEXT = next
+_SOURCE_LIST = list
 # A replaced csv.reader must not be the authority for the retained source.
 _SOURCE_CSV_READER = csv.reader
 # Preserve the bounded source column scanner against public substitution.
@@ -79,9 +82,9 @@ IDENTITY_FIELDS: Final = (
     "verifier_verdict",
 )
 # V1 must remain byte-for-byte compatible with retained raw observations.
-METRIC_FIELDS: Final = tuple(sorted(analyze.COST_METRICS - {ENERGY}))
+METRIC_FIELDS: Final = _SOURCE_TUPLE(sorted(analyze.COST_METRICS - {ENERGY}))
 HEADER: Final = (*IDENTITY_FIELDS, *METRIC_FIELDS)
-METRIC_FIELDS_2: Final = tuple(sorted(analyze.COST_METRICS))
+METRIC_FIELDS_2: Final = _SOURCE_TUPLE(sorted(analyze.COST_METRICS))
 HEADER_2: Final = (*IDENTITY_FIELDS, *METRIC_FIELDS_2)
 # Keep the admitted v1/v2 wire schema and resource limits stable even if
 # public format metadata is rebound after this module has been imported.
@@ -168,7 +171,7 @@ def _row_values(
 def _require_native_csv_row(row: object, label: str) -> None:
     # The stdlib csv.reader returns native list[str]. Require that identity
     # before evaluating equality or hashing any parser-provided objects.
-    if _SOURCE_TYPE(row) is not list or _SOURCE_ANY(
+    if _SOURCE_TYPE(row) is not _SOURCE_LIST or _SOURCE_ANY(
         _SOURCE_TYPE(field) is not str for field in row
     ):
         _fail(f"{label}: arena raw CSV parser returned non-native CSV row")
@@ -177,9 +180,9 @@ def _require_native_csv_row(row: object, label: str) -> None:
 def _header_schema(header: list[str] | None, label: str) -> tuple[str, tuple[str, ...]]:
     if header is not None:
         _require_native_csv_row(header, label)
-    if header == list(_SOURCE_HEADER):
+    if header == _SOURCE_LIST(_SOURCE_HEADER):
         return _SOURCE_RAW_SCHEMA_VERSION, _SOURCE_METRIC_FIELDS
-    if header == list(_SOURCE_HEADER_2):
+    if header == _SOURCE_LIST(_SOURCE_HEADER_2):
         return _SOURCE_RAW_SCHEMA_VERSION_2, _SOURCE_METRIC_FIELDS_2
     _fail(f"{label}: invalid arena-raw-v1/v2 CSV header")
 
@@ -201,7 +204,7 @@ def _limited_rows(
         if _SOURCE_LEN(rows) >= expected_rows:
             _fail(f"{label}: raw CSV has more rows than reported trials")
         _require_native_csv_row(row, label)
-        rows.append(tuple(row))
+        rows.append(_SOURCE_TUPLE(row))
     return rows
 
 
@@ -233,14 +236,14 @@ def _csv_rows(
         _fail(f"{label}: arena raw CSV columns exceed registered count")
     try:
         reader = csv.reader(_SOURCE_STRING_IO(text, newline=""), strict=True)
-        header = next(reader, None)
+        header = _SOURCE_NEXT(reader, None)
         version, metrics = _header_schema(header, label)
         rows = _limited_rows(reader, label, expected_rows)
         # Exact native list[str] rows do not prove that a replaceable parser
         # actually read the supplied bytes. Reparse the same bounded source
         # through the import-bound stdlib reader before admitting a match.
         source_reader = _SOURCE_CSV_READER(_SOURCE_STRING_IO(text, newline=""), strict=True)
-        source_header = next(source_reader, None)
+        source_header = _SOURCE_NEXT(source_reader, None)
         if source_header is not None:
             _require_native_csv_row(source_header, label)
         source_rows = _limited_rows(source_reader, label, expected_rows)
@@ -326,7 +329,7 @@ def _admit_observation_containers(
 ) -> None:
     """Require native pre-admitted row shapes before constructing CSV values."""
     message = f"{label}: raw CSV requires native nonempty observation rows"
-    if _SOURCE_TYPE(observations) is not list or not observations:
+    if _SOURCE_TYPE(observations) is not _SOURCE_LIST or not observations:
         _fail(message)
     seen_trials: set[tuple[str, str, int, int, int, int]] = _SOURCE_SET()
     for row in observations:

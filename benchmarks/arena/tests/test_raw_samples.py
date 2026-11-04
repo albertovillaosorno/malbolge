@@ -1905,3 +1905,49 @@ def test_raw_csv_rejects_substituted_text_stream_source(
     )
     with pytest.raises(raw_samples.RawSampleError, match=ROW_MISMATCH):
         raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
+def test_raw_csv_rejects_forged_native_row_tuple(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replacing tuple cannot rewrite inspected raw fields before comparison."""
+    observation = sample_study(tmp_path)["observations"][0]
+    changed = copy.deepcopy(observation)
+    changed["metrics"]["elapsed_ns"] += 1
+    raw = _render([changed])
+    claimed_reader = csv.reader(StringIO(_render([observation]).decode("utf-8")))
+    next(claimed_reader)
+    claimed_row = tuple(next(claimed_reader))
+    monkeypatch.setattr(raw_samples, "tuple", lambda *_args: claimed_row, raising=False)
+    with pytest.raises(raw_samples.RawSampleError, match=ROW_MISMATCH):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
+def test_raw_csv_rejects_substituted_header_iteration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced next cannot certify a header absent from the raw source."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation]).replace(b"schema_version", b"schema_revised", 1)
+    native_next = next
+
+    def forged_next(reader: Iterator[list[str]], default: None) -> list[str]:
+        native_next(reader, default)
+        return list(raw_samples.HEADER)
+
+    monkeypatch.setattr(raw_samples, "next", forged_next, raising=False)
+    with pytest.raises(raw_samples.RawSampleError, match="invalid arena-raw"):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
+def test_raw_csv_valid_source_ignores_replaced_list_constructor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Native list identity must not follow a public module replacement."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation])
+    monkeypatch.setattr(raw_samples, "list", lambda *_args: [], raising=False)
+    assert (
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+        == sha256(raw).hexdigest()
+    )
