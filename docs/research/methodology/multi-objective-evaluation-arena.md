@@ -178,6 +178,13 @@ bounds, one-step endpoint drift, and both CLI no-JSON regressions cover this
 check. The arithmetic check does not validate independence, reported verifier
 outcomes or source authenticity.
 
+Seven red-first count and binomial-loop substitutions exposed public `range`,
+`sum` and `type` replacements that could narrow or widen an unchanged 95%
+success interval, or admit boolean counts. Signed `51e438e5f` binds the
+original operations; 40 focused and 995 statistical/analyzer/evidence tests
+pass, with zero arena type errors. This protects local exact arithmetic, not
+Bernoulli independence or the truth of reported verification outcomes.
+
 The Pareto relation
 minimizes declared costs and maximizes verified trial count inside each matched
 cohort; zero-success algorithms remain in curves but are omitted from the
@@ -196,6 +203,17 @@ The preflight also supports an opt-in `arena-raw-v1` CSV check using
 matches the reported trial identities, outcomes and exact integer costs,
 including failed trials. SHA-256 fingerprints of the inspected file bytes
 support later reproducibility checks.
+
+Two signed raw-row fixes `602842757` and `f64f05a42` retain original CSV
+text streams, counters, row tuples, header iteration and native shape/bound
+providers. Ten red-first counter, parser-cell, stream, length, set, tuple,
+header and list cases previously admitted mismatched raw costs or headers,
+bypassed row caps, or rejected valid native rows under public substitutions.
+The final six-module raw/analyzer/evidence/statistics integration passed 1,148
+tests, arena BasedPyright reported zero errors and scoped Ruff checks passed.
+These checks bind local parsed rows to inspected bytes; they do not attest the
+host filesystem, historical measurements, external verifiers or imports
+changed before source-module initialization.
 
 The additional opt-in `--require-trial-run-identity` mode extends each
 experiment run manifest with a versioned `[arena_trial]` table containing the
