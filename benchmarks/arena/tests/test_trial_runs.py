@@ -103,3 +103,22 @@ def test_public_trial_size_limit_cannot_admit_oversized_source(
     monkeypatch.setattr(trial_runs, "MAX_RUN_MANIFEST_BYTES", len(oversized) + 1)
     with pytest.raises(trial_runs.TrialRunError, match="byte limit"):
         trial_runs.parse_trial_run(oversized)
+
+
+@pytest.mark.parametrize("forged_field", ["trial", "raw_sha256"])
+def test_source_run_identity_ignores_substituted_result_constructor(
+    monkeypatch: pytest.MonkeyPatch, forged_field: str
+) -> None:
+    """A replacement result factory cannot forge checked trial identity."""
+    original = trial_runs.TrialRun
+    expected = original(trial=7, raw_sha256="a" * 64)
+
+    def forged_constructor(*, trial: int, raw_sha256: str) -> trial_runs.TrialRun:
+        return original(
+            trial=trial + int(forged_field == "trial"),
+            raw_sha256="b" * 64 if forged_field == "raw_sha256" else raw_sha256,
+        )
+
+    with monkeypatch.context() as patched:
+        patched.setattr(trial_runs, "TrialRun", forged_constructor)
+        assert trial_runs.parse_trial_run(_manifest("a" * 64)) == expected

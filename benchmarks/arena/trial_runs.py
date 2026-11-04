@@ -70,6 +70,10 @@ class TrialRun:
     raw_sha256: str
 
 
+# Preserve the checked run identity against a substituted result factory.
+_SOURCE_TRIAL_RUN = TrialRun
+
+
 def _fail(message: str) -> Never:
     raise TrialRunError(message)
 
@@ -154,4 +158,4 @@ def parse_trial_run(text: str) -> TrialRun:
         or source_table["raw_sha256"] != digest
     ):
         _fail("per-trial manifest identity differs from source TOML")
-    return TrialRun(trial=trial, raw_sha256=digest)
+    return _SOURCE_TRIAL_RUN(trial=trial, raw_sha256=digest)
