@@ -87,6 +87,12 @@ _SOURCE_HEADER = HEADER
 _SOURCE_HEADER_2 = HEADER_2
 _SOURCE_MAX_RAW_BYTES = MAX_RAW_BYTES
 _SOURCE_MAX_CSV_HEADER_CHARS = MAX_CSV_HEADER_CHARS
+# Direct raw callers must retain the same required report shape even when
+# the separately imported analyzer's public schema sets are mutated.
+_SOURCE_OBSERVATION_FIELDS = frozenset(analyze.OBSERVATION_FIELDS)
+_SOURCE_CASE_FIELDS = frozenset(analyze.CASE_FIELDS)
+_SOURCE_COST_METRICS = analyze.COST_METRICS
+_SOURCE_ELAPSED = analyze.ELAPSED
 
 
 class RawSampleError(ValueError):
@@ -281,7 +287,7 @@ def _admit_observation_containers(
         if (
             type(row) is not dict
             or any(type(name) is not str for name in row)
-            or set(row) != analyze.OBSERVATION_FIELDS
+            or set(row) != _SOURCE_OBSERVATION_FIELDS
         ):
             _fail(message)
         case = row["case"]
@@ -289,11 +295,11 @@ def _admit_observation_containers(
         if (
             type(case) is not dict
             or any(type(name) is not str for name in case)
-            or set(case) != analyze.CASE_FIELDS
+            or set(case) != _SOURCE_CASE_FIELDS
             or type(metrics) is not dict
             or any(type(name) is not str for name in metrics)
-            or not set(metrics) <= analyze.COST_METRICS
-            or analyze.ELAPSED not in metrics
+            or not set(metrics) <= _SOURCE_COST_METRICS
+            or _SOURCE_ELAPSED not in metrics
         ):
             _fail(message)
         if (

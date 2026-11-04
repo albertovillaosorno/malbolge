@@ -1642,3 +1642,29 @@ def test_replaced_raw_file_cap_cannot_bypass_16_mib_preflight(
     monkeypatch.setattr(raw_samples, "MAX_RAW_BYTES", len(oversized) + 1)
     with pytest.raises(raw_samples.RawSampleError, match="oversized arena raw CSV"):
         raw_samples.check_rows(oversized, [], ROOT_LABEL)
+
+
+@pytest.mark.parametrize("scope", ["observation", "case", "elapsed"])
+def test_raw_report_shape_cannot_expand_with_mutable_analyzer_policy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scope: str,
+) -> None:
+    """Unknown report attributes cannot hide behind a changed analyzer schema."""
+    record = sample_study(tmp_path)["observations"][0]
+    if scope == "observation":
+        record["unbound_claim"] = "forged"
+        monkeypatch.setattr(
+            analyze, "OBSERVATION_FIELDS", analyze.OBSERVATION_FIELDS | {"unbound_claim"}
+        )
+    elif scope == "case":
+        record["case"]["unbound_claim"] = "forged"
+        monkeypatch.setattr(
+            analyze, "CASE_FIELDS", analyze.CASE_FIELDS | {"unbound_claim"}
+        )
+    else:
+        del record["metrics"]["elapsed_ns"]
+        monkeypatch.setattr(analyze, "ELAPSED", "artifact_bytes")
+    raw = _render([record])
+    with pytest.raises(raw_samples.RawSampleError, match="native nonempty observation"):
+        raw_samples.check_rows(raw, [record], ROOT_LABEL)
