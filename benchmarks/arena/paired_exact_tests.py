@@ -43,6 +43,9 @@ _SOURCE_MAX_DISCORDANT_PAIRS = MAX_DISCORDANT_PAIRS
 _SOURCE_FRACTION = Fraction
 _SOURCE_MIN = min
 _SOURCE_RANGE = range
+# The source count guard must never consult a replaced native type receipt.
+_SOURCE_TYPE = type
+_SOURCE_INT = int
 
 
 class PairedExactTest(TypedDict):
@@ -56,7 +59,7 @@ _SOURCE_PAIRED_EXACT_TEST = PairedExactTest
 
 
 def _valid_count(value: int) -> bool:
-    return type(value) is int and value >= 0
+    return _SOURCE_TYPE(value) is _SOURCE_INT and value >= 0
 
 
 _SOURCE_VALID_COUNT = _valid_count

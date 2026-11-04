@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import comb
+from typing import Never
 
 import pytest
 
@@ -229,4 +230,33 @@ def test_sign_test_retains_native_binomial_range(
 
     providers = {"empty": empty_range, "extra": extra_range, "fault": failed_range}
     monkeypatch.setattr(paired_exact_tests, "range", providers[forged], raising=False)
+    assert paired_exact_tests.two_sided_sign_test(6, 0) == expected
+
+
+def test_sign_test_rejects_boolean_under_replaced_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced native type receipt must not turn a boolean into a trial."""
+    native_type = type
+    monkeypatch.setattr(
+        paired_exact_tests,
+        "type",
+        lambda value: int if value is True else native_type(value),
+        raising=False,
+    )
+    assert paired_exact_tests.two_sided_sign_test(True, 5) is None
+
+
+@pytest.mark.parametrize("provider", ["type", "int"])
+def test_sign_test_native_count_admission_is_source_bound(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Public type aliases cannot change the exact native count policy."""
+    expected = paired_exact_tests.two_sided_sign_test(6, 0)
+    assert expected is not None
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail(f"public {provider} called instead of native type")
+
+    monkeypatch.setattr(paired_exact_tests, provider, forbidden, raising=False)
     assert paired_exact_tests.two_sided_sign_test(6, 0) == expected
