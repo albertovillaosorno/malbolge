@@ -129,8 +129,11 @@ class ReferenceStudyError(ValueError):
     """Host-C reference measurements cannot be published as valid evidence."""
 
 
+# Retain the original error identity across late public alias changes.
+_SOURCE_REFERENCE_STUDY_ERROR = ReferenceStudyError
+
 def _fail(message: str) -> Never:
-    raise ReferenceStudyError(message)
+    raise _SOURCE_REFERENCE_STUDY_ERROR(message)
 
 
 def _source_cap(public: object, registered: int) -> int:
@@ -179,7 +182,7 @@ def _quote(text: str) -> str:
             "host-C JSON quote serializer failed: "
             f"{type(error).__name__}"
         )
-        raise ReferenceStudyError(diagnostic) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(diagnostic) from error
     _require_source_json_encoder(message)
     try:
         observed = json.dumps(text, ensure_ascii=True)
@@ -188,7 +191,7 @@ def _quote(text: str) -> str:
             "host-C JSON quote serializer failed: "
             f"{type(error).__name__}"
         )
-        raise ReferenceStudyError(diagnostic) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(diagnostic) from error
     _require_source_json_encoder(message)
     if (
         type(source) is not str
@@ -211,7 +214,7 @@ def _retained_json_text(payload: object) -> str:
             "host-C retained JSON serializer failed: "
             f"{type(error).__name__}"
         )
-        raise ReferenceStudyError(diagnostic) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(diagnostic) from error
     _require_source_json_encoder(message)
     try:
         observed = json.dumps(payload, indent=2, sort_keys=True)
@@ -220,7 +223,7 @@ def _retained_json_text(payload: object) -> str:
             "host-C retained JSON serializer failed: "
             f"{type(error).__name__}"
         )
-        raise ReferenceStudyError(diagnostic) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(diagnostic) from error
     _require_source_json_encoder(message)
     try:
         after = encoder.encode(payload)
@@ -229,7 +232,7 @@ def _retained_json_text(payload: object) -> str:
             "host-C retained JSON serializer failed: "
             f"{type(error).__name__}"
         )
-        raise ReferenceStudyError(diagnostic) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(diagnostic) from error
     _require_source_json_encoder(message)
     if (
         type(source) is not str
@@ -248,7 +251,7 @@ def _commit() -> str:
     except Exception as error:
         # Tool resolution is a host dependency; keep ordinary faults typed.
         message = "host-C reference study Git lookup failed"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if executable is None:
         _fail("host-C reference study requires Git")
     if (
@@ -264,7 +267,7 @@ def _commit() -> str:
         executable_access = os.access(executable, os.X_OK)
     except Exception as error:
         message = "host-C reference study Git executable unavailable"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if (
         type(metadata) is not os.stat_result
         or not stat.S_ISREG(metadata.st_mode)
@@ -280,11 +283,11 @@ def _commit() -> str:
                 _fail("host-C reference study Git environment requires native strings")
             if not name.startswith("GIT_"):
                 clean_env[name] = value
-    except ReferenceStudyError:
+    except _SOURCE_REFERENCE_STUDY_ERROR:
         raise
     except Exception as error:
         message = "host-C reference study Git environment unavailable"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     command = [executable, "rev-parse", "HEAD"]
     # Bind the completed process to the exact list passed to the Git child.
     # Equivalent copied argv cannot authenticate which invocation returned.
@@ -303,7 +306,7 @@ def _commit() -> str:
         )
     except Exception as error:
         message = "host reference study cannot identify source commit"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if (
         type(completed) is not sp.CompletedProcess
         or type(completed.returncode) is not int
@@ -459,13 +462,13 @@ def _read_source_bundle_json(manifest: bytes) -> tuple[object, object]:
         reported = json.loads(manifest)
     except Exception as error:
         message = "host-C bundle manifest source JSON is invalid"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     _require_source_json_decoder()
     try:
         source = _SOURCE_JSON_DECODER().decode(manifest.decode("utf-8"))
     except Exception as error:
         message = "host-C bundle manifest source JSON is invalid"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     _require_source_json_decoder()
     return reported, source
 
@@ -768,7 +771,7 @@ def _native_error_detail(error: Exception) -> str | None:
 
     """
     if type(error) in (
-        ReferenceStudyError,
+        _SOURCE_REFERENCE_STUDY_ERROR,
         generate.ChallengeError,
         analyze.ArenaError,
         evidence.EvidenceError,
@@ -797,7 +800,7 @@ def _checked_sha256(raw: bytes) -> str:
         source_bound = _NATIVE_SHA256(raw).hexdigest()
     except Exception as error:
         message = "host-C reference SHA-256 dependency failed"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if (
         type(reported) is not str
         or type(reference) is not str
@@ -830,7 +833,7 @@ def _checked_artifact(
         message = "host-C retained artifact cannot be admitted"
         if (detail := _native_error_detail(error)) is not None:
             message += f": {detail}"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if type(actual) is not bytes or len(actual) > cap:
         _fail("host-C retained artifact requires exact bounded bytes")
     if _checked_sha256(actual) != entry["sha256"]:
@@ -968,7 +971,7 @@ def _retained_write_failure(path: Path, error: Exception) -> Never:
         )
         if safe:
             message += f": {safe}"
-    raise ReferenceStudyError(message) from error
+    raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
 
 
 def _confirm_retained_bytes(path: Path, expected: bytes) -> None:
@@ -990,7 +993,7 @@ def _confirm_retained_bytes(path: Path, expected: bytes) -> None:
         )
     except Exception as error:
         message = f"host-C retained {path.name} cannot confirm written bytes"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if type(actual) is not bytes or actual != expected:
         _fail(f"host-C retained {path.name} written bytes differ from claim")
 
@@ -1023,7 +1026,7 @@ def _write_retained_text(path: Path, content: str) -> None:
         encoded = content.encode("utf-8", errors="strict")
     except UnicodeError as error:
         message = f"host-C retained {path.name} requires strict UTF-8 text"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if len(encoded) > evidence.MAX_EVIDENCE_BYTES:
         _fail(f"host-C retained {path.name} requires bounded UTF-8 text")
     try:
@@ -1045,7 +1048,7 @@ def _host_identity() -> str:
         components = (platform.system(), platform.machine(), platform.node())
     except Exception as error:
         message = "host-C reference host identity lookup failed"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     cap = _source_cap(MAX_HOST_COMPONENT_LENGTH, _SOURCE_MAX_HOST_COMPONENT_LENGTH)
     if any(
         type(component) is not str
@@ -1129,10 +1132,10 @@ def _validate_plan(plan: StudyPlan) -> None:
             "host-C reference requires enforced child limits: "
             f"{_failure_diagnostic(error)}"
         )
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     except Exception as error:
         message = "host-C reference child limits preflight failed"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
 
 
 _STUDY_WORKSPACE_PREFIX = "arena-host-c-study-"
@@ -1160,11 +1163,11 @@ def _admit_study_workspace(receipt: object) -> Path:
         ):
             _fail("host-C reference workspace allocator returned foreign path")
         metadata = directory.lstat()
-    except ReferenceStudyError:
+    except _SOURCE_REFERENCE_STUDY_ERROR:
         raise
     except Exception as error:
         message = "host-C reference workspace allocation path unavailable"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if type(metadata) is not os.stat_result or not stat.S_ISDIR(metadata.st_mode):
         _fail("host-C reference workspace must be a physical directory")
     try:
@@ -1182,11 +1185,11 @@ def _admit_study_workspace(receipt: object) -> Path:
                 _fail("host-C reference workspace scan close receipt invalid")
         if occupied:
             _fail("host-C reference workspace was not newly empty")
-    except ReferenceStudyError:
+    except _SOURCE_REFERENCE_STUDY_ERROR:
         raise
     except Exception as error:
         message = "host-C reference workspace contents unavailable"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     return directory
 
 
@@ -1206,7 +1209,7 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
         local_metadata = _LOCAL.lstat()
     except Exception as error:
         message = "host-C reference workspace root is unavailable"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     if type(local_metadata) is not os.stat_result:
         _fail("host-C reference workspace root returned invalid native metadata")
     if not stat.S_ISDIR(local_metadata.st_mode):
@@ -1217,7 +1220,7 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
         )
     except Exception as error:
         message = "host-C reference workspace allocation failed"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     try:
         for child in ("raw", "runs", "candidates"):
             (directory / child).mkdir()
@@ -1235,7 +1238,7 @@ def run_study(plan: StudyPlan) -> tuple[Path, dict[str, Any]]:
             # Bypass foreign primary-exception add_note overrides.
             BaseException.add_note(error, note)
         message = "host-C reference workspace setup failed"
-        raise ReferenceStudyError(message) from error
+        raise _SOURCE_REFERENCE_STUDY_ERROR(message) from error
     return directory, _run_study(directory, plan, commit=commit)
 
 

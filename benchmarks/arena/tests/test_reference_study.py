@@ -3503,3 +3503,89 @@ def test_host_c_plan_preserves_valid_native_shape_under_alias_replacement(
     reference_study._validate_plan_shape(
         reference_study.StudyPlan(FAMILY, (4,), 7, 1)
     )
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("fail", "native reference rejection"),
+        ("git-missing", "requires Git"),
+        ("git-fault", "Git lookup failed"),
+        ("workspace", "foreign path"),
+        ("quoted-json", "quote serializer disagrees"),
+        ("retained-json", "retained JSON serializer disagrees"),
+    ],
+)
+def test_host_reference_error_alias_keeps_native_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """Producer admission remains typed when its public error alias changes."""
+    native_error = reference_study.ReferenceStudyError
+
+    def unavailable_git(*_args: object, **_kwargs: object) -> None:
+        raise OSError("unavailable Git")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(reference_study, "ReferenceStudyError", replacement)
+        if stage == "git-missing":
+            patched.setattr(reference_study.shutil, "which", lambda *_a, **_k: None)
+        elif stage == "git-fault":
+            patched.setattr(reference_study.shutil, "which", unavailable_git)
+        elif stage in ("quoted-json", "retained-json"):
+            patched.setattr(reference_study.json, "dumps", lambda *_a, **_k: '"forged"')
+
+        with pytest.raises(native_error, match=diagnostic):
+            if stage == "fail":
+                reference_study._fail("native reference rejection")
+            elif stage.startswith("git-"):
+                reference_study._commit()
+            elif stage == "workspace":
+                reference_study._admit_study_workspace("relative-subdirectory")
+            elif stage == "quoted-json":
+                reference_study._quote("original")
+            else:
+                reference_study._retained_json_text({"original": 1})
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_host_reference_error_alias_preserves_cli_native_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    replacement: object,
+) -> None:
+    """A native study failure retains its diagnostic without guest output."""
+    native_error = reference_study.ReferenceStudyError
+
+    def fail_study(*_args: object, **_kwargs: object) -> None:
+        raise native_error("source-native host-C failure")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(reference_study, "ReferenceStudyError", replacement)
+        patched.setattr(reference_study, "run_study", fail_study)
+        patched.setattr(sys, "argv", ["reference-study", FAMILY])
+        with pytest.raises(SystemExit) as caught:
+            reference_study.main()
+    assert caught.value.code == 2
+    output = capsys.readouterr()
+    assert output.out == ""
+    assert "source-native host-C failure" in output.err
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_host_reference_error_alias_preserves_valid_json_and_detail(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Late error alias changes cannot suppress valid producer operations."""
+    native_error = reference_study.ReferenceStudyError
+    error = native_error("native detail")
+    quoted = reference_study._quote("source")
+    retained = reference_study._retained_json_text({"valid": 5})
+    with monkeypatch.context() as patched:
+        patched.setattr(reference_study, "ReferenceStudyError", replacement)
+        assert reference_study._quote("source") == quoted
+        assert reference_study._retained_json_text({"valid": 5}) == retained
+        assert reference_study._native_error_detail(error) == "native detail"
