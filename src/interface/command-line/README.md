@@ -127,6 +127,18 @@ The checked-in example emits exactly `AA` on guest stdout, with
 or libc support. The three compiler examples above are alternative invocations,
 with distinct output names to preserve the no-clobber guarantee.
 
+A second checked-in example demonstrates a **single** nonzero output, not a
+host-side substitution or an `AA` repetition: the source
+`composition/examples/emit-plus.c` calls `putchar('+')`. With the built
+repository tools, compile it using the same `--repository-tools --capsule`
+invocation and a fresh `.temp/emit-plus.malbolge` output. The installed
+`malbolge --repository-tools` VM emits exactly the one byte `+`. The bridge
+admits this particular byte/count pair only through an independently witnessed
+layout; other bytes or counts still reject without publication.
+The same supported byte is also available from `putchar(299)` through C's
+low-byte conversion, including when publishing raw graphical `.malbolge`
+instead of a capsule.
+
 For the **Unix `malbolge` shim**, a leading `--repository-tools` selects the
 existing repository-built `.cache/rust/target/debug/malbolge` VM. This is useful
 when the `scripts/bin/malbolge` release binary was built against older sources:

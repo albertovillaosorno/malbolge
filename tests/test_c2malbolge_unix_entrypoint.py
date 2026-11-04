@@ -47,6 +47,7 @@ FRONTEND = ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin/malbolge-c-front
 RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 RUST_BIN = ROOT / ".cache/rust/target/debug"
 EXAMPLE = ROOT / "src/interface/command-line/composition/examples/emit-aa.c"
+PLUS_EXAMPLE = ROOT / "src/interface/command-line/composition/examples/emit-plus.c"
 
 
 @unittest.skipIf(os.name == "nt", "Unix symlink installation only")
@@ -140,6 +141,8 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
         source_bytes: bytes | Path,
         expected_stdout: bytes,
         expected_steps: bytes | None,
+        *,
+        capsule: bool = True,
     ) -> None:
         binaries = (
             FRONTEND,
@@ -158,15 +161,17 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
             source = source_bytes
         else:
             _ = source.write_bytes(source_bytes)
+        command = [
+            str(self.install_dir / "c2malbolge"),
+            "--repository-tools",
+            "--output",
+            str(target),
+        ]
+        if capsule:
+            command.append("--capsule")
+        command.append(str(source))
         compiled = subprocess.run(
-            [
-                str(self.install_dir / "c2malbolge"),
-                "--repository-tools",
-                "--capsule",
-                "--output",
-                str(target),
-                str(source),
-            ],
+            command,
             capture_output=True,
             check=False,
             timeout=120,
@@ -242,6 +247,38 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
             + b"void emit(void) { putchar(65); ; putchar(65); 0; return; }\n",
             b"AA",
             b"malbolge-steps-v1:27\n",
+        )
+
+    def test_installed_compiler_emits_new_single_punctuation_literal(self) -> None:
+        # The pinned native frontend must evaluate the C character literal,
+        # while the current verified bridge must realize this new one-byte
+        # witness in guest instructions rather than host-side substitution.
+        self._assert_installed_guest_output(
+            PLUS_EXAMPLE,
+            b"+",
+            None,
+        )
+
+    def test_installed_compiler_raw_new_byte_from_wide_c_int(self) -> None:
+        # 299 is outside unsigned char, but putchar emits its low byte 43.
+        # This independent raw (not capsule) output is executable guest code.
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\nvoid emit(void) { putchar(299); return; }\n",
+            b"+",
+            None,
+            capsule=False,
+        )
+        raw = (self.directory / "emit.malbolge").read_bytes()
+        self.assertGreaterEqual(len(raw), 2)
+        self.assertTrue(all(33 <= byte <= 126 for byte in raw))
+
+    def test_installed_compiler_emits_new_carriage_return_escape(self) -> None:
+        # This control byte needs a newly witnessed single-output rotation;
+        # asserting raw stdout distinguishes it from printable escape text.
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\nvoid emit(void) { putchar('\\r'); return; }\n",
+            b"\r",
+            None,
         )
 
     def test_installed_compiler_emits_witnessed_ascii_output(self) -> None:
