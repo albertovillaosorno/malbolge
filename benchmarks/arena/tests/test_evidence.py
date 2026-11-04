@@ -888,6 +888,69 @@ def test_evidence_accepts_portable_unicode_evidence_name(tmp_path: Path) -> None
     ) == b"portable"
 
 
+@pytest.mark.parametrize("limit", [16 * 1024 * 1024 + 1, 32 * 1024 * 1024])
+def test_evidence_byte_limit_cannot_be_raised_by_public_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    limit: int,
+) -> None:
+    """An oversized input budget must reject before filesystem admission."""
+    monkeypatch.setattr(evidence, "MAX_EVIDENCE_BYTES", 64 * 1024 * 1024)
+
+    def forbidden_segments(_relative: str) -> list[str]:
+        pytest.fail("oversized evidence limit reached path admission")
+
+    monkeypatch.setattr(evidence, "_segments", forbidden_segments)
+    with pytest.raises(evidence.EvidenceError, match="byte limit"):
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=limit)
+
+
+def test_evidence_byte_limit_cannot_be_lowered_by_public_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Original permitted input stays admissible after public policy drift."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"original evidence")
+    monkeypatch.setattr(evidence, "MAX_EVIDENCE_BYTES", 1)
+    assert evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024) == (
+        b"original evidence"
+    )
+
+
+@pytest.mark.parametrize("forged_descriptor", [2**31, 2**40])
+def test_evidence_descriptor_cap_cannot_be_raised_before_procfs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forged_descriptor: int,
+) -> None:
+    """A forged descriptor outside native C-int range never reaches procfs."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"original evidence")
+    monkeypatch.setattr(evidence, "MAX_NATIVE_DESCRIPTOR", 2**63)
+
+    def forged_open(_path: Path, _flags: int) -> int:
+        return forged_descriptor
+
+    def forbidden_readlink(_path: str) -> str:
+        pytest.fail("oversized evidence descriptor reached procfs")
+
+    monkeypatch.setattr(evidence.os, "open", forged_open)
+    monkeypatch.setattr(evidence.os, "readlink", forbidden_readlink)
+    with pytest.raises(evidence.EvidenceError, match="raw descriptor"):
+        evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024)
+
+
+def test_evidence_descriptor_cap_cannot_be_lowered_by_public_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An ordinary OS descriptor remains valid after public limit drift."""
+    _ = (tmp_path / "raw.csv").write_bytes(b"original evidence")
+    monkeypatch.setattr(evidence, "MAX_NATIVE_DESCRIPTOR", 0)
+    assert evidence.read_bounded_regular(tmp_path, "raw.csv", limit=1024) == (
+        b"original evidence"
+    )
+
+
 class _ForgedParentSegment(str):  # ruff: ignore[subclass-builtin]
     """Path traversal component whose equality check lies to the guard."""
 

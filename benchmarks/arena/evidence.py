@@ -68,6 +68,9 @@ _NATIVE_WINDOWS_RESERVED = ntpath.isreserved
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 MAX_EVIDENCE_BYTES = analyze.MAX_INPUT_BYTES
 MAX_NATIVE_DESCRIPTOR = 2**31 - 1
+# Local read/descriptor admission must not follow mutable reporting aliases.
+_SOURCE_MAX_EVIDENCE_BYTES = MAX_EVIDENCE_BYTES
+_SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
 BUNDLE_FILE_LIMITS = {
     "program.c": challenge_bundles.MAX_SOURCE_BYTES,
     "oracle.bin": challenge_bundles.ORACLE_BYTES,
@@ -130,13 +133,13 @@ def _segments(relative: str) -> list[str]:
 
 def _admit_descriptor(receipt: object, *, source: str) -> int:
     """Refuse forged OS descriptor receipts before filesystem operations."""
-    if type(receipt) is not int or not 0 <= receipt <= MAX_NATIVE_DESCRIPTOR:
+    if type(receipt) is not int or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR:
         _fail(f"evidence {source} descriptor is not a native OS integer")
     return receipt
 
 
 def _admit_byte_limit(limit: int) -> None:
-    if type(limit) is not int or not 1 <= limit <= MAX_EVIDENCE_BYTES:
+    if type(limit) is not int or not 1 <= limit <= _SOURCE_MAX_EVIDENCE_BYTES:
         _fail("evidence byte limit must be an exact positive integer up to 16 MiB")
 
 
