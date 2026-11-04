@@ -42,6 +42,8 @@ CSV_NEWLINES = "\r\n"
 _SOURCE_CSV_QUOTE = CSV_QUOTE
 _SOURCE_CSV_COMMA = CSV_COMMA
 _SOURCE_CSV_NEWLINES = CSV_NEWLINES
+# Full input traversal must use the native length, not a late global lookup.
+_NATIVE_LEN = len
 
 
 # A single-pass CSV quote state machine necessarily branches on dialect tokens.
@@ -64,11 +66,12 @@ def within_column_limit(  # ruff: ignore[complex-structure,too-many-branches,too
     at_start = True
     quoted = False
     index = 0
-    while index < len(text):  # ruff: ignore[too-many-nested-blocks]
+    source_length = _NATIVE_LEN(text)
+    while index < source_length:  # ruff: ignore[too-many-nested-blocks]
         char = text[index]
         if quoted:
             if char == _SOURCE_CSV_QUOTE:
-                if index + 1 < len(text) and text[index + 1] == _SOURCE_CSV_QUOTE:
+                if index + 1 < source_length and text[index + 1] == _SOURCE_CSV_QUOTE:
                     index += 1
                 else:
                     quoted = False

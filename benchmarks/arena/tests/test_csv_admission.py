@@ -176,3 +176,28 @@ def test_mutable_csv_dialect_tokens_cannot_reject_valid_record_limits(
     with monkeypatch.context() as patched:
         patched.setattr(csv_admission, token, replacement)
         assert csv_admission.within_column_limit(source, 2)
+
+
+@pytest.mark.parametrize(
+    "source", ["a,b,c\n", '"quoted,field",b,c\n'], ids=["plain", "quoted"]
+)
+def test_csv_column_limit_cannot_skip_fields_from_replaced_length(
+    monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    """The native source length must bound the full delimiter scan."""
+    assert len(next(csv.reader(StringIO(source, newline=""), strict=True))) == 3
+    monkeypatch.setattr(csv_admission, "len", lambda _value: 1, raising=False)
+    assert not csv_admission.within_column_limit(source, 2)
+
+
+def test_csv_column_limit_cannot_overrun_valid_source_from_replaced_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged oversize length cannot change valid dialect admission."""
+    source = '"quoted,field",b\n'
+    assert len(next(csv.reader(StringIO(source, newline=""), strict=True))) == 2
+    native_len = len
+    monkeypatch.setattr(
+        csv_admission, "len", lambda value: native_len(value) + 5, raising=False
+    )
+    assert csv_admission.within_column_limit(source, 2)
