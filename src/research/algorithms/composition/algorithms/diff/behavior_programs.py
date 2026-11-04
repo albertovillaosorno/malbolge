@@ -241,7 +241,7 @@ def _require_native_context_resolver() -> None:
         )
     ):
         message = "behavior host resolver hooks changed"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
 
 
 def _native_path_resolve(path: Path, *, strict: bool = False) -> Path:
@@ -318,6 +318,10 @@ class BehaviorProgramError(ValueError):
     """Raised when behavior programs cannot form an unambiguous profile."""
 
 
+# Native behavior rejection must survive a late public class alias.
+_NATIVE_BEHAVIOR_PROGRAM_ERROR = BehaviorProgramError
+
+
 def _behavior_error_detail(error: BaseException) -> str:
     """Keep host and delegated error display hooks outside probe admission."""
     if _NATIVE_TYPE(error) in (
@@ -327,7 +331,7 @@ def _behavior_error_detail(error: BaseException) -> str:
         _NATIVE_RUNTIME_ERROR,
         _NATIVE_EXACT_TREE_ERROR,
         _NATIVE_PROBE_EXECUTION_ERROR,
-        BehaviorProgramError,
+        _NATIVE_BEHAVIOR_PROGRAM_ERROR,
     ):
         # Exact error classes are mutable even after native-type admission.
         # Use the BaseException slot rather than late __getattribute__ hooks.
@@ -351,7 +355,7 @@ def _require_selected_program(program: ProbeProgram, context: str) -> None:
     # is the authority for whether a probe actually selects evidence.
     if _NATIVE_TYPE(program) is not ProbeProgram:
         message = f"{context} program must use an exact ProbeProgram"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     try:
         commands = cast(
             "tuple[ProbeCommand, ...]",
@@ -359,31 +363,31 @@ def _require_selected_program(program: ProbeProgram, context: str) -> None:
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = f"{context} program lacks native command evidence"
-        raise BehaviorProgramError(message) from error
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
     if _NATIVE_TYPE(commands) is not _NATIVE_TUPLE or not commands:
         message = f"{context} program requires native commands"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     selected = False
     for command in commands:
         if _NATIVE_TYPE(command) is not ProbeCommand:
             message = f"{context} program has a foreign probe command"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
         try:
             stdout = _COMMAND_STDOUT_SLOT.__get__(command, ProbeCommand)
             exit_code = _COMMAND_EXIT_SLOT.__get__(command, ProbeCommand)
         except _NATIVE_ATTRIBUTE_ERROR as error:
             message = f"{context} program has incomplete command selectors"
-            raise BehaviorProgramError(message) from error
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
         if (
             _NATIVE_TYPE(stdout) is not _NATIVE_BOOL
             or _NATIVE_TYPE(exit_code) is not _NATIVE_BOOL
         ):
             message = f"{context} program requires native boolean selectors"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
         selected = selected or stdout or exit_code
     if not selected:
         message = f"{context} program requires a selected observation"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -409,7 +413,7 @@ class BugProgram:
         program, correction = read_bug_program(self)
         if _NATIVE_TYPE(program) is not ProbeProgram:
             message = "bug behavior program requires an exact ProbeProgram"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
         _require_selected_program(program, "bug")
         _ = _require_correction_identifier(correction, "bug behavior program")
 
@@ -440,17 +444,17 @@ def read_bug_program(program: BugProgram) -> tuple[ProbeProgram, str]:
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "bug behavior program is missing native fields"
-        raise BehaviorProgramError(message) from error
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
 
 
 def _require_program_tuple(value: object, context: str) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = f"{context} must use the exact immutable tuple type"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(_NATIVE_TYPE(item) is not ProbeProgram for item in items):
         message = f"{context} contains a foreign probe program"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
 
 
 def _require_identity_program_tuple(value: object, context: str) -> None:
@@ -463,11 +467,11 @@ def _require_identity_program_tuple(value: object, context: str) -> None:
 def _require_bug_program_tuple(value: object) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "bug behavior programs must use the exact immutable tuple type"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(_NATIVE_TYPE(item) is not BugProgram for item in items):
         message = "bug behavior programs contain a foreign bug record"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     for item in items:
         _BUG_PROGRAM_VALIDATOR(cast("BugProgram", item))
 
@@ -505,7 +509,7 @@ class BehaviorPrograms:
         _require_bug_program_tuple(bugs)
         if not identity:
             message = "behavior programs require at least one identity program"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
         groups = (
             _program_ids(identity),
             _bug_program_ids(bugs),
@@ -514,13 +518,13 @@ class BehaviorPrograms:
         identifiers = _NATIVE_TUPLE(item for group in groups for item in group)
         if _NATIVE_LEN(identifiers) != _NATIVE_LEN(_NATIVE_SET(identifiers)):
             message = "behavior program identifiers must be globally unique"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
         correction_ids = _NATIVE_TUPLE(read_bug_program(item)[1] for item in bugs)
         if _NATIVE_LEN(correction_ids) != _NATIVE_LEN(
             _NATIVE_SET(correction_ids)
         ):
             message = "bug behavior correction identifiers must be unique"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
 
 
 _BEHAVIOR_PROGRAMS_VALIDATOR = cast(
@@ -567,35 +571,35 @@ def read_behavior_programs(
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "behavior programs are missing native fields"
-        raise BehaviorProgramError(message) from error
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
 
 
 def _require_exact_probe_program(value: object, context: str) -> ProbeProgram:
     if _NATIVE_TYPE(value) is not ProbeProgram:
         message = f"{context} requires an exact ProbeProgram"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     return value
 
 
 def _require_correction_identifier(value: object, context: str) -> str:
     if _NATIVE_TYPE(value) is not _NATIVE_STR or not value:
         message = f"{context} requires a correction identifier"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     if _NUL in value:
         message = f"{context} correction identifier must not contain NUL"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     try:
         _ = value.encode("utf-8")
     except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"{context} correction identifier must use UTF-8 text"
-        raise BehaviorProgramError(message) from error
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
     return value
 
 
 def _require_authored_digest(value: object, context: str) -> bytes:
     if _NATIVE_TYPE(value) is not _NATIVE_BYTES or not value:
         message = f"{context} must use non-empty exact bytes"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     return value
 
 
@@ -641,7 +645,7 @@ class AuthoredBugProgram:
         )
         if present == fixed:
             message = "authored bug digests must distinguish present from fixed"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
 
 
 _AUTHORED_BUG_VALIDATOR = cast("Callable[[AuthoredBugProgram], None]", AuthoredBugProgram.__dict__["__post_init__"])
@@ -689,7 +693,7 @@ def read_authored_bug(
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "authored bug record is missing native fields"
-        raise BehaviorProgramError(message) from error
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -725,12 +729,12 @@ class AuthoredBehaviorPrograms:
         profile, identity, compatibility, bugs = read_authored_behavior(self)
         if _NATIVE_TYPE(profile) is not BehaviorProfile:
             message = "authored behavior requires an exact BehaviorProfile"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
         try:
             _PROFILE_VALIDATOR(profile)
         except (_NATIVE_BEHAVIOR_POLICY_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
             message = "authored behavior requires valid native profile evidence"
-            raise BehaviorProgramError(message) from error
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
         _require_identity_program_tuple(identity, "authored identity programs")
         _require_program_tuple(compatibility, "authored compatibility programs")
         _require_authored_bug_tuple(bugs)
@@ -793,7 +797,7 @@ def read_authored_behavior(
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "authored programs are missing native fields"
-        raise BehaviorProgramError(message) from error
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
 
 
 # A probe runner can replace process-global class hooks before its transcript
@@ -852,13 +856,13 @@ def _new_receipt(
 def _require_authored_bug_tuple(value: object) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "authored bugs must use the exact immutable tuple type"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(
         _NATIVE_TYPE(item) is not AuthoredBugProgram for item in items
     ):
         message = "authored bugs contain a foreign authored bug record"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     for item in items:
         _AUTHORED_BUG_VALIDATOR(cast("AuthoredBugProgram", item))
 
@@ -901,33 +905,33 @@ def _require_authored_profile_alignment(
     )
     if identity_ids != profile_identity_ids:
         message = "authored identity programs do not match behavior profile"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     if compatibility_ids != profile_compatibility_ids:
         message = "authored compatibility programs do not match behavior profile"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     if bugs != profile_bugs:
         message = "authored bug programs do not match behavior profile"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
 
 
 def _require_run_context(value: object, context: str) -> ProbeRunContext:
     if _NATIVE_TYPE(value) is not ProbeRunContext:
         message = f"{context} must use the exact ProbeRunContext type"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     # Exact native dataclasses may be allocated without their constructor;
     # type identity is insufficient before repository/tool comparison or reads.
     try:
         _PROBE_RUN_CONTEXT_VALIDATOR(value)
     except (_NATIVE_PROBE_PROGRAM_ERROR, _NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = f"{context} contains invalid native context evidence"
-        raise BehaviorProgramError(message) from error
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
     return value
 
 
 def _sorted_unique(identifiers: tuple[str, ...], kind: str) -> tuple[str, ...]:
     if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = f"{kind} behavior programs must have unique sorted identifiers"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     return identifiers
 
 
@@ -964,14 +968,14 @@ def _transcript_map(
         _NATIVE_TYPE(item) is not ProbeTranscript for item in transcripts
     ):
         message = "behavior transcript batch must use exact immutable records"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     observed = _NATIVE_TUPLE(
         _transcript_fields(transcript)[0] for transcript in transcripts
     )
     expected = _NATIVE_TUPLE(_program_id(program) for program in programs)
     if observed != expected:
         message = "behavior transcript batch differs from requested programs"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     return {_transcript_fields(transcript)[0]: transcript for transcript in transcripts}
 
 
@@ -979,7 +983,7 @@ def _require_digest(transcript: ProbeTranscript) -> bytes:
     probe_id, digest, selected = _transcript_fields(transcript)
     if selected < 1:
         message = f"behavior probe {probe_id!r} selects no stdout for identity"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     return digest
 
 
@@ -991,11 +995,11 @@ def _resolved_context_path(path: Path, description: str) -> Path:
         detail = _behavior_error_detail(error)
         native_path = _NATIVE_PATH_STR(path)
         message = f"behavior {description} resolution failed: {native_path}: {detail}"
-        raise BehaviorProgramError(message) from error
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message) from error
     _require_native_context_resolver()
     if _NATIVE_TYPE(resolved) is not _NATIVE_PATH_TYPE:
         message = f"behavior {description} resolution requires native resolved Path"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     return resolved
 
 
@@ -1035,7 +1039,7 @@ def _require_matching_contexts(
     # Canonical host spellings retain Windows's case-insensitive comparison.
     if _context_signature(source_context) != _context_signature(oracle_context):
         message = "source and oracle behavior runs must use the same tool bindings"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
 
 
 def _author_bug_programs(
@@ -1051,7 +1055,7 @@ def _author_bug_programs(
         fixed_digest = _require_digest(oracle_transcripts[probe_id])
         if present_digest == fixed_digest:
             message = f"bug probe {probe_id!r} cannot distinguish present from fixed"
-            raise BehaviorProgramError(message)
+            raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
         authored.append(
             _new_receipt(
                 AuthoredBugProgram,
@@ -1146,7 +1150,7 @@ def author_behavior_programs(
     """
     if _NATIVE_TYPE(programs) is not BehaviorPrograms:
         message = "behavior authoring requires exact BehaviorPrograms"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     # Native allocation can bypass the captured constructor validators.
     _BEHAVIOR_PROGRAMS_VALIDATOR(programs)
     source_context = _require_run_context(source_context, "source behavior context")
@@ -1414,7 +1418,7 @@ def observe_behavior_programs(
     """
     if _NATIVE_TYPE(authored) is not AuthoredBehaviorPrograms:
         message = "behavior observation requires exact AuthoredBehaviorPrograms"
-        raise BehaviorProgramError(message)
+        raise _NATIVE_BEHAVIOR_PROGRAM_ERROR(message)
     _AUTHORED_BEHAVIOR_VALIDATOR(authored)
     context = _require_run_context(context, "behavior observation context")
     _, identity_programs, compatibility_programs, bug_programs = read_authored_behavior(

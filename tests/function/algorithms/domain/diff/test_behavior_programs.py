@@ -3536,3 +3536,33 @@ def test_behavior_delegated_validator_ignores_late_error_alias(
     assert type(caught) is BehaviorProgramError, (route, caught)
     assert type(caught.__cause__) is native_failure
     assert "native" in str(caught)
+
+
+@pytest.mark.parametrize(
+    "route", ["program", "run-context", "missing-bug", "detail"]
+)
+def test_behavior_native_error_survives_late_public_class_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """A late public error alias must not suppress native typed failures."""
+    native_failure = BehaviorProgramError("native behavior detail")
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, "BehaviorProgramError", object)
+        if route == "detail":
+            assert behavior_module._behavior_error_detail(native_failure) == (
+                "native behavior detail"
+            )
+        else:
+            with pytest.raises(BehaviorProgramError):
+                if route == "program":
+                    behavior_module._require_selected_program(
+                        cast("ProbeProgram", object()), "identity"
+                    )
+                elif route == "run-context":
+                    _ = behavior_module._require_run_context(
+                        cast("ProbeRunContext", object()), "candidate"
+                    )
+                else:
+                    _ = behavior_module.read_bug_program(
+                        object.__new__(BugProgram)
+                    )
