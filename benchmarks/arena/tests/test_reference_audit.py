@@ -2382,6 +2382,109 @@ class _ForeignRetainedBytes(bytes):
         raise AssertionError("foreign retained bytes length was executed")
 
 
+class _ForeignHashDigest(bytes):
+    """A fake source digest that claims equality with independent hashes."""
+
+    def __eq__(self, _other: object) -> bool:
+        return True
+
+    def __ne__(self, _other: object) -> bool:
+        return False
+
+
+@pytest.mark.parametrize("alias", ["type", "bytes"])
+def test_host_c_source_bytes_rejects_foreign_reader_aliases(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Reader cannot return a mutable buffer under a replaced type alias."""
+    foreign = bytearray(b"source")
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: foreign
+    )
+    if alias == "type":
+        native_type = type
+        replacement: object = lambda value: (
+            bytes if value is foreign else native_type(value)
+        )
+    else:
+        replacement = bytearray
+    monkeypatch.setattr(reference_audit, alias, replacement, raising=False)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="bounded bytes"):
+        reference_audit._read_bounded_evidence("ignored", limit=32)
+
+
+def test_host_c_source_bytes_rejects_oversized_reader_under_replaced_len(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A small fake length cannot admit a byte buffer past a declared cap."""
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: b"123456"
+    )
+    monkeypatch.setattr(reference_audit, "len", lambda _value: 1, raising=False)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="bounded bytes"):
+        reference_audit._read_bounded_evidence("ignored", limit=4)
+
+
+@pytest.mark.parametrize("alias", ["type", "bytes", "len"])
+def test_host_c_source_bytes_retains_valid_reader_under_alias_changes(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Original native source bytes survive invalid public provider aliases."""
+    source = b"source"
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: source
+    )
+    monkeypatch.setattr(reference_audit, alias, object(), raising=False)
+    assert reference_audit._read_bounded_evidence("ignored", limit=32) is source
+
+
+def test_host_c_source_bytes_rejects_foreign_hash_input_type_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Foreign mutable source bytes cannot receive a native digest receipt."""
+    foreign = bytearray(b"source")
+    native_type = type
+    monkeypatch.setattr(
+        reference_audit,
+        "type",
+        lambda value: bytes if value is foreign else native_type(value),
+        raising=False,
+    )
+    with pytest.raises(reference_audit.ReferenceAuditError, match="native source"):
+        reference_audit._source_fingerprint(cast("bytes", foreign))
+
+
+def test_host_c_source_bytes_rejects_fake_equal_hash_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign equal-to-all digest cannot certify actual source hashes."""
+    forged = _ForeignHashDigest(b"0" * 32)
+    native_type = type
+    monkeypatch.setattr(
+        reference_audit,
+        "type",
+        lambda value: bytes if value is forged else native_type(value),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        reference_audit,
+        "sha256",
+        lambda _raw: SimpleNamespace(digest=lambda: forged),
+    )
+    with pytest.raises(reference_audit.ReferenceAuditError, match="differs"):
+        reference_audit._source_fingerprint(b"source")
+
+
+@pytest.mark.parametrize("alias", ["type", "bytes", "len", "SHA256_DIGEST_BYTES"])
+def test_host_c_source_bytes_retains_native_hash_under_alias_changes(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Native source SHA-256 does not depend on mutable module aliases."""
+    original = b"source"
+    monkeypatch.setattr(reference_audit, alias, object(), raising=False)
+    assert reference_audit._source_fingerprint(original) == sha256(original).digest()
+
+
 @pytest.mark.parametrize("receipt_type", ["foreign", "oversized"])
 @pytest.mark.parametrize(
     "entrypoint", ["json", "study", "manifest", "manifest-recheck", "sidecar-recheck"]

@@ -62,6 +62,7 @@ from scripts.validate import experiment_manifest
 _ROOT = Path(__file__).resolve().parents[2]
 _NATIVE_SHA256 = sha256
 _NATIVE_TYPE = type
+_NATIVE_BYTES = bytes
 _NATIVE_BOOL = bool
 _NATIVE_ANY = any
 _NATIVE_ALL = all
@@ -270,12 +271,13 @@ def _reject_nonfinite(value: str) -> Never:
 def _read_bounded_evidence(relative: str, *, limit: int) -> bytes:
     """Admit exact bounded native reader bytes before hashing or interpretation."""
     raw = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
-    if type(raw) is not bytes or len(raw) > limit:
+    if _NATIVE_TYPE(raw) is not _NATIVE_BYTES or _NATIVE_LEN(raw) > limit:
         _fail(f"host-C retained evidence requires exact bounded bytes: {relative}")
     return raw
 
 
 SHA256_DIGEST_BYTES = 32
+_SOURCE_SHA256_DIGEST_BYTES = SHA256_DIGEST_BYTES
 
 
 def _source_fingerprint(raw: bytes) -> bytes:
@@ -285,7 +287,7 @@ def _source_fingerprint(raw: bytes) -> bytes:
     mutable runtime constructors cannot relabel retained evidence bytes;
     ordinary dependency faults remain typed and preserve their cause.
     """
-    if type(raw) is not bytes:
+    if _NATIVE_TYPE(raw) is not _NATIVE_BYTES:
         _fail("host-C audit SHA-256 requires exact native source bytes")
     try:
         result = sha256(raw).digest()
@@ -297,12 +299,12 @@ def _source_fingerprint(raw: bytes) -> bytes:
         message = "host-C audit SHA-256 fingerprint dependency failed"
         raise ReferenceAuditError(message) from error
     if (
-        type(result) is not bytes
-        or type(reference) is not bytes
-        or type(source_bound) is not bytes
-        or len(result) != SHA256_DIGEST_BYTES
-        or len(reference) != SHA256_DIGEST_BYTES
-        or len(source_bound) != SHA256_DIGEST_BYTES
+        _NATIVE_TYPE(result) is not _NATIVE_BYTES
+        or _NATIVE_TYPE(reference) is not _NATIVE_BYTES
+        or _NATIVE_TYPE(source_bound) is not _NATIVE_BYTES
+        or _NATIVE_LEN(result) != _SOURCE_SHA256_DIGEST_BYTES
+        or _NATIVE_LEN(reference) != _SOURCE_SHA256_DIGEST_BYTES
+        or _NATIVE_LEN(source_bound) != _SOURCE_SHA256_DIGEST_BYTES
         or result != reference
         or result != source_bound
     ):
