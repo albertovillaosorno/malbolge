@@ -232,6 +232,24 @@ Other independently witnessed triples are `Q.O` (9 steps), `Y-P`
 (10 steps), `T"O` (12 steps), and `T"Q` (14 steps). Unsupported triples
 still fail before publication.
 
+The four-byte `composition/examples/emit-t4.c` example computes four
+**distinct** output bytes with four real guest CrazyData writes, producing
+`T=4>` in 21 steps. With repository-built tools, either output format runs
+under the same current-profile normative VM:
+
+```sh
+c2malbolge --repository-tools \
+  --output .temp/emit-t4-raw.malbolge \
+  src/interface/command-line/composition/examples/emit-t4.c
+malbolge --repository-tools .temp/emit-t4-raw.malbolge \
+  --raw-profile malbolge-2026 --report-steps
+```
+
+Add `--capsule` and choose a different fresh output path for a self-describing
+artifact that does not need the explicit `--raw-profile` runner flag. Both
+modes are tested against exact guest stdout and instruction counts. This is
+a finite separately witnessed byte sequence, not arbitrary string output.
+
 For the **Unix `malbolge` shim**, a leading `--repository-tools` selects the
 existing repository-built `.cache/rust/target/debug/malbolge` VM. This is useful
 when the `scripts/bin/malbolge` release binary was built against older sources:

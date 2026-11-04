@@ -116,6 +116,12 @@ fn public_compile_preserves_witnessed_output_sequences() -> Result<(), String> {
             b"Z%H",
             8,
         ),
+        (
+            "four-distinct",
+            "putchar('T'); putchar('='); putchar('4'); putchar('>');",
+            b"T=4>",
+            21,
+        ),
         ("void-a", "(void) putchar ( 65 );", b"A", 31),
     ];
     for (name, statements, expected, steps) in cases {
