@@ -1745,3 +1745,67 @@ def test_study_fdopen_rejects_native_buffer_over_foreign_raw_reader(
                     pass
     assert not read_called
     assert path.read_bytes() == STUDY_SAMPLE
+
+
+@pytest.mark.parametrize("caller", ["direct", "analyzer"])
+def test_study_reader_rejects_substituted_same_length_source_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caller: str
+) -> None:
+    """A substituted bounded reader cannot supply foreign study JSON bytes."""
+    path = tmp_path / STABLE_INPUT
+    source = _study(path).encode("utf-8")
+    forged = source.replace(b'"baseline": "baseline"', b'"baseline": "caseline"')
+    assert forged != source and len(forged) == len(source)
+    assert json.loads(forged) != json.loads(source)
+
+    def forge_bytes(_stream: BinaryIO, *, size: int) -> bytes:
+        assert size == len(source)
+        return forged
+
+    monkeypatch.setattr(study_file, "_read_complete", forge_bytes)
+    error_type = study_file.StudyFileError if caller == "direct" else analyze.ArenaError
+    with pytest.raises(error_type, match="source bytes differ"):
+        if caller == "direct":
+            _ = study_file.read_study_bytes(path, limit=1024 * 1024)
+        else:
+            _ = analyze.read_input(path)
+
+
+@pytest.mark.parametrize("forged", [False, True])
+def test_study_descriptor_reread_portable_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, forged: bool
+) -> None:
+    """Hosts without pread still compare the original open file's content."""
+    path = tmp_path / STABLE_INPUT
+    source = _study(path).encode("utf-8")
+    monkeypatch.setattr(study_file, "_NATIVE_PREAD", None)
+    if forged:
+        altered = source.replace(b'"baseline": "baseline"', b'"baseline": "caseline"')
+        assert altered != source and len(altered) == len(source)
+
+        def fake_complete(_stream: BinaryIO, *, size: int) -> bytes:
+            assert size == len(source)
+            return altered
+
+        monkeypatch.setattr(study_file, "_read_complete", fake_complete)
+        with pytest.raises(study_file.StudyFileError, match="source bytes differ"):
+            _ = study_file.read_study_bytes(path, limit=1024 * 1024)
+    else:
+        assert study_file.read_study_bytes(path, limit=1024 * 1024) == source
+
+
+def test_study_source_reread_system_error_retains_original_cause(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An independent reread fault cannot publish a forged study."""
+    path = tmp_path / STABLE_INPUT
+    _study(path)
+    failure = OSError("injected native reread failure")
+
+    def failed_reread(_fd: int, _size: int, _offset: int) -> bytes:
+        raise failure
+
+    monkeypatch.setattr(study_file, "_NATIVE_PREAD", failed_reread)
+    with pytest.raises(study_file.StudyFileError, match="reread failed") as caught:
+        _ = study_file.read_study_bytes(path, limit=1024 * 1024)
+    assert caught.value.__cause__ is failure

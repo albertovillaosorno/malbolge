@@ -43,6 +43,11 @@ from typing import TYPE_CHECKING, Never
 
 MAX_STUDY_BYTES = 16 * 1024 * 1024
 MAX_NATIVE_DESCRIPTOR = 2**31 - 1
+# Read directly from the original opened descriptor to cross-check any
+# replaceable buffered-reader receipt against source bytes, not just metadata.
+_NATIVE_PREAD = getattr(os, "pread", None)
+_NATIVE_READ = os.read
+_NATIVE_LSEEK = os.lseek
 
 if TYPE_CHECKING:
     from typing import BinaryIO
@@ -191,6 +196,40 @@ def _read_complete(stream: BinaryIO, *, size: int) -> bytes:
     return bytes(data)
 
 
+def _verify_descriptor_bytes(descriptor: int, data: bytes) -> None:
+    """Require an independent native descriptor read to match admitted bytes.
+
+    Raises:
+        StudyFileError: The reader's bytes differ from the opened source.
+
+    """
+    if type(data) is not bytes:
+        _fail("arena input source bytes differ from opened descriptor")
+    try:
+        if _NATIVE_PREAD is None:
+            # Windows lacks pread; no further buffered reads occur after this.
+            _NATIVE_LSEEK(descriptor, 0, os.SEEK_SET)
+        offset = 0
+        while offset < len(data):
+            requested = min(len(data) - offset, 1024 * 1024)
+            if _NATIVE_PREAD is not None:
+                observed = _NATIVE_PREAD(descriptor, requested, offset)
+            else:
+                observed = _NATIVE_READ(descriptor, requested)
+            if (
+                type(observed) is not bytes
+                or not observed
+                or observed != data[offset : offset + len(observed)]
+            ):
+                _fail("arena input source bytes differ from opened descriptor")
+            offset += len(observed)
+    except StudyFileError:
+        raise
+    except Exception as error:
+        message = "arena input source descriptor reread failed"
+        raise StudyFileError(message) from error
+
+
 def _read_descriptor(
     path: Path,
     before: os.stat_result,
@@ -216,6 +255,7 @@ def _read_descriptor(
                 completed = _native_stat(os.fstat(completed_fd))
                 if _identity(completed) != _identity(opened):
                     _fail("arena input changed during read")
+                _verify_descriptor_bytes(completed_fd, data)
                 # The context manager can raise on close, but cannot expose a
                 # forged non-None close receipt. Close explicitly after the
                 # final descriptor check, while retaining its cleanup path.

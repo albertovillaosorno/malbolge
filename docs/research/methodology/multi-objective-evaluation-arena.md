@@ -932,6 +932,16 @@ short chunks rather than interpreting one short read as a complete file.
 Premature EOF, nonbyte or overlong chunks, and five injected read-stream
 exception classes reject through a typed arena error, with the original stream
 failure preserved as its cause. Both arena CLI routes share this reader.
+A same-length foreign JSON receipt from a substituted bounded read previously
+passed both arena study admission routes despite stable pathname and descriptor
+metadata. The reader now independently compares every returned byte against a
+bounded native read of the exact opened descriptor before closing it. Two
+red-first direct/analyzer cases reject forged baseline identity; a portable
+seek/read fallback and typed native reread-failure checks preserve the same
+boundary on hosts without `pread`. All 114 focused study-file cases and
+539 combined reader/analyzer/CSV cases pass; arena BasedPyright reports zero
+diagnostics. This protects local source-content agreement, not atomic file
+snapshots, provenance or physical experiment authenticity.
 
 Evidence preflight now also retains the exact SHA-256 of each bounded run
 manifest and reopens every manifest after report assembly. In strict raw-row
