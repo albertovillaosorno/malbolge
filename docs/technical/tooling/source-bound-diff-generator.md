@@ -3404,6 +3404,29 @@ Broad scoped Ruff checks also passed. The separate Jig governance gate remains
 open: `jig doctor --root .` is degraded due to the missing compiled graph,
 and bounded `jig check --root .` exited 124 after 90 seconds.
 
+
+## Native exact-generator drift error identity (2026-11-03)
+
+The public generator retains the import-original `ExactTreeError` for three
+rejection sites: the source-identity byte reread, the static-tree check after
+planning, and the static source/oracle replay after payload protection.
+Consumer callbacks could previously rebind the imported error class between
+these checks and rejection, raising a foreign `RuntimeError` or leaking an
+untyped `TypeError` instead of the exact authoring failure. The captured
+native error class now remains authoritative in all three routes.
+
+Six parameterized red-first failures reproduced the defect with both foreign
+class aliases. Following the fix, all **310 generator tests** and **1,265
+adjacent** generator/domain/provenance/emitter/exact tests passed. Scoped Ruff,
+strict BasedPyright (zero errors), and Git diff checks passed. The generator
+change was included with an independently validated arena fix in the signed
+shared-checkout DCO `947dc4601`; the scope of this evidence is only the two
+generator source/test paths. The earlier 4,353-test complete diff-suite verdict
+predates this addition. External filesystem races, direct trusted-instance
+mutation, and global Jig acceptance remain unproven; `jig doctor --root .`
+is degraded by the absent compiled graph, and a bounded 60-second
+`jig check --root .` timed out without a verdict.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

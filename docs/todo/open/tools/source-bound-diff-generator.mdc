@@ -2030,6 +2030,20 @@ format.
   the compiled graph is absent, and bounded `jig check --root .` timed out
   after 90 seconds (exit 124); Jig acceptance remains unresolved.
 
+
+- Exact generator source-drift failure now pins import-original
+  `ExactTreeError` at source-identity replay, post-plan source-tree drift,
+  and post-protection source/oracle drift (`947dc4601`). Six red-first alias
+  cases previously leaked a substituted `RuntimeError` or untyped
+  `TypeError`; all now reject with the native exact-tree error. All 310
+  generator tests and 1,265 adjacent tests passed, with scoped Ruff,
+  zero-error strict BasedPyright, and Git checks clean. The generator code
+  was included in a signed combined arena/generator DCO in the shared
+  checkout; this evidence covers only the generator paths. The previous
+  4,353-test integrated diff run predates these six checks. Jig remains
+  degraded (compiled graph absent); bounded global check timed out after
+  60 seconds. External races and direct trusted state changes remain open.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
