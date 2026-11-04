@@ -38,6 +38,7 @@ import argparse
 from dataclasses import dataclass
 import hashlib
 import io
+import ntpath
 from hashlib import sha256
 import os
 from pathlib import Path
@@ -62,6 +63,7 @@ from benchmarks.arena import trial_runs
 
 # Retain the native source-digest provider across public alias substitutions.
 _NATIVE_SHA256 = sha256
+_NATIVE_WINDOWS_RESERVED = ntpath.isreserved
 
 MAX_MANIFEST_BYTES = 1 * 1024 * 1024
 MAX_EVIDENCE_BYTES = analyze.MAX_INPUT_BYTES
@@ -116,6 +118,12 @@ def _segments(relative: str) -> list[str]:
         _fail("evidence requires a canonical relative path")
     parts = relative.split("/")
     if any(part in {"", ".", ".."} for part in parts):
+        _fail("evidence requires a canonical relative path")
+    # Evidence paths must remain portable across Windows and POSIX. Bind the
+    # native reserved-name predicate before callers can replace it at runtime.
+    if any(_NATIVE_WINDOWS_RESERVED(part) for part in parts):
+        _fail("evidence requires a canonical relative path")
+    if any(0xD800 <= ord(character) <= 0xDFFF for character in relative):
         _fail("evidence requires a canonical relative path")
     return parts
 

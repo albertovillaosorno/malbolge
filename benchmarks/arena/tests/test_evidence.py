@@ -835,6 +835,59 @@ def test_evidence_valid_path_unaffected_by_analyzer_policy_changes(
     )
 
 
+@pytest.mark.parametrize("reader", ["regular", "bounded"])
+@pytest.mark.parametrize(
+    "invalid_path",
+    [
+        "CON",
+        "dir/aux.txt",
+        "device/COM1",
+        "name.",
+        "name ",
+        "wild*card",
+        "wild?card",
+        "invalid\ud800scalar",
+        "control/\x1fchar",
+    ],
+)
+def test_direct_evidence_path_rejects_windows_reserved_names_before_io(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reader: str,
+    invalid_path: str,
+) -> None:
+    """Direct file preflight must enforce portable path names on Linux too."""
+
+    def forbidden_resolve(*args: object, **kwargs: object) -> Path:
+        del args, kwargs
+        pytest.fail("reserved Windows path reached filesystem resolution")
+
+    monkeypatch.setattr(Path, "resolve", forbidden_resolve)
+    with pytest.raises(evidence.EvidenceError, match="canonical relative"):
+        if reader == "regular":
+            evidence.regular_path(tmp_path, invalid_path)
+        else:
+            evidence.read_bounded_regular(tmp_path, invalid_path, limit=128)
+
+
+def test_evidence_path_reservation_cannot_be_disabled_after_import(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced standard-library provider cannot admit reserved evidence."""
+    monkeypatch.setattr(evidence.ntpath, "isreserved", lambda _name: False)
+    with pytest.raises(evidence.EvidenceError, match="canonical relative"):
+        evidence.regular_path(tmp_path, "CON")
+
+
+def test_evidence_accepts_portable_unicode_evidence_name(tmp_path: Path) -> None:
+    """Rejecting reserved names must not exclude Unicode scalar path text."""
+    _ = (tmp_path / "source-\U0001f4c4.txt").write_bytes(b"portable")
+    assert evidence.read_bounded_regular(
+        tmp_path, "source-\U0001f4c4.txt", limit=128
+    ) == b"portable"
+
+
 class _ForgedParentSegment(str):  # ruff: ignore[subclass-builtin]
     """Path traversal component whose equality check lies to the guard."""
 
