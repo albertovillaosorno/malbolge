@@ -3,7 +3,7 @@
 ## Purpose
 
 Decode the exact pinned Clang version-one frontend JSON into a
-source-preserving typed-IR void-return or single-zero-byte-output projection,
+source-preserving typed-IR void-return or bounded zero-byte-output projection,
 then emit independently re-admitted canonical MCTI bytes. This separate
 compiler workspace package contains the JSON dependency; the VM's
 dependency-free crate remains unchanged.
@@ -38,15 +38,18 @@ A separate **exact** pinned-Clang source shape is also executable:
 void emit(void) { putchar(0); return; }
 ```
 
-Its seven normalized nodes must prove a direct `putchar(0)` call with one
-literal-zero argument, exact function-to-pointer callee decay, a terminal void
-return, and no other effects. The adapter emits canonical MCTI containing an
-8-bit zero constant and one `ByteOutput` instruction. The downstream publisher
-selects `--initial-zero-output --typed-stdin` and independently verifies the
-result through the real Malbolge VM. Guest stdout contains exactly `0x00`.
-This is successful-output evidence only: call-result handling, general
-`putchar`, other byte values, `getchar`, EOF, I/O errors, guest libc and C entry
-ABI remain unsupported. Nonzero or multiple output calls refuse compilation.
+The same exact pinned-Clang shape now admits one through 32 **consecutive**
+`putchar(0);` calls followed by `return;`, with no other statements. Each
+call proves its direct `putchar` reference, single literal-zero argument and
+function-to-pointer decay; the complete normalized preorder contains
+`4 * outputs + 3` nodes with exact source ancestry and ordered nonoverlapping
+spans. The adapter emits one canonical 8-bit zero constant followed by the
+corresponding number of `ByteOutput` instructions. The downstream publisher
+selects `--initial-zero-output --typed-stdin` and independently checks actual
+VM output, ranging from one `0x00` byte to 32 consecutive zero bytes.
+Call-result handling, general `putchar`, nonzero byte values, interleaved
+statements, `getchar`, EOF, I/O errors, guest libc and C entry ABI remain
+unsupported. A 33rd output call refuses compilation rather than truncating.
 
 `canonical_guest_typed_ir` selects this trace or the existing effect-free void
 trace without dropping observable effects. `canonical_void_typed_ir` preserves
@@ -55,7 +58,7 @@ its prior no-effect-only admission contract and callers.
 `canonical_void_typed_ir` returns no-effect MCTI bytes for
 `malbolge_layout --empty-void --typed-stdin` while
 `canonical_guest_typed_ir` additionally returns a mode for the supported
-single-byte output trace. This adapter does not invoke Clang, authenticate an
+bounded zero-byte output trace. This adapter does not invoke Clang, authenticate an
 independently supplied C source against its JSON SHA-256, implement a complete
 C command line, realize C process-return ABI or replace the independent guest
 VM preflight. Its tests run both accepted families through real guest code.

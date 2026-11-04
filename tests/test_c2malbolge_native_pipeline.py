@@ -64,6 +64,9 @@ NONZERO_OUTPUT = b"#include <stdio.h>\nvoid emit(void) { putchar(1); return; }\n
 EXTRA_OUTPUT = (
     b"#include <stdio.h>\nvoid emit(void) { putchar(0); putchar(0); return; }\n"
 )
+MIXED_OUTPUT = (
+    b"#include <stdio.h>\nvoid emit(void) { putchar(0); putchar(1); return; }\n"
+)
 EFFECTFUL_VOID = b"void noop(void) { volatile int value = 1; }\n"
 INVALID_C = b"void noop(void) { return\n"
 
@@ -210,10 +213,28 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
             self.assertEqual(executed.stdout, b"\x00")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
 
-    def test_real_clang_nonzero_or_duplicate_output_rejects_guest(self) -> None:
+    def test_real_clang_repeated_zero_calls_emit_two_actual_nul_bytes(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
-            for index, content in enumerate((NONZERO_OUTPUT, EXTRA_OUTPUT)):
+            source = Path(temporary) / "emit-twice.c"
+            target = Path(temporary) / "emit-twice.malbolge"
+            _ = source.write_bytes(EXTRA_OUTPUT)
+            compiled = self._compile(tools, source, target, capsule=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(tools[4]), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"\x00\x00")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:3\n")
+
+    def test_real_clang_nonzero_or_mixed_output_rejects_guest(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for index, content in enumerate((NONZERO_OUTPUT, MIXED_OUTPUT)):
                 with self.subTest(source=content):
                     source = Path(temporary) / f"invalid-emit-{index}.c"
                     target = Path(temporary) / f"invalid-emit-{index}.malbolge"

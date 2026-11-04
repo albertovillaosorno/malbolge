@@ -56,6 +56,7 @@ const EXPECTED_PROFILE: &str = "malbolge-2026";
 const MAX_FRONTEND_JSON_BYTES: usize = 1_048_576;
 const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
 const MAX_COMPOUND_DEPTH: usize = 64;
+const MAX_ZERO_OUTPUT_CALLS: usize = 32;
 
 /// Which independently checked guest effect trace can realize this C source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -151,9 +152,8 @@ struct Artifact {
 
 struct ZeroOutputNodes<'node> {
     body: &'node Node,
-    call: &'node Node,
+    calls: Vec<(&'node Node, &'node Node)>,
     function: &'node Node,
-    literal: &'node Node,
     returned: &'node Node,
 }
 
@@ -459,19 +459,101 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
     )
 }
 
-// Narrow source-shaped proof for one `putchar(0)` statement. No alternate
-// argument, call, cast, declaration-reference or extra child can be omitted.
-// It is intentionally not a general expression evaluator or guest libc.
+// Each direct `putchar(0)` child must have the exact source-bound Clang
+// four-node preorder: call -> function decay -> declaration ref, and call
+// -> literal. Calls are ordered siblings, never reordered or discarded.
 #[expect(
     clippy::too_many_lines,
-    clippy::suspicious_operation_groupings,
-    reason = "exact pinned-Clang preorder compares end of call to start of return"
+    reason = "exact Clang node metadata and positional proof stay together"
+)]
+fn valid_zero_output_call(
+    group: &[Node],
+    body: &Node,
+    previous_end: u32,
+    expected_id: u32,
+) -> bool {
+    let [call, cast, callee, zero] = group else {
+        return false;
+    };
+    let call_span = &call.span;
+    let cast_span = &cast.span;
+    let callee_span = &callee.span;
+    let literal_span = &zero.span;
+    call.id == expected_id
+        && call.parent == body.id
+        && call.kind == "call-expression"
+        && call.type_name.as_deref() == Some("i32")
+        && call.reference.as_deref() == Some("external:putchar")
+        && cast.id == expected_id.saturating_add(1)
+        && cast.parent == call.id
+        && cast.kind == "cast-expression"
+        && cast.type_name.as_deref() == Some("ptr(fn(i32)->i32)")
+        && cast.operation.as_deref() == Some("function-to-pointer")
+        && callee.id == expected_id.saturating_add(2)
+        && callee.parent == cast.id
+        && callee.kind == "declaration-reference-expression"
+        && callee.type_name.as_deref() == Some("fn(i32)->i32")
+        && callee.reference.as_deref() == Some("external:putchar")
+        && zero.id == expected_id.saturating_add(3)
+        && zero.parent == call.id
+        && zero.kind == "integer-literal"
+        && zero.type_name.as_deref() == Some("i32")
+        && zero.constant_integer.as_deref() == Some("0")
+        && zero.literal.as_deref() == Some("0")
+        && [call, cast, callee, zero].iter().all(|node| {
+            node.name.is_none()
+                && node.definition.is_none()
+                && node.inline_specified.is_none()
+                && node.linkage.is_none()
+                && node.storage_class.is_none()
+        })
+        && [call, cast, callee]
+            .iter()
+            .all(|node| node.constant_integer.is_none() && node.literal.is_none())
+        && [call, callee, zero]
+            .iter()
+            .all(|node| node.operation.is_none())
+        && [cast, zero].iter().all(|node| node.reference.is_none())
+        && call_span.begin.byte > previous_end
+        && call_span.end.byte < body.span.end.byte
+        && call_span.begin.byte == cast_span.begin.byte
+        && cast_span.begin.byte == callee_span.begin.byte
+        && cast_span.end.byte == callee_span.end.byte
+        && cast_span.end.byte.checked_add(1) == Some(literal_span.begin.byte)
+        && literal_span.end.byte < call_span.end.byte
+        && cast_span.begin.byte.checked_add(7) == Some(cast_span.end.byte)
+        && literal_span.begin.byte.checked_add(1) == Some(literal_span.end.byte)
+        && call_span.begin.byte.checked_add(10) == Some(call_span.end.byte)
+        && [call_span, cast_span, callee_span, literal_span]
+            .iter()
+            .all(|span| {
+                span.begin.line != 0
+                    && span.begin.column != 0
+                    && span.end.line != 0
+                    && span.end.column != 0
+                    && span.begin.byte < span.end.byte
+                    && (span.begin.line != span.end.line || span.begin.column < span.end.column)
+            })
+}
+
+// A bounded sequence of direct calls keeps the same exact metadata and
+// span proof as one call, with no gap in preorder IDs or intervening effects.
+#[expect(
+    clippy::too_many_lines,
+    reason = "closed bounded C zero-output preorder admission"
 )]
 fn admit_zero_output_nodes(nodes: &[Node]) -> Result<ZeroOutputNodes<'_>, FrontendJsonError> {
-    let [function, body, call, cast, callee, zero, returned] = nodes else {
+    let [function, body, rest @ ..] = nodes else {
         return Err(FrontendJsonError::Unsupported);
     };
-    if function.kind != "function-declaration"
+    let Some((returned, call_nodes)) = rest.split_last() else {
+        return Err(FrontendJsonError::Unsupported);
+    };
+    let (groups, leftover) = call_nodes.as_chunks::<4>();
+    if groups.is_empty()
+        || !leftover.is_empty()
+        || groups.len() > MAX_ZERO_OUTPUT_CALLS
+        || function.kind != "function-declaration"
         || function.id != 1
         || function.parent != 0
         || function.name.as_deref().is_none_or(str::is_empty)
@@ -487,112 +569,65 @@ fn admit_zero_output_nodes(nodes: &[Node]) -> Result<ZeroOutputNodes<'_>, Fronte
         || body.id != 2
         || body.parent != 1
         || body.kind != "compound-statement"
-        || call.id != 3
-        || call.parent != 2
-        || call.kind != "call-expression"
-        || call.type_name.as_deref() != Some("i32")
-        || call.reference.as_deref() != Some("external:putchar")
-        || cast.id != 4
-        || cast.parent != 3
-        || cast.kind != "cast-expression"
-        || cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
-        || cast.operation.as_deref() != Some("function-to-pointer")
-        || callee.id != 5
-        || callee.parent != 4
-        || callee.kind != "declaration-reference-expression"
-        || callee.type_name.as_deref() != Some("fn(i32)->i32")
-        || callee.reference.as_deref() != Some("external:putchar")
-        || zero.id != 6
-        || zero.parent != 3
-        || zero.kind != "integer-literal"
-        || zero.type_name.as_deref() != Some("i32")
-        || zero.constant_integer.as_deref() != Some("0")
-        || zero.literal.as_deref() != Some("0")
-        || returned.id != 7
-        || returned.parent != 2
+        || returned.id != u32::try_from(nodes.len()).unwrap_or(u32::MAX)
+        || returned.parent != body.id
         || returned.kind != "return-statement"
-        || [body, call, cast, callee, zero, returned]
-            .iter()
-            .any(|node| {
-                node.name.is_some()
-                    || node.definition.is_some()
-                    || node.inline_specified.is_some()
-                    || node.linkage.is_some()
-                    || node.storage_class.is_some()
-            })
         || [body, returned].iter().any(|node| {
-            node.type_name.is_some()
+            node.name.is_some()
+                || node.definition.is_some()
+                || node.inline_specified.is_some()
+                || node.linkage.is_some()
+                || node.storage_class.is_some()
+                || node.type_name.is_some()
                 || node.reference.is_some()
                 || node.operation.is_some()
                 || node.constant_integer.is_some()
                 || node.literal.is_some()
         })
-        || [call, cast, callee]
-            .iter()
-            .any(|node| node.constant_integer.is_some() || node.literal.is_some())
-        || [call, callee, zero]
-            .iter()
-            .any(|node| node.operation.is_some())
-        || [cast, zero].iter().any(|node| node.reference.is_some())
-    {
-        return Err(FrontendJsonError::Unsupported);
-    }
-    let function_span = &function.span;
-    let body_span = &body.span;
-    let call_span = &call.span;
-    let cast_span = &cast.span;
-    let callee_span = &callee.span;
-    let literal_span = &zero.span;
-    let return_span = &returned.span;
-    // Clang's closed preorder: function/body -> call -> function decay/ref,
-    // call -> literal, then terminal return. The equal cast/ref spans are
-    // intentional; none of these locations is invented by the adapter.
-    if function_span.begin.byte > body_span.begin.byte
-        || function_span.end.byte < body_span.end.byte
-        || body_span.begin.byte >= call_span.begin.byte
-        || call_span.end.byte >= body_span.end.byte
-        || call_span.begin.byte != cast_span.begin.byte
-        || cast_span.begin.byte != callee_span.begin.byte
-        || cast_span.end.byte != callee_span.end.byte
-        || cast_span.end.byte.checked_add(1) != Some(literal_span.begin.byte)
-        || literal_span.end.byte >= call_span.end.byte
-        || call_span.end.byte >= return_span.begin.byte
-        || return_span.end.byte >= body_span.end.byte
-        || cast_span.begin.byte.checked_add(7) != Some(cast_span.end.byte)
-        || literal_span.begin.byte.checked_add(1) != Some(literal_span.end.byte)
-        || call_span.begin.byte.checked_add(10) != Some(call_span.end.byte)
-        || [
-            function_span,
-            body_span,
-            call_span,
-            cast_span,
-            callee_span,
-            literal_span,
-            return_span,
-        ]
-        .iter()
-        .any(|span| {
-            span.begin.line == 0
-                || span.begin.column == 0
-                || span.end.line == 0
-                || span.end.column == 0
-                || span.begin.byte >= span.end.byte
-                || (span.begin.line == span.end.line && span.begin.column >= span.end.column)
+        || function.span.begin.byte > body.span.begin.byte
+        || function.span.end.byte < body.span.end.byte
+        || body.span.begin.byte >= returned.span.begin.byte
+        || returned.span.end.byte >= body.span.end.byte
+        || [body, returned].iter().any(|node| {
+            node.span.begin.line == 0
+                || node.span.begin.column == 0
+                || node.span.end.line == 0
+                || node.span.end.column == 0
+                || node.span.begin.byte >= node.span.end.byte
+                || (node.span.begin.line == node.span.end.line
+                    && node.span.begin.column >= node.span.end.column)
         })
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    let mut calls = Vec::with_capacity(groups.len());
+    let mut previous_end = body.span.begin.byte;
+    for (index, group) in groups.iter().enumerate() {
+        let id = u32::try_from(index)
+            .ok()
+            .and_then(|value| value.checked_mul(4))
+            .and_then(|value| value.checked_add(3))
+            .ok_or(FrontendJsonError::Unsupported)?;
+        if !valid_zero_output_call(group, body, previous_end, id) {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        let [call, _, _, zero] = group;
+        previous_end = call.span.end.byte;
+        calls.push((call, zero));
+    }
+    if previous_end >= returned.span.begin.byte {
+        return Err(FrontendJsonError::Unsupported);
+    }
     Ok(ZeroOutputNodes {
         body,
-        call,
+        calls,
         function,
-        literal: zero,
         returned,
     })
 }
 
-/// Compile only the Clang-proven `void emit(void) { putchar(0); return; }`
-/// shape into a successful-output trace, retaining exact source provenance.
+/// Compile one through 32 source-proven `putchar(0)` calls and final return
+/// into a successful-output trace, retaining exact source provenance.
 #[expect(
     clippy::too_many_lines,
     reason = "canonical typed-effect projection and re-admission"
@@ -617,8 +652,7 @@ fn canonical_zero_output_typed_ir(bytes: &[u8]) -> Result<Vec<u8>, FrontendJsonE
     let ZeroOutputNodes {
         function,
         body,
-        call,
-        literal,
+        calls,
         returned,
     } = admit_zero_output_nodes(&input.nodes)?;
     let void_function = FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
@@ -660,22 +694,24 @@ fn canonical_zero_output_typed_ir(bytes: &[u8]) -> Result<Vec<u8>, FrontendJsonE
         .blocks()
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
-    let instructions = vec![
-        LocatedInstruction::new(
-            Instruction::ConstantInteger {
-                constant: IntegerConstant::new(8, vec![0]),
-                result: ValueId::new(0),
-                type_id: TypeId::new(0),
-            },
-            typed_span(&literal.span),
-        ),
-        LocatedInstruction::new(
+    let first_literal = calls.first().ok_or(FrontendJsonError::Unsupported)?.1;
+    let mut instructions = Vec::with_capacity(calls.len().saturating_add(1));
+    instructions.push(LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(8, vec![0]),
+            result: ValueId::new(0),
+            type_id: TypeId::new(0),
+        },
+        typed_span(&first_literal.span),
+    ));
+    for (call, _literal) in calls {
+        instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
                 value: ValueId::new(0),
             },
             typed_span(&call.span),
-        ),
-    ];
+        ));
+    }
     let compiled_function = Function::new(FunctionSpec {
         blocks: vec![BasicBlock::new(BasicBlockSpec {
             id: block.id(),

@@ -154,6 +154,31 @@ class RepositoryToolCompilerTests(unittest.TestCase):
             self.assertIn(b"no-clobber", repeat.stderr)
             self.assertEqual(target.read_bytes(), original_artifact)
 
+    def test_pinned_two_zero_calls_emit_ordered_guest_nul_bytes(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            source = Path(temporary) / "two-zeros.c"
+            target = Path(temporary) / "two-zeros.malbolge"
+            _ = source.write_bytes(
+                b"#include <stdio.h>\nvoid emit(void) { putchar(0); putchar(0); return; }\n"
+            )
+            compiled = subprocess.run(
+                self._command(source, target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(vm), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"\x00\x00")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:3\n")
+
     def test_native_zero_output_emits_real_nul_and_nonzero_is_rejected(self) -> None:
         vm = self._real_binaries()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

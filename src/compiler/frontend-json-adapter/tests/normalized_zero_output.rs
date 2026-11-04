@@ -76,6 +76,140 @@ fn input() -> Value {
     })
 }
 
+// Exact pinned-Clang preorder is four children per direct output call.
+// Repeating the `putchar(0); ` statement adds exactly twelve source bytes.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    clippy::shadow_unrelated,
+    clippy::default_numeric_fallback,
+    reason = "closed synthetic Clang fixture spans for at most 33 bounded calls"
+)]
+fn repeated_input(outputs: u32) -> Value {
+    let mut source = input();
+    let extra_bytes = outputs.saturating_sub(1).saturating_mul(12);
+    let end = 58 + extra_bytes;
+    source["nodes"][0]["span"] = span(19, end, 2, 19);
+    source["nodes"][1]["span"] = span(35, end, 2, 19);
+    let source_span = |begin, end| span(begin, end, 2, 19);
+    let mut nodes = vec![source["nodes"][0].clone(), source["nodes"][1].clone()];
+    for index in 0..outputs {
+        let begin = 37 + index * 12;
+        let id = 3 + index * 4;
+        nodes.push(json!({
+            "id":id,"parent":2,"kind":"call-expression",
+            "span":source_span(begin,begin+10),
+            "type":"i32","reference":"external:putchar"
+        }));
+        nodes.push(json!({
+            "id":id+1,"parent":id,"kind":"cast-expression",
+            "span":source_span(begin,begin+7),
+            "type":"ptr(fn(i32)->i32)","operation":"function-to-pointer"
+        }));
+        nodes.push(json!({
+            "id":id+2,"parent":id+1,"kind":"declaration-reference-expression",
+            "span":source_span(begin,begin+7),
+            "type":"fn(i32)->i32","reference":"external:putchar"
+        }));
+        nodes.push(json!({
+            "id":id+3,"parent":id,"kind":"integer-literal",
+            "span":source_span(begin+8,begin+9),
+            "type":"i32","constant_integer":"0","literal":"0"
+        }));
+    }
+    nodes.push(json!({
+        "id":3+outputs*4,"parent":2,"kind":"return-statement",
+        "span":source_span(49+extra_bytes,55+extra_bytes)
+    }));
+    source["nodes"] = json!(nodes);
+    source
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    clippy::cognitive_complexity,
+    reason = "bounded 1-to-32 caller traces with exact VM output counts"
+)]
+fn repeated_zero_calls_preserve_source_and_emit_order() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    for outputs in [2u32, 3, 32] {
+        let source = repeated_input(outputs);
+        let output_count = usize::try_from(outputs).map_err(|error| error.to_string())?;
+        let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+            .map_err(|error| format!("{outputs} C outputs: {error:?}"))?;
+        assert_eq!(mode, FrontendGuestMode::InitialZeroOutput);
+        let module =
+            typed::canonical_module(&wire).map_err(|error| format!("decode MCTI: {error:?}"))?;
+        let effects = module
+            .functions()
+            .first()
+            .and_then(|function| function.blocks().first())
+            .ok_or("missing typed block")?
+            .instructions();
+        assert_eq!(effects.len(), output_count + 1);
+        assert!(matches!(
+            effects.first().map(typed::LocatedInstruction::instruction),
+            Some(typed::Instruction::ConstantInteger { .. })
+        ));
+        assert!(
+            effects.iter().skip(1).all(|effect| matches!(
+                effect.instruction(),
+                typed::Instruction::ByteOutput { .. }
+            ))
+        );
+        let compiled = compile_canonical_typed_initial_zero_outputs(&wire, profile)
+            .map_err(|error| format!("compile guest: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("load guest: {error:?}"))?;
+        assert!(matches!(
+            vm.run(output_count + 1),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == output_count + 1
+        ));
+        assert_eq!(vm.output(), vec![0; output_count]);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::default_numeric_fallback,
+    clippy::unwrap_used,
+    clippy::shadow_unrelated,
+    reason = "fixed-size invalid second-output mutations"
+)]
+fn forged_second_zero_call_or_excess_calls_fail_closed() {
+    let base = repeated_input(2);
+    let mut mutations = Vec::new();
+    let mut changed = base.clone();
+    changed["nodes"][6]["reference"] = json!("external:getchar");
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][7]["parent"] = json!(3);
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][9]["constant_integer"] = json!("1");
+    changed["nodes"][9]["literal"] = json!("1");
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][6]["span"]["begin"]["byte"] = json!(46);
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][9]["parent"] = json!(3);
+    mutations.push(changed);
+    let mut changed = base;
+    let _removed = changed["nodes"].as_array_mut().unwrap().remove(8);
+    mutations.push(changed);
+    mutations.push(repeated_input(33));
+    for (index, candidate) in mutations.iter().enumerate() {
+        assert!(
+            canonical_guest_typed_ir(&bytes(candidate)).is_err(),
+            "unsupported repeated C output mutation {index} was accepted"
+        );
+    }
+}
+
 #[expect(
     clippy::expect_used,
     reason = "test-only JSON serializes deterministically"

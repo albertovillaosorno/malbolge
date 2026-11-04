@@ -109,11 +109,12 @@ This is a
 bounded integration entrypoint, **not** the finished turnkey installer or
 arbitrary C compiler. It currently accepts only the exact normalized Clang shapes admitted by
 the JSON adapter: effect-free void functions (including nested scopes,
-standalone `0;` and `(void)0;`), plus the single successful
-`putchar(0); return;` statement in a void function. In the output case the
-independent Malbolge VM emits one actual `0x00` byte. Other byte values,
-multiple calls, the general C process-return ABI and guest libc remain
-unsupported, rather than silently dropping effects.
+standalone `0;` and `(void)0;`), plus one through 32 consecutive
+`putchar(0);` statements followed by `return;` in a void function. Each
+call emits one actual `0x00` byte in source order through the independently
+checked Malbolge VM. Nonzero arguments, interleaved effects, excess calls,
+the general C process-return ABI and guest libc remain unsupported rather
+than silently dropping effects.
 The pinned Clang frontend is required for real source compilation; its
 absence cannot be replaced by synthetic JSON test evidence. The three source
 digest reads constrain a specific invocation, not a persistent filesystem
