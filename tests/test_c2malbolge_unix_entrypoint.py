@@ -291,6 +291,28 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
             b"malbolge-steps-v1:27\n",
         )
 
+    def test_installed_compiler_emits_thirty_three_verified_guest_bytes(self) -> None:
+        # One source-level output per verified guest instruction. The bridge
+        # has an independent 33-output rotation witness for ASCII apostrophe.
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\nvoid emit(void) { "
+            + b"putchar(39); " * 33
+            + b"return; }\n",
+            b"'" * 33,
+            None,
+        )
+
+    def test_installed_compiler_emits_thirty_three_nul_guest_bytes(self) -> None:
+        # The zero-accumulator path has no rotation seed but must preserve
+        # every source output, including the newly admitted 33rd effect.
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\nvoid emit(void) { "
+            + b"putchar(0); " * 33
+            + b"return; }\n",
+            b"\x00" * 33,
+            b"malbolge-steps-v1:34\n",
+        )
+
     def test_installed_compiler_emits_witnessed_ascii_output(self) -> None:
         self._assert_installed_guest_output(
             b"#include <stdio.h>\nvoid emit(void) { putchar(65); putchar(65); return; }\n",

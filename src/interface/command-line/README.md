@@ -178,10 +178,11 @@ frontend checks nonnegative evaluated `i32` arguments and emits the same low
 byte that C `putchar(int)` would write: for example, `putchar(256)` emits NUL,
 `putchar(321)` emits `A`, and `putchar(65559)` emits byte `23`. This does not
 admit arbitrary C integer expressions or signed-negative source arguments.
-One to 32 writes of zero produce actual NUL bytes. Nonzero output additionally
+One to 33 writes of zero produce actual NUL bytes. Nonzero output additionally
 requires a verified byte/count layout (for example, `23` once, `65` twice
-or ten times, or `146` three times). Unwitnessed byte/count pairs, mixed
-byte values,
+or ten times, `146` three times, or `39` thirty-three times). The latter
+emits 33 literal apostrophes through the installed compiler and guest VM.
+Unwitnessed byte/count pairs, mixed byte values,
 interleaved nonzero expressions or other unsupported operations, excess
 calls, the general C process-return ABI and guest libc remain unsupported.
 Each accepted output runs in the independent VM.
