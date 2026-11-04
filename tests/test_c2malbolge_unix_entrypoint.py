@@ -46,6 +46,7 @@ VM_SHIM = SCRIPTS / "malbolge"
 FRONTEND = ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin/malbolge-c-frontend"
 RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 RUST_BIN = ROOT / ".cache/rust/target/debug"
+EXAMPLE = ROOT / "src/interface/command-line/examples/emit-aa.c"
 
 
 @unittest.skipIf(os.name == "nt", "Unix symlink installation only")
@@ -135,7 +136,10 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
         self.assertIn(b"--output", completed.stdout)
 
     def _assert_installed_guest_output(
-        self, source_bytes: bytes, expected_stdout: bytes, expected_steps: bytes | None
+        self,
+        source_bytes: bytes | Path,
+        expected_stdout: bytes,
+        expected_steps: bytes | None,
     ) -> None:
         binaries = (
             FRONTEND,
@@ -150,7 +154,10 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
         self.install()
         source = self.directory / "emit.c"
         target = self.directory / "emit.malbolge"
-        _ = source.write_bytes(source_bytes)
+        if isinstance(source_bytes, Path):
+            source = source_bytes
+        else:
+            _ = source.write_bytes(source_bytes)
         compiled = subprocess.run(
             [
                 str(self.install_dir / "c2malbolge"),
@@ -191,6 +198,14 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
             b"#include <stdio.h>\nvoid emit(void) { putchar(0); putchar(0); return; }\n",
             b"\x00\x00",
             b"malbolge-steps-v1:3\n",
+        )
+
+    def test_installed_compiler_executes_checked_in_character_example(self) -> None:
+        # Compile the actual documented source file, not a synthetic frontend.
+        self._assert_installed_guest_output(
+            EXAMPLE,
+            b"AA",
+            b"malbolge-steps-v1:27\n",
         )
 
     def test_installed_compiler_emits_witnessed_ascii_output(self) -> None:

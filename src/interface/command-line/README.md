@@ -80,14 +80,16 @@ output-name collisions do not clobber their owner. The layout backend retains
 its own VM and output checks.
 
 ```sh
+mkdir -p .temp
 python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
   --frontend /path/to/malbolge_c_frontend \
   --json-adapter /path/to/c2malbolge_json \
   --layout-backend /path/to/malbolge_layout \
   --guest-include /path/to/guest/include \
   --resource-dir /path/to/pinned/clang/resources \
-  --source-id examples/noop.c --output .temp/noop.malbolge \
-  --capsule examples/noop.c
+  --source-id src/interface/command-line/examples/emit-aa.c \
+  --output .temp/emit-aa-explicit.malbolge --capsule \
+  src/interface/command-line/examples/emit-aa.c
 ```
 
 On Unix, the `composition/scripts/c2malbolge` executable shim invokes this
@@ -102,18 +104,28 @@ built, an opt-in shortcut selects those exact repository-local tools and
 resources without copying their paths or inventing normalized JSON:
 
 ```sh
+mkdir -p .temp
 python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
-  --repository-tools --capsule --output .temp/noop.malbolge examples/noop.c
+  --repository-tools --capsule --output .temp/emit-aa-python.malbolge \
+  src/interface/command-line/examples/emit-aa.c
 ```
 
 After installing the Unix shims into a directory on `PATH`, the same command
 can be run directly as:
 
 ```sh
+mkdir -p .temp
 c2malbolge --repository-tools --capsule \
-  --output .temp/noop.malbolge examples/noop.c
-malbolge --repository-tools .temp/noop.malbolge --report-steps
+  --output .temp/emit-aa.malbolge \
+  src/interface/command-line/examples/emit-aa.c
+malbolge --repository-tools .temp/emit-aa.malbolge --report-steps
 ```
+
+The checked-in example emits exactly `AA` on guest stdout, with
+`malbolge-steps-v1:27` on stderr from the normative repository VM. It uses two
+`putchar('A')` calls and an implicit `void` return; it does not claim general C
+or libc support. The three compiler examples above are alternative invocations,
+with distinct output names to preserve the no-clobber guarantee.
 
 For the **Unix `malbolge` shim**, a leading `--repository-tools` selects the
 existing repository-built `.cache/rust/target/debug/malbolge` VM. This is useful
@@ -135,13 +147,13 @@ are identical to the explicit-tool invocation. This is a repository development
 shortcut, not an automatic production compiler installation.
 
 In explicit-tool mode all three executables are caller-trusted capabilities.
-This is a
-bounded integration entrypoint, **not** the finished turnkey installer or
-arbitrary C compiler. It currently accepts only the exact normalized
-Clang shapes admitted by the JSON adapter: effect-free void functions
-(including nested scopes, standalone `0;` and `(void)0;`), and consecutive
-`putchar(N);` statements followed by `return;` in a void function. One to
-32 writes of `0` produce actual NUL bytes. Only independently witnessed
+This bounded integration entrypoint is **not** the finished turnkey installer
+or an arbitrary C compiler. It accepts only exact normalized Clang shapes:
+effect-free void functions (including nested scopes, standalone `0;` and
+`(void)0;`) and consecutive `putchar(N);` statements in void functions with
+an explicit `return;` or implicit return at the closing brace. Byte arguments
+may be admitted source-bound decimal integers or evaluated character literals.
+One to 32 writes of `0` produce actual NUL bytes. Only independently witnessed
 nonzero byte/count pairs can compile: currently `23` once, `65` twice, or
 `146` three times. Other nonzero values/counts, mixed byte values,
 noncanonical integer spellings, interleaved effects, excess calls, the
