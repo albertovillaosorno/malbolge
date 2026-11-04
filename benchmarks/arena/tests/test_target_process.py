@@ -3552,10 +3552,16 @@ def test_wait_requires_native_matching_recorded_child_status(
 ) -> None:
     """The returned exit code must agree with Popen's internal reaped value."""
     original_wait = target_process.sp.Popen.wait
+    forged = False
 
     def forged_record(child: sp.Popen[bytes], timeout: float | None = None) -> int:
+        nonlocal forged
         status = original_wait(child, timeout=timeout)
-        child.returncode = cast("int", recorded)
+        # Corrupt only the primary receipt. Cleanup must restore Popen's
+        # actual reaped status so its destructor does not report a false leak.
+        if not forged:
+            forged = True
+            child.returncode = cast("int", recorded)
         return status
 
     monkeypatch.setattr(target_process.sp.Popen, "wait", forged_record)
