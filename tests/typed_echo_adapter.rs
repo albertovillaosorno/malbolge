@@ -5048,3 +5048,134 @@ fn seeded_literal_publisher_refuses_unsupported_or_occupied_artifacts() -> Resul
     }
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "one canonical typed/ternary/VM trace"
+)]
+fn empty_void_canonical_typed_function_reaches_verified_guest() -> Result<(), String> {
+    let module = fixture_with_instructions(Vec::new(), "fixtures/empty-void.c")?;
+    let source = wire(&module)?;
+    let compiled = adapter::compile_canonical_typed_empty_void(&source, current_profile())
+        .map_err(|error| format!("compile empty function: {error:?}"))?;
+    let restored = canonical_ternary_program(compiled.ternary_bytes())
+        .map_err(|error| format!("restore empty ternary: {error:?}"))?;
+    let [function] = restored.functions.as_slice() else {
+        return Err(String::from("expected one restored function"));
+    };
+    assert!(matches!(
+        function.operations.as_slice(),
+        [TernaryOperation::ReturnVoid { .. }]
+    ));
+    assert_eq!(compiled.layout().source().len(), 2);
+    let mut vm =
+        ProfileMachine::from_source(current_profile(), compiled.layout().source(), vec![255, 0])
+            .map_err(|error| format!("empty void VM: {error:?}"))?;
+    assert!(matches!(
+        vm.run(2),
+        Ok(RunOutcome::Terminated { steps: 2, .. })
+    ));
+    assert!(vm.output().is_empty());
+    assert_eq!(vm.input_consumed(), 0);
+    let with_effects = wire(&fixture(1)?)?;
+    assert!(
+        adapter::compile_canonical_typed_empty_void(&with_effects, current_profile(),).is_err()
+    );
+    assert!(adapter::compile_canonical_typed_empty_void(&source, historical_profile(),).is_err());
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "external artifact and runtime assertions"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "external artifact and runtime assertions"
+)]
+fn empty_void_typed_and_ternary_cli_publish_real_capsules() -> Result<(), String> {
+    let owned = OwnedFixture::new()?;
+    let source = wire(&fixture_with_instructions(
+        Vec::new(),
+        "fixtures/empty-void.c",
+    )?)?;
+    let compiled = adapter::compile_canonical_typed_empty_void(&source, current_profile())
+        .map_err(|error| format!("compiled empty function: {error:?}"))?;
+    for (kind, canonical, capsule) in [
+        ("--typed-file", source.as_slice(), false),
+        ("--ternary-file", compiled.ternary_bytes(), true),
+    ] {
+        let wire_path = owned.path(if capsule { "empty.mctr" } else { "empty.mcti" });
+        fs::write(&wire_path, canonical).map_err(|error| error.to_string())?;
+        let output_path = owned.path(if capsule {
+            "empty-capsule.malbolge"
+        } else {
+            "empty-raw.malbolge"
+        });
+        let mut command = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"));
+        let _args = command
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&output_path);
+        if capsule {
+            let _capsule = command.arg("--capsule");
+        }
+        let result = command
+            .arg("--")
+            .arg("--empty-void")
+            .arg(kind)
+            .arg(&wire_path)
+            .output()
+            .map_err(|error| format!("publish empty function: {error}"))?;
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        let published = fs::read(&output_path).map_err(|error| error.to_string())?;
+        let actual = if capsule {
+            let parsed = malbolge::parse_capsule(&published)
+                .map_err(|error| format!("empty capsule parse: {error}"))?
+                .ok_or("missing empty capsule")?;
+            assert_eq!(parsed.profile(), current_profile());
+            parsed.payload().to_vec()
+        } else {
+            published
+        };
+        assert_eq!(actual, compiled.layout().source());
+        if capsule {
+            let run = Command::new(env!("CARGO_BIN_EXE_malbolge"))
+                .arg(&output_path)
+                .arg("--report-steps")
+                .output()
+                .map_err(|error| format!("run empty capsule: {error}"))?;
+            assert!(
+                run.status.success(),
+                "{}",
+                String::from_utf8_lossy(&run.stderr)
+            );
+            assert!(run.stdout.is_empty());
+            assert_eq!(run.stderr, b"malbolge-steps-v1:2\n");
+        }
+    }
+    let disallowed = owned.path("nonempty.mcti");
+    fs::write(&disallowed, wire(&fixture(1)?)?).map_err(|error| error.to_string())?;
+    let output_path = owned.path("rejected.malbolge");
+    let result = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+        .arg("--profile")
+        .arg(current_profile().id())
+        .arg("--output")
+        .arg(&output_path)
+        .arg("--")
+        .arg("--empty-void")
+        .arg("--typed-file")
+        .arg(&disallowed)
+        .output()
+        .map_err(|error| format!("reject nonempty source: {error}"))?;
+    assert!(!result.status.success());
+    assert!(!output_path.exists());
+    Ok(())
+}

@@ -26,7 +26,17 @@ program, match the profile, and delegate source encoding/admission to
 `malbolge-layout`. They
 emit the actual source code; no host callback performs guest byte I/O.
 
-### Verified initial-zero guest output
+### Verified side-effect-free void function
+
+`encode_empty_void_function` accepts exactly one canonical current-profile
+MCTR function containing only `ReturnVoid`. It emits a graphical no-op and
+real halt, the minimum two cells admitted by the loader. The selected VM
+performs two steps with no output or input consumption. Nonempty operations,
+foreign profiles, non-void returns and malformed MCTR reject. This proves an
+observable absence of byte effects, not general C source compilation,
+function calls, non-void returns or process exit semantics. The typed adapter
+and `malbolge_layout --empty-void` publisher admit the same exact subset.
+
 
 An independent, explicitly selected library entrypoint,
 `encode_initial_zero_outputs`, admits exactly one canonical MCTR void

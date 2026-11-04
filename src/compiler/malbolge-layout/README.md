@@ -10,6 +10,26 @@ that all later data writes remain outside source. Jumps after relocation are
 not admitted. There is no conditional branch, backward jump, or executable
 external guest helper.
 
+### Canonical effect-free function
+
+The opt-in `--empty-void --typed-file PATH` (or `--ternary-file PATH`,
+`--typed-stdin`, `--ternary-stdin`) accepts one fully canonical no-effect
+void-return function. The complete MCTI-to-MCTR path is re-decoded and
+independently compared against the same two-cell `nop`/`halt` Malbolge
+program. The publisher preflights the real VM with empty and nonempty input,
+requires exact two-step termination and zero effects, and publishes a raw
+source or selected-profile capsule without overwriting existing artifacts.
+
+```sh
+cargo run --bin malbolge_layout -- \
+  --profile malbolge-2026 --output .temp/empty.malbolge \
+  --capsule -- --empty-void --typed-file .temp/empty.mcti
+```
+
+Other typed effects, non-void returns, foreign profiles, and malformed wire
+reject. This is a finite compiler subset, not an arbitrary C frontend,
+return-code implementation, or proof of a complete source-C program.
+
 The no-clobber publisher verifies the synced stage through its original
 open descriptor before creating the final hard link. It also rereads the
 newly published path through that descriptor and rechecks the exact bytes,

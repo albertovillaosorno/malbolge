@@ -492,3 +492,47 @@ fn all_256_successful_guest_byte_values_execute_exactly() -> Result<(), String> 
     assert_eq!(machine.input_consumed(), BYTE_VALUES);
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real guest output and proof assertions"
+)]
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "complete canonical-to-VM regression"
+)]
+fn empty_void_ternary_lowers_to_real_halt_without_guest_effects() -> Result<(), String> {
+    let lowered = lower_typed_ir(&projection(0)?)
+        .map_err(|error| format!("empty ternary lowering: {error:?}"))?;
+    let wire = canonical_ternary_bytes(&lowered)
+        .map_err(|error| format!("empty canonical wire: {error:?}"))?;
+    let restored = canonical_ternary_program(&wire)
+        .map_err(|error| format!("empty wire restore: {error:?}"))?;
+    assert_eq!(restored, lowered);
+    let layout = bridge::encode_empty_void_function(&restored, current_profile())
+        .map_err(|error| format!("empty guest layout: {error:?}"))?;
+    assert_eq!(layout.source().len(), 2);
+    assert_eq!(layout.executed_code_positions(), [0, 1]);
+    for input in [vec![], vec![0, 255, 128]] {
+        let mut vm = ProfileMachine::from_source(current_profile(), layout.source(), input)
+            .map_err(|error| format!("empty guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(2),
+            Ok(RunOutcome::Terminated { steps: 2, .. })
+        ));
+        assert_eq!(vm.output(), []);
+        assert_eq!(vm.input_consumed(), 0);
+    }
+    assert_eq!(
+        bridge::encode_empty_void_function(&restored, historical_profile()),
+        Err(ByteEchoBridgeError::ProfileMismatch),
+    );
+    let extra = lower_typed_ir(&projection(1)?)
+        .map_err(|error| format!("nonempty ternary lowering: {error:?}"))?;
+    assert_eq!(
+        bridge::encode_empty_void_function(&extra, current_profile()),
+        Err(ByteEchoBridgeError::UnsupportedEffectTrace),
+    );
+    Ok(())
+}

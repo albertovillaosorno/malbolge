@@ -925,6 +925,38 @@ const fn rotated_byte_seeds(outputs: usize) -> Option<RotatedByteSeedTable> {
     }
 }
 
+/// Emits a genuine two-step guest program for a side-effect-free void function.
+///
+/// The complete admitted ternary function must contain only `ReturnVoid`.
+/// The first cell is an inert no-op required by the canonical two-cell
+/// source loader; the second is a reached guest halt. No C computation,
+/// source effects, process exit status or arbitrary return ABI are inferred.
+///
+/// # Errors
+///
+/// Rejects malformed/foreign canonical state, non-void returns, any source
+/// effect, or a layout that fails independent profile admission.
+pub fn encode_empty_void_function(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id() {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if !matches!(
+        function.operations.as_slice(),
+        [TernaryOperation::ReturnVoid { .. }]
+    ) {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    encode_linear_layout(profile, &[LinearOpcode::NoOperation, LinearOpcode::Halt])
+        .map_err(ByteEchoBridgeError::Layout)
+}
+
 /// Emits one bounded, source-validated successful-byte-echo trace.
 ///
 /// Each adjacent `ByteInput`/`ByteOutput` pair must use the exact same SSA

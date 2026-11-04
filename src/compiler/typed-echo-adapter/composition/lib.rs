@@ -94,6 +94,7 @@ impl CompiledTypedEcho {
 #[derive(Clone, Copy)]
 enum ByteTraceMode {
     AdjacentEcho,
+    EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
     LatestRead,
@@ -479,6 +480,8 @@ fn project_byte_trace(
     }
     let instructions = match mode {
         ByteTraceMode::AdjacentEcho => project_effects(module, block.instructions())?,
+        ByteTraceMode::EmptyVoid if block.instructions().is_empty() => Vec::new(),
+        ByteTraceMode::EmptyVoid => return Err(TypedEchoAdapterError::UnsupportedTypedIr),
         ByteTraceMode::InitialZero => project_initial_zero_effects(module, block.instructions())?,
         ByteTraceMode::LatestRead => project_latest_effects(module, block.instructions())?,
         ByteTraceMode::ZeroPrefixedLatest => {
@@ -548,6 +551,9 @@ fn compile_byte_trace(
         ByteTraceMode::AdjacentEcho => {
             bridge::encode_successful_byte_echo(&independently_admitted, profile)
         }
+        ByteTraceMode::EmptyVoid => {
+            bridge::encode_empty_void_function(&independently_admitted, profile)
+        }
         ByteTraceMode::InitialZero => {
             bridge::encode_initial_zero_outputs(&independently_admitted, profile)
         }
@@ -569,6 +575,24 @@ fn compile_byte_trace(
         layout,
         ternary_bytes,
     })
+}
+
+/// Lowers one canonical side-effect-free void-return typed function.
+///
+/// The admitted function has no parameters, instructions, globals, or proof
+/// obligations, and one void return block. Canonical MCTR is independently
+/// decoded before the generated two-cell no-op/halt Malbolge layout is accepted.
+/// This does not claim to compile arbitrary C returns or a process exit ABI.
+///
+/// # Errors
+///
+/// Refuses nonempty effects, invalid typed/wire state, foreign profiles and
+/// unadmitted positional source.
+pub fn compile_canonical_typed_empty_void(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::EmptyVoid)
 }
 
 /// Lowers the **original** strict canonical typed-IR echo sublanguage.

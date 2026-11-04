@@ -42,8 +42,8 @@ use std::process::{ExitCode, id};
 use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
 use crate::bridge::{
-    encode_initial_zero_outputs, encode_latest_byte_identity_trace, encode_rotated_byte_literal,
-    encode_successful_byte_echo, encode_successful_latest_byte_trace,
+    encode_empty_void_function, encode_initial_zero_outputs, encode_latest_byte_identity_trace,
+    encode_rotated_byte_literal, encode_successful_byte_echo, encode_successful_latest_byte_trace,
     encode_zero_prefixed_latest_byte_trace,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
@@ -52,9 +52,9 @@ use crate::layout::{
     encode_auto_padded_forward_layout, encode_linear_layout,
 };
 use crate::typed_adapter::{
-    compile_canonical_typed_echo, compile_canonical_typed_identity_byte_trace,
-    compile_canonical_typed_initial_zero_outputs, compile_canonical_typed_latest_byte_trace,
-    compile_canonical_typed_rotated_byte_literal,
+    compile_canonical_typed_echo, compile_canonical_typed_empty_void,
+    compile_canonical_typed_identity_byte_trace, compile_canonical_typed_initial_zero_outputs,
+    compile_canonical_typed_latest_byte_trace, compile_canonical_typed_rotated_byte_literal,
     compile_canonical_typed_zero_prefixed_latest_byte_trace,
 };
 
@@ -70,6 +70,7 @@ const INITIAL_ZERO_OUTPUT_ARG: &str = "--initial-zero-output";
 const ZERO_PREFIXED_BYTE_TRACE_ARG: &str = "--zero-prefixed-byte-trace";
 const IDENTITY_BYTE_TRACE_ARG: &str = "--identity-byte-trace";
 const SEEDED_BYTE_LITERAL_ARG: &str = "--seeded-byte-literal";
+const EMPTY_VOID_ARG: &str = "--empty-void";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
 const TERNARY_STDIN_ARG: &str = "--ternary-stdin";
@@ -103,6 +104,7 @@ struct CommandSpec {
 #[derive(Clone, Copy, Debug)]
 enum ByteTraceMode {
     AdjacentEcho,
+    EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
     LatestRead,
@@ -118,6 +120,7 @@ enum SuccessfulByteEffect {
 }
 
 enum SourceEffectWitness {
+    EmptyVoid,
     InitialZero { outputs: usize },
     RotatedLiteral { byte: u8, outputs: usize },
     SuccessfulByteTrace(Vec<SuccessfulByteEffect>),
@@ -200,8 +203,11 @@ fn parse_canonical_source(
         || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
         || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
         || first == OsStr::new(SEEDED_BYTE_LITERAL_ARG)
+        || first == OsStr::new(EMPTY_VOID_ARG)
     {
-        let mode = if first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG) {
+        let mode = if first == OsStr::new(EMPTY_VOID_ARG) {
+            ByteTraceMode::EmptyVoid
+        } else if first == OsStr::new(INITIAL_ZERO_OUTPUT_ARG) {
             ByteTraceMode::InitialZero
         } else if first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG) {
             ByteTraceMode::ZeroPrefixedLatest
@@ -268,6 +274,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
         || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
         || first == OsStr::new(SEEDED_BYTE_LITERAL_ARG)
+        || first == OsStr::new(EMPTY_VOID_ARG)
     {
         return parse_canonical_source(first, arguments);
     } else {
@@ -846,15 +853,13 @@ fn read_canonical_wire_with_reader(
 // initially stable parent symlink is rebound to a different hard link of the
 // same inode. The caller's requested path must still resolve to that source.
 #[cfg(target_os = "linux")]
-fn verify_requested_canonical_path(
-    path: &Path,
-    expected: &Path,
-    kind: &str,
-) -> Result<(), String> {
+fn verify_requested_canonical_path(path: &Path, expected: &Path, kind: &str) -> Result<(), String> {
     let current = fs::canonicalize(path)
         .map_err(|error| format!("cannot resolve canonical {kind} path after read: {error}"))?;
     if current != expected {
-        return Err(String::from("canonical wire requested path changed during read"));
+        return Err(String::from(
+            "canonical wire requested path changed during read",
+        ));
     }
     Ok(())
 }
@@ -870,7 +875,9 @@ fn verify_opened_canonical_path(
     let opened_path = fs::read_link(descriptor_path)
         .map_err(|error| format!("cannot inspect canonical {kind} opened path: {error}"))?;
     if opened_path != expected {
-        return Err(String::from("canonical wire opened path changed during read"));
+        return Err(String::from(
+            "canonical wire opened path changed during read",
+        ));
     }
     Ok(())
 }
@@ -908,6 +915,7 @@ fn verified_ternary_bytes(
         .map_err(|error| format!("canonical ternary wire rejected: {error:?}"))?;
     let layout = match mode {
         ByteTraceMode::AdjacentEcho => encode_successful_byte_echo(&program, profile),
+        ByteTraceMode::EmptyVoid => encode_empty_void_function(&program, profile),
         ByteTraceMode::InitialZero => encode_initial_zero_outputs(&program, profile),
         ByteTraceMode::LatestRead => encode_successful_latest_byte_trace(&program, profile),
         ByteTraceMode::ZeroPrefixedLatest => {
@@ -928,7 +936,9 @@ fn verified_ternary_bytes(
         .first()
         .ok_or("bridge accepted no ternary function")?
         .operations;
-    let effect_witness = if matches!(mode, ByteTraceMode::RotatedLiteral) {
+    let effect_witness = if matches!(mode, ByteTraceMode::EmptyVoid) {
+        Some(SourceEffectWitness::EmptyVoid)
+    } else if matches!(mode, ByteTraceMode::RotatedLiteral) {
         let [TernaryOperation::MaterializeU8 { scalar, .. }, ..] = operations.as_slice() else {
             return Err(String::from("missing seeded byte scalar"));
         };
@@ -982,6 +992,7 @@ fn verified_typed_bytes(
 ) -> Result<VerifiedSource, String> {
     let compiled = match mode {
         ByteTraceMode::AdjacentEcho => compile_canonical_typed_echo(typed_bytes, profile),
+        ByteTraceMode::EmptyVoid => compile_canonical_typed_empty_void(typed_bytes, profile),
         ByteTraceMode::InitialZero => {
             compile_canonical_typed_initial_zero_outputs(typed_bytes, profile)
         }
@@ -1127,6 +1138,29 @@ fn verify_successful_byte_trace(
     Ok(())
 }
 
+// An effect-free function still reaches its actual guest halt. The second
+// admission independently proves no output or input effects for two inputs.
+fn verify_empty_void(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+) -> Result<(), String> {
+    if artifact.steps != 2 {
+        return Err(String::from("empty-void guest halt geometry disagrees"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
+            .map_err(|error| format!("empty-void guest VM load failed: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || !vm.output().is_empty()
+        {
+            return Err(String::from("empty-void guest trace mismatch"));
+        }
+    }
+    Ok(())
+}
+
 // Constant-zero emission has no successful input effects: the selected VM
 // must emit each zero from initial A=0 while ignoring any supplied guest stdin.
 fn verify_initial_zero_outputs(
@@ -1193,6 +1227,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
     match &artifact.effect_witness {
         Some(SourceEffectWitness::SuccessfulByteTrace(effects)) => {
             verify_successful_byte_trace(profile, &artifact, effects)?;
+        }
+        Some(SourceEffectWitness::EmptyVoid) => {
+            verify_empty_void(profile, &artifact)?;
         }
         Some(SourceEffectWitness::InitialZero { outputs }) => {
             verify_initial_zero_outputs(profile, &artifact, *outputs)?;

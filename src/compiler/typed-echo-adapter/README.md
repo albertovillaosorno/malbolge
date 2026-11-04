@@ -10,9 +10,19 @@ projects the complete source function/effect trace, and lowers to canonical
 bytes, compares complete stage state, and passes the admitted result through
 the existing independently verified Malbolge byte-echo layout backend.
 
-## Supported domain
+## Effect-free void return
 
-All four modes accept exactly one no-argument, non-variadic, void-return
+`compile_canonical_typed_empty_void` admits one canonical no-parameter,
+no-effect, one-block void function. It preserves exact typed source identity,
+lowers the return to independently re-decoded MCTR, and encodes an executable
+`NoOperation` / `Halt` guest source through the verified layout bridge.
+Nonempty instructions, globals, proof obligations, foreign profiles and
+non-void returns reject. A real VM and CLI capsule regression proves two
+steps with no output or consumed input, including after supplied input bytes.
+This is not yet a C source frontend driver or general return-value ABI.
+
+
+All opt-in modes accept exactly one no-argument, non-variadic, void-return
 function;
 one entry block without phi nodes; and no globals or proof obligations.
 `compile_canonical_typed_echo` preserves the original strict contract: one
