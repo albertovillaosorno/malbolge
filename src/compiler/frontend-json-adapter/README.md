@@ -70,8 +70,9 @@ bytes use the separate `--seeded-byte-literal --typed-stdin` backend, where
 each byte/count combination must have its own position-sensitive guest-VM
 witness. For example, one `putchar(23)`, two `putchar(65)` calls and three
 `putchar(146)` calls, and thirty-three `putchar(40)` calls compile and
-execute with exact byte output. The backend's
-currently witnessed subset is enumerated in
+execute with exact byte output. One `putchar(65)` also has an independently
+checked single-byte guest crazy-operation witness. The backend's currently
+witnessed subset is enumerated in
 `src/compiler/byte-echo-bridge/README.md`; **not** every value or count is
 realizable. Integer tokens over 32 source bytes, negative or unrepresentable
 `i32` values, and more than 33 calls refuse source admission. An

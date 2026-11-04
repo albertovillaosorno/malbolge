@@ -115,7 +115,11 @@ current-profile nonzero bytes are available: `4, 5, 6, 9, 10, 11, 12, 13,
 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 29, 36, 37, 38, 39, 43, 44,
 157, 158, 159, 160, 161, 162, 251, 253`. The additional 20 values have
 independently checked prefix lengths between 27 and 64; no value is inferred
-from a different output count. For exactly two identical outputs, a **different** table
+from a different output count. A separate, exact one-output witness emits
+ASCII `A` (`65`) using 27 no-ops, data relocation, then a guest `p` crazy
+operation rather than rotation. Its 31 source cells are checked against the
+normative VM; this does not extend the one-rotation table or prove more bytes.
+For exactly two identical outputs, a **different** table
 admits `55, 64, 65, 66, 163, 164, 165, 182, 183, 200`. For exactly three
 identical outputs, an independently witnessed table admits `3, 4, 5, 6, 7,
 8, 9, 11, 18, 19, 20, 21, 22, 23, 24, 25, 144, 145, 146, 251, 252`.

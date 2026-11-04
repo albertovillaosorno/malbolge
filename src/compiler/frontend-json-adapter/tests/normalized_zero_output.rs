@@ -193,7 +193,7 @@ fn repeated_zero_calls_preserve_source_and_emit_order() -> Result<(), String> {
 )]
 fn witnessed_nonzero_literals_reach_real_guest_byte_output() -> Result<(), String> {
     let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
-    for (byte, outputs) in [(23, 1u32), (65, 2), (146, 3), (40, 33)] {
+    for (byte, outputs) in [(23, 1u32), (65, 1), (65, 2), (146, 3), (40, 33)] {
         let source = repeated_literal_input(byte, outputs);
         let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
             .map_err(|error| format!("C literal {byte}: {error:?}"))?;
@@ -795,7 +795,6 @@ fn unsupported_or_inconsistent_nonzero_calls_fail_closed() -> Result<(), String>
     let mut mutations = vec![
         repeated_literal_input(1, 1),
         repeated_literal_input(23, 2),
-        repeated_literal_input(65, 1),
         repeated_literal_input(255, 1),
     ];
     let mut mismatched = repeated_literal_input(65, 2);
@@ -821,7 +820,7 @@ fn unsupported_or_inconsistent_nonzero_calls_fail_closed() -> Result<(), String>
         // An unsupported literal may form valid MCTI but MUST be refused by
         // the independent guest layout; the source adapter itself refuses
         // incorrect literals, spans, and mixed-byte traces.
-        if index < 4 {
+        if index < 3 {
             let (wire, mode) = canonical_guest_typed_ir(&bytes(source))
                 .map_err(|error| format!("C literal {index} admission: {error:?}"))?;
             assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);

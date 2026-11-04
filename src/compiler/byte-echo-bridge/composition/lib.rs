@@ -1282,14 +1282,15 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
     Some((*result, *value))
 }
 
-/// Emits a nonzero `u8` one to thirty-three times using guest data rotation.
+/// Emits a nonzero `u8` one to thirty-three times using guest data operations.
 ///
 /// Accepts one `MaterializeU8` with one to thirty-three same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
-/// memory word; the guest `*` changes its own accumulator, not the host.
-/// This admits only the witness values above and checks every proposed
-/// result against independent VM execution before returning a source.
+/// word and rotates it in the guest, never on the host. The separately
+/// witnessed single ASCII `A` uses `p` instead of `*` at source phase 27;
+/// it does not authorize any other byte or output count. Every chosen
+/// witness is re-executed in the independent VM before publication.
 ///
 /// # Errors
 ///
@@ -1328,15 +1329,19 @@ pub fn encode_rotated_byte_literal(
     let Some(seeds) = rotated_byte_seeds(outputs.len()) else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    let Some((byte, padding)) = seeds
+    let witness = seeds
         .iter()
         .copied()
-        .find(|(byte, _)| *byte == scalar.bits())
-    else {
-        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        .find(|(byte, _)| *byte == scalar.bits());
+    let (byte, padding, arithmetic) = match witness {
+        Some((byte, padding)) => (byte, padding, LinearOpcode::RotateData),
+        // A separate actual-VM witness: 27 'o' cells, 'j', 'p', '<', 'v'.
+        // Keep this source/data phase and output multiplicity exact.
+        None if outputs.len() == 1 && scalar.bits() == 65 => (65, 27, LinearOpcode::CrazyData),
+        None => return Err(ByteEchoBridgeError::UnsupportedEffectTrace),
     };
     let mut operations = vec![LinearOpcode::NoOperation; padding];
-    operations.extend([LinearOpcode::RelocateDataPointer, LinearOpcode::RotateData]);
+    operations.extend([LinearOpcode::RelocateDataPointer, arithmetic]);
     operations.extend(repeat_n(LinearOpcode::OutputByte, outputs.len()));
     operations.push(LinearOpcode::Halt);
     let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;

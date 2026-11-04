@@ -231,6 +231,30 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
             self.assertEqual(executed.stdout, b"\x00\x00")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:3\n")
 
+    def test_real_clang_single_ascii_a_uses_crazy_data_guest(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for index, call in enumerate((b"putchar(65);", b"putchar('A');")):
+                with self.subTest(call=call):
+                    source = Path(temporary) / f"single-A-{index}.c"
+                    target = Path(temporary) / f"single-A-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + call
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"A")
+                    self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+
     def test_real_clang_33_equal_literal_calls_execute_real_guest(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
