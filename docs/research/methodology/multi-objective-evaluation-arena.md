@@ -1466,6 +1466,14 @@ The original study records remain the result authority.
   CLI regressions cover forged values and benign reordering.
   Both analyzer CLIs expose this as an optional view only; default reports and
   existing frontier rankings remain unchanged.
+- Source-bound statistical inference retains the original providers in
+  `49c1d139d` (success), `0b5e7c13e` (paired) and `cd29230be` (median).
+  Eleven red-first negatives now reject forged tails, inversion, count,
+  minimum, sample length/type and ordering providers. The final six-module
+  statistical/analyzer/evidence integration passed 991 tests, alongside zero
+  arena BasedPyright errors and clean scoped Ruff/format checks. These checks
+  preserve local arithmetic, not iid sampling, reported outcome truth, source
+  authenticity or physical measurements.
 - An additional opt-in accelerator identity gate rejects mixed declared
   devices in studies that require hardware-matched arms, while preserving
   heterogeneous studies when that policy is not requested. Synthetic tests
