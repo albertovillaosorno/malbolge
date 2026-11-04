@@ -501,11 +501,11 @@ fn bounded_inline_gap(before: &Position, after: &Position, required: u32) -> boo
         })
 }
 
-// Each direct putchar call has the pinned Clang semantic preorder:
-// call -> function decay -> declaration ref -> bounded argument wrappers ->
-// literal. One signed unary may occur at any position in a source-exact
-// parenthesis chain; a separate unsigned integral cast may surround a leaf.
-// No folded arithmetic is inferred.
+// Each putchar expression has the pinned Clang semantic preorder:
+// optional explicit to-void discard -> call -> function decay -> declaration
+// ref -> bounded argument wrappers -> literal. One signed unary may occur in
+// a checked parenthesis chain; a separate unsigned integral cast may surround
+// the leaf. No folded arithmetic, nested discards or side effects are inferred.
 #[expect(
     clippy::too_many_lines,
     clippy::too_many_arguments,
@@ -519,9 +519,36 @@ fn admitted_output_byte(
     expected_id: u32,
     previous_span_has_terminator: bool,
 ) -> Option<u8> {
-    let [call, cast, callee, rest @ ..] = group else {
+    let discard = group.first().filter(|node| {
+        node.kind == "cast-expression" && node.operation.as_deref() == Some("to-void")
+    });
+    let call_group = if discard.is_some() {
+        group.get(1..)?
+    } else {
+        group
+    };
+    let [call, cast, callee, rest @ ..] = call_group else {
         return None;
     };
+    let statement = discard.unwrap_or(call);
+    let call_id = expected_id.checked_add(u32::from(discard.is_some()))?;
+    let discard_valid = discard.is_none_or(|outer| {
+        outer.id == expected_id
+            && outer.parent == body.id
+            && outer.type_name.as_deref() == Some("void")
+            && outer.name.is_none()
+            && outer.reference.is_none()
+            && outer.definition.is_none()
+            && outer.inline_specified.is_none()
+            && outer.linkage.is_none()
+            && outer.storage_class.is_none()
+            && outer.constant_integer.is_none()
+            && outer.literal.is_none()
+            && bounded_inline_gap(&outer.span.begin, &call.span.begin, 6)
+            && outer.span.end.byte == call.span.end.byte
+            && outer.span.end.line == call.span.end.line
+            && outer.span.end.column == call.span.end.column
+    });
     let (literal, wrappers) = rest.split_last()?;
     if wrappers.len() > MAX_OUTPUT_ARGUMENT_WRAPPERS {
         return None;
@@ -600,7 +627,7 @@ fn admitted_output_byte(
     };
 
     let mut parent_id = call.id;
-    let mut next_id = expected_id.checked_add(3)?;
+    let mut next_id = call_id.checked_add(3)?;
     let mut parentheses = 0usize;
     for (index, node) in wrappers.iter().enumerate() {
         let child = wrappers.get(index.saturating_add(1)).unwrap_or(literal);
@@ -667,19 +694,20 @@ fn admitted_output_byte(
         parent_id = node.id;
         next_id = next_id.checked_add(1)?;
     }
-    let valid = literal.id == next_id
+    let valid = discard_valid
+        && literal.id == next_id
         && literal.parent == parent_id
-        && call.id == expected_id
-        && call.parent == body.id
+        && call.id == call_id
+        && call.parent == discard.map_or(body.id, |outer| outer.id)
         && call.kind == "call-expression"
         && call.type_name.as_deref() == Some("i32")
         && call.reference.as_deref() == Some("external:putchar")
-        && cast.id == expected_id.checked_add(1)?
+        && cast.id == call_id.checked_add(1)?
         && cast.parent == call.id
         && cast.kind == "cast-expression"
         && cast.type_name.as_deref() == Some("ptr(fn(i32)->i32)")
         && cast.operation.as_deref() == Some("function-to-pointer")
-        && callee.id == expected_id.checked_add(2)?
+        && callee.id == call_id.checked_add(2)?
         && callee.parent == cast.id
         && callee.kind == "declaration-reference-expression"
         && callee.type_name.as_deref() == Some("fn(i32)->i32")
@@ -699,8 +727,8 @@ fn admitted_output_byte(
             .all(|node| node.operation.is_none())
         && [cast, literal].iter().all(|node| node.reference.is_none())
         // NullStmt and CompoundStmt spans include their final delimiter.
-        && (call_span.begin.byte > previous_end
-            || (previous_span_has_terminator && call_span.begin.byte == previous_end))
+        && (statement.span.begin.byte > previous_end
+            || (previous_span_has_terminator && statement.span.begin.byte == previous_end))
         && call_span.end.byte < body.span.end.byte
         && call_span.begin.byte == cast_span.begin.byte
         && cast_span.begin.byte == callee_span.begin.byte
@@ -730,7 +758,7 @@ fn admitted_output_byte(
     valid.then_some(byte)
 }
 
-// Between direct output calls, discard only the same exact source-bound
+// Between output calls, discard only the same exact source-bound
 // no-effect statements admitted by the void-return frontend. Never infer that
 // an unrecognized expression lacks observable effects.
 fn inert_output_statement(
@@ -808,7 +836,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     if call_nodes.is_empty()
         || call_nodes.len()
             > MAX_LITERAL_OUTPUT_CALLS
-                .saturating_mul(4 + MAX_OUTPUT_ARGUMENT_WRAPPERS)
+                .saturating_mul(5 + MAX_OUTPUT_ARGUMENT_WRAPPERS)
                 .saturating_add(MAX_INERT_OUTPUT_STATEMENTS.saturating_mul(2))
                 .saturating_add(MAX_NESTED_OUTPUT_SCOPES)
         || function.kind != "function-declaration"
@@ -948,8 +976,10 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         if calls.len() >= MAX_LITERAL_OUTPUT_CALLS {
             return Err(FrontendJsonError::Unsupported);
         }
+        let discards_return_value =
+            node.kind == "cast-expression" && node.operation.as_deref() == Some("to-void");
         let mut argument_end = offset
-            .checked_add(3)
+            .checked_add(3usize.saturating_add(usize::from(discards_return_value)))
             .ok_or(FrontendJsonError::Unsupported)?;
         for _ in 0..MAX_OUTPUT_ARGUMENT_WRAPPERS {
             let Some(argument_node) = call_nodes.get(argument_end) else {
@@ -1000,7 +1030,9 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         if selected_byte.is_none() {
             selected_byte = Some(byte);
         }
-        let call = group.first().ok_or(FrontendJsonError::Unsupported)?;
+        let call = group
+            .get(usize::from(discards_return_value))
+            .ok_or(FrontendJsonError::Unsupported)?;
         let literal = group.last().ok_or(FrontendJsonError::Unsupported)?;
         // Attribute signed constants to their complete source sign rather
         // than the positive leaf; parentheses retain checked source spans.
@@ -1008,7 +1040,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
             .iter()
             .find(|argument_node| argument_node.kind == "unary-expression")
             .unwrap_or(literal);
-        scope.previous_end = call.span.end.byte;
+        scope.previous_end = node.span.end.byte;
         scope.previous_span_has_terminator = false;
         calls.push((call, argument));
         offset = end;

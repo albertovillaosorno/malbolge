@@ -50,6 +50,11 @@ applied to an `i32` literal or a parenthesized `i32` literal. For example,
 source span and the inner operand's checked value. For unsigned `u32`
 source tokens, a single checked `u32`-to-`i32` conversion may wrap up to
 three pairs of parentheses; unsigned unary expressions are rejected.
+A direct output call may also be explicitly cast to void as a standalone
+expression statement, for example `(void)putchar(65);`, discarding only the
+call's return value. The pinned Clang `to-void` ancestor is checked for exact
+parentage, absent effect-bearing metadata, and bounded same-line source spans;
+additional discard casts or arbitrary effectful expressions still reject.
 Only one sign or conversion is admitted per call. The wrapper's canonical
 evaluated signed `i32` must agree with the Clang leaf and unary operator.
 Negative arguments emit their low byte with the complete signed source span.
@@ -67,7 +72,7 @@ not contain the source text: the closed pinned-Clang AST and the public driver's
 source SHA-256 check remain the semantic and source-authenticity boundaries.
 Each call proves its direct `putchar` reference, one exact literal argument
 and function-to-pointer decay;
-the complete normalized preorder contains four to eight nodes per call, plus
+the complete normalized preorder contains four to nine nodes per call, plus
 two structural nodes and optional explicit `return;`, preserving exact source
 ancestry and ordered nonoverlapping spans. Lexical compound scopes may contain
 these calls and inert statements; each nested scope preserves its own Clang
