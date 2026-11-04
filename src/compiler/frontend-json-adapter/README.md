@@ -42,14 +42,15 @@ The exact pinned-Clang shape admits one through 32 **consecutive** calls to
 `putchar(N);` with optional final `return;`, where every `N` evaluates to the same
 byte in `0..255` and is either a bounded single-line C integer token
 (decimal, octal, hexadecimal or C23 binary) or a single C character literal
-(including bounded escape spellings). For example,
-`putchar('A'); putchar('A');`, `putchar(0x41); putchar(0101);`,
-`putchar(0b01000001);` and `putchar('\0');` retain Clang's exact
+(including bounded escape spellings). One optional exact single pair of
+parentheses or an unsigned `u32` integer token converted to `i32` is also
+admitted per call. For example, `putchar((65)); putchar(65u);`,
+`putchar(0x41); putchar(0101);`, and `putchar('\0');` retain Clang's
 source spans and evaluated integer values. Each call proves its direct
 `putchar` reference, one exact literal argument and function-to-pointer decay;
-the complete normalized preorder contains `4 * outputs + 2` nodes with
-implicit void return, or `4 * outputs + 3` with explicit `return;`, preserving
-exact source ancestry and ordered nonoverlapping spans. The adapter emits one
+the complete normalized preorder contains four or five nodes per call, plus
+two structural nodes and optional explicit `return;`, preserving exact source
+ancestry and ordered nonoverlapping spans. The adapter emits one
 canonical `u8` constant and the corresponding number of `ByteOutput` effects.
 For zero, the downstream publisher uses `--initial-zero-output --typed-stdin`,
 which independently verifies guest stdout of one to 32 NUL bytes. Nonzero
@@ -65,7 +66,8 @@ layout admission without publishing a `.malbolge` artifact.
 
 An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
-Call-result handling, arbitrary output streams, interleaved statements,
+Nested parentheses, nonliteral arithmetic, call-result handling, arbitrary
+output streams, interleaved statements,
 `getchar`, EOF, I/O errors, general guest libc and C entry ABI remain
 unsupported. Mixing distinct evaluated literal values in one source refuses
 admission.

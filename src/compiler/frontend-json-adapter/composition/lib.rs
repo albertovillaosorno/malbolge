@@ -43,11 +43,11 @@ use serde::Deserialize;
 use std::iter::once;
 use std::str;
 use typed::{
-    canonical_bytes, canonical_module, lower_frontend_artifact, BasicBlock, BasicBlockSpec,
-    FrontendArtifact, FrontendArtifactSpec, FrontendFallthroughVoidFunctionSpec, FrontendPosition,
-    FrontendReturnVoidFunction, FrontendReturnVoidFunctionSpec, FrontendSpan, Function,
-    FunctionSpec, Instruction, IntegerConstant, LocatedInstruction, Module, ModuleSpec, TypeId,
-    ValueId,
+    BasicBlock, BasicBlockSpec, FrontendArtifact, FrontendArtifactSpec,
+    FrontendFallthroughVoidFunctionSpec, FrontendPosition, FrontendReturnVoidFunction,
+    FrontendReturnVoidFunctionSpec, FrontendSpan, Function, FunctionSpec, Instruction,
+    IntegerConstant, LocatedInstruction, Module, ModuleSpec, TypeId, ValueId, canonical_bytes,
+    canonical_module, lower_frontend_artifact,
 };
 
 const EXPECTED_ABI: &str = "malbolge-c32-v1";
@@ -463,9 +463,10 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
     )
 }
 
-// Each direct `putchar(N)` child must have the exact source-bound Clang
-// four-node preorder: call -> function decay -> declaration ref, and call
-// -> evaluated byte literal. Calls are ordered siblings, never discarded.
+// Each direct `putchar(N)` call has its pinned source-bound Clang preorder:
+// call -> function decay -> declaration ref, followed by the byte literal or
+// one exact parenthesized/unsigned-to-i32 conversion and its child literal.
+// Calls are ordered siblings; no expression or effect is discarded.
 #[expect(
     clippy::too_many_lines,
     reason = "exact Clang node metadata and positional proof stay together"
@@ -476,8 +477,10 @@ fn admitted_output_byte(
     previous_end: u32,
     expected_id: u32,
 ) -> Option<u8> {
-    let [call, cast, callee, literal] = group else {
-        return None;
+    let (call, cast, callee, wrapper, literal) = match group {
+        [call, cast, callee, literal] => (call, cast, callee, None, literal),
+        [call, cast, callee, wrapper, literal] => (call, cast, callee, Some(wrapper), literal),
+        _ => return None,
     };
     let digits = literal.literal.as_deref()?;
     // Clang reports a canonical decimal evaluated i32 value for either source
@@ -490,6 +493,7 @@ fn admitted_output_byte(
     let cast_span = &cast.span;
     let callee_span = &callee.span;
     let literal_span = &literal.span;
+    let argument_span = wrapper.map_or(literal_span, |node| &node.span);
     let source_width = literal_span.end.byte.checked_sub(literal_span.begin.byte)?;
     // Clang evaluates decimal, octal, hexadecimal and C23 binary integer
     // tokens to the same canonical decimal i32 value. Their source spelling
@@ -521,7 +525,63 @@ fn admitted_output_byte(
         }
         _ => return None,
     };
-    let valid = call.id == expected_id
+    let valid_wrapper = match wrapper {
+        None => {
+            literal.parent == call.id
+                && literal.id == expected_id.checked_add(3)?
+                && literal.type_name.as_deref() == Some("i32")
+        }
+        Some(node) => {
+            let metadata_closed = node.name.is_none()
+                && node.reference.is_none()
+                && node.definition.is_none()
+                && node.inline_specified.is_none()
+                && node.linkage.is_none()
+                && node.storage_class.is_none()
+                && node.literal.is_none()
+                // Clang evaluates both parenthesized and converted constants.
+                // The wrapper value must agree with the source-bound literal.
+                && node.constant_integer.as_deref() == Some(digits);
+            let shape = match node.kind.as_str() {
+                "parenthesized-expression" => {
+                    node.type_name.as_deref() == Some("i32")
+                        && node.operation.is_none()
+                        && literal.type_name.as_deref() == Some("i32")
+                        && node.span.begin.byte.checked_add(1) == Some(literal_span.begin.byte)
+                        && literal_span.end.byte.checked_add(1) == Some(node.span.end.byte)
+                        && node.span.begin.line == node.span.end.line
+                        && literal_span.begin.line == literal_span.end.line
+                        && node.span.begin.column.checked_add(1) == Some(literal_span.begin.column)
+                        && literal_span.end.column.checked_add(1) == Some(node.span.end.column)
+                }
+                "cast-expression" => {
+                    node.type_name.as_deref() == Some("i32")
+                        && node.operation.as_deref() == Some("integral-cast")
+                        && literal.kind == "integer-literal"
+                        && literal.type_name.as_deref() == Some("u32")
+                        && node.span.begin.byte == literal_span.begin.byte
+                        && node.span.end.byte == literal_span.end.byte
+                        && node.span.begin.line == literal_span.begin.line
+                        && node.span.end.line == literal_span.end.line
+                        && node.span.begin.column == literal_span.begin.column
+                        && node.span.end.column == literal_span.end.column
+                }
+                _ => false,
+            };
+            node.id == expected_id.checked_add(3)?
+                && node.parent == call.id
+                && literal.id == expected_id.checked_add(4)?
+                && literal.parent == node.id
+                && metadata_closed
+                && shape
+        }
+    };
+    let argument_width = argument_span
+        .end
+        .byte
+        .checked_sub(argument_span.begin.byte)?;
+    let valid = valid_wrapper
+        && call.id == expected_id
         && call.parent == body.id
         && call.kind == "call-expression"
         && call.type_name.as_deref() == Some("i32")
@@ -536,9 +596,6 @@ fn admitted_output_byte(
         && callee.kind == "declaration-reference-expression"
         && callee.type_name.as_deref() == Some("fn(i32)->i32")
         && callee.reference.as_deref() == Some("external:putchar")
-        && literal.id == expected_id.saturating_add(3)
-        && literal.parent == call.id
-        && literal.type_name.as_deref() == Some("i32")
         && [call, cast, callee, literal].iter().all(|node| {
             node.name.is_none()
                 && node.definition.is_none()
@@ -558,24 +615,30 @@ fn admitted_output_byte(
         && call_span.begin.byte == cast_span.begin.byte
         && cast_span.begin.byte == callee_span.begin.byte
         && cast_span.end.byte == callee_span.end.byte
-        && cast_span.end.byte.checked_add(1) == Some(literal_span.begin.byte)
-        && literal_span.end.byte < call_span.end.byte
+        && cast_span.end.byte.checked_add(1) == Some(argument_span.begin.byte)
+        && argument_span.end.byte < call_span.end.byte
         && cast_span.begin.byte.checked_add(7) == Some(cast_span.end.byte)
         && literal_span.begin.byte.checked_add(width) == Some(literal_span.end.byte)
-        && width
+        && argument_width
             .checked_add(9)
             .and_then(|call_width| call_span.begin.byte.checked_add(call_width))
             == Some(call_span.end.byte)
-        && [call_span, cast_span, callee_span, literal_span]
-            .iter()
-            .all(|span| {
-                span.begin.line != 0
-                    && span.begin.column != 0
-                    && span.end.line != 0
-                    && span.end.column != 0
-                    && span.begin.byte < span.end.byte
-                    && (span.begin.line != span.end.line || span.begin.column < span.end.column)
-            });
+        && [
+            call_span,
+            cast_span,
+            callee_span,
+            argument_span,
+            literal_span,
+        ]
+        .iter()
+        .all(|span| {
+            span.begin.line != 0
+                && span.begin.column != 0
+                && span.end.line != 0
+                && span.end.column != 0
+                && span.begin.byte < span.end.byte
+                && (span.begin.line != span.end.line || span.begin.column < span.end.column)
+        });
     valid.then_some(byte)
 }
 
@@ -592,10 +655,8 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         Some((last, preceding)) if last.kind == "return-statement" => (Some(last), preceding),
         _ => (None, rest),
     };
-    let (groups, leftover) = call_nodes.as_chunks::<4>();
-    if groups.is_empty()
-        || !leftover.is_empty()
-        || groups.len() > MAX_ZERO_OUTPUT_CALLS
+    if call_nodes.is_empty()
+        || call_nodes.len() > MAX_ZERO_OUTPUT_CALLS.saturating_mul(5)
         || function.kind != "function-declaration"
         || function.id != 1
         || function.parent != 0
@@ -645,14 +706,34 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     {
         return Err(FrontendJsonError::Unsupported);
     }
-    let mut calls = Vec::with_capacity(groups.len());
+    let mut calls = Vec::new();
     let mut selected_byte = None;
     let mut previous_end = body.span.begin.byte;
-    for (index, group) in groups.iter().enumerate() {
-        let id = u32::try_from(index)
+    let mut offset = 0usize;
+    while offset < call_nodes.len() {
+        if calls.len() >= MAX_ZERO_OUTPUT_CALLS {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        let id = u32::try_from(offset)
             .ok()
-            .and_then(|value| value.checked_mul(4))
             .and_then(|value| value.checked_add(3))
+            .ok_or(FrontendJsonError::Unsupported)?;
+        let fourth = call_nodes
+            .get(offset.saturating_add(3))
+            .ok_or(FrontendJsonError::Unsupported)?;
+        let nodes_per_call = if matches!(
+            fourth.kind.as_str(),
+            "parenthesized-expression" | "cast-expression"
+        ) {
+            5
+        } else {
+            4
+        };
+        let end = offset
+            .checked_add(nodes_per_call)
+            .ok_or(FrontendJsonError::Unsupported)?;
+        let group = call_nodes
+            .get(offset..end)
             .ok_or(FrontendJsonError::Unsupported)?;
         let byte = admitted_output_byte(group, body, previous_end, id)
             .ok_or(FrontendJsonError::Unsupported)?;
@@ -660,9 +741,11 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
             return Err(FrontendJsonError::Unsupported);
         }
         selected_byte = Some(byte);
-        let [call, _, _, literal] = group;
+        let call = group.first().ok_or(FrontendJsonError::Unsupported)?;
+        let literal = group.last().ok_or(FrontendJsonError::Unsupported)?;
         previous_end = call.span.end.byte;
         calls.push((call, literal));
+        offset = end;
     }
     if previous_end >= returned.map_or(body.span.end.byte, |node| node.span.begin.byte) {
         return Err(FrontendJsonError::Unsupported);

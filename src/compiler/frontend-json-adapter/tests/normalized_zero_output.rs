@@ -35,12 +35,12 @@
 pub mod adapter;
 
 use adapter::compile_canonical_typed_initial_zero_outputs;
-use malbolge::{target_profile, ProfileMachine, RunOutcome};
+use malbolge::{ProfileMachine, RunOutcome, target_profile};
 use malbolge_c_frontend_json_adapter::{
-    canonical_guest_typed_ir, canonical_void_typed_ir, typed, FrontendGuestMode,
+    FrontendGuestMode, canonical_guest_typed_ir, canonical_void_typed_ir, typed,
 };
 use serde as _;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn span(begin: u32, end: u32, line: u32, line_begin: u32) -> Value {
     json!({"begin":{"byte":begin,"line":line,"column":begin.saturating_sub(line_begin).saturating_add(1)},
@@ -167,10 +167,12 @@ fn repeated_zero_calls_preserve_source_and_emit_order() -> Result<(), String> {
             effects.first().map(typed::LocatedInstruction::instruction),
             Some(typed::Instruction::ConstantInteger { .. })
         ));
-        assert!(effects
-            .iter()
-            .skip(1)
-            .all(|effect| matches!(effect.instruction(), typed::Instruction::ByteOutput { .. })));
+        assert!(
+            effects.iter().skip(1).all(|effect| matches!(
+                effect.instruction(),
+                typed::Instruction::ByteOutput { .. }
+            ))
+        );
         let compiled = compile_canonical_typed_initial_zero_outputs(&wire, profile)
             .map_err(|error| format!("compile guest: {error:?}"))?;
         let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
@@ -325,7 +327,7 @@ fn forged_radix_literal_metadata_fails_closed() {
     let mut changed = base.clone();
     changed["nodes"][5]["constant_integer"] = json!("64");
     mutations.push(changed);
-    let mut changed = base.clone();
+    let mut changed = base;
     changed["nodes"][5]["span"]["end"]["line"] = json!(3);
     mutations.push(changed);
     let mut changed = repeated_output_input(65, 2, "integer-literal", 33);
@@ -340,16 +342,136 @@ fn forged_radix_literal_metadata_fails_closed() {
     }
 }
 
+// Reconstruct the exact pinned Clang preorder for putchar((0)) or putchar(0U).
+// The extra AST node is a source-bracketing paren or an implicit u32-to-i32 cast.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    clippy::default_numeric_fallback,
+    reason = "closed single-call source-preorder fixture"
+)]
+fn wrapped_zero_input(parenthesized: bool) -> Value {
+    let mut source = input();
+    let extra = if parenthesized { 2u32 } else { 1 };
+    let wrapper_end = 46 + extra;
+    source["nodes"][0]["span"] = span(19, 58 + extra, 2, 19);
+    source["nodes"][1]["span"] = span(35, 58 + extra, 2, 19);
+    source["nodes"][2]["span"] = span(37, 47 + extra, 2, 19);
+    let wrapper = if parenthesized {
+        json!({"id":6,"parent":3,"kind":"parenthesized-expression",
+               "span":span(45,wrapper_end,2,19),"type":"i32",
+               "constant_integer":"0"})
+    } else {
+        json!({"id":6,"parent":3,"kind":"cast-expression",
+               "span":span(45,wrapper_end,2,19),"type":"i32",
+               "operation":"integral-cast","constant_integer":"0"})
+    };
+    let mut literal = source["nodes"][5].clone();
+    literal["id"] = json!(7);
+    literal["parent"] = json!(6);
+    literal["span"] = if parenthesized {
+        span(46, 47, 2, 19)
+    } else {
+        literal["type"] = json!("u32");
+        span(45, 47, 2, 19)
+    };
+    let mut returned = source["nodes"][6].clone();
+    returned["id"] = json!(8);
+    returned["span"] = span(49 + extra, 55 + extra, 2, 19);
+    let mut nodes = source["nodes"].as_array().cloned().unwrap_or_default();
+    nodes.truncate(5);
+    nodes.push(wrapper);
+    nodes.push(literal);
+    nodes.push(returned);
+    source["nodes"] = json!(nodes);
+    source
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "normalized C argument wrappers must preserve verified guest output"
+)]
+fn pinned_clang_single_argument_wrappers_emit_real_guest_zero() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    for parenthesized in [true, false] {
+        let source = wrapped_zero_input(parenthesized);
+        let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+            .map_err(|error| format!("C argument wrapper {parenthesized}: {error:?}"))?;
+        assert_eq!(mode, FrontendGuestMode::InitialZeroOutput);
+        let compiled = compile_canonical_typed_initial_zero_outputs(&wire, profile)
+            .map_err(|error| format!("compile wrapped guest: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("load wrapped guest: {error:?}"))?;
+        assert!(matches!(
+            vm.run(2),
+            Ok(RunOutcome::Terminated { steps: 2, .. })
+        ));
+        assert_eq!(vm.output(), &[0]);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::default_numeric_fallback,
+    reason = "forged fixed-shape wrapper metadata must reject"
+)]
+fn malformed_argument_wrappers_fail_closed() {
+    let mut mutations = Vec::new();
+    let mut paren = wrapped_zero_input(true);
+    paren["nodes"][5]["operation"] = json!("no-op");
+    mutations.push(paren);
+    let mut paren = wrapped_zero_input(true);
+    paren["nodes"][6]["parent"] = json!(3);
+    mutations.push(paren);
+    let mut paren = wrapped_zero_input(true);
+    paren["nodes"][5]["constant_integer"] = json!("1");
+    mutations.push(paren);
+    let mut paren = wrapped_zero_input(true);
+    assert!(
+        paren["nodes"][5]
+            .as_object_mut()
+            .is_some_and(|node| node.remove("constant_integer").is_some()),
+        "wrapper fixture must contain Clang-evaluated constant"
+    );
+    mutations.push(paren);
+    let mut paren = wrapped_zero_input(true);
+    paren["nodes"][5]["span"]["end"]["byte"] = json!(47);
+    mutations.push(paren);
+    let mut unsigned = wrapped_zero_input(false);
+    unsigned["nodes"][5]["operation"] = json!("lvalue-to-rvalue");
+    mutations.push(unsigned);
+    let mut unsigned = wrapped_zero_input(false);
+    unsigned["nodes"][5]["constant_integer"] = json!("1");
+    mutations.push(unsigned);
+    let mut unsigned = wrapped_zero_input(false);
+    unsigned["nodes"][6]["type"] = json!("i32");
+    mutations.push(unsigned);
+    let mut unsigned = wrapped_zero_input(false);
+    unsigned["nodes"][5]["type"] = json!("u32");
+    mutations.push(unsigned);
+    for (index, source) in mutations.iter().enumerate() {
+        assert!(
+            canonical_guest_typed_ir(&bytes(source)).is_err(),
+            "forged argument wrapper {index} reached backend"
+        );
+    }
+}
+
 // A native void function can end at its closing brace without a ReturnStmt.
 #[expect(
     clippy::indexing_slicing,
     clippy::unwrap_used,
-    clippy::default_numeric_fallback,
     reason = "fixed pinned Clang output spans for omitted final return"
 )]
 fn implicit_void_return(mut source: Value) -> Value {
     let removed = source["nodes"].as_array_mut().unwrap().pop();
-    assert!(removed.is_some());
+    assert!(
+        removed.is_some(),
+        "implicit fixture must have a return node"
+    );
     for index in [0, 1] {
         let end = source["nodes"][index]["span"]["end"]["byte"]
             .as_u64()

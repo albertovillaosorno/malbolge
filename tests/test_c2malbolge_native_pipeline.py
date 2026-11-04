@@ -328,6 +328,56 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                         executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
                     )
 
+    def test_real_clang_parenthesized_and_unsigned_literals_reach_guest(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            cases = (
+                (b"putchar((65)); putchar(65u);", b"AA", 27),
+                (b"putchar(65U); putchar((0x41));", b"AA", 27),
+                (b"putchar((0)); putchar(0U);", b"\x00\x00", 3),
+            )
+            for index, (calls, expected, steps) in enumerate(cases):
+                with self.subTest(calls=calls):
+                    source = Path(temporary) / f"wrapped-{index}.c"
+                    target = Path(temporary) / f"wrapped-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + calls
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
+                    )
+
+    def test_real_clang_nested_or_arithmetic_arguments_do_not_publish(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for index, calls in enumerate(
+                (b"putchar(((65)));", b"putchar(+65);", b"putchar(65u + 0);")
+            ):
+                with self.subTest(calls=calls):
+                    source = Path(temporary) / f"unsupported-wrap-{index}.c"
+                    target = Path(temporary) / f"unsupported-wrap-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + calls
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target)
+                    self.assertNotEqual(compiled.returncode, 0)
+                    self.assertFalse(target.exists())
+                    self.assertIn(b"normalized frontend rejected", compiled.stderr)
+
     def test_real_clang_unsupported_integer_operations_do_not_publish(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
