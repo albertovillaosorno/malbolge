@@ -231,6 +231,45 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
             self.assertEqual(executed.stdout, b"\x00\x00")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:3\n")
 
+    def test_real_clang_33_equal_literal_calls_execute_real_guest(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            source = root / "33-literals.c"
+            target = root / "33-literals.malbolge"
+            _ = source.write_bytes(
+                b"#include <stdio.h>\nvoid emit(void) { "
+                + b"putchar(40); " * 33
+                + b"return; }\n"
+            )
+            compiled = self._compile(tools, source, target, capsule=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(tools[4]), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"(" * 33)
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:56\n")
+
+    def test_real_clang_34_literal_calls_refuse_publication(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            source = root / "34-literals.c"
+            target = root / "34-literals.malbolge"
+            _ = source.write_bytes(
+                b"#include <stdio.h>\nvoid emit(void) { "
+                + b"putchar(40); " * 34
+                + b"return; }\n"
+            )
+            compiled = self._compile(tools, source, target, capsule=True)
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"normalized frontend rejected", compiled.stderr)
+            self.assertFalse(target.exists())
+
     def test_real_clang_character_literals_emit_witnessed_guest_bytes(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

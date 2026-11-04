@@ -92,7 +92,7 @@ fn repeated_character_input(byte: u8, outputs: u32, width: u32) -> Value {
     clippy::indexing_slicing,
     clippy::shadow_unrelated,
     clippy::default_numeric_fallback,
-    reason = "closed synthetic Clang fixture spans for at most 33 bounded calls"
+    reason = "closed synthetic Clang fixture spans for at most 34 bounded calls"
 )]
 fn repeated_output_input(byte: u8, outputs: u32, kind: &str, width: u32) -> Value {
     let mut source = input();
@@ -144,11 +144,11 @@ fn repeated_input(outputs: u32) -> Value {
 #[expect(
     clippy::panic_in_result_fn,
     clippy::cognitive_complexity,
-    reason = "bounded 1-to-32 caller traces with exact VM output counts"
+    reason = "bounded 1-to-33 caller traces with exact VM output counts"
 )]
 fn repeated_zero_calls_preserve_source_and_emit_order() -> Result<(), String> {
     let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
-    for outputs in [2u32, 3, 32] {
+    for outputs in [2u32, 3, 32, 33] {
         let source = repeated_input(outputs);
         let output_count = usize::try_from(outputs).map_err(|error| error.to_string())?;
         let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
@@ -193,7 +193,7 @@ fn repeated_zero_calls_preserve_source_and_emit_order() -> Result<(), String> {
 )]
 fn witnessed_nonzero_literals_reach_real_guest_byte_output() -> Result<(), String> {
     let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
-    for (byte, outputs) in [(23, 1u32), (65, 2), (146, 3)] {
+    for (byte, outputs) in [(23, 1u32), (65, 2), (146, 3), (40, 33)] {
         let source = repeated_literal_input(byte, outputs);
         let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
             .map_err(|error| format!("C literal {byte}: {error:?}"))?;
@@ -869,7 +869,7 @@ fn forged_second_zero_call_or_excess_calls_fail_closed() {
     let mut changed = base;
     let _removed = changed["nodes"].as_array_mut().unwrap().remove(8);
     mutations.push(changed);
-    mutations.push(repeated_input(33));
+    mutations.push(repeated_input(34));
     for (index, candidate) in mutations.iter().enumerate() {
         assert!(
             canonical_guest_typed_ir(&bytes(candidate)).is_err(),

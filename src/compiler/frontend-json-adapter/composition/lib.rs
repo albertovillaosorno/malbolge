@@ -56,7 +56,7 @@ const EXPECTED_PROFILE: &str = "malbolge-2026";
 const MAX_FRONTEND_JSON_BYTES: usize = 1_048_576;
 const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
 const MAX_COMPOUND_DEPTH: usize = 64;
-const MAX_ZERO_OUTPUT_CALLS: usize = 32;
+const MAX_LITERAL_OUTPUT_CALLS: usize = 33;
 const MAX_INERT_OUTPUT_STATEMENTS: usize = 128;
 const MAX_NESTED_OUTPUT_SCOPES: usize = 128;
 
@@ -740,7 +740,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     };
     if call_nodes.is_empty()
         || call_nodes.len()
-            > MAX_ZERO_OUTPUT_CALLS
+            > MAX_LITERAL_OUTPUT_CALLS
                 .saturating_mul(5)
                 .saturating_add(MAX_INERT_OUTPUT_STATEMENTS.saturating_mul(2))
                 .saturating_add(MAX_NESTED_OUTPUT_SCOPES)
@@ -877,7 +877,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
             offset = offset.saturating_add(consumed);
             continue;
         }
-        if calls.len() >= MAX_ZERO_OUTPUT_CALLS {
+        if calls.len() >= MAX_LITERAL_OUTPUT_CALLS {
             return Err(FrontendJsonError::Unsupported);
         }
         let fourth = call_nodes
@@ -933,7 +933,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     })
 }
 
-/// Compile one through 32 identical source-proven byte `putchar(N)` calls
+/// Compile one through 33 identical source-proven byte `putchar(N)` calls
 /// with bounded inert statements and an explicit or implicit void return.
 #[expect(
     clippy::too_many_lines,

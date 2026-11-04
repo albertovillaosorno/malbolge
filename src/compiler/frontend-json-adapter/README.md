@@ -38,7 +38,7 @@ A separate **exact** pinned-Clang source shape is also executable:
 void emit(void) { putchar(0); return; }
 ```
 
-The exact pinned-Clang shape admits one through 32 calls to
+The exact pinned-Clang shape admits one through 33 calls to
 `putchar(N);` with optional final `return;`, where every `N` emits the same
 low-eight-bit byte. The evaluated C integer is a nonnegative `i32` value
 (including `256..2147483647`) and must be a bounded single-line integer token
@@ -65,16 +65,17 @@ returns, unexpected metadata, effectful nested bodies and other side effects
 still reject. The adapter emits one canonical `u8` constant and
 the corresponding number of `ByteOutput` effects.
 For zero, the downstream publisher uses `--initial-zero-output --typed-stdin`,
-which independently verifies guest stdout of one to 32 NUL bytes. Nonzero
+which independently verifies guest stdout of one to 33 NUL bytes. Nonzero
 bytes use the separate `--seeded-byte-literal --typed-stdin` backend, where
 each byte/count combination must have its own position-sensitive guest-VM
 witness. For example, one `putchar(23)`, two `putchar(65)` calls and three
-`putchar(146)` calls compile and execute with exact byte output. The backend's
+`putchar(146)` calls, and thirty-three `putchar(40)` calls compile and
+execute with exact byte output. The backend's
 currently witnessed subset is enumerated in
 `src/compiler/byte-echo-bridge/README.md`; **not** every value or count is
 realizable. Integer tokens over 32 source bytes, negative or unrepresentable
-`i32` values, and more than 32 calls refuse source admission. An unwitnessed combination fails
-layout admission without publishing a `.malbolge` artifact.
+`i32` values, and more than 33 calls refuse source admission. An
+unwitnessed combination fails layout admission without publishing a `.malbolge` artifact.
 
 An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
