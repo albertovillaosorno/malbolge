@@ -4782,3 +4782,72 @@ def test_target_git_tool_requires_native_regular_mode_with_public_stat_rebound(
             target_echo_reference.TargetEchoStudyError, match="not an ordinary file"
         ):
             target_echo_reference._commit()
+
+
+class _ForgedNativeCompletion:
+    """A foreign completion that duplicates all apparent native fields."""
+
+    def __init__(
+        self, args: list[str], returncode: int, stdout: bytes | str, stderr: bytes | str
+    ) -> None:
+        self.args = args
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+@pytest.mark.parametrize("replacement", ["foreign", "object"])
+def test_target_child_completion_uses_original_native_class_after_alias_change(
+    monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A public factory replacement cannot replace native guest child evidence."""
+    command = ["/native/emitter", "--fixed"]
+    original = sp.CompletedProcess(command, 0, b"exact stdout", b"")
+    foreign = _ForgedNativeCompletion(command, 0, b"exact stdout", b"")
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            target_echo_reference.sp,
+            "CompletedProcess",
+            _ForgedNativeCompletion if replacement == "foreign" else object,
+        )
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="native child result"
+        ):
+            target_echo_reference._admit_child_result(
+                cast("sp.CompletedProcess[bytes]", foreign), command=command
+            )
+        assert target_echo_reference._admit_child_result(
+            original, command=command
+        ) is original
+
+
+@pytest.mark.parametrize("replacement", ["foreign", "object"])
+def test_target_git_completion_uses_original_native_class_after_alias_change(
+    monkeypatch: pytest.MonkeyPatch, replacement: str
+) -> None:
+    """A substituted public process class cannot certify a foreign Git result."""
+    original_completed_process = sp.CompletedProcess
+
+    def producer(command: list[str], **_kwargs: object) -> object:
+        receipt = (
+            _ForgedNativeCompletion(command, 0, "a" * 40 + "\n", "")
+            if replacement == "foreign"
+            else original_completed_process(command, 0, "a" * 40 + "\n", "")
+        )
+        return receipt
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference.sp, "run", producer)
+        patched.setattr(
+            target_echo_reference.sp,
+            "CompletedProcess",
+            _ForgedNativeCompletion if replacement == "foreign" else object,
+        )
+        if replacement == "foreign":
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError,
+                match="invalid Git revision receipt",
+            ):
+                target_echo_reference._commit()
+        else:
+            assert target_echo_reference._commit() == "a" * 40

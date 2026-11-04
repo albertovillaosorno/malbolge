@@ -66,6 +66,7 @@ from scripts.validate import experiment_manifest, target_profile
 _NATIVE_SHA256 = sha256
 _SOURCE_JSON_ENCODER = json.JSONEncoder
 _SOURCE_TYPE = type
+_SOURCE_COMPLETED_PROCESS = sp.CompletedProcess
 _SOURCE_STAT_RESULT = os.stat_result
 _SOURCE_S_ISREG = stat.S_ISREG
 _SOURCE_S_ISLNK = stat.S_ISLNK
@@ -229,7 +230,7 @@ def _admit_child_result(
 
     """
     if (
-        type(result) is not sp.CompletedProcess
+        type(result) is not _SOURCE_COMPLETED_PROCESS
         or type(result.returncode) is not int
         or type(result.stdout) is not bytes
         or type(result.stderr) is not bytes
@@ -541,7 +542,7 @@ def _commit() -> str:
         message = "target echo reference cannot bind source revision"
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
-        type(output) is not sp.CompletedProcess
+        type(output) is not _SOURCE_COMPLETED_PROCESS
         or type(output.args) is not list
         or output.args is not prepared
         or any(type(argument) is not str for argument in output.args)
