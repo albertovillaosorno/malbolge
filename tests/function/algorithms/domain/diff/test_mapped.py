@@ -837,3 +837,49 @@ def test_mapped_foreign_receipts_reject_after_module_class_aliases(
         else:
             with pytest.raises(MappedViewError, match="exact MappedView"):
                 _ = read_mapped_view(cast("MappedView", cast("object", {})))
+
+
+@pytest.mark.parametrize("alias", [object, RuntimeError])
+@pytest.mark.parametrize(
+    "entrypoint",
+    [
+        "invalid-unit",
+        "invalid-coordinates",
+        "foreign-unit",
+        "incomplete-unit",
+        "invalid-view-raw",
+        "foreign-view-unit",
+        "escaping-view-unit",
+        "foreign-view",
+        "incomplete-view",
+        "incomplete-keys",
+    ],
+)
+def test_mapped_native_errors_survive_late_public_error_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: type[object], entrypoint: str
+) -> None:
+    """A mutable public error name must not change native mapping failures."""
+    native_unit = MappedUnit(b"A", 0, 1)
+    with monkeypatch.context() as patched:
+        patched.setattr(mapped_module, "MappedViewError", alias)
+        with pytest.raises(MappedViewError):
+            if entrypoint == "invalid-unit":
+                _ = MappedUnit(b"", 0, 0)
+            elif entrypoint == "invalid-coordinates":
+                _ = MappedUnit(b"A", 1, 0)
+            elif entrypoint == "foreign-unit":
+                _ = read_mapped_unit(cast("MappedUnit", object()))
+            elif entrypoint == "incomplete-unit":
+                _ = read_mapped_unit(object.__new__(MappedUnit))
+            elif entrypoint == "invalid-view-raw":
+                _ = MappedView(cast("bytes", cast("object", bytearray(b"a"))), (native_unit,))
+            elif entrypoint == "foreign-view-unit":
+                _ = MappedView(b"a", (cast("MappedUnit", object()),))
+            elif entrypoint == "escaping-view-unit":
+                _ = MappedView(b"a", (MappedUnit(b"A", 0, 2),))
+            elif entrypoint == "foreign-view":
+                _ = read_mapped_view(cast("MappedView", object()))
+            elif entrypoint == "incomplete-view":
+                _ = object.__new__(MappedView).canonical
+            else:
+                _ = object.__new__(MappedView).keys
