@@ -4821,6 +4821,62 @@ def test_llvm_host_capture_treats_host_launch_faults_as_unavailable(
     assert llvm_validation._capture(["clang", "--version"]) is None  # pyright: ignore[reportPrivateUsage]
 
 
+def test_linux_llvm_version_probe_disables_ambient_clang_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fedora's auto Clang configuration must not hide the pinned version."""
+    commands: list[list[str]] = []
+    version_banner = """clang version 22.1.8 (Fedora 22.1.8-4.fc44)
+Target: x86_64-redhat-linux-gnu
+Thread model: posix
+InstalledDir: /usr/bin
+"""
+    expected: dict[tuple[str, ...], str] = {
+        (
+            "/host/clang",
+            "--no-default-config",
+            "--version",
+        ): version_banner,
+        (
+            "/host/clang-tidy",
+            "--version",
+        ): "LLVM (http://llvm.org/):\n  LLVM version 22.1.8\n  Optimized build.\n",
+        (
+            "/host/clang-format",
+            "--version",
+        ): "clang-format version 22.1.8 (Fedora 22.1.8-4.fc44)\n",
+    }
+
+    def fake_capture(arguments: list[str]) -> str | None:
+        commands.append(arguments.copy())
+        return expected.get(tuple(arguments))
+
+    monkeypatch.setattr(llvm_validation, "_capture", fake_capture)
+    tools = (
+        Path("/host/clang"),
+        Path("/host/clang-tidy"),
+        Path("/host/clang-format"),
+    )
+    assert llvm_validation._linux_tool_versions_match(tools)  # pyright: ignore[reportPrivateUsage]
+    assert commands == [list(command) for command in expected]
+
+
+def test_linux_llvm_configuration_disabled_probe_preserves_bad_padding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A three-argument release probe cannot strip a forged blank line."""
+    command = ["/host/clang", "--no-default-config", "--version"]
+    receipt = "clang version 22.1.8\n\n"
+
+    def fake_run(args: list[str], **_kwargs: object) -> sp.CompletedProcess[str]:
+        return sp.CompletedProcess(args, 0, stdout=receipt, stderr="")
+
+    monkeypatch.setattr(sp, "run", fake_run)
+    observed = llvm_validation._capture(command)  # pyright: ignore[reportPrivateUsage]
+    assert observed == receipt
+    assert not llvm_validation.llvm_version_matches(observed)
+
+
 @pytest.mark.parametrize(
     "banner",
     (

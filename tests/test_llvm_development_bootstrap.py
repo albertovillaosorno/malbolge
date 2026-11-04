@@ -212,13 +212,57 @@ def test_package_verification_rejects_size_and_sha_drift() -> None:
     ],
 )
 def test_cpio_filter_matches_normalized_includes(member: str) -> None:
-    """GNU CPIO lists newc member names without an initial dot segment."""
+    """GNU CPIO admits both normalized and Fedora dotted header members."""
     assert fnmatchcase(
         member, llvm_development_validation.CPIO_INCLUDE_PATTERN
     )
     assert not fnmatchcase(
         "usr/lib/libLLVM.so", llvm_development_validation.CPIO_INCLUDE_PATTERN
     )
+    assert fnmatchcase(
+        "./" + member, llvm_development_validation.CPIO_DOTTED_INCLUDE_PATTERN
+    )
+    assert not fnmatchcase(
+        "./usr/lib/libLLVM.so", llvm_development_validation.CPIO_DOTTED_INCLUDE_PATTERN
+    )
+
+
+@pytest.mark.skipif(os.name != "posix", reason="requires GNU CPIO on POSIX")
+def test_native_cpio_extracts_dotted_include_members_only(tmp_path: Path) -> None:
+    """Actual Fedora RPMs preserve ./usr/include names in newc records."""
+
+    def member(name: str, contents: bytes) -> bytes:
+        encoded = name.encode("utf-8") + b"\0"
+        # POSIX newc: fixed ASCII hexadecimal fields and 4-byte padding.
+        fields = (1, 0o100644, 0, 0, 1, 0, len(contents), 0, 0, 0, 0, len(encoded), 0)
+        header = b"070701" + b"".join(
+            f"{field:08x}".encode("ascii") for field in fields
+        )
+        prefix = header + encoded
+        return (
+            prefix
+            + b"\0" * (-len(prefix) % 4)
+            + contents
+            + b"\0" * (-len(contents) % 4)
+        )
+
+    content = b"struct ASTContext;\n"
+    payload = b"".join(
+        (
+            member("./usr/include/clang/AST/AST.h", content),
+            member("./usr/lib/libLLVM.so", b"non-header"),
+            member("TRAILER!!!", b""),
+        )
+    )
+    listed = llvm_development_validation._cpio_members(payload)  # pyright: ignore[reportPrivateUsage]
+    assert listed[0] == "./usr/include/clang/AST/AST.h"
+    staged = tmp_path / "stage"
+    staged.mkdir()
+    llvm_development_validation._extract_cpio_headers(  # pyright: ignore[reportPrivateUsage]
+        payload, staged
+    )
+    assert (staged / "usr/include/clang/AST/AST.h").read_bytes() == content
+    assert not (staged / "usr/lib/libLLVM.so").exists()
 
 
 def test_rpm_member_validation_rejects_parent_and_absolute_paths() -> None:

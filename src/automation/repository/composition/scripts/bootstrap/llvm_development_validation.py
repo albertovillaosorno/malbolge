@@ -70,6 +70,8 @@ PARENT_SEGMENT: Final = ".."
 RPM_SUFFIX: Final = ".rpm"
 POSIX_OS_NAME: Final = "posix"
 CPIO_INCLUDE_PATTERN: Final = "usr/include/*"
+# GNU RPM CPIO payloads also retain a leading ./ on installed Fedora packages.
+CPIO_DOTTED_INCLUDE_PATTERN: Final = "./usr/include/*"
 MAX_RPM_DOWNLOAD_BYTES: Final = 128 * 1024 * 1024
 RPM_TOOL_TIMEOUT_SECONDS: Final = 120
 
@@ -547,6 +549,7 @@ def _extract_cpio_headers(payload: bytes, package_staging: Path) -> None:
         "--quiet",
         "--no-absolute-filenames",
         CPIO_INCLUDE_PATTERN,
+        CPIO_DOTTED_INCLUDE_PATTERN,
     ]
     if os.name != POSIX_OS_NAME:
         result = _command_bytes(command, cwd=package_staging, stdin=payload)

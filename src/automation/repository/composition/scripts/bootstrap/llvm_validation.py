@@ -2463,9 +2463,13 @@ def _capture(arguments: list[str]) -> str | None:
         return None
     # Host version, resource-root, and loader receipts are authority evidence;
     # trimming could silently erase malformed padding or control separators.
-    exact_receipt = len(arguments) == 2 and (
-        arguments[1] in ("--version", "-print-resource-dir") or arguments[0] == "ldd"
-    )
+    exact_receipt = (
+        len(arguments) == 2
+        and (
+            arguments[1] in ("--version", "-print-resource-dir")
+            or arguments[0] == "ldd"
+        )
+    ) or (len(arguments) == 3 and arguments[1:] == ["--no-default-config", "--version"])
     output = completed.stdout if exact_receipt else completed.stdout.strip()
     return output or None
 
@@ -2537,10 +2541,18 @@ def _linux_tool_paths() -> tuple[Path, Path, Path] | None:
 
 
 def _linux_tool_versions_match(tools: tuple[Path, Path, Path]) -> bool:
+    clang, clang_tidy, clang_format = tools
+    # Fedora's Clang --version appends a host configuration-file location.
+    # Probe with default config disabled instead of admitting unverified
+    # appended banner lines. Other LLVM tools do not accept that Clang flag.
+    commands = (
+        [str(clang), "--no-default-config", "--version"],
+        [str(clang_tidy), "--version"],
+        [str(clang_format), "--version"],
+    )
     return all(
-        (version := _capture([str(tool), "--version"])) is not None
-        and llvm_version_matches(version)
-        for tool in tools
+        (version := _capture(command)) is not None and llvm_version_matches(version)
+        for command in commands
     )
 
 
