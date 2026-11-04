@@ -46,6 +46,7 @@ from types import SimpleNamespace
 import sys
 from typing import Any
 from typing import cast
+from typing import Self
 from typing import TYPE_CHECKING
 
 import pytest
@@ -1768,3 +1769,139 @@ def test_raw_semantic_guard_ignores_substituted_builtin_receipts(
         monkeypatch.setattr(raw_samples, "any", lambda *_: False, raising=False)
     with pytest.raises(raw_samples.RawSampleError, match="invalid reported trial"):
         raw_samples.check_rows(_render([row]), [row], ROOT_LABEL)
+
+
+class _AlwaysEqualRawRowCounts:
+    """A foreign counting receipt can claim a mismatch is a perfect match."""
+
+    def __ne__(self, other: object) -> bool:
+        del other
+        return False
+
+
+def test_raw_csv_rejects_forged_counter_acceptance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Replacing the row multiset comparator cannot certify changed CSV costs."""
+    observation = sample_study(tmp_path)["observations"][0]
+    changed = copy.deepcopy(observation)
+    changed["metrics"]["elapsed_ns"] += 1
+    raw = _render([changed])
+    monkeypatch.setattr(
+        raw_samples, "Counter", lambda *_args: _AlwaysEqualRawRowCounts()
+    )
+    with pytest.raises(raw_samples.RawSampleError, match=ROW_MISMATCH):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
+def test_raw_csv_valid_source_ignores_substituted_counter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A swapped public counter cannot reject matching native source rows."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation])
+    monkeypatch.setattr(raw_samples, "Counter", lambda *_args: object())
+    assert (
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+        == sha256(raw).hexdigest()
+    )
+
+
+class _ForgedCsvCell(str):  # ruff: ignore[subclass-builtin]
+    """A nonnative field can falsely match both source and claimed values."""
+
+    claimed: str
+
+    def __new__(cls, text: str, claimed: str) -> Self:
+        instance = super().__new__(cls, text)
+        instance.claimed = claimed
+        return instance
+
+    def __eq__(self, other: object) -> bool:
+        del other
+        return True
+
+    def __hash__(self) -> int:
+        return hash(self.claimed)
+
+
+@pytest.mark.parametrize("provider", ["type", "any"])
+def test_raw_csv_rejects_forged_parser_cell_under_replaced_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """A foreign CSV cell cannot equal both changed bytes and report metrics."""
+    observation = sample_study(tmp_path)["observations"][0]
+    changed = copy.deepcopy(observation)
+    changed["metrics"]["elapsed_ns"] += 1
+    raw = _render([changed])
+    original_reader = csv.reader
+    elapsed_index = raw_samples.HEADER.index("elapsed_ns")
+
+    def forged_reader(source: StringIO, *, strict: bool) -> Iterator[list[str]]:
+        for line, row in enumerate(original_reader(source, strict=strict)):
+            if line == 1:
+                row[elapsed_index] = _ForgedCsvCell(
+                    row[elapsed_index], str(observation["metrics"]["elapsed_ns"])
+                )
+            yield row
+
+    monkeypatch.setattr(
+        raw_samples, "csv", SimpleNamespace(reader=forged_reader, Error=csv.Error)
+    )
+    if provider == "type":
+        monkeypatch.setattr(
+            raw_samples,
+            "type",
+            lambda value: str if isinstance(value, _ForgedCsvCell) else type(value),
+            raising=False,
+        )
+    else:
+        monkeypatch.setattr(raw_samples, "any", lambda *_args: False, raising=False)
+    with pytest.raises(raw_samples.RawSampleError, match="non-native CSV row"):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
+def test_raw_csv_limit_ignores_forged_row_length(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced length cannot hide extra rows before multiset validation."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation, observation])
+    monkeypatch.setattr(raw_samples, "len", lambda *_args: 0, raising=False)
+    with pytest.raises(raw_samples.RawSampleError, match="more rows than reported"):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
+def test_raw_csv_valid_source_ignores_replaced_set_constructor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A public set provider cannot change native record shape admission."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation])
+
+    def forbidden_set(*_args: object) -> None:
+        raise AssertionError("substituted set provider called")
+
+    monkeypatch.setattr(raw_samples, "set", forbidden_set, raising=False)
+    assert (
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+        == sha256(raw).hexdigest()
+    )
+
+
+def test_raw_csv_rejects_substituted_text_stream_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both parsers must receive inspected bytes, not a replaced text stream."""
+    observation = sample_study(tmp_path)["observations"][0]
+    changed = copy.deepcopy(observation)
+    changed["metrics"]["elapsed_ns"] += 1
+    raw = _render([changed])
+    fake_text = _render([observation]).decode("utf-8")
+    monkeypatch.setattr(
+        raw_samples,
+        "StringIO",
+        lambda *_args, **_kwargs: StringIO(fake_text, newline=""),
+    )
+    with pytest.raises(raw_samples.RawSampleError, match=ROW_MISMATCH):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)

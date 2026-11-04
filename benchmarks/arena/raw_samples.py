@@ -48,6 +48,13 @@ from benchmarks.arena import analyze, csv_admission
 
 # Retain the native source-digest provider across public alias substitutions.
 _NATIVE_SHA256 = sha256
+# Compare retained rows with the source-native multiset constructor.
+_SOURCE_COUNTER = Counter
+_SOURCE_STRING_IO = StringIO
+_SOURCE_TYPE = type
+_SOURCE_ANY = any
+_SOURCE_SET = set
+_SOURCE_LEN = len
 # A replaced csv.reader must not be the authority for the retained source.
 _SOURCE_CSV_READER = csv.reader
 # Preserve the bounded source column scanner against public substitution.
@@ -150,7 +157,7 @@ def _row_values(
         observation["verifier_verdict"],
     )
     values = observation["metrics"]
-    if not set(values) <= set(metrics):
+    if not _SOURCE_SET(values) <= _SOURCE_SET(metrics):
         _fail("raw CSV schema cannot omit reported energy_uj metric")
     return (
         *identity,
@@ -161,13 +168,13 @@ def _row_values(
 def _require_native_csv_row(row: object, label: str) -> None:
     # The stdlib csv.reader returns native list[str]. Require that identity
     # before evaluating equality or hashing any parser-provided objects.
-    if type(row) is not list or any(type(field) is not str for field in row):
+    if _SOURCE_TYPE(row) is not list or _SOURCE_ANY(
+        _SOURCE_TYPE(field) is not str for field in row
+    ):
         _fail(f"{label}: arena raw CSV parser returned non-native CSV row")
 
 
-def _header_schema(
-    header: list[str] | None, label: str
-) -> tuple[str, tuple[str, ...]]:
+def _header_schema(header: list[str] | None, label: str) -> tuple[str, tuple[str, ...]]:
     if header is not None:
         _require_native_csv_row(header, label)
     if header == list(_SOURCE_HEADER):
@@ -182,7 +189,7 @@ def _require_bounded_csv_header(text: str, label: str) -> None:
     # An open quoted field may otherwise consume many newline-delimited rows.
     prefix = text[: _SOURCE_MAX_CSV_HEADER_CHARS + 1]
     first_line = prefix.split("\n", maxsplit=1)[0].split("\r", maxsplit=1)[0]
-    if len(first_line) > _SOURCE_MAX_CSV_HEADER_CHARS or first_line.count('"') % 2:
+    if _SOURCE_LEN(first_line) > _SOURCE_MAX_CSV_HEADER_CHARS or first_line.count('"') % 2:
         _fail(f"{label}: invalid or oversized arena raw CSV header")
 
 
@@ -191,7 +198,7 @@ def _limited_rows(
 ) -> list[tuple[str, ...]]:
     rows: list[tuple[str, ...]] = []
     for row in reader:
-        if len(rows) >= expected_rows:
+        if _SOURCE_LEN(rows) >= expected_rows:
             _fail(f"{label}: raw CSV has more rows than reported trials")
         _require_native_csv_row(row, label)
         rows.append(tuple(row))
@@ -206,33 +213,33 @@ def _csv_rows(
 ) -> tuple[str, tuple[str, ...], list[tuple[str, ...]]]:
     _require_bounded_csv_header(text, label)
     try:
-        column_receipt = csv_admission.within_column_limit(text, len(_SOURCE_HEADER_2))
+        column_receipt = csv_admission.within_column_limit(text, _SOURCE_LEN(_SOURCE_HEADER_2))
     except Exception as error:
         # A substituted preflight dependency cannot leak arbitrary host faults.
         message = f"{label}: arena raw CSV column preflight failed"
         raise RawSampleError(message) from error
-    if type(column_receipt) is not bool:
+    if _SOURCE_TYPE(column_receipt) is not bool:
         _fail(f"{label}: arena raw CSV column preflight returned nonnative verdict")
     if not column_receipt:
         _fail(f"{label}: arena raw CSV columns exceed registered count")
     # A substituted guard can return exact True while concealing a row with
     # thousands of fields. Confirm the source scan before parser allocation.
     try:
-        source_receipt = _SOURCE_COLUMN_LIMIT(text, len(_SOURCE_HEADER_2))
+        source_receipt = _SOURCE_COLUMN_LIMIT(text, _SOURCE_LEN(_SOURCE_HEADER_2))
     except Exception as error:
         message = f"{label}: arena raw CSV source column preflight failed"
         raise RawSampleError(message) from error
-    if type(source_receipt) is not bool or not source_receipt:
+    if _SOURCE_TYPE(source_receipt) is not bool or not source_receipt:
         _fail(f"{label}: arena raw CSV columns exceed registered count")
     try:
-        reader = csv.reader(StringIO(text, newline=""), strict=True)
+        reader = csv.reader(_SOURCE_STRING_IO(text, newline=""), strict=True)
         header = next(reader, None)
         version, metrics = _header_schema(header, label)
         rows = _limited_rows(reader, label, expected_rows)
         # Exact native list[str] rows do not prove that a replaceable parser
         # actually read the supplied bytes. Reparse the same bounded source
         # through the import-bound stdlib reader before admitting a match.
-        source_reader = _SOURCE_CSV_READER(StringIO(text, newline=""), strict=True)
+        source_reader = _SOURCE_CSV_READER(_SOURCE_STRING_IO(text, newline=""), strict=True)
         source_header = next(source_reader, None)
         if source_header is not None:
             _require_native_csv_row(source_header, label)
@@ -242,34 +249,34 @@ def _csv_rows(
     except RawSampleError as error:
         # Only our own exact rejection type may cross this boundary unchanged.
         # A foreign parser can raise a subclass with hostile format hooks.
-        if type(error) is RawSampleError:
+        if _SOURCE_TYPE(error) is RawSampleError:
             raise
-        message = f"{label}: invalid arena raw CSV parser: {type(error).__name__}"
+        message = f"{label}: invalid arena raw CSV parser: {_SOURCE_TYPE(error).__name__}"
         raise RawSampleError(message) from error
     except csv.Error as error:
         # Even an exact native csv.Error can contain caller-owned arguments.
         detail = (
             error.args[0]
-            if type(error) is csv.Error
-            and len(error.args) == 1
-            and type(error.args[0]) is str
-            else type(error).__name__
+            if _SOURCE_TYPE(error) is csv.Error
+            and _SOURCE_LEN(error.args) == 1
+            and _SOURCE_TYPE(error.args[0]) is str
+            else _SOURCE_TYPE(error).__name__
         )
         message = f"{label}: invalid arena raw CSV quotes: {detail}"
         raise RawSampleError(message) from error
     except Exception as error:
         # Unexpected ordinary CSV dependency faults must stay typed and must
         # not invoke a foreign exception formatter while being rejected.
-        message = f"{label}: invalid arena raw CSV parser: {type(error).__name__}"
+        message = f"{label}: invalid arena raw CSV parser: {_SOURCE_TYPE(error).__name__}"
         raise RawSampleError(message) from error
     return version, metrics, rows
 
 
 def _decode_raw(raw: bytes, label: str) -> str:
     # Hash and parse the same actual bytes; subclass decoders can forge rows.
-    if type(raw) is not bytes:
+    if _SOURCE_TYPE(raw) is not bytes:
         _fail(f"{label}: arena raw CSV requires exact bytes")
-    if not raw or len(raw) > _SOURCE_MAX_RAW_BYTES:
+    if not raw or _SOURCE_LEN(raw) > _SOURCE_MAX_RAW_BYTES:
         _fail(f"{label}: missing or oversized arena raw CSV")
     try:
         text = raw.decode("utf-8", errors="strict")
@@ -319,40 +326,52 @@ def _admit_observation_containers(
 ) -> None:
     """Require native pre-admitted row shapes before constructing CSV values."""
     message = f"{label}: raw CSV requires native nonempty observation rows"
-    if type(observations) is not list or not observations:
+    if _SOURCE_TYPE(observations) is not list or not observations:
         _fail(message)
-    seen_trials: set[tuple[str, str, int, int, int, int]] = set()
+    seen_trials: set[tuple[str, str, int, int, int, int]] = _SOURCE_SET()
     for row in observations:
         if (
-            type(row) is not dict
-            or any(type(name) is not str for name in row)
-            or set(row) != _SOURCE_OBSERVATION_FIELDS
+            _SOURCE_TYPE(row) is not dict
+            or _SOURCE_ANY(_SOURCE_TYPE(name) is not str for name in row)
+            or _SOURCE_SET(row) != _SOURCE_OBSERVATION_FIELDS
         ):
             _fail(message)
         case = row["case"]
         metrics = row["metrics"]
         if (
-            type(case) is not dict
-            or any(type(name) is not str for name in case)
-            or set(case) != _SOURCE_CASE_FIELDS
-            or type(metrics) is not dict
-            or any(type(name) is not str for name in metrics)
-            or not set(metrics) <= _SOURCE_COST_METRICS
+            _SOURCE_TYPE(case) is not dict
+            or _SOURCE_ANY(_SOURCE_TYPE(name) is not str for name in case)
+            or _SOURCE_SET(case) != _SOURCE_CASE_FIELDS
+            or _SOURCE_TYPE(metrics) is not dict
+            or _SOURCE_ANY(_SOURCE_TYPE(name) is not str for name in metrics)
+            or not _SOURCE_SET(metrics) <= _SOURCE_COST_METRICS
             or _SOURCE_ELAPSED not in metrics
         ):
             _fail(message)
         if (
-            any(
-                type(row[name]) is not str
+            _SOURCE_ANY(
+                _SOURCE_TYPE(row[name]) is not str
                 for name in (
-                    "algorithm", "outcome", "verifier", "verifier_verdict",
-                    "experiment_manifest", "raw_sample",
+                    "algorithm",
+                    "outcome",
+                    "verifier",
+                    "verifier_verdict",
+                    "experiment_manifest",
+                    "raw_sample",
                 )
             )
-            or type(row["trial"]) is not int
-            or any(type(case[name]) is not str for name in ("family", "workload_sha256"))
-            or any(type(case[name]) is not int for name in ("version", "difficulty", "seed"))
-            or any(type(quantity) is not int for quantity in metrics.values())
+            or _SOURCE_TYPE(row["trial"]) is not int
+            or _SOURCE_ANY(
+                _SOURCE_TYPE(case[name]) is not str
+                for name in ("family", "workload_sha256")
+            )
+            or _SOURCE_ANY(
+                _SOURCE_TYPE(case[name]) is not int
+                for name in ("version", "difficulty", "seed")
+            )
+            or _SOURCE_ANY(
+                _SOURCE_TYPE(quantity) is not int for quantity in metrics.values()
+            )
         ):
             _fail(message)
         # The imported analyzer's public symbols may be replaced by an
@@ -390,7 +409,7 @@ def _checked_sha256(raw: bytes) -> str:
     returning a plausible constant or a foreign equality-controlled string.
     This checks hash output integrity, not authenticity of the source itself.
     """
-    if type(raw) is not bytes:
+    if _SOURCE_TYPE(raw) is not bytes:
         _fail("arena raw CSV SHA-256 requires exact bytes")
     try:
         reported = sha256(raw).hexdigest()
@@ -402,13 +421,13 @@ def _checked_sha256(raw: bytes) -> str:
         message = "arena raw CSV SHA-256 dependency failed"
         raise RawSampleError(message) from error
     if (
-        type(reported) is not str
-        or type(independent) is not str
-        or type(source_bound) is not str
-        or len(source_bound) != _SOURCE_SHA256_HEX_LENGTH
-        or len(reported) != _SOURCE_SHA256_HEX_LENGTH
-        or len(independent) != _SOURCE_SHA256_HEX_LENGTH
-        or not set(reported) <= _SOURCE_SHA256_ALPHABET
+        _SOURCE_TYPE(reported) is not str
+        or _SOURCE_TYPE(independent) is not str
+        or _SOURCE_TYPE(source_bound) is not str
+        or _SOURCE_LEN(source_bound) != _SOURCE_SHA256_HEX_LENGTH
+        or _SOURCE_LEN(reported) != _SOURCE_SHA256_HEX_LENGTH
+        or _SOURCE_LEN(independent) != _SOURCE_SHA256_HEX_LENGTH
+        or not _SOURCE_SET(reported) <= _SOURCE_SHA256_ALPHABET
         or reported != source_bound
         or independent != source_bound
     ):
@@ -427,19 +446,19 @@ def check_rows(
         SHA-256 of the exact inspected source bytes for reproducible review.
 
     """
-    if type(label) is not str:
+    if _SOURCE_TYPE(label) is not str:
         _fail("arena raw CSV requires an exact string label")
     text = _decode_raw(raw, label)
     _admit_observation_containers(observations, label)
     version, metrics, actual_rows = _csv_rows(
-        text, label, expected_rows=len(observations)
+        text, label, expected_rows=_SOURCE_LEN(observations)
     )
-    if any(
-        len(row) != len(_SOURCE_IDENTITY_FIELDS) + len(metrics) for row in actual_rows
+    if _SOURCE_ANY(
+        _SOURCE_LEN(row) != _SOURCE_LEN(_SOURCE_IDENTITY_FIELDS) + _SOURCE_LEN(metrics) for row in actual_rows
     ):
         _fail(f"{label}: malformed arena raw CSV row")
     try:
-        expected = Counter(
+        expected = _SOURCE_COUNTER(
             _row_values(item, version, metrics) for item in observations
         )
     except RawSampleError:
@@ -448,6 +467,6 @@ def check_rows(
         # Python may refuse an immense native integer's decimal conversion.
         message = f"{label}: raw CSV integer conversion failed"
         raise RawSampleError(message) from error
-    if Counter(actual_rows) != expected:
+    if _SOURCE_COUNTER(actual_rows) != expected:
         _fail(f"{label}: raw CSV trial/metric rows differ from arena report")
     return _checked_sha256(raw)
