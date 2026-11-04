@@ -268,3 +268,8 @@ published-capsule provenance, reloading the independent normative VM and
 checking repeated output and unused consumed input. The strict default still
 rejects this nonadjacent trace. Neither path realizes EOF, failed I/O, guest
 byte storage, arbitrary C operations, source authentication or guest ABI.
+
+The distinct-nonzero-literal-pair mode preserves two separate source-bound
+`u8` SSA constants and their output references. Only `Y/`, `Y$`, and `Q.`
+produce a fully independently decoded and guest-verified artifact. Other
+constant pairs and additional effects remain unsupported.

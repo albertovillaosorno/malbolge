@@ -916,6 +916,15 @@ const ROTATED_THIRTY_BYTE_SEEDS: &[(u8, usize)] = &[
     (197, 2),
 ];
 
+// These exactly witnessed two-nonzero-output guests have two *different*
+// accumulator values, both computed by separate relocated CrazyData steps.
+#[expect(
+    clippy::type_complexity,
+    reason = "bounded profile-specific two-byte witness tuples"
+)]
+const DISTINCT_LITERAL_CRAZY_WITNESSES: &[(u8, u8, usize)] =
+    &[(b'Y', b'/', 0), (b'Y', b'$', 1), (b'Q', b'.', 2)];
+
 // Each pair is an exact one-zero-output-then-one-nonzero-output guest
 // witness: `<`, padding `o`, `j`, `p`, `<`, `v` under malbolge-2026.
 const ZERO_THEN_LITERAL_CRAZY_WITNESSES: &[(u8, usize)] =
@@ -1413,6 +1422,88 @@ pub fn encode_zero_then_literal(
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
             || vm.output() != [0, second.bits()]
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    Ok(layout)
+}
+
+/// Emit two distinct nonzero source-proven bytes with real guest arithmetic.
+///
+/// Two independent constant SSA definitions and output uses are mandatory.
+/// A first relocated `p` computes the initial accumulator and a later `p`
+/// computes the second, without a host-side write or a retained copy.
+///
+/// # Errors
+///
+/// Refuses unsupported pairs, SSA reuse, additional effects, profile drift,
+/// unsafe data layout or output not reproduced by the normative VM.
+pub fn encode_distinct_literal_pair(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let [
+        TernaryOperation::MaterializeU8 {
+            result: first_id,
+            scalar: first,
+            ..
+        },
+        TernaryOperation::ByteOutput {
+            value: emitted_first,
+            ..
+        },
+        TernaryOperation::MaterializeU8 {
+            result: second_id,
+            scalar: second,
+            ..
+        },
+        TernaryOperation::ByteOutput {
+            value: emitted_second,
+            ..
+        },
+        TernaryOperation::ReturnVoid { .. },
+    ] = function.operations.as_slice()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if first_id != emitted_first || second_id != emitted_second || first_id == second_id {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let padding = DISTINCT_LITERAL_CRAZY_WITNESSES
+        .iter()
+        .find(|(first_byte, second_byte, _)| {
+            *first_byte == first.bits() && *second_byte == second.bits()
+        })
+        .map(|(_, _, padding)| *padding)
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    let mut operations = vec![LinearOpcode::NoOperation; padding];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
+            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+            || vm.output() != [first.bits(), second.bits()]
         {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }

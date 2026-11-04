@@ -146,3 +146,8 @@ frontend/resource paths when repository-pinned provisions are absent. This
 does not claim an automated turnkey install or broader C language coverage.
 The explicit executable path is a caller-trusted capability, not discovered via
 `PATH` implicitly.
+
+Two different nonzero constant `putchar` calls now admit only the independently
+witnessed `Y/`, `Y$`, and `Q.` pairs. The Clang JSON adapter preserves exact
+source spans and distinct SSA definitions; unproved byte transitions or more
+than two different outputs still refuse publication.

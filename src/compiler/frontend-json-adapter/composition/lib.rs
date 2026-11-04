@@ -65,6 +65,8 @@ const MAX_NESTED_OUTPUT_SCOPES: usize = 128;
 /// Which independently checked guest effect trace can realize this C source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FrontendGuestMode {
+    /// Exactly two VM-witnessed distinct nonzero printable bytes.
+    DistinctLiteralPair,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -971,12 +973,16 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         )
         .ok_or(FrontendJsonError::Unsupported)?;
         if selected_byte.is_some_and(|previous| previous != byte) {
-            // This exact 0 then printable-byte shape has a guest witness;
-            // every other change of accumulator remains unsupported.
-            if selected_byte != Some(0)
-                || calls.len() != 1
+            // Only these exact two-constant guest transitions have witnesses.
+            let is_zero_then_literal =
+                selected_byte == Some(0) && matches!(byte, b'Z' | b'P' | b'T' | b'S');
+            let is_distinct_nonzero = matches!(
+                (selected_byte, byte),
+                (Some(b'Y'), b'/' | b'$') | (Some(b'Q'), b'.')
+            );
+            if calls.len() != 1
                 || mixed_byte.is_some()
-                || !matches!(byte, b'Z' | b'P' | b'T' | b'S')
+                || !(is_zero_then_literal || is_distinct_nonzero)
             {
                 return Err(FrontendJsonError::Unsupported);
             }
@@ -1165,8 +1171,10 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if mixed_byte.is_some() {
+    let mode = if mixed_byte.is_some() && byte == 0 {
         FrontendGuestMode::ZeroThenLiteral
+    } else if mixed_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralPair
     } else if byte == 0 {
         FrontendGuestMode::InitialZeroOutput
     } else {

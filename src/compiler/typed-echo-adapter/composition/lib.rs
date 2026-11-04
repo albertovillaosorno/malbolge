@@ -94,6 +94,7 @@ impl CompiledTypedEcho {
 #[derive(Clone, Copy)]
 enum ByteTraceMode {
     AdjacentEcho,
+    DistinctLiteralPair,
     EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
@@ -290,11 +291,13 @@ fn project_rotated_literal_effects(
     Ok(instructions)
 }
 
-// Source-proven two different constants: initial u8 zero, then one of four
-// individually witnessed bytes. Retain both source spans and distinct SSA IDs.
-fn project_zero_then_literal_effects(
+// Source-proven two distinct constants: zero then one of four witnessed
+// printable bytes, or one of three independently witnessed nonzero pairs.
+// Both modes retain exact source spans and separate SSA definitions.
+fn project_literal_pair_effects(
     module: &Module,
     original: &[typed::LocatedInstruction],
+    mode: ByteTraceMode,
 ) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
     let [first, zero_output, second, second_output] = original else {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
@@ -324,9 +327,24 @@ fn project_zero_then_literal_effects(
     if !is_byte_type(module, *zero_type)
         || !is_byte_type(module, *literal_type)
         || zero.bit_width() != 8
-        || zero.little_endian() != [0]
         || literal.bit_width() != 8
-        || !matches!(literal.little_endian(), [b'Z' | b'P' | b'T' | b'S'])
+        || !match mode {
+            ByteTraceMode::ZeroThenLiteral => {
+                zero.little_endian() == [0]
+                    && matches!(literal.little_endian(), [b'Z' | b'P' | b'T' | b'S'])
+            }
+            ByteTraceMode::DistinctLiteralPair => matches!(
+                (zero.little_endian(), literal.little_endian()),
+                ([b'Y'], [b'/' | b'$']) | ([b'Q'], [b'.'])
+            ),
+            ByteTraceMode::AdjacentEcho
+            | ByteTraceMode::EmptyVoid
+            | ByteTraceMode::IdentityByteBitcast
+            | ByteTraceMode::InitialZero
+            | ByteTraceMode::LatestRead
+            | ByteTraceMode::RotatedLiteral
+            | ByteTraceMode::ZeroPrefixedLatest => false,
+        }
         || zero_id != first_id
         || literal_id != last_id
         || zero_id == literal_id
@@ -336,7 +354,7 @@ fn project_zero_then_literal_effects(
     Ok(vec![
         InputInstruction::ConstantInteger {
             bit_width: 8,
-            little_endian: vec![0],
+            little_endian: zero.little_endian().to_vec(),
             result: zero_id.value(),
             span: project_span(first.span()),
             type_kind: InputScalarType::U8,
@@ -563,8 +581,8 @@ fn project_byte_trace(
         ByteTraceMode::RotatedLiteral => {
             project_rotated_literal_effects(module, block.instructions())?
         }
-        ByteTraceMode::ZeroThenLiteral => {
-            project_zero_then_literal_effects(module, block.instructions())?
+        ByteTraceMode::ZeroThenLiteral | ByteTraceMode::DistinctLiteralPair => {
+            project_literal_pair_effects(module, block.instructions(), mode)?
         }
     };
     Ok(TypedIrInput {
@@ -644,6 +662,9 @@ fn compile_byte_trace(
         }
         ByteTraceMode::ZeroThenLiteral => {
             bridge::encode_zero_then_literal(&independently_admitted, profile)
+        }
+        ByteTraceMode::DistinctLiteralPair => {
+            bridge::encode_distinct_literal_pair(&independently_admitted, profile)
         }
     }
     .map_err(TypedEchoAdapterError::Layout)?;
@@ -794,4 +815,17 @@ pub fn compile_canonical_typed_zero_then_literal(
     profile: &'static ProfileDescriptor,
 ) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
     compile_byte_trace(canonical, profile, ByteTraceMode::ZeroThenLiteral)
+}
+
+/// Compile exactly two different source-proven nonzero printable bytes.
+///
+/// # Errors
+///
+/// Refuses unproved pairs, stale SSA, extra effects, profile drift and
+/// guest results that cannot be independently reproduced.
+pub fn compile_canonical_typed_distinct_literal_pair(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::DistinctLiteralPair)
 }

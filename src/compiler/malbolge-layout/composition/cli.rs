@@ -42,9 +42,10 @@ use std::process::{ExitCode, id};
 use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
 
 use crate::bridge::{
-    encode_empty_void_function, encode_initial_zero_outputs, encode_latest_byte_identity_trace,
-    encode_rotated_byte_literal, encode_successful_byte_echo, encode_successful_latest_byte_trace,
-    encode_zero_prefixed_latest_byte_trace, encode_zero_then_literal,
+    encode_distinct_literal_pair, encode_empty_void_function, encode_initial_zero_outputs,
+    encode_latest_byte_identity_trace, encode_rotated_byte_literal, encode_successful_byte_echo,
+    encode_successful_latest_byte_trace, encode_zero_prefixed_latest_byte_trace,
+    encode_zero_then_literal,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
@@ -52,9 +53,10 @@ use crate::layout::{
     encode_auto_padded_forward_layout, encode_linear_layout,
 };
 use crate::typed_adapter::{
-    compile_canonical_typed_echo, compile_canonical_typed_empty_void,
-    compile_canonical_typed_identity_byte_trace, compile_canonical_typed_initial_zero_outputs,
-    compile_canonical_typed_latest_byte_trace, compile_canonical_typed_rotated_byte_literal,
+    compile_canonical_typed_distinct_literal_pair, compile_canonical_typed_echo,
+    compile_canonical_typed_empty_void, compile_canonical_typed_identity_byte_trace,
+    compile_canonical_typed_initial_zero_outputs, compile_canonical_typed_latest_byte_trace,
+    compile_canonical_typed_rotated_byte_literal,
     compile_canonical_typed_zero_prefixed_latest_byte_trace,
     compile_canonical_typed_zero_then_literal,
 };
@@ -72,6 +74,7 @@ const ZERO_PREFIXED_BYTE_TRACE_ARG: &str = "--zero-prefixed-byte-trace";
 const IDENTITY_BYTE_TRACE_ARG: &str = "--identity-byte-trace";
 const SEEDED_BYTE_LITERAL_ARG: &str = "--seeded-byte-literal";
 const ZERO_THEN_LITERAL_ARG: &str = "--zero-then-literal";
+const DISTINCT_LITERAL_PAIR_ARG: &str = "--distinct-literal-pair";
 const EMPTY_VOID_ARG: &str = "--empty-void";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
@@ -106,6 +109,7 @@ struct CommandSpec {
 #[derive(Clone, Copy, Debug)]
 enum ByteTraceMode {
     AdjacentEcho,
+    DistinctLiteralPair,
     EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
@@ -123,6 +127,7 @@ enum SuccessfulByteEffect {
 }
 
 enum SourceEffectWitness {
+    DistinctLiteralPair { first: u8, second: u8 },
     EmptyVoid,
     InitialZero { outputs: usize },
     RotatedLiteral { byte: u8, outputs: usize },
@@ -212,6 +217,7 @@ fn parse_canonical_source(
         || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
         || first == OsStr::new(SEEDED_BYTE_LITERAL_ARG)
         || first == OsStr::new(ZERO_THEN_LITERAL_ARG)
+        || first == OsStr::new(DISTINCT_LITERAL_PAIR_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
     {
         let mode = if first == OsStr::new(EMPTY_VOID_ARG) {
@@ -226,6 +232,8 @@ fn parse_canonical_source(
             ByteTraceMode::RotatedLiteral
         } else if first == OsStr::new(ZERO_THEN_LITERAL_ARG) {
             ByteTraceMode::ZeroThenLiteral
+        } else if first == OsStr::new(DISTINCT_LITERAL_PAIR_ARG) {
+            ByteTraceMode::DistinctLiteralPair
         } else {
             ByteTraceMode::LatestRead
         };
@@ -286,6 +294,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
         || first == OsStr::new(SEEDED_BYTE_LITERAL_ARG)
         || first == OsStr::new(ZERO_THEN_LITERAL_ARG)
+        || first == OsStr::new(DISTINCT_LITERAL_PAIR_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
     {
         return parse_canonical_source(first, arguments);
@@ -936,6 +945,7 @@ fn verified_ternary_bytes(
         ByteTraceMode::IdentityByteBitcast => encode_latest_byte_identity_trace(&program, profile),
         ByteTraceMode::RotatedLiteral => encode_rotated_byte_literal(&program, profile),
         ByteTraceMode::ZeroThenLiteral => encode_zero_then_literal(&program, profile),
+        ByteTraceMode::DistinctLiteralPair => encode_distinct_literal_pair(&program, profile),
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
     if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
@@ -975,6 +985,21 @@ fn verified_ternary_bytes(
         };
         Some(SourceEffectWitness::ZeroThenLiteral {
             byte: scalar.bits(),
+        })
+    } else if matches!(mode, ByteTraceMode::DistinctLiteralPair) {
+        let [
+            TernaryOperation::MaterializeU8 { scalar: first, .. },
+            TernaryOperation::ByteOutput { .. },
+            TernaryOperation::MaterializeU8 { scalar: second, .. },
+            TernaryOperation::ByteOutput { .. },
+            TernaryOperation::ReturnVoid { .. },
+        ] = operations.as_slice()
+        else {
+            return Err(String::from("missing distinct-literal-pair effects"));
+        };
+        Some(SourceEffectWitness::DistinctLiteralPair {
+            first: first.bits(),
+            second: second.bits(),
         })
     } else if matches!(mode, ByteTraceMode::InitialZero) {
         Some(SourceEffectWitness::InitialZero {
@@ -1037,6 +1062,9 @@ fn verified_typed_bytes(
         }
         ByteTraceMode::ZeroThenLiteral => {
             compile_canonical_typed_zero_then_literal(typed_bytes, profile)
+        }
+        ByteTraceMode::DistinctLiteralPair => {
+            compile_canonical_typed_distinct_literal_pair(typed_bytes, profile)
         }
     }
     .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
@@ -1266,6 +1294,36 @@ fn verify_zero_then_literal(
     Ok(())
 }
 
+// Independent publisher proof: both source bytes require fresh guest writes.
+fn verify_distinct_literal_pair(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    first: u8,
+    second: u8,
+) -> Result<(), String> {
+    let expected_steps = match (first, second) {
+        (b'Y', b'/') => 6,
+        (b'Y', b'$') => 7,
+        (b'Q', b'.') => 8,
+        _ => return Err(String::from("distinct-literal pair has no guest witness")),
+    };
+    if artifact.steps != expected_steps {
+        return Err(String::from("distinct-literal guest geometry disagrees"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
+            .map_err(|error| format!("distinct-literal guest load: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output() != [first, second]
+        {
+            return Err(String::from("distinct-literal guest output disagrees"));
+        }
+    }
+    Ok(())
+}
+
 fn execute(spec: &CommandSpec) -> Result<(), String> {
     let profile = target_profile(&spec.profile).ok_or("unknown canonical target profile")?;
     let artifact = verified_source(&spec.source, profile)?;
@@ -1292,6 +1350,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         }
         Some(SourceEffectWitness::ZeroThenLiteral { byte }) => {
             verify_zero_then_literal(profile, &artifact, *byte)?;
+        }
+        Some(SourceEffectWitness::DistinctLiteralPair { first, second }) => {
+            verify_distinct_literal_pair(profile, &artifact, *first, *second)?;
         }
         None => {}
     }

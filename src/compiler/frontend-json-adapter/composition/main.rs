@@ -106,6 +106,7 @@ fn execute() -> Result<(), String> {
         FrontendGuestMode::InitialZeroOutput => "--initial-zero-output",
         FrontendGuestMode::SeededByteLiteral => "--seeded-byte-literal",
         FrontendGuestMode::ZeroThenLiteral => "--zero-then-literal",
+        FrontendGuestMode::DistinctLiteralPair => "--distinct-literal-pair",
     };
     let mut child = command
         .args(["--", mode_arg, "--typed-stdin"])

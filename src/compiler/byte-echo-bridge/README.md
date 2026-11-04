@@ -426,3 +426,10 @@ single-input/4094-output boundary. It rejects prior-input SSA replay after a
 newer input, unsupported scalar/return, changed profile, malformed program
 and one cell beyond the maximum. The new API is a bounded integration witness,
 not a general C-to-Malbolge backend or raw-file publisher.
+
+An independent two-nonzero-byte route admits only `Y/`, `Y$`, and `Q.` under
+the current profile. A relocated data pointer feeds two separate guest `p`
+operations on separate guest data words, recomputing the accumulator before
+each `<` output. The position-dependent source lengths are 6, 7, and 8
+cells. These are independently VM-replayed witnesses, not arbitrary byte-pair
+support.
