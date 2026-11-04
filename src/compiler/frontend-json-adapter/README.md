@@ -105,9 +105,9 @@ More than three parentheses, multiple unary operators, multiline
 argument spacing, general arithmetic, call-result handling,
 arbitrary output streams, interleaved effectful statements, `getchar`, EOF,
 I/O errors, general guest libc and C entry ABI remain unsupported.
-Mixing distinct **output bytes** generally refuses admission. One strictly
-bounded exception admits exactly two source calls, first producing NUL and the
-second producing `Z` (90), `P` (80), `T` (84), or `S` (83). The separate
+Mixing distinct **output bytes** generally refuses admission except for
+explicitly witnessed two- and three-call sequences. One two-call family starts
+with NUL followed by `Z` (90), `P` (80), `T` (84), or `S` (83). The separate
 `--zero-then-literal --typed-stdin` backend uses an independently executed
 `OutputByte`, exact no-op phase, data relocation, guest crazy operation,
 second `OutputByte`, and halt. The four witnesses execute in 5, 7, 11, and
@@ -137,11 +137,12 @@ VM preflight. Its tests run both accepted families through real guest code.
 `c2malbolge_json` accepts normalized JSON on **stdin**, an explicit trusted
 `malbolge_layout` executable, and a fresh `.malbolge` output path. It validates
 JSON, produces canonical MCTI, and selects the exact verified
-`--empty-void`, `--initial-zero-output`, or `--seeded-byte-literal` mode
-with `--typed-stdin`.
-Optional `--capsule` uses the current profile's embedded identity. The compiler frontend itself must have
-produced the normalized JSON; the pipeline does not infer semantics from raw C
-text or trust an unverified substitute for the selected layout backend.
+`--empty-void`, `--initial-zero-output`, `--seeded-byte-literal`,
+`--zero-then-literal`, `--distinct-literal-pair`, or
+`--distinct-literal-triple` mode with `--typed-stdin`.
+Optional `--capsule` embeds the current profile identity. The compiler
+frontend must have produced the normalized JSON; the pipeline does not infer
+semantics from raw C text or trust an unverified layout backend substitute.
 
 ```sh
 malbolge_c_frontend --guest-include GUEST_INCLUDE \
@@ -161,8 +162,8 @@ The explicit executable path is a caller-trusted capability, not discovered via
 
 Two different nonzero constant `putchar` calls now admit only the independently
 witnessed `Y/`, `Y$`, and `Q.` pairs. The Clang JSON adapter preserves exact
-source spans and distinct SSA definitions; unproved byte transitions or more
-than two different outputs still refuse publication.
+source spans and distinct SSA definitions. Other differing pairs refuse;
+three-call sequences require their own separately proved guest witnesses.
 
 ### Exact three-`putchar` source output traces
 
