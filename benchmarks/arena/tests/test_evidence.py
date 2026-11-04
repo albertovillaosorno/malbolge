@@ -3974,3 +3974,80 @@ def test_evidence_source_challenge_policy_preserves_valid_bundle_replay(
         "oracle.bin",
         "manifest.json",
     }
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    "scenario", ["path", "limit", "digest", "native-read", "foreign-read", "link"]
+)
+def test_evidence_errors_keep_native_type_after_public_alias_rebinding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    scenario: str,
+) -> None:
+    """Foreign public error names cannot change trust-boundary failures."""
+    original = evidence.EvidenceError
+    source = tmp_path / "evidence.bin"
+    _ = source.write_bytes(b"native input bytes")
+    failures = {
+        "path": "canonical relative path",
+        "limit": "byte limit",
+        "digest": "native bytes",
+        "native-read": "native read rejected",
+        "foreign-read": "stream access failed",
+        "link": "linked arena evidence invalid",
+    }
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence, "EvidenceError", replacement)
+        if scenario in ("native-read", "foreign-read"):
+
+            def rejected_read(*_args: object, **_kwargs: object) -> bytes:
+                if scenario == "native-read":
+                    raise original("native read rejected")
+                raise OSError("read rejected by source")
+
+            patched.setattr(evidence, "_read_complete", rejected_read)
+        with pytest.raises(original, match=failures[scenario]):
+            if scenario == "path":
+                evidence.regular_path(tmp_path, "../outside")
+            elif scenario == "limit":
+                evidence.read_bounded_regular(tmp_path, "evidence.bin", limit=0)
+            elif scenario == "digest":
+                foreign: object = object()
+                evidence._checked_sha256(cast("bytes", foreign))
+            elif scenario == "link":
+                evidence.validate_links({}, tmp_path)
+            else:
+                evidence.read_bounded_regular(tmp_path, "evidence.bin", limit=1024)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_evidence_error_rebinding_preserves_trusted_nested_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """A native retained-link failure still emits its safe source detail."""
+    original = evidence.EvidenceError
+    document = analyze.parse_document(json.dumps(sample_study(tmp_path)))
+
+    def reject_observation(*_args: object, **_kwargs: object) -> None:
+        raise original("native linked source rejected")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence, "EvidenceError", replacement)
+        patched.setattr(evidence, "_admit_observation", reject_observation)
+        with pytest.raises(original, match="native linked source rejected"):
+            evidence.validate_links(document, tmp_path)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_evidence_error_rebinding_leaves_native_bytes_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Successful evidence reads do not rely on mutable public error names."""
+    path = tmp_path / "evidence.bin"
+    payload = b"native source bytes"
+    _ = path.write_bytes(payload)
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence, "EvidenceError", replacement)
+        assert evidence.read_bounded_regular(tmp_path, path.name, limit=1024) == payload

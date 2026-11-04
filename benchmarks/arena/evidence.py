@@ -101,8 +101,13 @@ class EvidenceError(ValueError):
     """Missing or inconsistent reported research evidence link."""
 
 
+# Reject with the original evidence class, including while classifying cleanup
+# failures and rendering trusted nested diagnostics after consumer rebinding.
+_SOURCE_EVIDENCE_ERROR = EvidenceError
+
+
 def _fail(message: str) -> Never:
-    raise EvidenceError(message)
+    raise _SOURCE_EVIDENCE_ERROR(message)
 
 
 def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str:
@@ -176,10 +181,10 @@ def _path_lstat(path: Path, relative: str) -> os.stat_result:
         if type(error) is FileNotFoundError:
             raise
         message = f"evidence path inspection failed: {relative}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     except Exception as error:
         message = f"evidence path inspection failed: {relative}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     return _native_stat(details)
 
 
@@ -206,10 +211,10 @@ def regular_path(
         if type(error) is FileNotFoundError:
             raise
         message = f"evidence path inspection failed: {relative}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     except Exception as error:
         message = f"evidence path inspection failed: {relative}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     # A native input Path is not sufficient when an injected resolver
     # returns a subclass with foreign join or filesystem behavior.
     # Reject its receipt before following any segment outside the root.
@@ -245,7 +250,7 @@ def _parent_identity(path: Path, relative: str) -> tuple[int, int]:
     try:
         parent = _native_stat(path.parent.stat())
     except Exception as error:
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     if not stat.S_ISDIR(parent.st_mode):
         _fail(message)
     return parent.st_dev, parent.st_ino
@@ -279,7 +284,7 @@ def _open_evidence(path: Path) -> IO[bytes]:
         receipt = os.open(path, flags)
     except Exception as error:
         message = f"evidence file could not open safely: {path}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     # Invalid raw returns cannot enter procfs, fdopen or os.close (bools
     # would otherwise target stdin/stdout descriptors on POSIX).
     descriptor = _admit_descriptor(receipt, source="raw")
@@ -314,10 +319,10 @@ def _open_evidence(path: Path) -> IO[bytes]:
                 error,
                 _cleanup_note("evidence descriptor cleanup also failed", close_error),
             )
-        if isinstance(error, EvidenceError):
+        if isinstance(error, _SOURCE_EVIDENCE_ERROR):
             raise error  # ruff: ignore[TRY201]
         message = f"evidence stream could not open: {path}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
 
 
 def _read_complete(stream: IO[bytes], *, size: int, relative: str) -> bytes:
@@ -337,7 +342,7 @@ def _read_complete(stream: IO[bytes], *, size: int, relative: str) -> bytes:
             chunk = stream.read(requested)
         except Exception as error:
             message = f"evidence read failed: {relative}"
-            raise EvidenceError(message) from error
+            raise _SOURCE_EVIDENCE_ERROR(message) from error
         if type(chunk) is not bytes or len(chunk) > requested:
             _fail(f"evidence read returned invalid bytes: {relative}")
         if not chunk:
@@ -383,7 +388,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
                     close_receipt: object = stream.close()
                 except Exception as error:
                     message = f"evidence stream close failed: {relative}"
-                    raise EvidenceError(message) from error
+                    raise _SOURCE_EVIDENCE_ERROR(message) from error
                 if close_receipt is not None:
                     _fail(
                         f"evidence stream close completion was not native None: {relative}"
@@ -399,19 +404,19 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
                 _cleanup_note("evidence stream cleanup also failed", error),
             )
             error = primary
-        if isinstance(error, EvidenceError):
+        if isinstance(error, _SOURCE_EVIDENCE_ERROR):
             # It may be the earlier body exception, not the active close error.
             raise error  # ruff: ignore[TRY201]
         message = f"evidence stream access failed: {relative}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     # A substituted context manager can suppress the body's raised error by
     # returning True from __exit__. Never publish previously read bytes (or
     # access uninitialized read state) after such a suppressed rejection.
     if primary is not None:
-        if isinstance(primary, EvidenceError):
+        if isinstance(primary, _SOURCE_EVIDENCE_ERROR):
             raise primary
         message = f"evidence stream access failed: {relative}"
-        raise EvidenceError(message) from primary
+        raise _SOURCE_EVIDENCE_ERROR(message) from primary
     final_path = regular_path(root, relative, limit=limit)
     # A rebound root alias can resolve to a distinct hard link of the same
     # inode. File metadata alone cannot certify the original source path.
@@ -444,7 +449,7 @@ def _checked_sha256(raw: bytes) -> str:
         source_bound = _NATIVE_SHA256(raw).hexdigest()
     except Exception as error:
         message = "evidence SHA-256 dependency failed"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     if (
         type(reported) is not str
         or type(independent) is not str
@@ -569,9 +574,9 @@ def _admit_policy(policy: EvidencePolicy) -> None:
             _fail("evidence challenge root must be a canonical relative path")
         try:
             _ = _segments(policy.challenge_root)
-        except EvidenceError as error:
+        except _SOURCE_EVIDENCE_ERROR as error:
             message = "evidence challenge root must be a canonical relative path"
-            raise EvidenceError(message) from error
+            raise _SOURCE_EVIDENCE_ERROR(message) from error
 
 
 @dataclass(slots=True)
@@ -1018,7 +1023,7 @@ def validate_links(
         # Preserve typed preflight admission for unexpected dependency faults.
         detail = _native_error_detail(error, analyze.ArenaError)
         message = f"linked arena evidence invalid: {detail}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     context = _EvidenceContext(
         root,
         document["study"],
@@ -1060,7 +1065,7 @@ def validate_links(
         # Foreign parser/checker faults must not escape the evidence boundary.
         detail = _native_error_detail(
             error,
-            EvidenceError,
+            _SOURCE_EVIDENCE_ERROR,
             OSError,
             FileNotFoundError,
             PermissionError,
@@ -1076,7 +1081,7 @@ def validate_links(
             host_c_oracle.HostOracleError,
         )
         message = f"linked arena evidence invalid: {detail}"
-        raise EvidenceError(message) from error
+        raise _SOURCE_EVIDENCE_ERROR(message) from error
     if _snapshot_out is not None:
         _snapshot_out.append(snapshot)
     return report
@@ -1153,7 +1158,7 @@ def main() -> int:
         detail = _native_error_detail(
             error,
             analyze.ArenaError,
-            EvidenceError,
+            _SOURCE_EVIDENCE_ERROR,
             OSError,
             FileNotFoundError,
             PermissionError,
