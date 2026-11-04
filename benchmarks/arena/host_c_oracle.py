@@ -54,6 +54,10 @@ from benchmarks.challenges import generate
 
 # Preserve a source-byte digest provider when public constructors are replaced.
 _NATIVE_SHA256 = sha256
+_NATIVE_TYPE = type
+_NATIVE_STAT_RESULT = os.stat_result
+_NATIVE_S_ISREG = stat.S_ISREG
+_NATIVE_S_ISDIR = stat.S_ISDIR
 # A replaced generator may otherwise certify fabricated C and oracle bytes.
 _CANONICAL_GENERATE = generate.generate
 _CANONICAL_IDENTITY = generate.ChallengeIdentity
@@ -183,10 +187,10 @@ def _require_local_scratch_root() -> None:
     except Exception as error:
         message = "host-C physical temporary directory unavailable"
         raise _SOURCE_HOST_ORACLE_ERROR(message) from error
-    if type(details) is not os.stat_result:
+    if _NATIVE_TYPE(details) is not _NATIVE_STAT_RESULT:
         _fail("host-C physical temporary directory returned invalid metadata")
     # This is a static check, not a cross-process filesystem race guarantee.
-    if not stat.S_ISDIR(details.st_mode):
+    if not _NATIVE_S_ISDIR(details.st_mode):
         _fail("host-C physical temporary directory required")
 
 
@@ -247,7 +251,7 @@ def _system_tool(name: str) -> str | None:
     try:
         _ = os.fsencode(resolved)
         details = Path(resolved).lstat()
-        if type(details) is not os.stat_result:
+        if _NATIVE_TYPE(details) is not _NATIVE_STAT_RESULT:
             _fail(f"host-C resource tool path inspection invalid: {name}")
         mode = details.st_mode
         executable = os.access(resolved, os.X_OK)
@@ -258,7 +262,7 @@ def _system_tool(name: str) -> str | None:
     except Exception as error:
         message = f"host-C resource tool path inspection failed: {name}"
         raise _SOURCE_HOST_ORACLE_ERROR(message) from error
-    if not stat.S_ISREG(mode) or not executable:
+    if not _NATIVE_S_ISREG(mode) or not executable:
         _fail(f"host-C resource tool is not a physical executable: {name}")
     return resolved
 
@@ -476,10 +480,10 @@ def _admit_rss_temporary_receipt(receipt: object, cwd: Path) -> tuple[int, str]:
         message = "host-C challenge oracle RSS temporary inode unavailable"
         raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if (
-        type(opened) is not os.stat_result
-        or type(named) is not os.stat_result
-        or not stat.S_ISREG(opened.st_mode)
-        or not stat.S_ISREG(named.st_mode)
+        _NATIVE_TYPE(opened) is not _NATIVE_STAT_RESULT
+        or _NATIVE_TYPE(named) is not _NATIVE_STAT_RESULT
+        or not _NATIVE_S_ISREG(opened.st_mode)
+        or not _NATIVE_S_ISREG(named.st_mode)
         or opened.st_dev != named.st_dev
         or opened.st_ino != named.st_ino
         or opened.st_nlink != 1
@@ -738,7 +742,7 @@ def _admit_native_workspace_receipt(receipt: object, *, prefix: str) -> Path:
     except Exception as error:
         message = "host-C workspace context path unavailable"
         raise _SOURCE_HOST_ORACLE_ERROR(message) from error
-    if type(details) is not os.stat_result or not stat.S_ISDIR(details.st_mode):
+    if _NATIVE_TYPE(details) is not _NATIVE_STAT_RESULT or not _NATIVE_S_ISDIR(details.st_mode):
         _fail("host-C workspace context requires a physical directory")
     try:
         # The scanner's context hooks can redirect entry or suppress a failed

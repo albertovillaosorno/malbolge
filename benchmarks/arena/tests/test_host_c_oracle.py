@@ -3794,3 +3794,130 @@ def test_host_c_public_error_alias_does_not_hide_native_cleanup_detail(
         assert (
             host_c_oracle._cleanup_error_detail(error) == "native source cleanup failed"
         )
+
+
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_host_c_scratch_rejects_rebound_directory_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A late stat provider cannot certify a non-directory scratch root."""
+    compiler = tmp_path / "compiler"
+    compiler.write_bytes(b"compiler")
+    scratch = tmp_path / "scratch"
+    if kind == "file":
+        scratch.write_bytes(b"file")
+    else:
+        directory = tmp_path / "directory"
+        directory.mkdir()
+        scratch.symlink_to(directory, target_is_directory=True)
+    monkeypatch.setattr(host_c_oracle, "_PINNED_CLANG", compiler)
+    monkeypatch.setattr(host_c_oracle, "_TEMP", scratch)
+    monkeypatch.setattr(
+        host_c_oracle, "stat", SimpleNamespace(S_ISDIR=lambda _mode: True)
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="physical"):
+        host_c_oracle._require_local_scratch_root()
+
+
+def test_host_c_scratch_valid_root_ignores_late_directory_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Real native scratch directories do not follow replaced predicates."""
+    compiler = tmp_path / "compiler"
+    compiler.write_bytes(b"compiler")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    monkeypatch.setattr(host_c_oracle, "_PINNED_CLANG", compiler)
+    monkeypatch.setattr(host_c_oracle, "_TEMP", scratch)
+    monkeypatch.setattr(
+        host_c_oracle, "stat", SimpleNamespace(S_ISDIR=lambda _mode: False)
+    )
+    host_c_oracle._require_local_scratch_root()
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink"])
+def test_host_c_system_tool_rejects_rebound_regular_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A forged regular-file predicate cannot launch a foreign host tool."""
+    utility = tmp_path / "utility"
+    if kind == "directory":
+        utility.mkdir()
+    else:
+        target = tmp_path / "real-utility"
+        target.write_bytes(b"native")
+        utility.symlink_to(target)
+    monkeypatch.setattr(host_c_oracle.shutil, "which", lambda *_a, **_kw: str(utility))
+    monkeypatch.setattr(host_c_oracle.os, "access", lambda *_a, **_kw: True)
+    monkeypatch.setattr(
+        host_c_oracle, "stat", SimpleNamespace(S_ISREG=lambda _mode: True)
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="physical"):
+        host_c_oracle._system_tool("prlimit")
+
+
+def test_host_c_system_tool_valid_file_ignores_late_regular_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed public predicate cannot hide a physical executable."""
+    utility = tmp_path / "utility"
+    utility.write_bytes(b"native")
+    utility.chmod(0o700)
+    monkeypatch.setattr(host_c_oracle.shutil, "which", lambda *_a, **_kw: str(utility))
+    monkeypatch.setattr(
+        host_c_oracle, "stat", SimpleNamespace(S_ISREG=lambda _mode: False)
+    )
+    assert host_c_oracle._system_tool("prlimit") == str(utility)
+
+
+@pytest.mark.parametrize("kind", ["file", "symlink"])
+def test_host_c_workspace_rejects_rebound_directory_mode_before_scan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A forged workspace directory must not reach an untrusted directory scan."""
+    root = tmp_path / "scratch"
+    root.mkdir()
+    workspace = root / "arena-host-c-oracle-forged"
+    if kind == "file":
+        workspace.write_bytes(b"preserve")
+    else:
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        workspace.symlink_to(outside, target_is_directory=True)
+    monkeypatch.setattr(host_c_oracle, "_TEMP", root)
+    monkeypatch.setattr(
+        host_c_oracle, "stat", SimpleNamespace(S_ISDIR=lambda _mode: True)
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("nonphysical workspace reached inventory scan")
+
+    monkeypatch.setattr(host_c_oracle.os, "scandir", forbidden)
+    with pytest.raises(host_c_oracle.HostOracleError, match="physical directory"):
+        host_c_oracle._admit_native_workspace_receipt(
+            str(workspace), prefix="arena-host-c-oracle-"
+        )
+
+
+def test_host_c_scratch_rejects_rebound_stat_result_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A false os.stat_result type cannot certify foreign scratch metadata."""
+    compiler = tmp_path / "compiler"
+    compiler.write_bytes(b"compiler")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    native_lstat = Path.lstat
+
+    class ForeignStat:
+        st_mode = 0o040755
+
+    def replaced_lstat(path: Path) -> object:
+        return ForeignStat() if path == scratch else native_lstat(path)
+
+    monkeypatch.setattr(host_c_oracle, "_PINNED_CLANG", compiler)
+    monkeypatch.setattr(host_c_oracle, "_TEMP", scratch)
+    monkeypatch.setattr(Path, "lstat", replaced_lstat)
+    monkeypatch.setattr(host_c_oracle.os, "stat_result", ForeignStat)
+    with pytest.raises(host_c_oracle.HostOracleError, match="metadata"):
+        host_c_oracle._require_local_scratch_root()
