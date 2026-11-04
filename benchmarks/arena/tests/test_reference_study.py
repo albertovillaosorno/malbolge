@@ -3040,3 +3040,167 @@ def test_host_c_bundle_fingerprint_accepts_equivalent_json_decoder(
     case, fingerprint = reference_study._generate_bundle(tmp_path, FAMILY, 4, seed=7)
     assert case["family"] == FAMILY
     assert fingerprint == expected
+
+
+@pytest.mark.parametrize(
+    ("limit_name", "forged_limit", "difficulties", "trials"),
+    [
+        ("MAX_DIFFICULTIES", 20, (4, 8, 16, 32, 64), 1),
+        ("MAX_TRIALS", 20, (4,), 6),
+    ],
+)
+def test_host_c_plan_cannot_expand_source_repetition_caps(
+    monkeypatch: pytest.MonkeyPatch,
+    limit_name: str,
+    forged_limit: int,
+    difficulties: tuple[int, ...],
+    trials: int,
+) -> None:
+    """Substituted public plan caps never enlarge the original study cohort."""
+    monkeypatch.setattr(reference_study, limit_name, forged_limit)
+    plan = reference_study.StudyPlan(FAMILY, difficulties, 7, trials)
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="difficulty|trial count"
+    ):
+        reference_study._validate_plan_shape(plan)
+
+
+@pytest.mark.parametrize("entrypoint", ["measurement", "retained"])
+def test_host_c_artifact_source_cap_survives_public_limit_substitution(
+    monkeypatch: pytest.MonkeyPatch, entrypoint: str
+) -> None:
+    """Neither new nor retained binaries may exceed the original eight MiB."""
+    raw = b"X" * (8 * 1024 * 1024 + 1)
+    monkeypatch.setattr(reference_study, "MAX_ARTIFACT_BYTES", len(raw))
+    if entrypoint == "measurement":
+        receipt = host_c_oracle.ReferenceMeasurement(1, raw, 1024)
+        monkeypatch.setattr(host_c_oracle, "measure_reference", lambda *_args: receipt)
+        monkeypatch.setattr(
+            reference_study,
+            "_write_retained_bytes",
+            lambda *_args: pytest.fail("oversized binary reached publication"),
+        )
+        with pytest.raises(reference_study.ReferenceStudyError, match="measurement"):
+            reference_study._successful(
+                reference_study._ROOT,
+                cast("generate.ChallengeIdentity", object()),
+                "candidate",
+                mode="-O0",
+            )
+    else:
+        monkeypatch.setattr(
+            evidence, "read_bounded_regular", lambda *_args, **_kwargs: raw
+        )
+        with pytest.raises(reference_study.ReferenceStudyError, match="bounded"):
+            reference_study._checked_artifact(
+                {
+                    "experiment_manifest": ".temp/probe/runs/candidate.toml",
+                    "metrics": {"artifact_bytes": len(raw)},
+                },
+                {
+                    "path": ".temp/probe/candidates/candidate",
+                    "sha256": sha256(raw).hexdigest(),
+                },
+            )
+
+
+def test_host_c_failure_diagnostic_cap_is_source_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged larger public bounds cannot attach lengthy error payloads."""
+    monkeypatch.setattr(reference_study, "MAX_FAILURE_DIAGNOSTIC_BYTES", 8192)
+    manifest = ".temp/probe/runs/candidate.toml"
+    with pytest.raises(reference_study.ReferenceStudyError, match="bounded"):
+        reference_study.check_retained_failures(
+            {"observations": [{"experiment_manifest": manifest, "outcome": FAILED}]},
+            {manifest: "a" * 257},
+        )
+
+
+def test_host_c_platform_component_cap_is_source_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged larger public host caps cannot admit oversized provenance."""
+    monkeypatch.setattr(reference_study, "MAX_HOST_COMPONENT_LENGTH", 8192)
+    monkeypatch.setattr(reference_study.platform, "node", lambda: "a" * 257)
+    with pytest.raises(reference_study.ReferenceStudyError, match="host identity"):
+        reference_study._host_identity()
+
+
+@pytest.mark.parametrize("budget", ["time", "memory"])
+def test_host_c_measurement_source_budget_survives_public_substitution(
+    monkeypatch: pytest.MonkeyPatch, budget: str
+) -> None:
+    """Producer-reported success must not exceed native declared budgets."""
+    if budget == "time":
+        monkeypatch.setattr(reference_study, "BUDGET_SECONDS", 120)
+        receipt = host_c_oracle.ReferenceMeasurement(60 * 1_000_000_000 + 1, b"C", 1024)
+    else:
+        monkeypatch.setattr(reference_study, "BUDGET_MEMORY_MIB", 2048)
+        receipt = host_c_oracle.ReferenceMeasurement(1, b"C", 1024 * 1_048_576 + 1)
+    monkeypatch.setattr(host_c_oracle, "measure_reference", lambda *_args: receipt)
+    monkeypatch.setattr(
+        reference_study,
+        "_write_retained_bytes",
+        lambda *_args: pytest.fail("over-budget measurement reached publication"),
+    )
+    with pytest.raises(reference_study.ReferenceStudyError, match="measurement"):
+        reference_study._successful(
+            reference_study._ROOT,
+            cast("generate.ChallengeIdentity", object()),
+            "candidate",
+            mode="-O0",
+        )
+
+
+@pytest.mark.parametrize("forged_budget", ["time", "memory"])
+def test_host_c_report_and_manifest_retain_registered_budget(
+    monkeypatch: pytest.MonkeyPatch, forged_budget: str
+) -> None:
+    """Public aliases cannot rewrite either retained budget declaration."""
+    if forged_budget == "time":
+        monkeypatch.setattr(reference_study, "BUDGET_SECONDS", 120)
+    else:
+        monkeypatch.setattr(reference_study, "BUDGET_MEMORY_MIB", 2048)
+    plan = reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+    env = reference_study._Env(
+        reference_study._ROOT, plan, "a" * 40, "host", "toolchain", ".temp/study"
+    )
+    row = {
+        "algorithm": reference_study.BASELINE,
+        "case": {
+            "seed": 7,
+            "family": FAMILY,
+            "difficulty": 4,
+            "workload_sha256": "b" * 64,
+        },
+        "outcome": analyze.VERIFIED,
+        "raw_sample": ".temp/study/raw/attempt.csv",
+        "trial": 0,
+    }
+    profile = reference_study.target_profile
+    fingerprint = profile.profile_fingerprint(
+        profile.load_document(profile.DEFAULT_PROFILE), reference_study.PROFILE
+    )
+    meta = reference_study._ManifestMeta(env, fingerprint, "d" * 64)
+    manifest = reference_study._manifest(row, meta)
+    document = reference_study._document(env, [])
+    assert "seconds = 60" in manifest
+    assert "memory_mib = 1024" in manifest
+    assert document["study"]["budget"] == {
+        "time_ns": 60 * 1_000_000_000,
+        "memory_bytes": 1024 * 1_048_576,
+    }
+
+
+def test_host_c_retained_write_error_cannot_expand_source_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An oversized host error is clipped even under substituted public cap."""
+    monkeypatch.setattr(reference_study, "MAX_FAILURE_DIAGNOSTIC_BYTES", 8192)
+    with pytest.raises(reference_study.ReferenceStudyError) as caught:
+        reference_study._retained_write_failure(
+            reference_study._ROOT / "candidate", OSError("x" * 300)
+        )
+    assert str(caught.value).endswith("x" * 256)
+    assert not str(caught.value).endswith("x" * 257)

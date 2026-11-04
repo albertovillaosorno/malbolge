@@ -95,6 +95,11 @@ BUDGET_SECONDS = 60
 BUDGET_MEMORY_MIB = 1024
 MAX_DIFFICULTIES = 4
 MAX_TRIALS = 5
+# Public configuration aliases cannot widen the original host-C study budget.
+_SOURCE_BUDGET_SECONDS = BUDGET_SECONDS
+_SOURCE_BUDGET_MEMORY_MIB = BUDGET_MEMORY_MIB
+_SOURCE_MAX_DIFFICULTIES = MAX_DIFFICULTIES
+_SOURCE_MAX_TRIALS = MAX_TRIALS
 FAILED_OUTCOME = "tool_failed"
 ASCII_LOW = " "
 ASCII_HIGH = "~"
@@ -107,6 +112,13 @@ class ReferenceStudyError(ValueError):
 
 def _fail(message: str) -> Never:
     raise ReferenceStudyError(message)
+
+
+def _source_cap(public: object, registered: int) -> int:
+    """Allow narrower public limits, never a substituted larger one."""
+    if type(public) is not int or public < 1:
+        _fail("host-C reference resource cap requires a positive native integer")
+    return min(public, registered)
 
 
 def _require_source_json_decoder() -> None:
@@ -378,8 +390,8 @@ def _manifest(row: dict[str, Any], meta: _ManifestMeta) -> str:
         f"target_profile_fingerprint = {_quote(profile_fingerprint)}",
         "",
         "[budget]",
-        f"seconds = {BUDGET_SECONDS}",
-        f"memory_mib = {BUDGET_MEMORY_MIB}",
+        f"seconds = {_SOURCE_BUDGET_SECONDS}",
+        f"memory_mib = {_SOURCE_BUDGET_MEMORY_MIB}",
         "",
         "[verification]",
         "required = true",
@@ -515,16 +527,17 @@ def _successful(
     *,
     mode: str,
 ) -> tuple[dict[str, int], dict[str, str]]:
+    cap = _source_cap(MAX_ARTIFACT_BYTES, _SOURCE_MAX_ARTIFACT_BYTES)
     measured = host_c_oracle.measure_reference(identity, mode)
     if type(measured) is not host_c_oracle.ReferenceMeasurement:
         _fail("host-C measurement receipt requires native result")
     if (
         type(measured.elapsed_ns) is not int
-        or not 0 < measured.elapsed_ns <= BUDGET_SECONDS * 1_000_000_000
+        or not 0 < measured.elapsed_ns <= _SOURCE_BUDGET_SECONDS * 1_000_000_000
         or type(measured.peak_rss_bytes) is not int
-        or not 0 < measured.peak_rss_bytes <= BUDGET_MEMORY_MIB * 1_048_576
+        or not 0 < measured.peak_rss_bytes <= _SOURCE_BUDGET_MEMORY_MIB * 1_048_576
         or type(measured.executable) is not bytes
-        or not 0 < len(measured.executable) <= MAX_ARTIFACT_BYTES
+        or not 0 < len(measured.executable) <= cap
     ):
         _fail("host-C measurement receipt requires bounded native values")
     path = f"candidates/{name}"
@@ -553,7 +566,7 @@ def _failure_diagnostic(error: host_c_oracle.HostOracleError) -> str:
     ascii_message = "".join(
         character if ASCII_LOW <= character <= ASCII_HIGH else "?"
         for character in raw
-    )[:256]
+    )[:_SOURCE_MAX_FAILURE_DIAGNOSTIC_BYTES]
     return ascii_message or "host-C reference failed without diagnostic"
 
 
@@ -679,8 +692,8 @@ def _document(
             "host": environment.host,
             "toolchain": environment.toolchain,
             "budget": {
-                "time_ns": BUDGET_SECONDS * 1_000_000_000,
-                "memory_bytes": BUDGET_MEMORY_MIB * 1_048_576,
+                "time_ns": _SOURCE_BUDGET_SECONDS * 1_000_000_000,
+                "memory_bytes": _SOURCE_BUDGET_MEMORY_MIB * 1_048_576,
             },
             "objectives": ["elapsed_ns", "artifact_bytes", "peak_rss_bytes"],
         },
@@ -703,6 +716,7 @@ def _verify_report(environment: _Env, document: dict[str, Any]) -> None:
 
 
 MAX_ARTIFACT_BYTES = 8 * 1024 * 1024
+_SOURCE_MAX_ARTIFACT_BYTES = MAX_ARTIFACT_BYTES
 
 
 def _check_artifact_metadata(
@@ -781,11 +795,12 @@ def _checked_artifact(
     entry: dict[str, str],
 ) -> None:
     _check_artifact_metadata(row, entry)
+    cap = _source_cap(MAX_ARTIFACT_BYTES, _SOURCE_MAX_ARTIFACT_BYTES)
     try:
         actual = evidence.read_bounded_regular(
             _ROOT,
             entry["path"],
-            limit=MAX_ARTIFACT_BYTES,
+            limit=cap,
         )
     except Exception as error:
         # The bounded evidence reader is a dependency; unexpected ordinary
@@ -794,7 +809,7 @@ def _checked_artifact(
         if (detail := _native_error_detail(error)) is not None:
             message += f": {detail}"
         raise ReferenceStudyError(message) from error
-    if type(actual) is not bytes or len(actual) > MAX_ARTIFACT_BYTES:
+    if type(actual) is not bytes or len(actual) > cap:
         _fail("host-C retained artifact requires exact bounded bytes")
     if _checked_sha256(actual) != entry["sha256"]:
         _fail("host-C retained executable differs from its SHA-256 claim")
@@ -883,6 +898,7 @@ def check_retained_artifacts(
 
 
 MAX_FAILURE_DIAGNOSTIC_BYTES = 256
+_SOURCE_MAX_FAILURE_DIAGNOSTIC_BYTES = MAX_FAILURE_DIAGNOSTIC_BYTES
 
 
 def check_retained_failures(
@@ -907,12 +923,13 @@ def check_retained_failures(
         expected.add(manifest)
     if set(failures) != expected:
         _fail("host-C failure diagnostics must match failed trial identities")
+    cap = _source_cap(
+        MAX_FAILURE_DIAGNOSTIC_BYTES, _SOURCE_MAX_FAILURE_DIAGNOSTIC_BYTES
+    )
     if any(
         type(message) is not str
-        or not 1 <= len(message) <= MAX_FAILURE_DIAGNOSTIC_BYTES
-        or any(
-            not ASCII_LOW <= character <= ASCII_HIGH for character in message
-        )
+        or not 1 <= len(message) <= cap
+        or any(not ASCII_LOW <= character <= ASCII_HIGH for character in message)
         for message in failures.values()
     ):
         _fail("host-C failure diagnostics must be bounded printable ASCII")
@@ -925,7 +942,7 @@ def _retained_write_failure(path: Path, error: Exception) -> Never:
     if (detail := _native_error_detail(error)) is not None:
         safe = "".join(
             char if ASCII_LOW <= char <= ASCII_HIGH else "?"
-            for char in detail[:MAX_FAILURE_DIAGNOSTIC_BYTES]
+            for char in detail[:_SOURCE_MAX_FAILURE_DIAGNOSTIC_BYTES]
         )
         if safe:
             message += f": {safe}"
@@ -997,6 +1014,7 @@ def _write_retained_text(path: Path, content: str) -> None:
 
 
 MAX_HOST_COMPONENT_LENGTH = 256
+_SOURCE_MAX_HOST_COMPONENT_LENGTH = MAX_HOST_COMPONENT_LENGTH
 
 
 def _host_identity() -> str:
@@ -1006,9 +1024,10 @@ def _host_identity() -> str:
     except Exception as error:
         message = "host-C reference host identity lookup failed"
         raise ReferenceStudyError(message) from error
+    cap = _source_cap(MAX_HOST_COMPONENT_LENGTH, _SOURCE_MAX_HOST_COMPONENT_LENGTH)
     if any(
         type(component) is not str
-        or not 1 <= len(component) <= MAX_HOST_COMPONENT_LENGTH
+        or not 1 <= len(component) <= cap
         or component.strip() != component
         or any(not ASCII_LOW <= char <= ASCII_HIGH for char in component)
         for component in components
@@ -1056,11 +1075,15 @@ def _validate_plan_shape(plan: StudyPlan) -> None:
         type(nodes) is not int for nodes in plan.difficulties
     ):
         _fail("host-C reference difficulty levels require an exact integer tuple")
-    if not plan.difficulties or len(plan.difficulties) > MAX_DIFFICULTIES:
+    if not plan.difficulties or len(plan.difficulties) > _source_cap(
+        MAX_DIFFICULTIES, _SOURCE_MAX_DIFFICULTIES
+    ):
         _fail("host-C reference requires one to four difficulty levels")
     if len(set(plan.difficulties)) != len(plan.difficulties):
         _fail("host-C reference difficulty levels must be distinct")
-    if type(plan.trials) is not int or not 1 <= plan.trials <= MAX_TRIALS:
+    if type(plan.trials) is not int or not 1 <= plan.trials <= _source_cap(
+        MAX_TRIALS, _SOURCE_MAX_TRIALS
+    ):
         _fail("host-C reference trial count must be an integer between 1 and 5")
 
 
