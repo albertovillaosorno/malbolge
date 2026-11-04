@@ -3373,3 +3373,133 @@ def test_host_c_ascii_bounds_cannot_admit_control_characters(
             host_c_oracle.HostOracleError("failed\nspoof")
         )
         assert diagnostic == "failed?spoof"
+
+
+@pytest.mark.parametrize(
+    ("cap_name", "forged_public", "plan"),
+    [
+        (
+            "MAX_DIFFICULTIES",
+            20,
+            reference_study.StudyPlan(FAMILY, (1, 2, 3, 4, 5), 7, 1),
+        ),
+        ("MAX_TRIALS", 20, reference_study.StudyPlan(FAMILY, (4,), 7, 6)),
+        ("MAX_TRIALS", 1, reference_study.StudyPlan(FAMILY, (4,), 7, 4)),
+    ],
+    ids=["more-levels", "more-trials", "narrowed-public-limit"],
+)
+def test_host_c_cap_cannot_widen_under_replaced_min(
+    monkeypatch: pytest.MonkeyPatch,
+    cap_name: str,
+    forged_public: int,
+    plan: reference_study.StudyPlan,
+) -> None:
+    """Module-level min cannot change a source-registered plan ceiling."""
+    monkeypatch.setattr(reference_study, cap_name, forged_public)
+    monkeypatch.setattr(
+        reference_study, "min", lambda public, _source: max(public, 4), raising=False
+    )
+    with pytest.raises(
+        reference_study.ReferenceStudyError, match="difficulty|trial count"
+    ):
+        reference_study._validate_plan_shape(plan)
+
+
+class _ForeignStudyCap:
+    """An invalid limit that acts numerically valid when compared to an int."""
+
+    def __lt__(self, _other: object) -> bool:
+        return False
+
+
+@pytest.mark.parametrize("alias", ["type", "int"])
+def test_host_c_cap_rejects_forged_native_limit_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Only a source-native positive int may be used as the public ceiling."""
+    if alias == "type":
+        native_type = type
+        monkeypatch.setattr(
+            reference_study,
+            "type",
+            lambda value: int if value is True else native_type(value),
+            raising=False,
+        )
+        invalid: object = True
+    else:
+        monkeypatch.setattr(reference_study, "int", _ForeignStudyCap, raising=False)
+        invalid = _ForeignStudyCap()
+    with pytest.raises(reference_study.ReferenceStudyError, match="resource cap"):
+        reference_study._source_cap(invalid, 4)
+
+
+@pytest.mark.parametrize("alias", ["type", "int", "min"])
+def test_host_c_cap_keeps_original_result_under_alias_replacement(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A native narrowed ceiling cannot change under public provider swaps."""
+    replacement: object = (lambda *_args: 999) if alias == "min" else object
+    monkeypatch.setattr(reference_study, alias, replacement, raising=False)
+    assert reference_study._source_cap(2, 4) == 2
+
+
+@pytest.mark.parametrize(
+    ("alias", "replacement", "difficulties", "trials"),
+    [
+        ("len", lambda _value: 1, (1, 2, 3, 4, 5), 1),
+        ("any", lambda _values: False, (None,), 1),
+        ("set", lambda _values: {1, 2}, (4, 4), 1),
+        ("tuple", list, [4], 1),
+        ("int", bool, (True,), True),
+    ],
+)
+def test_host_c_plan_rejects_substituted_native_shape_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+    replacement: object,
+    difficulties: object,
+    trials: object,
+) -> None:
+    """Native plan element/count/uniqueness checks cannot be suppressed."""
+    monkeypatch.setattr(reference_study, alias, replacement, raising=False)
+    plan = reference_study.StudyPlan(
+        FAMILY, cast("tuple[int, ...]", difficulties), 7, cast("int", trials)
+    )
+    with pytest.raises(reference_study.ReferenceStudyError):
+        reference_study._validate_plan_shape(plan)
+
+
+def test_host_c_plan_rejects_substituted_type_for_foreign_level_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A list cannot masquerade as the source-native difficulty tuple."""
+    levels: object = [4]
+    plan = reference_study.StudyPlan(FAMILY, cast("tuple[int, ...]", levels), 7, 1)
+    source_type = type
+    monkeypatch.setattr(
+        reference_study,
+        "type",
+        lambda value: tuple if value is levels else source_type(value),
+        raising=False,
+    )
+    with pytest.raises(reference_study.ReferenceStudyError):
+        reference_study._validate_plan_shape(plan)
+
+
+@pytest.mark.parametrize("alias", ["type", "tuple", "int", "len", "any", "set"])
+def test_host_c_plan_preserves_valid_native_shape_under_alias_replacement(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Replaced module aliases cannot reject a valid native study plan."""
+    replacements: dict[str, object] = {
+        "type": lambda _value: object,
+        "tuple": object,
+        "int": object,
+        "len": lambda _value: 99,
+        "any": lambda _values: True,
+        "set": lambda _values: set(),
+    }
+    monkeypatch.setattr(reference_study, alias, replacements[alias], raising=False)
+    reference_study._validate_plan_shape(
+        reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+    )

@@ -62,8 +62,15 @@ from benchmarks.arena import (
 from benchmarks.challenges import generate
 from scripts.validate import experiment_manifest, target_profile
 
-# Preserve a source-byte SHA-256 provider across public alias substitutions.
+# Preserve source-native admission primitives across public alias substitutions.
 _NATIVE_SHA256 = sha256
+_NATIVE_TYPE = type
+_NATIVE_INT = int
+_NATIVE_MIN = min
+_NATIVE_TUPLE = tuple
+_NATIVE_ANY = any
+_NATIVE_LEN = len
+_NATIVE_SET = set
 
 # Bind source JSON classes before mutable public decoder/writer replacement.
 _SOURCE_JSON_DECODER = json.JSONDecoder
@@ -128,9 +135,9 @@ def _fail(message: str) -> Never:
 
 def _source_cap(public: object, registered: int) -> int:
     """Allow narrower public limits, never a substituted larger one."""
-    if type(public) is not int or public < 1:
+    if _NATIVE_TYPE(public) is not _NATIVE_INT or public < 1:
         _fail("host-C reference resource cap requires a positive native integer")
-    return min(public, registered)
+    return _NATIVE_MIN(public, registered)
 
 
 def _require_source_json_decoder() -> None:
@@ -358,6 +365,9 @@ class StudyPlan:
     difficulties: tuple[int, ...]
     seed: int
     trials: int
+
+
+_SOURCE_STUDY_PLAN_TYPE = StudyPlan
 
 
 @dataclass(frozen=True, slots=True)
@@ -1081,20 +1091,21 @@ def _run_study(root: Path, plan: StudyPlan, *, commit: str) -> dict[str, Any]:
 
 
 def _validate_plan_shape(plan: StudyPlan) -> None:
-    if type(plan) is not StudyPlan:
+    if _NATIVE_TYPE(plan) is not _SOURCE_STUDY_PLAN_TYPE:
         _fail("host-C reference requires an exact StudyPlan")
-    if type(plan.difficulties) is not tuple or any(
-        type(nodes) is not int for nodes in plan.difficulties
+    if _NATIVE_TYPE(plan.difficulties) is not _NATIVE_TUPLE or _NATIVE_ANY(
+        _NATIVE_TYPE(nodes) is not _NATIVE_INT for nodes in plan.difficulties
     ):
         _fail("host-C reference difficulty levels require an exact integer tuple")
-    if not plan.difficulties or len(plan.difficulties) > _source_cap(
+    if not plan.difficulties or _NATIVE_LEN(plan.difficulties) > _source_cap(
         MAX_DIFFICULTIES, _SOURCE_MAX_DIFFICULTIES
     ):
         _fail("host-C reference requires one to four difficulty levels")
-    if len(set(plan.difficulties)) != len(plan.difficulties):
+    if _NATIVE_LEN(_NATIVE_SET(plan.difficulties)) != _NATIVE_LEN(plan.difficulties):
         _fail("host-C reference difficulty levels must be distinct")
-    if type(plan.trials) is not int or not 1 <= plan.trials <= _source_cap(
-        MAX_TRIALS, _SOURCE_MAX_TRIALS
+    if (
+        _NATIVE_TYPE(plan.trials) is not _NATIVE_INT
+        or not 1 <= plan.trials <= _source_cap(MAX_TRIALS, _SOURCE_MAX_TRIALS)
     ):
         _fail("host-C reference trial count must be an integer between 1 and 5")
 
