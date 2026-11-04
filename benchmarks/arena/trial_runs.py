@@ -51,6 +51,8 @@ _SOURCE_ANY = any
 _SOURCE_DICT = dict
 _SOURCE_STR = str
 _SOURCE_INT = int
+_SOURCE_EXCEPTION = Exception
+_SOURCE_UNICODE_ENCODE_ERROR = UnicodeEncodeError
 # The source digest grammar must not follow late analyzer module substitutions.
 _SOURCE_SHA256_HEX_LENGTH = analyze.SHA256_HEX_LENGTH
 _SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
@@ -111,7 +113,7 @@ def _admit_text(text: str) -> None:
         _SOURCE_FAIL("per-trial run manifest exceeds byte limit")
     try:
         encoded_size = _SOURCE_LEN(text.encode("utf-8"))
-    except UnicodeEncodeError as error:
+    except _SOURCE_UNICODE_ENCODE_ERROR as error:
         message = "per-trial run manifest requires strict UTF-8 text"
         raise _SOURCE_TRIAL_RUN_ERROR(message) from error
     if encoded_size > _SOURCE_MAX_RUN_MANIFEST_BYTES:
@@ -137,7 +139,7 @@ def parse_trial_run(text: str) -> TrialRun:
     _SOURCE_ADMIT_TEXT(text)
     try:
         document = tomllib.loads(text)
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         # The parser is a dependency: all ordinary faults must stay typed.
         # Preserve the cause without invoking foreign exception formatters.
         message = "invalid per-trial manifest TOML"
@@ -167,7 +169,7 @@ def parse_trial_run(text: str) -> TrialRun:
     # parser before binding a trial number or raw-file hash.
     try:
         source = _SOURCE_TOML_LOADS(text)
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         message = "per-trial manifest source TOML could not be parsed"
         raise _SOURCE_TRIAL_RUN_ERROR(message) from error
     source_table = source.get(_SOURCE_EXTENSION_NAME)

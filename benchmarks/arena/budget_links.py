@@ -48,6 +48,8 @@ _SOURCE_ANY = any
 _SOURCE_DICT = dict
 _SOURCE_STR = str
 _SOURCE_INT = int
+_SOURCE_EXCEPTION = Exception
+_SOURCE_UNICODE_ENCODE_ERROR = UnicodeEncodeError
 
 NANOSECONDS_PER_SECOND = 1_000_000_000
 BYTES_PER_MIB = 1_048_576
@@ -99,7 +101,7 @@ def _admit_text(text: str) -> None:
         _SOURCE_FAIL("budget run manifest exceeds byte limit")
     try:
         encoded_size = _SOURCE_LEN(text.encode("utf-8"))
-    except UnicodeEncodeError as error:
+    except _SOURCE_UNICODE_ENCODE_ERROR as error:
         message = "budget run manifest requires strict UTF-8 text"
         raise _SOURCE_BUDGET_LINK_ERROR(message) from error
     if encoded_size > _SOURCE_MAX_RUN_MANIFEST_BYTES:
@@ -125,7 +127,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
     _SOURCE_ADMIT_TEXT(text)
     try:
         document = tomllib.loads(text)
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         # The parser is a dependency: all ordinary faults must stay typed.
         # Preserve the cause without invoking foreign exception formatters.
         message = "invalid experiment run budget TOML"
@@ -146,7 +148,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
     # the actual source, not another invocation through the mutable module.
     try:
         source = _SOURCE_TOML_LOADS(text)
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         message = "experiment run budget source TOML could not be parsed"
         raise _SOURCE_BUDGET_LINK_ERROR(message) from error
     source_budget = source.get("budget")

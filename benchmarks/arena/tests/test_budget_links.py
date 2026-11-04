@@ -233,3 +233,47 @@ def test_budget_valid_source_ignores_replaced_public_error_alias(
     with monkeypatch.context() as patched:
         patched.setattr(budget_links, "BudgetLinkError", replacement)
         assert budget_links.parse_run_budgets(MANIFEST) == EXPECTED
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("decoder", "invalid experiment run budget TOML"),
+        ("source", "source TOML could not be parsed"),
+        ("utf8", "requires strict UTF-8 text"),
+    ],
+)
+def test_budget_native_catch_aliases_preserve_typed_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """Late exception aliases cannot leak raw parser or encoding failures."""
+    with monkeypatch.context() as patched:
+        if stage == "utf8":
+            patched.setattr(budget_links, "UnicodeEncodeError", replacement, raising=False)
+            source = "\ud800"
+        else:
+            patched.setattr(budget_links, "Exception", replacement, raising=False)
+            source = MANIFEST
+            if stage == "source":
+                def unavailable(_text: str) -> None:
+                    raise OSError("source parser failed")
+                patched.setattr(budget_links, "_SOURCE_TOML_LOADS", unavailable)
+            else:
+                source = "[budget\nseconds = 3\n"
+        with pytest.raises(budget_links.BudgetLinkError, match=diagnostic):
+            budget_links.parse_run_budgets(source)
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_budget_valid_native_manifest_ignores_error_aliases(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Normal budget conversion is independent of exception catch aliases."""
+    with monkeypatch.context() as patched:
+        patched.setattr(budget_links, "Exception", replacement, raising=False)
+        patched.setattr(budget_links, "UnicodeEncodeError", replacement, raising=False)
+        assert budget_links.parse_run_budgets(MANIFEST) == EXPECTED

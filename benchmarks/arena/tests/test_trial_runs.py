@@ -294,3 +294,49 @@ def test_trial_valid_source_ignores_replaced_public_error_alias(
     with monkeypatch.context() as patched:
         patched.setattr(trial_runs, "TrialRunError", replacement)
         assert trial_runs.parse_trial_run(_manifest("a" * 64)).trial == 7
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("decoder", "invalid per-trial manifest TOML"),
+        ("source", "source TOML could not be parsed"),
+        ("utf8", "requires strict UTF-8 text"),
+    ],
+)
+def test_trial_run_native_catch_aliases_preserve_typed_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """Late exception aliases cannot leak raw trial parser failures."""
+    with monkeypatch.context() as patched:
+        if stage == "utf8":
+            patched.setattr(trial_runs, "UnicodeEncodeError", replacement, raising=False)
+            source = "\ud800"
+        else:
+            patched.setattr(trial_runs, "Exception", replacement, raising=False)
+            source = _manifest("a" * 64)
+            if stage == "source":
+                def unavailable(_text: str) -> None:
+                    raise OSError("source parser failed")
+                patched.setattr(trial_runs, "_SOURCE_TOML_LOADS", unavailable)
+            else:
+                source = "[arena_trial\nschema_version = 1\n"
+        with pytest.raises(trial_runs.TrialRunError, match=diagnostic):
+            trial_runs.parse_trial_run(source)
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_trial_run_valid_manifest_ignores_error_aliases(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Normal trial identity stays admitted after exception rebinding."""
+    with monkeypatch.context() as patched:
+        patched.setattr(trial_runs, "Exception", replacement, raising=False)
+        patched.setattr(trial_runs, "UnicodeEncodeError", replacement, raising=False)
+        assert trial_runs.parse_trial_run(_manifest("a" * 64)) == trial_runs.TrialRun(
+            trial=7, raw_sha256="a" * 64
+        )
