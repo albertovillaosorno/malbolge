@@ -1483,6 +1483,15 @@ The original study records remain the result authority.
   arena BasedPyright errors and clean scoped Ruff/format checks. These checks
   preserve local arithmetic, not iid sampling, reported outcome truth, source
   authenticity or physical measurements.
+- The analyzer now binds the fixed 95% median sample bounds and confidence,
+  paired-sign discordance ceiling, and Clopper-Pearson grid, tail and attempt
+  limits at import instead of consulting public statistical aliases during
+  independent receipt checking or policy publication. Six red-first direct
+  cases exposed false acceptance of 50%-coverage intervals, over-limit paired
+  tests, narrow success bounds and misleading policy metadata; two operator
+  regressions require no JSON after forged interval receipts. This is an
+  internal arithmetic and metadata consistency guarantee, not verification of
+  iid sampling, producer outcomes or source timing.
 - An additional opt-in accelerator identity gate rejects mixed declared
   devices in studies that require hardware-matched arms, while preserving
   heterogeneous studies when that policy is not requested. Synthetic tests

@@ -61,6 +61,16 @@ _SOURCE_HOLM_ENUMERATE = enumerate
 _SOURCE_HOLM_MIN = min
 _SOURCE_HOLM_MAX = max
 
+# Inferential receipts must not use the same mutable public policy aliases
+# as a substituted producer; fixed geometry is part of the 95% contract.
+_SOURCE_MEDIAN_MIN_SAMPLES = median_intervals.MIN_SAMPLES
+_SOURCE_MEDIAN_MAX_SAMPLES = median_intervals.MAX_SAMPLES
+_SOURCE_MEDIAN_CONFIDENCE = median_intervals.REQUESTED_CONFIDENCE
+_SOURCE_PAIRED_MAX_DISCORDANT_PAIRS = paired_exact_tests.MAX_DISCORDANT_PAIRS
+_SOURCE_SUCCESS_MAX_ATTEMPTS = success_intervals.MAX_ATTEMPTS
+_SOURCE_SUCCESS_GRID_DENOMINATOR = success_intervals.GRID_DENOMINATOR
+_SOURCE_SUCCESS_TAIL_DENOMINATOR = success_intervals.TWO_SIDED_TAIL_DENOMINATOR
+
 # Preserve the source decoder class, not just json.loads (which consults the
 # mutable public JSONDecoder factory for custom object-pair hooks).
 _SOURCE_JSON_DECODER = json.JSONDecoder
@@ -615,7 +625,7 @@ def _binomial_prefix_reverse(size: int, through: int) -> int:
 def _exact_median_rank_reference(size: int) -> tuple[int, Fraction]:
     """Find the largest eligible symmetric median rank independently."""
     denominator = 1 << size
-    confidence = median_intervals.REQUESTED_CONFIDENCE
+    confidence = _SOURCE_MEDIAN_CONFIDENCE
     lower_rank = 0
     upper_rank = size // 2 + 1
     while upper_rank - lower_rank > 1:
@@ -647,7 +657,7 @@ def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
         message = "median interval computation failed"
         raise ArenaError(message) from error
     count = len(values)
-    if count < median_intervals.MIN_SAMPLES or count > median_intervals.MAX_SAMPLES:
+    if count < _SOURCE_MEDIAN_MIN_SAMPLES or count > _SOURCE_MEDIAN_MAX_SAMPLES:
         if receipt is not None:
             _fail("median interval receipt has unsupported sample count")
         return None
@@ -690,7 +700,7 @@ def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
         _fail("median interval receipt has invalid rational coverage")
     rational = Fraction(numerator, denominator)
     if (
-        rational < median_intervals.REQUESTED_CONFIDENCE
+        rational < _SOURCE_MEDIAN_CONFIDENCE
         or [rational.numerator, rational.denominator] != coverage
     ):
         _fail("median interval receipt has unsupported confidence coverage")
@@ -742,7 +752,7 @@ def _paired_sign_receipt(left: int, right: int) -> dict[str, Any] | None:
         message = "paired exact computation failed"
         raise ArenaError(message) from error
     count = left + right
-    if count == 0 or count > paired_exact_tests.MAX_DISCORDANT_PAIRS:
+    if count == 0 or count > _SOURCE_PAIRED_MAX_DISCORDANT_PAIRS:
         if receipt is not None:
             _fail("paired exact receipt fabricates ineligible discordance")
         return None
@@ -1075,8 +1085,8 @@ def _statistical_report_policy(
         report["median_interval_policy"] = {
             "method": "exact-symmetric-binomial-order-statistics",
             "requested_confidence": [19, 20],
-            "minimum_samples": median_intervals.MIN_SAMPLES,
-            "maximum_samples": median_intervals.MAX_SAMPLES,
+            "minimum_samples": _SOURCE_MEDIAN_MIN_SAMPLES,
+            "maximum_samples": _SOURCE_MEDIAN_MAX_SAMPLES,
             "assumptions": (
                 "Independent identically distributed trials; bounds are "
                 "conservative under ties. Conditional success-only and "
@@ -1089,7 +1099,7 @@ def _statistical_report_policy(
     if policy.paired_exact_tests:
         report["paired_exact_test_policy"] = {
             "method": "two-sided-exact-conditional-binomial",
-            "maximum_discordant_pairs": paired_exact_tests.MAX_DISCORDANT_PAIRS,
+            "maximum_discordant_pairs": _SOURCE_PAIRED_MAX_DISCORDANT_PAIRS,
             "multiple_testing_adjustment": "none",
             "assumptions": (
                 "Independent matched pairs, symmetric discordant signs under "
@@ -1208,7 +1218,7 @@ def _exact_grid_binomial_tail(
     at_least: bool,
 ) -> int:
     """Evaluate a bounded exact binomial tail directly at one grid point."""
-    grid = success_intervals.GRID_DENOMINATOR
+    grid = _SOURCE_SUCCESS_GRID_DENOMINATOR
     failures = grid - grid_index
     first = successes if at_least else 0
     after_last = attempts + 1 if at_least else successes + 1
@@ -1227,9 +1237,9 @@ def _require_exact_success_grid(
     upper: Fraction,
 ) -> None:
     """Check exact outward-grid roots independently of the interval helper."""
-    grid = success_intervals.GRID_DENOMINATOR
+    grid = _SOURCE_SUCCESS_GRID_DENOMINATOR
     threshold = grid**attempts
-    tail_factor = success_intervals.TWO_SIDED_TAIL_DENOMINATOR
+    tail_factor = _SOURCE_SUCCESS_TAIL_DENOMINATOR
     lower_index = int(lower * grid)
     upper_index = int(upper * grid)
     if verified == 0:
@@ -1269,7 +1279,7 @@ def _admit_success_interval_receipt(
         An owned canonical interval record, or unavailable beyond the cap.
 
     """
-    if attempts > success_intervals.MAX_ATTEMPTS:
+    if attempts > _SOURCE_SUCCESS_MAX_ATTEMPTS:
         if receipt is not None:
             _fail("success interval receipt exceeds supported attempts")
         return None
@@ -1295,9 +1305,9 @@ def _admit_success_interval_receipt(
             _fail("success interval receipt requires native rational endpoints")
         numerator, denominator = pair
         if (
-            not 0 <= numerator <= denominator <= success_intervals.GRID_DENOMINATOR
+            not 0 <= numerator <= denominator <= _SOURCE_SUCCESS_GRID_DENOMINATOR
             or denominator == 0
-            or success_intervals.GRID_DENOMINATOR % denominator != 0
+            or _SOURCE_SUCCESS_GRID_DENOMINATOR % denominator != 0
         ):
             _fail("success interval receipt has invalid rational endpoint")
         normalized = Fraction(numerator, denominator)
@@ -1382,8 +1392,8 @@ def annotate_success_intervals(report: dict[str, Any]) -> None:
     report["verification_success_interval_policy"] = {
         "method": "conservative-grid-Clopper-Pearson-exact-binomial",
         "requested_confidence": [19, 20],
-        "grid_denominator": success_intervals.GRID_DENOMINATOR,
-        "maximum_attempts": success_intervals.MAX_ATTEMPTS,
+        "grid_denominator": _SOURCE_SUCCESS_GRID_DENOMINATOR,
+        "maximum_attempts": _SOURCE_SUCCESS_MAX_ATTEMPTS,
         "assumptions": (
             "Independent identically distributed Bernoulli attempts. "
             "Exact binomial tails are inverted and endpoints rounded "

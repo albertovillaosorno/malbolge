@@ -3629,3 +3629,184 @@ def test_holm_receipt_reference_cannot_share_forged_math_provider(
     monkeypatch.setattr(analyze, provider, replacement, raising=False)
     with pytest.raises(analyze.ArenaError, match="Holm receipt"):
         analyze._admit_holm_receipt(raw, forged)
+
+
+def test_median_receipt_rejects_lowered_shared_confidence_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A joint helper/policy substitution cannot call a 50% bound 95%."""
+    from fractions import Fraction
+
+    values = list(range(10))
+    # Rank four has only 21/32 coverage, below the registered 19/20.
+    forged = {"lower": 3, "upper": 6, "coverage": [21, 32], "sample_count": 10}
+    monkeypatch.setattr(
+        analyze.median_intervals, "REQUESTED_CONFIDENCE", Fraction(1, 2)
+    )
+    monkeypatch.setattr(
+        analyze.median_intervals, "median_interval_95", lambda _: forged
+    )
+    with pytest.raises(analyze.ArenaError, match="median interval receipt"):
+        analyze._median_interval_receipt(values)
+
+
+@pytest.mark.parametrize(
+    "name,replacement", [("MIN_SAMPLES", 11), ("MAX_SAMPLES", 5)]
+)
+def test_median_receipt_ignores_substituted_public_sample_bounds(
+    monkeypatch: pytest.MonkeyPatch, name: str, replacement: int
+) -> None:
+    """Public sample-count aliases cannot reject valid native 95% receipts."""
+    values = list(range(10))
+    expected = analyze.median_intervals.median_interval_95(values)
+    assert expected is not None
+    monkeypatch.setattr(analyze.median_intervals, name, replacement)
+    assert analyze._median_interval_receipt(values) == expected
+
+
+def test_paired_receipt_rejects_widened_shared_discordance_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A helper and cap changed together cannot infer past 4096 pairs."""
+    count = 4097
+    forged = {"discordant_pairs": count, "p_two_sided": [1, 1 << (count - 1)]}
+    monkeypatch.setattr(
+        analyze.paired_exact_tests, "MAX_DISCORDANT_PAIRS", count
+    )
+    monkeypatch.setattr(
+        analyze.paired_exact_tests, "two_sided_sign_test", lambda *_: forged
+    )
+    with pytest.raises(analyze.ArenaError, match="paired exact receipt"):
+        analyze._paired_sign_receipt(count, 0)
+
+
+def test_success_receipt_rejects_weakened_shared_binomial_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 50%-tail inversion cannot appear in the 95% success view."""
+    # For five successes out of ten, these are the exact outward bounds
+    # on the 1/4096 grid at tail factor 2, not the registered factor 40.
+    forged = {
+        "lower": [925, 2048],
+        "upper": [1123, 2048],
+        "sample_count": 10,
+        "verified": 5,
+    }
+    monkeypatch.setattr(
+        analyze.success_intervals, "TWO_SIDED_TAIL_DENOMINATOR", 2
+    )
+    with pytest.raises(analyze.ArenaError, match="success interval receipt"):
+        analyze._admit_success_interval_receipt(forged, 5, 10)
+
+
+def test_success_interval_report_policy_ignores_public_grid_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Published policy must describe the interval producer's fixed grid."""
+    report: dict[str, Any] = {
+        "capacity_curve": [
+            {
+                "verified": 1,
+                "attempts": 1,
+                "success_fraction": [1, 1],
+                "outcomes": {
+                    kind: int(kind == analyze.VERIFIED)
+                    for kind in analyze.OUTCOMES
+                },
+            }
+        ],
+    }
+    monkeypatch.setattr(analyze.success_intervals, "GRID_DENOMINATOR", 8192)
+    monkeypatch.setattr(analyze.success_intervals, "MAX_ATTEMPTS", 1024)
+    analyze.annotate_success_intervals(report)
+    assert (
+        report["verification_success_interval_policy"]["grid_denominator"]
+        == 4096
+    )
+    assert (
+        report["verification_success_interval_policy"]["maximum_attempts"]
+        == 512
+    )
+
+
+def test_median_shared_policy_forgery_stops_cli_before_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A jointly weakened interval provider cannot publish false confidence."""
+    from fractions import Fraction
+
+    def forged(
+        values: list[int],
+    ) -> analyze.median_intervals.MedianInterval | None:
+        if len(values) != 10:
+            return None
+        ordered = sorted(values)
+        return {
+            "lower": ordered[3],
+            "upper": ordered[-4],
+            "coverage": [21, 32],
+            "sample_count": 10,
+        }
+
+    path = tmp_path / "median-drift.json"
+    _ = path.write_text(
+        json.dumps(_repeated_success_study(10)), encoding="utf-8"
+    )
+    monkeypatch.setattr(
+        analyze.median_intervals, "REQUESTED_CONFIDENCE", Fraction(1, 2)
+    )
+    monkeypatch.setattr(analyze.median_intervals, "median_interval_95", forged)
+    monkeypatch.setattr(
+        sys, "argv", ["arena", str(path), "--median-intervals-95"]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        analyze.main()
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "median interval receipt" in captured.err
+
+
+def test_success_shared_tail_forgery_stops_cli_before_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A shared tail-factor substitution cannot emit narrow 95% intervals."""
+    document = _repeated_success_study(10)
+    for row in document["observations"]:
+        if row["algorithm"] == CANDIDATE and row["case"]["seed"] < 8:
+            row["outcome"] = "no_solution"
+            row["verifier_verdict"] = analyze.NOT_RUN
+            row["metrics"] = {"elapsed_ns": 90}
+    original = analyze.success_intervals.success_interval_95
+
+    def forged(
+        verified: int, attempts: int
+    ) -> analyze.success_intervals.SuccessInterval | None:
+        if (verified, attempts) == (5, 10):
+            return {
+                "lower": [925, 2048],
+                "upper": [1123, 2048],
+                "sample_count": 10,
+                "verified": 5,
+            }
+        return original(verified, attempts)
+
+    path = tmp_path / "tail-drift.json"
+    _ = path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        analyze.success_intervals, "TWO_SIDED_TAIL_DENOMINATOR", 2
+    )
+    monkeypatch.setattr(
+        analyze.success_intervals, "success_interval_95", forged
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["arena", str(path), "--success-intervals-95"]
+    )
+    with pytest.raises(SystemExit, match="2"):
+        analyze.main()
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "success interval receipt" in captured.err
