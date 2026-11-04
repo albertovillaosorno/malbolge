@@ -42,6 +42,10 @@ from benchmarks.challenges import generate
 
 # Keep a source-byte reference when both public digest providers are replaced.
 _NATIVE_SHA256 = sha256
+# Do not let a runtime substitution become the replay oracle itself.
+_CANONICAL_GENERATE = generate.generate
+_CANONICAL_IDENTITY = generate.ChallengeIdentity
+_CANONICAL_RESULT = generate.GeneratedChallenge
 
 MAX_BUNDLE_CASES = 64
 MAX_BUNDLE_NODES = 4096
@@ -99,7 +103,7 @@ def _regenerate(
     case: dict[str, Any], profile: str
 ) -> generate.GeneratedChallenge:
     try:
-        identity = generate.ChallengeIdentity(
+        identity = _CANONICAL_IDENTITY(
             family=case["family"],
             version=case["version"],
             seed=case["seed"],
@@ -118,7 +122,7 @@ def _regenerate(
         raise ChallengeBundleError(message) from error
     # Only exact native generator output can serve as comparison evidence.
     # A foreign bytes subclass could override equality to admit forged data.
-    if type(produced) is not generate.GeneratedChallenge:
+    if type(produced) is not _CANONICAL_RESULT:
         _fail("canonical challenge regeneration produced invalid payload")
     try:
         payloads = (produced.source, produced.oracle, produced.manifest)
@@ -129,6 +133,11 @@ def _regenerate(
         raise ChallengeBundleError(message) from error
     if any(type(payload) is not bytes for payload in payloads):
         _fail("canonical challenge regeneration produced invalid payload")
+    # Validate malformed/failing dependency receipts above so they keep their
+    # typed diagnostic and original cause. A successful replaced generator,
+    # however, is not independent evidence of its own reported challenge.
+    if generate.generate is not _CANONICAL_GENERATE:
+        _fail("canonical challenge regeneration provider changed")
     return produced
 
 

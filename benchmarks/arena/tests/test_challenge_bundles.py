@@ -393,6 +393,49 @@ def test_direct_bundle_replay_accepts_exact_payload() -> None:
     )
 
 
+def test_replay_rejects_forged_native_generator_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced generator cannot certify its own invented source bytes."""
+    case, files = _direct_bundle()
+    fake_source = files["program.c"] + b"\n/* substituted generator */\n"
+    files["program.c"] = fake_source
+    case["workload_sha256"] = sha256(fake_source).hexdigest()
+    forged = generate.GeneratedChallenge(
+        source=fake_source,
+        oracle=files["oracle.bin"],
+        manifest=files["manifest.json"],
+    )
+    monkeypatch.setattr(generate, "generate", lambda _identity: forged)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="canonical.*provider"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+def test_replay_rejects_rebound_native_result_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced result type cannot redefine valid generator evidence."""
+    case, files = _direct_bundle()
+    fake_source = files["program.c"] + b"\n/* replaced result type */\n"
+    files["program.c"] = fake_source
+    case["workload_sha256"] = sha256(fake_source).hexdigest()
+
+    class ForgedResult:
+        def __init__(self, *, source: bytes, oracle: bytes, manifest: bytes) -> None:
+            del source
+            self.source = fake_source
+            self.oracle = oracle
+            self.manifest = manifest
+
+    monkeypatch.setattr(generate, "GeneratedChallenge", ForgedResult)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="canonical.*payload"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
 class _ForgedDigestText(str):
     """A foreign digest must not choose equality with its claimed workload."""
 
