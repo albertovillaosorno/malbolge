@@ -89,6 +89,13 @@ BasedPyright checks passed after repair. These are process-local consistency
 checks, not authenticated measurements, physical resource enforcement,
 independent guest execution or proof against a pre-import compromised runtime.
 
+Six additional red-first challenge replay tests showed that substituted
+module-level `set`, `zip`, `any`, or `len` providers could admit extra case or
+bundle fields, skip canonical payload comparison, or widen digest and byte
+preflight. Signed `f7cbd2214` binds the original native providers; all six
+now reject and 984 challenge/evidence/analyzer tests passed. These checks
+compare local source bytes, not independent generator or runtime authenticity.
+
 The analyzer compares only cohorts with identical seeds, workload digests, and
 trial numbers at each challenge difficulty. The named verifier must agree
 for each matched challenge and trial across compared algorithms. Unmatched,
@@ -1414,6 +1421,13 @@ The original study records remain the result authority.
   BasedPyright and scoped Ruff checks clean. This is local provider identity
   consistency, not evidence of untampered imports, genuine source records,
   sink integrity, independent OS attestation or historical measurement truth.
+  Signed `84368383d` also binds source-native length, Unicode scanning,
+  traversal set, object ID, and character ordinal providers. Eight red-first
+  regressions previously allowed false short-write success, unpaired surrogate
+  output, or skipped nested checks; valid reports also falsely rejected.
+  All eight and 1,076 report/analysis/evidence/challenge tests passed with arena
+  BasedPyright and scoped Ruff checks clean. This does not authenticate stdout
+  delivery, the original runtime, or the data being reported.
   A later clean-checkout run covered all 24 arena test modules in disjoint,
   bounded groups: 1,426 offline analysis/evidence/statistics/CSV tests, 731
   host-C producer/oracle/Git tests, 995 target child/replay/resource tests,
