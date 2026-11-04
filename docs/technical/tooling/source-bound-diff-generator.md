@@ -3161,6 +3161,50 @@ instance-storage mutation or concurrent external filesystem writers.
 Repository-wide Jig acceptance is still unverified; the compiled graph
 was absent in recent `jig doctor` checks and bounded global checks timed out.
 
+
+## Native gate, mapped-view, and behavior continuity (2026-11-03)
+
+The conjunctive transform gate now captures the exact source, behavior,
+combined receipt, and `AdmissionError` types (`1b2550f54`). Late public
+aliases previously falsely denied native evidence or replaced typed
+rejection with a foreign exception. Sixteen red-first alias cases pass;
+all 89 focused gate and 711 adjacent admission/behavior/protected tests
+passed postcommit. Scoped Ruff, strict BasedPyright, and Git checks
+were clean.
+
+Mapped-view validation now retains its original `MappedViewError`
+(`3b8a5ef25`) across both raw unit and view failures. Twenty red-first
+late alias regressions previously raised `TypeError` or the substituted
+exception. All 101 mapped and 889 adjacent semantic/relocatable/compatible
+tests passed postcommit, with clean scoped lint, strict typing, and Git
+checks.
+
+Behavior policy and mandatory admission errors now use original
+`BehaviorPolicyError` and `BehaviorAdmissionError` (`d629988b1`).
+Sixteen red-first alias regressions exercise probe validation, profile
+and observation evidence, incomplete native receipts, and denied
+compatibility. All 198 behavior and 866 adjacent gate/program/generator
+tests passed postcommit, with clean scoped Ruff, strict typing, and Git
+checks.
+
+Behavior admission also now retains the original native identity of
+`BugState`, every probe and observation class, and its profile, observation
+container, and evidence types (`31a34dd02`). The ten public class names
+were previously late-bound inside slot reads, nested validator selection,
+threshold evidence, and correction routing. Ten red-first false-denial
+cases now pass; all 876 adjacent postcommit tests passed, with scoped
+Ruff, strict typing, and Git checks clean.
+
+All four DCOs were SHA-exact pushed to `origin/main`. A separate
+4,225-pass/13-failure integrated test invocation was run from the wrong
+working directory: its thirteen nested pytest subprocess selectors failed
+to locate their test files. The exact thirteen selectors passed when
+replayed from the test directory. This does not establish a fresh full
+post-change suite pass; correct-directory integration and repository-wide
+Jig acceptance remain open. `jig doctor` is degraded while its compiled
+graph is absent. These guards cannot prevent direct trusted object-state
+mutation, racing host changes, or concurrent filesystem writes.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

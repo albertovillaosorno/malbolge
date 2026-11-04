@@ -1852,6 +1852,38 @@ format.
   Its later integrated verdict remains pending alongside concurrent peer
   changes; no full-suite pass is inferred from the focused evidence.
 
+
+- Conjunctive source/behavior gate now uses its captured native
+  `TreeAdmissionEvidence`, `BehaviorEvidence`, `TransformAdmissionEvidence`,
+  and `AdmissionError` identities (`1b2550f54`). Sixteen red-first alias
+  cases protect passing and rejected receipts, including typed errors.
+  All 89 focused gate and 711 gate/behavior/admission/protected tests passed
+  postcommit, with scoped Ruff, strict typing, and Git checks clean.
+- Canonical-to-raw mapped unit/view rejection now retains the original
+  `MappedViewError` (`3b8a5ef25`). Twenty red-first native error-class
+  cases now fail closed with the expected exception. All 101 mapped tests
+  and 889 mapped/semantic/relocatable/compatible tests passed postcommit;
+  scoped Ruff, strict typing, and Git checks were clean.
+- Behavior policy validation and mandatory admission now retain original
+  `BehaviorPolicyError` and `BehaviorAdmissionError` classes (`d629988b1`).
+  Sixteen red-first late-alias cases now preserve typed failure across
+  probe, profile, evidence, and mandatory compatibility checks. All 198
+  behavior and 866 adjacent tests passed, with Ruff, strict typing, and
+  Git checks clean.
+- Behavior admission also now pins the original ten probe, observation,
+  profile, evidence, and `BugState` class identities (`31a34dd02`). Ten
+  red-first late public alias cases previously rejected genuine native
+  receipts, but now preserve conjunctive results. All 876 postcommit
+  behavior/gate/program/generator tests passed. Scoped Ruff, strict
+  typing, and Git checks were clean. All four DCOs were SHA-exact pushed
+  to `main`; full integration after the final change remains pending.
+  A 4,225-pass/13-failure intermediate diff invocation used the wrong
+  working directory for subprocess test selectors; all 13 selectors
+  passed when run in the test directory. Neither this partial result nor
+  older complete runs establishes post-change full integration. External
+  filesystem races and direct trusted-storage changes remain outside the
+  in-process guard, and repository-wide Jig acceptance is still open.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
