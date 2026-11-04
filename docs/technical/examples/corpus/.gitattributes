@@ -1,0 +1,2 @@
+# Malbolge capsules encode metadata in significant trailing spaces and tabs.
+*.malbolge -whitespace

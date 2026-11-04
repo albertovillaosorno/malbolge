@@ -17,3 +17,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
 - `apollo-11-luminary-agc-malbolge.md`
 - `rv32i-malbolge-runner.md`
 - `versioned-c-malbolge-corpus.md`
+- `corpus/emit-qp.md`: SHA-pinned C / current-profile Malbolge guest pair,
+  regeneration command, and independently exercised 8-step output contract.
