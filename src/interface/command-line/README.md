@@ -85,9 +85,9 @@ python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
 All three executables are explicit caller-trusted capabilities. This is a
 bounded integration entrypoint, **not** the finished turnkey installer or
 arbitrary C compiler. It currently accepts only the normalized Clang shape
-supported by the JSON adapter (one no-effect `void` function with either an
-empty body or an explicit `return;`), and does not implement C process-return
-ABI or guest libc.
+supported by the JSON adapter (one no-effect `void` function with optional
+null statements (`;`) and optional final `return;`), and does not implement C
+process-return ABI or guest libc.
 The pinned Clang frontend is required for real source compilation; its
 absence cannot be replaced by synthetic JSON test evidence. The two source
 reads constrain a specific invocation, not a persistent filesystem snapshot.

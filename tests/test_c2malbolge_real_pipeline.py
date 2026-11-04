@@ -44,9 +44,10 @@ ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
 SOURCE = b"void noop(void) { return; }\n"
 EMPTY_SOURCE = b"void noop(void) {}\n"
+NULL_SOURCE = b"void noop(void) {; ; return;}\n"
 
 # This source-bound JSON producer is not a Clang substitute. It creates only
-# the exact, independently admitted normalized two/three-node void wire.
+# the exact, independently admitted normalized no-effect void wire.
 FRONTEND = """#!/usr/bin/env python3
 import hashlib
 import json
@@ -56,19 +57,26 @@ import sys
 
 source = Path(sys.argv[-1]).read_bytes()
 implicit = source == b"void noop(void) {}\\n"
-assert implicit or source == b"void noop(void) { return; }\\n"
+nulls = source == b"void noop(void) {; ; return;}\\n"
+assert implicit or nulls or source == b"void noop(void) { return; }\\n"
 source_id = sys.argv[sys.argv.index("--source-id") + 1]
 def span(begin, end):
     return {"begin": {"byte": begin, "line": 1, "column": begin + 1},
             "end": {"byte": end, "line": 1, "column": end + 1}}
-end = 18 if implicit else 27
+end = 29 if nulls else 18 if implicit else 27
 nodes = [
     {"id":1, "parent":0, "kind":"function-declaration", "span":span(0,end),
      "name":"noop", "type":"fn()->void", "definition":"definition",
      "inline_specified":False, "linkage":"external", "storage_class":"none"},
     {"id":2, "parent":1, "kind":"compound-statement", "span":span(16,end)},
 ]
-if not implicit:
+if nulls:
+    nodes.extend([
+        {"id":3, "parent":2, "kind":"null-statement", "span":span(17,18)},
+        {"id":4, "parent":2, "kind":"null-statement", "span":span(19,20)},
+        {"id":5, "parent":2, "kind":"return-statement", "span":span(21,28)},
+    ])
+elif not implicit:
     nodes.append({"id":3, "parent":2, "kind":"return-statement",
                   "span":span(18,25)})
 if os.environ.get("MALBOLGE_TEST_FORGED_EFFECT") == "1":
@@ -104,7 +112,7 @@ def real_binaries() -> tuple[Path, Path, Path] | None:
 
 
 def fixture_files(
-    directory: Path, *, empty_body: bool = False
+    directory: Path, *, empty_body: bool = False, null_statements: bool = False
 ) -> tuple[Path, Path, Path]:
     """Create a bounded C source and a deliberately controlled JSON producer."""
     frontend = directory / "frontend-stub"
@@ -112,7 +120,9 @@ def fixture_files(
     target = directory / "noop.malbolge"
     _ = frontend.write_text(FRONTEND, encoding="utf-8")
     _ = frontend.chmod(0o700)
-    _ = source.write_bytes(EMPTY_SOURCE if empty_body else SOURCE)
+    _ = source.write_bytes(
+        NULL_SOURCE if null_statements else EMPTY_SOURCE if empty_body else SOURCE
+    )
     return frontend, source, target
 
 
@@ -195,6 +205,28 @@ class CToMalbolgeRealPipelineTests(unittest.TestCase):
                     self.assertEqual(executed.returncode, 0, executed.stderr)
                     self.assertEqual(executed.stdout, b"")
                     self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
+
+    def test_null_statements_produce_verified_capsule_on_real_vm(self) -> None:
+        binaries = real_binaries()
+        if binaries is None or os.name != "posix":
+            self.skipTest("real Rust compiler/layout/VM binaries on POSIX required")
+        adapter, layout, vm = binaries
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            frontend, source, target = fixture_files(
+                Path(temporary), null_statements=True
+            )
+            compiled = run_compiler(frontend, source, target, adapter, layout)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertGreater(target.stat().st_size, len(NULL_SOURCE))
+            executed = subprocess.run(
+                [str(vm), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
 
     def test_extra_normalized_call_is_rejected_before_guest_publication(self) -> None:
         binaries = real_binaries()
