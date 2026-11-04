@@ -107,6 +107,9 @@ _SOURCE_EVIDENCE_ERROR = EvidenceError
 # Filesystem and stream admission must not accept late-rebound public stdlib
 # type or mode classifiers as native source evidence.
 _SOURCE_TYPE = type
+_SOURCE_INT = int
+_SOURCE_STR = str
+_SOURCE_PATH_TYPE = _SOURCE_TYPE(Path())
 _SOURCE_ISSUBCLASS = issubclass
 _SOURCE_STAT_RESULT = os.stat_result
 _SOURCE_ISLNK = stat.S_ISLNK
@@ -144,7 +147,7 @@ def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str:
 
 
 def _segments(relative: str) -> list[str]:
-    if type(relative) is not str or not relative:
+    if _SOURCE_TYPE(relative) is not _SOURCE_STR or not relative:
         _fail("evidence requires a canonical relative path")
     # Path syntax is an evidence security boundary, not a mutable analyzer
     # policy. Replacements of public schema aliases cannot permit traversal.
@@ -166,18 +169,24 @@ def _segments(relative: str) -> list[str]:
 
 def _admit_descriptor(receipt: object, *, source: str) -> int:
     """Refuse forged OS descriptor receipts before filesystem operations."""
-    if type(receipt) is not int or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR:
+    if (
+        _SOURCE_TYPE(receipt) is not _SOURCE_INT
+        or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR
+    ):
         _fail(f"evidence {source} descriptor is not a native OS integer")
     return receipt
 
 
 def _admit_byte_limit(limit: int) -> None:
-    if type(limit) is not int or not 1 <= limit <= _SOURCE_MAX_EVIDENCE_BYTES:
+    if (
+        _SOURCE_TYPE(limit) is not _SOURCE_INT
+        or not 1 <= limit <= _SOURCE_MAX_EVIDENCE_BYTES
+    ):
         _fail("evidence byte limit must be an exact positive integer up to 16 MiB")
 
 
 def _admit_root(root: Path) -> None:
-    if type(root) is not type(Path()):
+    if _SOURCE_TYPE(root) is not _SOURCE_PATH_TYPE:
         _fail("evidence root requires an exact native Path")
 
 
@@ -235,7 +244,7 @@ def regular_path(
     # A native input Path is not sufficient when an injected resolver
     # returns a subclass with foreign join or filesystem behavior.
     # Reject its receipt before following any segment outside the root.
-    if type(current) is not type(Path()):
+    if _SOURCE_TYPE(current) is not _SOURCE_PATH_TYPE:
         _fail("evidence resolved path requires an exact native Path")
     for segment in segments:
         current /= segment
@@ -411,7 +420,8 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
                     raise _SOURCE_EVIDENCE_ERROR(message) from error
                 if close_receipt is not None:
                     _fail(
-                        f"evidence stream close completion was not native None: {relative}"
+                        "evidence stream close completion was not native None: "
+                        f"{relative}"
                     )
             except Exception as error:
                 primary = error

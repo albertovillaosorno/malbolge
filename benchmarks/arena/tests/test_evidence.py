@@ -367,7 +367,9 @@ def test_run_manifest_rechecked_after_late_report_mutation(
         else:
             path.unlink()
             if tamper == "symlink":
-                path.symlink_to(tmp_path / doc["observations"][1]["experiment_manifest"])
+                path.symlink_to(
+                    tmp_path / doc["observations"][1]["experiment_manifest"]
+                )
         return report
 
     monkeypatch.setattr(evidence, "_report_links", modify_after_report)
@@ -1115,7 +1117,8 @@ def test_direct_evidence_limit_cannot_exceed_registered_maximum_before_io(
 
 
 @pytest.mark.parametrize(
-    "invalid_limit", [False, True, 0, -1, float("nan"), float("inf"), 1.5, "8", _ForeignLimit(8)]
+    "invalid_limit",
+    [False, True, 0, -1, float("nan"), float("inf"), 1.5, "8", _ForeignLimit(8)],
 )
 def test_direct_regular_path_rejects_invalid_optional_limits(
     tmp_path: Path,
@@ -4093,7 +4096,10 @@ def test_evidence_mode_predicate_rebinding_preserves_native_source(
                 parent.st_ino,
             )
         else:
-            assert evidence.read_bounded_regular(tmp_path, source.name, limit=1024) == payload
+            assert (
+                evidence.read_bounded_regular(tmp_path, source.name, limit=1024)
+                == payload
+            )
 
 
 def test_evidence_rejects_foreign_metadata_with_rebound_native_stat_identity(
@@ -4125,7 +4131,10 @@ def test_evidence_native_metadata_ignores_rebound_stat_result(
     _ = source.write_bytes(payload)
     with monkeypatch.context() as patched:
         patched.setattr(evidence.os, "stat_result", _ForeignEvidenceStat)
-        assert evidence.read_bounded_regular(tmp_path, source.name, limit=1024) == payload
+        assert (
+            evidence.read_bounded_regular(tmp_path, source.name, limit=1024)
+            == payload
+        )
 
 
 class _ForeignEvidenceBuffer:
@@ -4191,7 +4200,10 @@ def test_evidence_native_stream_ignores_replaced_io_class_aliases(
     with monkeypatch.context() as patched:
         patched.setattr(evidence.io, "BufferedReader", _ForeignEvidenceBuffer)
         patched.setattr(evidence.io, "FileIO", _ForeignEvidenceRaw)
-        assert evidence.read_bounded_regular(tmp_path, source.name, limit=1024) == payload
+        assert (
+            evidence.read_bounded_regular(tmp_path, source.name, limit=1024)
+            == payload
+        )
 
 
 class _ForgedEvidenceClassError(OSError):
@@ -4284,3 +4296,113 @@ def test_evidence_reader_retains_native_failure_under_replaced_isinstance(
         ) as caught:
             evidence.read_bounded_regular(tmp_path, source.name, limit=1024)
     assert caught.value is native
+
+
+class _ForeignEvidencePath(type(Path())):
+    """Foreign root Path subclass must fail before resolving its own path."""
+
+    def resolve(self, strict: bool = False) -> Path:
+        del strict
+        raise AssertionError("foreign root resolver executed")
+
+
+class _ForeignEvidenceText(str):
+    """Foreign evidence path text must fail before invoking its hooks."""
+
+    def startswith(self, *args: Any, **kwargs: Any) -> bool:
+        del args, kwargs
+        raise AssertionError("foreign relative path checked")
+
+
+@pytest.mark.parametrize("boundary", ["descriptor", "limit", "root", "text"])
+def test_evidence_public_type_substitution_cannot_admit_foreign_input(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """A public type provider cannot forge primitive or path shape receipts."""
+    invalid: object
+    if boundary in ("descriptor", "limit"):
+        invalid = True
+    elif boundary == "root":
+        invalid = _ForeignEvidencePath(tmp_path)
+    else:
+        invalid = _ForeignEvidenceText("raw.csv")
+    native_type = type
+    forged_class = int if boundary in ("descriptor", "limit") else (
+        native_type(tmp_path) if boundary == "root" else str
+    )
+
+    def forged_type(value: object) -> type[object]:
+        if value is invalid:
+            return forged_class
+        return native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence, "type", forged_type, raising=False)
+        with pytest.raises(evidence.EvidenceError):
+            if boundary == "descriptor":
+                evidence._admit_descriptor(invalid, source="raw")
+            elif boundary == "limit":
+                evidence._admit_byte_limit(cast("int", invalid))
+            elif boundary == "root":
+                evidence._admit_root(cast("Path", invalid))
+            else:
+                evidence._segments(cast("str", invalid))
+
+
+@pytest.mark.parametrize("boundary", ["descriptor", "limit"])
+def test_evidence_public_int_alias_cannot_certify_boolean_input(
+    monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """An imported integer alias cannot become the Boolean type."""
+    monkeypatch.setattr(evidence, "int", bool, raising=False)
+    with pytest.raises(evidence.EvidenceError):
+        if boundary == "descriptor":
+            evidence._admit_descriptor(True, source="raw")
+        else:
+            evidence._admit_byte_limit(cast("int", True))
+
+
+@pytest.mark.parametrize("provider", ["type", "int", "str"])
+def test_evidence_native_preflight_ignores_public_type_alias_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Source-typed operands remain admitted despite replaced names."""
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence, provider, object, raising=False)
+        assert evidence._admit_descriptor(12, source="raw") == 12
+        assert evidence._admit_byte_limit(1024) is None
+        assert evidence._admit_root(tmp_path) is None
+        assert evidence._segments("raw.csv") == ["raw.csv"]
+
+
+class _ForeignEvidenceResolvedPath(type(Path())):
+    """Foreign native-looking resolved result cannot join new path segments."""
+
+    def __truediv__(self, other: object) -> Path:
+        del other
+        raise AssertionError("foreign resolved path joined")
+
+
+def test_evidence_rejects_forged_resolved_path_under_replaced_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A forged type classifier cannot authorize a foreign resolve receipt."""
+    _ = (tmp_path / "raw.bin").write_bytes(b"native source")
+    native_type = type
+    original_resolve = type(tmp_path).resolve
+
+    def foreign_resolve(target: Path, strict: bool = False) -> Path:
+        if target == tmp_path:
+            return _ForeignEvidenceResolvedPath(tmp_path)
+        return original_resolve(target, strict=strict)
+
+    def forged_type(value: object) -> type[object]:
+        if native_type(value) is _ForeignEvidenceResolvedPath:
+            return native_type(tmp_path)
+        return native_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(type(tmp_path), "resolve", foreign_resolve)
+        patched.setattr(evidence, "type", forged_type, raising=False)
+        with pytest.raises(evidence.EvidenceError, match="resolved path"):
+            evidence.regular_path(tmp_path, "raw.bin")
