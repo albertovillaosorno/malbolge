@@ -277,7 +277,8 @@ constant pairs and additional effects remain unsupported.
 ### Three independently verified literal outputs
 
 `compile_canonical_typed_distinct_literal_triple` admits only source-proven
-`Z%H`, `Q.O`, and `Y-P` under the current profile, preserving three different
+`Z%H`, `Q.O`, `Y-P`, `T"O`, and `T"Q` under the current profile,
+preserving three different
 `u8` constant SSA definitions, each output use and exact source spans. The
 canonical MCTI/MCTR round trip feeds the separate triple bridge; the
 real VM independently verifies all three writes and exact termination.

@@ -441,7 +441,7 @@ fn project_literal_triple_effects(
     }
     if !matches!(
         values.as_slice(),
-        [b'Z', b'%', b'H'] | [b'Q', b'.', b'O'] | [b'Y', b'-', b'P']
+        [b'Z', b'%', b'H'] | [b'Q', b'.', b'O'] | [b'Y', b'-', b'P'] | [b'T', b'"', b'O' | b'Q']
     ) {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     }

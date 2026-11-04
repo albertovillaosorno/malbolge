@@ -557,9 +557,10 @@ source maps, guest-runtime linkage or support for general control flow.
 
 An opt-in canonical `--distinct-literal-triple --typed-stdin` or
 `--distinct-literal-triple --ternary-stdin` mode accepts only three separate
-source-proven byte constants and output uses for `Z%H`, `Q.O`, and `Y-P`.
+source-proven byte constants and output uses for `Z%H`, `Q.O`, `Y-P`,
+`T"O`, and `T"Q`.
 The bridge proposes a linear guest source with one relocation and three
 separate `p` writes. The publisher independently decodes MCTR, proves
-profile/SSA and exact 8/9/10 source-step geometry, and reruns the
+profile/SSA and exact 8/9/10/12/14 source-step geometry, and reruns the
 current-profile VM before raw/capsule publication. Unproved output traces
 never publish; no general C code generation is claimed.

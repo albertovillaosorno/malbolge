@@ -111,7 +111,13 @@ fn source_triplet(bytes: [u8; 3], stale: bool) -> Result<TernaryProgram, String>
     reason = "assertions verify real guest arithmetic"
 )]
 fn three_distinct_bytes_are_written_by_guest_arithmetic() -> Result<(), String> {
-    for (padding, expected) in [(0usize, *b"Z%H"), (1usize, *b"Q.O"), (2usize, *b"Y-P")] {
+    for (padding, expected) in [
+        (0usize, *b"Z%H"),
+        (1usize, *b"Q.O"),
+        (2usize, *b"Y-P"),
+        (4usize, *b"T\"O"),
+        (6usize, *b"T\"Q"),
+    ] {
         let mut operations = vec![LinearOpcode::NoOperation; padding];
         operations.extend([
             LinearOpcode::RelocateDataPointer,
@@ -162,6 +168,8 @@ fn unproved_or_stale_triples_refuse() -> Result<(), String> {
         (*b"Z%Z", false),
         (*b"Q.O", true),
         (*b"Y/P", false),
+        (*b"T\"X", false),
+        (*b"T\"O", true),
     ] {
         let source = source_triplet(bytes, stale)?;
         assert!(matches!(

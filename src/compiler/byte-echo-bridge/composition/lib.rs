@@ -929,8 +929,13 @@ const DISTINCT_LITERAL_CRAZY_WITNESSES: &[(u8, u8, usize)] =
 // witness: `<`, padding `o`, `j`, `p`, `<`, `v` under malbolge-2026.
 // Three source-proven different bytes, each produced by its own relocated
 // `p` on independently checked out-of-source data addresses.
-const DISTINCT_LITERAL_TRIPLE_CRAZY_WITNESSES: &[([u8; 3], usize)] =
-    &[(*b"Z%H", 0), (*b"Q.O", 1), (*b"Y-P", 2)];
+const DISTINCT_LITERAL_TRIPLE_CRAZY_WITNESSES: &[([u8; 3], usize)] = &[
+    (*b"Z%H", 0),
+    (*b"Q.O", 1),
+    (*b"Y-P", 2),
+    (*b"T\"O", 4),
+    (*b"T\"Q", 6),
+];
 
 const ZERO_THEN_LITERAL_CRAZY_WITNESSES: &[(u8, usize)] =
     &[(b'Z', 0), (b'P', 2), (b'T', 6), (b'S', 17)];

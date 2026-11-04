@@ -1361,6 +1361,8 @@ fn verify_distinct_literal_triple(
         b"Z%H" => 8,
         b"Q.O" => 9,
         b"Y-P" => 10,
+        b"T\"O" => 12,
+        b"T\"Q" => 14,
         _ => return Err(String::from("distinct-literal triple has no guest witness")),
     };
     if artifact.steps != expected_steps {

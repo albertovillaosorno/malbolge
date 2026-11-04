@@ -437,10 +437,11 @@ support.
 ### Three different source-proven guest byte outputs
 
 The separate `encode_distinct_literal_triple` bridge accepts the exact
-current-profile triples `Z%H`, `Q.O`, and `Y-P`. A single `j` relocates
+current-profile triples `Z%H`, `Q.O`, `Y-P`, `T"O`, and `T"Q`. A single
+`j` relocates
 data beyond the source; three independent `p` guest writes each precede
 an output. The verified source lengths and exact guest step counts are
-8, 9 and 10 respectively. Three independent `u8` SSA constants and
+8, 9, 10, 12, and 14 respectively. Three independent `u8` SSA constants and
 three matching output uses must survive canonical MCTR admission. The
 layout verifier checks each data-write address and the independent VM
 replays with empty and nonempty input. No arbitrary three-byte sequences,

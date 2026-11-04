@@ -1023,7 +1023,10 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 );
                 let is_triple_prefix = matches!(
                     (selected_byte, byte),
-                    (Some(b'Z'), b'%') | (Some(b'Q'), b'.') | (Some(b'Y'), b'-')
+                    (Some(b'Z'), b'%')
+                        | (Some(b'Q'), b'.')
+                        | (Some(b'Y'), b'-')
+                        | (Some(b'T'), b'"')
                 );
                 if !(is_zero_then_literal || is_distinct_nonzero || is_triple_prefix) {
                     return Err(FrontendJsonError::Unsupported);
@@ -1035,6 +1038,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     (Some(b'Z'), Some(b'%'), b'H')
                         | (Some(b'Q'), Some(b'.'), b'O')
                         | (Some(b'Y'), Some(b'-'), b'P')
+                        | (Some(b'T'), Some(b'"'), b'O' | b'Q')
                 ) {
                     return Err(FrontendJsonError::Unsupported);
                 }
@@ -1075,7 +1079,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     if third_byte.is_none()
         && matches!(
             (selected_byte, mixed_byte),
-            (Some(b'Z'), Some(b'%')) | (Some(b'Y'), Some(b'-'))
+            (Some(b'Z'), Some(b'%')) | (Some(b'Y'), Some(b'-')) | (Some(b'T'), Some(b'"'))
         )
     {
         return Err(FrontendJsonError::Unsupported);

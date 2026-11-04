@@ -168,8 +168,8 @@ three-call sequences require their own separately proved guest witnesses.
 ### Exact three-`putchar` source output traces
 
 Pinned Clang 22.1.8 source evidence now admits three successive constant
-`putchar` outputs only for `Z%H`, `Q.O`, or `Y-P` (including their equivalent
-integer literals). Each source call retains its own argument span, canonical
+`putchar` outputs only for `Z%H`, `Q.O`, `Y-P`, `T"O`, or `T"Q`
+(including their equivalent integer literals). Each source call retains its own argument span, canonical
 `u8` definition and matching output identity. The selected
 `--distinct-literal-triple --typed-stdin` mode is independently checked by
 the layout publisher and the normative guest VM. A two-call prefix such as

@@ -228,8 +228,9 @@ malbolge --repository-tools .temp/emit-zph-raw.malbolge \
 The normative guest VM emits `Z%H` and reports `malbolge-steps-v1:8`. The
 same checked-in C source, compiled with `--capsule` to a different output
 path, emits identical bytes and steps without explicit `--raw-profile`.
-The other independently witnessed three-byte outputs are `Q.O` (9 steps)
-and `Y-P` (10 steps); unsupported triples still fail before publication.
+Other independently witnessed triples are `Q.O` (9 steps), `Y-P`
+(10 steps), `T"O` (12 steps), and `T"Q` (14 steps). Unsupported triples
+still fail before publication.
 
 For the **Unix `malbolge` shim**, a leading `--repository-tools` selects the
 existing repository-built `.cache/rust/target/debug/malbolge` VM. This is useful
