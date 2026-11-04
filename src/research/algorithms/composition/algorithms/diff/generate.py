@@ -72,6 +72,7 @@ _NATIVE_DOMAIN_RECORD = DiffDomain
 _NATIVE_SOURCE_PIN_EVIDENCE_RECORD = SourcePinEvidence
 _NATIVE_DOMAIN_CONTRACT_ERROR = DomainContractError
 _NATIVE_SOURCE_PIN_ERROR = SourcePinError
+_NATIVE_EXACT_TREE_ERROR = ExactTreeError
 
 # Source replay identity must not trust a mutable process-global hash hook.
 _SHA256_FACTORY = hashlib.sha256
@@ -722,7 +723,7 @@ def _read_exact_identity_file(path: Path, record: FileRecord) -> bytes:
         or _SHA256_FACTORY(replay).hexdigest() != expected_digest
     ):
         message = f"exact source identity changed after planning: {relative_path}"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     return replay
 
 
@@ -759,7 +760,7 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
     )
     if not _snapshots_match(replayed_source, planned_source):
         message = "exact source tree changed after identity replay"
-        raise ExactTreeError(message)
+        raise _NATIVE_EXACT_TREE_ERROR(message)
     policy = SourceBindingPolicy(
         threshold_fraction=recipe.source_binding_threshold,
         maximum_anchors=recipe.source_binding_maximum_anchors,
@@ -784,7 +785,7 @@ def _write_exact_algorithm(recipe: _RecipeLike) -> None:
             snapshot_tree_excluding(root, recipe.passthrough_roots), expected
         ):
             message = f"exact {name} tree changed during payload protection"
-            raise ExactTreeError(message)
+            raise _NATIVE_EXACT_TREE_ERROR(message)
     _require_native_recipe_snapshot_hooks()
     write_rust_transform(
         protected,

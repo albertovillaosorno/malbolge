@@ -781,6 +781,13 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   tests passed, arena BasedPyright reported zero errors and scoped Ruff was
   clean. These checks do not attest the runtime libraries before import,
   the underlying reported evidence, or stdout sink fidelity.
+  Two more red-first operator regressions exposed a dynamic-serializer
+  time-of-check gap: `json.dumps` changed both native/Python iterator
+  factories or the ASCII escaper after the initial guard, allowing forged
+  report values to pass all three encoders. The publisher now reattests
+  the import-bound provider identities after each serializer call and fails
+  before stdout if a provider changed in flight. This remains local trust
+  in the original native library and does not authenticate trial evidence.
   Subsequent bounded checks passed 3,719 distinct collected arena cases
   across all 24 test modules: 1,426 offline, 731 host-C producer/oracle/Git,
   995 target process/replay/resource, 314 target auditor, and 253 host-C

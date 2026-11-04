@@ -150,6 +150,64 @@ def _admit_native_json(report: object) -> None:
             raise TypeError(message)
 
 
+def _require_source_json_providers() -> None:
+    """Reject any replaced JSON encoding primitive before report publication.
+
+    Raises:
+        ValueError: A canonical provider no longer matches its native source.
+
+    """
+    if (
+        json.encoder.encode_basestring_ascii is not _CANONICAL_ASCII_ESCAPER
+        or getattr(json.encoder, _C_FACTORY_NAME)
+        is not _CANONICAL_C_ENCODER_FACTORY
+        or getattr(json.encoder, _PY_FACTORY_NAME)
+        is not _CANONICAL_PY_ITERATOR_FACTORY
+    ):
+        message = "arena report JSON source encoder provider changed"
+        raise ValueError(message)
+
+
+def _serialize_canonical_report(report: dict[str, Any]) -> str:
+    """Corroborate canonical JSON and providers throughout serialization.
+
+    Returns:
+        Exact report text; no trailing record delimiter.
+
+    """
+    # Fully render strict JSON before touching stdout: even nested nonfinite
+    # costs must not produce an invalid but apparently successful report.
+    _admit_native_json(report)
+    _require_source_json_providers()
+    serialized = json.dumps(report, sort_keys=True, indent=2, allow_nan=False)
+    # The replaceable writer can swap shared native iterator factories
+    # or the ASCII escaper *during* its own call. Reattest before asking
+    # later encoders to corroborate its result.
+    _require_source_json_providers()
+    if type(serialized) is not str:
+        message = "arena report JSON encoder returned nonnative text"
+        raise TypeError(message)
+    # An exact string alone is not evidence that a serializer returned
+    # this report: independently invoke the canonical encoder contract
+    # before publishing even one byte to the output stream.
+    canonical = json.JSONEncoder(
+        sort_keys=True, indent=2, allow_nan=False
+    ).encode(report)
+    _require_source_json_providers()
+    if type(canonical) is not str or serialized != canonical:
+        message = "arena report JSON encoder returned a noncanonical record"
+        raise ValueError(message)
+    # json.dumps and json.JSONEncoder normally share a single replaceable
+    # class. Agreement between both is not independent when that class is
+    # substituted or its encoder methods are modified after module import.
+    independent = "".join(_CANONICAL_JSON_CHUNKS(report))
+    _require_source_json_providers()
+    if type(independent) is not str or serialized != independent:
+        message = "arena report JSON differs from canonical source encoding"
+        raise ValueError(message)
+    return serialized
+
+
 def publish(report: dict[str, Any], stream: TextReportStream) -> None:
     """Write one complete JSON record with strict stream admission.
 
@@ -158,37 +216,7 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
 
     """
     try:
-        # Fully render strict JSON before touching stdout: even nested nonfinite
-        # costs must not produce an invalid but apparently successful report.
-        _admit_native_json(report)
-        if (
-            json.encoder.encode_basestring_ascii is not _CANONICAL_ASCII_ESCAPER
-            or getattr(json.encoder, _C_FACTORY_NAME) is not _CANONICAL_C_ENCODER_FACTORY
-            or getattr(json.encoder, _PY_FACTORY_NAME) is not _CANONICAL_PY_ITERATOR_FACTORY
-        ):
-            message = "arena report JSON source encoder provider changed"
-            raise ValueError(message)
-        serialized = json.dumps(report, sort_keys=True, indent=2, allow_nan=False)
-        if type(serialized) is not str:
-            message = "arena report JSON encoder returned nonnative text"
-            raise TypeError(message)
-        # An exact string alone is not evidence that a serializer returned
-        # this report: independently invoke the canonical encoder contract
-        # before publishing even one byte to the output stream.
-        canonical = json.JSONEncoder(
-            sort_keys=True, indent=2, allow_nan=False
-        ).encode(report)
-        if type(canonical) is not str or serialized != canonical:
-            message = "arena report JSON encoder returned a noncanonical record"
-            raise ValueError(message)
-        # json.dumps and json.JSONEncoder normally share a single replaceable
-        # class. Agreement between both is not independent when that class is
-        # substituted or its encoder methods are modified after module import.
-        independent = "".join(_CANONICAL_JSON_CHUNKS(report))
-        if type(independent) is not str or serialized != independent:
-            message = "arena report JSON differs from canonical source encoding"
-            raise ValueError(message)
-        record = serialized + "\n"
+        record = _serialize_canonical_report(report) + "\n"
     except Exception as error:
         # A serializer dependency may fail unexpectedly; never format hooks
         # on a foreign failure or accept forged text before touching stdout.

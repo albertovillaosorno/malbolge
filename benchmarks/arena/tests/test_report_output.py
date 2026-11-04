@@ -45,6 +45,8 @@ from benchmarks.arena import analyze, evidence, report_output
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from collections.abc import Iterator
     from pathlib import Path
 
 WRITE_FAILURE = "stdout write"
@@ -746,6 +748,95 @@ def test_joint_json_factory_substitution_cannot_forge_report(
     )
     with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
         report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
+
+
+@pytest.mark.skipif(
+    getattr(json.encoder, "c_make_encoder", None) is None,
+    reason="host JSON C encoder is unavailable",
+)
+def test_midcall_joint_json_factory_swap_cannot_forge_report(  # ruff: ignore[complex-structure]
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The first serializer cannot replace the later source proof."""
+    output = _FakeStream("healthy")
+    wrong = '{"status": "forged"}'
+
+    def substituted_c_iterator(report: object, indent: int) -> list[str]:
+        del report, indent
+        return [wrong]
+
+    def substituted_python_iterator(
+        report: object, indent: int
+    ) -> Iterator[str]:
+        del report, indent
+        return iter([wrong])
+
+    def substituted_c_factory(
+        *args: object, **kwargs: object
+    ) -> Callable[[object, int], list[str]]:
+        del args, kwargs
+        return substituted_c_iterator
+
+    def substituted_python_factory(
+        *args: object, **kwargs: object
+    ) -> Callable[[object, int], Iterator[str]]:
+        del args, kwargs
+        return substituted_python_iterator
+
+    with monkeypatch.context() as context:
+
+        def substituted_dumps(*_args: object, **_kwargs: object) -> str:
+            del _args, _kwargs
+            context.setattr(
+                report_output.json.encoder, "c_make_encoder",
+                substituted_c_factory,
+            )
+            context.setattr(
+                report_output.json.encoder, "_make_iterencode",
+                substituted_python_factory,
+            )
+            return wrong
+
+        context.setattr(report_output.json, "dumps", substituted_dumps)
+        with pytest.raises(
+            report_output.ReportOutputError, match="JSON serialization"
+        ):
+            report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_midcall_json_escaper_swap_cannot_forge_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced string escaper cannot outlive the first serializer."""
+    output = _FakeStream("healthy")
+    wrong = json.dumps(
+        {"status": "forged"}, sort_keys=True, indent=2, allow_nan=False
+    )
+    native_escape = json.encoder.encode_basestring_ascii
+    original = "ready"
+
+    def substituted_escape(value: str) -> str:
+        return native_escape("forged" if value == original else value)
+
+    with monkeypatch.context() as context:
+
+        def substituted_dumps(*_args: object, **_kwargs: object) -> str:
+            del _args, _kwargs
+            context.setattr(
+                report_output.json.encoder, "encode_basestring_ascii",
+                substituted_escape,
+            )
+            return wrong
+
+        context.setattr(report_output.json, "dumps", substituted_dumps)
+        with pytest.raises(
+            report_output.ReportOutputError, match="JSON serialization"
+        ):
+            report_output.publish({"status": "ready"}, output)
     assert not output.records
     assert not output.flushed
 

@@ -1908,6 +1908,85 @@ def test_exact_generator_rechecks_static_trees_after_protection(
     _expect(not recipe.output_algorithm.exists(), "stale transform was emitted")
 
 
+@pytest.mark.parametrize("phase", ["identity", "post-plan", "post-protection"])
+@pytest.mark.parametrize("replacement", [RuntimeError, object])
+def test_generator_preserves_native_exact_drift_error_after_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    replacement: type[object],
+) -> None:
+    """An imported error alias must not change source-drift rejection."""
+    recipe = _recipe(tmp_path, mode=TransformMode.EXACT_BASELINE)
+    expected = (
+        "source identity changed"
+        if phase == "identity"
+        else "source tree changed"
+        if phase == "post-plan"
+        else "oracle tree changed"
+    )
+
+    with monkeypatch.context() as patched:
+        if phase == "identity":
+            path = recipe.source_root / "b.bin"
+            original = path.read_bytes()
+            record = FileRecord(
+                path="b.bin",
+                sha256=hashlib.sha256(original).hexdigest(),
+                size=len(original),
+            )
+            _ = path.write_bytes(b"!" + original[1:])
+            patched.setattr(generate_module, "ExactTreeError", replacement)
+            with pytest.raises(ExactTreeError, match=expected):
+                _ = generate_module._read_exact_identity_file(path, record)
+            return
+
+        if phase == "post-plan":
+            original_build = build_exact_plan
+
+            def mutate_after_plan(
+                source_root: Path,
+                oracle_root: Path,
+                *,
+                passthrough_roots: tuple[str, ...] = (),
+            ) -> ExactAuthoringPlan:
+                plan = original_build(
+                    source_root, oracle_root, passthrough_roots=passthrough_roots
+                )
+                _write(source_root, "injected.bin", b"unbound source")
+                patched.setattr(generate_module, "ExactTreeError", replacement)
+                return plan
+
+            patched.setattr(generate_module, "build_exact_plan", mutate_after_plan)
+        else:
+            original_protect = protect_exact_plan
+
+            def mutate_after_protection(
+                exact: ExactAuthoringPlan,
+                identity: IdentityTree,
+                *,
+                binding_policy: SourceBindingPolicy,
+                context: bytes,
+            ) -> ProtectedExactPlan:
+                protected = original_protect(
+                    exact,
+                    identity,
+                    binding_policy=binding_policy,
+                    context=context,
+                )
+                _write(recipe.oracle_root, "injected.bin", b"unbound oracle")
+                patched.setattr(generate_module, "ExactTreeError", replacement)
+                return protected
+
+            patched.setattr(
+                generate_module, "protect_exact_plan", mutate_after_protection
+            )
+
+        with pytest.raises(ExactTreeError, match=expected):
+            write_algorithm(recipe)
+    assert not recipe.output_algorithm.exists()
+
+
 def test_exact_generator_allows_dynamic_passthrough_addition_after_plan(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

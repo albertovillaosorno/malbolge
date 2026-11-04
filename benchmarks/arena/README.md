@@ -142,8 +142,14 @@ subclasses, non-object roots, cycles, and nonfinite numbers fail before stdout.
 The checked publisher additionally compares the native `json.dumps` text
 against a separate invocation of the canonical JSON encoder contract; a
 syntactically valid but substituted or noncanonically formatted serializer
-record cannot be published as the requested report. The check protects against
-observed encoder-return drift, not a malicious replacement of both encoders.
+record cannot be published as the requested report. The publisher also
+reattests the import-bound native JSON factory and ASCII-escaper identities
+after each of its three serializer calls, before emitting stdout. Two red-first
+mid-call mutations of both iterator factories or the shared ASCII escaper
+previously forged matching report text after the original one-time check;
+these now fail as typed serialization errors with no stdout publication.
+This establishes local provider consistency during encoding, not protection
+against a compromised native library at module import or an unfaithful sink.
 Any ordinary write/flush exception becomes a typed `ReportOutputError` with its
 original cause preserved, without invoking caller-defined error formatting.
 An already-emitted prefix on a failed output stream **cannot be rolled back**;
