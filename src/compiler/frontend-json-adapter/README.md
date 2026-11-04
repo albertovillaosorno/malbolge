@@ -45,8 +45,9 @@ single C character literal (including bounded escape spellings). For example,
 `putchar('A'); putchar('A');` and `putchar('\0');` retain Clang's exact
 source spans and evaluated integer values. Each call proves its direct
 `putchar` reference, one exact literal argument and function-to-pointer decay;
-the complete normalized preorder contains `4 * outputs + 3` nodes with exact
-source ancestry and ordered nonoverlapping spans. The adapter emits one
+the complete normalized preorder contains `4 * outputs + 2` nodes with
+implicit void return, or `4 * outputs + 3` with explicit `return;`, preserving
+exact source ancestry and ordered nonoverlapping spans. The adapter emits one
 canonical `u8` constant and the corresponding number of `ByteOutput` effects.
 For zero, the downstream publisher uses `--initial-zero-output --typed-stdin`,
 which independently verifies guest stdout of one to 32 NUL bytes. Nonzero
@@ -56,15 +57,16 @@ witness. For example, one `putchar(23)`, two `putchar(65)` calls and three
 `putchar(146)` calls compile and execute with exact byte output. The backend's
 currently witnessed subset is enumerated in
 `src/compiler/byte-echo-bridge/README.md`; **not** every value or count is
-realizable. Noncanonical decimal spellings, hexadecimal/octal integer literals and
-more than 32 calls refuse source admission. An unwitnessed combination fails
+realizable. Noncanonical decimal spellings, hexadecimal/octal integer literals,
+and more than 32 calls refuse source admission. An unwitnessed combination fails
 layout admission without publishing a `.malbolge` artifact.
 
 An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
 Call-result handling, arbitrary output streams, interleaved statements,
 `getchar`, EOF, I/O errors, general guest libc and C entry ABI remain
-unsupported. Mixing distinct evaluated literal values in one source refuses admission.
+unsupported. Mixing distinct evaluated literal values in one source refuses
+admission.
 The pinned Clang frontend must supply the source-bound character token, its
 canonical evaluated `i32` value and a bounded single-line span; the adapter
 never decodes C escape syntax or accepts fabricated byte constants.
