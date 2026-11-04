@@ -45,6 +45,12 @@ from benchmarks.arena import analyze
 _SOURCE_TOML_LOADS = tomllib.loads
 _SOURCE_LEN = len
 _SOURCE_SET = set
+# Preserve native field and key shapes even when public builtins are replaced.
+_SOURCE_TYPE = type
+_SOURCE_ANY = any
+_SOURCE_DICT = dict
+_SOURCE_STR = str
+_SOURCE_INT = int
 # The source digest grammar must not follow late analyzer module substitutions.
 _SOURCE_SHA256_HEX_LENGTH = analyze.SHA256_HEX_LENGTH
 _SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
@@ -84,7 +90,10 @@ _SOURCE_FAIL = _fail
 
 
 def _digest(value: object) -> str:
-    if type(value) is not str or _SOURCE_LEN(value) != _SOURCE_SHA256_HEX_LENGTH:
+    if (
+        _SOURCE_TYPE(value) is not _SOURCE_STR
+        or _SOURCE_LEN(value) != _SOURCE_SHA256_HEX_LENGTH
+    ):
         _SOURCE_FAIL("arena_trial requires lowercase SHA-256 raw_sha256")
     if not _SOURCE_SET(value) <= _SOURCE_SHA256_ALPHABET:
         _SOURCE_FAIL("arena_trial requires lowercase SHA-256 raw_sha256")
@@ -92,7 +101,7 @@ def _digest(value: object) -> str:
 
 
 def _admit_text(text: str) -> None:
-    if type(text) is not str:
+    if _SOURCE_TYPE(text) is not _SOURCE_STR:
         _SOURCE_FAIL("per-trial run manifest requires exact str text")
     if _SOURCE_LEN(text) > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _SOURCE_FAIL("per-trial run manifest exceeds byte limit")
@@ -129,24 +138,24 @@ def parse_trial_run(text: str) -> TrialRun:
         # Preserve the cause without invoking foreign exception formatters.
         message = "invalid per-trial manifest TOML"
         raise TrialRunError(message) from error
-    if type(document) is not dict:
+    if _SOURCE_TYPE(document) is not _SOURCE_DICT:
         _SOURCE_FAIL("invalid per-trial manifest TOML root")
-    if any(type(key) is not str for key in document):
+    if _SOURCE_ANY(_SOURCE_TYPE(key) is not _SOURCE_STR for key in document):
         _SOURCE_FAIL("per-trial manifest TOML requires native string keys")
     table = document.get(_SOURCE_EXTENSION_NAME)
     if (
-        type(table) is not dict
-        or any(type(key) is not str for key in table)
+        _SOURCE_TYPE(table) is not _SOURCE_DICT
+        or _SOURCE_ANY(_SOURCE_TYPE(key) is not _SOURCE_STR for key in table)
         or _SOURCE_SET(table) != _SOURCE_EXTENSION_FIELDS
     ):
         _SOURCE_FAIL(
             "arena_trial requires exact schema_version/trial/raw_sha256 and native string keys"
         )
     version = table["schema_version"]
-    if type(version) is not int or version != _SOURCE_SCHEMA_VERSION:
+    if _SOURCE_TYPE(version) is not _SOURCE_INT or version != _SOURCE_SCHEMA_VERSION:
         _SOURCE_FAIL("arena_trial requires schema_version = 1")
     trial = table["trial"]
-    if type(trial) is not int or trial < 0:
+    if _SOURCE_TYPE(trial) is not _SOURCE_INT or trial < 0:
         _SOURCE_FAIL("arena_trial requires nonnegative integer trial")
     digest = _SOURCE_DIGEST(table["raw_sha256"])
     # The native shape of a returned mapping does not prove that its values
@@ -159,13 +168,13 @@ def parse_trial_run(text: str) -> TrialRun:
         raise TrialRunError(message) from error
     source_table = source.get(_SOURCE_EXTENSION_NAME)
     if (
-        type(source_table) is not dict
+        _SOURCE_TYPE(source_table) is not _SOURCE_DICT
         or _SOURCE_SET(source_table) != _SOURCE_EXTENSION_FIELDS
-        or type(source_table.get("schema_version")) is not int
+        or _SOURCE_TYPE(source_table.get("schema_version")) is not _SOURCE_INT
         or source_table["schema_version"] != version
-        or type(source_table.get("trial")) is not int
+        or _SOURCE_TYPE(source_table.get("trial")) is not _SOURCE_INT
         or source_table["trial"] != trial
-        or type(source_table.get("raw_sha256")) is not str
+        or _SOURCE_TYPE(source_table.get("raw_sha256")) is not _SOURCE_STR
         or source_table["raw_sha256"] != digest
     ):
         _SOURCE_FAIL("per-trial manifest identity differs from source TOML")

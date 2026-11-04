@@ -36,6 +36,8 @@
 
 from __future__ import annotations
 
+from typing import Never
+
 import pytest
 
 from benchmarks.arena import analyze, trial_runs
@@ -185,3 +187,77 @@ def test_trial_digest_rejects_substituted_character_set_provider(
     )
     with pytest.raises(trial_runs.TrialRunError, match="lowercase SHA-256"):
         trial_runs.parse_trial_run(_manifest("G" * 64))
+
+
+def test_trial_rejects_foreign_integer_with_forged_source_equality(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted decoder cannot return a foreign trial counter as native."""
+
+    class ForgedTrial:
+        def __lt__(self, _other: int) -> bool:
+            return False
+
+        def __eq__(self, other: object) -> bool:
+            return other == 7
+
+        def __ne__(self, other: object) -> bool:
+            return other != 7
+
+    forged = ForgedTrial()
+    native_type = type
+
+    def forged_type(value: object) -> type[object]:
+        return int if value is forged else native_type(value)
+
+    monkeypatch.setattr(trial_runs, "type", forged_type, raising=False)
+    monkeypatch.setattr(
+        trial_runs.tomllib,
+        "loads",
+        lambda _text: {
+            "arena_trial": {
+                "schema_version": 1,
+                "trial": forged,
+                "raw_sha256": "a" * 64,
+            }
+        },
+    )
+    with pytest.raises(trial_runs.TrialRunError, match="nonnegative integer"):
+        trial_runs.parse_trial_run(_manifest("a" * 64))
+
+
+def test_trial_rejects_foreign_decoder_keys_despite_substituted_any(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native source equality cannot override the decoder's key type policy."""
+    invalid_key = object()
+    monkeypatch.setattr(trial_runs, "any", lambda _keys: False, raising=False)
+    monkeypatch.setattr(
+        trial_runs.tomllib,
+        "loads",
+        lambda _text: {
+            invalid_key: "foreign",
+            "arena_trial": {
+                "schema_version": 1,
+                "trial": 7,
+                "raw_sha256": "a" * 64,
+            },
+        },
+    )
+    with pytest.raises(trial_runs.TrialRunError, match="native string keys"):
+        trial_runs.parse_trial_run(_manifest("a" * 64))
+
+
+@pytest.mark.parametrize("provider", ["type", "any", "dict", "str", "int"])
+def test_trial_source_bound_native_shape_providers(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Public aliases cannot redefine native run identity or its input text."""
+
+    def forged_operation(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail(f"public {provider} called instead of source native")
+
+    monkeypatch.setattr(trial_runs, provider, forged_operation, raising=False)
+    assert trial_runs.parse_trial_run(_manifest("a" * 64)) == trial_runs.TrialRun(
+        trial=7, raw_sha256="a" * 64
+    )
