@@ -50,6 +50,8 @@ from benchmarks.arena import analyze, csv_admission
 _NATIVE_SHA256 = sha256
 # A replaced csv.reader must not be the authority for the retained source.
 _SOURCE_CSV_READER = csv.reader
+# Preserve the bounded source column scanner against public substitution.
+_SOURCE_COLUMN_LIMIT = csv_admission.within_column_limit
 
 RAW_SCHEMA_VERSION: Final = "1"
 RAW_SCHEMA_VERSION_2: Final = "2"
@@ -179,6 +181,15 @@ def _csv_rows(
     if type(column_receipt) is not bool:
         _fail(f"{label}: arena raw CSV column preflight returned nonnative verdict")
     if not column_receipt:
+        _fail(f"{label}: arena raw CSV columns exceed registered count")
+    # A substituted guard can return exact True while concealing a row with
+    # thousands of fields. Confirm the source scan before parser allocation.
+    try:
+        source_receipt = _SOURCE_COLUMN_LIMIT(text, len(_SOURCE_HEADER_2))
+    except Exception as error:
+        message = f"{label}: arena raw CSV source column preflight failed"
+        raise RawSampleError(message) from error
+    if type(source_receipt) is not bool or not source_receipt:
         _fail(f"{label}: arena raw CSV columns exceed registered count")
     try:
         reader = csv.reader(StringIO(text, newline=""), strict=True)

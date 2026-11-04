@@ -655,6 +655,28 @@ def test_raw_column_preflight_rejects_nonboolean_success_receipts(
         raw_samples.check_rows(raw, [record], ROOT_LABEL)
 
 
+def test_replaced_true_column_preflight_cannot_parse_excessive_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged native true must not bypass bounded source column preflight."""
+    observation = sample_study(tmp_path)["observations"][0]
+    header = _render([observation]).split(b"\n", maxsplit=1)[0]
+    raw = header + b"\n" + b"," * 10000 + b"\n"
+
+    def forged_guard(_text: str, _maximum: int) -> bool:
+        return True
+
+    def forbidden_parser(source: StringIO, *, strict: bool) -> Iterator[list[str]]:
+        del source, strict
+        pytest.fail("unbounded native CSV parser was invoked")
+
+    monkeypatch.setattr(raw_samples.csv_admission, "within_column_limit", forged_guard)
+    monkeypatch.setattr(raw_samples.csv, "reader", forbidden_parser)
+    with pytest.raises(raw_samples.RawSampleError, match="CSV columns"):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
 def test_raw_column_preflight_never_dispatches_foreign_truth_methods(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
