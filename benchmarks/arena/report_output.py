@@ -37,6 +37,13 @@ from __future__ import annotations
 import json
 from typing import Any, Never, Protocol
 
+# Publication receipts must use native length and Unicode scanner semantics.
+_NATIVE_LEN = len
+_NATIVE_ANY = any
+_NATIVE_SET = set
+_NATIVE_ID = id
+_NATIVE_ORD = ord
+
 # Retain a bound stdlib iterator before a runtime provider can replace the
 # public JSONEncoder class or either encoding method. The reported record
 # must agree byte-for-byte with this independently invoked canonical path.
@@ -101,8 +108,8 @@ def _native_scalar_text(value: object) -> bool:
         Whether this is a complete Unicode scalar-value sequence.
 
     """
-    return type(value) is str and not any(
-        0xD800 <= ord(character) <= 0xDFFF for character in value
+    return type(value) is str and not _NATIVE_ANY(
+        0xD800 <= _NATIVE_ORD(character) <= 0xDFFF for character in value
     )
 
 
@@ -121,13 +128,13 @@ def _admit_native_json(report: object) -> None:
         message = "arena report requires an exact native JSON object root"
         raise TypeError(message)
     pending: list[object] = [report]
-    seen: set[int] = set()
+    seen: set[int] = _NATIVE_SET()
     while pending:
         value = pending.pop()
         kind = type(value)
         # Type identity cannot dispatch caller-owned metaclass equality.
         if kind is dict or kind is list or kind is tuple:
-            identity = id(value)
+            identity = _NATIVE_ID(value)
             if identity in seen:
                 continue
             seen.add(identity)
@@ -232,6 +239,6 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
         # Preserve the original exception without invoking its __str__ hook.
         message = "arena report stdout write failed"
         raise ReportOutputError(message) from error
-    if type(written) is not int or written != len(record):
+    if type(written) is not int or written != _NATIVE_LEN(record):
         _fail("arena report stdout write did not accept exact text length")
     _flush_complete(stream)

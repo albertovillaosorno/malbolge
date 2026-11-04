@@ -45,8 +45,7 @@ from benchmarks.arena import analyze, evidence, report_output
 from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from pathlib import Path
 
 WRITE_FAILURE = "stdout write"
@@ -901,3 +900,105 @@ def test_mutating_public_json_dumps_cannot_rewrite_report_before_publication(
         report_output.publish(report, output)
     assert not output.records
     assert not output.flushed
+
+
+def test_replaced_length_lookup_cannot_certify_short_stdout_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted report-length provider cannot attest a partial record."""
+    output = _FakeStream(SHORT_MODE)
+    source_length = len
+    monkeypatch.setattr(
+        report_output,
+        "len",
+        lambda record: source_length(record) // 2,
+        raising=False,
+    )
+    with pytest.raises(report_output.ReportOutputError, match=BAD_LENGTH):
+        report_output.publish({"status": "reported"}, output)
+    assert output.records
+    assert not output.flushed
+
+
+def test_replaced_length_lookup_cannot_reject_complete_stdout_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A narrower runtime hint cannot invalidate an exact successful write."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(report_output, "len", lambda _record: 0, raising=False)
+    report_output.publish({"status": "reported"}, output)
+    assert output.flushed
+    assert len(output.records) == 1
+
+
+def test_replaced_unicode_scanner_cannot_admit_lone_surrogate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false scanner result cannot admit non-scalar evidence identifiers."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(report_output, "any", lambda _values: False, raising=False)
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish({"identity": "\ud800"}, output)
+    assert not output.records
+    assert not output.flushed
+
+
+def test_replaced_unicode_scanner_cannot_reject_valid_scalar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A true scanner hint cannot reject an otherwise valid JSON report."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(report_output, "any", lambda _values: True, raising=False)
+    report_output.publish({"identity": "\U0001f600"}, output)
+    assert output.flushed
+    assert len(output.records) == 1
+
+
+@pytest.mark.parametrize("provider", ["set", "id"])
+def test_nested_json_cannot_skip_source_unicode_preflight(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """A replaced traversal identity cannot skip nested Unicode checks."""
+    output = _FakeStream("healthy")
+    report = {"outer": {"identity": "\ud800"}}
+
+    if provider == "set":
+
+        class AlwaysSeen(set[int]):
+            def __contains__(self, _value: object) -> bool:
+                return True
+
+        monkeypatch.setattr(report_output, "set", AlwaysSeen, raising=False)
+    else:
+        monkeypatch.setattr(report_output, "id", lambda _value: 1, raising=False)
+
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish(report, output)
+    assert not output.records
+    assert not output.flushed
+
+
+@pytest.mark.parametrize(
+    ("value", "fake_ordinal", "should_accept"),
+    [("\ud800", 65, False), ("\U0001f600", 0xD800, True)],
+)
+def test_unicode_ordinal_provider_must_match_native_scanner(
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+    fake_ordinal: int,
+    should_accept: bool,
+) -> None:
+    """Unicode validation cannot depend on a replaced character ordinal."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(
+        report_output, "ord", lambda _character: fake_ordinal, raising=False
+    )
+    if should_accept:
+        report_output.publish({"identity": value}, output)
+        assert output.flushed
+        assert len(output.records) == 1
+    else:
+        with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+            report_output.publish({"identity": value}, output)
+        assert not output.records
+        assert not output.flushed
