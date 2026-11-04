@@ -1520,6 +1520,16 @@ The original study records remain the result authority.
   All eight and 1,076 report/analysis/evidence/challenge tests passed with arena
   BasedPyright and scoped Ruff checks clean. This does not authenticate stdout
   delivery, the original runtime, or the data being reported.
+  Signed `01d0f63ba` additionally binds the exact native Python `type` and
+  `getattr` helpers used during JSON preflight, source-factory inspection,
+  encoder result checks and stdout write-count admission. Four red-first
+  cases exposed foreign mapping hooks, a forged short-write completion,
+  rejection of valid native reports and two jointly forged JSON factories
+  hidden by a replaced attribute lookup. All 96 report-output cases and an
+  adjacent 1,110-test analysis/evidence/budget integration group passed;
+  arena BasedPyright returned no diagnostics and focused Ruff checks passed.
+  These local provider checks do not attest the upstream evidence or ensure
+  atomic, durable or independently witnessed stdout delivery.
   A later clean-checkout run covered all 24 arena test modules in disjoint,
   bounded groups: 1,426 offline analysis/evidence/statistics/CSV tests, 731
   host-C producer/oracle/Git tests, 995 target child/replay/resource tests,
