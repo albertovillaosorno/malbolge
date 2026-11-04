@@ -136,12 +136,27 @@ class SixDistinctGuestLiteralTests(unittest.TestCase):
     def test_unproved_six_byte_values_and_short_prefixes_refuse(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:
             directory = Path(temp)
-            for name, source in (
-                ("short", SOURCE.removesuffix(" putchar(27);")),
-                ("wrong-sixth", SOURCE.replace("putchar(27);", "putchar(26);")),
-                ("wrong-second", SOURCE.replace("putchar(28);", "putchar(30);")),
-                ("extra", SOURCE + " putchar(55);"),
-            ):
+            invalid = [
+                (f"prefix-{count}", " ".join(SOURCE.split()[:count]))
+                for count in range(2, 6)
+            ]
+            invalid.extend(
+                [
+                    ("wrong-sixth", SOURCE.replace("putchar(27);", "putchar(26);")),
+                    ("wrong-second", SOURCE.replace("putchar(28);", "putchar(30);")),
+                    ("duplicate-fifth", SOURCE.replace("putchar(80);", "putchar(79);")),
+                    (
+                        "reordered-third",
+                        SOURCE.replace(
+                            "putchar(79); putchar(29);",
+                            "putchar(29); putchar(79);",
+                        ),
+                    ),
+                    ("arithmetic", SOURCE.replace("putchar(28);", "putchar(27 + 1);")),
+                    ("extra", SOURCE + " putchar(55);"),
+                ]
+            )
+            for name, source in invalid:
                 with self.subTest(name=name):
                     compiled, artifact = self.compile(directory, name, source)
                     self.assertNotEqual(compiled.returncode, 0)
