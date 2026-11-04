@@ -2,18 +2,20 @@
 
 ## Purpose
 
-Decode the exact pinned Clang version-one frontend JSON into the existing
-source-preserving typed-IR void-return projection, then emit independently
-re-admitted canonical MCTI bytes. This separate compiler workspace package
-contains the JSON dependency; the VM's dependency-free crate remains unchanged.
+Decode the exact pinned Clang version-one frontend JSON into a
+source-preserving typed-IR void-return or single-zero-byte-output projection,
+then emit independently re-admitted canonical MCTI bytes. This separate
+compiler workspace package contains the JSON dependency; the VM's
+dependency-free crate remains unchanged.
 
 ## Supported slice
 
-For the effect-free void family, the complete normalized artifact must contain exactly one no-argument external
-`fn()->void` definition with a compound body containing only standalone
-null statements (`;`), single-digit standalone zero expressions (`0;`),
-exact casts of zero to void (`(void)0;`), nested compound scopes, and an optional final `return;` (including inside
-a nested scope). Thus `void noop(void) {}`, `void noop(void) {0; return;}`,
+For the effect-free void family, the complete normalized artifact must contain
+exactly one no-argument external `fn()->void` definition with a compound
+body containing only standalone null statements (`;`), single-digit standalone zero expressions (`0;`),
+exact casts of zero to void (`(void)0;`), nested compound scopes, and an
+optional final `return;` (including inside a nested scope). Thus
+`void noop(void) {}`, `void noop(void) {0; return;}`,
 `void noop(void) {(void)0; return;}`, and `void noop(void) {{;}}` compile to
 the same verified two-cell guest. An absent explicit return uses the original
 function body span to attribute its defined implicit return; no invented C return
@@ -50,21 +52,21 @@ ABI remain unsupported. Nonzero or multiple output calls refuse compilation.
 trace without dropping observable effects. `canonical_void_typed_ir` preserves
 its prior no-effect-only admission contract and callers.
 
-`canonical_void_typed_ir` returns MCTI bytes ready for the opt-in
-`malbolge_layout --empty-void --typed-stdin` publisher. This adapter does not
-invoke Clang, authenticate a separately supplied C source against its JSON
-SHA-256, implement a complete C command line, realize C process-return ABI or
-replace the independent guest VM preflight. Its tests exercise the real
-normalized-artifact data shape and independently compile the accepted result
-into the existing two-step guest program.
+`canonical_void_typed_ir` returns no-effect MCTI bytes for
+`malbolge_layout --empty-void --typed-stdin` while
+`canonical_guest_typed_ir` additionally returns a mode for the supported
+single-byte output trace. This adapter does not invoke Clang, authenticate an
+independently supplied C source against its JSON SHA-256, implement a complete
+C command line, realize C process-return ABI or replace the independent guest
+VM preflight. Its tests run both accepted families through real guest code.
 
 ## Executable handoff
 
 `c2malbolge_json` accepts normalized JSON on **stdin**, an explicit trusted
 `malbolge_layout` executable, and a fresh `.malbolge` output path. It validates
-JSON, produces canonical MCTI, and pipes those bytes to the existing
-`--empty-void --typed-stdin` verifier/publisher. Optional `--capsule` uses the
-current profile's embedded identity. The compiler frontend itself must have
+JSON, produces canonical MCTI, and selects the exact verified
+`--empty-void` or `--initial-zero-output` mode with `--typed-stdin`.
+Optional `--capsule` uses the current profile's embedded identity. The compiler frontend itself must have
 produced the normalized JSON; the pipeline does not infer semantics from raw C
 text or trust an unverified substitute for the selected layout backend.
 

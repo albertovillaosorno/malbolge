@@ -9,23 +9,24 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Closed normalized Clang-JSON to typed frontend no-effect void adapter.
+//   - Closed normalized Clang-JSON to typed void/one-zero-output adapter.
 // - Must-Not:
-//   - Parse C, reinterpret Clang semantics, or bypass typed-IR admission.
+//   - Parse C, reinterpret calls, silently drop effects, or bypass typed
+//     admission.
 // - Allows:
 //   - Inputs: bounded version-one normalized frontend JSON bytes.
-//   - Outputs: canonical MCTI for one admitted no-effect void function.
+//   - Outputs: canonical MCTI for no-effect void or exact putchar(0) source.
 //   - Side effects: none.
 // - Split-When:
-//   - Another normalized function family gains an executable typed lowering.
+//   - General C byte-I/O gains independently modeled effect semantics.
 // - Merge-When:
 //   - Native frontend composition owns equivalent validated JSON decoding.
 // - Summary:
-//   - Connects exact frontend semantics to the tested typed-IR void slice.
+//   - Connects exact C semantics to tested typed void and zero-output slices.
 // - Description:
-//   - Unknown nodes, fields, extra effects, identities and profile drift fail.
+//   - Unknown nodes, additional effects, identity/profile drift all fail closed.
 // - Usage:
-//   - `canonical_void_typed_ir(frontend_json)` yields independently decoded MCTI.
+//   - `canonical_guest_typed_ir(json)` yields MCTI and verified effect mode.
 // - Defaults:
 //   - Does not infer missing Clang metadata or source identity.
 //
