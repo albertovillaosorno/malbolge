@@ -42,6 +42,12 @@ import tomllib
 # Preserve a source parser independent of the mutable public module entrypoint.
 _SOURCE_TOML_LOADS = tomllib.loads
 _SOURCE_LEN = len
+# Native value and mapping shapes must not follow replacement module aliases.
+_SOURCE_TYPE = type
+_SOURCE_ANY = any
+_SOURCE_DICT = dict
+_SOURCE_STR = str
+_SOURCE_INT = int
 
 NANOSECONDS_PER_SECOND = 1_000_000_000
 BYTES_PER_MIB = 1_048_576
@@ -77,13 +83,13 @@ _SOURCE_FAIL = _fail
 
 def _positive_integer(table: dict[str, object], key: str) -> int:
     value = table.get(key)
-    if type(value) is not int or value <= 0:
+    if _SOURCE_TYPE(value) is not _SOURCE_INT or value <= 0:
         _SOURCE_FAIL(f"experiment run budget.{key} must be a positive integer")
     return value
 
 
 def _admit_text(text: str) -> None:
-    if type(text) is not str:
+    if _SOURCE_TYPE(text) is not _SOURCE_STR:
         _SOURCE_FAIL("budget run manifest requires exact str text")
     if _SOURCE_LEN(text) > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _SOURCE_FAIL("budget run manifest exceeds byte limit")
@@ -120,14 +126,14 @@ def parse_run_budgets(text: str) -> RunBudgets:
         # Preserve the cause without invoking foreign exception formatters.
         message = "invalid experiment run budget TOML"
         raise BudgetLinkError(message) from error
-    if type(document) is not dict:
+    if _SOURCE_TYPE(document) is not _SOURCE_DICT:
         _SOURCE_FAIL("invalid experiment run budget TOML root")
-    if any(type(key) is not str for key in document):
+    if _SOURCE_ANY(_SOURCE_TYPE(key) is not _SOURCE_STR for key in document):
         _SOURCE_FAIL("experiment run budget TOML requires native string keys")
     budget = document.get("budget")
-    if type(budget) is not dict:
+    if _SOURCE_TYPE(budget) is not _SOURCE_DICT:
         _SOURCE_FAIL("experiment run budget table is missing")
-    if any(type(key) is not str for key in budget):
+    if _SOURCE_ANY(_SOURCE_TYPE(key) is not _SOURCE_STR for key in budget):
         _SOURCE_FAIL("experiment run budget table requires native string keys")
     seconds = _SOURCE_POSITIVE_INTEGER(budget, "seconds")
     memory_mib = _SOURCE_POSITIVE_INTEGER(budget, "memory_mib")
@@ -141,10 +147,10 @@ def parse_run_budgets(text: str) -> RunBudgets:
         raise BudgetLinkError(message) from error
     source_budget = source.get("budget")
     if (
-        type(source_budget) is not dict
-        or type(source_budget.get("seconds")) is not int
+        _SOURCE_TYPE(source_budget) is not _SOURCE_DICT
+        or _SOURCE_TYPE(source_budget.get("seconds")) is not _SOURCE_INT
         or source_budget["seconds"] != seconds
-        or type(source_budget.get("memory_mib")) is not int
+        or _SOURCE_TYPE(source_budget.get("memory_mib")) is not _SOURCE_INT
         or source_budget["memory_mib"] != memory_mib
     ):
         _SOURCE_FAIL("experiment run budget differs from source TOML")

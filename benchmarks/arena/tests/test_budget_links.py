@@ -36,6 +36,8 @@
 
 from __future__ import annotations
 
+from typing import Never
+
 import pytest
 
 from benchmarks.arena import budget_links
@@ -133,3 +135,68 @@ def test_budget_limit_rejects_substituted_length_provider(
     monkeypatch.setattr(budget_links, "len", lambda _value: 0, raising=False)
     with pytest.raises(budget_links.BudgetLinkError, match="byte limit"):
         budget_links.parse_run_budgets(oversized)
+
+
+def test_budget_rejects_substituted_integer_with_forged_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign numeric receipt cannot fake source equality then change units."""
+
+    class ForgedSeconds:
+        def __le__(self, _other: int) -> bool:
+            return False
+
+        def __eq__(self, other: object) -> bool:
+            return other == 3
+
+        def __ne__(self, other: object) -> bool:
+            return other != 3
+
+        def __mul__(self, _unit: int) -> int:
+            return 7
+
+    real_type = type
+    forged = ForgedSeconds()
+
+    def forged_type(value: object) -> type[object]:
+        return int if value is forged else real_type(value)
+
+    monkeypatch.setattr(budget_links, "type", forged_type, raising=False)
+    monkeypatch.setattr(
+        budget_links.tomllib,
+        "loads",
+        lambda _text: {"budget": {"seconds": forged, "memory_mib": 5}},
+    )
+    with pytest.raises(budget_links.BudgetLinkError, match="positive integer"):
+        budget_links.parse_run_budgets(MANIFEST)
+
+
+def test_budget_rejects_nonstring_decoder_keys_despite_substituted_any(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The source parser does not legalize foreign keys in another decoder."""
+    invalid_key = object()
+    monkeypatch.setattr(budget_links, "any", lambda _values: False, raising=False)
+    monkeypatch.setattr(
+        budget_links.tomllib,
+        "loads",
+        lambda _text: {
+            invalid_key: "foreign",
+            "budget": {"seconds": 3, "memory_mib": 5},
+        },
+    )
+    with pytest.raises(budget_links.BudgetLinkError, match="native string keys"):
+        budget_links.parse_run_budgets(MANIFEST)
+
+
+@pytest.mark.parametrize("provider", ["type", "any", "dict", "str", "int"])
+def test_budget_native_shape_providers_are_source_bound(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Module-level aliases cannot change the original TOML shape policy."""
+
+    def forged_operation(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail(f"public {provider} was called instead of native provider")
+
+    monkeypatch.setattr(budget_links, provider, forged_operation, raising=False)
+    assert budget_links.parse_run_budgets(MANIFEST) == EXPECTED
