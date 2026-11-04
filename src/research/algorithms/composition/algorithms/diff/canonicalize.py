@@ -51,6 +51,10 @@ class CanonicalIdentityError(ValueError):
     """Raised when generic identity canonicalization inputs are invalid."""
 
 
+# Retain typed native rejection after a consumer rebinds the public export.
+_NATIVE_CANONICAL_IDENTITY_ERROR = CanonicalIdentityError
+
+
 def normalize_line_endings(data: bytes) -> bytes:
     """Normalize CRLF and bare CR to LF without other byte changes.
 
@@ -63,7 +67,7 @@ def normalize_line_endings(data: bytes) -> bytes:
     """
     if _NATIVE_TYPE(data) is not _NATIVE_BYTES:
         message = "canonical identity input must use exact bytes"
-        raise CanonicalIdentityError(message)
+        raise _NATIVE_CANONICAL_IDENTITY_ERROR(message)
     return data.replace(_CRLF, _LF).replace(_CR, _LF)
 
 
@@ -104,7 +108,7 @@ _NATIVE_COLLAPSE_ASCII_WHITESPACE = collapse_ascii_whitespace
 def _require_formatting_policy(value: object) -> bool:
     if _NATIVE_TYPE(value) is not _NATIVE_BOOL:
         message = "identity formatting policy must use exact bool"
-        raise CanonicalIdentityError(message)
+        raise _NATIVE_CANONICAL_IDENTITY_ERROR(message)
     return value
 
 

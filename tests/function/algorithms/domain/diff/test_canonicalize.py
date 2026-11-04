@@ -272,3 +272,29 @@ def test_canonical_policy_ignores_late_validator_alias(
             _ = canonicalize_text_identity(
                 b"source", ignore_formatting=cast("bool", cast("object", 1))
             )
+
+
+@pytest.mark.parametrize("alias", [object, RuntimeError])
+@pytest.mark.parametrize(
+    "route", ["lines", "collapse", "preserve", "ignore", "policy"]
+)
+def test_canonical_identity_keeps_native_error_after_export_rebinding(
+    monkeypatch: pytest.MonkeyPatch, alias: type[object], route: str
+) -> None:
+    """Late public exception aliases cannot redefine identity rejection."""
+    invalid = cast("bytes", cast("object", "foreign text"))
+    with monkeypatch.context() as patched:
+        patched.setattr(canonicalize_module, "CanonicalIdentityError", alias)
+        with pytest.raises(CanonicalIdentityError):
+            if route == "lines":
+                _ = normalize_line_endings(invalid)
+            elif route == "collapse":
+                _ = collapse_ascii_whitespace(invalid)
+            elif route == "preserve":
+                _ = canonicalize_text_identity(invalid, ignore_formatting=False)
+            elif route == "ignore":
+                _ = canonicalize_text_identity(invalid, ignore_formatting=True)
+            else:
+                _ = canonicalize_text_identity(
+                    b"source", ignore_formatting=cast("bool", cast("object", 1))
+                )
