@@ -64,6 +64,7 @@ _NATIVE_SHA256 = sha256
 _NATIVE_TYPE = type
 _NATIVE_BOOL = bool
 _NATIVE_ANY = any
+_NATIVE_ALL = all
 _NATIVE_LEN = len
 _NATIVE_STR = str
 _NATIVE_INT = int
@@ -105,6 +106,7 @@ _SOURCE_PART_COUNT = PART_COUNT
 _SOURCE_ROOT_PART = ROOT_PART
 _SOURCE_STUDY_LEAF = STUDY_LEAF
 _SOURCE_RUN_PREFIX = RUN_PREFIX
+_SOURCE_UNDERSCORE = UNDERSCORE
 STAGE = "host-c-reference-not-malbolge"
 TOOLCHAIN = "repo-pinned-clang-22.1.8"
 PRODUCER_IMPLEMENTATION = "benchmarks/arena/reference_study.py"
@@ -232,11 +234,11 @@ def _admit_options(options: AuditOptions) -> None:
 
 
 def _prefix(relative: str) -> str:
-    if type(relative) is not str:
+    if _NATIVE_TYPE(relative) is not _NATIVE_STR:
         _fail("host-C audit requires a canonical ignored study path")
     parts = relative.split("/")
     if (
-        len(parts) != _SOURCE_PART_COUNT
+        _NATIVE_LEN(parts) != _SOURCE_PART_COUNT
         or parts[0] != _SOURCE_ROOT_PART
         or parts[2] != _SOURCE_STUDY_LEAF
     ):
@@ -245,8 +247,8 @@ def _prefix(relative: str) -> str:
     suffix = directory.removeprefix(_SOURCE_RUN_PREFIX)
     if not directory.startswith(_SOURCE_RUN_PREFIX) or not suffix:
         _fail("host-C audit requires a generated host-C study directory")
-    if not suffix.isascii() or not all(
-        char.isalnum() or char == UNDERSCORE for char in suffix
+    if not suffix.isascii() or not _NATIVE_ALL(
+        char.isalnum() or char == _SOURCE_UNDERSCORE for char in suffix
     ):
         _fail("host-C audit requires a canonical local study directory")
     return "/".join(parts[:2])

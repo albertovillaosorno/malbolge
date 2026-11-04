@@ -3055,3 +3055,58 @@ def test_host_c_audit_path_authority_rejects_mutable_policy(
     monkeypatch.setattr(reference_audit, policy, forged)
     with pytest.raises(reference_audit.ReferenceAuditError, match="requires"):
         reference_audit._prefix(path)
+
+
+class _ForeignCanonicalStudyPath:
+    """A foreign path whose split method manufactures valid path components."""
+
+    def split(self, _separator: str) -> list[str]:
+        return [".temp", "arena-host-c-study-valid", "study.json"]
+
+
+@pytest.mark.parametrize("alias", ["type", "str"])
+def test_host_c_audit_path_rejects_foreign_source_type_aliases(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Only native strings may supply retained study path components."""
+    foreign = _ForeignCanonicalStudyPath()
+    if alias == "type":
+        native_type = type
+        replacement: object = lambda value: (
+            str if value is foreign else native_type(value)
+        )
+    else:
+        replacement = _ForeignCanonicalStudyPath
+    monkeypatch.setattr(reference_audit, alias, replacement, raising=False)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="canonical"):
+        reference_audit._prefix(cast("str", foreign))
+
+
+@pytest.mark.parametrize(
+    ("alias", "replacement", "path"),
+    [
+        ("len", lambda _value: 3, ".temp/arena-host-c-study-x/study.json/extra"),
+        ("all", lambda _values: True, ".temp/arena-host-c-study-bad-suffix/study.json"),
+        ("UNDERSCORE", "-", ".temp/arena-host-c-study-bad-suffix/study.json"),
+    ],
+)
+def test_host_c_audit_path_rejects_late_native_policy_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+    replacement: object,
+    path: str,
+) -> None:
+    """Forged length and suffix checks cannot widen the ignored tree."""
+    monkeypatch.setattr(reference_audit, alias, replacement, raising=False)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="requires"):
+        reference_audit._prefix(path)
+
+
+@pytest.mark.parametrize("alias", ["type", "str", "len", "all", "UNDERSCORE"])
+def test_host_c_audit_path_accepts_native_source_after_alias_changes(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Canonical source path interpretation ignores mutable public aliases."""
+    original = ".temp/arena-host-c-study-valid_7/study.json"
+    monkeypatch.setattr(reference_audit, alias, object(), raising=False)
+    assert reference_audit._prefix(original) == ".temp/arena-host-c-study-valid_7"
