@@ -29,3 +29,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   SHA-pinned capsule and 15-step normative VM execution.
 - `corpus/emit-seven.md`: seven distinct guest-computed bytes including STX,
   US and CAN, byte-exact regeneration and 21-step VM receipt.
+- `corpus/emit-eight.md`: eight distinct guest-computed bytes including ETB,
+  SOH and ACK, byte-exact regeneration and 21-step VM receipt.

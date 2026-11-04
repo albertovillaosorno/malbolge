@@ -61,6 +61,7 @@ EXAMPLE_T4 = ROOT / "src/interface/command-line/composition/examples/emit-t4.c"
 EXAMPLE_QESC79 = ROOT / "docs/technical/examples/corpus/emit-qesc79.c"
 EXAMPLE_QOP6 = ROOT / "docs/technical/examples/corpus/emit-qop6.c"
 EXAMPLE_SEVEN = ROOT / "docs/technical/examples/corpus/emit-seven.c"
+EXAMPLE_EIGHT = ROOT / "docs/technical/examples/corpus/emit-eight.c"
 
 
 @final
@@ -204,13 +205,14 @@ class RawProfileNativePipelineTests(unittest.TestCase):
             self.assertEqual(outputs[0].stdout, outputs[1].stdout)
             self.assertEqual(outputs[0].stderr, outputs[1].stderr)
 
-    def test_five_through_seven_binary_guest_bytes_raw_match_capsule(self) -> None:
+    def test_five_through_eight_binary_guest_bytes_raw_match_capsule(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory_name:
             directory = Path(directory_name)
             for name, source, expected, steps in (
                 ("five-distinct", EXAMPLE_QESC79, b'Q"\x1b79', 23),
                 ("six-distinct", EXAMPLE_QOP6, b"Q\x1cO\x1dP\x1b", 15),
                 ("seven-distinct", EXAMPLE_SEVEN, b"6>5\x02T\x1f\x18", 21),
+                ("eight-distinct", EXAMPLE_EIGHT, b"S \x17<6\x01R\x06", 21),
             ):
                 with self.subTest(name=name):
                     outputs: list[subprocess.CompletedProcess[bytes]] = []
