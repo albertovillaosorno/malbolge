@@ -125,8 +125,12 @@ class TargetProcessError(sp.SubprocessError):
     """A child violates its bounded output or platform contract."""
 
 
+# Keep the transport-owned rejection class independent of the public alias.
+_SOURCE_TARGET_PROCESS_ERROR = TargetProcessError
+
+
 def _fail(message: str) -> Never:
-    raise TargetProcessError(message)
+    raise _SOURCE_TARGET_PROCESS_ERROR(message)
 
 
 def _admit_pipe_descriptor(receipt: object, *, channel: str) -> int:
@@ -187,7 +191,7 @@ def _admit_command(command: list[str]) -> None:
             total_bytes += _SOURCE_LEN(os.fsencode(argument)) + 1
         except UnicodeError as error:
             message = "bounded target command requires encodable filesystem text"
-            raise TargetProcessError(message) from error
+            raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
         if total_bytes > _SOURCE_MAX_COMMAND_BYTES:
             _fail("bounded target command exceeds argument bytes limit")
 
@@ -199,7 +203,7 @@ def _system_tool(name: str) -> str | None:
     except Exception as error:
         # Host tool resolvers may raise unexpected ordinary dependency errors.
         message = f"bounded target system tool lookup failed: {name}"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     if resolved is None:
         return None
     if (
@@ -213,7 +217,7 @@ def _system_tool(name: str) -> str | None:
         _ = os.fsencode(resolved)
     except UnicodeError as error:
         message = f"bounded target system tool has unencodable path: {name}"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     try:
         metadata = Path(resolved).lstat()
         if _SOURCE_TYPE(metadata) is not os.stat_result:
@@ -222,12 +226,12 @@ def _system_tool(name: str) -> str | None:
         executable = os.access(resolved, os.X_OK)
         if _SOURCE_TYPE(executable) is not _SOURCE_BOOL:
             _fail(f"bounded target system tool access inspection invalid: {name}")
-    except TargetProcessError:
+    except _SOURCE_TARGET_PROCESS_ERROR:
         raise
     except Exception as error:
         # Preserve an opaque host inspection fault without formatting it.
         message = f"bounded target system tool path inspection failed: {name}"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     if not S_ISREG(mode) or not executable:
         _fail(f"bounded target system tool requires a physical executable: {name}")
     return resolved
@@ -266,7 +270,7 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         pid = child.pid
     except Exception as error:
         message = "bounded target cleanup requires a positive native PID"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     if _SOURCE_TYPE(pid) is not _SOURCE_INT or pid <= 0:
         _fail("bounded target cleanup requires a positive native PID")
     # A positive forged child PID could still equal our own process group.
@@ -279,13 +283,13 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     except Exception as error:
         # Unknown group identity prohibits group signaling, but not the
         # direct-child kill/reap fallback. Retain the lookup fault as cause.
-        group_error = TargetProcessError(
+        group_error = _SOURCE_TARGET_PROCESS_ERROR(
             "bounded target cleanup cannot inspect caller process group"
         )
         caller_lookup_error = error
     else:
         if _SOURCE_TYPE(caller_group) is not _SOURCE_INT or caller_group <= 0:
-            group_error = TargetProcessError(
+            group_error = _SOURCE_TARGET_PROCESS_ERROR(
                 "bounded target cleanup has invalid caller process group"
             )
         elif pid == caller_group:
@@ -297,7 +301,7 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         try:
             signal_receipt: object = os.kill(-pid, _SOURCE_GROUP_KILL_SIGNAL)
             if signal_receipt is not None:
-                group_error = TargetProcessError(
+                group_error = _SOURCE_TARGET_PROCESS_ERROR(
                     "bounded target cleanup has invalid group signal receipt"
                 )
         except ProcessLookupError as error:
@@ -333,17 +337,17 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         try:
             reaped = child.wait()
             if _SOURCE_TYPE(reaped) is not _SOURCE_INT:
-                direct_error = TargetProcessError(
+                direct_error = _SOURCE_TARGET_PROCESS_ERROR(
                     "bounded target child cleanup has invalid wait receipt"
                 )
         except Exception as error:
             direct_error = error
     if invalid_poll and direct_error is None:
-        direct_error = TargetProcessError(
+        direct_error = _SOURCE_TARGET_PROCESS_ERROR(
             "bounded target child cleanup has invalid poll receipt"
         )
     if invalid_kill and direct_error is None:
-        direct_error = TargetProcessError(
+        direct_error = _SOURCE_TARGET_PROCESS_ERROR(
             "bounded target child cleanup has invalid kill receipt"
         )
     if group_error is not None:
@@ -417,7 +421,7 @@ def _checked_selector() -> Iterator[selectors.BaseSelector]:
             receipt = manager.__exit__(None, None, None)
         except Exception as error:
             message = "bounded target selector cleanup failed"
-            raise TargetProcessError(message) from error
+            raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
         if receipt is not None:
             _fail("bounded target selector cleanup returned invalid receipt")
 
@@ -523,14 +527,14 @@ def _collect(
                     )
                     if reached_eof:
                         open_streams.remove(slot)
-    except (TargetProcessError, _NATIVE_TIMEOUT_EXPIRED):
+    except (_SOURCE_TARGET_PROCESS_ERROR, _NATIVE_TIMEOUT_EXPIRED):
         # Preserve exact quota and deadline failures from our own transport.
         raise
     except Exception as error:
         # Selector and stream dependencies may raise any ordinary exception.
         # Never format foreign hooks or publish a partially captured stream.
         message = "bounded target output capture failed"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     return _SOURCE_BYTES(buffers[0]), _SOURCE_BYTES(buffers[1])
 
 
@@ -548,7 +552,7 @@ def _cleanup_error_detail(error: BaseException) -> str:
         TypeError,
         AttributeError,
         sp.SubprocessError,
-        TargetProcessError,
+        _SOURCE_TARGET_PROCESS_ERROR,
     )
     if (
         _SOURCE_TYPE(error) in native
@@ -585,13 +589,13 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
                 _fail("bounded target input could not be delivered completely")
     except BrokenPipeError as error:
         message = "bounded target input pipe closed before delivery"
-        raise TargetProcessError(message) from error
-    except TargetProcessError:
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
+    except _SOURCE_TARGET_PROCESS_ERROR:
         # Keep our own exact input-budget rejection rather than rewrapping it.
         raise
     except Exception as error:
         message = "bounded target input delivery failed"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     finally:
         primary = sys.exception()
         try:
@@ -609,7 +613,7 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
                 )
             else:
                 message = "bounded target input pipe close failed"
-                raise TargetProcessError(message) from error
+                raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
 
 
 def _finish_child(child: sp.Popen[bytes]) -> None:
@@ -645,7 +649,7 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
             )
             # Only native errors have trustworthy, inert note containers.
             if _SOURCE_TYPE(error) in (
-                OSError, PermissionError, TargetProcessError
+                OSError, PermissionError, _SOURCE_TARGET_PROCESS_ERROR
             ):
                 notes = getattr(error, "__notes__", ())
                 if _SOURCE_TYPE(notes) is _SOURCE_LIST:
@@ -656,7 +660,7 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
     message = "bounded target cleanup failed: " + _cleanup_error_detail(
         cleanup_errors[0]
     )
-    failure = TargetProcessError(message)
+    failure = _SOURCE_TARGET_PROCESS_ERROR(message)
     for error in cleanup_errors[1:]:
         failure.add_note(
             f"additional cleanup failure: {_cleanup_error_detail(error)}"
@@ -693,7 +697,7 @@ def _run(
     except Exception as error:
         # No child handle exists yet; retain the opaque launch fault as cause.
         message = "bounded target child launch failed"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     try:
         # Popen exposes the exact list it was asked to execute. A substituted
         # or mutated argument receipt cannot certify our requested command,
@@ -702,7 +706,7 @@ def _run(
             launched_arguments = child.args
         except Exception as error:
             message = "bounded target child launch command identity inspection failed"
-            raise TargetProcessError(message) from error
+            raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
         if (
             _SOURCE_TYPE(launched_arguments) is not _SOURCE_LIST
             or launched_arguments is not prepared
@@ -726,12 +730,12 @@ def _run(
             raise _NATIVE_TIMEOUT_EXPIRED(command, limits.timeout_seconds)
         try:
             status = child.wait(timeout=remaining)
-        except (_NATIVE_TIMEOUT_EXPIRED, TargetProcessError):
+        except (_NATIVE_TIMEOUT_EXPIRED, _SOURCE_TARGET_PROCESS_ERROR):
             # An actual deadline or our own rejection remains authoritative.
             raise
         except Exception as error:
             message = "bounded target child wait failed"
-            raise TargetProcessError(message) from error
+            raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
         if (
             _SOURCE_TYPE(status) is not _SOURCE_INT
             or _SOURCE_TYPE(child.returncode) is not _SOURCE_INT
@@ -864,7 +868,7 @@ def _rss_report_bytes(path: Path) -> bytes:
         # A reader dependency can raise any ordinary exception, not only its
         # documented EvidenceError. Never format a foreign failure's hooks.
         message = "bounded target GNU time RSS report missing or unsafe"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     if (
         _SOURCE_TYPE(raw) is not _SOURCE_BYTES
         or not 1 <= _SOURCE_LEN(raw) <= _SOURCE_RSS_REPORT_LIMIT
@@ -902,7 +906,7 @@ def _rss_workspace() -> Path:
     except Exception as error:
         # An unexpected host stat fault must not escape resource admission.
         message = "bounded target RSS workspace cannot be inspected"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     if _SOURCE_TYPE(details) is not os.stat_result:
         _fail("bounded target RSS workspace returned invalid metadata")
     if not S_ISDIR(details.st_mode):
@@ -952,11 +956,11 @@ def _admit_rss_directory_receipt(receipt: object, workspace: Path) -> Path:
                 _fail("bounded target RSS directory scan close receipt invalid")
         if occupied:
             _fail("bounded target RSS directory must be initially empty")
-    except TargetProcessError:
+    except _SOURCE_TARGET_PROCESS_ERROR:
         raise
     except Exception as error:
         message = "bounded target RSS directory receipt inspection failed"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     return folder
 
 
@@ -1059,7 +1063,7 @@ def _measured_limited(
                 raise
     except Exception as error:
         if error is primary and isinstance(
-            error, (TargetProcessError, _NATIVE_TIMEOUT_EXPIRED)
+            error, (_SOURCE_TARGET_PROCESS_ERROR, _NATIVE_TIMEOUT_EXPIRED)
         ):
             # Without a secondary directory fault, preserve the child verdict.
             raise
@@ -1072,7 +1076,7 @@ def _measured_limited(
             )
             raise primary from error
         message = "bounded target RSS directory access failed"
-        raise TargetProcessError(message) from error
+        raise _SOURCE_TARGET_PROCESS_ERROR(message) from error
     # A substituted directory __exit__ might suppress the child failure.
     if primary is not None:
         raise primary

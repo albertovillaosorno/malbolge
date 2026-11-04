@@ -4618,3 +4618,76 @@ def test_public_read_chunk_size_cannot_forge_eof(
     )
     expected = b"authentic"
     assert result.stdout == expected
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("fail", "native target failure"),
+        ("limits", "deadline within 15 seconds"),
+        ("command", "nonempty argument list"),
+        ("tool-lookup", "system tool lookup failed"),
+        ("tool-inspection", "system tool path inspection failed"),
+        ("rss-reader", "RSS report missing or unsafe"),
+        ("pid-fault", "positive native PID"),
+    ],
+)
+def test_target_process_error_alias_preserves_native_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """Native transport rejections cannot become foreign error classes."""
+    native_error = target_process.TargetProcessError
+
+    def fail_lookup(*_args: object, **_kwargs: object) -> None:
+        raise OSError("unavailable system tool")
+
+    class InvalidChild:
+        @property
+        def pid(self) -> int:
+            raise OSError("missing child pid")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_process, "TargetProcessError", replacement)
+        if stage == "tool-lookup":
+            patched.setattr(target_process.shutil, "which", fail_lookup)
+        elif stage == "tool-inspection":
+            patched.setattr(
+                target_process.shutil, "which", lambda *_a, **_kw: sys.executable
+            )
+            patched.setattr(target_process.os, "access", fail_lookup)
+        with pytest.raises(native_error, match=diagnostic):
+            if stage == "fail":
+                target_process._fail("native target failure")
+            elif stage == "limits":
+                target_process._admit_limits(0, 256, 512)
+            elif stage == "command":
+                target_process._admit_command([])
+            elif stage.startswith("tool-"):
+                target_process._system_tool("prlimit")
+            elif stage == "rss-reader":
+                target_process._rss_report_bytes(tmp_path / "missing.rss")
+            else:
+                target_process._terminate_group(cast("sp.Popen[bytes]", InvalidChild()))
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_target_process_error_alias_preserves_cleanup_detail_and_child(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Native cleanup diagnostics and real child completion remain stable."""
+    native_error = target_process.TargetProcessError
+    with monkeypatch.context() as patched:
+        patched.setattr(target_process, "TargetProcessError", replacement)
+        assert target_process._cleanup_error_detail(
+            native_error("source-native cleanup detail")
+        ) == "source-native cleanup detail"
+        completed = target_process.invoke(
+            _child("print('native completion')"), timeout_seconds=3
+        )
+        assert completed.returncode == 0
+        assert completed.stdout == b"native completion\n"
