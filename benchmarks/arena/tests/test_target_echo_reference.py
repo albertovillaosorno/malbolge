@@ -4440,3 +4440,220 @@ def test_target_echo_study_error_alias_preserves_valid_source_quote(
     with monkeypatch.context() as patched:
         patched.setattr(target_echo_reference, "TargetEchoStudyError", replacement)
         assert target_echo_reference._quote("original source") == '"original source"'
+
+
+@pytest.mark.parametrize(
+    "replacement", [object(), RuntimeError], ids=["object", "runtime"]
+)
+def test_tool_fingerprint_native_rejection_survives_public_error_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """A late public class alias cannot rewrite an owned descriptor rejection."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"emitter")
+    runner.write_bytes(b"runner")
+    original = target_echo_reference.TargetEchoStudyError
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "TargetEchoStudyError", replacement)
+        patched.setattr(
+            target_echo_reference.os,
+            "fstat",
+            lambda _fd: cast("os.stat_result", object()),
+        )
+        with pytest.raises(original, match="invalid metadata") as caught:
+            target_echo_reference._tool_identity(emitter, runner)
+    assert caught.value.__cause__ is None
+
+
+@pytest.mark.parametrize("replacement", [ValueError, RuntimeError])
+def test_tool_fingerprint_foreign_failure_not_trusted_as_own_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: type[Exception]
+) -> None:
+    """A foreign failure whose type matches a public alias stays a cause."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"emitter")
+    runner.write_bytes(b"runner")
+    fault = replacement("foreign descriptor failure")
+    original = target_echo_reference.TargetEchoStudyError
+
+    def foreign_lstat(_path: Path) -> os.stat_result:
+        raise fault
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "TargetEchoStudyError", replacement)
+        patched.setattr(Path, "lstat", foreign_lstat)
+        with pytest.raises(original, match="executable identity changed") as caught:
+            target_echo_reference._tool_identity(emitter, runner)
+    assert caught.value.__cause__ is fault
+
+
+@pytest.mark.parametrize("failure_type", ["audit", "tool"])
+@pytest.mark.parametrize(
+    "replacement", [object(), RuntimeError], ids=["object", "runtime"]
+)
+def test_optional_verifier_uses_native_failure_classes_after_public_rebind(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure_type: str,
+    replacement: object,
+) -> None:
+    """Verifier outcomes depend on emitted native faults, not public aliases."""
+    context = replace(
+        _synthetic_target_context(tmp_path, site=TARGET_RAW), measure_verifier=True
+    )
+    fault = (
+        target_echo_audit.TargetEchoAuditError("invalid candidate")
+        if failure_type == "audit"
+        else target_echo_audit.TargetReplayToolError("runner failed")
+    )
+
+    def fail_verification(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_audit, "TargetEchoAuditError", replacement)
+        patched.setattr(target_echo_audit, "TargetReplayToolError", replacement)
+        patched.setattr(
+            target_echo_reference, "_timed_source_verifier", fail_verification
+        )
+        attempt, timing = target_echo_reference._optional_verifier_cost(
+            tmp_path / "candidate.malbolge",
+            context,
+            (analyze.VERIFIED, 1, 1),
+            case=(1, target_echo_reference.SKIP),
+        )
+    assert timing is None
+    assert attempt == (
+        analyze.VERIFIER_REJECTED if failure_type == "audit" else "tool_failed",
+        None,
+        None,
+    )
+
+
+def test_optional_verifier_rejects_foreign_fault_matching_public_error_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A relabeled foreign RuntimeError may not become a verifier verdict."""
+    context = replace(
+        _synthetic_target_context(tmp_path, site=TARGET_RAW), measure_verifier=True
+    )
+    fault = RuntimeError("foreign verifier failure")
+
+    def fail_verification(*_args: object, **_kwargs: object) -> None:
+        raise fault
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_audit, "TargetEchoAuditError", RuntimeError)
+        patched.setattr(target_echo_audit, "TargetReplayToolError", RuntimeError)
+        patched.setattr(
+            target_echo_reference, "_timed_source_verifier", fail_verification
+        )
+        with pytest.raises(RuntimeError) as caught:
+            target_echo_reference._optional_verifier_cost(
+                tmp_path / "candidate.malbolge",
+                context,
+                (analyze.VERIFIED, 1, 1),
+                case=(1, target_echo_reference.SKIP),
+            )
+    assert caught.value is fault
+
+
+@pytest.mark.parametrize(
+    "replacement", [object(), RuntimeError], ids=["object", "runtime"]
+)
+def test_retained_audit_native_error_survives_public_error_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Retained study admission preserves source diagnostics after alias drift."""
+    fault = target_echo_audit.TargetEchoAuditError("source candidate invalid")
+    original = target_echo_reference.TargetEchoStudyError
+
+    def fail_audit(_relative: str) -> None:
+        raise fault
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "_ROOT", tmp_path)
+        patched.setattr(target_echo_audit, "TargetEchoAuditError", replacement)
+        patched.setattr(target_echo_audit, "audit", fail_audit)
+        with pytest.raises(original, match="source candidate invalid") as caught:
+            target_echo_reference._audit_retained_study(tmp_path / "study.json")
+    assert caught.value.__cause__ is fault
+
+
+def test_tool_fingerprint_rejects_forged_error_class_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign exception's __class__ hook cannot claim native ownership."""
+    original = target_echo_reference.TargetEchoStudyError
+
+    class ForgedClassFault(ValueError):
+        @property
+        def __class__(  # pyright: ignore[reportIncompatibleMethodOverride]
+            self,
+        ) -> type[Exception]:
+            return original
+
+    fault = ForgedClassFault("untrusted host exception")
+    assert isinstance(fault, original)
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"emitter")
+    runner.write_bytes(b"runner")
+
+    def foreign_lstat(_path: Path) -> os.stat_result:
+        raise fault
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "lstat", foreign_lstat)
+        with pytest.raises(original, match="executable identity changed") as caught:
+            target_echo_reference._tool_identity(emitter, runner)
+    assert caught.value.__cause__ is fault
+
+
+def test_optional_verifier_valid_receipt_survives_public_error_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A valid timed verification is not rejected after a public alias drift."""
+    context = replace(
+        _synthetic_target_context(tmp_path, site=TARGET_RAW), measure_verifier=True
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_audit, "TargetEchoAuditError", object())
+        patched.setattr(target_echo_audit, "TargetReplayToolError", object())
+        patched.setattr(
+            target_echo_reference,
+            "_timed_source_verifier",
+            lambda *_args, **_kwargs: 11,
+        )
+        attempt, timing = target_echo_reference._optional_verifier_cost(
+            tmp_path / "candidate.malbolge",
+            context,
+            (analyze.VERIFIED, 1, 1),
+            case=(1, target_echo_reference.SKIP),
+        )
+    assert attempt == (analyze.VERIFIED, 1, 1)
+    assert timing == 11
+
+
+@pytest.mark.parametrize("invalid", [None, "wrong-runner", False])
+def test_target_runner_shape_rejects_before_missing_emitter_probe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, invalid: object
+) -> None:
+    """Validate both tool argument shapes before probing either missing tool."""
+    missing_emitter = tmp_path / "nonexistent-emitter"
+
+    def forbidden_lstat(_path: Path) -> os.stat_result:
+        pytest.fail("invalid runner reached emitter filesystem inspection")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "lstat", forbidden_lstat)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="exact native Path"
+        ):
+            target_echo_reference.run_study(
+                target_echo_reference.StudyPlan((1,), 1),
+                emitter=missing_emitter,
+                runner=cast("Path", invalid),
+            )

@@ -65,6 +65,7 @@ from scripts.validate import experiment_manifest, target_profile
 # Keep the native hash constructor independent of both public entrypoints.
 _NATIVE_SHA256 = sha256
 _SOURCE_JSON_ENCODER = json.JSONEncoder
+_SOURCE_TYPE = type
 _ROOT = Path(__file__).resolve().parents[2]
 _TEMP = _ROOT / ".temp"
 _BUILD = _ROOT / ".cache/rust/target/debug"
@@ -435,7 +436,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
         except Exception as error:
             # Host descriptor dependencies may raise arbitrary ordinary
             # exceptions. Keep every such fault behind the typed boundary.
-            if isinstance(error, TargetEchoStudyError):
+            if _SOURCE_TARGET_ECHO_STUDY_ERROR in _SOURCE_TYPE(error).__mro__:
                 raise
             message = "target echo executable identity changed"
             raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
@@ -868,6 +869,8 @@ def _optional_verifier_cost(
         target_echo_audit,  # ruff: ignore[import-outside-top-level]
     )
 
+    # The auditor retains the original exception types after its public API
+    # aliases are rebound; only those source-native failures define outcomes.
     timing = None
     try:
         timing = (
@@ -875,9 +878,9 @@ def _optional_verifier_cost(
             if context.verifier_mode == REPLAY_VERIFIER_MODE
             else _timed_source_verifier(path, *case)
         )
-    except target_echo_audit.TargetReplayToolError:
+    except target_echo_audit._SOURCE_TARGET_REPLAY_TOOL_ERROR:
         attempt = ("tool_failed", None, None)
-    except target_echo_audit.TargetEchoAuditError:
+    except target_echo_audit._SOURCE_TARGET_ECHO_AUDIT_ERROR:
         attempt = (analyze.VERIFIER_REJECTED, None, None)
     except OSError, sp.SubprocessError, evidence.EvidenceError:
         attempt = ("tool_failed", None, None)
@@ -1129,6 +1132,10 @@ def _initialize_workspace_folders(directory: Path, names: tuple[str, ...]) -> No
 
 
 def _prepare_context(emitter: Path, runner: Path) -> _Context:
+    # Check both caller-owned shapes before touching either executable path.
+    # A missing first tool must not mask an invalid second tool argument.
+    if type(emitter) is not type(Path()) or type(runner) is not type(Path()):
+        _fail("target echo executables require an exact native Path")
     emitter, runner = _admit_executable(emitter), _admit_executable(runner)
     try:
         workspace = _TEMP.lstat()
@@ -1507,13 +1514,14 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
         target_echo_audit,  # ruff: ignore[import-outside-top-level]
     )
 
+    # Require the auditor's original error class even after public alias drift.
     relative = path.relative_to(_ROOT).as_posix()
     try:
         checked = target_echo_audit.audit(relative)
-    except target_echo_audit.TargetEchoAuditError as error:
+    except target_echo_audit._SOURCE_TARGET_ECHO_AUDIT_ERROR as error:
         message = (
             "target echo source admission failed: "
-            f"{_safe_error_detail(error, trusted=target_echo_audit.TargetEchoAuditError)}"
+            f"{_safe_error_detail(error, trusted=target_echo_audit._SOURCE_TARGET_ECHO_AUDIT_ERROR)}"
         )
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     # The auditor's returned report is a dependency receipt. Do not trust a
