@@ -149,6 +149,44 @@ def test_study_reader_cannot_lower_source_cap_through_public_alias(
     assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
 
 
+@pytest.mark.parametrize("forged_descriptor", [2**31, 2**40])
+def test_study_reader_cannot_raise_native_descriptor_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    forged_descriptor: int,
+) -> None:
+    """Changing a public cap cannot authorize a non-C-int OS descriptor."""
+    monkeypatch.setattr(study_file, "MAX_NATIVE_DESCRIPTOR", 2**63)
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    reached_procfs = False
+
+    def forged_open(_path: Path, _flags: int) -> int:
+        return forged_descriptor
+
+    def forbidden_readlink(_path: str) -> str:
+        nonlocal reached_procfs
+        reached_procfs = True
+        pytest.fail("oversized descriptor reached procfs")
+
+    monkeypatch.setattr(study_file.os, "open", forged_open)
+    monkeypatch.setattr(study_file.os, "readlink", forbidden_readlink)
+    with pytest.raises(study_file.StudyFileError, match="raw descriptor"):
+        study_file.read_study_bytes(path, limit=1024)
+    assert not reached_procfs
+
+
+def test_study_reader_cannot_lower_native_descriptor_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid native descriptor remains usable after public cap changes."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    monkeypatch.setattr(study_file, "MAX_NATIVE_DESCRIPTOR", 0)
+    assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
+
+
 def test_exact_declared_study_budget_still_reads_normal_file(
     tmp_path: Path,
 ) -> None:

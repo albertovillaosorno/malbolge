@@ -45,6 +45,7 @@ MAX_STUDY_BYTES = 16 * 1024 * 1024
 # Public reporting aliases cannot widen the original source-file read cap.
 _SOURCE_MAX_STUDY_BYTES = MAX_STUDY_BYTES
 MAX_NATIVE_DESCRIPTOR = 2**31 - 1
+_SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
 # Read directly from the original opened descriptor to cross-check any
 # replaceable buffered-reader receipt against source bytes, not just metadata.
 _NATIVE_PREAD = getattr(os, "pread", None)
@@ -94,7 +95,7 @@ def _admit_descriptor(receipt: object, *, source: str) -> int:
     # A forged os.open/fileno return must not become a procfs lookup, fstat,
     # fdopen, or os.close on an unrelated handle (notably bool 0/1).
     # OS file descriptors use native signed C ints on the supported hosts.
-    if type(receipt) is not int or not 0 <= receipt <= MAX_NATIVE_DESCRIPTOR:
+    if type(receipt) is not int or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR:
         _fail(f"arena input {source} descriptor is not a native OS integer")
     return receipt
 
