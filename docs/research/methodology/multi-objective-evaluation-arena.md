@@ -1237,6 +1237,13 @@ previously skipped extra CSV columns or raised on valid input. All three and
 1,254 downstream CSV, raw, historical, analyzer and evidence tests passed,
 with arena BasedPyright and scoped Ruff lint/format clean. This is only
 field-count preflight, not full CSV grammar or measurement authentication.
+Signed `9bba825b9` binds native `type`, `str`, `int`, and `set` within the
+historical numeric reader. Eight red-first forged-provider and valid-input
+cases cover signed or noncanonical counters, jointly falsified conversion,
+foreign digit iterators, and rejection of valid decimal text. All 212 focused
+and 856 CSV/raw/historical/analyzer tests passed, with zero arena type errors
+and no new Ruff E/F diagnostics. This guards local reported counts, not the
+producer's historical measurements or independently verified run provenance.
 The historical-pairs operator now also converts unexpected ordinary importer
 and JSON-publisher failures to exit status two, without printing a partial
 report or formatting foreign exception hooks. Four red-first CLI regressions
