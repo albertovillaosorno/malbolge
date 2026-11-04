@@ -13,9 +13,8 @@ Verified; evidence verified.
 
 ## Repository Use
 
-The root `CITATION.cff` gives software and research tooling a machine-readable
-citation. This repository deliberately freezes its citation date at 2026-07-26
-so normal Git history does not rewrite references already used by readers.
+The owner removed the root citation metadata on 2026-11-03. This record
+retains external format provenance; it does not imply a current citation file.
 
 ## Provenance
 
@@ -33,7 +32,7 @@ provide repository citation metadata and a "Cite this repository" entry.
 ## License Or Terms
 
 This is external material. Citation does not relicense the source or import its
-terms into the repository Apache-2.0 license.
+terms into the proprietary repository license.
 
 ## Evidence
 
@@ -47,7 +46,7 @@ terms into the repository Apache-2.0 license.
 ### Unresolved
 
 No DOI or versioned software release exists yet, so those identifiers are not
-invented. The frozen date is repository policy, not a CFF requirement.
+invented. No root citation file is currently provided.
 
 ## Sources
 

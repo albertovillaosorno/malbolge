@@ -239,11 +239,7 @@ gate. This entrypoint does not suppress Jig diagnostics or evaluation gaps.
 Do not weaken semantic verification to make an optimization, benchmark, or
 experimental result pass. Bounded evidence must remain visibly bounded.
 
-## Citation and license
-
-Use [`CITATION.cff`](CITATION.cff) for the repository's machine-readable
-software citation. Citation-format provenance is documented in the
-bibliography rather than duplicated here.
+## License
 
 Current owner-controlled repository material is proprietary under
 [`LICENSE`](LICENSE). Historical material and
