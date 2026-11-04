@@ -60,3 +60,33 @@ This count is observable execution evidence on the selected local VM, not a
 proof of timing precision, host CPU instructions, physical power or a memory
 budget. For long-running or externally interrupted programs, no successful
 terminal count is issued. A failing stderr write reports a nonzero exit.
+
+## Bounded source-C-to-guest composition (opt-in)
+
+`composition/scripts/c2malbolge.py` composes the existing pinned native C
+frontend, the normalized JSON-to-typed adapter, and the verified Malbolge
+layout publisher in **sequence**. A nonzero frontend exit, oversized JSON,
+changed C source, or JSON source-ID/SHA-256 mismatch stops before invoking the
+JSON adapter. The adapter then performs canonical typed/ternary admission;
+the layout backend independently verifies and publishes the resulting guest
+program with its no-clobber and VM checks.
+
+```sh
+python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
+  --frontend /path/to/malbolge_c_frontend \
+  --json-adapter /path/to/c2malbolge_json \
+  --layout-backend /path/to/malbolge_layout \
+  --guest-include /path/to/guest/include \
+  --resource-dir /path/to/pinned/clang/resources \
+  --source-id examples/noop.c --output .temp/noop.malbolge \
+  --capsule examples/noop.c
+```
+
+All three executables are explicit caller-trusted capabilities. This is a
+bounded integration entrypoint, **not** the finished turnkey installer or
+arbitrary C compiler. It currently accepts only the normalized Clang shape
+supported by the JSON adapter (one no-effect `void` function returning
+explicitly), and does not implement C process-return ABI or guest libc.
+The pinned Clang frontend is required for real source compilation; its
+absence cannot be replaced by synthetic JSON test evidence. The two source
+reads constrain a specific invocation, not a persistent filesystem snapshot.

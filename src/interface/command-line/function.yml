@@ -111,6 +111,11 @@ parts:
     kind: adapter-outbound
     language: c
     responsibility: Bind inbound guest byte input to native debug stdin.
+  - id: part-0017
+    path: composition/scripts/c2malbolge.py
+    kind: composition
+    language: python
+    responsibility: Sequence exact C frontend and verified compiler stages.
 projects: []
 tests: []
 graph:
