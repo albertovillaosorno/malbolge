@@ -64,6 +64,9 @@ _NATIVE_SHA256 = sha256
 _NATIVE_TYPE = type
 _NATIVE_BOOL = bool
 _NATIVE_ANY = any
+_NATIVE_LEN = len
+_NATIVE_STR = str
+_NATIVE_INT = int
 _NATIVE_JSON_LOADS = json.loads
 _JSON_OBJECT_PARSER_NAME = "JSONObject"
 _JSON_ARRAY_PARSER_NAME = "JSONArray"
@@ -166,46 +169,52 @@ class ReferenceAuditError(ValueError):
     """Retained host-C research evidence is not independently consistent."""
 
 
+# Trust only the error types present at import, not replaced public aliases.
+_SOURCE_DIAGNOSTIC_ERRORS = (
+    ReferenceAuditError,
+    report_output.ReportOutputError,
+    analyze.ArenaError,
+    evidence.EvidenceError,
+    reference_study.ReferenceStudyError,
+    host_c_oracle.HostOracleError,
+    experiment_manifest.ExperimentManifestError,
+    OSError,
+    PermissionError,
+    FileNotFoundError,
+    ValueError,
+    TypeError,
+    UnicodeError,
+    UnicodeDecodeError,
+)
+_SOURCE_OS_DIAGNOSTIC_ERRORS = (OSError, PermissionError, FileNotFoundError)
+
+
 def _fail(message: str) -> Never:
     raise ReferenceAuditError(message)
 
 
 def _safe_error_detail(error: Exception) -> str:
-    """Keep exact project/native errors readable without foreign formatter hooks.
+    """Keep exact source-native errors readable without foreign formatter hooks.
 
     Returns:
         Trusted diagnostic text, otherwise the foreign exception type name.
 
     """
-    if type(error) in (
-        ReferenceAuditError,
-        report_output.ReportOutputError,
-        analyze.ArenaError,
-        evidence.EvidenceError,
-        reference_study.ReferenceStudyError,
-        host_c_oracle.HostOracleError,
-        experiment_manifest.ExperimentManifestError,
-        OSError,
-        PermissionError,
-        FileNotFoundError,
-        ValueError,
-        TypeError,
-        UnicodeError,
-        UnicodeDecodeError,
-    ):
+    error_type = _NATIVE_TYPE(error)
+    if error_type in _SOURCE_DIAGNOSTIC_ERRORS:
         # Exact native exception types can still carry caller-owned arguments.
         # Never let their default __str__ format a foreign object.
         arguments = error.args
-        if len(arguments) == 1 and type(arguments[0]) is str:
+        if _NATIVE_LEN(arguments) == 1 and _NATIVE_TYPE(arguments[0]) is _NATIVE_STR:
             return arguments[0]
         if (
-            type(error) in (OSError, PermissionError, FileNotFoundError)
-            and len(arguments) == 2
-            and type(arguments[0]) is int
-            and type(arguments[1]) is str
+            error_type in _SOURCE_OS_DIAGNOSTIC_ERRORS
+            and _NATIVE_LEN(arguments) == 2
+            and _NATIVE_TYPE(arguments[0]) is _NATIVE_INT
+            and _NATIVE_TYPE(arguments[1]) is _NATIVE_STR
         ):
-            return f"{type(error).__name__}: [Errno {arguments[0]}] {arguments[1]}"
-    return type(error).__name__
+            return f"{error_type.__name__}: [Errno {arguments[0]}] {arguments[1]}"
+    return error_type.__name__
 
 
 def _admit_options(options: AuditOptions) -> None:

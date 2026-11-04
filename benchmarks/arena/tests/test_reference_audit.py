@@ -985,6 +985,67 @@ class _ForeignSidecarReaderFault(IndexError):
         raise AssertionError("foreign retained sidecar exception formatted")
 
 
+class _HostileDetailValue:
+    """Foreign exception payload with a prohibited formatting hook."""
+
+    def __str__(self) -> str:
+        raise AssertionError("foreign audit diagnostic payload formatted")
+
+
+@pytest.mark.parametrize("alias", ["type", "str", "len", "ValueError"])
+def test_host_c_error_detail_preserves_native_message_under_alias_swaps(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Original native errors retain readable diagnostics after late changes."""
+    error = ValueError("source detail")
+    monkeypatch.setattr(reference_audit, alias, object(), raising=False)
+    assert reference_audit._safe_error_detail(error) == "source detail"
+
+
+def test_host_c_error_detail_rejects_foreign_value_under_replaced_str(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller-owned object must not enter an allegedly native error string."""
+    error = ValueError(_HostileDetailValue())
+    monkeypatch.setattr(reference_audit, "str", _HostileDetailValue, raising=False)
+    assert reference_audit._safe_error_detail(error) == "ValueError"
+
+
+def test_host_c_error_detail_rejects_wrong_argument_count_under_replaced_len(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An extra exception argument cannot be hidden by a public len alias."""
+    error = ValueError("wrongly trusted", "extra")
+    monkeypatch.setattr(reference_audit, "len", lambda _items: 1, raising=False)
+    assert reference_audit._safe_error_detail(error) == "ValueError"
+
+
+def test_host_c_error_detail_rejects_boolean_errno_under_replaced_int(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Error number formatting requires the original native integer type."""
+    error = OSError(True, "wrongly trusted")
+    monkeypatch.setattr(reference_audit, "int", bool, raising=False)
+    assert reference_audit._safe_error_detail(error) == type(error).__name__
+
+
+@pytest.mark.parametrize("alias", ["type", "ValueError", "ReferenceAuditError"])
+def test_host_c_error_detail_rejects_foreign_class_spoof(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Late class substitution cannot promote foreign exception text."""
+    error = _ForeignSidecarReaderFault("untrusted detail")
+    if alias == "type":
+        native_type = type
+        replacement: object = lambda value: (
+            ValueError if value is error else native_type(value)
+        )
+    else:
+        replacement = _ForeignSidecarReaderFault
+    monkeypatch.setattr(reference_audit, alias, replacement, raising=False)
+    assert reference_audit._safe_error_detail(error) == "_ForeignSidecarReaderFault"
+
+
 @pytest.mark.parametrize(
     "fault_type", [ValueError, RuntimeError, TypeError, _ForeignSidecarReaderFault]
 )
