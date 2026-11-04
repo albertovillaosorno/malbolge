@@ -552,3 +552,14 @@ whereas recognized capsules carry a pinned canonical profile/fingerprint and
 use the profile-aware interpreter. The initial publisher is a machine-subset
 emitter only; even with a capsule it does **not** claim C/ternary lowering,
 source maps, guest-runtime linkage or support for general control flow.
+
+### Verified three-distinct-byte producer
+
+An opt-in canonical `--distinct-literal-triple --typed-stdin` or
+`--distinct-literal-triple --ternary-stdin` mode accepts only three separate
+source-proven byte constants and output uses for `Z%H`, `Q.O`, and `Y-P`.
+The bridge proposes a linear guest source with one relocation and three
+separate `p` writes. The publisher independently decodes MCTR, proves
+profile/SSA and exact 8/9/10 source-step geometry, and reruns the
+current-profile VM before raw/capsule publication. Unproved output traces
+never publish; no general C code generation is claimed.

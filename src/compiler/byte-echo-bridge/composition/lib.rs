@@ -927,6 +927,11 @@ const DISTINCT_LITERAL_CRAZY_WITNESSES: &[(u8, u8, usize)] =
 
 // Each pair is an exact one-zero-output-then-one-nonzero-output guest
 // witness: `<`, padding `o`, `j`, `p`, `<`, `v` under malbolge-2026.
+// Three source-proven different bytes, each produced by its own relocated
+// `p` on independently checked out-of-source data addresses.
+const DISTINCT_LITERAL_TRIPLE_CRAZY_WITNESSES: &[([u8; 3], usize)] =
+    &[(*b"Z%H", 0), (*b"Q.O", 1), (*b"Y-P", 2)];
+
 const ZERO_THEN_LITERAL_CRAZY_WITNESSES: &[(u8, usize)] =
     &[(b'Z', 0), (b'P', 2), (b'T', 6), (b'S', 17)];
 
@@ -1572,6 +1577,95 @@ pub fn encode_rotated_byte_literal(
         || vm.output().iter().any(|actual| *actual != scalar.bits())
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    Ok(layout)
+}
+
+/// Emit three different bytes from independent guest CrazyData operations.
+///
+/// Exactly three separate `MaterializeU8`/`ByteOutput` SSA pairs and a void
+/// return must match one of the finite, independently replayed source phases.
+///
+/// # Errors
+///
+/// Rejects foreign profiles, unproved triples, stale/duplicate SSA or guest
+/// output that fails real-VM verification.
+pub fn encode_distinct_literal_triple(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let [
+        first,
+        first_output,
+        second,
+        second_output,
+        third,
+        third_output,
+        TernaryOperation::ReturnVoid { .. },
+    ] = function.operations.as_slice()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let triples = [
+        (first, first_output),
+        (second, second_output),
+        (third, third_output),
+    ];
+    let mut bytes = Vec::with_capacity(3);
+    let mut ids = BTreeSet::new();
+    for (constant, output) in triples {
+        let (
+            TernaryOperation::MaterializeU8 { result, scalar, .. },
+            TernaryOperation::ByteOutput { value, .. },
+        ) = (constant, output)
+        else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        };
+        if result != value || !ids.insert(*result) {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+        bytes.push(scalar.bits());
+    }
+    let Some((_, padding)) = DISTINCT_LITERAL_TRIPLE_CRAZY_WITNESSES
+        .iter()
+        .find(|(candidate, _)| candidate.as_slice() == bytes.as_slice())
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let mut operations = vec![LinearOpcode::NoOperation; *padding];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    // The layout verifier independently proves all three data writes are
+    // disjoint from the complete emitted source before the VM is consulted.
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
+            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+            || vm.output() != bytes
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
     }
     Ok(layout)
 }

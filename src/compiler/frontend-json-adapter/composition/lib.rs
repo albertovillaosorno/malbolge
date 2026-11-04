@@ -69,6 +69,8 @@ const MAX_NESTED_OUTPUT_SCOPES: usize = 128;
 pub enum FrontendGuestMode {
     /// Exactly two VM-witnessed distinct nonzero printable bytes.
     DistinctLiteralPair,
+    /// Exactly three independently VM-witnessed different bytes.
+    DistinctLiteralTriple,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -169,6 +171,7 @@ struct LiteralOutputNodes<'node> {
     calls: Vec<(&'node Node, &'node Node)>,
     function: &'node Node,
     mixed_byte: Option<u8>,
+    third_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -891,6 +894,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut calls = Vec::new();
     let mut selected_byte = None;
     let mut mixed_byte = None;
+    let mut third_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1010,20 +1014,34 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         )
         .ok_or(FrontendJsonError::Unsupported)?;
         if selected_byte.is_some_and(|previous| previous != byte) {
-            // Only these exact two-constant guest transitions have witnesses.
-            let is_zero_then_literal =
-                selected_byte == Some(0) && matches!(byte, b'Z' | b'P' | b'T' | b'S');
-            let is_distinct_nonzero = matches!(
-                (selected_byte, byte),
-                (Some(b'Y'), b'/' | b'$') | (Some(b'Q'), b'.')
-            );
-            if calls.len() != 1
-                || mixed_byte.is_some()
-                || !(is_zero_then_literal || is_distinct_nonzero)
-            {
+            if calls.len() == 1 && mixed_byte.is_none() {
+                let is_zero_then_literal =
+                    selected_byte == Some(0) && matches!(byte, b'Z' | b'P' | b'T' | b'S');
+                let is_distinct_nonzero = matches!(
+                    (selected_byte, byte),
+                    (Some(b'Y'), b'/' | b'$') | (Some(b'Q'), b'.')
+                );
+                let is_triple_prefix = matches!(
+                    (selected_byte, byte),
+                    (Some(b'Z'), b'%') | (Some(b'Q'), b'.') | (Some(b'Y'), b'-')
+                );
+                if !(is_zero_then_literal || is_distinct_nonzero || is_triple_prefix) {
+                    return Err(FrontendJsonError::Unsupported);
+                }
+                mixed_byte = Some(byte);
+            } else if calls.len() == 2 && third_byte.is_none() {
+                if !matches!(
+                    (selected_byte, mixed_byte, byte),
+                    (Some(b'Z'), Some(b'%'), b'H')
+                        | (Some(b'Q'), Some(b'.'), b'O')
+                        | (Some(b'Y'), Some(b'-'), b'P')
+                ) {
+                    return Err(FrontendJsonError::Unsupported);
+                }
+                third_byte = Some(byte);
+            } else {
                 return Err(FrontendJsonError::Unsupported);
             }
-            mixed_byte = Some(byte);
         } else if mixed_byte.is_some() {
             return Err(FrontendJsonError::Unsupported);
         }
@@ -1053,7 +1071,17 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    // A three-byte prefix alone is not an admitted two-byte guest recipe.
+    if third_byte.is_none()
+        && matches!(
+            (selected_byte, mixed_byte),
+            (Some(b'Z'), Some(b'%')) | (Some(b'Y'), Some(b'-'))
+        )
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
     Ok(LiteralOutputNodes {
+        third_byte,
         body,
         byte: selected_byte.ok_or(FrontendJsonError::Unsupported)?,
         calls,
@@ -1093,6 +1121,7 @@ fn canonical_literal_output_typed_ir(
         body,
         byte,
         mixed_byte,
+        third_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -1150,7 +1179,7 @@ fn canonical_literal_output_typed_ir(
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
     let first_argument = calls.first().ok_or(FrontendJsonError::Unsupported)?.1;
-    let mut instructions = Vec::with_capacity(calls.len().saturating_add(2));
+    let mut instructions = Vec::with_capacity(calls.len().saturating_mul(2).saturating_add(1));
     instructions.push(LocatedInstruction::new(
         Instruction::ConstantInteger {
             constant: IntegerConstant::new(8, vec![byte]),
@@ -1172,9 +1201,25 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 2
+            && let Some(third) = third_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![third]),
+                    result: ValueId::new(2),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(u32::from(index == 1 && mixed_byte.is_some())),
+                value: ValueId::new(if index == 2 && third_byte.is_some() {
+                    2
+                } else {
+                    u32::from(index == 1 && mixed_byte.is_some())
+                }),
             },
             typed_span(&call.span),
         ));
@@ -1210,7 +1255,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if mixed_byte.is_some() && byte == 0 {
+    let mode = if third_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralTriple
+    } else if mixed_byte.is_some() && byte == 0 {
         FrontendGuestMode::ZeroThenLiteral
     } else if mixed_byte.is_some() {
         FrontendGuestMode::DistinctLiteralPair

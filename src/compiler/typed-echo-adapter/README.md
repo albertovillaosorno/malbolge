@@ -273,3 +273,12 @@ The distinct-nonzero-literal-pair mode preserves two separate source-bound
 `u8` SSA constants and their output references. Only `Y/`, `Y$`, and `Q.`
 produce a fully independently decoded and guest-verified artifact. Other
 constant pairs and additional effects remain unsupported.
+
+### Three independently verified literal outputs
+
+`compile_canonical_typed_distinct_literal_triple` admits only source-proven
+`Z%H`, `Q.O`, and `Y-P` under the current profile, preserving three different
+`u8` constant SSA definitions, each output use and exact source spans. The
+canonical MCTI/MCTR round trip feeds the separate triple bridge; the
+real VM independently verifies all three writes and exact termination.
+All other triples, stale SSA, foreign profiles and extra effects reject.

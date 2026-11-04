@@ -163,3 +163,16 @@ Two different nonzero constant `putchar` calls now admit only the independently
 witnessed `Y/`, `Y$`, and `Q.` pairs. The Clang JSON adapter preserves exact
 source spans and distinct SSA definitions; unproved byte transitions or more
 than two different outputs still refuse publication.
+
+### Exact three-`putchar` source output traces
+
+Pinned Clang 22.1.8 source evidence now admits three successive constant
+`putchar` outputs only for `Z%H`, `Q.O`, or `Y-P` (including their equivalent
+integer literals). Each source call retains its own argument span, canonical
+`u8` definition and matching output identity. The selected
+`--distinct-literal-triple --typed-stdin` mode is independently checked by
+the layout publisher and the normative guest VM. A two-call prefix such as
+`Z%` does not have an independent two-byte guest witness and is rejected;
+unsupported transitions or any fourth call are also rejected before publish.
+The native source-to-guest proof is
+`tests/test_c2malbolge_distinct_literal_triplet.py`.
