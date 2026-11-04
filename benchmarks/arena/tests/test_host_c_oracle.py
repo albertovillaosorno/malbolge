@@ -2533,6 +2533,81 @@ def test_host_c_rss_temp_creation_fault_is_typed(
     assert type(error.value.__cause__) is fault
 
 
+def test_host_c_child_resource_preflight_uses_source_tool_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An exported tool alias cannot replace prlimit or GNU time."""
+    requested: list[str] = []
+
+    def resolve(name: str) -> str:
+        requested.append(name)
+        return "/usr/bin/registered-tool"
+
+    monkeypatch.setattr(host_c_oracle, "RESOURCE_LIMIT_TOOL", "true")
+    monkeypatch.setattr(host_c_oracle, "RSS_MEASUREMENT_TOOL", "true")
+    monkeypatch.setattr(host_c_oracle, "_system_tool", resolve)
+    host_c_oracle.require_child_resource_controls()
+    assert requested == ["prlimit", "time"]
+
+
+def test_host_c_resource_policy_record_keeps_registered_tool_labels(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A retained source resource record never reflects replaced labels."""
+    monkeypatch.setattr(host_c_oracle, "RESOURCE_LIMIT_TOOL", "true")
+    monkeypatch.setattr(host_c_oracle, "RSS_MEASUREMENT_TOOL", "false")
+    monkeypatch.setattr(host_c_oracle, "LINUX_PLATFORM", "other")
+    record = host_c_oracle.resource_controls_record()
+    assert (record["platform"], record["limiter"], record["rss_tool"]) == (
+        "linux", "prlimit", "time"
+    )
+
+
+def test_host_c_resource_lookup_requires_registered_search_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutable search path cannot select user-owned resource wrappers."""
+    received: list[str | None] = []
+
+    def resolve(_name: str, *, path: str | None = None) -> None:
+        received.append(path)
+        return None
+
+    monkeypatch.setattr(host_c_oracle, "SYSTEM_TOOL_SEARCH_PATH", "/fake")
+    monkeypatch.setattr(host_c_oracle.shutil, "which", resolve)
+    assert host_c_oracle._system_tool("prlimit") is None
+    assert received == [os.defpath]
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux source platform policy")
+def test_host_c_limiter_platform_guard_ignores_rebound_label(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The source Linux gate cannot be disabled by a reporting alias."""
+    monkeypatch.setattr(host_c_oracle, "LINUX_PLATFORM", "not-linux")
+    monkeypatch.setattr(
+        host_c_oracle, "_system_tool", lambda _name: "/usr/bin/prlimit"
+    )
+    assert host_c_oracle._limited_command(["/bin/sh"])[0] == "/usr/bin/prlimit"
+
+
+def test_host_c_group_termination_keeps_original_signal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public alias cannot turn group SIGKILL into a no-op probe."""
+    observed: list[tuple[int, int]] = []
+    pid = os.getpid() + 500_000
+
+    def signal(group: int, number: int) -> None:
+        observed.append((group, number))
+
+    monkeypatch.setattr(host_c_oracle, "GROUP_TERMINATION_SIGNAL", 0)
+    monkeypatch.setattr(host_c_oracle.os, "kill", signal)
+    child = cast("Any", SimpleNamespace(pid=pid))
+    host_c_oracle._kill_child_group(child)
+    assert observed == [(-pid, 9)]
+
+
 def test_host_c_rss_source_byte_cap_rejects_widened_public_policy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

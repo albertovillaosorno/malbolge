@@ -84,6 +84,11 @@ KIB_BYTES = 1024
 _SOURCE_SUBPROCESS_TIMEOUT_SECONDS = SUBPROCESS_TIMEOUT_SECONDS
 _SOURCE_RSS_REPORT_MAX_BYTES = RSS_REPORT_MAX_BYTES
 _SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
+_SOURCE_GROUP_TERMINATION_SIGNAL = GROUP_TERMINATION_SIGNAL
+_SOURCE_LINUX_PLATFORM = LINUX_PLATFORM
+_SOURCE_RESOURCE_LIMIT_TOOL = RESOURCE_LIMIT_TOOL
+_SOURCE_RSS_MEASUREMENT_TOOL = RSS_MEASUREMENT_TOOL
+_SOURCE_SYSTEM_TOOL_SEARCH_PATH = SYSTEM_TOOL_SEARCH_PATH
 _SOURCE_CHILD_VIRTUAL_MEMORY_MIB = CHILD_VIRTUAL_MEMORY_MIB
 _SOURCE_CHILD_CPU_SECONDS = CHILD_CPU_SECONDS
 _SOURCE_CHILD_FILE_BYTES = CHILD_FILE_BYTES
@@ -201,8 +206,8 @@ def resource_controls_record() -> dict[str, str | int]:
     """
     return {
         "schema_version": 2,
-        "platform": LINUX_PLATFORM,
-        "limiter": RESOURCE_LIMIT_TOOL,
+        "platform": _SOURCE_LINUX_PLATFORM,
+        "limiter": _SOURCE_RESOURCE_LIMIT_TOOL,
         "scope": "per-child-inherited-not-aggregate",
         "virtual_address_space_bytes": _SOURCE_CHILD_VIRTUAL_MEMORY_MIB * _SOURCE_MIB_BYTES,
         "cpu_seconds": _SOURCE_CHILD_CPU_SECONDS,
@@ -210,7 +215,7 @@ def resource_controls_record() -> dict[str, str | int]:
         "wall_timeout_seconds": _SOURCE_SUBPROCESS_TIMEOUT_SECONDS,
         "cleanup": "new-session-best-effort-original-process-group",
         "rss_measurement": "gnu-time-per-stage-max-ru_maxrss-kib",
-        "rss_tool": RSS_MEASUREMENT_TOOL,
+        "rss_tool": _SOURCE_RSS_MEASUREMENT_TOOL,
     }
 
 
@@ -221,7 +226,7 @@ def _system_tool(name: str) -> str | None:
     into a child launch with an unverified limiter or RSS measurement utility.
     """
     try:
-        resolved = shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
+        resolved = shutil.which(name, path=_SOURCE_SYSTEM_TOOL_SEARCH_PATH)
     except Exception as error:
         message = f"host-C resource tool lookup failed: {name}"
         raise HostOracleError(message) from error
@@ -254,9 +259,9 @@ def _system_tool(name: str) -> str | None:
 
 
 def _limited_command(command: list[str]) -> list[str]:
-    if sys.platform != LINUX_PLATFORM:
+    if sys.platform != _SOURCE_LINUX_PLATFORM:
         _fail("host-C child resource controls require Linux")
-    utility = _system_tool(RESOURCE_LIMIT_TOOL)
+    utility = _system_tool(_SOURCE_RESOURCE_LIMIT_TOOL)
     if utility is None:
         _fail("host-C child resource controls require util-linux prlimit")
     memory = _SOURCE_CHILD_VIRTUAL_MEMORY_MIB * _SOURCE_MIB_BYTES
@@ -273,7 +278,7 @@ def _limited_command(command: list[str]) -> list[str]:
 def require_child_resource_controls() -> None:
     """Refuse new studies unless the limiter and RSS measurer are present."""
     _ = _limited_command([])
-    if _system_tool(RSS_MEASUREMENT_TOOL) is None:
+    if _system_tool(_SOURCE_RSS_MEASUREMENT_TOOL) is None:
         _fail("host-C child RSS measurement requires GNU time")
 
 
@@ -298,7 +303,7 @@ def _kill_child_group(child: sp.Popen[bytes]) -> None:
     # Only a native ESRCH is evidence of an already-missing group. A foreign
     # subclass can falsely claim absence and must trigger direct-child fallback.
     try:
-        receipt = os.kill(-pid, GROUP_TERMINATION_SIGNAL)
+        receipt = os.kill(-pid, _SOURCE_GROUP_TERMINATION_SIGNAL)
     except ProcessLookupError as error:
         if type(error) is ProcessLookupError:
             return
@@ -480,7 +485,7 @@ def _admit_rss_temporary_receipt(receipt: object, cwd: Path) -> tuple[int, str]:
 
 def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
     limited = _limited_command(command)
-    time_tool = _system_tool(RSS_MEASUREMENT_TOOL)
+    time_tool = _system_tool(_SOURCE_RSS_MEASUREMENT_TOOL)
     if time_tool is None:
         _fail("host-C child RSS measurement requires GNU time")
     try:
