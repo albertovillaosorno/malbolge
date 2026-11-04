@@ -1419,6 +1419,33 @@ def test_foreign_raw_error_subclass_from_csv_parser_is_normalized(
     assert caught.value.__cause__ is fault
 
 
+@pytest.mark.parametrize("variant", ["row", "header"])
+def test_native_csv_parser_rows_cannot_replace_source_csv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    variant: str,
+) -> None:
+    """Exact native CSV rows can still misreport the retained source text."""
+    observation = sample_study(tmp_path)["observations"][0]
+    authentic = _render([observation])
+    original_rows = list(csv.reader(StringIO(authentic.decode("utf-8"))))
+    if variant == "row":
+        changed = copy.deepcopy(observation)
+        changed["metrics"]["elapsed_ns"] += 1
+        raw = _render([changed])
+    else:
+        raw = authentic.replace(b"algorithm,", b"claimed_algorithm,", 1)
+    assert raw != authentic
+
+    def forged_reader(source: StringIO, *, strict: bool) -> Iterator[list[str]]:
+        del source, strict
+        return iter([list(row) for row in original_rows])
+
+    monkeypatch.setattr(raw_samples.csv, "reader", forged_reader)
+    with pytest.raises(raw_samples.RawSampleError, match="source CSV"):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
 def test_raw_csv_native_parser_diagnostic_retained(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -48,6 +48,8 @@ from benchmarks.arena import analyze, csv_admission
 
 # Retain the native source-digest provider across public alias substitutions.
 _NATIVE_SHA256 = sha256
+# A replaced csv.reader must not be the authority for the retained source.
+_SOURCE_CSV_READER = csv.reader
 
 RAW_SCHEMA_VERSION: Final = "1"
 RAW_SCHEMA_VERSION_2: Final = "2"
@@ -172,6 +174,16 @@ def _csv_rows(
         header = next(reader, None)
         version, metrics = _header_schema(header, label)
         rows = _limited_rows(reader, label, expected_rows)
+        # Exact native list[str] rows do not prove that a replaceable parser
+        # actually read the supplied bytes. Reparse the same bounded source
+        # through the import-bound stdlib reader before admitting a match.
+        source_reader = _SOURCE_CSV_READER(StringIO(text, newline=""), strict=True)
+        source_header = next(source_reader, None)
+        if source_header is not None:
+            _require_native_csv_row(source_header, label)
+        source_rows = _limited_rows(source_reader, label, expected_rows)
+        if header != source_header or rows != source_rows:
+            _fail(f"{label}: arena raw CSV parser differs from source CSV")
     except RawSampleError as error:
         # Only our own exact rejection type may cross this boundary unchanged.
         # A foreign parser can raise a subclass with hostile format hooks.
