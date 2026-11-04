@@ -175,7 +175,7 @@ def _native_path_string(path: Path) -> str:
             for name, original in hooks
         )
     ):
-        raise RustEmissionError("Rust transform path hooks changed")
+        raise _NATIVE_RUST_EMISSION_ERROR("Rust transform path hooks changed")
     return _NATIVE_PATH_STR(path)
 
 
@@ -338,10 +338,14 @@ class RustEmissionError(ValueError):
     """Raised when protected metadata cannot be emitted deterministically."""
 
 
+# Native failure handling must not dispatch a later consumer error alias.
+_NATIVE_RUST_EMISSION_ERROR = RustEmissionError
+
+
 def _u64(value: int) -> bytes:
     if value < 0 or value >= (1 << 64):
         message = "Rust transform integer exceeds unsigned 64-bit framing"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     return value.to_bytes(8, byteorder="big")
 
 
@@ -399,7 +403,7 @@ def _rust_character(character: str) -> str:
     scalar = _NATIVE_ORD(character)
     if _SURROGATE_START <= scalar <= _SURROGATE_END:
         message = "Rust transform profile must contain Unicode scalar values"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     if scalar < _PRINTABLE_ASCII_START or scalar > _PRINTABLE_ASCII_END:
         return f"\\u{{{scalar:x}}}"
     return character
@@ -507,7 +511,7 @@ def _runtime_template_text() -> str:
     except (_NATIVE_OS_ERROR, _NATIVE_UNICODE_ERROR) as error:
         reason = _safe_emission_error_detail(error)
         message = f"Rust runtime template read failed: {reason}"
-        raise RustEmissionError(message) from error
+        raise _NATIVE_RUST_EMISSION_ERROR(message) from error
 
 
 def _validate_emission_inputs(
@@ -517,10 +521,10 @@ def _validate_emission_inputs(
         message = (
             "Rust emission plan must use the exact ProtectedExactPlan type"
         )
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     if _NATIVE_TYPE(profile) is not _NATIVE_STR_TYPE or not profile:
         message = "Rust transform profile must use a non-empty exact string"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     _validate_output_path(output_path)
     # A slotted native plan can be allocated without running __init__. Check
     # nested binding, metadata and required slots before reading the template.
@@ -528,7 +532,7 @@ def _validate_emission_inputs(
         _NATIVE_PROTECTED_PLAN_VALIDATOR(plan)
     except (_NATIVE_PROTECTED_PLAN_ERROR, _NATIVE_ATTRIBUTE_ERROR) as error:
         message = "Rust emission requires a valid native protected plan"
-        raise RustEmissionError(message) from error
+        raise _NATIVE_RUST_EMISSION_ERROR(message) from error
 
 
 def _validate_output_path(output_path: object) -> None:
@@ -536,15 +540,15 @@ def _validate_output_path(output_path: object) -> None:
     # Reject it before evaluating its string or filesystem representation.
     if _NATIVE_TYPE(output_path) is not _NATIVE_PATH_TYPE:
         message = "Rust transform output path must use exact pathlib Path"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     if _NUL in _NATIVE_PATH_STRING(output_path):
         message = "Rust transform output path must not contain NUL"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     try:
         _ = _NATIVE_OS_FSENCODE(_NATIVE_PATH_STRING(output_path))
     except (_NATIVE_UNICODE_ERROR, _NATIVE_VALUE_ERROR) as error:
         message = "Rust transform output path is not filesystem-encodable"
-        raise RustEmissionError(message) from error
+        raise _NATIVE_RUST_EMISSION_ERROR(message) from error
 
 
 def emit_rust_transform(
@@ -566,13 +570,13 @@ def emit_rust_transform(
     module_start = template.find("//! ")
     if module_start < 0:
         message = "Rust runtime template lost module summary"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     body_template = template[module_start:]
     start = body_template.find(_BEGIN)
     end = body_template.find(_END)
     if start < 0 or end < start:
         message = "Rust runtime template lost generated-constant markers"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     end += _NATIVE_LEN(_END)
     body = (
         body_template[:start] + _constants(plan, profile) + body_template[end:]
@@ -589,7 +593,7 @@ def _safe_emission_error_detail(error: Exception) -> str:
 
     """
     if (
-        _NATIVE_TYPE(error) is RustEmissionError
+        _NATIVE_TYPE(error) is _NATIVE_RUST_EMISSION_ERROR
         or _NATIVE_TYPE(error) in _NATIVE_EMISSION_ERROR_TYPES
     ):
         # Exact native error classes can acquire late instance accessors.
@@ -621,7 +625,7 @@ def _require_native_output_status(
     """
     if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"Rust output {description} requires native filesystem status"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     return receipt
 
 
@@ -635,14 +639,14 @@ def _output_mode(path: Path, description: str) -> int | None:
     ) as error:
         detail = _safe_emission_error_detail(error)
         message = f"Rust output {description} status failed: {path}: {detail}"
-        raise RustEmissionError(message) from error
+        raise _NATIVE_RUST_EMISSION_ERROR(message) from error
     return _require_native_output_status(receipt, description).st_mode
 
 
 def _output_redirects(path: Path, mode: int) -> bool:
     if os.path.isjunction is not _NATIVE_OS_PATH_ISJUNCTION:
         message = "Rust output junction hooks changed"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     try:
         if S_ISLNK(mode):
             return True
@@ -652,10 +656,10 @@ def _output_redirects(path: Path, mode: int) -> bool:
     ) as error:
         detail = _safe_emission_error_detail(error)
         message = f"Rust output junction status failed: {path}: {detail}"
-        raise RustEmissionError(message) from error
+        raise _NATIVE_RUST_EMISSION_ERROR(message) from error
     if _NATIVE_TYPE(junction) is not _NATIVE_BOOL_TYPE:
         message = "Rust output junction status requires native boolean"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     return junction
 
 
@@ -667,7 +671,7 @@ def _validate_output_leaf(output_path: Path) -> None:
         message = (
             f"Rust output path must be a regular non-linked file: {output_path}"
         )
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
 
 
 def _validate_output_parent(path: Path, mode: int | None) -> None:
@@ -675,10 +679,10 @@ def _validate_output_parent(path: Path, mode: int | None) -> None:
         return
     if _output_redirects(path, mode):
         message = f"Rust output parent must not be linked: {path}"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     if not S_ISDIR(mode):
         message = f"Rust output parent must be a directory: {path}"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
 
 
 def _validate_output_parent_chain(parent: Path) -> None:
@@ -704,7 +708,7 @@ def _prepare_output_path(output_path: Path) -> Path:
             "Rust output parent creation failed: "
             f"{parent}: {_safe_emission_error_detail(error)}"
         )
-        raise RustEmissionError(message) from error
+        raise _NATIVE_RUST_EMISSION_ERROR(message) from error
     _validate_output_parent_chain(parent)
     return output_path
 
@@ -720,7 +724,7 @@ def _temporary_output_path(output_path: Path) -> Path:
     _require_native_host_realpath()
     if _NATIVE_TYPE(temporary) is not _NATIVE_PATH_TYPE:
         message = "Rust temporary output requires native Path"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     _ = _NATIVE_PATH_STRING(temporary)
     return temporary
 
@@ -769,7 +773,7 @@ def _raise_publication_error(
     message = f"Rust transform publication failed: {detail}"
     if cleanup_error is not None:
         message = f"{message}; temporary cleanup failed: {cleanup_error}"
-    raise RustEmissionError(message) from error
+    raise _NATIVE_RUST_EMISSION_ERROR(message) from error
 
 
 def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
@@ -784,10 +788,10 @@ def _verify_rust_source_bytes(path: Path, expected: bytes, phase: str) -> None:
     except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _safe_emission_error_detail(error)
         message = f"{phase} Rust source verification failed: {detail}"
-        raise RustEmissionError(message) from error
+        raise _NATIVE_RUST_EMISSION_ERROR(message) from error
     if actual != expected:
         message = f"{phase} Rust source differs from rendered bytes: {path}"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
 
 
 def _require_native_host_realpath() -> None:
@@ -820,7 +824,7 @@ def _require_native_host_realpath() -> None:
         )
     ):
         message = "Rust output path resolution hooks changed"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
 
 
 def _require_output_not_runtime_template(output_path: Path) -> None:
@@ -839,17 +843,17 @@ def _require_output_not_runtime_template(output_path: Path) -> None:
         _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
     ) as error:
         message = "Rust output path resolution failed"
-        raise RustEmissionError(message) from error
+        raise _NATIVE_RUST_EMISSION_ERROR(message) from error
     _require_native_host_realpath()
     if (
         _NATIVE_TYPE(output) is not _NATIVE_PATH_TYPE
         or _NATIVE_TYPE(template) is not _NATIVE_PATH_TYPE
     ):
         message = "Rust output path resolution requires native Path"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
     if _NATIVE_PATH_STRING(output) == _NATIVE_PATH_STRING(template):
         message = "Rust output must not overwrite its runtime template"
-        raise RustEmissionError(message)
+        raise _NATIVE_RUST_EMISSION_ERROR(message)
 
 
 def write_rust_transform(
@@ -887,17 +891,17 @@ def write_rust_transform(
             )
         ):
             message = "published Rust source returned an invalid rename receipt"
-            raise RustEmissionError(message)
+            raise _NATIVE_RUST_EMISSION_ERROR(message)
         if _output_mode(temporary, "temporary") is not None:
             message = "published Rust source left the temporary file in place"
-            raise RustEmissionError(message)
+            raise _NATIVE_RUST_EMISSION_ERROR(message)
         _verify_rust_source_bytes(prepared_output, expected, "published")
-    except RustEmissionError as error:
+    except _NATIVE_RUST_EMISSION_ERROR as error:
         cleanup_error = _cleanup_owned_temporary(temporary)
         if cleanup_error is not None:
             detail = _safe_emission_error_detail(error)
             message = f"{detail}; temporary cleanup failed: {cleanup_error}"
-            raise RustEmissionError(message) from error
+            raise _NATIVE_RUST_EMISSION_ERROR(message) from error
         raise
     except (
         _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR

@@ -3384,3 +3384,84 @@ def test_emitter_catches_original_exact_error_after_import_alias_swap(
                 Path("stage.rs"), b"expected", "staged"
             )
     assert caught.value.__cause__ is failure
+
+
+_NATIVE_EMIT_U64 = cast("Callable[[int], bytes]", vars(emit_rust_module)["_u64"])
+_NATIVE_EMIT_RUST_CHARACTER = cast(
+    "Callable[[str], str]", vars(emit_rust_module)["_rust_character"]
+)
+_NATIVE_EMIT_SAFE_DETAIL = cast(
+    "Callable[[Exception], str]", vars(emit_rust_module)["_safe_emission_error_detail"]
+)
+
+
+@pytest.mark.parametrize(
+    ("operation", "message"),
+    [
+        (lambda: _NATIVE_EMIT_U64(-1), "unsigned 64-bit framing"),
+        (
+            lambda: _NATIVE_EMIT_RUST_CHARACTER("\ud800"),
+            "Unicode scalar values",
+        ),
+    ],
+)
+def test_emitter_native_rejections_ignore_public_error_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    operation: Callable[[], object],
+    message: str,
+) -> None:
+    """Native emission rejection cannot dispatch a consumer error callback."""
+    calls = 0
+
+    def replaced(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign callback: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "RustEmissionError", replaced)
+        with pytest.raises(RustEmissionError, match=message):
+            _ = operation()
+    assert calls == 0
+
+
+def test_emitter_error_detail_retains_native_class_after_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Original emission errors keep safe text after a public name swap."""
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "RustEmissionError", RuntimeError)
+        detail = _NATIVE_EMIT_SAFE_DETAIL(RustEmissionError("safe native reason"))
+    assert detail == "safe native reason"
+
+
+def test_emitter_cleanup_rejects_with_native_class_after_public_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed publication cleanup keeps its original typed error chain."""
+    _, _, _, protected = _fixture(tmp_path)
+    failure = RustEmissionError("native staging denied")
+    calls = 0
+
+    def replaced(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign callback: {detail}")
+
+    def fail_verify(_path: Path, _expected: bytes, _phase: str) -> None:
+        raise failure
+
+    def fail_cleanup(_path: Path) -> str:
+        return "denied"
+
+    with monkeypatch.context() as patched:
+        patched.setattr(emit_rust_module, "_verify_rust_source_bytes", fail_verify)
+        patched.setattr(emit_rust_module, "_cleanup_owned_temporary", fail_cleanup)
+        patched.setattr(emit_rust_module, "RustEmissionError", replaced)
+        with pytest.raises(
+            RustEmissionError, match="temporary cleanup failed"
+        ) as caught:
+            write_rust_transform(protected, _PROFILE, tmp_path / "output.rs")
+    assert caught.value.__cause__ is failure
+    assert calls == 0
