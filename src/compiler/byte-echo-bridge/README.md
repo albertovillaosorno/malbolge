@@ -536,3 +536,12 @@ The eleven-byte C witness is separately admitted as an exact source-bound
 produce 11 distinct bytes in 24 VM steps; the normative VM verifies
 raw and capsule outputs without host computation substitution. This
 finite trace is not general C byte-stream lowering.
+
+The `--distinct-literal-twelve` C path admits the exact twelve-byte
+`51 37 34 38 fb ce 9f 98 b8 b4 83 cd` witness. One reached no-op,
+explicit relocation, eleven disjoint `CrazyData` writes and one
+`RotateData` write at the fifth arithmetic position emit twelve guest
+bytes in 27 VM steps. The normative VM independently verifies both
+source-bound outputs and input independence before publication. Other
+byte sequences, incomplete prefixes, and forged SSA are not admitted;
+this is not general binary-stream lowering.

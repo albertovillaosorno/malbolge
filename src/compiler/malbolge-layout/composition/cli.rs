@@ -45,10 +45,10 @@ use crate::bridge::{
     encode_distinct_literal_eight, encode_distinct_literal_eleven, encode_distinct_literal_nine,
     encode_distinct_literal_pair, encode_distinct_literal_quad, encode_distinct_literal_quint,
     encode_distinct_literal_seven, encode_distinct_literal_six, encode_distinct_literal_ten,
-    encode_distinct_literal_triple, encode_empty_void_function, encode_initial_zero_outputs,
-    encode_latest_byte_identity_trace, encode_rotated_byte_literal, encode_successful_byte_echo,
-    encode_successful_latest_byte_trace, encode_zero_prefixed_latest_byte_trace,
-    encode_zero_then_literal,
+    encode_distinct_literal_triple, encode_distinct_literal_twelve, encode_empty_void_function,
+    encode_initial_zero_outputs, encode_latest_byte_identity_trace, encode_rotated_byte_literal,
+    encode_successful_byte_echo, encode_successful_latest_byte_trace,
+    encode_zero_prefixed_latest_byte_trace, encode_zero_then_literal,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
@@ -61,7 +61,8 @@ use crate::typed_adapter::{
     compile_canonical_typed_distinct_literal_pair, compile_canonical_typed_distinct_literal_quad,
     compile_canonical_typed_distinct_literal_quint, compile_canonical_typed_distinct_literal_seven,
     compile_canonical_typed_distinct_literal_six, compile_canonical_typed_distinct_literal_ten,
-    compile_canonical_typed_distinct_literal_triple, compile_canonical_typed_echo,
+    compile_canonical_typed_distinct_literal_triple,
+    compile_canonical_typed_distinct_literal_twelve, compile_canonical_typed_echo,
     compile_canonical_typed_empty_void, compile_canonical_typed_identity_byte_trace,
     compile_canonical_typed_initial_zero_outputs, compile_canonical_typed_latest_byte_trace,
     compile_canonical_typed_rotated_byte_literal,
@@ -92,6 +93,7 @@ const DISTINCT_LITERAL_EIGHT_ARG: &str = "--distinct-literal-eight";
 const DISTINCT_LITERAL_NINE_ARG: &str = "--distinct-literal-nine";
 const DISTINCT_LITERAL_TEN_ARG: &str = "--distinct-literal-ten";
 const DISTINCT_LITERAL_ELEVEN_ARG: &str = "--distinct-literal-eleven";
+const DISTINCT_LITERAL_TWELVE_ARG: &str = "--distinct-literal-twelve";
 const EMPTY_VOID_ARG: &str = "--empty-void";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
@@ -136,6 +138,7 @@ enum ByteTraceMode {
     DistinctLiteralNine,
     DistinctLiteralTen,
     DistinctLiteralEleven,
+    DistinctLiteralTwelve,
     EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
@@ -163,6 +166,7 @@ enum SourceEffectWitness {
     DistinctLiteralNine { bytes: [u8; 9] },
     DistinctLiteralTen { bytes: [u8; 10] },
     DistinctLiteralEleven { bytes: [u8; 11] },
+    DistinctLiteralTwelve { bytes: [u8; 12] },
     EmptyVoid,
     InitialZero { outputs: usize },
     RotatedLiteral { byte: u8, outputs: usize },
@@ -262,6 +266,7 @@ fn parse_canonical_source(
         || first == OsStr::new(DISTINCT_LITERAL_NINE_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_TEN_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_ELEVEN_ARG)
+        || first == OsStr::new(DISTINCT_LITERAL_TWELVE_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
     {
         let mode = if first == OsStr::new(EMPTY_VOID_ARG) {
@@ -288,6 +293,8 @@ fn parse_canonical_source(
             ByteTraceMode::DistinctLiteralEight
         } else if first == OsStr::new(DISTINCT_LITERAL_NINE_ARG) {
             ByteTraceMode::DistinctLiteralNine
+        } else if first == OsStr::new(DISTINCT_LITERAL_TWELVE_ARG) {
+            ByteTraceMode::DistinctLiteralTwelve
         } else if first == OsStr::new(DISTINCT_LITERAL_ELEVEN_ARG) {
             ByteTraceMode::DistinctLiteralEleven
         } else if first == OsStr::new(DISTINCT_LITERAL_TEN_ARG) {
@@ -366,6 +373,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(DISTINCT_LITERAL_NINE_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_TEN_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_ELEVEN_ARG)
+        || first == OsStr::new(DISTINCT_LITERAL_TWELVE_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
     {
         return parse_canonical_source(first, arguments);
@@ -1026,6 +1034,7 @@ fn verified_ternary_bytes(
         ByteTraceMode::DistinctLiteralNine => encode_distinct_literal_nine(&program, profile),
         ByteTraceMode::DistinctLiteralTen => encode_distinct_literal_ten(&program, profile),
         ByteTraceMode::DistinctLiteralEleven => encode_distinct_literal_eleven(&program, profile),
+        ByteTraceMode::DistinctLiteralTwelve => encode_distinct_literal_twelve(&program, profile),
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
     if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
@@ -1276,6 +1285,29 @@ fn verified_ternary_bytes(
             bytes[index] = scalar.bits();
         }
         Some(SourceEffectWitness::DistinctLiteralEleven { bytes })
+    } else if matches!(mode, ByteTraceMode::DistinctLiteralTwelve) {
+        let (pairs, remainder) = operations.as_chunks::<2>();
+        let [TernaryOperation::ReturnVoid { .. }] = remainder else {
+            return Err(String::from("missing distinct-literal-twelve return"));
+        };
+        if pairs.len() != 12 {
+            return Err(String::from("missing distinct-literal-twelve effects"));
+        }
+        let mut bytes = [0; 12];
+        for (index, [constant, output]) in pairs.iter().enumerate() {
+            let (
+                TernaryOperation::MaterializeU8 { result, scalar, .. },
+                TernaryOperation::ByteOutput { value, .. },
+            ) = (constant, output)
+            else {
+                return Err(String::from("missing distinct-literal-twelve effects"));
+            };
+            if result != value {
+                return Err(String::from("distinct-literal-twelve SSA mismatch"));
+            }
+            bytes[index] = scalar.bits();
+        }
+        Some(SourceEffectWitness::DistinctLiteralTwelve { bytes })
     } else if matches!(mode, ByteTraceMode::InitialZero) {
         Some(SourceEffectWitness::InitialZero {
             outputs: operations
@@ -1367,6 +1399,9 @@ fn verified_typed_bytes(
         }
         ByteTraceMode::DistinctLiteralEleven => {
             compile_canonical_typed_distinct_literal_eleven(typed_bytes, profile)
+        }
+        ByteTraceMode::DistinctLiteralTwelve => {
+            compile_canonical_typed_distinct_literal_twelve(typed_bytes, profile)
         }
     }
     .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
@@ -1818,6 +1853,29 @@ fn verify_distinct_literal_eleven(
     Ok(())
 }
 
+// Reopen the twelve-source-byte claim under the normative profile VM.
+fn verify_distinct_literal_twelve(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    bytes: [u8; 12],
+) -> Result<(), String> {
+    if bytes != *b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd" || artifact.steps != 27 {
+        return Err(String::from("distinct-literal twelve has no guest witness"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
+            .map_err(|error| format!("distinct-literal twelve load: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output() != bytes
+        {
+            return Err(String::from("distinct-literal twelve output disagrees"));
+        }
+    }
+    Ok(())
+}
+
 // Independently re-execute the four-source-byte candidate before publication.
 fn verify_distinct_literal_quad(
     profile: &'static malbolge::ProfileDescriptor,
@@ -1897,6 +1955,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         }
         Some(SourceEffectWitness::DistinctLiteralEleven { bytes }) => {
             verify_distinct_literal_eleven(profile, &artifact, *bytes)?;
+        }
+        Some(SourceEffectWitness::DistinctLiteralTwelve { bytes }) => {
+            verify_distinct_literal_twelve(profile, &artifact, *bytes)?;
         }
         None => {}
     }
