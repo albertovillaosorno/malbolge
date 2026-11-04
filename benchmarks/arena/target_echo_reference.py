@@ -230,15 +230,15 @@ def _admit_child_result(
 
     """
     if (
-        type(result) is not _SOURCE_COMPLETED_PROCESS
-        or type(result.returncode) is not int
-        or type(result.stdout) is not bytes
-        or type(result.stderr) is not bytes
+        _SOURCE_TYPE(result) is not _SOURCE_COMPLETED_PROCESS
+        or _SOURCE_TYPE(result.returncode) is not int
+        or _SOURCE_TYPE(result.stdout) is not bytes
+        or _SOURCE_TYPE(result.stderr) is not bytes
     ):
         _fail("target echo requires native child result receipts")
     if (
-        type(result.args) is not list
-        or any(type(argument) is not str for argument in result.args)
+        _SOURCE_TYPE(result.args) is not list
+        or any(_SOURCE_TYPE(argument) is not str for argument in result.args)
     ):
         _fail("target echo child result does not match launched command")
     actual = tuple(result.args)
@@ -493,16 +493,16 @@ def _commit() -> str:
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if git is None:
         _fail("target echo reference requires Git")
-    if type(git) is not str or not git or "\0" in git or not Path(git).is_absolute():
+    if _SOURCE_TYPE(git) is not str or not git or "\0" in git or not Path(git).is_absolute():
         _fail("target echo source revision has invalid Git executable path")
     try:
         _ = os.fsencode(git)
         details = Path(git).lstat()
-        if type(details) is not _SOURCE_STAT_RESULT:
+        if _SOURCE_TYPE(details) is not _SOURCE_STAT_RESULT:
             _fail("target echo source revision Git executable invalid metadata")
         mode = details.st_mode
         executable = os.access(git, os.X_OK)
-        if type(executable) is not bool:
+        if _SOURCE_TYPE(executable) is not bool:
             _fail("target echo source revision Git executable invalid access")
     except _SOURCE_TARGET_ECHO_STUDY_ERROR:
         raise
@@ -515,7 +515,7 @@ def _commit() -> str:
     try:
         clean_env: dict[str, str] = {}
         for name, value in os.environ.items():
-            if type(name) is not str or type(value) is not str:
+            if _SOURCE_TYPE(name) is not str or _SOURCE_TYPE(value) is not str:
                 _fail("target echo Git environment requires native strings")
             if not name.startswith("GIT_"):
                 clean_env[name] = value
@@ -542,15 +542,15 @@ def _commit() -> str:
         message = "target echo reference cannot bind source revision"
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
-        type(output) is not _SOURCE_COMPLETED_PROCESS
-        or type(output.args) is not list
+        _SOURCE_TYPE(output) is not _SOURCE_COMPLETED_PROCESS
+        or _SOURCE_TYPE(output.args) is not list
         or output.args is not prepared
-        or any(type(argument) is not str for argument in output.args)
+        or any(_SOURCE_TYPE(argument) is not str for argument in output.args)
         or output.args != command
-        or type(output.returncode) is not int
+        or _SOURCE_TYPE(output.returncode) is not int
         or output.returncode != 0
-        or type(output.stdout) is not str
-        or type(output.stderr) is not str
+        or _SOURCE_TYPE(output.stdout) is not str
+        or _SOURCE_TYPE(output.stderr) is not str
         or output.stderr != ""
     ):
         _fail("target echo reference has invalid Git revision receipt")

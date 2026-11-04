@@ -4851,3 +4851,78 @@ def test_target_git_completion_uses_original_native_class_after_alias_change(
                 target_echo_reference._commit()
         else:
             assert target_echo_reference._commit() == "a" * 40
+
+
+@pytest.mark.parametrize("provider", ["forged-container", "native-container"])
+def test_target_child_receipt_never_uses_mutable_type_provider(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """A substituted local type() cannot define a process receipt class."""
+    command = ["/native/emitter", "--fixed"]
+    native = sp.CompletedProcess(command, 0, b"exact stdout", b"")
+    foreign = _ForgedNativeCompletion(command, 0, b"exact stdout", b"")
+    value: object = foreign if provider == "forged-container" else native
+    original_type = type
+
+    def forged_type(item: object) -> type[object]:
+        if item is value:
+            return (
+                original_type(native)
+                if provider == "forged-container"
+                else original_type(foreign)
+            )
+        return original_type(item)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "type", forged_type, raising=False)
+        if provider == "forged-container":
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError, match="native child result"
+            ):
+                target_echo_reference._admit_child_result(
+                    cast("sp.CompletedProcess[bytes]", value), command=command
+                )
+        else:
+            assert target_echo_reference._admit_child_result(
+                native, command=command
+            ) is native
+
+
+@pytest.mark.parametrize("provider", ["forged-container", "native-container"])
+def test_target_git_receipt_never_uses_mutable_type_provider(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Git's returned process type requires the real native type() receipt."""
+    original_type = type
+    original_completed_process = sp.CompletedProcess
+    actual: object | None = None
+
+    def patched_run(command: list[str], **_kwargs: object) -> object:
+        nonlocal actual
+        actual = (
+            _ForgedNativeCompletion(command, 0, "a" * 40 + "\n", "")
+            if provider == "forged-container"
+            else original_completed_process(command, 0, "a" * 40 + "\n", "")
+        )
+        return actual
+
+    def forged_type(item: object) -> type[object]:
+        if actual is not None and item is actual:
+            return (
+                original_completed_process
+                if provider == "forged-container"
+                else _ForgedNativeCompletion
+            )
+        return original_type(item)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference.sp, "run", patched_run)
+        patched.setattr(target_echo_reference, "type", forged_type, raising=False)
+        if provider == "forged-container":
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError,
+                match="invalid Git revision receipt",
+            ):
+                target_echo_reference._commit()
+        else:
+            assert target_echo_reference._commit() == "a" * 40
