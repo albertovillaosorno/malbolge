@@ -2179,3 +2179,82 @@ def test_domain_loader_keeps_native_record_after_module_side_effect(
         observed = load_diff_domain(module)
     assert type(observed) is native_type
     assert observed.build_identity_tree(tmp_path) is None
+
+
+@pytest.mark.parametrize(
+    ("route", "message"),
+    [
+        ("foreign", "module path must use exact pathlib Path"),
+        ("missing", "module is not a regular file"),
+        ("nul", "module path must not contain NUL"),
+        ("status", "requires native filesystem status"),
+        ("hook", "module requires callable"),
+        ("junction", "junction status requires native boolean"),
+        ("resolved", "module resolution requires native Path"),
+    ],
+)
+def test_domain_native_rejections_ignore_public_error_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    message: str,
+) -> None:
+    """A substituted public rejection name never runs a consumer callback."""
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign domain callback: {detail}")
+
+    with monkeypatch.context() as patched:
+        if route == "junction":
+            patched.setattr(domain_module, "_NATIVE_PATH_IS_JUNCTION", lambda _: 0)
+        elif route == "resolved":
+            patched.setattr(
+                domain_module,
+                "_NATIVE_PATH_RESOLVE",
+                lambda *_args, **_kwargs: object(),
+            )
+        patched.setattr(domain_module, "DomainContractError", foreign_error)
+        with pytest.raises(DomainContractError, match=message):
+            if route == "foreign":
+                _ = load_diff_domain(cast("Path", cast("object", "foreign.py")))
+            elif route == "missing":
+                _ = load_diff_domain(tmp_path / "missing.py")
+            elif route == "nul":
+                domain_module._require_module_path_without_nul(
+                    tmp_path / "bad\x00.py"
+                )
+            elif route == "status":
+                _ = domain_module._require_native_module_status(object(), "module")
+            elif route == "hook":
+                _ = domain_module._callable(ModuleType("missing"), "probe")
+            elif route == "junction":
+                _ = domain_module._module_is_junction(tmp_path)
+            elif route == "resolved":
+                _ = domain_module._resolved_native_module_path(
+                    tmp_path / "source.py"
+                )
+    assert calls == 0, f"{route} invoked a foreign domain error factory"
+
+
+def test_domain_consumer_cannot_rebind_native_error_during_import(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Rejected consumer exports retain the original error and rollback."""
+    module = tmp_path / "foreign_error_alias.py"
+    _write(
+        module,
+        _COMPLETE
+        + "\nimport algorithms.diff.domain as host\n"
+        + "host.DomainContractError = lambda _: RuntimeError('foreign alias')\n"
+        + "build_behavior_programs = None\n",
+    )
+    name = domain_module._module_name(module.resolve())
+    original_registration = sys.modules.get(name)
+    with monkeypatch.context() as patched:
+        patched.setattr(domain_module, "DomainContractError", DomainContractError)
+        with pytest.raises(DomainContractError, match="requires callable"):
+            _ = load_diff_domain(module)
+    assert sys.modules.get(name) is original_registration

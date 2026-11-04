@@ -182,14 +182,14 @@ def _require_native_path_hooks() -> None:
         or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
     ):
         message = "diff domain module path helpers changed"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     if _NATIVE_ANY(
         cls.__dict__.get(name) is not original
         for cls, hooks in _NATIVE_PATH_HOOKS
         for name, original in hooks
     ):
         message = "diff domain module path hooks changed"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
 
 
 def _native_path_parent(path: Path) -> Path:
@@ -215,7 +215,7 @@ def _native_path_resolve(path: Path, *, strict: bool = False) -> Path:
         or os.path.join is not _NATIVE_OS_PATH_JOIN
     ):
         message = "diff domain module resolution requires native path helpers"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     return Path(_NATIVE_OS_REALPATH(_NATIVE_PATH_STRING(path), strict=strict))
 
 
@@ -230,6 +230,10 @@ _NATIVE_PATH_IS_JUNCTION = _native_path_is_junction
 
 class DomainContractError(ValueError):
     """Invalid diff consumer-module contract."""
+
+
+# Retain original loader rejection type across consumer module execution.
+_NATIVE_DOMAIN_CONTRACT_ERROR = DomainContractError
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -280,7 +284,7 @@ class DiffDomain:
         for name, slot in _DIFF_DOMAIN_HOOK_SLOTS:
             if not _NATIVE_CALLABLE(slot.__get__(self, _NATIVE_DIFF_DOMAIN)):
                 message = f"diff domain hook must be callable: {name}"
-                raise DomainContractError(message)
+                raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
 
 
 # A consumer module can rebind the public DiffDomain name during execution.
@@ -338,7 +342,7 @@ def _module_name(path: Path) -> str:
 def _require_module_path_without_nul(path: Path) -> None:
     if _NUL in _NATIVE_PATH_STRING(path):
         message = "diff domain module path must not contain NUL"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
 
 
 def _module_is_junction(path: Path) -> bool:
@@ -349,10 +353,10 @@ def _module_is_junction(path: Path) -> bool:
             "diff domain module junction status failed: "
             f"{_NATIVE_PATH_STRING(path)!r}"
         )
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     if _NATIVE_TYPE(verdict) is not _NATIVE_BOOL_TYPE:
         message = "diff domain module junction status requires native boolean"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     return verdict
 
 
@@ -370,7 +374,7 @@ def _require_native_module_status(
     """
     if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"diff domain {description} requires native filesystem status"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     return receipt
 
 
@@ -386,14 +390,14 @@ def _reject_linked_module_ancestors(path: Path) -> None:
                 "diff domain module parent status failed: "
                 f"{_NATIVE_PATH_STRING(current)!r}"
             )
-            raise DomainContractError(message) from error
+            raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
         receipt = _require_native_module_status(receipt, "parent")
         if S_ISLNK(receipt.st_mode) or _module_is_junction(current):
             message = (
                 "diff domain module has a linked parent: "
                 f"{_NATIVE_PATH_STRING(current)!r}"
             )
-            raise DomainContractError(message)
+            raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
         current = _native_path_parent(current)
 
 
@@ -413,10 +417,10 @@ def _resolved_native_module_path(
         resolved = _NATIVE_PATH_RESOLVE(path, strict=True)
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"diff domain module resolution failed: {_NATIVE_PATH_STRING(path)!r}"
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     if _NATIVE_TYPE(resolved) is not _NATIVE_PATH_TYPE:
         message = "diff domain module resolution requires native Path"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     # os.path.realpath itself consults mutable os.fspath. A late consumer
     # hook can redirect a path even though the outer function is pinned.
     # Require the resolved module to be the same physical file admitted above.
@@ -431,14 +435,14 @@ def _resolved_native_module_path(
         )
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = "diff domain module resolution status failed"
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     if (
         original.st_dev != resolved_status.st_dev
         or original.st_ino != resolved_status.st_ino
         or not S_ISREG(resolved_status.st_mode)
     ):
         message = "diff domain module resolution changed file identity"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     return resolved
 
 
@@ -451,10 +455,10 @@ def _regular_module_path(path: Path) -> Path:
             "diff domain module is not a regular file: "
             f"{_NATIVE_PATH_STRING(path)}"
         )
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
         message = f"diff domain module status failed: {_NATIVE_PATH_STRING(path)!r}"
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     receipt = _require_native_module_status(receipt, "module")
     if (
         S_ISLNK(receipt.st_mode)
@@ -465,7 +469,7 @@ def _regular_module_path(path: Path) -> Path:
             "diff domain module is not a regular file: "
             f"{_NATIVE_PATH_STRING(path)}"
         )
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     _reject_linked_module_ancestors(path)
     return _resolved_native_module_path(path, receipt)
 
@@ -497,7 +501,7 @@ def _prepare_module(
         or importlib.util.module_from_spec is not _NATIVE_IMPORT_MODULE
     ):
         message = "diff domain import preparation failed: native import hooks changed"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     if (
         bootstrap_external.SourceFileLoader is not _NATIVE_BOOTSTRAP_SOURCE_LOADER
         or _NATIVE_GETATTR(bootstrap_external, "_get_supported_file_loaders")
@@ -506,7 +510,7 @@ def _prepare_module(
         is not _NATIVE_SOURCE_LOADER_NEW
     ):
         message = "diff domain import preparation failed: native loader factories changed"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     if (
         importlib.machinery.SourceFileLoader.exec_module
         is not _NATIVE_SOURCE_LOADER_EXEC
@@ -526,7 +530,7 @@ def _prepare_module(
         is not _NATIVE_SOURCE_LOADER_PATH_STATS
     ):
         message = "diff domain module execution reported non-native completion"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     try:
         spec = _NATIVE_IMPORT_SPEC(name, _NATIVE_PATH_STRING(resolved))
         loader = spec.loader if spec is not None else None
@@ -535,10 +539,10 @@ def _prepare_module(
             "diff domain import preparation failed: "
             f"{_NATIVE_PATH_STRING(resolved)}"
         )
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     if spec is None or loader is None:
         message = f"cannot load diff domain module: {_NATIVE_PATH_STRING(resolved)}"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     try:
         module = _NATIVE_IMPORT_MODULE(spec)
     except _NATIVE_EXCEPTION as error:
@@ -546,7 +550,7 @@ def _prepare_module(
             "diff domain import preparation failed: "
             f"{_NATIVE_PATH_STRING(resolved)}"
         )
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     return module, loader.exec_module
 
 
@@ -564,10 +568,10 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None, str]:
             "diff domain module execution failed: "
             f"{_NATIVE_PATH_STRING(resolved)}"
         )
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     try:
         _require_native_path_hooks()
-    except DomainContractError:
+    except _NATIVE_DOMAIN_CONTRACT_ERROR:
         _restore_domain_registration(name, previous)
         raise
     if completion is not None:
@@ -576,11 +580,11 @@ def _load_module(path: Path) -> tuple[ModuleType, ModuleType | None, str]:
             "diff domain module execution reported non-native completion: "
             f"{_NATIVE_PATH_STRING(resolved)}"
         )
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     if sys.modules.get(name) is not module:
         _restore_domain_registration(name, previous)
         message = "diff domain module registration changed during execution"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     return module, previous, name
 
 
@@ -589,10 +593,10 @@ def _callable(module: ModuleType, name: str) -> Callable[..., object]:
         value = _NATIVE_GETATTR(module, name, None)
     except _NATIVE_EXCEPTION as error:
         message = f"diff domain hook lookup failed for {name!r}"
-        raise DomainContractError(message) from error
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message) from error
     if not _NATIVE_CALLABLE(value):
         message = f"diff domain module requires callable {name!r}"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     return value
 
 
@@ -609,7 +613,7 @@ def load_diff_domain(path: object) -> DiffDomain:
     # Loading a module executes code; never admit overridable Path methods.
     if _NATIVE_TYPE(path) is not _NATIVE_PATH_TYPE:
         message = "diff domain module path must use exact pathlib Path"
-        raise DomainContractError(message)
+        raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     _require_native_path_hooks()
     module, previous, name = _load_module(path)
     try:
@@ -619,7 +623,7 @@ def load_diff_domain(path: object) -> DiffDomain:
             message = (
                 "diff domain module registration changed during validation"
             )
-            raise DomainContractError(message)
+            raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
         return domain
     except _NATIVE_EXCEPTION:
         _restore_domain_registration(name, previous)
