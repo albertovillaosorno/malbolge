@@ -107,10 +107,13 @@ shortcut, not an automatic production compiler installation.
 In explicit-tool mode all three executables are caller-trusted capabilities.
 This is a
 bounded integration entrypoint, **not** the finished turnkey installer or
-arbitrary C compiler. It currently accepts only the normalized Clang shape
-supported by the JSON adapter (one no-effect `void` function with optional
-null statements (`;`) and optional final `return;`), and does not implement C
-process-return ABI or guest libc.
+arbitrary C compiler. It currently accepts only the exact normalized Clang shapes admitted by
+the JSON adapter: effect-free void functions (including nested scopes,
+standalone `0;` and `(void)0;`), plus the single successful
+`putchar(0); return;` statement in a void function. In the output case the
+independent Malbolge VM emits one actual `0x00` byte. Other byte values,
+multiple calls, the general C process-return ABI and guest libc remain
+unsupported, rather than silently dropping effects.
 The pinned Clang frontend is required for real source compilation; its
 absence cannot be replaced by synthetic JSON test evidence. The three source
 digest reads constrain a specific invocation, not a persistent filesystem

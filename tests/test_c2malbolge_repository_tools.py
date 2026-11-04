@@ -154,6 +154,47 @@ class RepositoryToolCompilerTests(unittest.TestCase):
             self.assertIn(b"no-clobber", repeat.stderr)
             self.assertEqual(target.read_bytes(), original_artifact)
 
+    def test_native_zero_output_emits_real_nul_and_nonzero_is_rejected(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            directory = Path(temporary)
+            good = directory / "emit.c"
+            target = directory / "emit.malbolge"
+            _ = good.write_bytes(
+                b"#include <stdio.h>\nvoid emit(void) { putchar(0); return; }\n"
+            )
+            compiled = subprocess.run(
+                self._command(good, target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(vm), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"\x00")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
+
+            bad = directory / "not-supported.c"
+            rejected_target = directory / "not-supported.malbolge"
+            _ = bad.write_bytes(
+                b"#include <stdio.h>\nvoid emit(void) { putchar(1); return; }\n"
+            )
+            rejected = subprocess.run(
+                self._command(bad, rejected_target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn(b"normalized frontend rejected", rejected.stderr)
+            self.assertFalse(rejected_target.exists())
+
 
 if __name__ == "__main__":
     _ = unittest.main()
