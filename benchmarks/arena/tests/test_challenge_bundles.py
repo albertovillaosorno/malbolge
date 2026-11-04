@@ -52,7 +52,7 @@ from benchmarks.arena.tests.test_evidence import sample_study
 from benchmarks.challenges import generate
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Sized
+    from collections.abc import Iterable, Iterator, Sized
     from pathlib import Path
     from typing import Any
 
@@ -1473,3 +1473,103 @@ def test_challenge_bounds_reject_length_substitution(
             challenge_bundles._bounded_case(case)
         else:
             challenge_bundles._admit_files(files)
+
+
+class _SourceTypeForgedMapping(dict[str, object]):  # ruff: ignore[subclass-builtin]
+    """A mapping subclass whose iteration is untrusted executable code."""
+
+    def __iter__(self) -> Iterator[str]:
+        message = "foreign challenge mapping iteration executed"
+        raise AssertionError(message)
+
+
+@pytest.mark.parametrize("kind", ["case", "files"])
+def test_challenge_bundle_native_map_type_ignores_forged_type_provider(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Foreign mapping subclasses must reject before their iterator hooks."""
+    case, files = _direct_bundle()
+    native_type = type
+    monkeypatch.setattr(
+        challenge_bundles,
+        "type",
+        lambda value: dict if isinstance(value, _SourceTypeForgedMapping)
+        else native_type(value),
+        raising=False,
+    )
+    case_kind = "case"
+    if kind == case_kind:
+        case = cast("dict[str, Any]", _SourceTypeForgedMapping(case))
+    else:
+        files = cast("dict[str, bytes]", _SourceTypeForgedMapping(files))
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="challenge"
+    ):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+def test_valid_bundle_ignores_invalid_late_type_hint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced type helper cannot suppress canonical original byte replay."""
+    case, files = _direct_bundle()
+    monkeypatch.setattr(
+        challenge_bundles,
+        "type",
+        lambda value: type(None) if value is None else object,
+        raising=False,
+    )
+    assert challenge_bundles.verify_bundle(case, PROFILE, files) == (
+        case["workload_sha256"]
+    )
+
+
+def test_challenge_native_dict_constructor_cannot_admit_foreign_map(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing public dict identity must not admit an overridden iterator."""
+    case = _direct_bundle()[0]
+    foreign = cast("dict[str, Any]", _SourceTypeForgedMapping(case))
+    monkeypatch.setattr(
+        challenge_bundles, "dict", _SourceTypeForgedMapping, raising=False
+    )
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="challenge"
+    ):
+        challenge_bundles._bounded_case(  # ruff: ignore[private-member-access]
+            foreign
+        )
+
+
+def test_challenge_native_integer_identity_cannot_admit_boolean_case(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rebinding public integer identity must not admit boolean workloads."""
+    case = _direct_bundle()[0]
+    for name in ("version", "seed", "difficulty"):
+        forged = True
+        case[name] = cast("int", forged)
+    monkeypatch.setattr(challenge_bundles, "int", bool, raising=False)
+    with pytest.raises(
+        challenge_bundles.ChallengeBundleError, match="challenge"
+    ):
+        challenge_bundles._bounded_case(  # ruff: ignore[private-member-access]
+            case
+        )
+
+
+@pytest.mark.parametrize(
+    ("provider", "replacement"),
+    [("dict", list), ("str", int), ("int", bool), ("bytes", str)],
+)
+def test_challenge_valid_native_case_ignores_constructor_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    replacement: type[object],
+) -> None:
+    """A late constructor identity cannot falsely invalidate native bytes."""
+    case, files = _direct_bundle()
+    monkeypatch.setattr(challenge_bundles, provider, replacement, raising=False)
+    assert challenge_bundles.verify_bundle(case, PROFILE, files) == (
+        case["workload_sha256"]
+    )

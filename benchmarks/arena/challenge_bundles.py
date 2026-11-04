@@ -43,6 +43,11 @@ from benchmarks.challenges import generate
 # Keep a source-byte reference when both public digest providers are replaced.
 _NATIVE_SHA256 = sha256
 # Retain original collection and pairing semantics for source admission.
+_NATIVE_TYPE = type
+_NATIVE_DICT = dict
+_NATIVE_STR = str
+_NATIVE_INT = int
+_NATIVE_BYTES = bytes
 _NATIVE_SET = set
 _NATIVE_ZIP = zip
 _NATIVE_ANY = any
@@ -92,17 +97,20 @@ def _fail(message: str) -> Never:
 
 def _bounded_case(case: dict[str, Any]) -> None:
     if (
-        type(case) is not dict
-        or _NATIVE_ANY(type(key) is not str for key in case)
+        _NATIVE_TYPE(case) is not _NATIVE_DICT
+        or _NATIVE_ANY(_NATIVE_TYPE(key) is not _NATIVE_STR for key in case)
         or _NATIVE_SET(case) != _SOURCE_CASE_FIELDS
     ):
         _fail("challenge replay requires an exact arena case")
     if (
-        type(case["family"]) is not str
-        or type(case["workload_sha256"]) is not str
+        _NATIVE_TYPE(case["family"]) is not _NATIVE_STR
+        or _NATIVE_TYPE(case["workload_sha256"]) is not _NATIVE_STR
     ):
         _fail("challenge replay requires string identity fields")
-    if type(case["version"]) is not int or type(case["seed"]) is not int:
+    if (
+        _NATIVE_TYPE(case["version"]) is not _NATIVE_INT
+        or _NATIVE_TYPE(case["seed"]) is not _NATIVE_INT
+    ):
         _fail("challenge replay requires integer identity fields")
     digest = case["workload_sha256"]
     if (
@@ -113,7 +121,7 @@ def _bounded_case(case: dict[str, Any]) -> None:
     if case["version"].bit_length() > _SOURCE_MAX_BUNDLE_VERSION_BITS:
         _fail("challenge replay requires a bounded version identity")
     nodes = case["difficulty"]
-    if type(nodes) is not int or nodes < 1:
+    if _NATIVE_TYPE(nodes) is not _NATIVE_INT or nodes < 1:
         _fail("challenge replay requires positive integer nodes")
     if nodes > _SOURCE_MAX_BUNDLE_NODES:
         _fail("challenge replay exceeds 4096-node preflight limit")
@@ -142,7 +150,7 @@ def _regenerate(
         raise ChallengeBundleError(message) from error
     # Only exact native generator output can serve as comparison evidence.
     # A foreign bytes subclass could override equality to admit forged data.
-    if type(produced) is not _CANONICAL_RESULT:
+    if _NATIVE_TYPE(produced) is not _CANONICAL_RESULT:
         _fail("canonical challenge regeneration produced invalid payload")
     try:
         payloads = (produced.source, produced.oracle, produced.manifest)
@@ -151,7 +159,9 @@ def _regenerate(
         # dependency's raw attribute fault through the replay boundary.
         message = "canonical challenge regeneration produced invalid payload"
         raise ChallengeBundleError(message) from error
-    if _NATIVE_ANY(type(payload) is not bytes for payload in payloads):
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(payload) is not _NATIVE_BYTES for payload in payloads
+    ):
         _fail("canonical challenge regeneration produced invalid payload")
     # Validate malformed/failing dependency receipts above so they keep their
     # typed diagnostic and original cause. A successful replaced generator,
@@ -163,12 +173,15 @@ def _regenerate(
 
 def _admit_files(files: dict[str, bytes]) -> None:
     if (
-        type(files) is not dict
-        or _NATIVE_ANY(type(key) is not str for key in files)
+        _NATIVE_TYPE(files) is not _NATIVE_DICT
+        or _NATIVE_ANY(_NATIVE_TYPE(key) is not _NATIVE_STR for key in files)
         or _NATIVE_SET(files) != _NATIVE_SET(_SOURCE_BUNDLE_FILES)
     ):
         _fail("challenge bundle must include all three canonical files")
-    if _NATIVE_ANY(type(files[name]) is not bytes for name in _SOURCE_BUNDLE_FILES):
+    if _NATIVE_ANY(
+        _NATIVE_TYPE(files[name]) is not _NATIVE_BYTES
+        for name in _SOURCE_BUNDLE_FILES
+    ):
         _fail("challenge bundle payloads must be byte strings")
     if _NATIVE_LEN(files["oracle.bin"]) != _SOURCE_ORACLE_BYTES:
         _fail("challenge bundle oracle must be four bytes")
@@ -218,9 +231,9 @@ def verify_bundle(
     # A substituted first hash provider must not certify a false workload
     # claim by returning the same native-looking digest as the forged claim.
     if (
-        type(source_hash) is not str
-        or type(independent_hash) is not str
-        or type(source_bound_hash) is not str
+        _NATIVE_TYPE(source_hash) is not _NATIVE_STR
+        or _NATIVE_TYPE(independent_hash) is not _NATIVE_STR
+        or _NATIVE_TYPE(source_bound_hash) is not _NATIVE_STR
         or _NATIVE_LEN(source_hash) != _SOURCE_SHA256_HEX_LENGTH
         or _NATIVE_LEN(independent_hash) != _SOURCE_SHA256_HEX_LENGTH
         or _NATIVE_LEN(source_bound_hash) != _SOURCE_SHA256_HEX_LENGTH
