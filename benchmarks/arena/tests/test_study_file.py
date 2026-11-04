@@ -50,7 +50,7 @@ from benchmarks.arena.tests.test_evidence import sample_study
 
 if TYPE_CHECKING:
     import os
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
     from typing import BinaryIO
 
 
@@ -2009,4 +2009,131 @@ def test_study_reader_success_ignores_replaced_public_error(
     _ = path.write_bytes(STUDY_SAMPLE)
     with monkeypatch.context() as patched:
         patched.setattr(study_file, "StudyFileError", replacement)
+        assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="FIFO probe requires Linux")
+def test_study_reader_rejects_fifo_under_replaced_regular_classifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced mode predicate must not certify a nonregular descriptor."""
+    path = tmp_path / "foreign.pipe"
+    cast("Callable[[Path], None]", getattr(study_file.os, "mkfifo"))(path)
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file.stat, "S_ISREG", lambda _mode: True)
+        with pytest.raises(study_file.StudyFileError, match="regular file"):
+            study_file.read_study_bytes(path, limit=1024)
+
+
+@pytest.mark.parametrize("predicate", ["S_ISREG", "S_ISDIR"])
+def test_study_reader_ignores_replaced_native_mode_predicates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, predicate: str
+) -> None:
+    """Late classifier replacement cannot reject a valid local study."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    parent = path.parent.stat()
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file.stat, predicate, lambda _mode: False)
+        if predicate == "S_ISDIR":
+            # pathlib.realpath itself consumes the mutable public predicate;
+            # exercise only our independently bound parent admission here.
+            assert study_file._parent_identity(path) == (parent.st_dev, parent.st_ino)
+        else:
+            assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
+
+
+def test_study_reader_rejects_metadata_under_replaced_stat_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign lstat receipt must be rejected before reading its fields."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    native_lstat = type(path).lstat
+    foreign = _ForeignStudyStat()
+
+    def injected_lstat(target: Path) -> os.stat_result:
+        if target == path:
+            return cast("os.stat_result", cast("object", foreign))
+        return native_lstat(target)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file.os, "stat_result", _ForeignStudyStat)
+        patched.setattr(type(path), "lstat", injected_lstat)
+        with pytest.raises(study_file.StudyFileError, match="invalid file metadata"):
+            study_file.read_study_bytes(path, limit=1024)
+
+
+def test_study_reader_accepts_native_metadata_under_replaced_stat_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A changed public os.stat_result symbol cannot discard genuine bytes."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file.os, "stat_result", _ForeignStudyStat)
+        assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
+
+
+class _ForeignStudyRaw:
+    """A foreign source reader cannot acquire native stream identity."""
+
+
+class _ForeignStudyBuffer:
+    """Substituted fdopen receipt returning the real descriptor."""
+
+    raw = _ForeignStudyRaw()
+
+    def __init__(self, descriptor: int) -> None:
+        self.descriptor = descriptor
+
+    def fileno(self) -> int:
+        return self.descriptor
+
+
+def test_study_reader_rejects_replaced_stream_class_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """False native stream identities cannot be conferred by public io names."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    opened: list[int] = []
+    native_open = study_file.os.open
+
+    def tracked_open(target: Path, flags: int) -> int:
+        descriptor = native_open(target, flags)
+        opened.append(descriptor)
+        return descriptor
+
+    def fake_fdopen(descriptor: int, _mode: str) -> _ForeignStudyBuffer:
+        return _ForeignStudyBuffer(descriptor)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file.os, "open", tracked_open)
+        patched.setattr(study_file.os, "fdopen", fake_fdopen)
+        patched.setattr(study_file.io, "BufferedReader", _ForeignStudyBuffer)
+        patched.setattr(study_file.io, "FileIO", _ForeignStudyRaw)
+        try:
+            with pytest.raises(study_file.StudyFileError, match="native buffered file"):
+                study_file._open_study(path)
+        finally:
+            for descriptor in opened:
+                try:
+                    study_file.os.close(descriptor)
+                except OSError:
+                    pass
+    assert len(opened) == 1
+    with pytest.raises(OSError):
+        study_file.os.fstat(opened[0])
+
+
+def test_study_reader_accepts_native_stream_under_replaced_io_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A swapped public io symbol must not invalidate actual file streams."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file.io, "BufferedReader", _ForeignStudyBuffer)
+        patched.setattr(study_file.io, "FileIO", _ForeignStudyRaw)
         assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE

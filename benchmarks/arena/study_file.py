@@ -50,6 +50,13 @@ _SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
 # replaceable buffered-reader receipt against source bytes, not just metadata.
 _SOURCE_GETATTR = getattr
 _SOURCE_TYPE = type
+# Rebindable public stdlib type/mode symbols must not define the trust
+# boundary after an untrusted read has begun.
+_SOURCE_STAT_RESULT = os.stat_result
+_SOURCE_ISREG = stat.S_ISREG
+_SOURCE_ISDIR = stat.S_ISDIR
+_SOURCE_BUFFERED_READER = io.BufferedReader
+_SOURCE_FILE_IO = io.FileIO
 _NATIVE_PREAD = _SOURCE_GETATTR(os, "pread", None)
 _NATIVE_READ = os.read
 _NATIVE_LSEEK = os.lseek
@@ -76,7 +83,7 @@ _SOURCE_STUDY_FILE_ERROR = StudyFileError
 def _native_stat(info: os.stat_result) -> os.stat_result:
     # Filesystem calls normally return an exact native stat_result. Reject a
     # substituted dependency receipt before consulting attacker-owned fields.
-    if _SOURCE_TYPE(info) is not os.stat_result:
+    if _SOURCE_TYPE(info) is not _SOURCE_STAT_RESULT:
         _fail("arena input returned invalid file metadata")
     return info
 
@@ -128,14 +135,14 @@ def _parent_identity(path: Path) -> tuple[int, int]:
         message = "arena input parent directory changed"
         raise _SOURCE_STUDY_FILE_ERROR(message) from error
     parent = _native_stat(parent)
-    if not stat.S_ISDIR(parent.st_mode):
+    if not _SOURCE_ISDIR(parent.st_mode):
         _fail("arena input parent directory changed")
     return parent.st_dev, parent.st_ino
 
 
 def _admit_path(path: Path, limit: int) -> os.stat_result:
     original = _native_stat(path.lstat())
-    if not stat.S_ISREG(original.st_mode):
+    if not _SOURCE_ISREG(original.st_mode):
         _fail("arena input must be a regular file, not a link or device")
     if original.st_size > limit:
         _fail("arena input exceeds 16 MiB limit")
@@ -171,8 +178,8 @@ def _open_study(path: Path) -> BinaryIO:
         # native buffered FileIO. A substituted stream can report the correct
         # fileno and inode while returning unrelated bytes from read().
         if (
-            _SOURCE_TYPE(stream) is not io.BufferedReader
-            or _SOURCE_TYPE(stream.raw) is not io.FileIO
+            _SOURCE_TYPE(stream) is not _SOURCE_BUFFERED_READER
+            or _SOURCE_TYPE(stream.raw) is not _SOURCE_FILE_IO
         ):
             _fail("arena input stream is not a native buffered file")
         if _admit_descriptor(stream.fileno(), source="stream") != descriptor:
@@ -266,7 +273,7 @@ def _read_descriptor(
             try:
                 opened_fd = _admit_descriptor(stream.fileno(), source="stream")
                 opened = _native_stat(os.fstat(opened_fd))
-                if not stat.S_ISREG(opened.st_mode) or (
+                if not _SOURCE_ISREG(opened.st_mode) or (
                     _identity(opened) != _identity(before)
                 ):
                     _fail("arena input changed between path and open")
@@ -322,7 +329,7 @@ def _admit_completion(
     limit: int,
 ) -> None:
     after = _native_stat(path.lstat())
-    if not stat.S_ISREG(after.st_mode) or _identity(after) != _identity(opened):
+    if not _SOURCE_ISREG(after.st_mode) or _identity(after) != _identity(opened):
         _fail("arena input path changed during read")
     if _SOURCE_LEN(data) > limit:
         _fail("arena input exceeds 16 MiB limit")
