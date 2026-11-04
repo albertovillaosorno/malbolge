@@ -771,7 +771,15 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                     compiled = self._compile(tools, source, target)
                     self.assertNotEqual(compiled.returncode, 0)
                     self.assertFalse(target.exists())
-                    self.assertIn(b"normalized frontend rejected", compiled.stderr)
+                    # A single unsupported nonzero constant is normalized
+                    # to typed IR but fails the closed guest witness table.
+                    # The mixed zero-then-one shape is rejected earlier.
+                    expected_diagnostic = (
+                        b"canonical typed byte bridge rejected"
+                        if index == 0
+                        else b"normalized frontend rejected"
+                    )
+                    self.assertIn(expected_diagnostic, compiled.stderr)
 
     def test_real_clang_effects_and_syntax_errors_do_not_publish_guest(self) -> None:
         tools = self._tools()
