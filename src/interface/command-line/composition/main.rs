@@ -54,7 +54,7 @@ use malbolge::{
     ExecutionMachine, ExecutionMode, ProfileBatchRequest, ProfileMachine,
     ProfileResidentProcessTransport, ProfileResidentTransportBackend,
     RunOutcome, current_profile, execute_profile_batch_with_backend,
-    parse_capsule,
+    parse_capsule, target_profile,
 };
 
 const CHECKPOINT_INFO_ARGUMENT: &str = "--checkpoint-info";
@@ -78,6 +78,7 @@ const LLVM_VERSION: &str = "22.1.8";
 const MALBOLGE_EXTENSION: &str = "malbolge";
 const INPUT_STDIN_ARGUMENT: &str = "--input-stdin";
 const REPORT_STEPS_ARGUMENT: &str = "--report-steps";
+const RAW_PROFILE_ARGUMENT: &str = "--raw-profile";
 const STEPS_REPORT_PREFIX: &str = "malbolge-steps-v1:";
 const MAX_GUEST_STDIN_BYTES: u64 = 256;
 // Covers the largest currently registered 15-trit capsule (8 sideband
@@ -102,6 +103,7 @@ enum CDriver {
 struct GuestOptions {
     input_stdin: bool,
     report_steps: bool,
+    raw_profile: Option<&'static malbolge::ProfileDescriptor>,
 }
 
 type ConfiguredProfileBackend =
@@ -394,7 +396,7 @@ fn dispatch(path: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
             } else {
                 Vec::new()
             };
-            run_malbolge(path, input, options.report_steps)
+            run_malbolge(path, input, options)
         },
         _ => Err(format!(
             concat!(
@@ -779,20 +781,29 @@ fn run_c(source: &Path, arguments: &[OsString]) -> Result<ExitCode, String> {
 
 fn guest_options(arguments: &[OsString]) -> Result<GuestOptions, String> {
     let mut options = GuestOptions::default();
-    for argument in arguments {
-        if argument == OsStr::new(INPUT_STDIN_ARGUMENT) && !options.input_stdin
-        {
+    let mut index = 0;
+    while let Some(argument) = arguments.get(index) {
+        if argument == OsStr::new(INPUT_STDIN_ARGUMENT) && !options.input_stdin {
             options.input_stdin = true;
-        } else if argument == OsStr::new(REPORT_STEPS_ARGUMENT)
-            && !options.report_steps
-        {
+        } else if argument == OsStr::new(REPORT_STEPS_ARGUMENT) && !options.report_steps {
             options.report_steps = true;
+        } else if argument == OsStr::new(RAW_PROFILE_ARGUMENT) && options.raw_profile.is_none() {
+            index += 1;
+            let id = arguments
+                .get(index)
+                .ok_or("--raw-profile requires a canonical profile ID")?
+                .to_str()
+                .ok_or("--raw-profile ID must be UTF-8")?;
+            options.raw_profile = Some(
+                target_profile(id).ok_or_else(|| format!("unknown canonical raw profile: {id}"))?,
+            );
         } else {
             return Err(String::from(concat!(
                 "a .malbolge path accepts --input-stdin and --report-steps ",
-                "at most once each",
+                "at most once each, plus --raw-profile ID at most once",
             )));
         }
+        index += 1;
     }
     Ok(options)
 }
@@ -1012,18 +1023,27 @@ fn read_malbolge_source(path: &Path) -> Result<Vec<u8>, String> {
 fn run_malbolge(
     source_path: &Path,
     input: Vec<u8>,
-    report_steps: bool,
+    options: GuestOptions,
 ) -> Result<ExitCode, String> {
     let source = read_malbolge_source(source_path)?;
     let steps = match parse_capsule(&source)
         .map_err(|error| format!("Malbolge capsule parsing failed: {error}"))?
     {
         Some(capsule) => {
+            if options.raw_profile.is_some() {
+                return Err(String::from(
+                    "--raw-profile is only valid for unframed raw source; \
+                     capsule profile identity is already authoritative",
+                ));
+            }
             run_profile(capsule.profile(), capsule.payload(), input)?
+        }
+        None => match options.raw_profile {
+            Some(profile) => run_profile(profile, &source, input)?,
+            None => run_classic(&source, input)?,
         },
-        None => run_classic(&source, input)?,
     };
-    if report_steps {
+    if options.report_steps {
         write_guest_steps(steps)?;
     }
     Ok(ExitCode::SUCCESS)
@@ -1180,7 +1200,7 @@ fn write_diagnostic(message: &str) {
 fn write_usage() -> Result<(), String> {
     let usage = concat!(
         "Usage: malbolge <program.malbolge> ",
-        "[--input-stdin] [--report-steps]\n",
+        "[--input-stdin] [--report-steps] [--raw-profile ID]\n",
         "       malbolge <program.c> [program args...]\n",
         "       malbolge compile <input.c> -o <output.malbolge>\n",
         "       malbolge --checkpoint-info ",
@@ -1195,6 +1215,8 @@ fn write_usage() -> Result<(), String> {
         "until EOF (default: empty).\n",
         "  --report-steps  Emit completed guest instruction count ",
         "to stderr (opt-in).\n",
+        "  --raw-profile ID  Execute unframed raw source under the named ",
+        "canonical profile; capsules select their own profile.\n",
         "  .c         Debug-run C directly on the host via a ",
         "temporary binary.\n",
         "  compile    Publish a verified current-profile capsule using ",

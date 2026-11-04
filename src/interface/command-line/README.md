@@ -44,6 +44,27 @@ The CLI does not authenticate the origin of supplied bytes or enforce a whole
 process resource budget. It does not change interpreter semantics, restore
 program state between runs, or claim that an arbitrary program reads stdin.
 
+## Explicit raw target-profile execution
+
+Raw `.malbolge` source contains no profile identity. By default,
+`malbolge program.malbolge` therefore retains classic interpreter semantics.
+If the caller already knows the canonical profile under which an unframed
+artifact was compiled, select it explicitly:
+
+```sh
+malbolge .temp/raw-current.malbolge --raw-profile malbolge-2026 \
+  --report-steps
+```
+
+`--raw-profile ID` selects the exact registered profile with no inference from
+source contents or fallback to a different profile. It supports the same
+`--input-stdin` and `--report-steps` options in any order. Unknown IDs, missing
+values and duplicate flags fail before guest execution. The option **cannot**
+be used with a capsule: capsule identity and fingerprint remain authoritative,
+and attempting to override either fails before guest execution. Prefer capsules
+from `malbolge compile` for self-describing, portable current-profile output.
+The option does not apply to host-only `.c` debug execution.
+
 ## Opt-in guest instruction count
 
 `malbolge program.malbolge --report-steps` writes one machine-readable
@@ -51,10 +72,11 @@ program state between runs, or claim that an arbitrary program reads stdin.
 termination. The count is the sum of the normative VM `RunOutcome` committed
 instruction counts, including the terminating instruction and all completed
 execution chunks; it is not inferred from source length. It works with classic
-raw programs and selected-profile capsules (including the profile batch
-backend). `--input-stdin` and `--report-steps` can appear in either order and
-at most once each; no option silently enables the other. Without the report
-flag, stderr remains unchanged. Guest stdout remains exactly the guest bytes.
+raw programs, explicitly selected raw profiles, and selected-profile
+capsules (including the profile batch backend). `--input-stdin` and
+`--report-steps` can appear in either order and at most once each; no option
+silently enables the other. Without the report flag, stderr remains unchanged.
+Guest stdout remains exactly the guest bytes.
 
 This count is observable execution evidence on the selected local VM, not a
 proof of timing precision, host CPU instructions, physical power or a memory

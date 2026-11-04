@@ -42,9 +42,19 @@ boundary. Compiler-stage continuation remains a separate capability.
 `malbolge program.malbolge` executes the supplied Malbolge artifact in the
 repository VM. Raw source uses classic interpreter-authority semantics. A
 versioned capsule selects the profile carried by that capsule before classic
-fallback is considered. The CLI does not compile the Malbolge program into a
-persistent native executable. Empty input therefore exposes the selected word
-width: classic raw source emits EOF low byte `0xA8`, while the annual and 2026.3
+fallback is considered. An opt-in `--raw-profile ID` selects one exact
+registered canonical profile for **unframed raw source only**. Without this
+option, the raw classic default remains unchanged. The option composes with
+`--input-stdin` and `--report-steps`, but rejects unknown IDs, missing
+arguments or duplicates
+before execution. A capsule rejects a simultaneous `--raw-profile`: its own
+profile ID and fingerprint always decide VM dispatch, never a caller override.
+The option has no special meaning for host-debug `.c` source, whose arguments
+retain their original forwarding contract.
+
+The CLI does not compile the Malbolge program into a persistent native
+executable. Empty input therefore exposes the selected word width: classic raw
+source emits EOF low byte `0xA8`, while the annual and 2026.3
 
 14-trit capsules emit `0x78`. A malformed modern frame fails capsule parsing
 before the historical fallback bytes can execute. The CLI accepts source bytes
