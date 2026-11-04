@@ -134,7 +134,9 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
         self.assertIn(b"--repository-tools", completed.stdout)
         self.assertIn(b"--output", completed.stdout)
 
-    def test_installed_compiler_emits_executable_guest_output(self) -> None:
+    def _assert_installed_guest_output(
+        self, source_bytes: bytes, expected_stdout: bytes, expected_steps: bytes | None
+    ) -> None:
         binaries = (
             FRONTEND,
             RUST_BIN / "c2malbolge_json",
@@ -146,11 +148,9 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
         ):
             self.skipTest("repository-pinned C toolchain and VM not built")
         self.install()
-        source = self.directory / "two-zeros.c"
-        target = self.directory / "two-zeros.malbolge"
-        _ = source.write_bytes(
-            b"#include <stdio.h>\nvoid emit(void) { putchar(0); putchar(0); return; }\n"
-        )
+        source = self.directory / "emit.c"
+        target = self.directory / "emit.malbolge"
+        _ = source.write_bytes(source_bytes)
         compiled = subprocess.run(
             [
                 str(self.install_dir / "c2malbolge"),
@@ -180,8 +180,25 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
             timeout=30,
         )
         self.assertEqual(executed.returncode, 0, executed.stderr)
-        self.assertEqual(executed.stdout, b"\x00\x00")
-        self.assertEqual(executed.stderr, b"malbolge-steps-v1:3\n")
+        self.assertEqual(executed.stdout, expected_stdout)
+        if expected_steps is None:
+            self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+        else:
+            self.assertEqual(executed.stderr, expected_steps)
+
+    def test_installed_compiler_emits_executable_guest_output(self) -> None:
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\nvoid emit(void) { putchar(0); putchar(0); return; }\n",
+            b"\x00\x00",
+            b"malbolge-steps-v1:3\n",
+        )
+
+    def test_installed_compiler_emits_witnessed_ascii_output(self) -> None:
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\nvoid emit(void) { putchar(65); putchar(65); return; }\n",
+            b"AA",
+            None,
+        )
 
 
 if __name__ == "__main__":
