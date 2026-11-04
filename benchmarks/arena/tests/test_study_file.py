@@ -2018,7 +2018,9 @@ def test_study_reader_rejects_fifo_under_replaced_regular_classifier(
 ) -> None:
     """A replaced mode predicate must not certify a nonregular descriptor."""
     path = tmp_path / "foreign.pipe"
-    cast("Callable[[Path], None]", getattr(study_file.os, "mkfifo"))(path)
+    mkfifo_name = "mkfifo"
+    mkfifo = cast("Callable[[Path], None]", getattr(study_file.os, mkfifo_name))
+    mkfifo(path)
     with monkeypatch.context() as patched:
         patched.setattr(study_file.stat, "S_ISREG", lambda _mode: True)
         with pytest.raises(study_file.StudyFileError, match="regular file"):
@@ -2137,3 +2139,98 @@ def test_study_reader_accepts_native_stream_under_replaced_io_aliases(
         patched.setattr(study_file.io, "BufferedReader", _ForeignStudyBuffer)
         patched.setattr(study_file.io, "FileIO", _ForeignStudyRaw)
         assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
+
+
+class _ForgedStudyClassError(OSError):
+    """An ordinary I/O error with a substituted introspection class claim."""
+
+    @override
+    def __getattribute__(self, name: str) -> object:
+        if name == "__class__":
+            return study_file.StudyFileError
+        return super().__getattribute__(name)
+
+
+@pytest.mark.parametrize("phase", ["fdopen", "read"])
+@pytest.mark.parametrize("spoof", ["class", "isinstance"])
+def test_study_reader_rejects_foreign_error_classification_spoofs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    spoof: str,
+) -> None:
+    """Foreign dependency errors never acquire the source's typed identity."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    foreign: OSError = (
+        _ForgedStudyClassError("foreign I/O fault")
+        if spoof == "class"
+        else OSError("foreign I/O fault")
+    )
+
+    def reject(*_args: object, **_kwargs: object) -> Never:
+        raise foreign
+
+    with monkeypatch.context() as patched:
+        if spoof == "isinstance":
+            patched.setattr(
+                study_file, "isinstance", lambda *_args: True, raising=False
+            )
+        if phase == "fdopen":
+            patched.setattr(study_file.os, "fdopen", reject)
+        else:
+            patched.setattr(study_file, "_read_complete", reject)
+        expected = (
+            "stream construction failed"
+            if phase == "fdopen"
+            else "stream access failed"
+        )
+        with pytest.raises(study_file.StudyFileError, match=expected) as caught:
+            study_file.read_study_bytes(path, limit=1024)
+    assert caught.value.__cause__ is foreign
+
+
+@pytest.mark.parametrize("phase", ["fdopen", "read", "suppressed-read"])
+@pytest.mark.parametrize("subclass", [False, True], ids=["source", "subclass"])
+def test_study_reader_retains_native_error_under_replaced_isinstance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    subclass: bool,
+) -> None:
+    """Neither an alias nor a swallowed close may rewrite native failures."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+
+    class DerivedStudyError(study_file.StudyFileError):
+        pass
+
+    error_type = DerivedStudyError if subclass else study_file.StudyFileError
+    native = error_type("native read rejected")
+
+    def reject(*_args: object, **_kwargs: object) -> Never:
+        raise native
+
+    actual_open = study_file._open_study
+
+    @contextmanager
+    def suppressed_error(target: Path) -> Iterator[BinaryIO]:
+        with actual_open(target) as stream:
+            try:
+                yield stream
+            except study_file.StudyFileError:
+                pass
+
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file, "isinstance", lambda *_args: False, raising=False)
+        if phase == "fdopen":
+            patched.setattr(study_file.os, "fdopen", reject)
+        else:
+            patched.setattr(study_file, "_read_complete", reject)
+            if phase == "suppressed-read":
+                patched.setattr(study_file, "_open_study", suppressed_error)
+        with pytest.raises(
+            study_file.StudyFileError, match="native read rejected"
+        ) as caught:
+            study_file.read_study_bytes(path, limit=1024)
+    assert caught.value is native

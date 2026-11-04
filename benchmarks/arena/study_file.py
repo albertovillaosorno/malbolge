@@ -50,6 +50,7 @@ _SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
 # replaceable buffered-reader receipt against source bytes, not just metadata.
 _SOURCE_GETATTR = getattr
 _SOURCE_TYPE = type
+_SOURCE_ISSUBCLASS = issubclass
 # Rebindable public stdlib type/mode symbols must not define the trust
 # boundary after an untrusted read has begun.
 _SOURCE_STAT_RESULT = os.stat_result
@@ -78,6 +79,13 @@ class StudyFileError(ValueError):
 # Keep diagnostic construction and exception classification native even if
 # a consumer rebinds the public class while an input is being inspected.
 _SOURCE_STUDY_FILE_ERROR = StudyFileError
+
+
+def _source_error(error: Exception) -> bool:
+    # isinstance() can consult a foreign exception's forged __class__ claim.
+    # The original type/MRO, not introspection or a late built-in alias,
+    # decides which typed failures may retain their original diagnostics.
+    return _SOURCE_ISSUBCLASS(_SOURCE_TYPE(error), _SOURCE_STUDY_FILE_ERROR)
 
 
 def _native_stat(info: os.stat_result) -> os.stat_result:
@@ -194,7 +202,7 @@ def _open_study(path: Path) -> BinaryIO:
             # Preserve the primary admission failure without invoking a
             # foreign close exception's diagnostic formatter.
             BaseException.add_note(error, "arena input descriptor cleanup also failed")
-        if isinstance(error, _SOURCE_STUDY_FILE_ERROR):
+        if _source_error(error):
             raise error  # ruff: ignore[TRY201]
         raise _SOURCE_STUDY_FILE_ERROR(
             "arena input stream construction failed"
@@ -304,7 +312,7 @@ def _read_descriptor(
         if primary is not None and error is not primary:
             BaseException.add_note(primary, "arena input stream cleanup also failed")
             error = primary
-        if isinstance(error, _SOURCE_STUDY_FILE_ERROR):
+        if _source_error(error):
             # It can be the rejected read, not the active close error.
             raise error  # ruff: ignore[TRY201]
         message = "arena input stream access failed"
@@ -314,7 +322,7 @@ def _read_descriptor(
     # inner catch retains that original failure even when the with block exits
     # without propagating it, so such a stream cannot certify source bytes.
     if primary is not None:
-        if isinstance(primary, _SOURCE_STUDY_FILE_ERROR):
+        if _source_error(primary):
             raise primary
         message = "arena input stream access failed"
         raise _SOURCE_STUDY_FILE_ERROR(message) from primary
