@@ -268,6 +268,78 @@ fn pinned_clang_character_literals_emit_real_guest_bytes() -> Result<(), String>
     Ok(())
 }
 
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent guest execution proves evaluated C radix literals"
+)]
+fn pinned_clang_radix_integer_literals_emit_real_guest_bytes() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    // Each source span is the exact width of a real pinned Clang C23 token:
+    // 0x41, 0101, 0b01000001, 0x0 and 000. All retain the evaluated i32 value.
+    for (byte, outputs, width) in [(65u8, 2u32, 4u32), (65, 2, 10), (0, 1, 3), (0, 2, 3)] {
+        let source = repeated_output_input(byte, outputs, "integer-literal", width);
+        let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+            .map_err(|error| format!("C radix literal {byte}: {error:?}"))?;
+        assert_eq!(
+            mode,
+            if byte == 0 {
+                FrontendGuestMode::InitialZeroOutput
+            } else {
+                FrontendGuestMode::SeededByteLiteral
+            }
+        );
+        let compiled = if byte == 0 {
+            compile_canonical_typed_initial_zero_outputs(&wire, profile)
+        } else {
+            adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile)
+        }
+        .map_err(|error| format!("compile radix guest: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("load radix guest: {error:?}"))?;
+        let steps = compiled.layout().executed_code_positions().len();
+        assert!(matches!(vm.run(steps), Ok(RunOutcome::Terminated { .. })));
+        assert_eq!(
+            vm.output(),
+            vec![byte; usize::try_from(outputs).unwrap_or_default()]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::default_numeric_fallback,
+    reason = "exact source spans for bounded non-decimal literals"
+)]
+fn forged_radix_literal_metadata_fails_closed() {
+    let base = repeated_output_input(65, 2, "integer-literal", 4);
+    let mut mutations = Vec::new();
+    let mut changed = base.clone();
+    changed["nodes"][5]["span"]["end"]["column"] = json!(32);
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["literal"] = json!("0x41");
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["constant_integer"] = json!("64");
+    mutations.push(changed);
+    let mut changed = base.clone();
+    changed["nodes"][5]["span"]["end"]["line"] = json!(3);
+    mutations.push(changed);
+    let mut changed = repeated_output_input(65, 2, "integer-literal", 33);
+    mutations.push(changed.clone());
+    changed["nodes"][5]["span"]["end"]["byte"] = json!(40);
+    mutations.push(changed);
+    for (index, candidate) in mutations.iter().enumerate() {
+        assert!(
+            canonical_guest_typed_ir(&bytes(candidate)).is_err(),
+            "forged radix span or value {index} was admitted"
+        );
+    }
+}
+
 // A native void function can end at its closing brace without a ReturnStmt.
 #[expect(
     clippy::indexing_slicing,

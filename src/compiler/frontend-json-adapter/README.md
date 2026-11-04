@@ -40,9 +40,11 @@ void emit(void) { putchar(0); return; }
 
 The exact pinned-Clang shape admits one through 32 **consecutive** calls to
 `putchar(N);` with optional final `return;`, where every `N` evaluates to the same
-byte in `0..255` and is either a canonical unsigned decimal integer or a
-single C character literal (including bounded escape spellings). For example,
-`putchar('A'); putchar('A');` and `putchar('\0');` retain Clang's exact
+byte in `0..255` and is either a bounded single-line C integer token
+(decimal, octal, hexadecimal or C23 binary) or a single C character literal
+(including bounded escape spellings). For example,
+`putchar('A'); putchar('A');`, `putchar(0x41); putchar(0101);`,
+`putchar(0b01000001);` and `putchar('\0');` retain Clang's exact
 source spans and evaluated integer values. Each call proves its direct
 `putchar` reference, one exact literal argument and function-to-pointer decay;
 the complete normalized preorder contains `4 * outputs + 2` nodes with
@@ -57,7 +59,7 @@ witness. For example, one `putchar(23)`, two `putchar(65)` calls and three
 `putchar(146)` calls compile and execute with exact byte output. The backend's
 currently witnessed subset is enumerated in
 `src/compiler/byte-echo-bridge/README.md`; **not** every value or count is
-realizable. Noncanonical decimal spellings, hexadecimal/octal integer literals,
+realizable. Integer tokens over 32 source bytes, out-of-byte evaluated values,
 and more than 32 calls refuse source admission. An unwitnessed combination fails
 layout admission without publishing a `.malbolge` artifact.
 
@@ -67,9 +69,10 @@ Call-result handling, arbitrary output streams, interleaved statements,
 `getchar`, EOF, I/O errors, general guest libc and C entry ABI remain
 unsupported. Mixing distinct evaluated literal values in one source refuses
 admission.
-The pinned Clang frontend must supply the source-bound character token, its
-canonical evaluated `i32` value and a bounded single-line span; the adapter
-never decodes C escape syntax or accepts fabricated byte constants.
+The pinned Clang frontend must supply the source-bound integer or character
+token, its canonical evaluated `i32` value and a bounded single-line span;
+the adapter never decodes C integer or escape syntax or accepts fabricated
+byte constants.
 
 `canonical_guest_typed_ir` selects this trace or the existing effect-free void
 trace without dropping observable effects. `canonical_void_typed_ir` preserves

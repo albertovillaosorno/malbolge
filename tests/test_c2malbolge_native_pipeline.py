@@ -295,6 +295,61 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                         executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
                     )
 
+    def test_real_clang_radix_integer_literals_emit_witnessed_guest_bytes(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            # Pinned Clang evaluates different C23 radix spellings to the same
+            # byte before canonical typed IR and the independent guest VM run.
+            cases = (
+                (b"putchar(0x41); putchar(0101);", b"AA", 27),
+                (b"putchar(0b01000001); putchar(65);", b"AA", 27),
+                (b"putchar(0x0); putchar(000);", b"\x00\x00", 3),
+            )
+            for index, (calls, expected, steps) in enumerate(cases):
+                with self.subTest(calls=calls):
+                    source = Path(temporary) / f"radix-{index}.c"
+                    target = Path(temporary) / f"radix-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + calls
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
+                    )
+
+    def test_real_clang_unsupported_integer_operations_do_not_publish(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            cases = (
+                b"putchar(0x41); putchar(0x42);",
+                b"putchar(0x41 + 0);",
+                b"putchar(0x100);",
+            )
+            for index, calls in enumerate(cases):
+                with self.subTest(calls=calls):
+                    source = Path(temporary) / f"invalid-radix-{index}.c"
+                    target = Path(temporary) / f"invalid-radix-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + calls
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target)
+                    self.assertNotEqual(compiled.returncode, 0)
+                    self.assertFalse(target.exists())
+                    self.assertIn(b"normalized frontend rejected", compiled.stderr)
+
     def test_real_clang_unsupported_character_operations_do_not_publish(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

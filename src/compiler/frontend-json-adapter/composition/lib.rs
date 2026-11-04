@@ -491,12 +491,23 @@ fn admitted_output_byte(
     let callee_span = &callee.span;
     let literal_span = &literal.span;
     let source_width = literal_span.end.byte.checked_sub(literal_span.begin.byte)?;
-    // Clang serializes both integer and character literal *values* as canonical
-    // decimal strings. Only decimal C integer tokens have that same source
-    // width; character tokens include quotes and possibly C escapes. Trust
-    // Clang's evaluated value, but require a bounded complete source token.
+    // Clang evaluates decimal, octal, hexadecimal and C23 binary integer
+    // tokens to the same canonical decimal i32 value. Their source spelling
+    // can be wider than the evaluated number; preserve the complete bounded
+    // single-line token span rather than re-parsing C spelling here.
+    // Character tokens similarly include quotes and possible escape bytes.
     let width = match literal.kind.as_str() {
-        "integer-literal" if source_width == u32::try_from(digits.len()).ok()? => source_width,
+        "integer-literal"
+            if (1..=32).contains(&source_width)
+                && literal_span.begin.line == literal_span.end.line
+                && literal_span
+                    .end
+                    .column
+                    .checked_sub(literal_span.begin.column)
+                    == Some(source_width) =>
+        {
+            source_width
+        }
         "character-literal"
             if (3..=10).contains(&source_width)
                 && literal_span.begin.line == literal_span.end.line
