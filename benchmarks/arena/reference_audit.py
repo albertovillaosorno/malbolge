@@ -61,7 +61,13 @@ from scripts.validate import experiment_manifest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _NATIVE_SHA256 = sha256
+_NATIVE_COPYSIGN = math.copysign
 _NATIVE_TYPE = type
+_NATIVE_DICT = dict
+_NATIVE_LIST = list
+_NATIVE_FLOAT = float
+_NATIVE_NONE_TYPE = type(None)
+_NATIVE_ZIP = zip
 _NATIVE_BYTES = bytes
 _NATIVE_BOOL = bool
 _NATIVE_ANY = any
@@ -313,38 +319,41 @@ def _source_fingerprint(raw: bytes) -> bytes:
 
 
 def _matches_native_json_tree(received: object, original: object) -> bool:
-    """Corroborate JSON decoded values without foreign equality methods.
+    """Corroborate JSON decoded values with original native traversal helpers.
 
     Returns:
         Whether the substituted parser returned the exact original JSON tree.
 
     """
-    kind = type(original)
-    if type(received) is not kind:
+    kind = _NATIVE_TYPE(original)
+    if _NATIVE_TYPE(received) is not kind:
         return False
-    if kind is dict:
+    if kind is _NATIVE_DICT:
         received_map = cast("dict[object, object]", received)
         original_map = cast("dict[object, object]", original)
-        if any(type(key) is not str for key in received_map):
+        if _NATIVE_ANY(_NATIVE_TYPE(key) is not _NATIVE_STR for key in received_map):
             _fail("host-C retained JSON decoder returned non-native key")
-        return len(received_map) == len(original_map) and all(
+        return _NATIVE_LEN(received_map) == _NATIVE_LEN(original_map) and _NATIVE_ALL(
             key in received_map and _matches_native_json_tree(received_map[key], value)
             for key, value in original_map.items()
         )
-    if kind is list:
+    if kind is _NATIVE_LIST:
         received_items = cast("list[object]", received)
         original_items = cast("list[object]", original)
-        return len(received_items) == len(original_items) and all(
+        return _NATIVE_LEN(received_items) == _NATIVE_LEN(original_items) and _NATIVE_ALL(
             _matches_native_json_tree(left, right)
-            for left, right in zip(received_items, original_items, strict=True)
+            for left, right in _NATIVE_ZIP(received_items, original_items, strict=True)
         )
-    if kind is float:
+    if kind is _NATIVE_FLOAT:
         left = cast("float", received)
         right = cast("float", original)
         return left == right and (
-            right != 0.0 or math.copysign(1.0, left) == math.copysign(1.0, right)
+            right != 0.0
+            or _NATIVE_COPYSIGN(1.0, left) == _NATIVE_COPYSIGN(1.0, right)
         )
-    return kind in (str, int, bool, type(None)) and received == original
+    return kind in (_NATIVE_STR, _NATIVE_INT, _NATIVE_BOOL, _NATIVE_NONE_TYPE) and (
+        received == original
+    )
 
 
 def _require_source_json_decoder() -> None:

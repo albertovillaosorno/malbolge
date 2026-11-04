@@ -3213,3 +3213,105 @@ def test_host_c_audit_path_accepts_native_source_after_alias_changes(
     original = ".temp/arena-host-c-study-valid_7/study.json"
     monkeypatch.setattr(reference_audit, alias, object(), raising=False)
     assert reference_audit._prefix(original) == ".temp/arena-host-c-study-valid_7"
+
+
+class _ForeignJsonKey(str):  # ruff: ignore[subclass-builtin]
+    """Non-native key with source-equal spelling and hash."""
+
+    @override
+    def __hash__(self) -> int:
+        return str.__hash__(self)
+
+    @override
+    def __eq__(self, other: object) -> bool:
+        return str.__eq__(self, other)
+
+
+@pytest.mark.parametrize(
+    ("alias", "replacement", "original", "received"),
+    [
+        ("type", lambda value: int if value is True else type(value), 1, True),
+        ("any", lambda _values: False, {"a": 1}, {_ForeignJsonKey("a"): 1}),
+        ("len", lambda _items: 1, {"a": 1}, {"a": 1, "extra": 2}),
+        ("all", lambda _items: True, {"a": 1}, {"a": 2}),
+        ("zip", lambda *_args, **_kw: [], [1], [2]),
+    ],
+    ids=["type-spoof", "foreign-key", "extra-field", "wrong-value", "skipped-list"],
+)
+def test_host_c_json_tree_rejects_forged_native_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+    replacement: object,
+    original: object,
+    received: object,
+) -> None:
+    """Substituted traversal helpers cannot certify a changed decoder tree."""
+    monkeypatch.setattr(reference_audit, alias, replacement, raising=False)
+    if alias == "any":
+        with pytest.raises(reference_audit.ReferenceAuditError, match="non-native key"):
+            reference_audit._matches_native_json_tree(received, original)
+    else:
+        assert not reference_audit._matches_native_json_tree(received, original)
+
+
+@pytest.mark.parametrize(
+    "alias",
+    ["type", "dict", "list", "len", "any", "all", "zip", "str", "int", "bool", "float"],
+)
+def test_host_c_json_tree_keeps_valid_native_shape_under_alias_swaps(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Unmodified JSON bytes remain comparable after late alias replacement."""
+    original = {"x": [True, 2, 1.5, None, "exact"]}
+    received = {"x": [True, 2, 1.5, None, "exact"]}
+    monkeypatch.setattr(reference_audit, alias, object(), raising=False)
+    assert reference_audit._matches_native_json_tree(received, original)
+
+
+def test_host_c_retained_json_rejects_skipped_native_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged public all cannot approve changed retained JSON from disk."""
+    source = b'{"schema_version":1,"failures":{"trial":"failed"}}'
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: source
+    )
+    monkeypatch.setattr(
+        reference_audit.json,
+        "loads",
+        lambda *_args, **_kwargs: {"schema_version": 1, "failures": {"trial": "accepted"}},
+    )
+    monkeypatch.setattr(reference_audit, "all", lambda _items: True, raising=False)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="differs"):
+        reference_audit._read_json(
+            ".temp/arena-host-c-study-test/failures.json",
+            limit=reference_audit.MAX_FAILURES_BYTES,
+            fingerprints={},
+        )
+
+
+@pytest.mark.parametrize(("original", "received"), [(-0.0, 0.0), (0.0, -0.0)])
+def test_host_c_json_tree_rejects_signed_zero_under_replaced_copysign(
+    monkeypatch: pytest.MonkeyPatch, original: float, received: float
+) -> None:
+    """Source zero sign must not depend on mutable shared math helpers."""
+    monkeypatch.setattr(reference_audit.math, "copysign", lambda *_args: 1.0)
+    assert not reference_audit._matches_native_json_tree(received, original)
+
+
+def test_host_c_retained_json_rejects_sign_drift_under_replaced_copysign(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutated sign check cannot validate foreign decoder output."""
+    source = b'{"value":-0.0}'
+    monkeypatch.setattr(
+        evidence, "read_bounded_regular", lambda *_args, **_kwargs: source
+    )
+    monkeypatch.setattr(reference_audit.json, "loads", lambda *_a, **_kw: {"value": 0.0})
+    monkeypatch.setattr(reference_audit.math, "copysign", lambda *_args: 1.0)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="differs"):
+        reference_audit._read_json(
+            ".temp/arena-host-c-study-test/failures.json",
+            limit=reference_audit.MAX_FAILURES_BYTES,
+            fingerprints={},
+        )
