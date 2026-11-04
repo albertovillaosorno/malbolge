@@ -41,7 +41,7 @@ import json
 import sys
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Self, cast, override
+from typing import TYPE_CHECKING, Any, Never, Self, cast, override
 
 import pytest
 
@@ -1876,3 +1876,43 @@ def test_study_source_reread_system_error_retains_original_cause(
     with pytest.raises(study_file.StudyFileError, match="reread failed") as caught:
         _ = study_file.read_study_bytes(path, limit=1024 * 1024)
     assert caught.value.__cause__ is failure
+
+
+def test_study_reread_cannot_be_skipped_by_replaced_length(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Forged length zero must not certify substituted same-size source bytes."""
+    path = tmp_path / STABLE_INPUT
+    source = _study(path).encode("utf-8")
+    forged = source.replace(b'"baseline": "baseline"', b'"baseline": "caseline"')
+    assert forged != source and len(forged) == len(source)
+    monkeypatch.setattr(study_file, "_read_complete", lambda *_args, **_kwargs: forged)
+    original_len = len
+    forged_calls = 0
+
+    def forged_len(value: object) -> int:
+        nonlocal forged_calls
+        if value is forged:
+            forged_calls += 1
+            if forged_calls == 1:
+                return 0
+        return original_len(cast("Any", value))
+
+    monkeypatch.setattr(study_file, "len", forged_len, raising=False)
+    with pytest.raises(study_file.StudyFileError, match="source bytes differ"):
+        study_file.read_study_bytes(path, limit=1024 * 1024)
+
+
+@pytest.mark.parametrize("provider", ["len", "min", "bytes", "bytearray"])
+def test_study_reader_preserves_native_byte_operations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Public module aliases cannot change the original bounded read path."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+
+    def forged_operation(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail(f"public {provider} was called instead of source native")
+
+    monkeypatch.setattr(study_file, provider, forged_operation, raising=False)
+    assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE

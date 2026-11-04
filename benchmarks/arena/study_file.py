@@ -51,6 +51,12 @@ _SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
 _NATIVE_PREAD = getattr(os, "pread", None)
 _NATIVE_READ = os.read
 _NATIVE_LSEEK = os.lseek
+# A swapped module builtin cannot skip the source-byte reread, forge a read
+# length, or replace the native buffer/byte representation after import.
+_SOURCE_LEN = len
+_SOURCE_MIN = min
+_SOURCE_BYTES = bytes
+_SOURCE_BYTEARRAY = bytearray
 
 if TYPE_CHECKING:
     from typing import BinaryIO
@@ -183,20 +189,20 @@ def _read_complete(stream: BinaryIO, *, size: int) -> bytes:
         StudyFileError: A read fails or stops before the admitted file size.
 
     """
-    data = bytearray()
-    while len(data) < size:
-        requested = min(size - len(data), 1024 * 1024)
+    data = _SOURCE_BYTEARRAY()
+    while _SOURCE_LEN(data) < size:
+        requested = _SOURCE_MIN(size - _SOURCE_LEN(data), 1024 * 1024)
         try:
             chunk = stream.read(requested)
         except Exception as error:
             message = "arena input stream read failed"
             raise StudyFileError(message) from error
-        if type(chunk) is not bytes or len(chunk) > requested:
+        if type(chunk) is not _SOURCE_BYTES or _SOURCE_LEN(chunk) > requested:
             _fail("arena input stream read returned invalid bytes")
         if not chunk:
             _fail("arena input read ended before declared file size")
         data.extend(chunk)
-    return bytes(data)
+    return _SOURCE_BYTES(data)
 
 
 def _verify_descriptor_bytes(descriptor: int, data: bytes) -> None:
@@ -206,26 +212,26 @@ def _verify_descriptor_bytes(descriptor: int, data: bytes) -> None:
         StudyFileError: The reader's bytes differ from the opened source.
 
     """
-    if type(data) is not bytes:
+    if type(data) is not _SOURCE_BYTES:
         _fail("arena input source bytes differ from opened descriptor")
     try:
         if _NATIVE_PREAD is None:
             # Windows lacks pread; no further buffered reads occur after this.
             _NATIVE_LSEEK(descriptor, 0, os.SEEK_SET)
         offset = 0
-        while offset < len(data):
-            requested = min(len(data) - offset, 1024 * 1024)
+        while offset < _SOURCE_LEN(data):
+            requested = _SOURCE_MIN(_SOURCE_LEN(data) - offset, 1024 * 1024)
             if _NATIVE_PREAD is not None:
                 observed = _NATIVE_PREAD(descriptor, requested, offset)
             else:
                 observed = _NATIVE_READ(descriptor, requested)
             if (
-                type(observed) is not bytes
+                type(observed) is not _SOURCE_BYTES
                 or not observed
-                or observed != data[offset : offset + len(observed)]
+                or observed != data[offset : offset + _SOURCE_LEN(observed)]
             ):
                 _fail("arena input source bytes differ from opened descriptor")
-            offset += len(observed)
+            offset += _SOURCE_LEN(observed)
     except StudyFileError:
         raise
     except Exception as error:
@@ -303,9 +309,9 @@ def _admit_completion(
     after = _native_stat(path.lstat())
     if not stat.S_ISREG(after.st_mode) or _identity(after) != _identity(opened):
         _fail("arena input path changed during read")
-    if len(data) > limit:
+    if _SOURCE_LEN(data) > limit:
         _fail("arena input exceeds 16 MiB limit")
-    if len(data) != opened.st_size:
+    if _SOURCE_LEN(data) != opened.st_size:
         _fail("arena input read ended before declared file size")
 
 
