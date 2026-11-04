@@ -117,31 +117,34 @@ def run_compiler(
     layout: Path,
     *,
     invalid_effect: bool = False,
+    capsule: bool = True,
 ) -> subprocess.CompletedProcess[bytes]:
     environment = os.environ.copy()
     environment["MALBOLGE_TEST_FORGED_EFFECT"] = "1" if invalid_effect else "0"
+    argv = [
+        sys.executable,
+        "-B",
+        str(DRIVER),
+        "--frontend",
+        str(frontend),
+        "--json-adapter",
+        str(adapter),
+        "--layout-backend",
+        str(layout),
+        "--guest-include",
+        str(source.parent),
+        "--resource-dir",
+        str(source.parent),
+        "--source-id",
+        "fixtures/noop.c",
+        "--output",
+        str(target),
+    ]
+    if capsule:
+        argv.append("--capsule")
+    argv.append(str(source))
     return subprocess.run(
-        [
-            sys.executable,
-            "-B",
-            str(DRIVER),
-            "--frontend",
-            str(frontend),
-            "--json-adapter",
-            str(adapter),
-            "--layout-backend",
-            str(layout),
-            "--guest-include",
-            str(source.parent),
-            "--resource-dir",
-            str(source.parent),
-            "--source-id",
-            "fixtures/noop.c",
-            "--output",
-            str(target),
-            "--capsule",
-            str(source),
-        ],
+        argv,
         env=environment,
         capture_output=True,
         check=False,
@@ -155,20 +158,29 @@ class CToMalbolgeRealPipelineTests(unittest.TestCase):
         if binaries is None or os.name != "posix":
             self.skipTest("real Rust compiler/layout/VM binaries on POSIX required")
         adapter, layout, vm = binaries
-        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
-            frontend, source, target = fixture_files(Path(temporary))
-            compiled = run_compiler(frontend, source, target, adapter, layout)
-            self.assertEqual(compiled.returncode, 0, compiled.stderr)
-            self.assertTrue(target.is_file())
-            self.assertGreater(target.stat().st_size, len(SOURCE))
-            executed = subprocess.run(
-                [str(vm), str(target), "--report-steps"],
-                capture_output=True,
-                check=False,
-            )
-            self.assertEqual(executed.returncode, 0, executed.stderr)
-            self.assertEqual(executed.stdout, b"")
-            self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
+        for capsule in (False, True):
+            with (
+                self.subTest(capsule=capsule),
+                tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary,
+            ):
+                frontend, source, target = fixture_files(Path(temporary))
+                compiled = run_compiler(
+                    frontend, source, target, adapter, layout, capsule=capsule
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                self.assertTrue(target.is_file())
+                if capsule:
+                    self.assertGreater(target.stat().st_size, len(SOURCE))
+                else:
+                    self.assertEqual(target.stat().st_size, 2)
+                executed = subprocess.run(
+                    [str(vm), str(target), "--report-steps"],
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, b"")
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
 
     def test_extra_normalized_call_is_rejected_before_guest_publication(self) -> None:
         binaries = real_binaries()
