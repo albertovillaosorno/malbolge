@@ -3329,6 +3329,38 @@ is still pending. `jig doctor --root .` remains degraded because its
 compiled graph is absent; a bounded `jig check --root .` exited 124 after
 90 seconds without completing global governance validation.
 
+
+## Native protected, relocation, and compatible error identities (2026-11-03)
+
+Native protected-plan validation now pins `ProtectedPlanError` at metadata,
+authenticated payload, source-binding, and snapshot guards (`a0801b6aa`).
+Ten red-first tests show late replacement of the exported error name cannot
+execute a substituted callback; 645 adjacent tests and 303 postcommit
+protected/payload tests passed. The production source passed strict typing,
+with 31 pre-existing diagnostics confined to its test file.
+
+Relocation now retains the original `RelocationError` for constructors,
+nested record catches, delegated readers, host diagnostic classification,
+and output placement (`46bfda210`). Fourteen red-first/new tests passed,
+including preservation of native exception details under public alias
+substitution. All 911 adjacent tests and 646 postcommit
+relocatable/compatible tests passed. Source typing was clean; older test
+annotations remain outside the scoped hardening unit.
+
+Compatible planning now pins its original `CompatiblePlanError` for
+correction binding and instruction admission, materialization, native
+reader wrapping, and safe diagnostic extraction (`067fc80d9`). Eleven
+red-first/new cases and 922 adjacent tests passed, followed by 657
+postcommit compatible/relocatable tests. Basic Ruff and Git diff checks
+passed for every unit, without new strict Ruff or typing diagnostics on
+added test lines. The compatible module retains 14 inherited strict
+source-type findings and its tests retain older findings. All three
+signed DCOs were SHA-exact pushed to `origin/main`. Process-local guards
+do not cover direct trusted state mutation or external host races.
+The complete diff test collection from the current integrated HEAD is
+still pending; global Jig governance acceptance is also open because the
+compiled graph is missing.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

@@ -1975,6 +1975,32 @@ format.
   remains degraded (missing graph), and bounded `jig check --root .`
   exceeded 90 seconds (exit 124); global acceptance is not established.
 
+
+- Protected exact-plan validation now retains import-original
+  `ProtectedPlanError` (`a0801b6aa`) in metadata, binding, payload, and
+  source-snapshot rejection. Ten red-first late-alias cases are green;
+  645 combined protected/payload/source-binding/model tests passed before
+  commit and 303 protected/payload tests passed postcommit. Source typing,
+  basic Ruff, and Git checks passed; 31 older test typing findings remain.
+- Relocatable authoring, record nesting, placement, and delegated host-error
+  diagnostics now retain import-original `RelocationError` (`46bfda210`).
+  Fourteen new tests include an original-error detail continuity check.
+  All 911 adjacent relocatable/compatible/mapped/semantic tests passed
+  before commit, followed by 646 relocatable/compatible tests postcommit.
+  Source typing, basic Ruff, and diff checks passed; new test lines add no
+  strict type or Ruff findings, while older test diagnostics remain.
+- Compatible plan admission, materialization, and diagnostic handling now
+  retain import-original `CompatiblePlanError` (`067fc80d9`). Eleven
+  red-first/new cases cover malformed instructions and correction bindings
+  plus trusted native error detail. All 922 adjacent compatible/relocatable/
+  mapped/semantic tests passed, followed by 657 compatible/relocatable
+  postcommit tests. Basic Ruff and diff checks passed; no new strict
+  findings occurred in added tests, while older source and test typing
+  diagnostics persist. All three DCOs were signed and SHA-exact pushed to
+  `origin/main`. These process-local guards cannot prevent external host
+  races or directly mutated trusted evidence; full repository Jig
+  acceptance remains pending (missing compiled graph).
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
