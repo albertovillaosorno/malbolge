@@ -183,8 +183,13 @@ class ArenaError(ValueError):
     """Invalid or incomparable arena evidence."""
 
 
+# Retain the native typed rejection across source parsing and CLI diagnostics,
+# even if a caller rebinds the public exception class after import.
+_SOURCE_ARENA_ERROR = ArenaError
+
+
 def _fail(message: str) -> Never:
-    raise ArenaError(message)
+    raise _SOURCE_ARENA_ERROR(message)
 
 
 def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str | None:
@@ -401,7 +406,7 @@ def _admit_json_text(text: str) -> None:
         byte_length = len(text.encode("utf-8"))
     except UnicodeError as error:
         message = "arena JSON input cannot be encoded as UTF-8"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
     if byte_length > _SOURCE_MAX_INPUT_BYTES:
         _fail("arena JSON exceeds 16 MiB limit")
 
@@ -414,12 +419,12 @@ def _decode_document(text: str) -> object:
             object_pairs_hook=_pairs,
             parse_constant=_reject_constant,
         )
-    except ArenaError as error:
+    except _SOURCE_ARENA_ERROR as error:
         # Preserve exact local hook rejections, never foreign subclasses.
-        if _native_error_detail(error, ArenaError) is not None:
+        if _native_error_detail(error, _SOURCE_ARENA_ERROR) is not None:
             raise
         message = f"invalid arena JSON: {type(error).__name__}"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
     except Exception as error:
         # An unexpected ordinary decoder fault must remain an arena rejection;
         # foreign exception subclasses can execute code in __str__.
@@ -431,7 +436,7 @@ def _decode_document(text: str) -> object:
         )
         detail = _native_error_detail(error, *native_errors) or type(error).__name__
         message = f"invalid arena JSON: {detail}"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
 
 
 def admit_document(document: object) -> dict[str, Any]:
@@ -509,14 +514,14 @@ def parse_document(text: str) -> dict[str, Any]:
             parse_constant=_reject_constant,
         ).decode(text)
         _require_original_json_decoder()
-    except ArenaError as error:
-        if type(error) is ArenaError:
+    except _SOURCE_ARENA_ERROR as error:
+        if type(error) is _SOURCE_ARENA_ERROR:
             raise
         message = "invalid arena source JSON"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
     except Exception as error:
         message = "invalid arena source JSON"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
     # Raw JSON equality alone would treat true == 1 and 1.0 == 1; the
     # independent source also needs exact schema and primitive-type checks.
     source_admitted = admit_document(source)
@@ -655,7 +660,7 @@ def _median_interval_receipt(values: list[int]) -> dict[str, Any] | None:
         receipt: object = median_intervals.median_interval_95(values.copy())
     except Exception as error:
         message = "median interval computation failed"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
     count = len(values)
     if count < _SOURCE_MEDIAN_MIN_SAMPLES or count > _SOURCE_MEDIAN_MAX_SAMPLES:
         if receipt is not None:
@@ -750,7 +755,7 @@ def _paired_sign_receipt(left: int, right: int) -> dict[str, Any] | None:
         receipt: object = paired_exact_tests.two_sided_sign_test(left, right)
     except Exception as error:
         message = "paired exact computation failed"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
     count = left + right
     if count == 0 or count > _SOURCE_PAIRED_MAX_DISCORDANT_PAIRS:
         if receipt is not None:
@@ -1066,7 +1071,7 @@ def _adjust_paired_tests(
         untrusted: object = multiplicity.holm_adjusted(raw.copy())
     except Exception as error:
         message = "Holm adjustment computation failed"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
     adjusted = _admit_holm_receipt(raw, untrusted)
     for record, probability in zip(records, adjusted, strict=True):
         record["p_holm_adjusted"] = _exact_pair(probability)
@@ -1383,7 +1388,7 @@ def annotate_success_intervals(report: dict[str, Any]) -> None:
             # Dependency failures cannot escape into operator output or use
             # an untrusted exception's diagnostic formatting hooks.
             message = "success interval computation failed"
-            raise ArenaError(message) from error
+            raise _SOURCE_ARENA_ERROR(message) from error
         intervals.append(
             _admit_success_interval_receipt(raw_interval, verified, attempts)
         )
@@ -1424,7 +1429,7 @@ def read_input(path: Path) -> str:
             _native_error_detail(error, study_file.StudyFileError)
             or "arena study input rejected"
         )
-        raise ArenaError(detail) from error
+        raise _SOURCE_ARENA_ERROR(detail) from error
     # The lower-level reader guarantees exact bytes and a bounded length,
     # but its public receipt must be checked before calling .decode(): a
     # substituted dependency can otherwise forge text or run foreign hooks.
@@ -1436,7 +1441,7 @@ def read_input(path: Path) -> str:
         return data.decode("utf-8")
     except UnicodeError as error:
         message = "arena study input is not valid UTF-8"
-        raise ArenaError(message) from error
+        raise _SOURCE_ARENA_ERROR(message) from error
 
 
 def require_unchanged_study_input(path: Path, original: str) -> None:
@@ -1449,7 +1454,7 @@ def require_unchanged_study_input(path: Path, original: str) -> None:
     if type(original) is not str:
         _fail("arena late recheck requires exact native source text")
     if read_input(path) != original:
-        raise ArenaError("arena study input changed after initial admission")
+        raise _SOURCE_ARENA_ERROR("arena study input changed after initial admission")
 
 
 def main() -> int:
@@ -1482,7 +1487,7 @@ def main() -> int:
         # Keep useful native diagnostics; never execute a foreign formatter.
         # Unexpected ordinary host faults must not escape operator status two.
         native_errors = (
-            ArenaError,
+            _SOURCE_ARENA_ERROR,
             OSError,
             FileNotFoundError,
             PermissionError,

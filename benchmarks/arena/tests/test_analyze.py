@@ -3810,3 +3810,71 @@ def test_success_shared_tail_forgery_stops_cli_before_json(
     captured = capsys.readouterr()
     assert not captured.out
     assert "success interval receipt" in captured.err
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    ("source", "diagnostic"),
+    [
+        ("not JSON", "invalid arena JSON"),
+        ('{"x":1,"x":2}', "duplicate JSON field"),
+        ("{}", "expected fields"),
+        ("\ud800", "cannot be encoded as UTF-8"),
+    ],
+)
+def test_arena_error_alias_rebinding_retains_native_parse_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    source: str,
+    diagnostic: str,
+) -> None:
+    """Malformed input cannot change the original rejection class."""
+    original = analyze.ArenaError
+    with monkeypatch.context() as patched:
+        patched.setattr(analyze, "ArenaError", replacement)
+        with pytest.raises(original, match=diagnostic):
+            analyze.parse_document(source)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_arena_error_alias_rebinding_keeps_valid_input(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Late error-name replacement cannot affect admitted report bytes."""
+    source = json.dumps(_document())
+    expected = analyze.parse_document(source)
+    with monkeypatch.context() as patched:
+        patched.setattr(analyze, "ArenaError", replacement)
+        assert analyze.parse_document(source) == expected
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_arena_error_alias_rebinding_preserves_file_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Native missing-study rejection survives public error rebinding."""
+    original = analyze.ArenaError
+    with monkeypatch.context() as patched:
+        patched.setattr(analyze, "ArenaError", replacement)
+        with pytest.raises(original, match="arena input"):
+            analyze.read_input(tmp_path / "missing.json")
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_arena_error_alias_rebinding_preserves_cli_diagnostic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    replacement: object,
+) -> None:
+    """The CLI reports the original duplicate field rather than a type name."""
+    path = tmp_path / "duplicate.json"
+    _ = path.write_text('{"x":1,"x":2}', encoding="utf-8")
+    with monkeypatch.context() as patched:
+        patched.setattr(analyze, "ArenaError", replacement)
+        patched.setattr(sys, "argv", ["arena", str(path)])
+        with pytest.raises(SystemExit, match="2"):
+            analyze.main()
+        captured = capsys.readouterr()
+        assert not captured.out
+        assert "duplicate JSON field" in captured.err
