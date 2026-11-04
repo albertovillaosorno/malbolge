@@ -51,7 +51,8 @@ const EXPECTED_ABI: &str = "malbolge-c32-v1";
 const EXPECTED_ARTIFACT: &str = "malbolge-c-frontend-v1";
 const EXPECTED_PROFILE: &str = "malbolge-2026";
 const MAX_FRONTEND_JSON_BYTES: usize = 1_048_576;
-const MAX_NULL_STATEMENTS: usize = 4_094;
+const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
+const MAX_COMPOUND_DEPTH: usize = 64;
 
 /// A rejected normalized frontend artifact or typed-IR projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -157,7 +158,7 @@ fn source_digest(value: &str) -> Result<[u8; 32], FrontendJsonError> {
 }
 
 // NullStmt has exactly one source semicolon. We discard its *effect*, not its
-// provenance: every omitted node must be a direct ordered child in the body.
+// provenance: every omitted node must be an ordered child in its own scope.
 fn valid_null_statement_span(node: &Node, body: &Node, preceding_end: u32) -> bool {
     let start = &node.span.begin;
     let end = &node.span.end;
@@ -171,7 +172,68 @@ fn valid_null_statement_span(node: &Node, body: &Node, preceding_end: u32) -> bo
         && start.column.checked_add(1) == Some(end.column)
 }
 
-/// Decode one no-effect void C function with optional source null statements.
+// Clang's semantic preorder contains compound scopes and their children.
+// Discard only proven effect-free NullStmt/CompoundStmt nodes, checking the
+// actual ancestor IDs and nonoverlapping source ranges at every depth. A
+// terminal ReturnStmt may belong to any active compound scope, but no node
+// can follow it. Scope bounds include braces; child ranges must be interior.
+fn admit_effect_free_body(body: &Node, statements: &[Node]) -> Result<(), FrontendJsonError> {
+    let mut scopes = vec![(body, body.span.begin.byte)];
+    for (index, node) in statements.iter().enumerate() {
+        while scopes
+            .last()
+            .is_some_and(|(parent, _)| parent.id != node.parent)
+        {
+            let _popped = scopes.pop();
+        }
+        let Some((parent, next_child_byte)) = scopes.last_mut() else {
+            return Err(FrontendJsonError::Unsupported);
+        };
+        let start = &node.span.begin;
+        let end = &node.span.end;
+        if node.id != u32::try_from(index).unwrap_or(u32::MAX).saturating_add(3)
+            || start.byte < *next_child_byte
+            || start.byte <= parent.span.begin.byte
+            || end.byte >= parent.span.end.byte
+            || start.line == 0
+            || start.column == 0
+            || end.line < start.line
+            || end.column == 0
+            || (end.line == start.line && end.column <= start.column)
+        {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        match node.kind.as_str() {
+            "null-statement" if valid_null_statement_span(node, parent, *next_child_byte) => {
+                *next_child_byte = end.byte;
+            }
+            "compound-statement"
+                if start
+                    .byte
+                    .checked_add(2)
+                    .is_some_and(|min_end| end.byte >= min_end)
+                    && (end.line != start.line
+                        || start
+                            .column
+                            .checked_add(2)
+                            .is_some_and(|min_end| end.column >= min_end)) =>
+            {
+                *next_child_byte = end.byte;
+                if scopes.len() >= MAX_COMPOUND_DEPTH {
+                    return Err(FrontendJsonError::Unsupported);
+                }
+                scopes.push((node, start.byte));
+            }
+            "return-statement" if index == statements.len().saturating_sub(1) => {
+                *next_child_byte = end.byte;
+            }
+            _ => return Err(FrontendJsonError::Unsupported),
+        }
+    }
+    Ok(())
+}
+
+/// Decode one no-effect void C function with optional nested scopes and returns.
 ///
 /// This validates the serialized Clang artifact shape, **not** the contents
 /// of an independently supplied C source. Raw-source digest verification and
@@ -205,11 +267,10 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
     let [function, body, statements @ ..] = input.nodes.as_slice() else {
         return Err(FrontendJsonError::Unsupported);
     };
-    let (nulls, returned) = match statements.split_last() {
-        Some((last, prior)) if last.kind == "return-statement" => (prior, Some(last)),
-        _ => (statements, None),
-    };
-    if nulls.len() > MAX_NULL_STATEMENTS {
+    let returned = statements
+        .last()
+        .filter(|node| node.kind == "return-statement");
+    if statements.len() > MAX_EFFECT_FREE_BODY_NODES {
         return Err(FrontendJsonError::Unsupported);
     }
     if function.kind != "function-declaration"
@@ -224,14 +285,7 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
         || body.kind != "compound-statement"
         || body.parent != function.id
         || body.id != 2
-        || returned.is_some_and(|node| {
-            node.parent != body.id
-                || node.id
-                    != u32::try_from(nulls.len())
-                        .unwrap_or(u32::MAX)
-                        .saturating_add(3)
-        })
-        || once(body).chain(nulls.iter()).chain(returned).any(|node| {
+        || once(body).chain(statements.iter()).any(|node| {
             node.name.is_some()
                 || node.type_name.is_some()
                 || node.definition.is_some()
@@ -242,20 +296,7 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
     {
         return Err(FrontendJsonError::Unsupported);
     }
-    let mut previous_end = body.span.begin.byte;
-    for (index, node) in nulls.iter().enumerate() {
-        if node.kind != "null-statement"
-            || node.parent != body.id
-            || node.id != u32::try_from(index).unwrap_or(u32::MAX).saturating_add(3)
-            || !valid_null_statement_span(node, body, previous_end)
-        {
-            return Err(FrontendJsonError::Unsupported);
-        }
-        previous_end = node.span.end.byte;
-    }
-    if returned.is_some_and(|node| node.span.begin.byte < previous_end) {
-        return Err(FrontendJsonError::Unsupported);
-    }
+    admit_effect_free_body(body, statements)?;
     let void_function = if let Some(return_node) = returned {
         FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
             body_span: span(&body.span),

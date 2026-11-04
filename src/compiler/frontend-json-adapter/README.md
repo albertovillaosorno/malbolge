@@ -10,13 +10,17 @@ contains the JSON dependency; the VM's dependency-free crate remains unchanged.
 ## Supported slice
 
 The complete normalized artifact must contain exactly one no-argument external
-`fn()->void` definition with a compound body containing optional standalone
-null statements (`;`) and an optional final `return;`. Thus both
-`void noop(void) {}` and `void noop(void) {; ; return;}` compile to the same
-verified two-cell guest. An absent explicit return uses the original body
-span to attribute its defined implicit return; no invented C return statement
-is inserted into the frontend artifact. Null statements must have source-order,
-source-span and direct-parent evidence; they are the only ignored nodes.
+`fn()->void` definition with a compound body containing only standalone
+null statements (`;`), nested compound scopes, and an optional final `return;`
+(including inside a nested scope). Thus `void noop(void) {}`,
+`void noop(void) {; ; return;}` and `void noop(void) {{;}}` compile to the same
+verified two-cell guest. An absent explicit return uses the original function
+body span to attribute its defined implicit return; no invented C return
+statement is inserted into the frontend artifact. The bounded semantic preorder
+must preserve node IDs, direct-parent ancestry and nonoverlapping source spans
+inside each scope. No statement after an explicit return, effectful statement,
+or metadata-drifted nested node can be discarded. Nested depth is capped at 64,
+with at most 4094 body nodes per artifact.
 Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.

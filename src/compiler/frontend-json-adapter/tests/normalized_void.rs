@@ -412,3 +412,184 @@ fn void_null_statement_admission_rejects_effects_and_false_source_order() {
         );
     }
 }
+
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    reason = "source-shaped nested Clang AST with fixed positions and identities"
+)]
+fn nested_null_input(explicit_return: bool) -> Value {
+    let mut artifact = input();
+    let (end, digest, nodes) = if explicit_return {
+        (
+            33,
+            "cc96b32238d65b5ad66aa28117c8ca466f8f4be8c4f8a65e4374068bc5b7c71d",
+            json!([
+                {"id":1,"parent":0,"kind":"function-declaration","span":span(0,33),
+                 "name":"noop","type":"fn()->void","definition":"definition",
+                 "inline_specified":false,"linkage":"external","storage_class":"none"},
+                {"id":2,"parent":1,"kind":"compound-statement","span":span(16,33)},
+                {"id":3,"parent":2,"kind":"null-statement","span":span(17,18)},
+                {"id":4,"parent":2,"kind":"compound-statement","span":span(19,32)},
+                {"id":5,"parent":4,"kind":"null-statement","span":span(21,22)},
+                {"id":6,"parent":4,"kind":"return-statement","span":span(23,30)}
+            ]),
+        )
+    } else {
+        (
+            25,
+            "9cf8980576e0b85e6c8800f77226e7a1ed89c0690a23e4d4ec5f9eab9465be2b",
+            json!([
+                {"id":1,"parent":0,"kind":"function-declaration","span":span(0,25),
+                 "name":"noop","type":"fn()->void","definition":"definition",
+                 "inline_specified":false,"linkage":"external","storage_class":"none"},
+                {"id":2,"parent":1,"kind":"compound-statement","span":span(16,25)},
+                {"id":3,"parent":2,"kind":"compound-statement","span":span(17,24)},
+                {"id":4,"parent":3,"kind":"null-statement","span":span(18,19)},
+                {"id":5,"parent":3,"kind":"compound-statement","span":span(20,23)},
+                {"id":6,"parent":5,"kind":"null-statement","span":span(21,22)}
+            ]),
+        )
+    };
+    artifact["source"]["id"] = json!("fixtures/nested-void.c");
+    artifact["source"]["sha256"] = json!(digest);
+    artifact["nodes"] = nodes;
+    assert_eq!(
+        artifact["nodes"][0]["span"]["end"]["byte"],
+        json!(end),
+        "nested function span must cover the source ending brace"
+    );
+    artifact
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real guest VM execution is part of source-node admission"
+)]
+fn nested_effect_free_compound_scopes_reach_canonical_guest() -> Result<(), String> {
+    for explicit in [false, true] {
+        let artifact = nested_null_input(explicit);
+        let projected = decode_void_frontend_json(&bytes(&artifact))
+            .map_err(|error| format!("nested C projection: {error:?}"))?;
+        assert_eq!(
+            projected
+                .void_function()
+                .map(typed::FrontendReturnVoidFunction::explicit_return),
+            Some(explicit)
+        );
+        let wire = canonical_void_typed_ir(&bytes(&artifact))
+            .map_err(|error| format!("nested C canonical typed IR: {error:?}"))?;
+        let admitted = typed::canonical_module(&wire)
+            .map_err(|error| format!("nested C MCTI re-admission: {error:?}"))?;
+        assert_eq!(admitted.source_sha256(), projected.source_sha256());
+        let profile = target_profile("malbolge-2026").ok_or("current profile missing")?;
+        let generated = compile_canonical_typed_empty_void(&wire, profile)
+            .map_err(|error| format!("nested C compiled guest: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, generated.layout().source(), Vec::new())
+            .map_err(|error| format!("nested guest VM load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(2),
+            Ok(RunOutcome::Terminated { steps: 2, .. })
+        ));
+        assert!(vm.output().is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    clippy::expect_used,
+    reason = "adversarial nested C AST mutation probes source and side-effect gates"
+)]
+fn nested_compound_rejects_forged_parent_overlap_and_effects() {
+    let base = nested_null_input(true);
+    let mut cases = Vec::new();
+    for (index, field, value) in [
+        (3, "kind", json!("call-expression")),
+        (3, "parent", json!(1)),
+        (3, "parent", json!(3)),
+        (3, "span", span(18, 20)),
+        (3, "span", span(19, 33)),
+        (4, "parent", json!(2)),
+        (4, "span", span(20, 22)),
+        (5, "parent", json!(2)),
+        (5, "span", span(31, 34)),
+        (5, "span", span(20, 29)),
+        (5, "id", json!(7)),
+    ] {
+        let mut candidate = base.clone();
+        candidate["nodes"][index][field] = value;
+        cases.push(candidate);
+    }
+    let mut with_effect = base.clone();
+    with_effect["nodes"][3]["type"] = json!("void");
+    cases.push(with_effect);
+    let mut with_reordered = base;
+    with_reordered["nodes"]
+        .as_array_mut()
+        .expect("nodes")
+        .swap(3, 4);
+    cases.push(with_reordered);
+    for (index, candidate) in cases.iter().enumerate() {
+        assert!(
+            canonical_void_typed_ir(&bytes(candidate)).is_err(),
+            "nested forged candidate {index} admitted"
+        );
+    }
+}
+
+#[test]
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    reason = "explicit scope-sibling preorder requires true pop-to-ancestor verification"
+)]
+fn empty_and_sibling_compounds_preserve_fallthrough_in_guest() -> Result<(), String> {
+    let mut artifact = input();
+    artifact["source"]["id"] = json!("fixtures/sibling-void.c");
+    artifact["source"]["sha256"] =
+        json!("689f6dfb89a7605a895f00d61be658ce3011f660e744abe04168bdca371ad67d");
+    artifact["nodes"] = json!([
+        {"id":1,"parent":0,"kind":"function-declaration","span":span(0,25),
+         "name":"noop","type":"fn()->void","definition":"definition",
+         "inline_specified":false,"linkage":"external","storage_class":"none"},
+        {"id":2,"parent":1,"kind":"compound-statement","span":span(16,25)},
+        {"id":3,"parent":2,"kind":"compound-statement","span":span(17,19)},
+        {"id":4,"parent":2,"kind":"compound-statement","span":span(20,23)},
+        {"id":5,"parent":4,"kind":"null-statement","span":span(21,22)},
+        {"id":6,"parent":2,"kind":"null-statement","span":span(23,24)}
+    ]);
+    let wire = canonical_void_typed_ir(&bytes(&artifact))
+        .map_err(|error| format!("nested sibling admission: {error:?}"))?;
+    let decoded = typed::canonical_module(&wire)
+        .map_err(|error| format!("nested sibling canonical admission: {error:?}"))?;
+    assert_eq!(decoded.source_id(), "fixtures/sibling-void.c");
+    let profile = target_profile("malbolge-2026").ok_or("missing profile")?;
+    let generated = compile_canonical_typed_empty_void(&wire, profile)
+        .map_err(|error| format!("sibling guest compilation: {error:?}"))?;
+    let mut vm = ProfileMachine::from_source(profile, generated.layout().source(), Vec::new())
+        .map_err(|error| format!("sibling VM load: {error:?}"))?;
+    assert!(matches!(
+        vm.run(2),
+        Ok(RunOutcome::Terminated { steps: 2, .. })
+    ));
+    assert!(vm.output().is_empty());
+
+    let mut overlap = artifact.clone();
+    overlap["nodes"][3]["span"] = span(18, 23);
+    assert_eq!(
+        canonical_void_typed_ir(&bytes(&overlap)),
+        Err(FrontendJsonError::Unsupported)
+    );
+    let mut wrong_parent = artifact;
+    wrong_parent["nodes"][5]["parent"] = json!(4);
+    assert_eq!(
+        canonical_void_typed_ir(&bytes(&wrong_parent)),
+        Err(FrontendJsonError::Unsupported)
+    );
+    Ok(())
+}
