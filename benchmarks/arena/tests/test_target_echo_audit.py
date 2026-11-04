@@ -3608,3 +3608,105 @@ def test_target_study_rejects_invalid_json_even_if_public_parser_forgets_shape(
     )
     with pytest.raises(analyze.ArenaError, match="root"):
         audit._document(".temp/arena-target-echo-test/study.json")
+
+
+@pytest.mark.parametrize(
+    "site",
+    ["options", "source_hash", "git_lookup", "outer_audit"],
+)
+def test_target_audit_retains_original_rejection_class_after_public_rebinding(
+    monkeypatch: pytest.MonkeyPatch, site: str
+) -> None:
+    """Mutable public exceptions cannot redefine native audit failures."""
+    original = audit.TargetEchoAuditError
+    monkeypatch.setattr(audit, "TargetEchoAuditError", RuntimeError)
+    if site == "options":
+        action = lambda: audit._admit_options(
+            audit.AuditOptions(replay_candidates=cast("Any", "true"))
+        )
+    elif site == "source_hash":
+        monkeypatch.setattr(
+            audit, "sha256", lambda _data: (_ for _ in ()).throw(LookupError())
+        )
+        action = lambda: audit._source_sha256(b"source")
+    elif site == "git_lookup":
+        monkeypatch.setattr(audit.shutil, "which", lambda *_a, **_k: None)
+        action = lambda: audit._require_git_commit("a" * 40)
+    else:
+
+        def fail_study(*_args: object, **_kwargs: object) -> Never:
+            raise original("original retained-study rejection")
+
+        monkeypatch.setattr(audit, "_admit_study", fail_study)
+        action = lambda: audit.audit(".temp/arena-target-echo-test/study.json")
+    with pytest.raises(original) as observed:
+        action()
+    assert type(observed.value) is original
+    if site == "outer_audit":
+        assert observed.value.args == ("original retained-study rejection",)
+
+
+@pytest.mark.parametrize("failure", ["exit_code", "step_receipt"])
+def test_target_replay_retains_original_tool_error_after_public_rebinding(
+    monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Replay tool diagnostics retain the original typed exception contract."""
+    original = audit.TargetReplayToolError
+    monkeypatch.setattr(audit, "TargetReplayToolError", RuntimeError)
+    output = b"\xa8"
+    stderr = (
+        audit.STEPS_REPORT_PREFIX + b"1\n"
+        if failure == "exit_code"
+        else b"untrusted steps\n"
+    )
+    receipt = sp.CompletedProcess(["vm"], int(failure == "exit_code"), output, stderr)
+    with pytest.raises(original) as observed:
+        audit._check_forward_replay_result(receipt, b"", 1)
+    assert type(observed.value) is original
+
+
+def test_target_audit_safe_detail_preserves_original_not_rebound_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the original audit class may contribute trusted diagnostic text."""
+    original = audit.TargetEchoAuditError
+
+    class ForeignAuditError(Exception):
+        pass
+
+    monkeypatch.setattr(audit, "TargetEchoAuditError", ForeignAuditError)
+    assert audit._safe_error_detail(original("original safe detail")) == (
+        "original safe detail"
+    )
+    assert audit._safe_error_detail(ForeignAuditError("forged safe detail")) == (
+        "ForeignAuditError"
+    )
+
+
+@pytest.mark.parametrize(
+    "dependency",
+    ["target_process", "report_output", "analyze", "evidence", "producer"],
+)
+def test_target_audit_preserves_native_dependency_diagnostics_after_rebinding(
+    monkeypatch: pytest.MonkeyPatch, dependency: str
+) -> None:
+    """Late dependency exports cannot rewrite the trusted error whitelist."""
+    module, name = {
+        "target_process": (target_process, "TargetProcessError"),
+        "report_output": (report_output, "ReportOutputError"),
+        "analyze": (analyze, "ArenaError"),
+        "evidence": (evidence, "EvidenceError"),
+        "producer": (producer, "TargetEchoStudyError"),
+    }[dependency]
+    original = getattr(module, name)
+
+    class ForeignDependencyError(Exception):
+        pass
+
+    monkeypatch.setattr(module, name, ForeignDependencyError)
+    assert audit._safe_error_detail(original("original dependency detail")) == (
+        "original dependency detail"
+    )
+    assert audit._safe_error_detail(ForeignDependencyError("forged detail")) == (
+        "ForeignDependencyError"
+    )

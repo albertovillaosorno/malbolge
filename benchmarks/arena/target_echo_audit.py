@@ -192,6 +192,28 @@ class TargetReplayToolError(sp.SubprocessError):
     """The second VM run did not produce a valid tool-level step receipt."""
 
 
+# Public exception names are an API, not mutable authority for source-native
+# rejection classes or the diagnostic strings that an auditor may trust.
+_SOURCE_TARGET_ECHO_AUDIT_ERROR = TargetEchoAuditError
+_SOURCE_TARGET_REPLAY_TOOL_ERROR = TargetReplayToolError
+_SOURCE_DIAGNOSTIC_ERRORS = (
+    target_process.TargetProcessError,
+    _SOURCE_TARGET_ECHO_AUDIT_ERROR,
+    report_output.ReportOutputError,
+    analyze.ArenaError,
+    evidence.EvidenceError,
+    experiment_manifest.ExperimentManifestError,
+    producer.TargetEchoStudyError,
+    OSError,
+    PermissionError,
+    FileNotFoundError,
+    UnicodeError,
+    UnicodeDecodeError,
+    sp.SubprocessError,
+    sp.TimeoutExpired,
+)
+
+
 @dataclass(frozen=True, slots=True)
 class AuditOptions:
     """Explicit optional retained-study replay and provenance gates."""
@@ -207,7 +229,7 @@ DEFAULT_AUDIT_OPTIONS = AuditOptions()
 
 
 def _fail(message: str) -> Never:
-    raise TargetEchoAuditError(message)
+    raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message)
 
 
 def _source_sha256(data: bytes) -> str:
@@ -224,7 +246,7 @@ def _source_sha256(data: bytes) -> str:
         source_bound = _NATIVE_SHA256(data).hexdigest()
     except Exception as error:
         message = "target audit source hash computation failed"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if (
         any(
             type(value) is not str
@@ -259,22 +281,7 @@ def _safe_error_detail(error: Exception) -> str:
         Trusted error text or the name of an untrusted exception type.
 
     """
-    if type(error) in (
-        target_process.TargetProcessError,
-        TargetEchoAuditError,
-        report_output.ReportOutputError,
-        analyze.ArenaError,
-        evidence.EvidenceError,
-        experiment_manifest.ExperimentManifestError,
-        producer.TargetEchoStudyError,
-        OSError,
-        PermissionError,
-        FileNotFoundError,
-        UnicodeError,
-        UnicodeDecodeError,
-        sp.SubprocessError,
-        sp.TimeoutExpired,
-    ):
+    if type(error) in _SOURCE_DIAGNOSTIC_ERRORS:
         # The exception class is native, but caller-owned arguments are not.
         # Never invoke their __str__ or __repr__ while reporting rejection.
         arguments = error.args
@@ -797,7 +804,7 @@ def _require_git_commit(commit: str) -> None:
         executable = shutil.which("git", path=os.defpath)
     except (OSError, ValueError, RuntimeError, TypeError, AttributeError) as error:
         message = "target audit Git commit object resolver failed"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if executable is None:
         _fail("target audit source commit admission requires local Git")
     if (
@@ -820,7 +827,7 @@ def _require_git_commit(commit: str) -> None:
         UnicodeError,
     ) as error:
         message = "target audit Git commit object executable unavailable"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if type(metadata) is not os.stat_result:
         _fail("target audit Git commit object requires native executable metadata")
     if not stat.S_ISREG(metadata.st_mode) or allowed is not True:
@@ -835,11 +842,11 @@ def _require_git_commit(commit: str) -> None:
                 _fail("target audit Git environment requires native strings")
             if not name.startswith("GIT_"):
                 clean_env[name] = value
-    except TargetEchoAuditError:
+    except _SOURCE_TARGET_ECHO_AUDIT_ERROR:
         raise
     except Exception as error:
         message = "target audit Git environment inspection failed"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     command = [executable, "cat-file", "-t", commit]
     # A copied success receipt does not identify the argv used by this child.
     prepared = command.copy()
@@ -862,7 +869,7 @@ def _require_git_commit(commit: str) -> None:
         sp.SubprocessError,
     ) as error:
         message = "target audit Git commit object lookup failed"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if (
         type(completed) is not sp.CompletedProcess
         or type(completed.args) is not list
@@ -1027,7 +1034,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
         source_bound = _NATIVE_SHA256()
     except Exception as error:
         message = "target audit executable SHA-256 setup failed"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     for path in (emitter, runner):
         try:
             original = path.lstat()
@@ -1117,17 +1124,17 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             TypeError,
             AttributeError,
         ) as error:
-            if isinstance(error, TargetEchoAuditError):
+            if type(error) is _SOURCE_TARGET_ECHO_AUDIT_ERROR:
                 raise
             message = "target audit executable identity changed"
-            raise TargetEchoAuditError(message) from error
+            raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     try:
         reported = digest.hexdigest()
         verified = independent.hexdigest()
         source_bound_receipt = source_bound.hexdigest()
     except Exception as error:
         message = "target audit executable SHA-256 completion failed"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if (
         type(reported) is not str
         or type(verified) is not str
@@ -1228,11 +1235,11 @@ def _check_forward_replay_result(
     _admit_vm_replay_receipt(result)
     if result.returncode != 0:
         message = "target replay executable failed"
-        raise TargetReplayToolError(message)
+        raise _SOURCE_TARGET_REPLAY_TOOL_ERROR(message)
     receipt = STEPS_REPORT_PREFIX + str(steps).encode("ascii") + b"\n"
     if result.stderr != receipt:
         message = "target replay VM step receipt is invalid"
-        raise TargetReplayToolError(message)
+        raise _SOURCE_TARGET_REPLAY_TOOL_ERROR(message)
     if result.stdout != payload + bytes([_SOURCE_CLASSIC_EOF_BYTE]):
         _fail("target replay VM output differs from independent byte oracle")
 
@@ -1510,7 +1517,7 @@ def _rss_digest(
         # A substituted decoder can fail outside stdlib's declared types;
         # never format its exception or let it escape the typed audit API.
         message = "target RSS run manifest is invalid TOML"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if type(decoded) is not dict:
         _fail("target RSS run manifest has invalid native TOML root")
     table = decoded.get(RSS_HASH_TABLE)
@@ -1520,7 +1527,7 @@ def _rss_digest(
         source = _SOURCE_TOML_LOADS(text)
     except Exception as error:
         message = "target RSS run manifest source is invalid TOML"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     source_table = source.get(RSS_HASH_TABLE)
     if version is None:
         if table is not None or source_table is not None:
@@ -1541,14 +1548,14 @@ def _rss_record(data: bytes, *, raw: bool) -> dict[str, Any]:
         source = _SOURCE_JSON_DECODER().decode(data.decode("utf-8"))
     except Exception as error:
         message = "v6 RSS stage receipt is not canonical JSON"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if type(observed) is not dict or type(source) is not dict:
         _fail("v6 RSS stage receipt source decoder returned a foreign root")
     try:
         same_document = observed == source
     except Exception as error:
         message = "v6 RSS receipt JSON decoder comparison failed"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if type(same_document) is not bool or not same_document:
         _fail("v6 RSS receipt JSON decoder differs from source")
     record = source
@@ -1643,7 +1650,7 @@ def _validate_rss_stage_bytes(
         observed_text = json.dumps(record, sort_keys=True, separators=(",", ":"))
     except Exception as error:
         message = "v6 RSS receipt JSON writer failed"
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if type(observed_text) is not str or observed_text != source_text:
         _fail("v6 RSS receipt JSON writer differs from source")
     canonical = (source_text + "\n").encode("utf-8")
@@ -1934,12 +1941,12 @@ def audit(
         # Own native failures retain their exact diagnostic and identity;
         # foreign subclasses and unexpected ordinary host/parser failures
         # must not escape the typed boundary or execute __str__ hooks.
-        if type(error) is TargetEchoAuditError:
+        if type(error) is _SOURCE_TARGET_ECHO_AUDIT_ERROR:
             raise
         message = (
             f"target echo retained study audit failed: {_safe_error_detail(error)}"
         )
-        raise TargetEchoAuditError(message) from error
+        raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     answer = {
         "schema_version": 1,
         "study": relative_study,
