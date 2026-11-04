@@ -2268,6 +2268,32 @@ def test_host_c_audit_rejects_jointly_substituted_sha256_providers(
         reference_audit._source_fingerprint(source)
 
 
+def test_host_c_audit_rejects_jointly_forged_sha256_constructors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two separately replaced constructor paths cannot forge source bytes."""
+    source = b"retained host-C audit source bytes"
+    forged = b"0" * reference_audit.SHA256_DIGEST_BYTES
+    assert sha256(source).digest() != forged
+
+    class ForgedHash:
+        def digest(self) -> bytes:
+            return forged
+
+    with monkeypatch.context() as patch:
+        patch.setattr(reference_audit, "sha256", lambda _raw: ForgedHash())
+        patch.setattr(
+            reference_audit.hashlib,
+            "new",
+            lambda _algorithm, _raw: ForgedHash(),
+        )
+        with pytest.raises(
+            reference_audit.ReferenceAuditError,
+            match="SHA-256 fingerprint receipt differs from source",
+        ):
+            reference_audit._source_fingerprint(source)
+
+
 @pytest.mark.parametrize(
     "bad_digest",
     ["nonnative", "foreign-bytes", "wrong-native", "raised"],

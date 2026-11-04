@@ -60,6 +60,7 @@ from benchmarks.challenges import generate
 from scripts.validate import experiment_manifest
 
 _ROOT = Path(__file__).resolve().parents[2]
+_NATIVE_SHA256 = sha256
 _NATIVE_JSON_LOADS = json.loads
 _NATIVE_JSON_DECODER = json.JSONDecoder
 MAX_ARTIFACT_INDEX_BYTES = 1024 * 1024
@@ -226,10 +227,10 @@ SHA256_DIGEST_BYTES = 32
 
 
 def _source_fingerprint(raw: bytes) -> bytes:
-    """Admit a native digest corroborated by the stdlib SHA-256 entrypoint.
+    """Require agreement with the import-bound SHA-256 source constructor.
 
-    Return exactly the bytes of one SHA-256 digest. A substituted first hash
-    provider cannot claim identity via custom equality or a constant digest;
+    Return exactly one native SHA-256 digest. Joint substitutions of the two
+    mutable runtime constructors cannot relabel retained evidence bytes;
     ordinary dependency faults remain typed and preserve their cause.
     """
     if type(raw) is not bytes:
@@ -239,15 +240,19 @@ def _source_fingerprint(raw: bytes) -> bytes:
         # Check through an independent constructor, not the mutable module
         # attribute which can be replaced alongside the bound sha256 alias.
         reference = hashlib.new("sha256", raw).digest()
+        source_bound = _NATIVE_SHA256(raw).digest()
     except Exception as error:
         message = "host-C audit SHA-256 fingerprint dependency failed"
         raise ReferenceAuditError(message) from error
     if (
         type(result) is not bytes
         or type(reference) is not bytes
+        or type(source_bound) is not bytes
         or len(result) != SHA256_DIGEST_BYTES
         or len(reference) != SHA256_DIGEST_BYTES
+        or len(source_bound) != SHA256_DIGEST_BYTES
         or result != reference
+        or result != source_bound
     ):
         _fail("host-C audit SHA-256 fingerprint receipt differs from source")
     return result
