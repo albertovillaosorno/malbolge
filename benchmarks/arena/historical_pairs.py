@@ -62,6 +62,15 @@ _NATIVE_SHA256 = sha256
 # Preserve source parsing and report encoding despite mutable providers.
 _SOURCE_TOML_LOADS = tomllib.loads
 _SOURCE_JSON_ENCODER = json.JSONEncoder
+# Even the original class shares mutable method and iterator providers with
+# json.dumps. Their identities must stay source-bound through both encodes.
+_SOURCE_JSON_ENCODE_METHOD = json.JSONEncoder.encode
+_SOURCE_JSON_ITERENCODE_METHOD = json.JSONEncoder.iterencode
+_SOURCE_JSON_ASCII_ESCAPER = json.encoder.encode_basestring_ascii
+_SOURCE_C_FACTORY_NAME = "c_make_encoder"
+_SOURCE_PY_FACTORY_NAME = "_make_iterencode"
+_SOURCE_JSON_C_FACTORY = getattr(json.encoder, _SOURCE_C_FACTORY_NAME, None)
+_SOURCE_JSON_PY_FACTORY = getattr(json.encoder, _SOURCE_PY_FACTORY_NAME)
 
 MAX_SOURCE_BYTES = 4 * 1024 * 1024
 MAX_CSV_HEADER_CHARS = 512
@@ -728,16 +737,57 @@ def _admitted_document(
     }
 
 
+def _require_source_json_encoder() -> None:
+    """Reject shared JSON substitutions before accepting report bytes."""
+    source_providers = (
+        _SOURCE_JSON_ENCODER.encode is _SOURCE_JSON_ENCODE_METHOD,
+        _SOURCE_JSON_ENCODER.iterencode is _SOURCE_JSON_ITERENCODE_METHOD,
+        json.encoder.encode_basestring_ascii is _SOURCE_JSON_ASCII_ESCAPER,
+        getattr(json.encoder, _SOURCE_C_FACTORY_NAME, None)
+        is _SOURCE_JSON_C_FACTORY,
+        getattr(json.encoder, _SOURCE_PY_FACTORY_NAME)
+        is _SOURCE_JSON_PY_FACTORY,
+    )
+    if not all(source_providers):
+        _fail("historical paired JSON serializer disagrees with source")
+
+
 def _admitted_report_json(document: dict[str, Any]) -> str:
-    """Seal historical source-backed report bytes before public serialization."""
+    """Seal historical report bytes against original JSON source providers.
+
+    Returns:
+        Exact, source-correlated JSON text.
+
+    Raises:
+        HistoricalEvidenceError: The encoder or writer cannot be corroborated.
+
+    """
+    # The same late-bound class methods and global iterator factories serve
+    # both paths. Reattest after each invocation, before trusting agreement.
+    _require_source_json_encoder()
     try:
-        # The public dumps function can consult a replaced cached encoder.
         source = _SOURCE_JSON_ENCODER().encode(document)
+    except Exception as error:
+        message = (
+            "historical paired JSON serializer failed: "
+            f"{type(error).__name__}"
+        )
+        raise HistoricalEvidenceError(message) from error
+    _require_source_json_encoder()
+    try:
         observed = json.dumps(document)
     except Exception as error:
-        message = f"historical paired JSON serializer failed: {type(error).__name__}"
+        message = (
+            "historical paired JSON serializer failed: "
+            f"{type(error).__name__}"
+        )
         raise HistoricalEvidenceError(message) from error
-    if type(observed) is not str or observed != source:
+    _require_source_json_encoder()
+    if (
+        type(source) is not str
+        or type(observed) is not str
+        or observed != source
+    ):
         _fail("historical paired JSON serializer disagrees with source")
     return source
 

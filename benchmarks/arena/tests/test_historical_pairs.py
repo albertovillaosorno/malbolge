@@ -162,6 +162,92 @@ def test_historical_report_contains_json_writer_failure(
         assert caught.value.__cause__ is failure
 
 
+@pytest.mark.parametrize("method", ["encode", "iterencode"])
+def test_historical_report_rejects_joint_encoder_method_swap(
+    monkeypatch: pytest.MonkeyPatch, method: str,
+) -> None:
+    """Shared late-bound JSONEncoder methods cannot forge report contents."""
+    document = {"schema_version": 1, "observations": [{"elapsed_ns": 7}]}
+    forged = '{"schema_version": 1, "observations": [{"elapsed_ns": 900}]}'
+    assert json.dumps(document) != forged
+
+    def forged_encode(instance: object, value: object) -> str:
+        del instance, value
+        return forged
+
+    def forged_iterencode(
+        instance: object, value: object, **kwargs: object
+    ) -> Iterator[str]:
+        del instance, value, kwargs
+        return iter([forged])
+
+    replacement = {"encode": forged_encode, "iterencode": forged_iterencode}
+    with monkeypatch.context() as patch:
+        patch.setattr(json.JSONEncoder, method, replacement[method])
+        with pytest.raises(
+            historical_pairs.HistoricalEvidenceError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = historical_pairs._admitted_report_json(document)
+
+
+@pytest.mark.parametrize(
+    "provider",
+    ["encode_basestring_ascii", "c_make_encoder", "_make_iterencode"],
+)
+def test_historical_report_rejects_shared_json_factory_swap(
+    monkeypatch: pytest.MonkeyPatch, provider: str,
+) -> None:
+    """Mutable module-global encoder helpers cannot certify source JSON."""
+    document = {"observations": [{"elapsed_ns": 7}]}
+    original = getattr(json.encoder, provider, None)
+    if not callable(original):
+        pytest.skip("native JSON encoder provider unavailable")
+
+    def substituted_provider(*args: object, **kwargs: object) -> object:
+        return original(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(json.encoder, provider, substituted_provider)
+        with pytest.raises(
+            historical_pairs.HistoricalEvidenceError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = historical_pairs._admitted_report_json(document)
+
+
+def test_historical_report_rejects_midcall_json_provider_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A writer cannot replace source JSON machinery after the first encode."""
+    document = {"observations": [{"elapsed_ns": 7}]}
+    native_dumps = json.dumps
+    native_factory = getattr(
+        json.encoder, historical_pairs._SOURCE_PY_FACTORY_NAME
+    )
+    with monkeypatch.context() as patch:
+
+        def altered_dumps(value: object) -> str:
+            result = native_dumps(value)
+
+            def replaced_factory(*args: object, **kwargs: object) -> object:
+                return native_factory(*args, **kwargs)
+
+            patch.setattr(
+                json.encoder,
+                historical_pairs._SOURCE_PY_FACTORY_NAME,
+                replaced_factory,
+            )
+            return result
+
+        patch.setattr(json, "dumps", altered_dumps)
+        with pytest.raises(
+            historical_pairs.HistoricalEvidenceError,
+            match="JSON serializer disagrees with source",
+        ):
+            _ = historical_pairs._admitted_report_json(document)
+
+
 def test_historical_report_accepts_equivalent_cached_json_encoder(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
