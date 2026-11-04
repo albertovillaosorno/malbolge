@@ -1580,7 +1580,7 @@ def test_exact_publication_collision_preserves_foreign_output(
         _ = (destination / "foreign.txt").write_bytes(_FOREIGN_OUTPUT)
         raise FileExistsError(destination)
 
-    monkeypatch.setattr(exact_module, "publish_directory_no_replace", collide)
+    monkeypatch.setattr(exact_module, "_NATIVE_PUBLISH_DIRECTORY_NO_REPLACE", collide)
     with pytest.raises(ExactTreeError, match="output publication failed"):
         materialize_exact_plan(source, plan, output)
 
@@ -4907,7 +4907,7 @@ def test_exact_native_error_guards_reject_late_builtin_exception_alias(
             def fail_publish(_staging: Path, _destination: Path) -> None:
                 raise native_os_error("publication refused")
 
-            patched.setattr(exact_module, "publish_directory_no_replace", fail_publish)
+            patched.setattr(exact_module, "_NATIVE_PUBLISH_DIRECTORY_NO_REPLACE", fail_publish)
         try:
             if route == "notes":
                 error = ExactTreeError("native reader failure")
@@ -5302,3 +5302,23 @@ def test_exact_snapshot_rejects_late_host_regular_classifier_change(
         patched.setattr(stat, "S_ISREG", lambda _mode: verdict)
         with pytest.raises(ExactTreeError, match="filesystem path hooks changed"):
             _ = snapshot_tree(source)
+
+
+def test_exact_publication_ignores_late_public_helper_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A replaced helper alias cannot silently skip verified publication."""
+    source, oracle = _synthetic_pair(tmp_path)
+    plan = build_exact_plan(source, oracle)
+    output = tmp_path / "result"
+    calls = 0
+
+    def skip_publication(_staging: Path, _destination: Path) -> None:
+        nonlocal calls
+        calls += 1
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, "publish_directory_no_replace", skip_publication)
+        materialize_exact_plan(source, plan, output)
+    assert calls == 0
+    assert snapshot_tree(output) == snapshot_tree(oracle)

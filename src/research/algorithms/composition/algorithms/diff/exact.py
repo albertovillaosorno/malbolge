@@ -115,6 +115,8 @@ _NATIVE_EXCEPTION = builtins.Exception
 _NATIVE_TREE_MODEL_ERROR = TreeModelError
 # Portable path policy must not call a late consumer-replaced helper alias.
 _NATIVE_RESERVED_WINDOWS_COMPONENT = reserved_windows_component
+# Publication must not consult a late consumer-replaced public helper alias.
+_NATIVE_PUBLISH_DIRECTORY_NO_REPLACE = publish_directory_no_replace
 # Model receipt names remain public, but private constructors and dispatch
 # require the classes and enum captured before consumer callbacks run.
 _NATIVE_FILE_RECORD = FileRecord
@@ -1659,7 +1661,7 @@ def _raise_exact_cleanup_failure(error: Exception, cleanup_error: str) -> None:
 
 def _publish_exact_output(staging: Path, destination: Path) -> None:
     try:
-        publish_directory_no_replace(staging, destination)
+        _NATIVE_PUBLISH_DIRECTORY_NO_REPLACE(staging, destination)
     except _NATIVE_OS_ERROR as error:
         message = "exact output publication failed: " + _safe_host_error_detail(
             error
