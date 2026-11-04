@@ -68,6 +68,11 @@ class StudyFileError(ValueError):
     """An arena input file cannot be admitted as stable regular bytes."""
 
 
+# Keep diagnostic construction and exception classification native even if
+# a consumer rebinds the public class while an input is being inspected.
+_SOURCE_STUDY_FILE_ERROR = StudyFileError
+
+
 def _native_stat(info: os.stat_result) -> os.stat_result:
     # Filesystem calls normally return an exact native stat_result. Reject a
     # substituted dependency receipt before consulting attacker-owned fields.
@@ -96,7 +101,7 @@ def _identity(info: os.stat_result) -> tuple[int, int, int, int, int]:
 
 
 def _fail(message: str) -> Never:
-    raise StudyFileError(message)
+    raise _SOURCE_STUDY_FILE_ERROR(message)
 
 
 def _admit_descriptor(receipt: object, *, source: str) -> int:
@@ -121,7 +126,7 @@ def _parent_identity(path: Path) -> tuple[int, int]:
         parent = path.parent.stat()
     except Exception as error:
         message = "arena input parent directory changed"
-        raise StudyFileError(message) from error
+        raise _SOURCE_STUDY_FILE_ERROR(message) from error
     parent = _native_stat(parent)
     if not stat.S_ISDIR(parent.st_mode):
         _fail("arena input parent directory changed")
@@ -182,9 +187,11 @@ def _open_study(path: Path) -> BinaryIO:
             # Preserve the primary admission failure without invoking a
             # foreign close exception's diagnostic formatter.
             BaseException.add_note(error, "arena input descriptor cleanup also failed")
-        if isinstance(error, StudyFileError):
+        if isinstance(error, _SOURCE_STUDY_FILE_ERROR):
             raise error  # ruff: ignore[TRY201]
-        raise StudyFileError("arena input stream construction failed") from error
+        raise _SOURCE_STUDY_FILE_ERROR(
+            "arena input stream construction failed"
+        ) from error
 
 
 def _read_complete(stream: BinaryIO, *, size: int) -> bytes:
@@ -204,7 +211,7 @@ def _read_complete(stream: BinaryIO, *, size: int) -> bytes:
             chunk = stream.read(requested)
         except Exception as error:
             message = "arena input stream read failed"
-            raise StudyFileError(message) from error
+            raise _SOURCE_STUDY_FILE_ERROR(message) from error
         if _SOURCE_TYPE(chunk) is not _SOURCE_BYTES or _SOURCE_LEN(chunk) > requested:
             _fail("arena input stream read returned invalid bytes")
         if not chunk:
@@ -240,11 +247,11 @@ def _verify_descriptor_bytes(descriptor: int, data: bytes) -> None:
             ):
                 _fail("arena input source bytes differ from opened descriptor")
             offset += _SOURCE_LEN(observed)
-    except StudyFileError:
+    except _SOURCE_STUDY_FILE_ERROR:
         raise
     except Exception as error:
         message = "arena input source descriptor reread failed"
-        raise StudyFileError(message) from error
+        raise _SOURCE_STUDY_FILE_ERROR(message) from error
 
 
 def _read_descriptor(
@@ -280,7 +287,7 @@ def _read_descriptor(
                     close_receipt: object = stream.close()
                 except Exception as error:
                     message = "arena input stream close failed"
-                    raise StudyFileError(message) from error
+                    raise _SOURCE_STUDY_FILE_ERROR(message) from error
                 if close_receipt is not None:
                     _fail("arena input stream close completion was not native None")
             except Exception as error:
@@ -290,20 +297,20 @@ def _read_descriptor(
         if primary is not None and error is not primary:
             BaseException.add_note(primary, "arena input stream cleanup also failed")
             error = primary
-        if isinstance(error, StudyFileError):
+        if isinstance(error, _SOURCE_STUDY_FILE_ERROR):
             # It can be the rejected read, not the active close error.
             raise error  # ruff: ignore[TRY201]
         message = "arena input stream access failed"
-        raise StudyFileError(message) from error
+        raise _SOURCE_STUDY_FILE_ERROR(message) from error
     # A substituted context manager may return a truthy __exit__ receipt and
     # swallow the rejection raised by the admitted read or final close. The
     # inner catch retains that original failure even when the with block exits
     # without propagating it, so such a stream cannot certify source bytes.
     if primary is not None:
-        if isinstance(primary, StudyFileError):
+        if isinstance(primary, _SOURCE_STUDY_FILE_ERROR):
             raise primary
         message = "arena input stream access failed"
-        raise StudyFileError(message) from primary
+        raise _SOURCE_STUDY_FILE_ERROR(message) from primary
     return data, opened
 
 
@@ -339,11 +346,11 @@ def _read_admitted_study(path: Path, *, limit: int) -> bytes:
     if original_target is not None:
         try:
             current_target = _native_resolved_path(path.resolve(strict=True))
-        except StudyFileError:
+        except _SOURCE_STUDY_FILE_ERROR:
             raise
         except Exception as error:
             message = "arena input parent path changed during read"
-            raise StudyFileError(message) from error
+            raise _SOURCE_STUDY_FILE_ERROR(message) from error
         if current_target != original_target:
             _fail("arena input parent path changed during read")
     if _parent_identity(path) != original_parent:
@@ -368,8 +375,8 @@ def read_study_bytes(path: Path, *, limit: int) -> bytes:
         _fail("arena input path requires an exact native Path")
     try:
         return _read_admitted_study(path, limit=limit)
-    except StudyFileError:
+    except _SOURCE_STUDY_FILE_ERROR:
         raise
     except Exception as error:
         message = "arena input path access failed"
-        raise StudyFileError(message) from error
+        raise _SOURCE_STUDY_FILE_ERROR(message) from error

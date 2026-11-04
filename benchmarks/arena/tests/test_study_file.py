@@ -1957,3 +1957,56 @@ def test_study_reader_preserves_native_admission_operations(
 
     monkeypatch.setattr(study_file, provider, forged_operation, raising=False)
     assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    "scenario", ["limit", "missing", "directory", "native-read", "foreign-read"]
+)
+def test_study_reader_retains_original_error_under_public_rebinding(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    scenario: str,
+) -> None:
+    """Rebound public error aliases cannot hide file-admission rejection."""
+    original = study_file.StudyFileError
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    message = {
+        "limit": "byte limit",
+        "missing": "path access failed",
+        "directory": "must be a regular file",
+        "native-read": "native read rejected",
+        "foreign-read": "stream access failed",
+    }[scenario]
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file, "StudyFileError", replacement)
+        if scenario.endswith("-read"):
+
+            def rejected_read(*_args: object, **_kwargs: object) -> Never:
+                if scenario == "native-read":
+                    raise original("native read rejected")
+                raise OSError("underlying read fault")
+
+            patched.setattr(study_file, "_read_complete", rejected_read)
+        if scenario == "missing":
+            path = tmp_path / "missing.json"
+        elif scenario == "directory":
+            path = tmp_path
+        with pytest.raises(original, match=message):
+            study_file.read_study_bytes(path, limit=0 if scenario == "limit" else 1024)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_study_reader_success_ignores_replaced_public_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+) -> None:
+    """Rebinding the exposed error class does not alter source bytes."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    with monkeypatch.context() as patched:
+        patched.setattr(study_file, "StudyFileError", replacement)
+        assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
