@@ -46,7 +46,7 @@ VM_SHIM = SCRIPTS / "malbolge"
 FRONTEND = ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin/malbolge-c-frontend"
 RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 RUST_BIN = ROOT / ".cache/rust/target/debug"
-EXAMPLE = ROOT / "src/interface/command-line/examples/emit-aa.c"
+EXAMPLE = ROOT / "src/interface/command-line/composition/examples/emit-aa.c"
 
 
 @unittest.skipIf(os.name == "nt", "Unix symlink installation only")

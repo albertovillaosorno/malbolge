@@ -87,9 +87,9 @@ python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
   --layout-backend /path/to/malbolge_layout \
   --guest-include /path/to/guest/include \
   --resource-dir /path/to/pinned/clang/resources \
-  --source-id src/interface/command-line/examples/emit-aa.c \
+  --source-id src/interface/command-line/composition/examples/emit-aa.c \
   --output .temp/emit-aa-explicit.malbolge --capsule \
-  src/interface/command-line/examples/emit-aa.c
+  src/interface/command-line/composition/examples/emit-aa.c
 ```
 
 On Unix, the `composition/scripts/c2malbolge` executable shim invokes this
@@ -107,7 +107,7 @@ resources without copying their paths or inventing normalized JSON:
 mkdir -p .temp
 python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
   --repository-tools --capsule --output .temp/emit-aa-python.malbolge \
-  src/interface/command-line/examples/emit-aa.c
+  src/interface/command-line/composition/examples/emit-aa.c
 ```
 
 After installing the Unix shims into a directory on `PATH`, the same command
@@ -117,7 +117,7 @@ can be run directly as:
 mkdir -p .temp
 c2malbolge --repository-tools --capsule \
   --output .temp/emit-aa.malbolge \
-  src/interface/command-line/examples/emit-aa.c
+  src/interface/command-line/composition/examples/emit-aa.c
 malbolge --repository-tools .temp/emit-aa.malbolge --report-steps
 ```
 

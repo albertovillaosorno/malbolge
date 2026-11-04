@@ -120,6 +120,11 @@ parts:
     path: composition/scripts/c2malbolge
     kind: composition
     responsibility: Invoke the bounded C compiler from installed Unix paths.
+  - id: part-0019
+    path: composition/examples/emit-aa.c
+    kind: composition
+    language: c
+    responsibility: Demonstrate real C character-byte output in the guest VM.
 projects: []
 tests: []
 graph:

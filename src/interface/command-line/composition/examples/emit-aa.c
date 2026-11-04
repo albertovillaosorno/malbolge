@@ -26,13 +26,13 @@
 //   - The installed compiler and normative VM verify actual guest output.
 // - Usage:
 //   - c2malbolge --repository-tools --capsule --output .temp/emit-aa.malbolge
-//     src/interface/command-line/examples/emit-aa.c
+//     src/interface/command-line/composition/examples/emit-aa.c
 // - Defaults:
 //   - No general printf, main-return or mixed-byte support is implied.
 //
 #include <stdio.h>
 
 void emit(void) {
-    putchar('A');
-    putchar('A');
+  putchar('A');
+  putchar('A');
 }
