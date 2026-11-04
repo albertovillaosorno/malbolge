@@ -2575,6 +2575,28 @@ def test_host_c_reference_rejects_jointly_substituted_sha256_providers(
         reference_study._checked_sha256(raw)
 
 
+def test_reference_study_rejects_jointly_forged_hash_constructors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutually forged source digests cannot enter retained artifact metadata."""
+    raw = b"true binary reference artifact"
+    false_digest = "0" * analyze.SHA256_HEX_LENGTH
+    assert sha256(raw).hexdigest() != false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(reference_study, "sha256", lambda _raw: ForgedHash())
+    monkeypatch.setattr(
+        reference_study,
+        "hashlib",
+        SimpleNamespace(new=lambda _algorithm, _raw: ForgedHash()),
+    )
+    with pytest.raises(reference_study.ReferenceStudyError, match="SHA-256"):
+        reference_study._checked_sha256(raw)
+
+
 @pytest.mark.parametrize("stage", ["bundle", "binary", "raw"])
 def test_producer_hash_receipts_cannot_mislabel_generated_evidence(
     tmp_path: Path,

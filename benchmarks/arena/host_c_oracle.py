@@ -52,6 +52,9 @@ from typing import Any, Never
 
 from benchmarks.challenges import generate
 
+# Preserve a source-byte digest provider when public constructors are replaced.
+_NATIVE_SHA256 = sha256
+
 MAX_REPLAY_CASES = 16
 MAX_REPLAY_NODES = 512
 ORACLE_BYTES = 4
@@ -638,6 +641,7 @@ def _canonical_payload(
         digest = sha256(generated.source).hexdigest()
         # The mutable hashlib.sha256 attribute may alias a forged provider.
         independent = hashlib.new("sha256", generated.source).hexdigest()
+        source_bound = _NATIVE_SHA256(generated.source).hexdigest()
     except Exception as error:
         # Hashing is a dependency; its faults must remain typed replay
         # failures without invoking foreign exception formatting hooks.
@@ -646,9 +650,12 @@ def _canonical_payload(
     if (
         type(digest) is not str
         or type(independent) is not str
+        or type(source_bound) is not str
         or len(digest) != 64
         or len(independent) != 64
-        or digest != independent
+        or len(source_bound) != 64
+        or digest != source_bound
+        or independent != source_bound
         or digest != source_sha256
         or len(generated.oracle) != ORACLE_BYTES
     ):

@@ -846,6 +846,27 @@ def test_host_c_oracle_rejects_jointly_substituted_sha256_providers(
         host_c_oracle._canonical_payload(_case(), PROFILE, false_digest)
 
 
+def test_host_c_oracle_rejects_jointly_forged_hash_constructors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two fake hash providers cannot admit a changed C challenge identity."""
+    false_digest = "0" * 64
+    assert _digest() != false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(host_c_oracle, "sha256", lambda _raw: ForgedHash())
+    monkeypatch.setattr(
+        host_c_oracle,
+        "hashlib",
+        SimpleNamespace(new=lambda _algorithm, _raw: ForgedHash()),
+    )
+    with pytest.raises(host_c_oracle.HostOracleError, match="source.*identity"):
+        host_c_oracle._canonical_payload(_case(), PROFILE, false_digest)
+
+
 def test_host_c_forged_source_hash_never_enters_native_workspace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

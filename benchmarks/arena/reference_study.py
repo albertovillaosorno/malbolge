@@ -62,6 +62,9 @@ from benchmarks.arena import (
 from benchmarks.challenges import generate
 from scripts.validate import experiment_manifest, target_profile
 
+# Preserve a source-byte SHA-256 provider across public alias substitutions.
+_NATIVE_SHA256 = sha256
+
 # Bind source JSON classes before mutable public decoder/writer replacement.
 _SOURCE_JSON_DECODER = json.JSONDecoder
 _SOURCE_JSON_ENCODER = json.JSONEncoder
@@ -641,15 +644,19 @@ def _checked_sha256(raw: bytes) -> str:
         reported = sha256(raw).hexdigest()
         # A replaced hashlib.sha256 may alias the first provider exactly.
         reference = hashlib.new("sha256", raw).hexdigest()
+        source_bound = _NATIVE_SHA256(raw).hexdigest()
     except Exception as error:
         message = "host-C reference SHA-256 dependency failed"
         raise ReferenceStudyError(message) from error
     if (
         type(reported) is not str
         or type(reference) is not str
+        or type(source_bound) is not str
         or len(reported) != analyze.SHA256_HEX_LENGTH
         or len(reference) != analyze.SHA256_HEX_LENGTH
-        or reported != reference
+        or len(source_bound) != analyze.SHA256_HEX_LENGTH
+        or reported != source_bound
+        or reference != source_bound
     ):
         _fail("host-C reference SHA-256 receipt differs from source bytes")
     return reported
