@@ -2493,3 +2493,55 @@ def test_source_binding_recovery_error_preserves_native_class_after_alias(
                 _ = recover_secret(
                     valid, cast("IdentityTree", object())
                 )
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "AnchorPolicy",
+        "StableAnchor",
+        "IdentityTree",
+        "IdentityFile",
+        "SourceBindingPolicy",
+        "BoundShare",
+        "ThresholdBinding",
+    ],
+)
+def test_source_binding_native_records_survive_late_class_aliases(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Public class names must not replace original evidence identities."""
+    reference = _reference()
+    policy = _policy()
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    with monkeypatch.context() as patched:
+        patched.setattr(binding_module, alias, object)
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+        assert observed == expected
+        assert validate_threshold_binding(expected) is expected
+        assert recover_secret(expected, reference) == _SECRET
+
+
+@pytest.mark.parametrize("alias", ["BoundShare", "ThresholdBinding"])
+def test_source_binding_foreign_receipts_remain_rejected_after_class_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A class alias cannot turn foreign receipts into native metadata."""
+    reference = _reference()
+    valid = bind_secret(reference, _SECRET, policy=_policy(), context=_CONTEXT)
+    if alias == "BoundShare":
+        foreign = replace(
+            valid,
+            shares=(
+                cast("BoundShare", cast("object", SimpleNamespace())),
+                *valid.shares[1:],
+            ),
+        )
+    else:
+        foreign = cast("ThresholdBinding", cast("object", SimpleNamespace()))
+    with monkeypatch.context() as patched:
+        patched.setattr(binding_module, alias, SimpleNamespace)
+        with pytest.raises(SourceBindingError):
+            _ = validate_threshold_binding(foreign)

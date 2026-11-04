@@ -112,6 +112,11 @@ _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_ADMISSION_POLICY_ERROR = AdmissionPolicyError
+# Source model class aliases are mutable after import; pin original identity.
+_NATIVE_ANCHOR_POLICY_TYPE = AnchorPolicy
+_NATIVE_STABLE_ANCHOR_TYPE = StableAnchor
+_NATIVE_IDENTITY_FILE_TYPE = IdentityFile
+_NATIVE_IDENTITY_TREE_TYPE = IdentityTree
 _NATIVE_TYPE_ERROR = builtins.TypeError
 _DEFAULT_BINDING_ANCHOR_POLICY = AnchorPolicy(
     window_bytes=32,
@@ -200,12 +205,15 @@ class SourceBindingPolicy:
         if minimum > maximum:
             message = "minimum_anchor_files cannot exceed maximum_anchors"
             raise _NATIVE_SOURCE_BINDING_POLICY_ERROR(message)
-        if _NATIVE_TYPE(anchor_policy) is not AnchorPolicy:
+        if _NATIVE_TYPE(anchor_policy) is not _NATIVE_ANCHOR_POLICY_TYPE:
             message = "anchor_policy must use the exact AnchorPolicy type"
             raise _NATIVE_SOURCE_BINDING_POLICY_ERROR(message)
         if not _valid_anchor_policy_fields(anchor_policy):
             message = "anchor_policy requires positive exact integer anchor dimensions"
             raise _NATIVE_SOURCE_BINDING_POLICY_ERROR(message)
+
+
+_NATIVE_SOURCE_BINDING_POLICY_TYPE = SourceBindingPolicy
 
 
 # Generated dataclass constructors resolve post-init through mutable class
@@ -235,10 +243,18 @@ def _policy_fields(
     policy: SourceBindingPolicy,
 ) -> tuple[float, int, int, AnchorPolicy]:
     return (
-        _POLICY_FRACTION_SLOT.__get__(policy, SourceBindingPolicy),
-        _POLICY_MAXIMUM_SLOT.__get__(policy, SourceBindingPolicy),
-        _POLICY_MINIMUM_SLOT.__get__(policy, SourceBindingPolicy),
-        _POLICY_ANCHORS_SLOT.__get__(policy, SourceBindingPolicy),
+        _POLICY_FRACTION_SLOT.__get__(
+            policy, _NATIVE_SOURCE_BINDING_POLICY_TYPE
+        ),
+        _POLICY_MAXIMUM_SLOT.__get__(
+            policy, _NATIVE_SOURCE_BINDING_POLICY_TYPE
+        ),
+        _POLICY_MINIMUM_SLOT.__get__(
+            policy, _NATIVE_SOURCE_BINDING_POLICY_TYPE
+        ),
+        _POLICY_ANCHORS_SLOT.__get__(
+            policy, _NATIVE_SOURCE_BINDING_POLICY_TYPE
+        ),
     )
 
 
@@ -297,6 +313,11 @@ class ThresholdBinding:
         _BINDING_SHARES_SLOT.__set__(self, shares)
 
 
+# Preserve allocation and validation of original native binding records.
+_NATIVE_BOUND_SHARE_TYPE = BoundShare
+_NATIVE_THRESHOLD_BINDING_TYPE = ThresholdBinding
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class _AnchorMaterial:
     source_path: str
@@ -339,13 +360,17 @@ _ANCHOR_POLICY_MODULUS_SLOT = cast(
 
 
 def _valid_anchor_policy_fields(value: AnchorPolicy) -> bool:
-    if _NATIVE_TYPE(value) is not AnchorPolicy:
+    if _NATIVE_TYPE(value) is not _NATIVE_ANCHOR_POLICY_TYPE:
         return False
     # The envelope can originate outside the constructor. Check native slots
     # before candidate inspection instead of trusting a nested record's type.
     try:
-        window = _ANCHOR_POLICY_WINDOW_SLOT.__get__(value, AnchorPolicy)
-        modulus = _ANCHOR_POLICY_MODULUS_SLOT.__get__(value, AnchorPolicy)
+        window = _ANCHOR_POLICY_WINDOW_SLOT.__get__(
+            value, _NATIVE_ANCHOR_POLICY_TYPE
+        )
+        modulus = _ANCHOR_POLICY_MODULUS_SLOT.__get__(
+            value, _NATIVE_ANCHOR_POLICY_TYPE
+        )
     except _NATIVE_ATTRIBUTE_ERROR:
         return False
     return (
@@ -357,15 +382,15 @@ def _valid_anchor_policy_fields(value: AnchorPolicy) -> bool:
 
 
 def _stable_anchor_digest(value: StableAnchor) -> bytes:
-    return _STABLE_ANCHOR_DIGEST_SLOT.__get__(value, StableAnchor)
+    return _STABLE_ANCHOR_DIGEST_SLOT.__get__(value, _NATIVE_STABLE_ANCHOR_TYPE)
 
 
 def _stable_anchor_offset(value: StableAnchor) -> int:
-    return _STABLE_ANCHOR_OFFSET_SLOT.__get__(value, StableAnchor)
+    return _STABLE_ANCHOR_OFFSET_SLOT.__get__(value, _NATIVE_STABLE_ANCHOR_TYPE)
 
 
 def _anchor_policy_window(value: AnchorPolicy) -> int:
-    return _ANCHOR_POLICY_WINDOW_SLOT.__get__(value, AnchorPolicy)
+    return _ANCHOR_POLICY_WINDOW_SLOT.__get__(value, _NATIVE_ANCHOR_POLICY_TYPE)
 
 
 # Private intermediate evidence cannot be reinterpreted by consumer hooks.
@@ -456,7 +481,7 @@ def _new_anchor_material(
 def _new_bound_share(
     source_path: str, anchor_digest: bytes, x: int, masked_share: bytes
 ) -> BoundShare:
-    share = _NATIVE_OBJECT_NEW(BoundShare)
+    share = _NATIVE_OBJECT_NEW(_NATIVE_BOUND_SHARE_TYPE)
     _BOUND_SHARE_INIT(share, source_path, anchor_digest, x, masked_share)
     return share
 
@@ -470,7 +495,7 @@ def _new_threshold_binding(
     anchor_policy: AnchorPolicy,
     shares: tuple[BoundShare, ...],
 ) -> ThresholdBinding:
-    binding = _NATIVE_OBJECT_NEW(ThresholdBinding)
+    binding = _NATIVE_OBJECT_NEW(_NATIVE_THRESHOLD_BINDING_TYPE)
     _THRESHOLD_BINDING_INIT(
         binding,
         context,
@@ -504,15 +529,15 @@ _IDENTITY_CANONICAL_SLOT = cast(
 
 
 def _identity_files(value: IdentityTree) -> tuple[IdentityFile, ...]:
-    return _IDENTITY_FILES_SLOT.__get__(value, IdentityTree)
+    return _IDENTITY_FILES_SLOT.__get__(value, _NATIVE_IDENTITY_TREE_TYPE)
 
 
 def _identity_path(value: IdentityFile) -> str:
-    return _IDENTITY_PATH_SLOT.__get__(value, IdentityFile)
+    return _IDENTITY_PATH_SLOT.__get__(value, _NATIVE_IDENTITY_FILE_TYPE)
 
 
 def _identity_canonical(value: IdentityFile) -> bytes:
-    return _IDENTITY_CANONICAL_SLOT.__get__(value, IdentityFile)
+    return _IDENTITY_CANONICAL_SLOT.__get__(value, _NATIVE_IDENTITY_FILE_TYPE)
 
 
 # The exact record type alone is not evidence that its constructor ran.
@@ -570,47 +595,61 @@ _SHARE_MASKED_SLOT = cast(
 
 
 def _binding_context(value: ThresholdBinding) -> bytes:
-    return _BINDING_CONTEXT_SLOT.__get__(value, ThresholdBinding)
+    return _BINDING_CONTEXT_SLOT.__get__(
+        value, _NATIVE_THRESHOLD_BINDING_TYPE
+    )
 
 
 def _binding_threshold(value: ThresholdBinding) -> int:
-    return _BINDING_THRESHOLD_SLOT.__get__(value, ThresholdBinding)
+    return _BINDING_THRESHOLD_SLOT.__get__(
+        value, _NATIVE_THRESHOLD_BINDING_TYPE
+    )
 
 
 def _binding_minimum_files(value: ThresholdBinding) -> int:
-    return _BINDING_MINIMUM_FILES_SLOT.__get__(value, ThresholdBinding)
+    return _BINDING_MINIMUM_FILES_SLOT.__get__(
+        value, _NATIVE_THRESHOLD_BINDING_TYPE
+    )
 
 
 def _binding_secret_length(value: ThresholdBinding) -> int:
-    return _BINDING_SECRET_LENGTH_SLOT.__get__(value, ThresholdBinding)
+    return _BINDING_SECRET_LENGTH_SLOT.__get__(
+        value, _NATIVE_THRESHOLD_BINDING_TYPE
+    )
 
 
 def _binding_commitment(value: ThresholdBinding) -> bytes:
-    return _BINDING_COMMITMENT_SLOT.__get__(value, ThresholdBinding)
+    return _BINDING_COMMITMENT_SLOT.__get__(
+        value, _NATIVE_THRESHOLD_BINDING_TYPE
+    )
 
 
 def _binding_anchor_policy(value: ThresholdBinding) -> AnchorPolicy:
-    return _BINDING_ANCHOR_POLICY_SLOT.__get__(value, ThresholdBinding)
+    return _BINDING_ANCHOR_POLICY_SLOT.__get__(
+        value, _NATIVE_THRESHOLD_BINDING_TYPE
+    )
 
 
 def _binding_shares(value: ThresholdBinding) -> tuple[BoundShare, ...]:
-    return _BINDING_SHARES_SLOT.__get__(value, ThresholdBinding)
+    return _BINDING_SHARES_SLOT.__get__(
+        value, _NATIVE_THRESHOLD_BINDING_TYPE
+    )
 
 
 def _share_path(value: BoundShare) -> str:
-    return _SHARE_PATH_SLOT.__get__(value, BoundShare)
+    return _SHARE_PATH_SLOT.__get__(value, _NATIVE_BOUND_SHARE_TYPE)
 
 
 def _share_digest(value: BoundShare) -> bytes:
-    return _SHARE_DIGEST_SLOT.__get__(value, BoundShare)
+    return _SHARE_DIGEST_SLOT.__get__(value, _NATIVE_BOUND_SHARE_TYPE)
 
 
 def _share_x(value: BoundShare) -> int:
-    return _SHARE_X_SLOT.__get__(value, BoundShare)
+    return _SHARE_X_SLOT.__get__(value, _NATIVE_BOUND_SHARE_TYPE)
 
 
 def _share_masked(value: BoundShare) -> bytes:
-    return _SHARE_MASKED_SLOT.__get__(value, BoundShare)
+    return _SHARE_MASKED_SLOT.__get__(value, _NATIVE_BOUND_SHARE_TYPE)
 
 
 def _hmac_sha256(key: bytes, message: bytes) -> bytes:
@@ -976,16 +1015,16 @@ def _is_windows_reserved(value: str) -> bool:
 
 
 def _validate_bind_identity(reference: object, policy: object) -> None:
-    if _NATIVE_TYPE(reference) is not IdentityTree:
+    if _NATIVE_TYPE(reference) is not _NATIVE_IDENTITY_TREE_TYPE:
         message = "source-binding reference must use the exact IdentityTree type"
         raise _NATIVE_SOURCE_BINDING_POLICY_ERROR(message)
-    if _NATIVE_TYPE(policy) is not SourceBindingPolicy:
+    if _NATIVE_TYPE(policy) is not _NATIVE_SOURCE_BINDING_POLICY_TYPE:
         message = "source-binding policy must use the exact SourceBindingPolicy type"
         raise _NATIVE_SOURCE_BINDING_POLICY_ERROR(message)
     # Raw exact records can enter this boundary without running __init__.
     # Revalidate all native policy slots before interpreting source material.
     try:
-        _SOURCE_BINDING_POLICY_VALIDATOR(policy)
+        _SOURCE_BINDING_POLICY_VALIDATOR(cast("SourceBindingPolicy", policy))
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "source-binding policy requires all stored fields"
         raise _NATIVE_SOURCE_BINDING_POLICY_ERROR(message) from error
@@ -1157,7 +1196,7 @@ def _validate_share_payload(share: BoundShare, secret_length: int) -> None:
 
 
 def _validate_bound_share(share: BoundShare, *, secret_length: int) -> None:
-    if _NATIVE_TYPE(share) is not BoundShare:
+    if _NATIVE_TYPE(share) is not _NATIVE_BOUND_SHARE_TYPE:
         message = "source-binding share must use the exact BoundShare type"
         raise _NATIVE_SOURCE_BINDING_ERROR(message)
     _validate_share_path(_share_path(share))
@@ -1203,7 +1242,10 @@ def _validate_binding_secret(binding: ThresholdBinding) -> None:
 def _validate_binding_header(binding: ThresholdBinding) -> None:
     _validate_binding_counts(binding)
     _validate_binding_secret(binding)
-    if _NATIVE_TYPE(_binding_anchor_policy(binding)) is not AnchorPolicy:
+    if (
+        _NATIVE_TYPE(_binding_anchor_policy(binding))
+        is not _NATIVE_ANCHOR_POLICY_TYPE
+    ):
         message = "source-binding anchor policy must use the exact AnchorPolicy type"
         raise _NATIVE_SOURCE_BINDING_ERROR(message)
     if not _valid_anchor_policy_fields(_binding_anchor_policy(binding)):
@@ -1263,7 +1305,7 @@ def _validate_binding_shares(binding: ThresholdBinding) -> None:
 
 
 def _validate_binding(binding: ThresholdBinding) -> ThresholdBinding:
-    if _NATIVE_TYPE(binding) is not ThresholdBinding:
+    if _NATIVE_TYPE(binding) is not _NATIVE_THRESHOLD_BINDING_TYPE:
         message = "source binding must use the exact ThresholdBinding type"
         raise _NATIVE_SOURCE_BINDING_ERROR(message)
     _validate_binding_header(binding)
@@ -1387,7 +1429,7 @@ def recover_secret(
 
     """
     admitted = validate_threshold_binding(binding)
-    if _NATIVE_TYPE(candidate) is not IdentityTree:
+    if _NATIVE_TYPE(candidate) is not _NATIVE_IDENTITY_TREE_TYPE:
         message = "source-binding candidate must use the exact IdentityTree type"
         raise _NATIVE_SOURCE_BINDING_ERROR(message)
     try:
