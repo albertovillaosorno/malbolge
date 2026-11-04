@@ -2119,3 +2119,36 @@ def test_historical_schema_registration_ignores_inplace_config_edits(
     assert historical_pairs._extension(
         {"prefix_decomposition_measurement": {}}
     )[1] == original
+
+
+def test_historical_csv_forged_true_preflight_cannot_allocate_excess_columns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An altered pre-parser verdict cannot reach a massive CSV row parser."""
+    columns = frozenset({"repetition", "strategy_id"})
+    text = "repetition,strategy_id\n0,baseline" + ",filler" * 10_000 + "\n"
+    assert not historical_pairs.csv_admission.within_column_limit(text, 2)
+
+    def forbidden_reader(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("oversized CSV reached the allocating DictReader")
+
+    monkeypatch.setattr(
+        historical_pairs.csv_admission,
+        "within_column_limit",
+        lambda *_args: True,
+    )
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", forbidden_reader)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="columns exceed"
+    ):
+        historical_pairs._csv_rows(text, registered_fields=columns, expected_rows=1)
+
+
+def test_historical_source_column_preflight_preserves_quoted_commas() -> None:
+    """Commas inside a quoted cell are not extra allocated CSV columns."""
+    text = 'repetition,strategy_id\n0,"left,right"\n'
+    assert historical_pairs._csv_rows(
+        text,
+        registered_fields=frozenset({"repetition", "strategy_id"}),
+        expected_rows=1,
+    ) == [{"repetition": "0", "strategy_id": "left,right"}]

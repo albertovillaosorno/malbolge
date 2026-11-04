@@ -111,6 +111,7 @@ _SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
 _SOURCE_NUL = analyze.NUL
 _SOURCE_CSV_READER = csv.reader
 _SOURCE_STRING_IO = StringIO
+_SOURCE_CSV_COLUMN_PREFLIGHT = csv_admission.within_column_limit
 _SOURCE_RUN_SUCCEEDED = RUN_SUCCEEDED
 _SOURCE_CLASSIC_PROFILE = CLASSIC_PROFILE
 _SOURCE_DETERMINISTIC_KIND = DETERMINISTIC_KIND
@@ -293,6 +294,10 @@ def _csv_rows(
     if _SOURCE_NUL in text:
         _fail("historical raw CSV cannot contain NUL")
     _require_bounded_csv_header(text)
+    # The public preflight may be substituted with a plausible native True.
+    # Run the original bounded scanner before allocating DictReader rows.
+    if not _SOURCE_CSV_COLUMN_PREFLIGHT(text, len(registered_fields)):
+        _fail("historical raw CSV columns exceed registered count")
     try:
         column_receipt = csv_admission.within_column_limit(
             text, len(registered_fields)
