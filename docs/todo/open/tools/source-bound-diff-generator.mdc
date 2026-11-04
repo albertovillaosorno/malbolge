@@ -2054,6 +2054,14 @@ format.
   probe test typing findings remain outside the changes. A complete diff
   rerun after this fix and Jig global governance acceptance remain open.
 
+
+- At pushed integrated revision `6f11f2f8d`, the complete source-bound diff
+  suite passed **4,367 tests** with zero failures in 113.96 seconds from
+  the required test directory and `PYTHONPATH`. This includes both new
+  generator and probe native-error hardening units and supersedes the
+  4,353-pass pre-change baseline. Global Jig remains unresolved: absent
+  compiled graph and a 60-second `jig check --root .` timeout (exit 124).
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle

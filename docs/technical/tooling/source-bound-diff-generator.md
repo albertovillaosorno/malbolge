@@ -3446,6 +3446,21 @@ remain elsewhere in the probe test file, with none on new lines. The earlier
 integrated diff run predates these checks, and Jig governance remains open
 because the compiled graph is absent and bounded global checks time out.
 
+
+## Post-hardening integrated diff-suite verdict (2026-11-03)
+
+At signed and pushed revision `6f11f2f8d`, the complete source-bound diff
+collection passed **4,367 tests with zero failures** in 113.96 seconds
+(exit 0). It ran from `tests/function/algorithms/domain/diff` with the
+research composition source on `PYTHONPATH`. This includes the six native
+generator error-alias cases and eight native probe pipe rejection cases,
+and supersedes the earlier 4,353-test integration verdict. The unrelated
+arena producer edits in the shared checkout were not part of this run.
+
+The integrated test result does not close global Jig governance:
+`jig doctor --root .` still reports an absent compiled graph, and a
+bounded `jig check --root .` timed out after 60 seconds (exit 124).
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:
