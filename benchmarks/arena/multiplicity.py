@@ -37,6 +37,10 @@ from __future__ import annotations
 from fractions import Fraction
 from operator import itemgetter
 
+# Preserve the exact rational domain and rank order if public aliases change.
+_CANONICAL_FRACTION = Fraction
+_CANONICAL_ITEMGETTER = itemgetter
+
 
 def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
     """Return step-down Holm-adjusted p-values in original input order.
@@ -54,16 +58,17 @@ def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
 
     """
     if type(p_values) is not list or any(
-        type(value) is not Fraction or not 0 <= value <= 1 for value in p_values
+        type(value) is not _CANONICAL_FRACTION or not 0 <= value <= 1
+        for value in p_values
     ):
         message = "Holm adjustment requires exact rational probabilities in [0, 1]"
         raise ValueError(message)
     count = len(p_values)
-    adjusted = [Fraction(1)] * count
-    current = Fraction(0)
+    adjusted = [_CANONICAL_FRACTION(1)] * count
+    current = _CANONICAL_FRACTION(0)
     for rank, (index, raw) in enumerate(
-        sorted(enumerate(p_values), key=itemgetter(1, 0))
+        sorted(enumerate(p_values), key=_CANONICAL_ITEMGETTER(1, 0))
     ):
-        current = max(current, min(Fraction(1), (count - rank) * raw))
+        current = max(current, min(_CANONICAL_FRACTION(1), (count - rank) * raw))
         adjusted[index] = current
     return adjusted

@@ -126,6 +126,34 @@ def test_non_rational_probability_rejects_without_adjustment(
         multiplicity.holm_adjusted(probabilities)
 
 
+def test_holm_rejects_integer_probabilities_after_fraction_alias_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rebinding the module's Fraction alias cannot admit integer p-values."""
+    monkeypatch.setattr(multiplicity, "Fraction", int)
+    with pytest.raises(ValueError, match="exact rational probabilities"):
+        multiplicity.holm_adjusted(cast("list[Fraction]", [0, 1]))
+
+
+def test_holm_preserves_exact_ranking_after_sort_key_provider_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced sort-key helper cannot reorder the Holm test family."""
+    probabilities = [
+        Fraction(1, 2),
+        Fraction(1, 100),
+        Fraction(1, 20),
+        Fraction(1, 25),
+    ]
+    monkeypatch.setattr(multiplicity, "itemgetter", lambda *_: lambda _item: 0)
+    assert multiplicity.holm_adjusted(probabilities) == [
+        Fraction(1, 2),
+        Fraction(1, 25),
+        Fraction(3, 25),
+        Fraction(3, 25),
+    ]
+
+
 def test_holm_rejects_non_list_collection() -> None:
     """A malformed direct call must raise a typed admission failure."""
     probabilities = cast("list[Fraction]", (Fraction(1, 20),))
