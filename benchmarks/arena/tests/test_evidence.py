@@ -789,6 +789,52 @@ def test_direct_link_api_rejects_parent_traversal(tmp_path: Path) -> None:
         evidence.validate_links(document, tmp_path)
 
 
+@pytest.mark.parametrize("reader", ["regular", "bounded"])
+@pytest.mark.parametrize(
+    ("policy_alias", "invalid_path"),
+    [
+        ("PARENT_DIR", "../outside.txt"),
+        ("CURRENT_DIR", "./inside.txt"),
+        ("BACKSLASH", r"..\outside.txt"),
+        ("COLON", "C:outside.txt"),
+        ("NUL", "inside\x00outside.txt"),
+    ],
+)
+def test_evidence_path_policy_cannot_be_replaced_by_analyzer_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reader: str,
+    policy_alias: str,
+    invalid_path: str,
+) -> None:
+    """Mutable analyzer aliases cannot grant out-of-root evidence path access."""
+    monkeypatch.setattr(analyze, policy_alias, "unused-policy-marker")
+
+    def forbidden_resolve(*args: object, **kwargs: object) -> Path:
+        del args, kwargs
+        pytest.fail("noncanonical evidence path reached filesystem resolution")
+
+    monkeypatch.setattr(Path, "resolve", forbidden_resolve)
+    with pytest.raises(evidence.EvidenceError, match="canonical relative"):
+        if reader == "regular":
+            evidence.regular_path(tmp_path, invalid_path)
+        else:
+            evidence.read_bounded_regular(tmp_path, invalid_path, limit=1024)
+
+
+def test_evidence_valid_path_unaffected_by_analyzer_policy_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid relative path still reaches its own ordinary source bytes."""
+    _ = (tmp_path / "inside.txt").write_bytes(b"admitted")
+    for alias in ("PARENT_DIR", "CURRENT_DIR", "BACKSLASH", "COLON", "NUL"):
+        monkeypatch.setattr(analyze, alias, "unused-policy-marker")
+    assert evidence.read_bounded_regular(tmp_path, "inside.txt", limit=1024) == (
+        b"admitted"
+    )
+
+
 class _ForgedParentSegment(str):  # ruff: ignore[subclass-builtin]
     """Path traversal component whose equality check lies to the guard."""
 

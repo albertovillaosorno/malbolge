@@ -108,18 +108,14 @@ def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str:
 def _segments(relative: str) -> list[str]:
     if type(relative) is not str or not relative:
         _fail("evidence requires a canonical relative path")
-    if relative.startswith(("/", analyze.BACKSLASH)):
+    # Path syntax is an evidence security boundary, not a mutable analyzer
+    # policy. Replacements of public schema aliases cannot permit traversal.
+    if relative.startswith(("/", "\\")):
         _fail("evidence requires a canonical relative path")
-    if (
-        analyze.BACKSLASH in relative
-        or analyze.COLON in relative
-        or analyze.NUL in relative
-    ):
+    if "\\" in relative or ":" in relative or "\x00" in relative:
         _fail("evidence requires a canonical relative path")
     parts = relative.split("/")
-    if any(
-        part in {"", analyze.CURRENT_DIR, analyze.PARENT_DIR} for part in parts
-    ):
+    if any(part in {"", ".", ".."} for part in parts):
         _fail("evidence requires a canonical relative path")
     return parts
 
