@@ -1,5 +1,26 @@
 # Malbolge TODO
 
+## Owner priority — working compiler before exhaustive hardening (2026-11-04)
+
+Deliver and verify the complete supported `C -> c2malbolge -> .malbolge -> VM`
+path before expanding *optional* research-audit or hostile-input edge tests.
+The canonical VM behavior, accurate compiler output, known correctness defects,
+source bounds, memory safety and verification trust boundary are never deferred.
+
+Defer speculative nested error-identity combinations, pathological manifest/CSV
+mutations, remote or missing hardware variants, extremely large artificial
+inputs, exhaustive adversarial Git/FS/symlink scenarios, and optional statistical
+protocol permutations into the **single**
+`docs/todo/open/research/prepublication-hardening.mdc` task. Existing regression
+coverage remains in place. Promotion of a deferred case back into the working
+path requires a demonstrable security risk, common supported usage, an actual
+reproducible defect or a paper claim that consumes it.
+
+The hardening TODO is a prerequisite for publication-grade **claims**, not a
+prerequisite for compiling or running the product. Agents must actively deliver
+verified working programs rather than repeatedly polishing far-edge rejection
+identity in the evaluation arena.
+
 Only unfinished work appears here. P0 is the highest-priority horizon and P5 is
 the final documentation and publication horizon. Within each section, active
 work appears first and stable task identity breaks ties; typed lanes and
@@ -403,6 +424,16 @@ and Linux hosts.
 [docs/todo/open/compiler/turnkey-c-to-malbolge-toolchain.mdc](docs/todo/open/compiler/turnkey-c-to-malbolge-toolchain.mdc)
 
 ## P5 — Documentation and publication
+
+### TODO - Prepublication hardening
+
+Once the compiler/VM works end to end, close the consolidated ledger of rare
+edge cases, research evidence variants and supported-target stress cases before
+claiming paper-grade validation; keep core safety checks throughout.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/research/prepublication-hardening.mdc](docs/todo/open/research/prepublication-hardening.mdc)
+
 
 ### TODO - Historical capability demonstration
 

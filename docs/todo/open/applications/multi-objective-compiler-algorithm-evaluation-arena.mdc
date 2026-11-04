@@ -35,6 +35,15 @@ fixed budgets. Preserve raw evidence so an algorithm that is faster at easy
 instances but scales worse than another remains distinguishable instead of both
 appearing equally "perfect" after crossing an arbitrary threshold.
 
+## 2026-11-04 working-path scope
+
+Complete the arena's useful baseline and at least one real-target producer
+without inventing additional rare parser/error-identity guard branches. Move
+optional deep nesting, hostile provenance permutations, fringe numeric and
+pathological host fixtures to the consolidated prepublication-hardening TODO.
+This never authorizes incorrect research claims, loss of existing tests, or
+missing verification of an executable `.malbolge` candidate.
+
 ## Acceptance
 
 - Authoritative comparisons retain capacity curves and Pareto frontiers; an

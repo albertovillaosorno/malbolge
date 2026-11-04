@@ -7,6 +7,7 @@ area: "research"
 task: "TODO - Publication-grade paper pipeline"
 contract: "docs/research/methodology/publication-pipeline.md"
 depends_on:
+  - "prepublication-hardening"
   - "human-scale-malbolge-search-study"
   - "historical-capability-demonstration"
   - "repository-bibliography-taxonomy-and-citation-provenance"

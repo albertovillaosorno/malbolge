@@ -1,0 +1,58 @@
+---
+id: "prepublication-hardening"
+status: "pending"
+lane: "17"
+priority: "p5"
+area: "research"
+task: "TODO - Prepublication hardening"
+contract: "docs/research/methodology/publication-pipeline.md"
+depends_on:
+  - "malbolge-layout-and-encoding-backend"
+  - "ternary-machine-lowering"
+adr_paths:
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "benchmarks/arena/"
+  - "benchmarks/research/"
+  - "docs/research/"
+  - "verifier/"
+validation:
+  - "jig validate --root ."
+---
+# TODO - Prepublication hardening
+
+## Objective
+
+Before publication-grade claims, execute one risk-ranked ledger of
+nonessential rare inputs and research-evidence failure modes previously
+preventing delivery of the real supported C-to-Malbolge path. This is **one**
+consolidated task, not dozens of speculative downstream TODOs.
+
+## Deferred inventory
+
+- Uncommon nested malformed CSV/JSON/TOML and numeric representations in the
+  opt-in compiler algorithm evaluation arena; unusual error-class identity and
+  diagnostic detail combinations; archival study-file rejection permutations.
+- Exhaustive retained-raw digest/replay, estimator/budget mismatch and study
+  provenance variants not used to accept a current compiler output.
+- Pathological source/manifest sizes, deep symlink, filesystem race, Git index
+  or hostile host environment situations outside the supported tool path.
+- Unsupported CUDA/ROCm/hardware or optional accelerator settings and rare
+  synthetic scaling-statistics cases. No physical GPU is a prerequisite.
+- Pre-paper stress, reproducibility and adversarial evidence checks that are
+  actually required by statements made in the final paper.
+
+## Acceptance
+
+- First demonstrate at least one real supported source input compiled into a
+  valid `.malbolge` file that executes with the normative VM, with input/output
+  checked independently. Don't claim this proof until it exists.
+- Review the deferred list against actual incidents, supported inputs and
+  threatened publication claims; promote any safety/correctness-critical case
+  immediately instead of deferring it.
+- Reuse and preserve existing regression tests. Add missing high-impact negative
+  tests, stress evidence, reproducibility metadata and release/citation checks
+  only as applicable to supported paths and the intended paper claims.
+- Report deferred unavailable hardware as untested; no synthetic success.
+- Gate paper-grade claims on applicable complete validation, not core compiler
+  development on the entire speculative extreme-case matrix.
