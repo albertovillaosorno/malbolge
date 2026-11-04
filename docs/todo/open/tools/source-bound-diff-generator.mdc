@@ -1919,6 +1919,26 @@ format.
   and Git checks clean. The DCO was SHA-exact pushed to `main`; the earlier
   4,248-case full-suite pass predates this additional regression unit.
 
+
+- The exact authoring model now preserves its original `TreeModelError`
+  identity (`6d18a8a1b`) across path, snapshot, segment, instruction,
+  plan, and source-reference rejection. Eight red-first late-alias cases
+  are green, with 116 postcommit model and 782 model/exact/protected/payload
+  adjacent tests passing. A fresh correct-directory full diff run passed
+  4,264 tests in 111.30 seconds (exit 0); that collection predates the
+  subsequent payload hardening unit. Source strict typing, basic Ruff,
+  and Git checks passed; one model test-file typing diagnostic is inherited.
+- Authenticated payload checks now retain the original `PayloadCryptoError`
+  (`36c7e9bcd`) after consumers rebind the public exception. Eight red-first
+  cases cover key/nonce/byte admission, incomplete or foreign receipts,
+  tag width, and authentication failure. All 409 postcommit combined
+  payload/protected/model tests passed; source strict typing, basic Ruff,
+  and diff checks were clean. Three pre-existing test-file typing errors
+  remain. Both DCOs were signed and SHA-exact pushed to `main`.
+  These process-local guards do not isolate direct trusted storage mutation,
+  host races, or external filesystem writers. Repository-wide Jig acceptance
+  remains open: `jig doctor` reports a missing compiled graph.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle

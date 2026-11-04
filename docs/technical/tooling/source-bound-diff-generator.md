@@ -3249,6 +3249,34 @@ strict BasedPyright, and Git checks clean. This DCO was signed and
 SHA-exact pushed to `main`. It postdates the earlier full-suite collection,
 so no later complete integrated verdict is inferred from that result.
 
+
+## Native model and authenticated-payload error continuity (2026-11-03)
+
+The exact authoring model now uses the original `TreeModelError` class for
+its own typed rejection (`6d18a8a1b`). Rebinding the public exported name
+could previously run a consumer-supplied error factory or change the error
+class for invalid file paths, snapshots, slices, literal bytes, instructions,
+authoring plans, and static source references. Eight red-first alias tests
+now pass; all 116 postcommit model tests and 782 adjacent
+model/exact/protected/payload tests passed. An independent complete diff
+suite from the required test directory passed 4,264 cases in 111.30 seconds
+(exit 0). This result was collected before the subsequent payload change.
+Source strict typing, basic Ruff, and Git checks passed; the model test file
+retains one inherited strict typing diagnostic.
+
+Authenticated-payload validation now retains the original
+`PayloadCryptoError` for internal failures (`36c7e9bcd`), regardless of
+later changes to its public module alias. Eight red-first tests cover
+invalid AEAD key, nonce, plaintext, AAD, tag width, foreign or incomplete
+payload records, and failed authentication without dispatching a substituted
+exception callback. All 409 postcommit payload/protected/model tests passed,
+with zero source typing errors, basic Ruff, and Git diff checks clean.
+Three strict typing diagnostics in older payload test lines remain.
+Both scoped DCOs were signed and pushed with exact matching `origin/main`
+commit identities. These checks cannot exclude concurrent host mutation,
+trusted instance-state changes, or external filesystem writers. The global
+Jig gate is still not accepted because the compiled graph is absent.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:
