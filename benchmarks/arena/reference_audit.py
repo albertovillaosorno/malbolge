@@ -89,6 +89,10 @@ FAILURES_LEAF = "failures.json"
 RESOURCE_CONTROLS_LEAF = "resource-controls.json"
 MAX_RESOURCE_CONTROLS_BYTES = 4096
 MAX_FAILURES_BYTES = 64 * 1024
+# Retained sidecar limits are version-one audit policy, not mutable reader hints.
+_SOURCE_MAX_ARTIFACT_INDEX_BYTES = MAX_ARTIFACT_INDEX_BYTES
+_SOURCE_MAX_RESOURCE_CONTROLS_BYTES = MAX_RESOURCE_CONTROLS_BYTES
+_SOURCE_MAX_FAILURES_BYTES = MAX_FAILURES_BYTES
 RUN_PREFIX = "arena-host-c-study-"
 STAGE = "host-c-reference-not-malbolge"
 TOOLCHAIN = "repo-pinned-clang-22.1.8"
@@ -101,6 +105,9 @@ PRODUCER_RESEARCH_CLAIMS = {
     "hypothesis": "O2 improves verified time/size frontier on C.",
     "rejection_observation": "O2 is dominated by O0 at all difficulties.",
 }
+# Audit provenance cannot follow substituted producer labels or hypothesis text.
+_SOURCE_STAGE = STAGE
+_SOURCE_PRODUCER_RESEARCH_CLAIMS = tuple(PRODUCER_RESEARCH_CLAIMS.items())
 REQUIRED_OBJECTIVES = ["elapsed_ns", "artifact_bytes"]
 CURRENT_OBJECTIVES = [*REQUIRED_OBJECTIVES, "peak_rss_bytes"]
 RSS_RESOURCE_POLICY_VERSION = 2
@@ -427,10 +434,13 @@ def _check_case_plan(document: dict[str, Any]) -> None:
 
 def _check_stage(document: dict[str, Any], prefix: str) -> None:
     study = document["study"]
-    if study["stage"] != STAGE or study["target_profile"] != reference_study.PROFILE:
+    if (
+        study["stage"] != _SOURCE_STAGE
+        or study["target_profile"] != reference_study.PROFILE
+    ):
         _fail("host-C reference audit stage or target profile differs")
     if any(
-        study[field] != expected for field, expected in PRODUCER_RESEARCH_CLAIMS.items()
+        study[field] != expected for field, expected in _SOURCE_PRODUCER_RESEARCH_CLAIMS
     ):
         _fail("host-C reference producer research claims differ")
     if (
@@ -554,9 +564,9 @@ def _require_unchanged_sidecars(
 ) -> None:
     """Bind optional and required receipts to their originally parsed bytes."""
     for leaf, limit in (
-        (ARTIFACT_LEAF, MAX_ARTIFACT_INDEX_BYTES),
-        (FAILURES_LEAF, MAX_FAILURES_BYTES),
-        (RESOURCE_CONTROLS_LEAF, MAX_RESOURCE_CONTROLS_BYTES),
+        (ARTIFACT_LEAF, _SOURCE_MAX_ARTIFACT_INDEX_BYTES),
+        (FAILURES_LEAF, _SOURCE_MAX_FAILURES_BYTES),
+        (RESOURCE_CONTROLS_LEAF, _SOURCE_MAX_RESOURCE_CONTROLS_BYTES),
     ):
         relative = f"{prefix}/{leaf}"
         if relative not in fingerprints:
@@ -687,7 +697,9 @@ def _check_retained_failures(
             _fail("host-C reference failure details file is missing")
         fingerprints[relative] = None
         return 0  # Pre-extension all-success pilot is still admissible.
-    source = _read_json(relative, limit=MAX_FAILURES_BYTES, fingerprints=fingerprints)
+    source = _read_json(
+        relative, limit=_SOURCE_MAX_FAILURES_BYTES, fingerprints=fingerprints
+    )
     if (
         not isinstance(source, dict)
         or set(source) != {"schema_version", "failures"}
@@ -743,7 +755,7 @@ def _check_resource_controls(
         fingerprints[relative] = None
         return 0  # Legacy measurements predate controlled child launches.
     recorded = _read_json(
-        relative, limit=MAX_RESOURCE_CONTROLS_BYTES, fingerprints=fingerprints
+        relative, limit=_SOURCE_MAX_RESOURCE_CONTROLS_BYTES, fingerprints=fingerprints
     )
     if not isinstance(recorded, dict):
         _fail("host-C reference child resource-control policy differs")
@@ -785,7 +797,7 @@ def _admit_data(
     artifacts = _check_artifact_index(
         _read_json(
             f"{prefix}/{ARTIFACT_LEAF}",
-            limit=MAX_ARTIFACT_INDEX_BYTES,
+            limit=_SOURCE_MAX_ARTIFACT_INDEX_BYTES,
             fingerprints=sidecar_fingerprints,
         ),
         document,

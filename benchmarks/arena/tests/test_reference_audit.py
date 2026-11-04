@@ -2810,3 +2810,68 @@ def test_reference_audit_git_rejects_mutated_launch_command(
         reference_audit._require_git_commit("a" * 40)  # ruff: ignore[private-member-access]
     assert len(launched) == 1
     assert launched[0][1] in ("rev-parse", "cat-file")
+
+
+@pytest.mark.parametrize(
+    ("leaf", "limit_name"),
+    [
+        ("artifacts.json", "MAX_ARTIFACT_INDEX_BYTES"),
+        ("failures.json", "MAX_FAILURES_BYTES"),
+        ("resource-controls.json", "MAX_RESOURCE_CONTROLS_BYTES"),
+    ],
+)
+def test_host_c_audit_preserves_native_sidecar_caps_after_public_rebinding(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    leaf: str,
+    limit_name: str,
+) -> None:
+    """Raised public size budgets must not admit oversized retained receipts."""
+    directory, relative = live_pilot
+    original_cap = getattr(reference_audit, limit_name)
+    path = directory / leaf
+    raw = path.read_bytes()
+    assert len(raw) <= original_cap
+    path.write_bytes(raw + b" " * (original_cap + 1 - len(raw)))
+    monkeypatch.setattr(reference_audit, limit_name, 2 * original_cap)
+
+    with pytest.raises(reference_audit.ReferenceAuditError, match="bounded|limit"):
+        reference_audit.audit(relative)
+
+
+def test_host_c_audit_stage_identity_does_not_follow_mutable_label(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted auditor label cannot promote host C to Malbolge."""
+    directory, relative = live_pilot
+    _change_json(directory / "study.json", "stage")
+    monkeypatch.setattr(reference_audit, "STAGE", "malbolge-verified")
+
+    with pytest.raises(reference_audit.ReferenceAuditError, match="stage"):
+        reference_audit.audit(relative)
+
+
+def test_host_c_audit_research_claims_do_not_follow_mutable_policy(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The declared falsification hypothesis remains the source policy."""
+    directory, relative = live_pilot
+    path = directory / "study.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    document["study"]["hypothesis"] = (
+        "This benchmark proves guest compiler correctness."
+    )
+    path.write_text(json.dumps(document), encoding="utf-8")
+    monkeypatch.setattr(
+        reference_audit,
+        "PRODUCER_RESEARCH_CLAIMS",
+        {
+            **reference_audit.PRODUCER_RESEARCH_CLAIMS,
+            "hypothesis": document["study"]["hypothesis"],
+        },
+    )
+
+    with pytest.raises(reference_audit.ReferenceAuditError, match="research claims"):
+        reference_audit.audit(relative)
