@@ -1365,6 +1365,15 @@ The original study records remain the result authority.
   and source-provider consistency guarantees, not authenticated file-system
   state, untampered pre-import code, external child execution, measured timing,
   or verification of a generated Malbolge candidate.
+- Signed `67ab79ac2` also binds the auditor's original JSON comparison
+  traversal helpers and float sign receipt. Twenty red-first cases reject
+  changed nested fields, foreign keys, incorrect scalar types and reversed
+  signed zero after public `type`, `any`, `all`, `len`, `zip`, container or
+  shared `math.copysign` providers are replaced. Native source-equivalent
+  records remain valid under the same substitutions. The 110-case scoped
+  JSON/byte/path/audit-options suite and arena BasedPyright gate pass. This
+  checks source-byte comparison inside the process, not original decoder
+  authenticity, filesystem race freedom or historical measurement truth.
 - `benchmarks/arena/reference_study.py` records real pinned host-C reference
   time, native executable sizes, exact binary hashes and versioned trial files
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.
