@@ -4926,3 +4926,83 @@ def test_target_git_receipt_never_uses_mutable_type_provider(
                 target_echo_reference._commit()
         else:
             assert target_echo_reference._commit() == "a" * 40
+
+
+@pytest.mark.parametrize("kind", ["foreign-bytes", "native-bytes"])
+def test_source_reader_never_uses_mutable_type_provider(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A substituted type() must not authorize foreign source bytes."""
+    raw: object = bytearray(b"foreign") if kind == "foreign-bytes" else b"native"
+    original_type = type
+
+    def forged_type(value: object) -> type[object]:
+        if value is raw:
+            return bytes if kind == "foreign-bytes" else bytearray
+        return original_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "type", forged_type, raising=False)
+        patched.setattr(
+            evidence, "read_bounded_regular", lambda *_a, **_k: cast("bytes", raw)
+        )
+        if kind == "foreign-bytes":
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError, match="exact nonempty bounded bytes"
+            ):
+                target_echo_reference._read_source_bytes("ignored", limit=128)
+        else:
+            assert target_echo_reference._read_source_bytes("ignored", limit=128) == raw
+
+
+@pytest.mark.parametrize("kind", ["foreign-bytes", "native-bytes"])
+def test_source_digest_never_uses_mutable_type_provider(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """Only exact original bytes can be signed as source hash evidence."""
+    raw: object = bytearray(b"foreign") if kind == "foreign-bytes" else b"native"
+    original_type = type
+
+    def forged_type(value: object) -> type[object]:
+        if value is raw:
+            return bytes if kind == "foreign-bytes" else bytearray
+        return original_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "type", forged_type, raising=False)
+        if kind == "foreign-bytes":
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError, match="native bytes"
+            ):
+                target_echo_reference._checked_sha256(cast("bytes", raw), source="test")
+        else:
+            assert target_echo_reference._checked_sha256(
+                cast("bytes", raw), source="test"
+            ) == sha256(cast("bytes", raw)).hexdigest()
+
+
+def test_target_quote_rejects_foreign_text_before_comparison_hooks(
+    monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-native encoder return cannot compare against source JSON."""
+
+    class ForeignQuote(str):
+        def __ne__(self, other: object) -> bool:
+            del other
+            pytest.fail("foreign JSON quote comparison hook executed")
+
+    observed = ForeignQuote('"source"')
+    original_type = type
+
+    def forged_type(value: object) -> type[object]:
+        if value is observed:
+            return str
+        return original_type(value)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "type", forged_type, raising=False)
+        patched.setattr(target_echo_reference.json, "dumps", lambda _value: observed)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="disagrees with source"
+        ):
+            target_echo_reference._quote("source")

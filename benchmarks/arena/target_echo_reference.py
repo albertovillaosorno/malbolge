@@ -200,9 +200,9 @@ def _quote(text: str) -> str:
         source = _SOURCE_JSON_ENCODER(ensure_ascii=True).encode(text)
         observed = json.dumps(text)
     except Exception as error:
-        message = f"target echo JSON quote serializer failed: {type(error).__name__}"
+        message = f"target echo JSON quote serializer failed: {_SOURCE_TYPE(error).__name__}"
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
-    if type(observed) is not str or observed != source:
+    if _SOURCE_TYPE(observed) is not str or observed != source:
         _fail("target echo JSON quote serializer disagrees with source")
     return source
 
@@ -215,7 +215,7 @@ def _read_source_bytes(relative: str, *, limit: int) -> bytes:
 
     """
     raw = evidence.read_bounded_regular(_ROOT, relative, limit=limit)
-    if type(raw) is not bytes or not 0 < len(raw) <= limit:
+    if _SOURCE_TYPE(raw) is not bytes or not 0 < len(raw) <= limit:
         _fail("target echo source reader requires exact nonempty bounded bytes")
     return raw
 
@@ -1479,7 +1479,7 @@ def _make_document(
 
 def _checked_sha256(raw: bytes, *, source: str) -> str:
     """Require a native SHA-256 claim matching independent source-byte hashing."""
-    if type(raw) is not bytes:
+    if _SOURCE_TYPE(raw) is not bytes:
         _fail(f"target echo {source} SHA-256 requires native bytes")
     try:
         reported = sha256(raw).hexdigest()
@@ -1489,9 +1489,9 @@ def _checked_sha256(raw: bytes, *, source: str) -> str:
         message = f"target echo {source} SHA-256 dependency failed"
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
-        type(reported) is not str
-        or type(independent) is not str
-        or type(source_digest) is not str
+        _SOURCE_TYPE(reported) is not str
+        or _SOURCE_TYPE(independent) is not str
+        or _SOURCE_TYPE(source_digest) is not str
         or len(reported) != analyze.SHA256_HEX_LENGTH
         or len(independent) != analyze.SHA256_HEX_LENGTH
         or len(source_digest) != analyze.SHA256_HEX_LENGTH
