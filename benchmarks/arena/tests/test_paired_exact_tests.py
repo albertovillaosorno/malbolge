@@ -207,3 +207,26 @@ def test_paired_sign_test_does_not_trust_injected_minimum_provider(
     assert expected is not None
     monkeypatch.setattr(paired_exact_tests, "min", lambda *_args: forged, raising=False)
     assert paired_exact_tests.two_sided_sign_test(6, 0) == expected
+
+
+@pytest.mark.parametrize("forged", ["empty", "extra", "fault"])
+def test_sign_test_retains_native_binomial_range(
+    monkeypatch: pytest.MonkeyPatch, forged: str
+) -> None:
+    """A replaced loop provider cannot forge the exact conditional p-value."""
+    expected = paired_exact_tests.two_sided_sign_test(6, 0)
+    assert expected is not None
+
+    def empty_range(_count: int) -> tuple[()]:
+        return ()
+
+    def extra_range(count: int) -> range:
+        return range(count + 1)
+
+    def failed_range(_count: int) -> range:
+        message = "replaced range must not execute"
+        raise AssertionError(message)
+
+    providers = {"empty": empty_range, "extra": extra_range, "fault": failed_range}
+    monkeypatch.setattr(paired_exact_tests, "range", providers[forged], raising=False)
+    assert paired_exact_tests.two_sided_sign_test(6, 0) == expected

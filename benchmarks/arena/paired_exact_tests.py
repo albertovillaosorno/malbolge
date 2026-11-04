@@ -42,6 +42,7 @@ MAX_DISCORDANT_PAIRS = 4096
 _SOURCE_MAX_DISCORDANT_PAIRS = MAX_DISCORDANT_PAIRS
 _SOURCE_FRACTION = Fraction
 _SOURCE_MIN = min
+_SOURCE_RANGE = range
 
 
 class PairedExactTest(TypedDict):
@@ -87,7 +88,7 @@ def two_sided_sign_test(left: int, right: int) -> PairedExactTest | None:
     denominator = 1 << size
     tail = 0
     binomial = 1
-    for index in range(smaller + 1):
+    for index in _SOURCE_RANGE(smaller + 1):
         tail += binomial
         binomial = binomial * (size - index) // (index + 1)
     probability = _SOURCE_MIN(
