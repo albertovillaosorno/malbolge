@@ -306,3 +306,27 @@ def test_success_interval_rejects_forged_native_count_type(
     monkeypatch.setattr(success_intervals, "type", lambda *_args: int, raising=False)
     assert success_intervals.success_interval_95(True, 10) is None
     assert success_intervals.success_interval_95(1, False) is None
+
+
+@pytest.mark.parametrize("replacement", [bool, object])
+def test_success_interval_native_integer_identity_rejects_boolean_forgery(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Rebinding int cannot turn boolean observations into native counts."""
+    with monkeypatch.context() as patched:
+        patched.setattr(success_intervals, "int", replacement, raising=False)
+        assert success_intervals.success_interval_95(True, True) is None
+        assert success_intervals.success_interval_95(True, 10) is None
+        assert success_intervals.success_interval_95(1, True) is None
+
+
+@pytest.mark.parametrize("replacement", [bool, object])
+def test_success_interval_native_integer_identity_preserves_valid_counts(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """A substituted count type must not reject exact native input."""
+    expected = success_intervals.success_interval_95(5, 10)
+    assert expected is not None
+    with monkeypatch.context() as patched:
+        patched.setattr(success_intervals, "int", replacement, raising=False)
+        assert success_intervals.success_interval_95(5, 10) == expected

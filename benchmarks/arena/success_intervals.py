@@ -49,6 +49,7 @@ _SOURCE_TWO_SIDED_TAIL_DENOMINATOR = TWO_SIDED_TAIL_DENOMINATOR
 _SOURCE_FRACTION = Fraction
 _SOURCE_COMB = comb
 _SOURCE_TYPE = type
+_SOURCE_INT = int
 _SOURCE_RANGE = range
 _SOURCE_SUM = sum
 
@@ -129,7 +130,10 @@ def success_interval_95(verified: int, attempts: int) -> SuccessInterval | None:
         Exact rational outward bounds or no result for unsupported counts.
 
     """
-    if _SOURCE_TYPE(verified) is not int or _SOURCE_TYPE(attempts) is not int:
+    if (
+        _SOURCE_TYPE(verified) is not _SOURCE_INT
+        or _SOURCE_TYPE(attempts) is not _SOURCE_INT
+    ):
         return None
     if attempts < 1 or attempts > _SOURCE_MAX_ATTEMPTS or not 0 <= verified <= attempts:
         return None
