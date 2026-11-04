@@ -3393,3 +3393,153 @@ def test_host_c_audit_error_alias_keeps_valid_native_receipts(
             "ignored.json", limit=128, fingerprints={}
         )
         assert native == {"native": 1}
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink"])
+def test_host_c_git_rejects_rebound_regular_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A late public stat predicate must not make a link or directory Git."""
+    git = tmp_path / "git"
+    if kind == "directory":
+        git.mkdir()
+    else:
+        target = tmp_path / "real-git"
+        target.write_bytes(b"#!/bin/sh\nexit 0\n")
+        git.symlink_to(target)
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda *_a, **_kw: str(git))
+    monkeypatch.setattr(reference_audit.os, "access", lambda *_a, **_kw: True)
+    monkeypatch.setattr(
+        reference_audit, "stat", SimpleNamespace(S_ISREG=lambda _mode: True)
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("nonphysical host-C Git reached subprocess")
+
+    monkeypatch.setattr(reference_audit.sp, "run", forbidden)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="physical"):
+        reference_audit._require_git_commit("a" * 40)
+
+
+def test_host_c_git_accepts_native_mode_after_public_denial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Native executable checks cannot be rejected by a later stat alias."""
+    git = tmp_path / "git"
+    git.write_bytes(b"#!/bin/sh\nexit 0\n")
+    git.chmod(0o700)
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda *_a, **_kw: str(git))
+    monkeypatch.setattr(
+        reference_audit, "stat", SimpleNamespace(S_ISREG=lambda _mode: False)
+    )
+
+    def receipt(command: list[str], **_kwargs: object) -> object:
+        return reference_audit.sp.CompletedProcess(command, 0, b"commit\n", b"")
+
+    monkeypatch.setattr(reference_audit.sp, "run", receipt)
+    reference_audit._require_git_commit("a" * 40)
+
+
+def test_host_c_git_rejects_rebound_stat_result_class(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A foreign metadata object cannot claim to be a native os.stat_result."""
+    git = tmp_path / "git"
+    git.write_bytes(b"#!/bin/sh\nexit 0\n")
+    git.chmod(0o700)
+
+    class ForeignStat:
+        st_mode = 0o100755
+
+    original_lstat = type(git).lstat
+
+    def foreign_lstat(path: Path) -> object:
+        return ForeignStat() if path == git else original_lstat(path)
+
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda *_a, **_kw: str(git))
+    monkeypatch.setattr(type(git), "lstat", foreign_lstat)
+    monkeypatch.setattr(reference_audit.os, "stat_result", ForeignStat)
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("foreign metadata reached host-C Git subprocess")
+
+    monkeypatch.setattr(reference_audit.sp, "run", forbidden)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="metadata"):
+        reference_audit._require_git_commit("a" * 40)
+
+
+def test_host_c_git_rejects_rebound_completion_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substitute process completion class cannot attest a Git child."""
+
+    class ForeignCompletedProcess:
+        def __init__(self, command: list[str]) -> None:
+            self.args = command
+            self.returncode = 0
+            self.stdout = b"commit\n"
+            self.stderr = b""
+
+    monkeypatch.setattr(reference_audit.sp, "CompletedProcess", ForeignCompletedProcess)
+    monkeypatch.setattr(
+        reference_audit.sp,
+        "run",
+        lambda command, **_kw: ForeignCompletedProcess(command),
+    )
+    with pytest.raises(reference_audit.ReferenceAuditError, match="local Git"):
+        reference_audit._require_git_commit("a" * 40)
+
+
+def test_host_c_git_accepts_original_completion_under_rebound_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid original completion remains valid under later class replacement."""
+    native_factory = reference_audit.sp.CompletedProcess
+
+    class ForeignCompletedProcess:
+        pass
+
+    monkeypatch.setattr(reference_audit.sp, "CompletedProcess", ForeignCompletedProcess)
+    monkeypatch.setattr(
+        reference_audit.sp,
+        "run",
+        lambda command, **_kw: native_factory(command, 0, b"commit\n", b""),
+    )
+    reference_audit._require_git_commit("a" * 40)
+
+
+def test_host_c_git_does_not_trust_rebound_builtin_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Foreign metadata cannot forge its class by redefining the type helper."""
+    git = tmp_path / "git"
+    git.write_bytes(b"#!/bin/sh\nexit 0\n")
+    git.chmod(0o700)
+    original_lstat = type(git).lstat
+
+    class ForeignStat:
+        st_mode = 0o100755
+
+    foreign = ForeignStat()
+
+    def foreign_lstat(path: Path) -> object:
+        return foreign if path == git else original_lstat(path)
+
+    monkeypatch.setattr(reference_audit.shutil, "which", lambda *_a, **_kw: str(git))
+    monkeypatch.setattr(type(git), "lstat", foreign_lstat)
+    native_type = type
+    monkeypatch.setattr(
+        reference_audit,
+        "type",
+        lambda item: (
+            reference_audit.os.stat_result if item is foreign else native_type(item)
+        ),
+        raising=False,
+    )
+
+    def forbidden(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("foreign metadata reached host-C Git child")
+
+    monkeypatch.setattr(reference_audit.sp, "run", forbidden)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="metadata"):
+        reference_audit._require_git_commit("a" * 40)

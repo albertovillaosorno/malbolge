@@ -67,6 +67,9 @@ _NATIVE_DICT = dict
 _NATIVE_LIST = list
 _NATIVE_FLOAT = float
 _NATIVE_NONE_TYPE = type(None)
+_NATIVE_STAT_RESULT = os.stat_result
+_NATIVE_S_ISREG = stat.S_ISREG
+_NATIVE_COMPLETED_PROCESS = sp.CompletedProcess
 _NATIVE_ZIP = zip
 _NATIVE_BYTES = bytes
 _NATIVE_BOOL = bool
@@ -649,7 +652,7 @@ def _require_git_commit(commit: str) -> None:
     if executable is None:
         _fail("host-C source commit admission requires local Git")
     if (
-        type(executable) is not str
+        _NATIVE_TYPE(executable) is not str
         or not executable
         or "\0" in executable
         or not Path(executable).is_absolute()
@@ -667,15 +670,15 @@ def _require_git_commit(commit: str) -> None:
         # Do not allow a substituted host inspector to escape this boundary.
         message = "host-C source commit Git path inspection failed"
         raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
-    if type(metadata) is not os.stat_result:
+    if _NATIVE_TYPE(metadata) is not _NATIVE_STAT_RESULT:
         _fail("host-C source commit has invalid Git metadata")
-    if not stat.S_ISREG(metadata.st_mode) or is_executable is not True:
+    if not _NATIVE_S_ISREG(metadata.st_mode) or is_executable is not True:
         _fail("host-C source commit requires physical executable Git")
     # Foreign GIT_DIR and object alternates cannot satisfy local admission.
     try:
         clean_env: dict[str, str] = {}
         for name, value in os.environ.items():
-            if type(name) is not str or type(value) is not str:
+            if _NATIVE_TYPE(name) is not str or _NATIVE_TYPE(value) is not str:
                 _fail("host-C source commit requires native Git environment strings")
             if not name.startswith("GIT_"):
                 clean_env[name] = value
@@ -703,20 +706,20 @@ def _require_git_commit(commit: str) -> None:
         # Contain child launch and observation faults without foreign formatting.
         message = "host-C source commit object lookup failed"
         raise _SOURCE_REFERENCE_AUDIT_ERROR(message) from error
-    if type(completed) is not sp.CompletedProcess:
+    if _NATIVE_TYPE(completed) is not _NATIVE_COMPLETED_PROCESS:
         _fail("host-C recorded source commit is not a local Git commit object")
     returncode = completed.returncode
     stdout = completed.stdout
     if (
-        type(completed.args) is not list
+        _NATIVE_TYPE(completed.args) is not list
         or completed.args is not prepared
-        or any(type(argument) is not str for argument in completed.args)
+        or _NATIVE_ANY(_NATIVE_TYPE(argument) is not str for argument in completed.args)
         or completed.args != command
-        or type(returncode) is not int
+        or _NATIVE_TYPE(returncode) is not int
         or returncode != 0
-        or type(stdout) is not bytes
+        or _NATIVE_TYPE(stdout) is not bytes
         or stdout != GIT_COMMIT_TYPE + b"\n"
-        or type(completed.stderr) is not bytes
+        or _NATIVE_TYPE(completed.stderr) is not bytes
         or completed.stderr != b""
     ):
         _fail("host-C recorded source commit is not a local Git commit object")
