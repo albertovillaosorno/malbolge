@@ -135,6 +135,32 @@ OBSERVATION_FIELDS = {
 }
 CASE_FIELDS = {"family", "version", "difficulty", "seed", "workload_sha256"}
 
+# Native analyzer policy remains stable if public reporting aliases are changed.
+_SOURCE_SCHEMA_VERSION = SCHEMA_VERSION
+_SOURCE_SHA256_HEX_LENGTH = SHA256_HEX_LENGTH
+_SOURCE_SHA256_ALPHABET = SHA256_ALPHABET
+_SOURCE_NUL = NUL
+_SOURCE_FIRST_SURROGATE = FIRST_SURROGATE
+_SOURCE_LAST_SURROGATE = LAST_SURROGATE
+_SOURCE_BACKSLASH = BACKSLASH
+_SOURCE_COLON = COLON
+_SOURCE_CURRENT_DIR = CURRENT_DIR
+_SOURCE_PARENT_DIR = PARENT_DIR
+_SOURCE_VERIFIED = VERIFIED
+_SOURCE_ACCEPTED = ACCEPTED
+_SOURCE_REJECTED = REJECTED
+_SOURCE_VERIFIER_REJECTED = VERIFIER_REJECTED
+_SOURCE_NOT_RUN = NOT_RUN
+_SOURCE_ELAPSED = ELAPSED
+_SOURCE_COST_METRICS = COST_METRICS
+_SOURCE_OUTCOMES = OUTCOMES
+_SOURCE_MAX_INPUT_BYTES = MAX_INPUT_BYTES
+_SOURCE_MIN_COMPARISON_ALGORITHMS = MIN_COMPARISON_ALGORITHMS
+_SOURCE_PEAK_RSS = PEAK_RSS
+_SOURCE_STUDY_FIELDS = frozenset(STUDY_FIELDS)
+_SOURCE_OBSERVATION_FIELDS = frozenset(OBSERVATION_FIELDS)
+_SOURCE_CASE_FIELDS = frozenset(CASE_FIELDS)
+
 
 class ArenaError(ValueError):
     """Invalid or incomparable arena evidence."""
@@ -160,7 +186,7 @@ def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str | N
     return None
 
 
-def _mapping(value: object, keys: set[str], where: str) -> dict[str, Any]:
+def _mapping(value: object, keys: set[str] | frozenset[str], where: str) -> dict[str, Any]:
     if (
         type(value) is not dict
         or any(type(name) is not str for name in value)
@@ -173,12 +199,12 @@ def _mapping(value: object, keys: set[str], where: str) -> dict[str, Any]:
 def _text(value: object, where: str) -> str:
     if type(value) is not str or not value or value.strip() != value:
         _fail(f"{where}: expected nonempty, unpadded text")
-    if NUL in value:
+    if _SOURCE_NUL in value:
         _fail(f"{where}: NUL not allowed")
     # JSON can encode lone UTF-16 surrogates as ASCII escapes. Once decoded,
     # those are not Unicode scalar values and cannot form stable UTF-8-backed
     # study identities, verifier names, or physical artifact paths.
-    if any(FIRST_SURROGATE <= scalar <= LAST_SURROGATE for scalar in value):
+    if any(_SOURCE_FIRST_SURROGATE <= scalar <= _SOURCE_LAST_SURROGATE for scalar in value):
         _fail(f"{where}: unpaired Unicode surrogate not allowed")
     return value
 
@@ -192,17 +218,17 @@ def _integer(value: object, where: str, *, positive: bool = False) -> int:
 
 def _hash(value: object, where: str) -> str:
     text = _text(value, where)
-    if len(text) != SHA256_HEX_LENGTH or not set(text) <= SHA256_ALPHABET:
+    if len(text) != _SOURCE_SHA256_HEX_LENGTH or not set(text) <= _SOURCE_SHA256_ALPHABET:
         _fail(f"{where}: expected lowercase SHA-256 hex")
     return text
 
 
 def _relative(value: object, where: str) -> str:
     path = _text(value, where)
-    if path.startswith(("/", BACKSLASH)) or BACKSLASH in path:
+    if path.startswith(("/", _SOURCE_BACKSLASH)) or _SOURCE_BACKSLASH in path:
         _fail(f"{where}: expected repository-relative path")
     segments = path.split("/")
-    if COLON in path or set(segments) & {"", CURRENT_DIR, PARENT_DIR}:
+    if _SOURCE_COLON in path or set(segments) & {"", _SOURCE_CURRENT_DIR, _SOURCE_PARENT_DIR}:
         _fail(f"{where}: expected canonical repository-relative path")
     # Evidence names are portable identifiers, not merely POSIX paths. Do
     # not let a Linux-accepted name alias a Windows device, stream, wildcard,
@@ -229,7 +255,7 @@ def _objectives(value: object) -> list[str]:
     if type(value) is not list or not value:
         _fail("study.objectives: expected nonempty list")
     if any(
-        type(item) is not str or item not in COST_METRICS for item in value
+        type(item) is not str or item not in _SOURCE_COST_METRICS for item in value
     ):
         _fail("study.objectives: unknown cost metric")
     if len(set(value)) != len(value):
@@ -238,8 +264,8 @@ def _objectives(value: object) -> list[str]:
 
 
 def _study(value: object) -> dict[str, Any]:
-    study = _mapping(value, STUDY_FIELDS, "study")
-    text_fields = STUDY_FIELDS - {"budget", "objectives"}
+    study = _mapping(value, _SOURCE_STUDY_FIELDS, "study")
+    text_fields = _SOURCE_STUDY_FIELDS - {"budget", "objectives"}
     for name in sorted(text_fields):
         _text(study[name], f"study.{name}")
     budget = _mapping(study["budget"], {"time_ns", "memory_bytes"}, "budget")
@@ -250,7 +276,7 @@ def _study(value: object) -> dict[str, Any]:
 
 
 def _case(value: object, where: str) -> dict[str, Any]:
-    case = _mapping(value, CASE_FIELDS, f"{where}.case")
+    case = _mapping(value, _SOURCE_CASE_FIELDS, f"{where}.case")
     _text(case["family"], f"{where}.case.family")
     for key in ("version", "difficulty"):
         _integer(case[key], f"{where}.case.{key}", positive=True)
@@ -261,19 +287,19 @@ def _case(value: object, where: str) -> dict[str, Any]:
 
 def _verdict(row: dict[str, Any], where: str) -> None:
     outcome = row["outcome"]
-    if type(outcome) is not str or outcome not in OUTCOMES:
+    if type(outcome) is not str or outcome not in _SOURCE_OUTCOMES:
         _fail(f"{where}.outcome: unknown outcome")
     verifier = _text(row["verifier"], f"{where}.verifier")
     verdict = row["verifier_verdict"]
     if type(verdict) is not str or verdict not in {
-        ACCEPTED,
-        REJECTED,
-        NOT_RUN,
+        _SOURCE_ACCEPTED,
+        _SOURCE_REJECTED,
+        _SOURCE_NOT_RUN,
     }:
         _fail(f"{where}.verifier_verdict: unknown verdict")
-    accepted = (outcome == VERIFIED) == (verdict == ACCEPTED)
-    rejected = (outcome == VERIFIER_REJECTED) == (verdict == REJECTED)
-    separate = outcome != VERIFIED or verifier != row["algorithm"]
+    accepted = (outcome == _SOURCE_VERIFIED) == (verdict == _SOURCE_ACCEPTED)
+    rejected = (outcome == _SOURCE_VERIFIER_REJECTED) == (verdict == _SOURCE_REJECTED)
+    separate = outcome != _SOURCE_VERIFIED or verifier != row["algorithm"]
     if not (accepted and rejected and separate):
         _fail(f"{where}: inconsistent independent verifier evidence")
 
@@ -282,10 +308,10 @@ def _metrics_shape(value: object, where: str) -> dict[str, int]:
     if (
         type(value) is not dict
         or any(type(name) is not str for name in value)
-        or not set(value) <= COST_METRICS
+        or not set(value) <= _SOURCE_COST_METRICS
     ):
         _fail(f"{where}.metrics: unknown metric")
-    if ELAPSED not in value:
+    if _SOURCE_ELAPSED not in value:
         _fail(f"{where}.metrics: elapsed_ns required even on failure")
     for name, quantity in value.items():
         _integer(quantity, f"{where}.metrics.{name}")
@@ -300,7 +326,7 @@ def _metrics(
     budget: dict[str, int],
 ) -> None:
     metrics = _metrics_shape(row["metrics"], where)
-    if row["outcome"] != VERIFIED:
+    if row["outcome"] != _SOURCE_VERIFIED:
         return
     if not set(objectives) <= set(metrics):
         _fail(f"{where}: verified trial missing declared objective")
@@ -312,9 +338,9 @@ def _within_budget(
     budget: dict[str, int],
     where: str,
 ) -> None:
-    if metrics[ELAPSED] > budget["time_ns"]:
+    if metrics[_SOURCE_ELAPSED] > budget["time_ns"]:
         _fail(f"{where}: verified elapsed time exceeds study budget")
-    if PEAK_RSS in metrics and metrics[PEAK_RSS] > budget["memory_bytes"]:
+    if _SOURCE_PEAK_RSS in metrics and metrics[_SOURCE_PEAK_RSS] > budget["memory_bytes"]:
         _fail(f"{where}: verified resident memory exceeds study budget")
 
 
@@ -326,7 +352,7 @@ def _observation(
     budget: dict[str, int],
 ) -> dict[str, Any]:
     where = f"observations[{index}]"
-    row = _mapping(value, OBSERVATION_FIELDS, where)
+    row = _mapping(value, _SOURCE_OBSERVATION_FIELDS, where)
     _text(row["algorithm"], f"{where}.algorithm")
     _case(row["case"], where)
     _integer(row["trial"], f"{where}.trial")
@@ -352,14 +378,14 @@ def _trial_key(row: dict[str, Any]) -> tuple[Any, ...]:
 def _admit_json_text(text: str) -> None:
     if type(text) is not str:
         _fail("arena JSON requires exact string input")
-    if len(text) > MAX_INPUT_BYTES:
+    if len(text) > _SOURCE_MAX_INPUT_BYTES:
         _fail("arena JSON exceeds 16 MiB limit")
     try:
         byte_length = len(text.encode("utf-8"))
     except UnicodeError as error:
         message = "arena JSON input cannot be encoded as UTF-8"
         raise ArenaError(message) from error
-    if byte_length > MAX_INPUT_BYTES:
+    if byte_length > _SOURCE_MAX_INPUT_BYTES:
         _fail("arena JSON exceeds 16 MiB limit")
 
 
@@ -407,7 +433,7 @@ def admit_document(document: object) -> dict[str, Any]:
         "root",
     )
     version = root["schema_version"]
-    if type(version) is not int or version != SCHEMA_VERSION:
+    if type(version) is not int or version != _SOURCE_SCHEMA_VERSION:
         _fail("unsupported arena schema version")
     study = _study(root["study"])
     observations = root["observations"]
@@ -561,8 +587,8 @@ def _paired_outcomes(
     counts = dict.fromkeys(names.values(), 0)
     for baseline, candidate in pairs:
         state = (
-            baseline["outcome"] == VERIFIED,
-            candidate["outcome"] == VERIFIED,
+            baseline["outcome"] == _SOURCE_VERIFIED,
+            candidate["outcome"] == _SOURCE_VERIFIED,
         )
         counts[names[state]] += 1
     return counts
@@ -758,7 +784,7 @@ def _paired_cost(
     differences = [
         candidate["metrics"][name] - baseline["metrics"][name]
         for baseline, candidate in pairs
-        if baseline["outcome"] == VERIFIED and candidate["outcome"] == VERIFIED
+        if baseline["outcome"] == _SOURCE_VERIFIED and candidate["outcome"] == _SOURCE_VERIFIED
     ]
     result = {
         "candidate_lower": sum(diff < 0 for diff in differences),
@@ -843,12 +869,12 @@ def _point(
     *,
     policy: _AnalysisPolicy,
 ) -> dict[str, Any]:
-    successes = [row for row in rows if row["outcome"] == VERIFIED]
+    successes = [row for row in rows if row["outcome"] == _SOURCE_VERIFIED]
     success_values = {
         name: [row["metrics"][name] for row in successes]
         for name in policy.objectives
     }
-    all_elapsed = [row["metrics"][ELAPSED] for row in rows]
+    all_elapsed = [row["metrics"][_SOURCE_ELAPSED] for row in rows]
     point = {
         "algorithm": algorithm,
         "family": key[0],
@@ -859,7 +885,7 @@ def _point(
         "success_fraction": [len(successes), len(rows)],
         "outcomes": {
             kind: sum(row["outcome"] == kind for row in rows)
-            for kind in sorted(OUTCOMES)
+            for kind in sorted(_SOURCE_OUTCOMES)
         },
         "medians": {
             name: _exact_median(values) if values else None
@@ -959,7 +985,7 @@ def _validate_comparison(
         _fail(f"unmatched verifier cohort for {diagnostic_key}")
     if baseline not in algorithms:
         _fail(f"missing declared baseline for {diagnostic_key}")
-    if len(algorithms) < MIN_COMPARISON_ALGORITHMS:
+    if len(algorithms) < _SOURCE_MIN_COMPARISON_ALGORITHMS:
         _fail(f"no comparison algorithm for declared baseline in {diagnostic_key}")
 
 
@@ -1139,7 +1165,7 @@ def analyze(
             )
         )
     report = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": _SOURCE_SCHEMA_VERSION,
         "study_id": study["id"],
         "stage": study["stage"],
         "objectives": objectives,
@@ -1317,12 +1343,12 @@ def annotate_success_intervals(report: dict[str, Any]) -> None:
             or fraction != [verified, attempts]
             or type(outcomes) is not dict
             or any(type(name) is not str for name in outcomes)
-            or set(outcomes) != OUTCOMES
+            or set(outcomes) != _SOURCE_OUTCOMES
             or any(
                 type(value) is not int or value < 0
                 for value in outcomes.values()
             )
-            or outcomes[VERIFIED] != verified
+            or outcomes[_SOURCE_VERIFIED] != verified
             or sum(outcomes.values()) != attempts
         ):
             _fail("success interval annotation requires consistent outcome totals")
@@ -1369,7 +1395,7 @@ def read_input(path: Path) -> str:
 
     """
     try:
-        data = study_file.read_study_bytes(path, limit=MAX_INPUT_BYTES)
+        data = study_file.read_study_bytes(path, limit=_SOURCE_MAX_INPUT_BYTES)
     except Exception as error:
         # A foreign dependency fault or subclass may execute code in its formatter.
         detail = (
@@ -1382,7 +1408,7 @@ def read_input(path: Path) -> str:
     # substituted dependency can otherwise forge text or run foreign hooks.
     if type(data) is not bytes:
         _fail("arena study reader returned nonnative bytes")
-    if len(data) > MAX_INPUT_BYTES:
+    if len(data) > _SOURCE_MAX_INPUT_BYTES:
         _fail("arena study input exceeds 16 MiB limit")
     try:
         return data.decode("utf-8")

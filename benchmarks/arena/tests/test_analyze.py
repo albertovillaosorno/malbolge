@@ -3443,3 +3443,151 @@ def test_median_exact_rank_reference_accepts_all_small_supported_counts() -> Non
         expected = analyze.median_intervals.median_interval_95(values)
         assert expected is not None
         assert analyze._median_interval_receipt(values) == expected
+
+
+@pytest.mark.parametrize(
+    ("policy", "substitute", "mutation"),
+    [
+        ("STUDY_FIELDS", analyze.STUDY_FIELDS | {"unregistered"}, "study"),
+        (
+            "OBSERVATION_FIELDS",
+            analyze.OBSERVATION_FIELDS | {"unregistered"},
+            "observation",
+        ),
+        ("CASE_FIELDS", analyze.CASE_FIELDS | {"unregistered"}, "case"),
+        ("COST_METRICS", analyze.COST_METRICS | {"unregistered"}, "cost"),
+        ("OUTCOMES", analyze.OUTCOMES | {"unregistered"}, "outcome"),
+        ("SCHEMA_VERSION", 2, "version"),
+    ],
+    ids=["study", "observation", "case", "metric", "outcome", "version"],
+)
+def test_analyzer_public_schema_policy_cannot_admit_foreign_claims(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+    substitute: object,
+    mutation: str,
+) -> None:
+    """Caller-rebound public policy cannot redefine v1 study admission."""
+    document = _document()
+    if mutation == "study":
+        document["study"]["unregistered"] = "forged"
+    elif mutation == "observation":
+        for row in document["observations"]:
+            row["unregistered"] = "forged"
+    elif mutation == "case":
+        for row in document["observations"]:
+            row["case"]["unregistered"] = "forged"
+    elif mutation == "cost":
+        document["study"]["objectives"].append("unregistered")
+        for row in document["observations"]:
+            if row["outcome"] == analyze.VERIFIED:
+                row["metrics"]["unregistered"] = 1
+    elif mutation == "outcome":
+        row = document["observations"][-1]
+        row["outcome"] = "unregistered"
+        row["verifier_verdict"] = analyze.NOT_RUN
+    else:
+        document["schema_version"] = 2
+    monkeypatch.setattr(analyze, policy, substitute)
+    with pytest.raises(analyze.ArenaError):
+        analyze.admit_document(document)
+
+
+@pytest.mark.parametrize(
+    ("policy", "substitute", "field", "value"),
+    [
+        ("SHA256_HEX_LENGTH", 3, "digest", "abc"),
+        ("SHA256_ALPHABET", analyze.SHA256_ALPHABET | {"g"}, "digest", "g" * 64),
+        ("NUL", "unused", "text", "literal\x00nul"),
+        ("FIRST_SURROGATE", "\ud801", "text", "x\ud800y"),
+        ("LAST_SURROGATE", "z", "text", "x\udfffy"),
+        ("BACKSLASH", "#", "path", "a\\b"),
+        ("COLON", "#", "path", "a:b"),
+        ("CURRENT_DIR", "unused", "path", "a/./b"),
+        ("PARENT_DIR", "unused", "path", "a/../b"),
+    ],
+    ids=[
+        "digest-length", "digest-alphabet", "nul", "first-surrogate",
+        "last-surrogate", "backslash", "colon", "dot", "dotdot",
+    ],
+)
+def test_analyzer_public_scalar_policy_cannot_admit_invalid_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+    substitute: object,
+    field: str,
+    value: str,
+) -> None:
+    """Rebound public strings cannot permit invalid digest or path spellings."""
+    monkeypatch.setattr(analyze, policy, substitute)
+    with pytest.raises(analyze.ArenaError):
+        if field == "digest":
+            analyze._hash(value, "identity")
+        elif field == "path":
+            analyze._relative(value, "path")
+        else:
+            analyze._text(value, "identity")
+
+
+@pytest.mark.parametrize(
+    "gate",
+    ["elapsed", "rss", "input"],
+)
+def test_analyzer_resource_policy_cannot_be_raised_by_public_alias(
+    monkeypatch: pytest.MonkeyPatch, gate: str
+) -> None:
+    """Admitted source budgets and required observations remain immutable."""
+    if gate == "elapsed":
+        monkeypatch.setattr(analyze, "ELAPSED", "artifact_bytes")
+        with pytest.raises(analyze.ArenaError, match="elapsed_ns required"):
+            analyze._metrics_shape({"artifact_bytes": 1}, "observation")
+    elif gate == "rss":
+        monkeypatch.setattr(analyze, "PEAK_RSS", "not_rss")
+        with pytest.raises(analyze.ArenaError, match="resident memory"):
+            analyze._within_budget(
+                {"elapsed_ns": 1, "peak_rss_bytes": 2048},
+                {"time_ns": 10, "memory_bytes": 1024},
+                "observation",
+            )
+    else:
+        oversized = "x" * (analyze.MAX_INPUT_BYTES + 1)
+        monkeypatch.setattr(analyze, "MAX_INPUT_BYTES", len(oversized) + 1)
+        with pytest.raises(analyze.ArenaError, match="16 MiB"):
+            analyze._admit_json_text(oversized)
+
+
+def test_analyzer_source_policy_preserves_valid_native_study_under_alias_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even joint public policy replacement cannot rewrite the v1 report."""
+    document = _document()
+    expected = analyze.analyze(analyze.admit_document(copy.deepcopy(document)))
+    for alias, replacement in (
+        ("SCHEMA_VERSION", 2),
+        ("SHA256_HEX_LENGTH", 1),
+        ("SHA256_ALPHABET", frozenset()),
+        ("NUL", "a"),
+        ("FIRST_SURROGATE", "z"),
+        ("LAST_SURROGATE", "z"),
+        ("BACKSLASH", "a"),
+        ("COLON", "a"),
+        ("CURRENT_DIR", "a"),
+        ("PARENT_DIR", "a"),
+        ("VERIFIED", "no"),
+        ("ACCEPTED", "no"),
+        ("REJECTED", "no"),
+        ("VERIFIER_REJECTED", "no"),
+        ("NOT_RUN", "no"),
+        ("ELAPSED", "no"),
+        ("COST_METRICS", frozenset()),
+        ("OUTCOMES", frozenset()),
+        ("MAX_INPUT_BYTES", 1),
+        ("MIN_COMPARISON_ALGORITHMS", 99),
+        ("PEAK_RSS", "no"),
+        ("STUDY_FIELDS", set()),
+        ("OBSERVATION_FIELDS", set()),
+        ("CASE_FIELDS", set()),
+    ):
+        monkeypatch.setattr(analyze, alias, replacement)
+    assert analyze.parse_document(json.dumps(document)) == document
+    assert analyze.analyze(analyze.admit_document(document)) == expected
