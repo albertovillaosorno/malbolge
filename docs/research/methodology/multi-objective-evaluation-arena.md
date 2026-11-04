@@ -74,6 +74,21 @@ trial cost without changing the input text; the source-bound checks reject
 those receipts. This is local parser integrity, not source authentication,
 independent verifier execution or evidence of actual measurements.
 
+The offline analyzer and opt-in challenge evidence path now retain their
+import-time v1 admission policy rather than consulting caller-replaceable
+public aliases. `benchmarks/arena/analyze.py` fixes original report field,
+outcome, metric, digest, Unicode/path and resource semantics for both admission
+and report construction. `benchmarks/arena/challenge_bundles.py` fixes case
+shape, digest grammar, canonical bundle names and byte ceilings; the separate
+`benchmarks/arena/evidence.py` preflight also fixes the admitted replay case
+count, node/version bounds and selected source files. Red-first synthetic
+regressions show 15 invalid analyzer claims, nine direct bundle claims and
+four linked-preflight claims previously escaped those local policy checks.
+A 1,249-case scoped analyzer/arena integration run and the affected module
+BasedPyright checks passed after repair. These are process-local consistency
+checks, not authenticated measurements, physical resource enforcement,
+independent guest execution or proof against a pre-import compromised runtime.
+
 The analyzer compares only cohorts with identical seeds, workload digests, and
 trial numbers at each challenge difficulty. The named verifier must agree
 for each matched challenge and trial across compared algorithms. Unmatched,

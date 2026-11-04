@@ -36,6 +36,14 @@ strict duplicate-field/nonfinite rejection; equivalent decoder wrappers remain
 valid but cannot retain an alias to the admitted source-owned study object.
 This is local parser-source consistency, not independent authentication
 of reported measurements, verifier execution or retained file provenance.
+The analyzer also binds the version-one structural schema, outcomes, metrics,
+SHA-256 grammar, Unicode/path rules and 16-MiB limit to its original imported
+policy. Reassigning public module constants cannot enlarge an admitted study,
+change its report meaning or suppress required elapsed/RSS budget checks.
+Fifteen red-first invalid-admission regressions, three resource checks, and a
+full valid-report check under jointly changed aliases cover this boundary.
+This guards policy consistency inside the process, not the trustworthiness
+of source data or an adversary controlling Python before module import.
 Version-one input has one `study` and a nonempty `observations` array:
 
 ```json
@@ -117,7 +125,17 @@ matches algorithm ID, challenge family, difficulty, seed, target profile,
 reported workload SHA-256, host, toolchain, oracle, outcome, and raw-output path
 against the arena record. Only bounded regular manifest files and existing,
 nonempty raw samples under the supplied root are admitted; symlink hops,
-missing artifacts, and identity drift fail closed.
+missing artifacts, and identity drift fail closed. Optional deterministic
+challenge bundles additionally bind source/oracle/manifest filenames, source
+size and oracle length, and case identity/digest rules to the replay module's
+imported policy. The evidence preflight independently retains the original
+bundle-count, difficulty, version-size and file-selection caps even if public
+replay constants are rebound. Nine direct replay and four cross-module
+preflight red-first cases previously accepted unsupported claims; both gates
+now reject those replacements. Lowered public limits also cannot make an
+otherwise valid canonical bundle fail solely due to alias drift. These checks
+reproduce trusted generator bytes; they do not certify a compiled candidate,
+prove runtime correctness or authenticate a producer's measurements.
 
 The direct `evidence.validate_links` API admits only an exact `EvidencePolicy`:
 all five optional verification switches must be actual booleans, not truthy
