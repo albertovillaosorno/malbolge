@@ -98,6 +98,18 @@ EXTENSION_CONFIG = {
         "reuse_verifier_calls",
     ),
 }
+# Public labels are compatibility surfaces, not an admission authority.
+# Retain the registered values even when a caller rebinds their module names.
+_SOURCE_MAX_SOURCE_BYTES = MAX_SOURCE_BYTES
+_SOURCE_MAX_CSV_HEADER_CHARS = MAX_CSV_HEADER_CHARS
+_SOURCE_MAX_HISTORICAL_REPETITIONS = MAX_HISTORICAL_REPETITIONS
+_SOURCE_HEX_DIGITS = HEX_DIGITS
+_SOURCE_SECONDS_TO_NS = SECONDS_TO_NS
+_SOURCE_MIB_TO_BYTES = MIB_TO_BYTES
+_SOURCE_SHA256_LENGTH = analyze.SHA256_HEX_LENGTH
+_SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
+_SOURCE_NUL = analyze.NUL
+
 REGISTERED_RAW_COLUMNS = {
     "prefix_decomposition_measurement": frozenset({
         "repetition",
@@ -156,11 +168,11 @@ def _source(root: Path, relative: str) -> tuple[str, str]:
     raw = evidence.read_bounded_regular(
         root,
         relative,
-        limit=MAX_SOURCE_BYTES,
+        limit=_SOURCE_MAX_SOURCE_BYTES,
     )
     # The bounded reader is a dependency, not proof about its own result.
     # Validate its exact receipt before decoding or hashing source evidence.
-    if type(raw) is not bytes or not 0 < len(raw) <= MAX_SOURCE_BYTES:
+    if type(raw) is not bytes or not 0 < len(raw) <= _SOURCE_MAX_SOURCE_BYTES:
         _fail("historical source requires exact nonempty bounded bytes")
     try:
         digest = sha256(raw).hexdigest()
@@ -174,8 +186,8 @@ def _source(root: Path, relative: str) -> tuple[str, str]:
         raise HistoricalEvidenceError(message) from error
     if any(
         type(fingerprint) is not str
-        or len(fingerprint) != analyze.SHA256_HEX_LENGTH
-        or not set(fingerprint) <= analyze.SHA256_ALPHABET
+        or len(fingerprint) != _SOURCE_SHA256_LENGTH
+        or not set(fingerprint) <= _SOURCE_SHA256_ALPHABET
         for fingerprint in (digest, independent_digest, source_bound_digest)
     ) or (digest != source_bound_digest or independent_digest != source_bound_digest):
         _fail("historical source returned invalid SHA-256 fingerprint")
@@ -223,9 +235,9 @@ def _csv_shape(
 def _require_bounded_csv_header(text: str) -> None:
     # Preflight the first physical line before DictReader builds fieldnames.
     # An open quoted field may otherwise consume many newline-delimited rows.
-    prefix = text[: MAX_CSV_HEADER_CHARS + 1]
+    prefix = text[: _SOURCE_MAX_CSV_HEADER_CHARS + 1]
     first_line = prefix.split("\n", maxsplit=1)[0].split("\r", maxsplit=1)[0]
-    if len(first_line) > MAX_CSV_HEADER_CHARS or first_line.count('"') % 2:
+    if len(first_line) > _SOURCE_MAX_CSV_HEADER_CHARS or first_line.count('"') % 2:
         _fail("historical raw CSV header is invalid or exceeds its bound")
 
 
@@ -247,14 +259,14 @@ def _bounded_csv_rows(
 
 def _admit_csv_text(text: str) -> None:
     """Bound direct CSV inputs to the original retained source byte limit."""
-    if type(text) is not str or not text or len(text) > MAX_SOURCE_BYTES:
+    if type(text) is not str or not text or len(text) > _SOURCE_MAX_SOURCE_BYTES:
         _fail("historical raw CSV requires exact bounded text")
     try:
         size = len(text.encode("utf-8"))
     except UnicodeError as error:
         message = "historical raw CSV requires strict UTF-8 text"
         raise HistoricalEvidenceError(message) from error
-    if size > MAX_SOURCE_BYTES:
+    if size > _SOURCE_MAX_SOURCE_BYTES:
         _fail("historical raw CSV requires exact bounded text")
 
 
@@ -265,7 +277,7 @@ def _csv_rows(
     expected_rows: int,
 ) -> list[dict[str, str]]:
     _admit_csv_text(text)
-    if analyze.NUL in text:
+    if _SOURCE_NUL in text:
         _fail("historical raw CSV cannot contain NUL")
     _require_bounded_csv_header(text)
     try:
@@ -452,9 +464,9 @@ def _registered_count(section: dict[str, Any], name: str) -> int:
 
 def _quality_digest(extension: dict[str, Any]) -> None:
     value = extension["quality_map_sha256"]
-    if type(value) is not str or len(value) != analyze.SHA256_HEX_LENGTH:
+    if type(value) is not str or len(value) != _SOURCE_SHA256_LENGTH:
         _fail("historical quality-map fingerprint is not SHA-256")
-    if not set(value) <= HEX_DIGITS:
+    if not set(value) <= _SOURCE_HEX_DIGITS:
         _fail("historical quality-map fingerprint is not lowercase SHA-256")
 
 
@@ -619,7 +631,7 @@ def _load_source(root: Path, relative: str) -> _StudySources:
         name for name in EXTENSION_CONFIG if name in manifest_data
     )
     protocol = benchmark_protocol.parse_protocol(benchmark_text)
-    if protocol.repetitions > MAX_HISTORICAL_REPETITIONS:
+    if protocol.repetitions > _SOURCE_MAX_HISTORICAL_REPETITIONS:
         _fail("historical registered repetitions exceed bounded study limit")
     return _StudySources(
         manifest_data=manifest_data,
@@ -725,8 +737,8 @@ def _admitted_document(
             "host": run.host,
             "toolchain": run.toolchain,
             "budget": {
-                "time_ns": seconds * SECONDS_TO_NS,
-                "memory_bytes": budget * MIB_TO_BYTES,
+                "time_ns": seconds * _SOURCE_SECONDS_TO_NS,
+                "memory_bytes": budget * _SOURCE_MIB_TO_BYTES,
             },
             "objectives": ["elapsed_ns"],
         },

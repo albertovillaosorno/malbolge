@@ -1823,3 +1823,118 @@ def test_historical_native_toml_comparator_rejects_foreign_nested_key() -> None:
     expected = {"measurements": [{"identity": "v1"}]}
     observed = {"measurements": [{HostileKey(): "v1"}]}
     assert not historical_pairs._same_native_toml(observed, expected)
+
+
+@pytest.mark.parametrize("path", ["reader", "direct-csv"])
+def test_historical_source_byte_limit_ignores_mutable_public_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+) -> None:
+    """A changed public cap must not admit more than four MiB of evidence."""
+    oversized = b"x" * (4 * 1024 * 1024 + 1)
+    monkeypatch.setattr(historical_pairs, "MAX_SOURCE_BYTES", len(oversized) + 1)
+    if path == "reader":
+        monkeypatch.setattr(
+            historical_pairs.evidence,
+            "read_bounded_regular",
+            lambda *_args, **_kwargs: oversized,
+        )
+        with pytest.raises(
+            historical_pairs.HistoricalEvidenceError, match="bounded bytes"
+        ):
+            historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+    else:
+        with pytest.raises(
+            historical_pairs.HistoricalEvidenceError, match="bounded text"
+        ):
+            historical_pairs._admit_csv_text(oversized.decode("ascii"))
+
+
+def test_historical_header_limit_ignores_mutable_public_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged size policy cannot admit an oversized first CSV line."""
+    monkeypatch.setattr(historical_pairs, "MAX_CSV_HEADER_CHARS", 8192)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="CSV header"):
+        historical_pairs._require_bounded_csv_header("x" * 513 + "\n")
+
+
+def test_historical_repetitions_limit_ignores_mutable_public_cap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted repetition budget cannot admit a huge protocol."""
+    directory = _copy_source(tmp_path, PREFIX)
+    _alter(
+        directory,
+        "benchmark.toml",
+        before="repetitions = 5",
+        after="repetitions = 4097",
+    )
+    monkeypatch.setattr(historical_pairs, "MAX_HISTORICAL_REPETITIONS", 8192)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="bounded study limit"
+    ):
+        historical_pairs._load_source(tmp_path, TEMP)
+
+
+@pytest.mark.parametrize("factor", ["SECONDS_TO_NS", "MIB_TO_BYTES"])
+def test_historical_budget_units_ignore_mutable_public_factors(
+    monkeypatch: pytest.MonkeyPatch, factor: str
+) -> None:
+    """An imported study's exact budgets cannot change after source admission."""
+    relative = BASE + PREFIX
+    sources = historical_pairs._load_source(REPO, relative)
+    original = historical_pairs._admitted_document(sources, relative)
+    monkeypatch.setattr(historical_pairs, factor, 2)
+    document = historical_pairs._admitted_document(sources, relative)
+    assert document["study"]["budget"] == original["study"]["budget"]
+
+
+def test_historical_quality_digest_ignores_mutable_hex_alphabet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing an exported hex policy cannot admit uppercase digest text."""
+    monkeypatch.setattr(
+        historical_pairs, "HEX_DIGITS", frozenset("0123456789abcdefABCDEF")
+    )
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="lowercase SHA-256"
+    ):
+        historical_pairs._quality_digest({"quality_map_sha256": "F" * 64})
+
+
+def test_historical_quality_digest_ignores_mutable_sha256_length(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed analyzer digest length cannot admit an arbitrary short token."""
+    monkeypatch.setattr(historical_pairs.analyze, "SHA256_HEX_LENGTH", 3)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="not SHA-256"):
+        historical_pairs._quality_digest({"quality_map_sha256": "abc"})
+
+
+def test_historical_csv_nul_guard_ignores_mutable_analyzer_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A policy alias cannot turn NUL-containing CSV into ordinary evidence."""
+    monkeypatch.setattr(historical_pairs.analyze, "NUL", "not-a-nul")
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="contain NUL"):
+        historical_pairs._csv_rows(
+            "repetition,strategy_id\n0,base\x00line\n",
+            registered_fields=frozenset({"repetition", "strategy_id"}),
+            expected_rows=1,
+        )
+
+
+def test_historical_lowered_public_caps_preserve_native_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the original cap, not a subsequently lowered alias, is enforced."""
+    monkeypatch.setattr(historical_pairs, "MAX_SOURCE_BYTES", 1)
+    monkeypatch.setattr(historical_pairs, "MAX_CSV_HEADER_CHARS", 1)
+    monkeypatch.setattr(historical_pairs, "MAX_HISTORICAL_REPETITIONS", 1)
+    raw = historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+    assert raw[0].startswith("repetition,")
+    historical_pairs._require_bounded_csv_header(raw[0])
+    sources = historical_pairs._load_source(REPO, BASE + PREFIX)
+    assert sources.protocol.repetitions == PAIR_COUNT
