@@ -476,6 +476,87 @@ def test_direct_json_rejects_substituted_native_forged_study(
         analyze.parse_document(source)
 
 
+@pytest.mark.parametrize("provider", ["decode", "raw_decode", "scanner"])
+def test_direct_json_rejects_shared_decoder_provider_forgery(
+    monkeypatch: pytest.MonkeyPatch, provider: str,
+) -> None:
+    """Two parsing paths cannot attest forged claims from shared decoder hooks."""
+    document = _document()
+    source = json.dumps(document)
+    forged = copy.deepcopy(document)
+    forged["observations"][0]["metrics"]["elapsed_ns"] = 1
+    assert document != forged
+    with monkeypatch.context() as patch:
+        if provider == "decode":
+            patch.setattr(json.JSONDecoder, "decode", lambda _self, _raw: forged)
+        elif provider == "raw_decode":
+            patch.setattr(
+                json.JSONDecoder,
+                "raw_decode",
+                lambda _self, raw, idx=0: (forged, len(raw)),
+            )
+        else:
+            scanner = getattr(json, analyze._SOURCE_SCANNER_NAME)
+            patch.setattr(
+                scanner,
+                "make_scanner",
+                lambda _self: (lambda raw, idx: (forged, len(raw))),
+            )
+        with pytest.raises(analyze.ArenaError, match="source JSON"):
+            analyze.parse_document(source)
+
+
+@pytest.mark.parametrize(
+    "provider", ["__init__", "JSONObject", "JSONArray", "scanstring", "scanner-module"]
+)
+def test_direct_json_rejects_shared_decoder_helper_substitution(
+    monkeypatch: pytest.MonkeyPatch, provider: str,
+) -> None:
+    """Helper substitutions cannot make both native JSON parses authoritative."""
+    source = json.dumps(_document())
+    with monkeypatch.context() as patch:
+        if provider == "__init__":
+            native = json.JSONDecoder.__init__
+
+            def init_wrapper(instance: json.JSONDecoder, **kwargs: Any) -> None:
+                native(instance, **kwargs)
+
+            patch.setattr(json.JSONDecoder, "__init__", init_wrapper)
+        elif provider == "scanner-module":
+            patch.setattr(
+                json.decoder,
+                analyze._SOURCE_SCANNER_NAME,
+                object(),
+            )
+        else:
+            native = getattr(json.decoder, provider)
+
+            def helper_wrapper(*args: object, **kwargs: object) -> object:
+                return native(*args, **kwargs)
+
+            patch.setattr(json.decoder, provider, helper_wrapper)
+        with pytest.raises(analyze.ArenaError, match="source JSON"):
+            analyze.parse_document(source)
+
+
+def test_direct_json_rejects_midcall_source_decoder_swap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public JSON parser cannot change shared source providers midcall."""
+    source = json.dumps(_document())
+    original = json.loads
+    with monkeypatch.context() as patch:
+
+        def substituted(*args: Any, **kwargs: Any) -> object:
+            result = original(*args, **kwargs)
+            patch.setattr(json.JSONDecoder, "raw_decode", lambda *_a, **_kw: None)
+            return result
+
+        patch.setattr(analyze.json, "loads", substituted)
+        with pytest.raises(analyze.ArenaError, match="source JSON"):
+            analyze.parse_document(source)
+
+
 @pytest.mark.parametrize("source_kind", ("forged", "invalid-source"))
 def test_direct_json_rejects_replaced_decoder_class(
     monkeypatch: pytest.MonkeyPatch, source_kind: str

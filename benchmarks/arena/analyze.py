@@ -57,6 +57,22 @@ from benchmarks.arena import (
 # Preserve the source decoder class, not just json.loads (which consults the
 # mutable public JSONDecoder factory for custom object-pair hooks).
 _SOURCE_JSON_DECODER = json.JSONDecoder
+_SOURCE_DECODER_INIT = json.JSONDecoder.__init__
+_SOURCE_DECODER_DECODE = json.JSONDecoder.decode
+_SOURCE_DECODER_RAW = json.JSONDecoder.raw_decode
+_SOURCE_OBJECT_PARSER_NAME = "JSONObject"
+_SOURCE_ARRAY_PARSER_NAME = "JSONArray"
+_SOURCE_STRING_PARSER_NAME = "scanstring"
+_SOURCE_SCANNER_NAME = "scanner"
+_SOURCE_SCANNER_FACTORY_NAME = "make_scanner"
+_SOURCE_OBJECT_PARSER = getattr(json.decoder, _SOURCE_OBJECT_PARSER_NAME)
+_SOURCE_ARRAY_PARSER = getattr(json.decoder, _SOURCE_ARRAY_PARSER_NAME)
+_SOURCE_STRING_PARSER = getattr(json.decoder, _SOURCE_STRING_PARSER_NAME)
+_SOURCE_SCANNER_MODULE = getattr(json.decoder, _SOURCE_SCANNER_NAME)
+_SOURCE_SCANNER_FACTORY = getattr(
+    getattr(json, _SOURCE_SCANNER_NAME), _SOURCE_SCANNER_FACTORY_NAME
+)
+
 
 SCHEMA_VERSION = 1
 SHA256_HEX_LENGTH = 64
@@ -412,6 +428,24 @@ def admit_document(document: object) -> dict[str, Any]:
     return root
 
 
+def _require_original_json_decoder() -> None:
+    """Reject shared decoder substitutions before accepting reported trials."""
+    if (
+        _SOURCE_JSON_DECODER.__init__ is not _SOURCE_DECODER_INIT
+        or _SOURCE_JSON_DECODER.decode is not _SOURCE_DECODER_DECODE
+        or _SOURCE_JSON_DECODER.raw_decode is not _SOURCE_DECODER_RAW
+        or getattr(json.decoder, _SOURCE_OBJECT_PARSER_NAME)
+        is not _SOURCE_OBJECT_PARSER
+        or getattr(json.decoder, _SOURCE_ARRAY_PARSER_NAME) is not _SOURCE_ARRAY_PARSER
+        or getattr(json.decoder, _SOURCE_STRING_PARSER_NAME)
+        is not _SOURCE_STRING_PARSER
+        or getattr(json.decoder, _SOURCE_SCANNER_NAME) is not _SOURCE_SCANNER_MODULE
+        or getattr(getattr(json, _SOURCE_SCANNER_NAME), _SOURCE_SCANNER_FACTORY_NAME)
+        is not _SOURCE_SCANNER_FACTORY
+    ):
+        _fail("invalid arena source JSON decoder provider changed")
+
+
 def parse_document(text: str) -> dict[str, Any]:
     """Admit exact version-one input and all reported outcomes.
 
@@ -419,7 +453,9 @@ def parse_document(text: str) -> dict[str, Any]:
         A structurally admitted study; references are not authenticated.
 
     """
+    _require_original_json_decoder()
     admitted = admit_document(_decode_document(text))
+    _require_original_json_decoder()
     # A substituted public decoder can return an exact native study whose
     # claimed trials and metrics were never present in the supplied JSON.
     # After complete native-shape admission, independent source comparison
@@ -429,6 +465,7 @@ def parse_document(text: str) -> dict[str, Any]:
             object_pairs_hook=_pairs,
             parse_constant=_reject_constant,
         ).decode(text)
+        _require_original_json_decoder()
     except ArenaError as error:
         if type(error) is ArenaError:
             raise
