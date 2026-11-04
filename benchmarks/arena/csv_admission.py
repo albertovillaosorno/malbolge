@@ -37,6 +37,11 @@ from __future__ import annotations
 CSV_QUOTE = '"'
 CSV_COMMA = ","
 CSV_NEWLINES = "\r\n"
+# The bounded preflight must keep the original stdlib CSV dialect even when
+# a public module token is substituted after import.
+_SOURCE_CSV_QUOTE = CSV_QUOTE
+_SOURCE_CSV_COMMA = CSV_COMMA
+_SOURCE_CSV_NEWLINES = CSV_NEWLINES
 
 
 # A single-pass CSV quote state machine necessarily branches on dialect tokens.
@@ -62,20 +67,20 @@ def within_column_limit(  # ruff: ignore[complex-structure,too-many-branches,too
     while index < len(text):  # ruff: ignore[too-many-nested-blocks]
         char = text[index]
         if quoted:
-            if char == CSV_QUOTE:
-                if index + 1 < len(text) and text[index + 1] == CSV_QUOTE:
+            if char == _SOURCE_CSV_QUOTE:
+                if index + 1 < len(text) and text[index + 1] == _SOURCE_CSV_QUOTE:
                     index += 1
                 else:
                     quoted = False
-        elif char == CSV_COMMA:
+        elif char == _SOURCE_CSV_COMMA:
             columns += 1
             if columns > maximum:
                 return False
             at_start = True
-        elif char in CSV_NEWLINES:
+        elif char in _SOURCE_CSV_NEWLINES:
             columns = 1
             at_start = True
-        elif char == CSV_QUOTE and at_start:
+        elif char == _SOURCE_CSV_QUOTE and at_start:
             quoted = True
             at_start = False
         else:

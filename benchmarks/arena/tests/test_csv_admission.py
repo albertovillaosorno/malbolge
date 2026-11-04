@@ -111,9 +111,7 @@ def test_seeded_csv_writer_preserves_quoted_delimiter_counts() -> None:
     for _ in range(300):
         count = random.randint(1, 12)
         fields = [
-            "".join(
-                random.choice(alphabet) for _ in range(random.randint(0, 25))
-            )
+            "".join(random.choice(alphabet) for _ in range(random.randint(0, 25)))
             for _ in range(count)
         ]
         buffer = StringIO(newline="")
@@ -146,3 +144,35 @@ def test_short_valid_csv_differential_oracle_matches_exact_field_counts() -> Non
             for maximum in (1, 2, 3):
                 expected = all(count <= maximum for count in counts)
                 assert csv_admission.within_column_limit(text, maximum) is expected
+
+
+@pytest.mark.parametrize(
+    ("token", "replacement"),
+    [("CSV_COMMA", ";"), ("CSV_QUOTE", "a"), ("CSV_NEWLINES", "b")],
+)
+def test_csv_column_preflight_ignores_mutable_dialect_token_swaps(
+    monkeypatch: pytest.MonkeyPatch, token: str, replacement: str
+) -> None:
+    """The downstream canonical CSV parser must retain the original bound."""
+    source = "a,b,c\n"
+    assert len(next(csv.reader(StringIO(source, newline=""), strict=True))) == 3
+    assert not csv_admission.within_column_limit(source, 2)
+    with monkeypatch.context() as patched:
+        patched.setattr(csv_admission, token, replacement)
+        assert not csv_admission.within_column_limit(source, 2)
+
+
+@pytest.mark.parametrize(
+    ("token", "replacement", "source"),
+    [
+        ("CSV_QUOTE", "!", '"x,y",z\n'),
+        ("CSV_NEWLINES", "_", "a,b\nc,d\n"),
+    ],
+)
+def test_mutable_csv_dialect_tokens_cannot_reject_valid_record_limits(
+    monkeypatch: pytest.MonkeyPatch, token: str, replacement: str, source: str
+) -> None:
+    """Source-valid native two-column CSV must keep its admitted status."""
+    with monkeypatch.context() as patched:
+        patched.setattr(csv_admission, token, replacement)
+        assert csv_admission.within_column_limit(source, 2)

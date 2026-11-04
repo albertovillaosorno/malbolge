@@ -1081,6 +1081,13 @@ return an exact native boolean before the `DictReader` is constructed, and
 unexpected dependency errors are converted to typed import failures without
 formatting caller-supplied exceptions. Red-first tests reject nonnative and
 hostile preflight receipts; this does not authenticate the original timing.
+The constant-memory CSV column preflight now uses import-bound comma, quote,
+and record-terminator tokens, matching the unchanged stdlib CSV dialect even
+if public module tokens are later substituted. Three red-first cases showed
+that changing any one token could admit a three-column row under a two-column
+limit; all now reject. The 558-case combined CSV/raw/analyzer integration
+passes with zero arena type diagnostics. This bounds parser allocation, not
+the authenticity or semantic correctness of CSV measurements.
 The historical-pairs operator now also converts unexpected ordinary importer
 and JSON-publisher failures to exit status two, without printing a partial
 report or formatting foreign exception hooks. Four red-first CLI regressions
