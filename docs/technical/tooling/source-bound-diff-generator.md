@@ -3393,6 +3393,17 @@ been completed yet at this evidence point. `jig doctor` is degraded
 because its compiled graph is absent; a bounded 65-second
 `jig check --root .` timed out, so Jig governance remains unaccepted.
 
+## Fresh integrated diff-suite verdict (2026-11-03)
+
+At integrated `main` revision `bda4e1010`, the complete source-bound diff
+suite passed **4,353 tests with zero failures** in 118.60 seconds (exit 0).
+It was run from `tests/function/algorithms/domain/diff` with the research
+composition source on `PYTHONPATH`, as required by nested subprocess tests.
+This fresh collection supersedes earlier partial or pre-change suite counts.
+Broad scoped Ruff checks also passed. The separate Jig governance gate remains
+open: `jig doctor --root .` is degraded due to the missing compiled graph,
+and bounded `jig check --root .` exited 124 after 90 seconds.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

@@ -2022,6 +2022,14 @@ format.
   Full integrated diff validation remains pending at this evidence point;
   `jig doctor` remains degraded and a bounded `jig check --root .` timed out.
 
+- A fresh, complete source-bound diff suite at integrated `main`
+  (`bda4e1010`) passed all 4,353 tests in 118.60 seconds (exit 0), from
+  `tests/function/algorithms/domain/diff` with its required `PYTHONPATH`.
+  This supersedes earlier integration-pending notes for the included code.
+  Broad Ruff checks passed. `jig doctor --root .` remains degraded because
+  the compiled graph is absent, and bounded `jig check --root .` timed out
+  after 90 seconds (exit 124); Jig acceptance remains unresolved.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
