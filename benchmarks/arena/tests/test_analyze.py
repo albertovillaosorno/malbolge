@@ -3591,3 +3591,41 @@ def test_analyzer_source_policy_preserves_valid_native_study_under_alias_drift(
         monkeypatch.setattr(analyze, alias, replacement)
     assert analyze.parse_document(json.dumps(document)) == document
     assert analyze.analyze(analyze.admit_document(document)) == expected
+
+
+@pytest.mark.parametrize("provider", ["sorted", "enumerate", "min", "max"])
+def test_holm_receipt_reference_cannot_share_forged_math_provider(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """An altered reference helper must not certify wrong significance."""
+    from fractions import Fraction
+
+    raw = [Fraction(1, 2), Fraction(1, 100), Fraction(1, 20), Fraction(1, 25)]
+    forged = (
+        [Fraction(1)] * len(raw)
+        if provider == "sorted"
+        else [Fraction(0)] * len(raw)
+    )
+
+    def leave_unsorted(values: object, *, key: object) -> list[object]:
+        del key
+        return list(cast("list[object]", values))
+
+    def forge_zero(*_values: object) -> Fraction:
+        return Fraction(0)
+
+    def forge_enumeration(values: object) -> object:
+        members = list(cast("list[object]", values))
+        if members and type(members[0]) is Fraction:
+            members = [Fraction(0)] * len(members)
+        return enumerate(members)
+
+    if provider == "sorted":
+        replacement = leave_unsorted
+    elif provider == "enumerate":
+        replacement = forge_enumeration
+    else:
+        replacement = forge_zero
+    monkeypatch.setattr(analyze, provider, replacement, raising=False)
+    with pytest.raises(analyze.ArenaError, match="Holm receipt"):
+        analyze._admit_holm_receipt(raw, forged)

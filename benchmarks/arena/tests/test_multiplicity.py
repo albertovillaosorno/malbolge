@@ -159,3 +159,34 @@ def test_holm_rejects_non_list_collection() -> None:
     probabilities = cast("list[Fraction]", (Fraction(1, 20),))
     with pytest.raises(ValueError, match="exact rational probabilities"):
         multiplicity.holm_adjusted(probabilities)
+
+
+@pytest.mark.parametrize("provider", ["sorted", "enumerate", "min", "max"])
+def test_holm_native_math_cannot_be_rebound_to_forge_adjustment(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Shared mutable arithmetic aliases must not alter exact Holm ranks."""
+    raw = [Fraction(1, 2), Fraction(1, 100), Fraction(1, 20), Fraction(1, 25)]
+    expected = multiplicity.holm_adjusted(raw)
+
+    def leave_unsorted(values: object, *, key: object) -> list[object]:
+        del key
+        return list(cast("list[object]", values))
+
+    def forge_zero(*_values: object) -> Fraction:
+        return Fraction(0)
+
+    def forge_enumeration(values: object) -> object:
+        members = list(cast("list[object]", values))
+        if members and type(members[0]) is Fraction:
+            members = [Fraction(0)] * len(members)
+        return enumerate(members)
+
+    if provider == "sorted":
+        replacement = leave_unsorted
+    elif provider == "enumerate":
+        replacement = forge_enumeration
+    else:
+        replacement = forge_zero
+    monkeypatch.setattr(multiplicity, provider, replacement, raising=False)
+    assert multiplicity.holm_adjusted(raw) == expected

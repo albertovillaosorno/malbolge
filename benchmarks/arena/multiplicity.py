@@ -40,6 +40,11 @@ from operator import itemgetter
 # Preserve the exact rational domain and rank order if public aliases change.
 _CANONICAL_FRACTION = Fraction
 _CANONICAL_ITEMGETTER = itemgetter
+# A shared mutable ranking/arithmetic alias cannot define accepted p-values.
+_SOURCE_SORTED = sorted
+_SOURCE_ENUMERATE = enumerate
+_SOURCE_MIN = min
+_SOURCE_MAX = max
 
 
 def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
@@ -66,9 +71,11 @@ def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
     count = len(p_values)
     adjusted = [_CANONICAL_FRACTION(1)] * count
     current = _CANONICAL_FRACTION(0)
-    for rank, (index, raw) in enumerate(
-        sorted(enumerate(p_values), key=_CANONICAL_ITEMGETTER(1, 0))
+    for rank, (index, raw) in _SOURCE_ENUMERATE(
+        _SOURCE_SORTED(_SOURCE_ENUMERATE(p_values), key=_CANONICAL_ITEMGETTER(1, 0))
     ):
-        current = max(current, min(_CANONICAL_FRACTION(1), (count - rank) * raw))
+        current = _SOURCE_MAX(
+            current, _SOURCE_MIN(_CANONICAL_FRACTION(1), (count - rank) * raw)
+        )
         adjusted[index] = current
     return adjusted

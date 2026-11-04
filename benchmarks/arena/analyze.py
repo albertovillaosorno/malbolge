@@ -54,6 +54,13 @@ from benchmarks.arena import (
     success_intervals,
 )
 
+# Holm admission must not share rebindable ranking/arithmetic helpers with
+# the correction producer: both could otherwise agree on forged p-values.
+_SOURCE_HOLM_SORTED = sorted
+_SOURCE_HOLM_ENUMERATE = enumerate
+_SOURCE_HOLM_MIN = min
+_SOURCE_HOLM_MAX = max
+
 # Preserve the source decoder class, not just json.loads (which consults the
 # mutable public JSONDecoder factory for custom object-pair hooks).
 _SOURCE_JSON_DECODER = json.JSONDecoder
@@ -1023,10 +1030,15 @@ def _admit_holm_receipt(
     # independently admits the whole returned family, including tied ranks.
     # Verify all entries before publishing even the first adjusted value.
     required = Fraction(0)
-    for rank, (index, probability) in enumerate(
-        sorted(enumerate(raw), key=lambda item: (item[1], item[0]))
+    for rank, (index, probability) in _SOURCE_HOLM_ENUMERATE(
+        _SOURCE_HOLM_SORTED(
+            _SOURCE_HOLM_ENUMERATE(raw), key=lambda item: (item[1], item[0])
+        )
     ):
-        required = max(required, min(Fraction(1), (len(raw) - rank) * probability))
+        required = _SOURCE_HOLM_MAX(
+            required,
+            _SOURCE_HOLM_MIN(Fraction(1), (len(raw) - rank) * probability),
+        )
         if receipt[index] != required:
             _fail("Holm receipt differs from exact family correction")
     return list(receipt)
