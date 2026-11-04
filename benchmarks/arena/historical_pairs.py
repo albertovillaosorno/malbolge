@@ -56,6 +56,9 @@ if TYPE_CHECKING:
 from benchmarks.arena import analyze, csv_admission, evidence, report_output
 from scripts.validate import benchmark_protocol, experiment_manifest
 
+# Keep an import-bound source digest constructor across public alias changes.
+_NATIVE_SHA256 = sha256
+
 # Preserve source parsing and report encoding despite mutable providers.
 _SOURCE_TOML_LOADS = tomllib.loads
 _SOURCE_JSON_ENCODER = json.JSONEncoder
@@ -155,6 +158,7 @@ def _source(root: Path, relative: str) -> tuple[str, str]:
         # Cross-check against the separately accessed standard hash entrypoint.
         # A dependency-injected, valid-looking digest cannot bind other bytes.
         independent_digest = hashlib.new("sha256", raw).hexdigest()
+        source_bound_digest = _NATIVE_SHA256(raw).hexdigest()
     except Exception as error:
         # Hash dependencies are not an authority for exception formatting.
         message = "historical source hash computation failed"
@@ -163,8 +167,8 @@ def _source(root: Path, relative: str) -> tuple[str, str]:
         type(fingerprint) is not str
         or len(fingerprint) != analyze.SHA256_HEX_LENGTH
         or not set(fingerprint) <= analyze.SHA256_ALPHABET
-        for fingerprint in (digest, independent_digest)
-    ) or digest != independent_digest:
+        for fingerprint in (digest, independent_digest, source_bound_digest)
+    ) or (digest != source_bound_digest or independent_digest != source_bound_digest):
         _fail("historical source returned invalid SHA-256 fingerprint")
     return raw.decode("utf-8"), digest
 

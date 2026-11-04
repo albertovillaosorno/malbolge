@@ -42,6 +42,7 @@ import json
 import sys
 from hashlib import sha256
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Self, cast
 
 if TYPE_CHECKING:
@@ -350,6 +351,33 @@ def test_historical_source_rejects_plausible_but_wrong_hash_receipt(
             return "a" * 64
 
     monkeypatch.setattr(historical_pairs, "sha256", lambda *_: WrongHash())
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="SHA-256"):
+        historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
+
+
+def test_historical_source_rejects_jointly_forged_hash_constructors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two agreeing forged digest providers cannot identify historical bytes."""
+    original = b"historical source evidence\n"
+    false_digest = "0" * 64
+    assert sha256(original).hexdigest() != false_digest
+    monkeypatch.setattr(
+        historical_pairs.evidence,
+        "read_bounded_regular",
+        lambda *_args, **_kwargs: original,
+    )
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(historical_pairs, "sha256", lambda _raw: ForgedHash())
+    monkeypatch.setattr(
+        historical_pairs,
+        "hashlib",
+        SimpleNamespace(new=lambda _name, _raw: ForgedHash()),
+    )
     with pytest.raises(historical_pairs.HistoricalEvidenceError, match="SHA-256"):
         historical_pairs._source(REPO, BASE + PREFIX + "/raw.csv")
 
