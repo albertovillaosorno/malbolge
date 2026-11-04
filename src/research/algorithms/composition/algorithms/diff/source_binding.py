@@ -112,6 +112,9 @@ _NATIVE_OBJECT_NEW = object.__new__
 _NATIVE_ATTRIBUTE_ERROR = builtins.AttributeError
 _NATIVE_UNICODE_ENCODE_ERROR = builtins.UnicodeEncodeError
 _NATIVE_ADMISSION_POLICY_ERROR = AdmissionPolicyError
+# Preserve exact selection and fraction conversion after consumer callbacks.
+_NATIVE_STABLE_ANCHORS = stable_anchors
+_NATIVE_DECIMAL = Decimal
 # Source model class aliases are mutable after import; pin original identity.
 _NATIVE_ANCHOR_POLICY_TYPE = AnchorPolicy
 _NATIVE_STABLE_ANCHOR_TYPE = StableAnchor
@@ -899,7 +902,7 @@ def _file_anchor_materials(
     policy: AnchorPolicy,
 ) -> tuple[_AnchorMaterial, ...]:
     anchors = _NATIVE_SORTED(
-        stable_anchors(_identity_canonical(identity_file), policy),
+        _NATIVE_STABLE_ANCHORS(_identity_canonical(identity_file), policy),
         key=lambda anchor: _stable_anchor_digest(anchor),
     )
     return _NATIVE_TUPLE(
@@ -1096,7 +1099,7 @@ def bind_secret(
     # A float product can round a fraction just above k/N back to k and admit
     # fewer shares than required. Integer arithmetic keeps the ceiling exact.
     fraction_value = _binding_fraction(fraction)
-    fraction = Decimal(_NATIVE_STR(fraction_value))
+    fraction = _NATIVE_DECIMAL(_NATIVE_STR(fraction_value))
     fraction_numerator, fraction_denominator = fraction.as_integer_ratio()
     numerator = _NATIVE_LEN(materials) * fraction_numerator
     threshold = _NATIVE_MAX(

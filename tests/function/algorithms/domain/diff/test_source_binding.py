@@ -2545,3 +2545,59 @@ def test_source_binding_foreign_receipts_remain_rejected_after_class_alias(
         patched.setattr(binding_module, alias, SimpleNamespace)
         with pytest.raises(SourceBindingError):
             _ = validate_threshold_binding(foreign)
+
+
+@pytest.mark.parametrize("route", ["bind", "recover"])
+def test_source_binding_anchor_selection_ignores_late_function_alias(
+    monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """A late selection helper must not discard valid source evidence."""
+    reference = _reference()
+    policy = _policy()
+    binding = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    calls = 0
+
+    def no_anchors(
+        _data: bytes, _policy: AnchorPolicy
+    ) -> tuple[StableAnchor, ...]:
+        nonlocal calls
+        calls += 1
+        return ()
+
+    with monkeypatch.context() as patched:
+        patched.setattr(binding_module, "stable_anchors", no_anchors)
+        if route == "bind":
+            observed = bind_secret(
+                reference, _SECRET, policy=policy, context=_CONTEXT
+            )
+            assert observed == binding
+        else:
+            assert recover_secret(binding, reference) == _SECRET
+    assert calls == 0, "late anchor selector intercepted source identity"
+
+
+def test_source_binding_fraction_decimal_alias_cannot_lower_quorum(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late decimal factory cannot reduce the threshold at key binding."""
+    reference = _reference()
+    policy = _policy(threshold_fraction=1.0)
+    expected = bind_secret(reference, _SECRET, policy=policy, context=_CONTEXT)
+    calls = 0
+
+    class ReducedFraction:
+        def __init__(self, _fraction: str) -> None:
+            nonlocal calls
+            calls += 1
+
+        def as_integer_ratio(self) -> tuple[int, int]:
+            return 3, 5
+
+    with monkeypatch.context() as patched:
+        patched.setattr(binding_module, "Decimal", ReducedFraction)
+        observed = bind_secret(
+            reference, _SECRET, policy=policy, context=_CONTEXT
+        )
+    assert expected.threshold == len(expected.shares)
+    assert observed == expected
+    assert calls == 0, "late Decimal alias changed the threshold"
