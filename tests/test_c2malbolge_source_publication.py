@@ -136,7 +136,11 @@ class SourceBoundPublicationTests(unittest.TestCase):
 
                         def failed_sync(descriptor):
                             is_directory = stat.S_ISDIR(os.fstat(descriptor).st_mode)
-                            if is_directory == (failed_kind == "directory"):
+                            if failed_kind == "mutate-source":
+                                if not is_directory:
+                                    with open(os.environ["COMPILER_TEST_SOURCE"], "wb") as source:
+                                        source.write(b"source mutated during stage sync")
+                            elif is_directory == (failed_kind == "directory"):
                                 raise OSError("injected sync failure")
                             real_fsync(descriptor)
 
@@ -189,6 +193,13 @@ class SourceBoundPublicationTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn(b"cannot sync staged guest artifact", completed.stderr)
         self.assertIn(b"injected sync failure", completed.stderr)
+        self.assertFalse(self.target.exists())
+        self.assert_no_staging_leftovers()
+
+    def test_source_changed_during_stage_sync_rejects_before_link(self) -> None:
+        completed = self.run_driver(fail_sync="mutate-source")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"source changed during guest compilation", completed.stderr)
         self.assertFalse(self.target.exists())
         self.assert_no_staging_leftovers()
 

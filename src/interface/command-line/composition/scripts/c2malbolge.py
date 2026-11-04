@@ -339,8 +339,6 @@ def compile_source(arguments: Arguments) -> None:
             raise PipelineError(f"adapter did not publish a target: {error}") from error
         if not stat.S_ISREG(published.st_mode) or published.st_size < 2:
             raise PipelineError("adapter did not publish a regular Malbolge target")
-        if source_digest(source) != expected:
-            raise PipelineError("source changed during guest compilation")
         # A durable directory entry is insufficient if its file data was never
         # synced. Pin the published stage inode before exposing its new name.
         try:
@@ -357,6 +355,10 @@ def compile_source(arguments: Arguments) -> None:
             raise PipelineError(
                 f"cannot sync staged guest artifact: {error}"
             ) from error
+        # The stage sync is still part of guest compilation. Check the source
+        # again afterward, immediately before exposing the verified artifact.
+        if source_digest(source) != expected:
+            raise PipelineError("source changed during guest compilation")
         try:
             # The link is atomic and fails if a peer occupied the target while
             # compilation ran; a rename would silently replace it on POSIX.
