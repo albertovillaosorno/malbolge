@@ -43,6 +43,7 @@ import io
 import json
 from pathlib import Path
 import sys
+from types import SimpleNamespace
 from typing import Any
 from typing import Self
 from typing import SupportsIndex
@@ -3332,6 +3333,28 @@ def test_manifest_hash_provider_cannot_forge_source_receipts(
         )
     if receipt == "raised":
         assert caught.value.__cause__ is fault
+
+
+def test_evidence_digest_rejects_jointly_forged_constructor_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Agreeing fake constructors must not attest a manifest source digest."""
+    raw = b"original manifest source"
+    false_digest = "0" * analyze.SHA256_HEX_LENGTH
+    assert sha256(raw).hexdigest() != false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(evidence, "sha256", lambda _raw: ForgedHash())
+    monkeypatch.setattr(
+        evidence,
+        "hashlib",
+        SimpleNamespace(new=lambda _algorithm, _raw: ForgedHash()),
+    )
+    with pytest.raises(evidence.EvidenceError, match="SHA-256 receipt differs"):
+        evidence._checked_sha256(raw)
 
 
 @pytest.mark.parametrize("phase", ["manifest", "raw", "bundle"])

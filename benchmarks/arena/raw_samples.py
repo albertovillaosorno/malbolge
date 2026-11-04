@@ -46,6 +46,9 @@ if TYPE_CHECKING:
 
 from benchmarks.arena import analyze, csv_admission
 
+# Retain the native source-digest provider across public alias substitutions.
+_NATIVE_SHA256 = sha256
+
 RAW_SCHEMA_VERSION: Final = "1"
 RAW_SCHEMA_VERSION_2: Final = "2"
 ENERGY: Final = "energy_uj"
@@ -303,16 +306,20 @@ def _checked_sha256(raw: bytes) -> str:
         # Keep the cross-check on a separate provider entrypoint: the module
         # attribute hashlib.sha256 can be replaced alongside the bound alias.
         independent = hashlib.new("sha256", raw).hexdigest()
+        source_bound = _NATIVE_SHA256(raw).hexdigest()
     except Exception as error:
         message = "arena raw CSV SHA-256 dependency failed"
         raise RawSampleError(message) from error
     if (
         type(reported) is not str
         or type(independent) is not str
+        or type(source_bound) is not str
+        or len(source_bound) != analyze.SHA256_HEX_LENGTH
         or len(reported) != analyze.SHA256_HEX_LENGTH
         or len(independent) != analyze.SHA256_HEX_LENGTH
         or not set(reported) <= analyze.SHA256_ALPHABET
-        or reported != independent
+        or reported != source_bound
+        or independent != source_bound
     ):
         _fail("arena raw CSV SHA-256 receipt differs from source bytes")
     return reported

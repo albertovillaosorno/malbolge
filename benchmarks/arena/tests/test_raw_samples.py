@@ -42,6 +42,7 @@ import csv
 from hashlib import sha256
 from io import StringIO
 import json
+from types import SimpleNamespace
 import sys
 from typing import Any
 from typing import cast
@@ -213,6 +214,29 @@ def test_raw_digest_rejects_jointly_substituted_sha256_providers(
 
     monkeypatch.setattr(raw_samples, "sha256", replaced)
     monkeypatch.setattr(raw_samples.hashlib, "sha256", replaced)
+    with pytest.raises(raw_samples.RawSampleError, match="SHA-256 receipt differs"):
+        raw_samples.check_rows(raw, [observation], ROOT_LABEL)
+
+
+def test_raw_digest_rejects_jointly_forged_constructor_receipts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two agreeing replaced constructors cannot publish a foreign raw hash."""
+    observation = sample_study(tmp_path)["observations"][0]
+    raw = _render([observation])
+    false_digest = "0" * analyze.SHA256_HEX_LENGTH
+    assert false_digest != sha256(raw).hexdigest()
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(raw_samples, "sha256", lambda _raw: ForgedHash())
+    monkeypatch.setattr(
+        raw_samples,
+        "hashlib",
+        SimpleNamespace(new=lambda _algorithm, _raw: ForgedHash()),
+    )
     with pytest.raises(raw_samples.RawSampleError, match="SHA-256 receipt differs"):
         raw_samples.check_rows(raw, [observation], ROOT_LABEL)
 
