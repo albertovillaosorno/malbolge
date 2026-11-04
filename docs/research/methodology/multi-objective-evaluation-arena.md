@@ -1765,6 +1765,19 @@ The original study records remain the result authority.
   `jig doctor --root .` remains degraded (installation and compiled graph
   absent); a bounded 80-second `jig check --root .` timed out without a
   verdict, so the global Jig acceptance gate is still unresolved.
+- Local host-C replay, child cleanup and trusted diagnostic rendering now
+  retain the original `HostOracleError` across late public alias replacement
+  (`ba530fbef`). Ten failing-first tests originally exposed foreign rejection
+  types or lost cleanup details; 447 host-C cases and 565 evidence/challenge
+  cases passed after the fix, with zero arena BasedPyright errors. These
+  checks do not certify external Clang or compiled guest semantics.
+- Target-echo study admission, workspace cleanup and native error rendering
+  now retain original `TargetEchoStudyError` (`9a15a823f`). Ten failing-first
+  rejection tests and two unchanged-source cases pass; all 461 target-echo
+  reference tests passed, with zero arena BasedPyright errors. A related
+  target-echo audit run reached its 85-second cap without a verdict and is
+  not reported as green. The tests are synthetic and local, not real guest
+  performance provenance or final repository acceptance.
 
 ## Results
 
