@@ -1346,6 +1346,25 @@ The original study records remain the result authority.
   report assembly and require a typed late-drift rejection. Six real-pilot
   cases additionally introduce unregistered run, raw or candidate files both
   before admission and during analysis, and require an inventory rejection.
+- Four signed source-native host-C offline audit fixes now guard local
+  retained-study admission against replaced module aliases. `62a2a955e`
+  fixes the original `AuditOptions` type and native Boolean/replay checks;
+  eight red-first cases test invalid opt-ins and valid original records.
+  `1f6d10cee` binds the original exception-type whitelist and native type,
+  length, string and integer diagnostic checks; ten red-first cases reject
+  forged exception prose without losing readable native errors.
+  `7b35b1d65` binds native path types, length, character predicates and the
+  original underscore policy so foreign paths, extra segments or illegal
+  suffixes cannot enter retained-study admission; ten red-first cases cover
+  these guards and valid canonical paths. `0d8af56a0` binds exact source-byte
+  reader receipts and native SHA-256 digest lengths/types before comparison;
+  twelve red-first cases reject mutable buffers, oversized input and
+  equality-forging digest subclasses while preserving original bytes.
+  The 60-case postcommit audit/byte/path/diagnostic subset and arena
+  BasedPyright check passed with zero type errors. These are local receipt
+  and source-provider consistency guarantees, not authenticated file-system
+  state, untampered pre-import code, external child execution, measured timing,
+  or verification of a generated Malbolge candidate.
 - `benchmarks/arena/reference_study.py` records real pinned host-C reference
   time, native executable sizes, exact binary hashes and versioned trial files
   across multiple canonical difficulties and matched `-O0`/`-O2` arms.
