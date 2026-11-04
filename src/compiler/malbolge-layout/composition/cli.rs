@@ -44,7 +44,7 @@ use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_
 use crate::bridge::{
     encode_empty_void_function, encode_initial_zero_outputs, encode_latest_byte_identity_trace,
     encode_rotated_byte_literal, encode_successful_byte_echo, encode_successful_latest_byte_trace,
-    encode_zero_prefixed_latest_byte_trace,
+    encode_zero_prefixed_latest_byte_trace, encode_zero_then_literal,
     ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
@@ -56,6 +56,7 @@ use crate::typed_adapter::{
     compile_canonical_typed_identity_byte_trace, compile_canonical_typed_initial_zero_outputs,
     compile_canonical_typed_latest_byte_trace, compile_canonical_typed_rotated_byte_literal,
     compile_canonical_typed_zero_prefixed_latest_byte_trace,
+    compile_canonical_typed_zero_then_literal,
 };
 
 const PROFILE_ARG: &str = "--profile";
@@ -70,6 +71,7 @@ const INITIAL_ZERO_OUTPUT_ARG: &str = "--initial-zero-output";
 const ZERO_PREFIXED_BYTE_TRACE_ARG: &str = "--zero-prefixed-byte-trace";
 const IDENTITY_BYTE_TRACE_ARG: &str = "--identity-byte-trace";
 const SEEDED_BYTE_LITERAL_ARG: &str = "--seeded-byte-literal";
+const ZERO_THEN_LITERAL_ARG: &str = "--zero-then-literal";
 const EMPTY_VOID_ARG: &str = "--empty-void";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
@@ -110,6 +112,7 @@ enum ByteTraceMode {
     LatestRead,
     RotatedLiteral,
     ZeroPrefixedLatest,
+    ZeroThenLiteral,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -124,6 +127,7 @@ enum SourceEffectWitness {
     InitialZero { outputs: usize },
     RotatedLiteral { byte: u8, outputs: usize },
     SuccessfulByteTrace(Vec<SuccessfulByteEffect>),
+    ZeroThenLiteral { byte: u8 },
 }
 
 type StageFile = (PathBuf, fs::File);
@@ -194,6 +198,10 @@ fn parse_auto_layout(arguments: &mut impl Iterator<Item = OsString>) -> Result<S
     Ok(SourceSpec::AutoLayout(operations))
 }
 
+#[expect(
+    clippy::cognitive_complexity,
+    reason = "complete bounded canonical byte trace source-mode admission"
+)]
 fn parse_canonical_source(
     first: OsString,
     arguments: &mut impl Iterator<Item = OsString>,
@@ -203,6 +211,7 @@ fn parse_canonical_source(
         || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
         || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
         || first == OsStr::new(SEEDED_BYTE_LITERAL_ARG)
+        || first == OsStr::new(ZERO_THEN_LITERAL_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
     {
         let mode = if first == OsStr::new(EMPTY_VOID_ARG) {
@@ -215,6 +224,8 @@ fn parse_canonical_source(
             ByteTraceMode::IdentityByteBitcast
         } else if first == OsStr::new(SEEDED_BYTE_LITERAL_ARG) {
             ByteTraceMode::RotatedLiteral
+        } else if first == OsStr::new(ZERO_THEN_LITERAL_ARG) {
+            ByteTraceMode::ZeroThenLiteral
         } else {
             ByteTraceMode::LatestRead
         };
@@ -274,6 +285,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(ZERO_PREFIXED_BYTE_TRACE_ARG)
         || first == OsStr::new(IDENTITY_BYTE_TRACE_ARG)
         || first == OsStr::new(SEEDED_BYTE_LITERAL_ARG)
+        || first == OsStr::new(ZERO_THEN_LITERAL_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
     {
         return parse_canonical_source(first, arguments);
@@ -923,6 +935,7 @@ fn verified_ternary_bytes(
         }
         ByteTraceMode::IdentityByteBitcast => encode_latest_byte_identity_trace(&program, profile),
         ByteTraceMode::RotatedLiteral => encode_rotated_byte_literal(&program, profile),
+        ByteTraceMode::ZeroThenLiteral => encode_zero_then_literal(&program, profile),
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
     if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
@@ -948,6 +961,20 @@ fn verified_ternary_bytes(
                 .iter()
                 .filter(|operation| matches!(operation, TernaryOperation::ByteOutput { .. }))
                 .count(),
+        })
+    } else if matches!(mode, ByteTraceMode::ZeroThenLiteral) {
+        let [
+            TernaryOperation::MaterializeU8 { .. },
+            TernaryOperation::ByteOutput { .. },
+            TernaryOperation::MaterializeU8 { scalar, .. },
+            TernaryOperation::ByteOutput { .. },
+            TernaryOperation::ReturnVoid { .. },
+        ] = operations.as_slice()
+        else {
+            return Err(String::from("missing zero-then-literal effects"));
+        };
+        Some(SourceEffectWitness::ZeroThenLiteral {
+            byte: scalar.bits(),
         })
     } else if matches!(mode, ByteTraceMode::InitialZero) {
         Some(SourceEffectWitness::InitialZero {
@@ -1007,6 +1034,9 @@ fn verified_typed_bytes(
         }
         ByteTraceMode::RotatedLiteral => {
             compile_canonical_typed_rotated_byte_literal(typed_bytes, profile)
+        }
+        ByteTraceMode::ZeroThenLiteral => {
+            compile_canonical_typed_zero_then_literal(typed_bytes, profile)
         }
     }
     .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
@@ -1213,6 +1243,29 @@ fn verify_rotated_literal(
     Ok(())
 }
 
+// Publication independently re-runs the full effect order in the actual VM.
+fn verify_zero_then_literal(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    byte: u8,
+) -> Result<(), String> {
+    if artifact.steps < 5 || !matches!(byte, b'Z' | b'P' | b'T' | b'S') {
+        return Err(String::from("zero-then-literal guest geometry disagrees"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
+            .map_err(|error| format!("zero-then-literal guest load: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output() != [0, byte]
+        {
+            return Err(String::from("zero-then-literal guest output disagrees"));
+        }
+    }
+    Ok(())
+}
+
 fn execute(spec: &CommandSpec) -> Result<(), String> {
     let profile = target_profile(&spec.profile).ok_or("unknown canonical target profile")?;
     let artifact = verified_source(&spec.source, profile)?;
@@ -1236,6 +1289,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         }
         Some(SourceEffectWitness::RotatedLiteral { byte, outputs }) => {
             verify_rotated_literal(profile, &artifact, *byte, *outputs)?;
+        }
+        Some(SourceEffectWitness::ZeroThenLiteral { byte }) => {
+            verify_zero_then_literal(profile, &artifact, *byte)?;
         }
         None => {}
     }

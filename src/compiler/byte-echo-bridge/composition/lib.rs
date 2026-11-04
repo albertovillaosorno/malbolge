@@ -916,6 +916,11 @@ const ROTATED_THIRTY_BYTE_SEEDS: &[(u8, usize)] = &[
     (197, 2),
 ];
 
+// Each pair is an exact one-zero-output-then-one-nonzero-output guest
+// witness: `<`, padding `o`, `j`, `p`, `<`, `v` under malbolge-2026.
+const ZERO_THEN_LITERAL_CRAZY_WITNESSES: &[(u8, usize)] =
+    &[(b'Z', 0), (b'P', 2), (b'T', 6), (b'S', 17)];
+
 /// A failed pre-layout admission, semantic bridge, or final target admission.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ByteEchoBridgeError {
@@ -1337,6 +1342,82 @@ fn literal_output_witness(byte: u8, count: usize) -> Option<LiteralOutputWitness
                 &[LinearOpcode::RotateData, LinearOpcode::RotateData][..],
             )
         })
+}
+
+/// Emit exactly one initial zero byte followed by one witnessed nonzero byte.
+///
+/// Two different canonical source SSA constants are required. The guest
+/// outputs initial A=0, then its relocated `p` operation computes the second
+/// byte; neither effect is simulated by the host. Every recipe is executed in
+/// the normative VM before its source can be published.
+///
+/// # Errors
+///
+/// Refuses malformed source effects, profile drift, unsupported byte pairs,
+/// invalid layout, or a guest trace that differs from the requested bytes.
+pub fn encode_zero_then_literal(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let [
+        TernaryOperation::MaterializeU8 {
+            result: zero_id,
+            scalar: zero,
+            ..
+        },
+        TernaryOperation::ByteOutput {
+            value: first_id, ..
+        },
+        TernaryOperation::MaterializeU8 {
+            result: second_id,
+            scalar: second,
+            ..
+        },
+        TernaryOperation::ByteOutput { value: last_id, .. },
+        TernaryOperation::ReturnVoid { .. },
+    ] = function.operations.as_slice()
+    else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if zero.bits() != 0 || zero_id != first_id || second_id != last_id || zero_id == second_id {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let padding = ZERO_THEN_LITERAL_CRAZY_WITNESSES
+        .iter()
+        .find(|(byte, _)| *byte == second.bits())
+        .map(|(_, padding)| *padding)
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    let mut operations = vec![LinearOpcode::OutputByte];
+    operations.extend(repeat_n(LinearOpcode::NoOperation, padding));
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
+            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+            || vm.output() != [0, second.bits()]
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    Ok(layout)
 }
 
 /// Emits a nonzero `u8` one to thirty-three times using guest data operations.

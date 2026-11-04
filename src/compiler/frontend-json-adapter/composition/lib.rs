@@ -71,11 +71,13 @@ pub enum FrontendGuestMode {
     InitialZeroOutput,
     /// Emit an independently witnessed nonzero byte using guest rotation.
     SeededByteLiteral,
+    /// Exactly two different outputs: initial zero then a VM-witnessed byte.
+    ZeroThenLiteral,
 }
 
 /// Canonical typed-IR bytes paired with their independently checked guest mode.
 pub type CanonicalGuestProjection = (Vec<u8>, FrontendGuestMode);
-type LiteralOutputProjection = (Vec<u8>, u8);
+type LiteralOutputProjection = (Vec<u8>, FrontendGuestMode);
 
 /// A rejected normalized frontend artifact or typed-IR projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -162,6 +164,7 @@ struct LiteralOutputNodes<'node> {
     byte: u8,
     calls: Vec<(&'node Node, &'node Node)>,
     function: &'node Node,
+    mixed_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -779,9 +782,10 @@ fn inert_output_statement(
     }
 }
 
-// A bounded sequence must use one identical literal and no other effects.
+// Bounded literal outputs are identical, except an exact witnessed zero-first pair.
 #[expect(
     clippy::too_many_lines,
+    clippy::cognitive_complexity,
     reason = "closed bounded C literal-output preorder admission"
 )]
 fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, FrontendJsonError> {
@@ -849,6 +853,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     }
     let mut calls = Vec::new();
     let mut selected_byte = None;
+    let mut mixed_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -966,9 +971,22 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         )
         .ok_or(FrontendJsonError::Unsupported)?;
         if selected_byte.is_some_and(|previous| previous != byte) {
+            // This exact 0 then printable-byte shape has a guest witness;
+            // every other change of accumulator remains unsupported.
+            if selected_byte != Some(0)
+                || calls.len() != 1
+                || mixed_byte.is_some()
+                || !matches!(byte, b'Z' | b'P' | b'T' | b'S')
+            {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            mixed_byte = Some(byte);
+        } else if mixed_byte.is_some() {
             return Err(FrontendJsonError::Unsupported);
         }
-        selected_byte = Some(byte);
+        if selected_byte.is_none() {
+            selected_byte = Some(byte);
+        }
         let call = group.first().ok_or(FrontendJsonError::Unsupported)?;
         let literal = group.last().ok_or(FrontendJsonError::Unsupported)?;
         // Attribute signed constants to their complete source sign rather
@@ -995,6 +1013,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         byte: selected_byte.ok_or(FrontendJsonError::Unsupported)?,
         calls,
         function,
+        mixed_byte,
         returned,
     })
 }
@@ -1028,6 +1047,7 @@ fn canonical_literal_output_typed_ir(
         function,
         body,
         byte,
+        mixed_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -1085,7 +1105,7 @@ fn canonical_literal_output_typed_ir(
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
     let first_argument = calls.first().ok_or(FrontendJsonError::Unsupported)?.1;
-    let mut instructions = Vec::with_capacity(calls.len().saturating_add(1));
+    let mut instructions = Vec::with_capacity(calls.len().saturating_add(2));
     instructions.push(LocatedInstruction::new(
         Instruction::ConstantInteger {
             constant: IntegerConstant::new(8, vec![byte]),
@@ -1094,10 +1114,22 @@ fn canonical_literal_output_typed_ir(
         },
         typed_span(&first_argument.span),
     ));
-    for (call, _literal) in calls {
+    for (index, (call, argument)) in calls.into_iter().enumerate() {
+        if index == 1
+            && let Some(second) = mixed_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![second]),
+                    result: ValueId::new(1),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(0),
+                value: ValueId::new(u32::from(index == 1 && mixed_byte.is_some())),
             },
             typed_span(&call.span),
         ));
@@ -1133,7 +1165,14 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    Ok((encoded, byte))
+    let mode = if mixed_byte.is_some() {
+        FrontendGuestMode::ZeroThenLiteral
+    } else if byte == 0 {
+        FrontendGuestMode::InitialZeroOutput
+    } else {
+        FrontendGuestMode::SeededByteLiteral
+    };
+    Ok((encoded, mode))
 }
 
 /// Project the two supported C families without dropping observable output.
@@ -1147,12 +1186,5 @@ pub fn canonical_guest_typed_ir(
     if let Ok(wire) = canonical_void_typed_ir(bytes) {
         return Ok((wire, FrontendGuestMode::EmptyVoid));
     }
-    canonical_literal_output_typed_ir(bytes).map(|(wire, byte)| {
-        let mode = if byte == 0 {
-            FrontendGuestMode::InitialZeroOutput
-        } else {
-            FrontendGuestMode::SeededByteLiteral
-        };
-        (wire, mode)
-    })
+    canonical_literal_output_typed_ir(bytes)
 }

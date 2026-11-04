@@ -100,6 +100,7 @@ enum ByteTraceMode {
     LatestRead,
     RotatedLiteral,
     ZeroPrefixedLatest,
+    ZeroThenLiteral,
 }
 
 const fn project_position(position: SourcePosition) -> InputSourcePosition {
@@ -287,6 +288,75 @@ fn project_rotated_literal_effects(
         });
     }
     Ok(instructions)
+}
+
+// Source-proven two different constants: initial u8 zero, then one of four
+// individually witnessed bytes. Retain both source spans and distinct SSA IDs.
+fn project_zero_then_literal_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    let [first, zero_output, second, second_output] = original else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    let (
+        Instruction::ConstantInteger {
+            constant: zero,
+            result: zero_id,
+            type_id: zero_type,
+        },
+        Instruction::ByteOutput { value: first_id },
+        Instruction::ConstantInteger {
+            constant: literal,
+            result: literal_id,
+            type_id: literal_type,
+        },
+        Instruction::ByteOutput { value: last_id },
+    ) = (
+        first.instruction(),
+        zero_output.instruction(),
+        second.instruction(),
+        second_output.instruction(),
+    )
+    else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    if !is_byte_type(module, *zero_type)
+        || !is_byte_type(module, *literal_type)
+        || zero.bit_width() != 8
+        || zero.little_endian() != [0]
+        || literal.bit_width() != 8
+        || !matches!(literal.little_endian(), [b'Z' | b'P' | b'T' | b'S'])
+        || zero_id != first_id
+        || literal_id != last_id
+        || zero_id == literal_id
+    {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    Ok(vec![
+        InputInstruction::ConstantInteger {
+            bit_width: 8,
+            little_endian: vec![0],
+            result: zero_id.value(),
+            span: project_span(first.span()),
+            type_kind: InputScalarType::U8,
+        },
+        InputInstruction::ByteOutput {
+            span: project_span(zero_output.span()),
+            value: zero_id.value(),
+        },
+        InputInstruction::ConstantInteger {
+            bit_width: 8,
+            little_endian: literal.little_endian().to_vec(),
+            result: literal_id.value(),
+            span: project_span(second.span()),
+            type_kind: InputScalarType::U8,
+        },
+        InputInstruction::ByteOutput {
+            span: project_span(second_output.span()),
+            value: literal_id.value(),
+        },
+    ])
 }
 
 // A source zero SSA can be emitted until the first input overwrites VM A.
@@ -493,6 +563,9 @@ fn project_byte_trace(
         ByteTraceMode::RotatedLiteral => {
             project_rotated_literal_effects(module, block.instructions())?
         }
+        ByteTraceMode::ZeroThenLiteral => {
+            project_zero_then_literal_effects(module, block.instructions())?
+        }
     };
     Ok(TypedIrInput {
         abi_id: module.abi_id().to_owned(),
@@ -568,6 +641,9 @@ fn compile_byte_trace(
         }
         ByteTraceMode::RotatedLiteral => {
             bridge::encode_rotated_byte_literal(&independently_admitted, profile)
+        }
+        ByteTraceMode::ZeroThenLiteral => {
+            bridge::encode_zero_then_literal(&independently_admitted, profile)
         }
     }
     .map_err(TypedEchoAdapterError::Layout)?;
@@ -705,4 +781,17 @@ pub fn compile_canonical_typed_rotated_byte_literal(
     profile: &'static ProfileDescriptor,
 ) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
     compile_byte_trace(canonical, profile, ByteTraceMode::RotatedLiteral)
+}
+
+/// Compile one proven initial-zero byte followed by one nonzero printable byte.
+///
+/// # Errors
+///
+/// Refuses other typed effects, unproved constant values, foreign profiles,
+/// or any mismatch under independent MCTR and normative guest verification.
+pub fn compile_canonical_typed_zero_then_literal(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::ZeroThenLiteral)
 }

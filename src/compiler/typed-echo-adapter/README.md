@@ -161,6 +161,21 @@ with 18 distinct shortest byte witnesses; typed/real runner proves 136 and 158.
 Thirty-four or more outputs reject.
 Each count admits only its shortest verified prefix per byte.
 
+### Distinct zero-then-printable byte pair
+
+The independent `compile_canonical_typed_zero_then_literal` mode accepts exactly
+four source-bound operations: `u8` constant zero, output of that SSA, a second
+new `u8` constant `Z`/`P`/`T`/`S`, and output of its own distinct SSA, with
+one final void return. It preserves both definitions, source spans and order
+through canonical typed IR and MCTR re-admission. The current-profile guest
+actually emits the first zero from initial accumulator, then executes
+`j`/`p` to calculate the second byte. Exact padding phases 0/2/6/17 yield
+5/7/11/22 VM steps. The target bridge and publisher independently run the
+normative VM with empty and irrelevant nonempty input to verify the two-byte
+output before publication. Reverse order, unsupported values, stale SSA,
+extra effects and other profiles reject; this is not general mixed-literal
+synthesis.
+
 Each added `<` changes the full loader-expanded memory, so seeds cannot be
 reused across output counts.
 Each candidate is re-executed before admission. Other values and output

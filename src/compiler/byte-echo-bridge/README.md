@@ -127,6 +127,17 @@ bytes use **two** real guest rotations after relocation: `(` (40/51),
 source lengths and two data writes cannot be inferred from one-rotation
 witnesses. Every witness is re-executed with the normative VM on each bridge
 invocation, and none authorizes another byte, output count, or profile.
+An independently selected `encode_zero_then_literal` path now admits exactly
+two *different* source-proven constant outputs: first NUL then one of
+`Z`, `P`, `T`, or `S`. The actual current-profile guest emits initial zero,
+executes a relocated `p` crazy operation and emits the chosen second byte.
+Their exact no-op prefixes are 0/2/6/17, producing 5/7/11/22 guest
+steps. Both constant SSA identities and complete effect order are checked
+against re-admitted MCTR, and the normative VM verifies both bytes across
+empty and supplied input before returning the graphical source. This is a
+distinct opt-in bridge, not a widening of the repeated-identical-byte path;
+unsupported bytes, extra outputs and old-value reuse remain rejected.
+
 For exactly two identical outputs, a **different** table
 admits `55, 64, 65, 66, 163, 164, 165, 182, 183, 200`. For exactly three
 identical outputs, an independently witnessed table admits `3, 4, 5, 6, 7,

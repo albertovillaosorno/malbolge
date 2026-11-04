@@ -93,8 +93,16 @@ More than three parentheses, multiple unary operators, whitespace between
 a unary sign and its operand, general arithmetic, call-result handling,
 arbitrary output streams, interleaved effectful statements, `getchar`, EOF,
 I/O errors, general guest libc and C entry ABI remain unsupported.
-Mixing distinct **output bytes** in one source refuses admission; distinct `i32` literals
-with the same low byte preserve their own source spans.
+Mixing distinct **output bytes** generally refuses admission. One strictly
+bounded exception admits exactly two source calls, first producing NUL and the
+second producing `Z` (90), `P` (80), `T` (84), or `S` (83). The separate
+`--zero-then-literal --typed-stdin` backend uses an independently executed
+`OutputByte`, exact no-op phase, data relocation, guest crazy operation,
+second `OutputByte`, and halt. The four witnesses execute in 5, 7, 11, and
+22 guest steps, respectively. Source spans remain distinct, the second SSA
+constant is never confused with the first, and unsupported/reversed/extra
+outputs reject without publication. Other distinct `i32` literals sharing
+the same low byte preserve their own source spans.
 The pinned Clang frontend must supply the source-bound integer or character
 token, its canonical evaluated `i32` value and a bounded single-line span;
 the adapter never decodes C integer or escape syntax or accepts fabricated
