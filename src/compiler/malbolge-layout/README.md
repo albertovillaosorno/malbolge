@@ -575,3 +575,14 @@ normative current-profile VM emits `T=4>` in exactly 21 steps with no input
 consumption. Partial prefixes, other four-byte values, stale SSA identities,
 foreign profiles and unproved arithmetic remain unsupported; this is not a
 general C string-output implementation.
+
+### Five distinct guest-computed bytes (bounded binary witness)
+
+The opt-in `--distinct-literal-quint` mode admits five source-proven byte
+constants only for `51 22 1b 37 39` (hex: `Q`, quote, ESC, `7`, `9`).
+The eleven-nop relocated target performs five disjoint guest `CrazyData`
+writes and executes five actual byte outputs in 23 normative VM steps.
+Canonical typed/MCTR identity, all five SSA bindings, profile, input-free
+execution, and the raw/capsule publisher are independently rechecked.
+Incomplete prefixes, different five-byte outputs, and additional effects
+fail without output; this witness is not general C string compilation.
