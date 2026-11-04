@@ -66,6 +66,14 @@ experiment identity and raw sample, and measured cost dimensions. Claimed
 verified timings above the study time budget, or reported resident memory
 above its budget, fail admission without authorizing unmeasured resource use.
 
+The analyzer now also checks the shared standard-library JSON decoder methods,
+scanner factory and object/array/string helpers against their original
+import-time identities before the public parse and after both parse paths.
+Three red-first shared-provider substitutions previously fabricated a valid
+trial cost without changing the input text; the source-bound checks reject
+those receipts. This is local parser integrity, not source authentication,
+independent verifier execution or evidence of actual measurements.
+
 The analyzer compares only cohorts with identical seeds, workload digests, and
 trial numbers at each challenge difficulty. The named verifier must agree
 for each matched challenge and trial across compared algorithms. Unmatched,
@@ -805,8 +813,19 @@ policy or artifact decisions; foreign key hooks, mismatched scalars, altered
 nested values and a decoder that restores its module attribute during its
 own call are rejected. The auditor retains an independently decoded tree,
 so a mutable return owned by the substituted provider cannot later alter
-accepted audit fields. This checks local source-value consistency, not the
-origin of the sidecars or integrity of Python libraries before import.
+accepted audit fields.
+
+The auditor now also checks original decoder
+methods, scanner and helper identities before and after each source parse;
+nine substitution and midcall regressions reject fabricated sidecar fields.
+For locally retained source and manifest SHA-256 fingerprints, a separate
+import-bound native constructor now corroborates both mutable hash providers.
+A red-first test showed two jointly replaced constructors could otherwise
+agree on a fabricated digest while the source bytes stayed unchanged.
+These checks establish local source-value and fingerprint consistency, not
+sidecar authorship, Python library integrity before import, or independently
+attested historical runs.
+
 The mode never executes a retained binary; new oracle harnesses run only from
 canonical generator C. Exact reproducibility assumes the same native toolchain,
 linker, libraries and host ABI, and does not reproduce recorded wall times or
