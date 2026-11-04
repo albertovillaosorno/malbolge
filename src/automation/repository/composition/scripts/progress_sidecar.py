@@ -76,6 +76,8 @@ if TYPE_CHECKING:
 _NATIVE_PATH_TYPE: Final = type(Path())
 _NATIVE_JSON_DECODER: Final = json.JSONDecoder
 _NATIVE_JSON_ENCODER: Final = json.JSONEncoder
+_NATIVE_PERCENT_ENCODER: Final = quote_from_bytes
+_NATIVE_FSENCODE: Final = os.fsencode
 SCHEMA_ID: Final = "malbolge-progress-v1"
 CHECKPOINT_SCHEMA_ID: Final = "malbolge-checkpoint-v1"
 COMPATIBILITY_PREFIX: Final = "malbolge-progress-compat-v1:sha256:"
@@ -3941,16 +3943,56 @@ def render_checkpoint_metadata(metadata: PortableCheckpointMetadata) -> str:
     return " ".join(fields) + "\n"
 
 
+def _source_bound_summary_path_bytes(path: str) -> bytes:
+    """Require an unchanged native filesystem-byte spelling for display.
+
+    Returns:
+        The source-bound native filesystem encoding.
+
+    """
+    original = _NATIVE_FSENCODE(path)
+    observed = os.fsencode(path)
+    if (
+        type(original) is not bytes
+        or type(observed) is not bytes
+        or original != observed
+    ):
+        _fail("progress summary filesystem encoder differs from source")
+    return original
+
+
 def _summary_path(path: str | None) -> str:
     """Percent-encode original filesystem bytes for a single-line record.
 
     Returns:
         Lossless path field without raw whitespace or control characters.
 
+    Raises:
+        ProgressSidecarError: If a provider changes the displayed pathname.
+
     """
     if path is None:
         return "none"
-    return quote_from_bytes(os.fsencode(path), safe="/")
+    try:
+        original = _source_bound_summary_path_bytes(path)
+        # Bind the source spelling before calling the replaceable display
+        # encoder, which must not rewrite an operator-visible pathname.
+        source = _NATIVE_PERCENT_ENCODER(original, safe="/")
+        observed = quote_from_bytes(original, safe="/")
+    except ProgressSidecarError:
+        raise
+    except Exception as error:  # ruff: ignore[blind-except]
+        detail = _host_error_detail(error)
+        _fail_with_source(
+            f"progress summary path encoder failed: {detail}", error
+        )
+    if (
+        type(source) is not str
+        or type(observed) is not str
+        or source != observed
+    ):
+        _fail("progress summary path encoder differs from source")
+    return source
 
 
 def render_summary(sidecar: ProgressSidecar) -> str:

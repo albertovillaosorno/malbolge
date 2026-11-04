@@ -86,6 +86,7 @@ CHECKPOINT_NAME = "program.malbolge.checkpoint.00000000000000000001"
 PARTIAL_NAME = "program.malbolge.partial.00000000000000000001"
 OUTPUT_CHANGE = "output"
 OPERATION_CHANGE = "operation"
+SUMMARY_SAFE_SEPARATOR = "/"
 SUMMARY_FIELDS = (
     "status=checkpointed",
     "stage=candidate-search",
@@ -12662,6 +12663,104 @@ def test_operator_summary_reports_exact_timing_and_resume_paths(
     assert f"progress={sidecar.progress_path}" in summary
     assert f"checkpoint={sidecar.checkpoint_path}" in summary
     assert f"partial={sidecar.partial_path}" in summary
+
+
+@pytest.mark.parametrize(
+    "forged",
+    [
+        "unrelated%2Fpath",
+        "injected\nstatus=completed",
+        "unescaped path with spaces",
+        b"forged-bytes",
+        True,
+    ],
+)
+def test_summary_rejects_substituted_path_encoder_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    forged: object,
+) -> None:
+    """An untrusted percent encoder cannot rewrite one status record."""
+    sidecar = _sidecar(tmp_path)
+    destination = progress.write_atomic(sidecar)
+
+    def substituted_encoder(_raw: bytes, *, safe: str) -> object:
+        assert type(_raw) is bytes
+        assert safe == SUMMARY_SAFE_SEPARATOR
+        return forged
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "quote_from_bytes", substituted_encoder)
+        with pytest.raises(ERROR, match="summary path encoder"):
+            _ = progress.render_summary(sidecar)
+        assert progress.main([str(destination)]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert INSPECTION_FAILED_PREFIX in captured.err
+    assert progress.read(destination) == sidecar
+
+
+@pytest.mark.parametrize(
+    "forged", [b"/unrelated/path", b"", bytearray(b"fake")]
+)
+def test_summary_rejects_substituted_filesystem_encoder_receipts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    *,
+    forged: object,
+) -> None:
+    """Path bytes also stay source-bound before percent encoding."""
+    sidecar = _sidecar(tmp_path)
+    destination = progress.write_atomic(sidecar)
+
+    def substituted_encoder(_path: str) -> object:
+        assert type(_path) is str
+        return forged
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsencode", substituted_encoder)
+        with pytest.raises(ERROR, match="summary filesystem encoder"):
+            _ = progress.render_summary(sidecar)
+        assert progress.main([str(destination)]) == 1
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert INSPECTION_FAILED_PREFIX in captured.err
+    assert progress.read(destination) == sidecar
+
+
+def test_summary_accepts_source_faithful_percent_encoder_delegate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An adapter preserving exact canonical path text remains admissible."""
+    sidecar = _sidecar(tmp_path)
+    expected = progress.render_summary(sidecar)
+    native = progress.quote_from_bytes
+
+    def delegated_encoder(raw: bytes, *, safe: str) -> str:
+        return native(raw, safe=safe)
+
+    with monkeypatch.context() as context:
+        context.setattr(progress, "quote_from_bytes", delegated_encoder)
+        assert progress.render_summary(sidecar) == expected
+
+
+def test_summary_accepts_source_faithful_filesystem_encoder_delegate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An equivalent filesystem adapter preserves exact display bytes."""
+    sidecar = _sidecar(tmp_path)
+    expected = progress.render_summary(sidecar)
+    native = os.fsencode
+
+    def delegated_encoder(path: str) -> bytes:
+        return native(path)
+
+    with monkeypatch.context() as context:
+        context.setattr(os, "fsencode", delegated_encoder)
+        assert progress.render_summary(sidecar) == expected
 
 
 @pytest.mark.skipif(

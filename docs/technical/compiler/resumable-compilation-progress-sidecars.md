@@ -1351,6 +1351,14 @@ original filename contains spaces, tabs, newlines, or non-UTF-8 POSIX bytes.
 Decode a displayed path with URL percent-decoding to bytes, followed by the
 host's filesystem decoding; `none` denotes an absent checkpoint or partial.
 The durable sidecar JSON retains its original canonical path spellings.
+The operator renderer corroborates both the filesystem-byte encoding and the
+percent-encoded spelling against their import-bound native providers before
+emitting a status record. Eight red-first substituted-provider receipts reject
+foreign path identities, injected status lines, missing/foreign results, and
+noncanonical path text without emitting an apparently successful CLI status.
+A source-faithful delegated percent encoder remains valid. These checks guard
+local display consistency, not hostile filesystem implementations or trusted
+library internals.
 Invalid UTF-8 is converted to the same stable inspection failure as malformed
 schema or missing storage rather than escaping as a decoder exception.
 

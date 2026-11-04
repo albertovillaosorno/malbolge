@@ -823,6 +823,13 @@ host failure without publishing an incomplete final `.malbolge` artifact.
   `OverflowError`, or `LookupError`; process exit signals remain outside the
   handled ordinary-exception boundary.
 
+  Operator status-path rendering now corroborates native filesystem-byte and
+  URL percent-encoder receipts before accepting a display identity. Eight
+  red-first substituted-provider regressions reject forged paths, injected
+  status lines, and foreign return values; a source-faithful delegate and
+  canonical/non-UTF-8 pathname fixtures retain exact operator output. This is
+  local provider agreement, not independent filesystem or library attestation.
+
   A top-level C-to-Malbolge compiler entrypoint does not yet exist, so
   cross-stage product CLI resume selection, compiler-stage codecs beyond ternary
   lowering, crash injection beyond the ternary stage and final-artifact
