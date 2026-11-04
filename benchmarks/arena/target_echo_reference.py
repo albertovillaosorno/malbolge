@@ -66,6 +66,10 @@ from scripts.validate import experiment_manifest, target_profile
 _NATIVE_SHA256 = sha256
 _SOURCE_JSON_ENCODER = json.JSONEncoder
 _SOURCE_TYPE = type
+_SOURCE_STAT_RESULT = os.stat_result
+_SOURCE_S_ISREG = stat.S_ISREG
+_SOURCE_S_ISLNK = stat.S_ISLNK
+_SOURCE_S_ISDIR = stat.S_ISDIR
 _ROOT = Path(__file__).resolve().parents[2]
 _TEMP = _ROOT / ".temp"
 _BUILD = _ROOT / ".cache/rust/target/debug"
@@ -324,12 +328,18 @@ def _admit_executable(path: Path) -> Path:
         message = "target echo executable is missing"
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
-        type(details) is not os.stat_result
+        type(details) is not _SOURCE_STAT_RESULT
         or type(regular) is not bool
         or type(redirected) is not bool
     ):
         _fail("target echo executable returned invalid filesystem receipts")
-    if not regular or redirected or details.st_size <= 0:
+    if (
+        not _SOURCE_S_ISREG(details.st_mode)
+        or _SOURCE_S_ISLNK(details.st_mode)
+        or not regular
+        or redirected
+        or details.st_size <= 0
+    ):
         _fail("target echo executables must be ordinary nonempty files")
     if details.st_size > MAX_TOOL_BYTES:
         _fail("target echo executable exceeds 128 MiB limit")
@@ -337,7 +347,7 @@ def _admit_executable(path: Path) -> Path:
 
 
 def _tool_file_identity(details: os.stat_result) -> tuple[int, int, int, int, int]:
-    if type(details) is not os.stat_result:
+    if type(details) is not _SOURCE_STAT_RESULT:
         _fail("target echo executable identity changed: invalid metadata")
     return (
         details.st_dev,
@@ -361,9 +371,9 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
     for path in (emitter, runner):
         try:
             original = path.lstat()
-            if type(original) is not os.stat_result:
+            if type(original) is not _SOURCE_STAT_RESULT:
                 _fail("target echo executable identity changed: invalid metadata")
-            if not stat.S_ISREG(original.st_mode) or original.st_size <= 0:
+            if not _SOURCE_S_ISREG(original.st_mode) or original.st_size <= 0:
                 _fail("target echo executable identity changed")
             if original.st_size > MAX_TOOL_BYTES:
                 _fail("target echo executable exceeds 128 MiB limit")
@@ -381,9 +391,9 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 _fail("target echo executable open descriptor invalid")
             try:
                 opened = os.fstat(descriptor)
-                if type(opened) is not os.stat_result:
+                if type(opened) is not _SOURCE_STAT_RESULT:
                     _fail("target echo executable identity changed: invalid metadata")
-                if not stat.S_ISREG(opened.st_mode) or (
+                if not _SOURCE_S_ISREG(opened.st_mode) or (
                     _tool_file_identity(opened) != _tool_file_identity(original)
                 ):
                     _fail("target echo executable identity changed")
@@ -427,9 +437,9 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                         + type(cleanup_error).__name__,
                     )
             latest = path.lstat()
-            if type(latest) is not os.stat_result:
+            if type(latest) is not _SOURCE_STAT_RESULT:
                 _fail("target echo executable identity changed: invalid metadata")
-            if not stat.S_ISREG(latest.st_mode) or (
+            if not _SOURCE_S_ISREG(latest.st_mode) or (
                 _tool_file_identity(latest) != _tool_file_identity(original)
             ):
                 _fail("target echo executable identity changed")
@@ -487,7 +497,7 @@ def _commit() -> str:
     try:
         _ = os.fsencode(git)
         details = Path(git).lstat()
-        if type(details) is not os.stat_result:
+        if type(details) is not _SOURCE_STAT_RESULT:
             _fail("target echo source revision Git executable invalid metadata")
         mode = details.st_mode
         executable = os.access(git, os.X_OK)
@@ -498,7 +508,7 @@ def _commit() -> str:
     except Exception as error:
         message = "target echo source revision Git executable unavailable"
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
-    if not stat.S_ISREG(mode) or not executable:
+    if not _SOURCE_S_ISREG(mode) or not executable:
         _fail("target echo source revision Git executable is not an ordinary file")
     # Source revision must belong to this checkout, not an ambient Git dir.
     try:
@@ -1087,7 +1097,7 @@ def _admit_new_study_workspace(receipt: object) -> Path:
     except Exception as error:
         message = "target echo study workspace path unavailable"
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
-    if type(details) is not os.stat_result or not stat.S_ISDIR(details.st_mode):
+    if type(details) is not _SOURCE_STAT_RESULT or not _SOURCE_S_ISDIR(details.st_mode):
         _fail("target echo study workspace must be a physical directory")
     try:
         # A substituted scanner context cannot redirect the inventory or
@@ -1142,9 +1152,9 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
     except Exception as error:
         message = "target echo reference requires repository .temp directory"
         raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
-    if type(workspace) is not os.stat_result:
+    if type(workspace) is not _SOURCE_STAT_RESULT:
         _fail("target echo reference repository .temp returned invalid metadata")
-    if not stat.S_ISDIR(workspace.st_mode):
+    if not _SOURCE_S_ISDIR(workspace.st_mode):
         _fail("target echo reference requires repository .temp directory")
     # Validate identity before retaining any study output.
     profile = target_profile.load_document(_ROOT / "malbolge.json")

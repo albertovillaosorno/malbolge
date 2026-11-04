@@ -4657,3 +4657,128 @@ def test_target_runner_shape_rejects_before_missing_emitter_probe(
                 emitter=missing_emitter,
                 runner=cast("Path", invalid),
             )
+
+
+@pytest.mark.parametrize("kind", ["symlink", "directory"])
+def test_target_executable_rejects_native_nonfiles_under_forged_stat_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """The real inode mode, not public stat predicates, defines a tool file."""
+    executable = tmp_path / "executable"
+    if kind == "symlink":
+        target = tmp_path / "target"
+        target.write_bytes(b"real executable")
+        executable.symlink_to(target)
+    else:
+        executable.mkdir()
+    with monkeypatch.context() as patched:
+        if kind == "symlink":
+            patched.setattr(target_echo_reference.stat, "S_ISLNK", lambda _mode: False)
+        else:
+            patched.setattr(target_echo_reference.stat, "S_ISREG", lambda _mode: True)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="ordinary nonempty files",
+        ):
+            target_echo_reference._admit_executable(executable)
+
+
+@pytest.mark.parametrize("kind", ["directory", "aliased-native-stat"])
+def test_tool_fingerprint_requires_original_native_file_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A forged stat provider cannot turn a directory into a valid tool."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    if kind == "directory":
+        emitter.mkdir()
+    else:
+        emitter.write_bytes(b"source emitter")
+    runner.write_bytes(b"source runner")
+    original_open = target_echo_reference.os.open
+
+    def forbid_directory_open(path: Path, flags: int) -> int:
+        if kind == "directory" and path == emitter:
+            pytest.fail("forged directory mode reached descriptor open")
+        return original_open(path, flags)
+
+    with monkeypatch.context() as patched:
+        if kind == "directory":
+            patched.setattr(target_echo_reference.stat, "S_ISREG", lambda _mode: True)
+            patched.setattr(target_echo_reference.os, "open", forbid_directory_open)
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError, match="executable identity"
+            ):
+                target_echo_reference._tool_identity(emitter, runner)
+        else:
+            patched.setattr(target_echo_reference.os, "stat_result", object)
+            expected = sha256()
+            for raw in (b"source emitter", b"source runner"):
+                expected.update(len(raw).to_bytes(8, "big"))
+                expected.update(raw)
+            assert target_echo_reference._tool_identity(emitter, runner) == (
+                "local-compiler-vm-sha256:" + expected.hexdigest()
+            )
+
+
+def test_target_tool_mode_predicates_do_not_reject_native_executable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """True native tool identity survives public stat type/mode alias changes."""
+    executable = tmp_path / "executable"
+    executable.write_bytes(b"valid executable")
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference.os, "stat_result", object)
+        assert target_echo_reference._admit_executable(executable) == executable
+
+
+@pytest.mark.parametrize("kind", ["file", "native-directory"])
+def test_study_workspace_requires_original_directory_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A foreign stat alias cannot admit a file or reject a native directory."""
+    workspace = tmp_path / "arena-target-echo-local"
+    if kind == "file":
+        workspace.write_bytes(b"not a directory")
+    else:
+        workspace.mkdir()
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "_TEMP", tmp_path)
+        if kind == "file":
+            patched.setattr(target_echo_reference.stat, "S_ISDIR", lambda _mode: True)
+            with pytest.raises(
+                target_echo_reference.TargetEchoStudyError,
+                match="physical directory",
+            ):
+                target_echo_reference._admit_new_study_workspace(str(workspace))
+        else:
+            patched.setattr(target_echo_reference.os, "stat_result", object)
+            assert (
+                target_echo_reference._admit_new_study_workspace(str(workspace))
+                == workspace
+            )
+
+
+def test_target_git_tool_requires_native_regular_mode_with_public_stat_rebound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An executable directory cannot masquerade as a Git tool."""
+    git_directory = tmp_path / "git"
+    git_directory.mkdir()
+
+    def forbid_git(*_args: object, **_kwargs: object) -> None:
+        pytest.fail("forged Git directory reached execution")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            target_echo_reference.shutil,
+            "which",
+            lambda *_a, **_kw: str(git_directory),
+        )
+        patched.setattr(target_echo_reference.os, "access", lambda *_a, **_kw: True)
+        patched.setattr(target_echo_reference.stat, "S_ISREG", lambda _mode: True)
+        patched.setattr(target_echo_reference.sp, "run", forbid_git)
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError, match="not an ordinary file"
+        ):
+            target_echo_reference._commit()
