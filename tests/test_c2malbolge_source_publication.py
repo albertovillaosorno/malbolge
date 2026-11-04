@@ -108,7 +108,9 @@ class SourceBoundPublicationTests(unittest.TestCase):
             _ = path.write_text(content, encoding="utf-8")
             path.chmod(0o700)
 
-    def run_driver(self, mode: str = "") -> subprocess.CompletedProcess[bytes]:
+    def run_driver(
+        self, mode: str = "", *, fail_sync: str = ""
+    ) -> subprocess.CompletedProcess[bytes]:
         environment = os.environ.copy()
         environment.update(
             {
@@ -117,10 +119,36 @@ class SourceBoundPublicationTests(unittest.TestCase):
                 "COMPILER_TEST_MODE": mode,
             }
         )
-        return subprocess.run(
+        command = [sys.executable, "-B"]
+        if fail_sync:
+            # Inject failure in the real driver process, not in stub children.
+            command.extend(
+                [
+                    "-c",
+                    textwrap.dedent("""\
+                        import os
+                        import runpy
+                        import stat
+                        import sys
+
+                        real_fsync = os.fsync
+                        failed_kind = sys.argv[1]
+
+                        def failed_sync(descriptor):
+                            is_directory = stat.S_ISDIR(os.fstat(descriptor).st_mode)
+                            if is_directory == (failed_kind == "directory"):
+                                raise OSError("injected sync failure")
+                            real_fsync(descriptor)
+
+                        os.fsync = failed_sync
+                        sys.argv = sys.argv[2:]
+                        runpy.run_path(sys.argv[0], run_name="__main__")
+                        """),
+                    fail_sync,
+                ]
+            )
+        command.extend(
             [
-                sys.executable,
-                "-B",
                 str(DRIVER),
                 "--frontend",
                 str(self.frontend),
@@ -137,7 +165,10 @@ class SourceBoundPublicationTests(unittest.TestCase):
                 "--output",
                 str(self.target),
                 str(self.source),
-            ],
+            ]
+        )
+        return subprocess.run(
+            command,
             env=environment,
             capture_output=True,
             check=False,
@@ -150,6 +181,26 @@ class SourceBoundPublicationTests(unittest.TestCase):
     def test_stable_source_publishes_guest_without_staging_leftovers(self) -> None:
         completed = self.run_driver()
         self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(self.target.read_bytes(), b"verified-guest")
+        self.assert_no_staging_leftovers()
+
+    def test_staged_file_sync_failure_does_not_publish_target(self) -> None:
+        completed = self.run_driver(fail_sync="file")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"cannot sync staged guest artifact", completed.stderr)
+        self.assertIn(b"injected sync failure", completed.stderr)
+        self.assertFalse(self.target.exists())
+        self.assert_no_staging_leftovers()
+
+    @unittest.skipUnless(os.name == "posix", "directory sync is Unix-only")
+    def test_final_link_sync_failure_reports_error_without_unlinking_target(
+        self,
+    ) -> None:
+        completed = self.run_driver(fail_sync="directory")
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"cannot sync published output directory", completed.stderr)
+        self.assertIn(b"injected sync failure", completed.stderr)
+        # The already-created link must not be deleted after a sync failure.
         self.assertEqual(self.target.read_bytes(), b"verified-guest")
         self.assert_no_staging_leftovers()
 

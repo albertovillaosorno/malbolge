@@ -267,6 +267,27 @@ def parse_arguments(
     )
 
 
+def sync_published_directory(target: Path) -> None:
+    """Persist the final hard-link name before claiming compiler success."""
+    if os.name != "posix":
+        # Opening directories for fsync is not portable to Windows.
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_CLOEXEC", 0)
+    try:
+        descriptor = os.open(target.parent, flags)
+        try:
+            if not stat.S_ISDIR(os.fstat(descriptor).st_mode):
+                raise PipelineError("publication sync target is not a directory")
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as error:
+        raise PipelineError(
+            f"cannot sync published output directory: {error}"
+        ) from error
+
+
 def compile_source(arguments: Arguments) -> None:
     if (
         not arguments.source_id
@@ -320,6 +341,22 @@ def compile_source(arguments: Arguments) -> None:
             raise PipelineError("adapter did not publish a regular Malbolge target")
         if source_digest(source) != expected:
             raise PipelineError("source changed during guest compilation")
+        # A durable directory entry is insufficient if its file data was never
+        # synced. Pin the published stage inode before exposing its new name.
+        try:
+            with staged.open("rb") as output:
+                observed = os.fstat(output.fileno())
+                if (observed.st_dev, observed.st_ino, observed.st_size) != (
+                    published.st_dev,
+                    published.st_ino,
+                    published.st_size,
+                ):
+                    raise PipelineError("staged guest artifact changed before sync")
+                os.fsync(output.fileno())
+        except OSError as error:
+            raise PipelineError(
+                f"cannot sync staged guest artifact: {error}"
+            ) from error
         try:
             # The link is atomic and fails if a peer occupied the target while
             # compilation ran; a rename would silently replace it on POSIX.
@@ -328,6 +365,9 @@ def compile_source(arguments: Arguments) -> None:
             raise PipelineError("output path already exists (no-clobber)") from error
         except OSError as error:
             raise PipelineError(f"cannot publish guest target: {error}") from error
+        # Hard-link creation is atomic but not a directory durability barrier.
+        # A sync failure is reported even though the new name may already exist.
+        sync_published_directory(target)
 
 
 def main() -> int:

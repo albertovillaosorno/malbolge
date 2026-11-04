@@ -71,8 +71,13 @@ JSON adapter. The adapter then performs canonical typed/ternary admission;
 the layout backend independently verifies the guest program. The driver stages
 the result privately, rechecks the original C source after guest compilation,
 and publishes via an atomic no-clobber link only if the source is still stable.
-Failures and late output-name collisions leave no published guest artifact from
-the driver; the layout backend retains its own no-clobber and VM checks.
+The driver syncs the staged guest file and, on Unix, the final output directory
+before reporting success, as the layout publisher does for its own output.
+Failures before the link leave no published guest artifact; a **post-link
+directory-sync failure** reports failure but may leave the already-created
+output in place for inspection rather than removing a published name. Late
+output-name collisions do not clobber their owner. The layout backend retains
+its own VM and output checks.
 
 ```sh
 python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
