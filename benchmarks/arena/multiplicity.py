@@ -50,6 +50,7 @@ _SOURCE_LEN = len
 # Preserve the native family and per-value shapes under module substitutions.
 _SOURCE_TYPE = type
 _SOURCE_LIST = list
+_SOURCE_VALUE_ERROR = ValueError
 
 
 def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
@@ -72,7 +73,7 @@ def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
         for value in p_values
     ):
         message = "Holm adjustment requires exact rational probabilities in [0, 1]"
-        raise ValueError(message)
+        raise _SOURCE_VALUE_ERROR(message)
     count = _SOURCE_LEN(p_values)
     adjusted = [_CANONICAL_FRACTION(1)] * count
     current = _CANONICAL_FRACTION(0)

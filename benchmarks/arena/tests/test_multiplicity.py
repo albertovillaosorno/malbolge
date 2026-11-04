@@ -262,3 +262,38 @@ def test_holm_valid_family_uses_native_shape_provider(
 
     monkeypatch.setattr(multiplicity, provider, forbidden, raising=False)
     assert multiplicity.holm_adjusted(family) == expected
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        [Fraction(-1, 10)],
+        [Fraction(1, 4), 0],
+        (Fraction(1, 4),),
+    ],
+    ids=["negative", "foreign-entry", "foreign-family"],
+)
+def test_holm_native_rejection_survives_public_error_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    invalid: object,
+) -> None:
+    """Invalid families retain the original typed failure at admission."""
+    original_error = ValueError
+    with monkeypatch.context() as patched:
+        patched.setattr(multiplicity, "ValueError", replacement, raising=False)
+        with pytest.raises(original_error, match="exact rational probabilities"):
+            multiplicity.holm_adjusted(cast("list[Fraction]", invalid))
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_holm_valid_family_survives_public_error_rebinding(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """A changed rejection alias cannot affect valid exact correction."""
+    family = [Fraction(1, 2), Fraction(1, 4), Fraction(1, 10)]
+    expected = multiplicity.holm_adjusted(family)
+    with monkeypatch.context() as patched:
+        patched.setattr(multiplicity, "ValueError", replacement, raising=False)
+        assert multiplicity.holm_adjusted(family) == expected
