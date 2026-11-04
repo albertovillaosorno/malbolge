@@ -50,6 +50,20 @@ from typing import TYPE_CHECKING, Never
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
+# Source-native primitives guard argv, pipes, capture, and receipt boundaries.
+# Public module names can be rebound by test or foreign execution providers.
+_SOURCE_TYPE = type
+_SOURCE_LEN = len
+_SOURCE_MIN = min
+_SOURCE_ANY = any
+_SOURCE_INT = int
+_SOURCE_STR = str
+_SOURCE_BYTES = bytes
+_SOURCE_TUPLE = tuple
+_SOURCE_LIST = list
+_SOURCE_FLOAT = float
+_SOURCE_BOOL = bool
+
 _ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_TIMEOUT_SECONDS = 15
 DEFAULT_STDOUT_LIMIT = 4 * 1024
@@ -59,6 +73,8 @@ MAX_COMMAND_ARGUMENTS = 512
 MAX_COMMAND_BYTES = 16 * 1024
 MAX_NATIVE_DESCRIPTOR = 2**31 - 1
 READ_CHUNK_BYTES = 64 * 1024
+# Source chunk must remain positive to distinguish EOF from a zero-byte read.
+_SOURCE_READ_CHUNK_BYTES = READ_CHUNK_BYTES
 POSIX_PLATFORM = "posix"
 GROUP_KILL_SIGNAL = 9
 LINUX_PLATFORM = "linux"
@@ -115,7 +131,10 @@ def _fail(message: str) -> Never:
 
 def _admit_pipe_descriptor(receipt: object, *, channel: str) -> int:
     """Admit native signed C-int descriptors before any host pipe operation."""
-    if type(receipt) is not int or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR:
+    if (
+        _SOURCE_TYPE(receipt) is not _SOURCE_INT
+        or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR
+    ):
         _fail(f"bounded target {channel} requires a native pipe descriptor")
     return receipt
 
@@ -127,26 +146,27 @@ def _admit_limits(
         _fail("bounded target process requires POSIX pipe admission")
     # Comparing against small policy ceilings first also rejects enormous
     # Python integers without an overflowing int-to-float conversion.
-    if type(timeout_seconds) not in {int, float} or not (
-        0 < timeout_seconds <= _SOURCE_DEFAULT_TIMEOUT_SECONDS
+    if (
+        _SOURCE_TYPE(timeout_seconds) not in {_SOURCE_INT, _SOURCE_FLOAT}
+        or not 0 < timeout_seconds <= _SOURCE_DEFAULT_TIMEOUT_SECONDS
     ):
         _fail("bounded target process requires a deadline within 15 seconds")
-    if type(stdout_limit) is not int or not (
+    if _SOURCE_TYPE(stdout_limit) is not _SOURCE_INT or not (
         0 <= stdout_limit <= _SOURCE_DEFAULT_STDOUT_LIMIT
     ):
         _fail("bounded target process requires stdout limit at most 4 KiB")
-    if type(stderr_limit) is not int or not (
+    if _SOURCE_TYPE(stderr_limit) is not _SOURCE_INT or not (
         0 <= stderr_limit <= _SOURCE_DEFAULT_STDERR_LIMIT
     ):
         _fail("bounded target process requires stderr limit at most 16 KiB")
 
 
 def _admit_command(command: list[str]) -> None:
-    if type(command) is not list or not command:
+    if _SOURCE_TYPE(command) is not _SOURCE_LIST or not command:
         _fail("bounded target command requires a nonempty argument list")
-    if len(command) > _SOURCE_MAX_COMMAND_ARGUMENTS:
+    if _SOURCE_LEN(command) > _SOURCE_MAX_COMMAND_ARGUMENTS:
         _fail("bounded target command exceeds argument count limit")
-    if type(command[0]) is not str or not command[0]:
+    if _SOURCE_TYPE(command[0]) is not _SOURCE_STR or not command[0]:
         _fail("bounded target command requires a nonempty executable string")
     # Reject host PATH lookup and relative cwd resolution: the caller must
     # select the exact binary path before the bounded process is launched.
@@ -154,14 +174,17 @@ def _admit_command(command: list[str]) -> None:
         _fail("bounded target command requires an absolute executable path")
     total_bytes = 0
     for argument in command:
-        if type(argument) is not str or _SOURCE_NUL_CHARACTER in argument:
+        if (
+            _SOURCE_TYPE(argument) is not _SOURCE_STR
+            or _SOURCE_NUL_CHARACTER in argument
+        ):
             _fail("bounded target command has nonstring or NUL arguments")
         # Bound both Python-side argv allocation and the actual exec byte
         # payload. The NUL terminator counts toward the cumulative budget.
-        if len(argument) > _SOURCE_MAX_COMMAND_BYTES:
+        if _SOURCE_LEN(argument) > _SOURCE_MAX_COMMAND_BYTES:
             _fail("bounded target command exceeds argument bytes limit")
         try:
-            total_bytes += len(os.fsencode(argument)) + 1
+            total_bytes += _SOURCE_LEN(os.fsencode(argument)) + 1
         except UnicodeError as error:
             message = "bounded target command requires encodable filesystem text"
             raise TargetProcessError(message) from error
@@ -180,7 +203,7 @@ def _system_tool(name: str) -> str | None:
     if resolved is None:
         return None
     if (
-        type(resolved) is not str
+        _SOURCE_TYPE(resolved) is not _SOURCE_STR
         or not resolved
         or _SOURCE_NUL_CHARACTER in resolved
         or not Path(resolved).is_absolute()
@@ -193,11 +216,11 @@ def _system_tool(name: str) -> str | None:
         raise TargetProcessError(message) from error
     try:
         metadata = Path(resolved).lstat()
-        if type(metadata) is not os.stat_result:
+        if _SOURCE_TYPE(metadata) is not os.stat_result:
             _fail(f"bounded target system tool path inspection invalid: {name}")
         mode = metadata.st_mode
         executable = os.access(resolved, os.X_OK)
-        if type(executable) is not bool:
+        if _SOURCE_TYPE(executable) is not _SOURCE_BOOL:
             _fail(f"bounded target system tool access inspection invalid: {name}")
     except TargetProcessError:
         raise
@@ -211,7 +234,7 @@ def _system_tool(name: str) -> str | None:
 
 
 def _limited_command(command: list[str], *, enforce: bool) -> list[str]:
-    if type(enforce) is not bool:
+    if _SOURCE_TYPE(enforce) is not _SOURCE_BOOL:
         _fail("bounded child limits require a boolean selection")
     if not enforce:
         return command
@@ -244,7 +267,7 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     except Exception as error:
         message = "bounded target cleanup requires a positive native PID"
         raise TargetProcessError(message) from error
-    if type(pid) is not int or pid <= 0:
+    if _SOURCE_TYPE(pid) is not _SOURCE_INT or pid <= 0:
         _fail("bounded target cleanup requires a positive native PID")
     # A positive forged child PID could still equal our own process group.
     # Signaling -pid in that case kills the caller and its ordinary peers.
@@ -261,7 +284,7 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         )
         caller_lookup_error = error
     else:
-        if type(caller_group) is not int or caller_group <= 0:
+        if _SOURCE_TYPE(caller_group) is not _SOURCE_INT or caller_group <= 0:
             group_error = TargetProcessError(
                 "bounded target cleanup has invalid caller process group"
             )
@@ -280,7 +303,7 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
         except ProcessLookupError as error:
             # Only the native kernel ESRCH exception proves group absence.
             # A foreign subclass must not forge a successful cleanup receipt.
-            if type(error) is not ProcessLookupError:
+            if _SOURCE_TYPE(error) is not ProcessLookupError:
                 group_error = error
         except Exception as error:
             # Unexpected host signaling faults must not bypass the direct reap.
@@ -292,7 +315,9 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
     invalid_kill = False
     try:
         polled = child.poll()
-        invalid_poll = polled is not None and type(polled) is not int
+        invalid_poll = (
+            polled is not None and _SOURCE_TYPE(polled) is not _SOURCE_INT
+        )
         # A forged non-integer poll must not skip the direct kill fallback.
         # Reap the child even when the poll receipt itself must be rejected.
         if polled is None or invalid_poll:
@@ -300,14 +325,14 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
                 kill_receipt: object = child.kill()
                 invalid_kill = kill_receipt is not None
             except ProcessLookupError as error:
-                if type(error) is not ProcessLookupError:
+                if _SOURCE_TYPE(error) is not ProcessLookupError:
                     raise
     except Exception as error:
         direct_error = error
     if direct_error is None:
         try:
             reaped = child.wait()
-            if type(reaped) is not int:
+            if _SOURCE_TYPE(reaped) is not _SOURCE_INT:
                 direct_error = TargetProcessError(
                     "bounded target child cleanup has invalid wait receipt"
                 )
@@ -344,16 +369,19 @@ def _read_ready(
     """Capture bytes or return an exact EOF receipt for one registered pipe."""
     slot: int = key.data
     limit = limits.stdout_limit if slot == 0 else limits.stderr_limit
-    admitted = limit - len(buffers[slot])
-    requested = min(READ_CHUNK_BYTES, admitted + 1)
+    admitted = limit - _SOURCE_LEN(buffers[slot])
+    requested = _SOURCE_MIN(_SOURCE_READ_CHUNK_BYTES, admitted + 1)
     chunk = os.read(key.fd, requested)
-    if type(chunk) is not bytes or len(chunk) > requested:
+    if (
+        _SOURCE_TYPE(chunk) is not _SOURCE_BYTES
+        or _SOURCE_LEN(chunk) > requested
+    ):
         _fail("bounded target output read returned invalid bytes")
     if not chunk:
         if watched.unregister(key.fileobj) is not key:
             _fail("bounded target output selector unregister receipt invalid")
         return True
-    if len(chunk) > admitted:
+    if _SOURCE_LEN(chunk) > admitted:
         label = "stdout" if slot == 0 else "stderr"
         _fail(f"bounded target {label} exceeded byte limit")
     buffers[slot].extend(chunk)
@@ -370,7 +398,7 @@ def _checked_selector() -> Iterator[selectors.BaseSelector]:
     except BaseException as primary:
         try:
             receipt: object = manager.__exit__(
-                type(primary), primary, primary.__traceback__
+                _SOURCE_TYPE(primary), primary, primary.__traceback__
             )
         except Exception as error:
             BaseException.add_note(
@@ -433,7 +461,7 @@ def _collect(
         # pipe so a forged bool/negative/non-C-int or aliased handle cannot
         # reach the OS selector even transiently.
         streams = (child.stdout, child.stderr)
-        stream_fds = tuple(
+        stream_fds = _SOURCE_TUPLE(
             _admit_pipe_descriptor(stream.fileno(), channel="output")
             for stream in streams
         )
@@ -443,7 +471,7 @@ def _collect(
             # Register the already validated integer snapshots, not mutable
             # stream objects whose fileno() could change during registration.
             # A forged readiness key must not relabel or redirect the pipes.
-            registered = tuple(
+            registered = _SOURCE_TUPLE(
                 watched.register(descriptor, selectors.EVENT_READ, slot)
                 for slot, descriptor in enumerate(stream_fds)
             )
@@ -456,16 +484,16 @@ def _collect(
                 # independent stream receipt before comparing descriptor IDs.
                 stream_fd = stream.fileno()
                 if (
-                    type(key) is not selectors.SelectorKey
+                    _SOURCE_TYPE(key) is not selectors.SelectorKey
                     or key.fileobj is not stream_fds[slot]
-                    or type(key.fd) is not int
+                    or _SOURCE_TYPE(key.fd) is not _SOURCE_INT
                     or not 0 <= key.fd <= _SOURCE_MAX_NATIVE_DESCRIPTOR
-                    or type(stream_fd) is not int
+                    or _SOURCE_TYPE(stream_fd) is not _SOURCE_INT
                     or stream_fd != stream_fds[slot]
                     or key.fd != stream_fd
-                    or type(key.events) is not int
+                    or _SOURCE_TYPE(key.events) is not _SOURCE_INT
                     or key.events != selectors.EVENT_READ
-                    or type(key.data) is not int
+                    or _SOURCE_TYPE(key.data) is not _SOURCE_INT
                     or key.data != slot
                 ):
                     _fail("bounded target output selector registration invalid")
@@ -479,7 +507,7 @@ def _collect(
                 for key, mask in watched.select(remaining):
                     if (
                         (key is not registered[0] and key is not registered[1])
-                        or type(mask) is not int
+                        or _SOURCE_TYPE(mask) is not _SOURCE_INT
                         or mask != selectors.EVENT_READ
                     ):
                         _fail(
@@ -503,7 +531,7 @@ def _collect(
         # Never format foreign hooks or publish a partially captured stream.
         message = "bounded target output capture failed"
         raise TargetProcessError(message) from error
-    return bytes(buffers[0]), bytes(buffers[1])
+    return _SOURCE_BYTES(buffers[0]), _SOURCE_BYTES(buffers[1])
 
 
 def _cleanup_error_detail(error: BaseException) -> str:
@@ -522,13 +550,19 @@ def _cleanup_error_detail(error: BaseException) -> str:
         sp.SubprocessError,
         TargetProcessError,
     )
-    if type(error) in native and type(error.args) is tuple:
+    if (
+        _SOURCE_TYPE(error) in native
+        and _SOURCE_TYPE(error.args) is _SOURCE_TUPLE
+    ):
         # OSError.__str__ can also interpolate its mutable filename fields.
         # Extract only an inert native message argument, never the exception.
         for argument in error.args:
-            if type(argument) is str and len(argument) <= 256:
+            if (
+                _SOURCE_TYPE(argument) is _SOURCE_STR
+                and _SOURCE_LEN(argument) <= 256
+            ):
                 return argument
-    return type(error).__name__
+    return _SOURCE_TYPE(error).__name__
 
 
 def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
@@ -544,7 +578,10 @@ def _send_input(child: sp.Popen[bytes], data: bytes) -> None:
             _fail("bounded target input nonblocking setup returned invalid receipt")
         if data:
             written = os.write(descriptor, data)
-            if type(written) is not int or written != len(data):
+            if (
+                _SOURCE_TYPE(written) is not _SOURCE_INT
+                or written != _SOURCE_LEN(data)
+            ):
                 _fail("bounded target input could not be delivered completely")
     except BrokenPipeError as error:
         message = "bounded target input pipe closed before delivery"
@@ -589,7 +626,7 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
                 # state or a non-void close receipt. Real pipe APIs return
                 # native booleans for closed and None from close().
                 closed = stream.closed
-                if type(closed) is not bool:
+                if _SOURCE_TYPE(closed) is not _SOURCE_BOOL:
                     _fail("bounded target stream closed state invalid")
                 if not closed and stream.close() is not None:
                     _fail("bounded target stream close returned invalid receipt")
@@ -607,11 +644,13 @@ def _finish_child(child: sp.Popen[bytes]) -> None:
                 + _cleanup_error_detail(error)
             )
             # Only native errors have trustworthy, inert note containers.
-            if type(error) in (OSError, PermissionError, TargetProcessError):
+            if _SOURCE_TYPE(error) in (
+                OSError, PermissionError, TargetProcessError
+            ):
                 notes = getattr(error, "__notes__", ())
-                if type(notes) is list:
+                if _SOURCE_TYPE(notes) is _SOURCE_LIST:
                     for detail in notes:
-                        if type(detail) is str:
+                        if _SOURCE_TYPE(detail) is _SOURCE_STR:
                             BaseException.add_note(primary, f"bounded target cleanup detail: {detail}")
         return
     message = "bounded target cleanup failed: " + _cleanup_error_detail(
@@ -638,7 +677,7 @@ def _run(
     )
     _admit_command(command)
     prepared = _limited_command(command, enforce=limits.enforce_child_limits)
-    expected_arguments = tuple(prepared)
+    expected_arguments = _SOURCE_TUPLE(prepared)
     started = monotonic()
     try:
         child = sp.Popen(  # ruff: ignore[subprocess-without-shell-equals-true]
@@ -665,11 +704,13 @@ def _run(
             message = "bounded target child launch command identity inspection failed"
             raise TargetProcessError(message) from error
         if (
-            type(launched_arguments) is not list
+            _SOURCE_TYPE(launched_arguments) is not _SOURCE_LIST
             or launched_arguments is not prepared
-            or len(launched_arguments) != len(expected_arguments)
-            or any(
-                type(argument) is not str or argument != expected
+            or _SOURCE_LEN(launched_arguments)
+            != _SOURCE_LEN(expected_arguments)
+            or _SOURCE_ANY(
+                _SOURCE_TYPE(argument) is not _SOURCE_STR
+                or argument != expected
                 for argument, expected in zip(
                     launched_arguments, expected_arguments, strict=True
                 )
@@ -692,8 +733,8 @@ def _run(
             message = "bounded target child wait failed"
             raise TargetProcessError(message) from error
         if (
-            type(status) is not int
-            or type(child.returncode) is not int
+            _SOURCE_TYPE(status) is not _SOURCE_INT
+            or _SOURCE_TYPE(child.returncode) is not _SOURCE_INT
             or status != child.returncode
         ):
             _fail("bounded target child wait returned unverified exit status")
@@ -734,7 +775,10 @@ def invoke_with_input(
         Complete stdout/stderr and exit status for one child.
 
     """
-    if type(input_bytes) is not bytes or len(input_bytes) > _SOURCE_MAX_STDIN_BYTES:
+    if (
+        _SOURCE_TYPE(input_bytes) is not _SOURCE_BYTES
+        or _SOURCE_LEN(input_bytes) > _SOURCE_MAX_STDIN_BYTES
+    ):
         _fail("bounded target input requires up to 256 exact bytes")
     return _run(
         command,
@@ -784,7 +828,10 @@ def invoke_with_input_limited(
         Complete bounded captured output and child return code.
 
     """
-    if type(input_bytes) is not bytes or len(input_bytes) > _SOURCE_MAX_STDIN_BYTES:
+    if (
+        _SOURCE_TYPE(input_bytes) is not _SOURCE_BYTES
+        or _SOURCE_LEN(input_bytes) > _SOURCE_MAX_STDIN_BYTES
+    ):
         _fail("bounded target input requires up to 256 exact bytes")
     return _run(
         command,
@@ -818,20 +865,23 @@ def _rss_report_bytes(path: Path) -> bytes:
         # documented EvidenceError. Never format a foreign failure's hooks.
         message = "bounded target GNU time RSS report missing or unsafe"
         raise TargetProcessError(message) from error
-    if type(raw) is not bytes or not 1 <= len(raw) <= _SOURCE_RSS_REPORT_LIMIT:
+    if (
+        _SOURCE_TYPE(raw) is not _SOURCE_BYTES
+        or not 1 <= _SOURCE_LEN(raw) <= _SOURCE_RSS_REPORT_LIMIT
+    ):
         _fail("bounded target GNU time RSS report returned invalid bytes")
     return raw
 
 
 def _parse_rss_report(raw: bytes) -> int:
     if (
-        type(raw) is not bytes
-        or not 1 <= len(raw) <= _SOURCE_RSS_REPORT_LIMIT
+        _SOURCE_TYPE(raw) is not _SOURCE_BYTES
+        or not 1 <= _SOURCE_LEN(raw) <= _SOURCE_RSS_REPORT_LIMIT
         or not raw.endswith(b"\n")
         or not raw[:-1].isdigit()
     ):
         _fail("bounded target GNU time RSS report missing or malformed")
-    kib = int(raw[:-1])
+    kib = _SOURCE_INT(raw[:-1])
     if kib <= 0 or kib > _SOURCE_CHILD_VIRTUAL_MEMORY_BYTES // _SOURCE_KIB_BYTES:
         _fail("bounded target GNU time RSS observation outside child limits")
     return kib * _SOURCE_KIB_BYTES
@@ -853,7 +903,7 @@ def _rss_workspace() -> Path:
         # An unexpected host stat fault must not escape resource admission.
         message = "bounded target RSS workspace cannot be inspected"
         raise TargetProcessError(message) from error
-    if type(details) is not os.stat_result:
+    if _SOURCE_TYPE(details) is not os.stat_result:
         _fail("bounded target RSS workspace returned invalid metadata")
     if not S_ISDIR(details.st_mode):
         _fail("bounded target RSS workspace must be a physical directory")
@@ -870,13 +920,13 @@ def _admit_rss_directory_receipt(receipt: object, workspace: Path) -> Path:
 
     This checks the current pathname, not race-free filesystem ownership.
     """
-    if type(receipt) is not str or not receipt:
+    if _SOURCE_TYPE(receipt) is not _SOURCE_STR or not receipt:
         _fail("bounded target RSS directory returned invalid path receipt")
     folder = Path(receipt)
     prefix = "arena-child-rss-"
     if (
         not folder.is_absolute()
-        or str(folder) != receipt
+        or _SOURCE_STR(folder) != receipt
         or folder.parent != workspace
         or not folder.name.startswith(prefix)
         or folder.name == prefix
@@ -884,7 +934,10 @@ def _admit_rss_directory_receipt(receipt: object, workspace: Path) -> Path:
         _fail("bounded target RSS directory returned foreign path receipt")
     try:
         details = folder.lstat()
-        if type(details) is not os.stat_result or not S_ISDIR(details.st_mode):
+        if (
+            _SOURCE_TYPE(details) is not os.stat_result
+            or not S_ISDIR(details.st_mode)
+        ):
             _fail("bounded target RSS directory must be physical")
         # A substituted scan object's __enter__ can redirect inspection and
         # its __exit__ can suppress a nonempty-directory or iterator failure.
@@ -916,12 +969,17 @@ def _rss_report_directory(workspace: Path) -> Iterator[Path]:
     # TemporaryDirectory removes its own name in __exit__, not the name
     # yielded by __enter__. Both must identify the same admitted directory.
     cleanup_target = temporary.name
-    if type(cleanup_target) is not str or cleanup_target != receipt:
+    if (
+        _SOURCE_TYPE(cleanup_target) is not _SOURCE_STR
+        or cleanup_target != receipt
+    ):
         _fail("bounded target RSS directory cleanup target mismatches receipt")
     try:
         yield folder
     except BaseException as primary:
-        cleanup = temporary.__exit__(type(primary), primary, primary.__traceback__)
+        cleanup = temporary.__exit__(
+            _SOURCE_TYPE(primary), primary, primary.__traceback__
+        )
         if cleanup is not None:
             BaseException.add_note(
                 primary, "bounded target RSS directory cleanup returned invalid receipt"
@@ -956,11 +1014,11 @@ def _measured_limited(
                     time_executable,
                     "--format=%M",
                     "--output",
-                    str(report),
+                    _SOURCE_STR(report),
                     "--",
                     *_limited_command(command, enforce=True),
                 ]
-                expected_command = tuple(measured_command)
+                expected_command = _SOURCE_TUPLE(measured_command)
                 result = _run(
                     measured_command,
                     limits=_ProcessLimits(
@@ -974,21 +1032,22 @@ def _measured_limited(
                 # completion can support an RSS measurement. Compare status
                 # only after exact integer admission (bool is not an exit code).
                 if (
-                    type(result) is not sp.CompletedProcess
-                    or type(result.args) is not list
+                    _SOURCE_TYPE(result) is not sp.CompletedProcess
+                    or _SOURCE_TYPE(result.args) is not _SOURCE_LIST
                     or result.args is not measured_command
-                    or len(result.args) != len(expected_command)
-                    or any(
-                        type(argument) is not str or argument != expected
+                    or _SOURCE_LEN(result.args) != _SOURCE_LEN(expected_command)
+                    or _SOURCE_ANY(
+                        _SOURCE_TYPE(argument) is not _SOURCE_STR
+                or argument != expected
                         for argument, expected in zip(
                             result.args, expected_command, strict=True
                         )
                     )
-                    or type(result.returncode) is not int
-                    or type(result.stdout) is not bytes
-                    or type(result.stderr) is not bytes
-                    or len(result.stdout) > DEFAULT_STDOUT_LIMIT
-                    or len(result.stderr) > DEFAULT_STDERR_LIMIT
+                    or _SOURCE_TYPE(result.returncode) is not _SOURCE_INT
+                    or _SOURCE_TYPE(result.stdout) is not _SOURCE_BYTES
+                    or _SOURCE_TYPE(result.stderr) is not _SOURCE_BYTES
+                    or _SOURCE_LEN(result.stdout) > DEFAULT_STDOUT_LIMIT
+                    or _SOURCE_LEN(result.stderr) > DEFAULT_STDERR_LIMIT
                 ):
                     _fail("bounded target GNU time returned invalid child completion")
                 if result.returncode != 0:
@@ -1050,7 +1109,10 @@ def invoke_with_input_limited_measured(
         Exact guest streams/status and observed per-child peak RSS bytes.
 
     """
-    if type(input_bytes) is not bytes or len(input_bytes) > _SOURCE_MAX_STDIN_BYTES:
+    if (
+        _SOURCE_TYPE(input_bytes) is not _SOURCE_BYTES
+        or _SOURCE_LEN(input_bytes) > _SOURCE_MAX_STDIN_BYTES
+    ):
         _fail("bounded target input requires up to 256 exact bytes")
     result, peak, _ = _measured_limited(
         command,
@@ -1088,7 +1150,10 @@ def invoke_with_input_limited_measured_raw(
         Child status, measured RSS bytes and original GNU time file bytes.
 
     """
-    if type(input_bytes) is not bytes or len(input_bytes) > _SOURCE_MAX_STDIN_BYTES:
+    if (
+        _SOURCE_TYPE(input_bytes) is not _SOURCE_BYTES
+        or _SOURCE_LEN(input_bytes) > _SOURCE_MAX_STDIN_BYTES
+    ):
         _fail("bounded target input requires up to 256 exact bytes")
     return _measured_limited(
         command, input_bytes=input_bytes, timeout_seconds=timeout_seconds

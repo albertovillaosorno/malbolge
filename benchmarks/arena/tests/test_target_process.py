@@ -4436,3 +4436,185 @@ def test_source_group_cleanup_signal_ignores_public_alias(
     monkeypatch.setattr(target_process, "GROUP_KILL_SIGNAL", 0)
     target_process._terminate_group(cast("sp.Popen[bytes]", FinishedChild()))
     assert observed == [(-123456, 9)]
+
+
+@pytest.mark.parametrize("shape", ["count", "bytes"])
+def test_command_native_length_resists_substituted_len(
+    monkeypatch: pytest.MonkeyPatch, shape: str
+) -> None:
+    """A late length provider must not skip exec argument resource limits."""
+    if shape == "count":  # ruff: ignore[magic-value-comparison]
+        command = [
+            sys.executable, *(["x"] * target_process.MAX_COMMAND_ARGUMENTS)
+        ]
+    else:
+        command = [sys.executable, "x" * (target_process.MAX_COMMAND_BYTES + 1)]
+    monkeypatch.setattr(target_process, "len", lambda *_: 0, raising=False)
+    with pytest.raises(target_process.TargetProcessError, match="argument"):
+        target_process._admit_command(  # ruff: ignore[private-member-access]
+            command
+        )
+
+
+@pytest.mark.parametrize("channel", ["input", "output"])
+def test_pipe_descriptor_native_type_resists_substituted_type(
+    monkeypatch: pytest.MonkeyPatch, channel: str
+) -> None:
+    """A foreign type provider cannot certify boolean OS descriptors."""
+    monkeypatch.setattr(target_process, "type", lambda *_: int, raising=False)
+    forged = True
+    with pytest.raises(target_process.TargetProcessError, match="native pipe"):
+        target_process._admit_pipe_descriptor(  # ruff: ignore[private-member-access]
+            forged, channel=channel
+        )
+
+
+def test_deadline_native_type_resists_substituted_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Boolean timeouts must not become admitted integer deadlines."""
+    monkeypatch.setattr(target_process, "type", lambda *_: int, raising=False)
+    forged = True
+    with pytest.raises(target_process.TargetProcessError, match="deadline"):
+        target_process._admit_limits(  # ruff: ignore[private-member-access]
+            forged, 1, 1
+        )
+
+
+def test_capture_does_not_accept_zero_byte_read_as_eof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing min cannot make a readable nonempty child appear empty."""
+    monkeypatch.setattr(target_process, "min", lambda *_: 0, raising=False)
+    expected = b"evidence"
+    result = target_process.invoke(
+        _child("import sys; sys.stdout.buffer.write(b'evidence')"),
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.stdout == expected
+
+
+def test_capture_native_length_enforces_stdout_limit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged zero length cannot allow bytes past the supplied quota."""
+    monkeypatch.setattr(target_process, "len", lambda *_: 0, raising=False)
+    with pytest.raises(
+        target_process.TargetProcessError, match="stdout exceeded"
+    ):
+        target_process.invoke(
+            _child("import sys; sys.stdout.buffer.write(b'AB')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+            stdout_limit=1,
+        )
+
+
+def test_command_requires_native_argv_under_substituted_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A tuple cannot impersonate the transport's native mutable argv list."""
+    monkeypatch.setattr(
+        target_process,
+        "type",
+        lambda value: list if isinstance(value, tuple) else type(value),
+        raising=False,
+    )
+    with pytest.raises(
+        target_process.TargetProcessError, match="argument list"
+    ):
+        target_process._admit_command(  # ruff: ignore[private-member-access]
+            cast("list[str]", (sys.executable,))
+        )
+
+
+def test_capture_native_bytes_constructor_retains_real_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing the public bytes constructor cannot alter captured evidence."""
+    monkeypatch.setattr(
+        target_process, "bytes", lambda *_: b"forged", raising=False
+    )
+    expected = b"actual"
+    empty = b""
+    result = target_process.invoke(
+        _child("import sys; sys.stdout.buffer.write(b'actual')"),
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    assert result.stdout == expected
+    assert result.stderr == empty
+
+
+def test_rss_native_integer_parser_resists_substituted_int(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false integer conversion cannot forge the measured RSS value."""
+    monkeypatch.setattr(target_process, "int", lambda *_: 0, raising=False)
+    assert (
+        target_process._parse_rss_report(  # ruff: ignore[private-member-access]
+            b"20\n"
+        ) == 20 * 1024
+    )
+
+
+def test_child_command_identity_ignores_replaced_any(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted reducer cannot certify a mutated launched command."""
+    native_popen = target_process.sp.Popen
+
+    def changed_launch(
+        command: list[str],
+        **kwargs: Any,  # ruff: ignore[any-type]
+    ) -> sp.Popen[bytes]:
+        command[-1] = "print('different program')"
+        return cast("sp.Popen[bytes]", native_popen(command, **kwargs))
+
+    monkeypatch.setattr(target_process.sp, "Popen", changed_launch)
+    monkeypatch.setattr(target_process, "any", lambda *_: False, raising=False)
+    with pytest.raises(target_process.TargetProcessError, match="command identity"):
+        target_process.invoke(
+            _child("print('expected program')"),
+            timeout_seconds=LARGE_TIMEOUT_SECONDS,
+        )
+
+
+@pytest.mark.parametrize("provider", ["tuple", "len", "str"])
+def test_valid_child_ignores_substituted_primitive_constructors(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Replacing native helpers cannot falsify a valid captured command."""
+    replacement = {
+        "tuple": lambda *_: (),
+        "len": lambda *_: 10**9,
+        "str": lambda *_: "forged",
+    }[provider]
+    monkeypatch.setattr(target_process, provider, replacement, raising=False)
+    result = target_process.invoke(
+        _child("print('valid')"), timeout_seconds=LARGE_TIMEOUT_SECONDS
+    )
+    expected = b"valid\n"
+    assert result.stdout == expected
+
+
+def test_command_native_list_type_resists_substituted_list(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing a public list type cannot admit a tuple command."""
+    monkeypatch.setattr(target_process, "list", tuple, raising=False)
+    with pytest.raises(target_process.TargetProcessError, match="argument list"):
+        target_process._admit_command(  # ruff: ignore[private-member-access]
+            cast("list[str]", (sys.executable,))
+        )
+
+
+def test_public_read_chunk_size_cannot_forge_eof(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Zeroing a public chunk hint must not certify empty child output."""
+    monkeypatch.setattr(target_process, "READ_CHUNK_BYTES", 0)
+    result = target_process.invoke(
+        _child("import sys; sys.stdout.buffer.write(b'authentic')"),
+        timeout_seconds=LARGE_TIMEOUT_SECONDS,
+    )
+    expected = b"authentic"
+    assert result.stdout == expected
