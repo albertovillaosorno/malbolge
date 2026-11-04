@@ -216,7 +216,7 @@ approve a contribution or replace deeper project verification.
 
 This lightweight contributor workflow was inspired by
 [DannyBaanks](https://github.com/DannyBaanks). The validator is original
-Apache-2.0 repository code, not copied from another project.
+proprietary repository code, not copied from another project.
 
 Read [AGENTS.md](AGENTS.md) before making repository changes. It is a compact
 handoff; owning TODOs, specifications, contracts, and ADRs remain authoritative
@@ -245,7 +245,7 @@ Use [`CITATION.cff`](CITATION.cff) for the repository's machine-readable
 software citation. Citation-format provenance is documented in the
 bibliography rather than duplicated here.
 
-Repository-authored material is available under the Apache License 2.0 in
+Current owner-controlled repository material is proprietary under
 [`LICENSE`](LICENSE). Historical material and
 third-party boundaries
 keep their own licensing records under [docs/legal/](docs/legal/).

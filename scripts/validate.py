@@ -2,9 +2,9 @@
 # Copyright:
 #   - Copyright © 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
-#   - Apache-2.0
+#   - LicenseRef-Proprietary
 # Confidential:
-#   - false
+#   - true
 # License-File:
 #   - LICENSE
 #

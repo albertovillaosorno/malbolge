@@ -1,9 +1,9 @@
 # Copyright:
 #   - Copyright © 2026 Alberto Villa Osorno.
 # SPDX-License-Identifier:
-#   - Apache-2.0
+#   - LicenseRef-Proprietary
 # Confidential:
-#   - false
+#   - true
 # License-File:
 #   - LICENSE
 #
@@ -1359,9 +1359,9 @@ def render_rust_semantic_width_projection(document: JsonObject) -> str:
         "// Copyright:",
         "//   - Copyright © 2026 Alberto Villa Osorno.",
         "// SPDX-License-Identifier:",
-        "//   - Apache-2.0",
+        "//   - LicenseRef-Proprietary",
         "// Confidential:",
-        "//   - false",
+        "//   - true",
         "// License-File:",
         "//   - LICENSE",
         "//",
@@ -1420,9 +1420,9 @@ def render_rust_projection(document: JsonObject) -> str:
         "// Copyright:",
         "//   - Copyright © 2026 Alberto Villa Osorno.",
         "// SPDX-License-Identifier:",
-        "//   - Apache-2.0",
+        "//   - LicenseRef-Proprietary",
         "// Confidential:",
-        "//   - false",
+        "//   - true",
         "// License-File:",
         "//   - LICENSE",
         "//",
