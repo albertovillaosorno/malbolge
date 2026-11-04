@@ -61,6 +61,8 @@ _CANONICAL_RESULT = generate.GeneratedChallenge
 
 MAX_REPLAY_CASES = 16
 MAX_REPLAY_NODES = 512
+# Keep the native reference/replay work cap despite public policy alias drift.
+_SOURCE_MAX_REPLAY_NODES = MAX_REPLAY_NODES
 ORACLE_BYTES = 4
 SUBPROCESS_TIMEOUT_SECONDS = 15
 CHILD_VIRTUAL_MEMORY_MIB = 1024
@@ -641,7 +643,7 @@ def _canonical_payload(
         or any(char not in "0123456789abcdef" for char in source_sha256)
     ):
         _fail("host-C challenge oracle source requires canonical SHA-256")
-    _bounded_nodes(case["difficulty"], limit=MAX_REPLAY_NODES, scope="challenge oracle")
+    _bounded_nodes(case["difficulty"], limit=_SOURCE_MAX_REPLAY_NODES, scope="challenge oracle")
     generated = _generate_canonical(
         _CANONICAL_IDENTITY(
             family=case["family"],
@@ -844,7 +846,7 @@ def _reference_source(
         or type(identity.profile) is not str
     ):
         _fail("host-C reference identity requires native challenge fields")
-    _bounded_nodes(identity.nodes, limit=MAX_REPLAY_NODES, scope="reference")
+    _bounded_nodes(identity.nodes, limit=_SOURCE_MAX_REPLAY_NODES, scope="reference")
     _require_local_scratch_root()
     return _generate_canonical(identity, scope="reference")
 

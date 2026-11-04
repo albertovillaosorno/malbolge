@@ -3825,6 +3825,80 @@ def _synthetic_bundle_inspection_document(count: int) -> dict[str, Any]:
     }
 
 
+@pytest.mark.parametrize(
+    ("reported_count", "substitute", "rejected"),
+    [(17, 17, True), (2, 1, False)],
+    ids=["widened-count", "reduced-count"],
+)
+def test_host_c_replay_count_preserves_source_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    reported_count: int,
+    substitute: int,
+    rejected: bool,
+) -> None:
+    """Mutable host replay metadata cannot enlarge or shrink the 16-case cap."""
+    document = _synthetic_bundle_inspection_document(reported_count)
+    sources = {
+        evidence._bundle_directory(row["case"], "bundles"): "a" * 64
+        for row in document["observations"]
+    }
+    called = 0
+
+    def replay(_case: object, _profile: str, source_hash: str) -> str:
+        nonlocal called
+        called += 1
+        return source_hash
+
+    monkeypatch.setattr(evidence.host_c_oracle, "MAX_REPLAY_CASES", substitute)
+    monkeypatch.setattr(evidence.host_c_oracle, "replay_one", replay)
+    if rejected:
+        with pytest.raises(evidence.EvidenceError, match="16 distinct cases"):
+            evidence._replay_host_c_challenges(document, sources, "bundles")
+        assert called == 0
+    else:
+        assert (
+            evidence._replay_host_c_challenges(document, sources, "bundles") == sources
+        )
+        assert called == reported_count
+
+
+@pytest.mark.parametrize(
+    ("nodes", "substitute", "rejected"),
+    [(513, 513, True), (4, 1, False)],
+    ids=["widened-nodes", "reduced-nodes"],
+)
+def test_host_c_replay_node_limit_preserves_source_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    nodes: int,
+    substitute: int,
+    rejected: bool,
+) -> None:
+    """A replay must preserve the 512-node cap despite public alias drift."""
+    document = _synthetic_bundle_inspection_document(1)
+    document["observations"][0]["case"]["difficulty"] = nodes
+    case = document["observations"][0]["case"]
+    directory = evidence._bundle_directory(case, "bundles")
+    sources = {directory: "a" * 64}
+    called = 0
+
+    def replay(_case: object, _profile: str, source_hash: str) -> str:
+        nonlocal called
+        called += 1
+        return source_hash
+
+    monkeypatch.setattr(evidence.host_c_oracle, "MAX_REPLAY_NODES", substitute)
+    monkeypatch.setattr(evidence.host_c_oracle, "replay_one", replay)
+    if rejected:
+        with pytest.raises(evidence.EvidenceError, match="512 nodes"):
+            evidence._replay_host_c_challenges(document, sources, "bundles")
+        assert called == 0
+    else:
+        assert (
+            evidence._replay_host_c_challenges(document, sources, "bundles") == sources
+        )
+        assert called == 1
+
+
 def test_evidence_bundle_count_cannot_be_raised_by_public_policy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

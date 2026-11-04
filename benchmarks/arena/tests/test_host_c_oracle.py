@@ -998,6 +998,64 @@ def test_host_c_replay_rejects_noncanonical_source_digest() -> None:
         host_c_oracle.replay_one(_case(), PROFILE, "f" * 64)
 
 
+@pytest.mark.parametrize("route", ["replay", "reference"])
+@pytest.mark.parametrize(
+    ("nodes", "substitute", "rejected"),
+    [(513, 513, True), (4, 1, False)],
+    ids=["widened-nodes", "reduced-nodes"],
+)
+def test_host_c_source_node_cap_survives_public_alias_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    nodes: int,
+    substitute: int,
+    rejected: bool,
+) -> None:
+    """Both direct replay and reference builds retain the 512-node source cap."""
+    native_case = _case()
+    native_identity = generate.ChallengeIdentity(
+        family=native_case["family"],
+        version=native_case["version"],
+        seed=native_case["seed"],
+        profile=PROFILE,
+        nodes=native_case["difficulty"],
+    )
+    generated = generate.generate(native_identity)
+    digest = sha256(generated.source).hexdigest()
+    requested = generate.ChallengeIdentity(
+        family=native_identity.family,
+        version=native_identity.version,
+        seed=native_identity.seed,
+        profile=PROFILE,
+        nodes=nodes,
+    )
+    called = 0
+
+    def regenerate(
+        _identity: generate.ChallengeIdentity, *, scope: str
+    ) -> generate.GeneratedChallenge:
+        nonlocal called
+        assert scope in ("challenge", "reference")
+        called += 1
+        return generated
+
+    monkeypatch.setattr(host_c_oracle, "MAX_REPLAY_NODES", substitute)
+    monkeypatch.setattr(host_c_oracle, "_generate_canonical", regenerate)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    if route == "replay":
+        native_case["difficulty"] = nodes
+        run = lambda: host_c_oracle._canonical_payload(native_case, PROFILE, digest)
+    else:
+        run = lambda: host_c_oracle._reference_source(requested, "-O0")
+    if rejected:
+        with pytest.raises(host_c_oracle.HostOracleError, match="512-node"):
+            run()
+        assert called == 0
+    else:
+        assert run() is generated
+        assert called == 1
+
+
 def test_host_c_replay_rejects_large_difficulty_before_execution() -> None:
     """Host execution has a smaller bounded node count than source replay."""
     case = _case()

@@ -1532,6 +1532,13 @@ The original study records remain the result authority.
   BasedPyright check over the arena package, which is not part of the root
   repository's selected strict Pyright source roots. This complements pinned
   Ruff checks without changing shared tooling policy.
+- Host-C replay admission now fixes the 16-distinct-case and 512-node caps
+  at import for both opt-in evidence preflight and direct canonical replay or
+  reference generation. Eight red-first substitutions exposed widened
+  admission and spurious narrowing. The 534-case evidence/challenge suite and
+  408-case host-C suite pass, with no arena BasedPyright diagnostics. These
+  preflight caps bound requested work; they do not attest historical child
+  execution, reported timing, or original measurement provenance.
 - Research evidence pending: raw sample content authentication,
   protocol-level manifest linkage, bibliography-backed context, real experiment
   configurations, retained negative/null results, and a reviewed conclusion

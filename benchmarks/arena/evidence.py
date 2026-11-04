@@ -84,6 +84,9 @@ _SOURCE_MAX_BUNDLE_CASES = challenge_bundles.MAX_BUNDLE_CASES
 _SOURCE_MAX_BUNDLE_NODES = challenge_bundles.MAX_BUNDLE_NODES
 _SOURCE_MAX_BUNDLE_VERSION_BITS = challenge_bundles.MAX_BUNDLE_VERSION_BITS
 _SOURCE_BUNDLE_FILES = challenge_bundles.BUNDLE_FILES
+# Replay caps are resource policy, not mutable cross-module reporting hints.
+_SOURCE_HOST_C_MAX_REPLAY_CASES = host_c_oracle.MAX_REPLAY_CASES
+_SOURCE_HOST_C_MAX_REPLAY_NODES = host_c_oracle.MAX_REPLAY_NODES
 RUN_RECORD_KIND = experiment_manifest.RUN_RECORD_KIND
 RUN_OUTCOMES = {
     "verified": "success",
@@ -791,11 +794,10 @@ def _replay_host_c_challenges(
         _bundle_directory(row["case"], relative_root): row["case"]
         for row in document["observations"]
     }
-    if len(cases) > host_c_oracle.MAX_REPLAY_CASES:
+    if len(cases) > _SOURCE_HOST_C_MAX_REPLAY_CASES:
         _fail("host-C challenge replay exceeds 16 distinct cases")
     if any(
-        case["difficulty"] > host_c_oracle.MAX_REPLAY_NODES
-        for case in cases.values()
+        case["difficulty"] > _SOURCE_HOST_C_MAX_REPLAY_NODES for case in cases.values()
     ):
         _fail("host-C challenge replay exceeds 512 nodes")
     checked: dict[str, str] = {}
