@@ -1151,10 +1151,59 @@ fn witnessed_single_ascii_b_uses_guest_crazy_not_rotation() -> Result<(), String
 }
 
 #[test]
+fn witnessed_printable_single_literals_use_guest_crazy_with_exact_phases() -> Result<(), String> {
+    let profile = current_profile();
+    for (byte, padding) in [
+        (b'6', 22),
+        (b'9', 19),
+        (b'P', 3),
+        (b'Q', 11),
+        (b'S', 0),
+        (b'T', 7),
+        (b'Z', 1),
+        (b']', 28),
+    ] {
+        let program = source(byte, 1)?;
+        let layout = encode_rotated_byte_literal(&program, profile)
+            .map_err(|error| format!("single {byte} rejected: {error:?}"))?;
+        let steps: usize = padding + 4;
+        let crazy_at = u32::try_from(padding + 1).map_err(|error| error.to_string())?;
+        if layout.source().len() != steps
+            || layout.executed_code_positions().len() != steps
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|write| write.is_some())
+                .count()
+                != 1
+            || layout
+                .source()
+                .get(padding + 1)
+                .and_then(|cell| malbolge::decode_profile_instruction(u32::from(*cell), crazy_at))
+                != Some(b'p')
+        {
+            return Err(format!("single {byte} crazy-data geometry drift"));
+        }
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), vec![0, 255, 128])
+            .map_err(|error| format!("single {byte} guest load: {error:?}"))?;
+        if !matches!(vm.run(steps), Ok(RunOutcome::Terminated { steps: count, .. }) if count == steps)
+            || vm.output() != [byte]
+            || vm.input_consumed() != 0
+        {
+            return Err(format!("single {byte} guest output diverged"));
+        }
+        if encode_rotated_byte_literal(&source(byte, 2)?, profile).is_ok() {
+            return Err(format!("unwitnessed double {byte} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn seeded_literals_refuse_unsupported_values_and_profiles() -> Result<(), String> {
     const WITNESSED: &[u8] = &[
         4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 29, 36, 37, 38, 39,
-        43, 44, 65, 66, 157, 158, 159, 160, 161, 162, 251, 253,
+        43, 44, 54, 57, 65, 66, 80, 81, 83, 84, 90, 93, 157, 158, 159, 160, 161, 162, 251, 253,
     ];
     for byte in u8::MIN..=u8::MAX {
         if WITNESSED.contains(&byte) {

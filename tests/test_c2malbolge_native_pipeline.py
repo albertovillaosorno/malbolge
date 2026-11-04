@@ -279,6 +279,41 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                     self.assertEqual(executed.stdout, b"B")
                     self.assertEqual(executed.stderr, b"malbolge-steps-v1:69\n")
 
+    def test_real_clang_additional_printable_crazy_literals_reach_guest(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for name, call, expected, steps in (
+                ("S-char", b"putchar('S');", b"S", 4),
+                ("T-numeric", b"putchar(84);", b"T", 11),
+                ("Z-char", b"putchar('Z');", b"Z", 5),
+                ("P-numeric", b"putchar(80);", b"P", 7),
+                ("Q-char", b"putchar('Q');", b"Q", 15),
+                ("six", b"putchar('6');", b"6", 26),
+                ("nine", b"putchar(57);", b"9", 23),
+                ("close-bracket", b"putchar(']');", b"]", 32),
+            ):
+                with self.subTest(name=name):
+                    source = Path(temporary) / f"single-{name}.c"
+                    target = Path(temporary) / f"single-{name}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + call
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr, f"malbolge-steps-v1:{steps}\n".encode("ascii")
+                    )
+
     def test_real_clang_33_equal_literal_calls_execute_real_guest(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

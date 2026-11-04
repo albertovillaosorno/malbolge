@@ -52,6 +52,22 @@ use ternary::{
     TernaryOperation, TernaryProgram, TernaryProgramValidationError, validate_ternary_program,
 };
 
+// Each entry is an exact, current-profile, one-output guest VM witness for
+// [NoOperation; padding], RelocateDataPointer, CrazyData, OutputByte, Halt.
+// These are not rotation seeds and do not extend to repeated outputs.
+const SINGLE_OUTPUT_CRAZY_WITNESSES: &[(u8, usize)] = &[
+    (54, 22), // '6'
+    (57, 19), // '9'
+    (65, 27), // 'A'
+    (66, 65), // 'B'
+    (80, 3),  // 'P'
+    (81, 11), // 'Q'
+    (83, 0),  // 'S'
+    (84, 7),  // 'T'
+    (90, 1),  // 'Z'
+    (93, 28), // ']'
+];
+
 /// Profile-specific `(byte, graphical no-op prefix)` rotation witnesses.
 /// Every candidate is independently re-executed by the normative VM.
 /// New witnesses beyond the first 26 prefixes use a bounded 94-phase scan.
@@ -1282,14 +1298,30 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
     Some((*result, *value))
 }
 
+// A witness must be tied to the exact output count: changing the count
+// changes both positional encoding and the guest's loader-expanded data.
+fn literal_output_witness(byte: u8, count: usize) -> Option<(usize, LinearOpcode)> {
+    let seeds = rotated_byte_seeds(count)?;
+    if let Some((_, padding)) = seeds.iter().find(|(value, _)| *value == byte) {
+        return Some((*padding, LinearOpcode::RotateData));
+    }
+    if count != 1 {
+        return None;
+    }
+    SINGLE_OUTPUT_CRAZY_WITNESSES
+        .iter()
+        .find(|(value, _)| *value == byte)
+        .map(|(_, padding)| (*padding, LinearOpcode::CrazyData))
+}
+
 /// Emits a nonzero `u8` one to thirty-three times using guest data operations.
 ///
 /// Accepts one `MaterializeU8` with one to thirty-three same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
 /// word and rotates it in the guest, never on the host. The separately
-/// witnessed single ASCII `A` uses `p` instead of `*` at source phase 27;
-/// it does not authorize any other byte or output count. Every chosen
+/// witnessed single printable-byte literals use exact `p` prefixes instead
+/// of `*`; they do not authorize other bytes or output counts. Every chosen
 /// witness is re-executed in the independent VM before publication.
 ///
 /// # Errors
@@ -1326,21 +1358,8 @@ pub fn encode_rotated_byte_literal(
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    let Some(seeds) = rotated_byte_seeds(outputs.len()) else {
-        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
-    };
-    let witness = seeds
-        .iter()
-        .copied()
-        .find(|(byte, _)| *byte == scalar.bits());
-    let (byte, padding, arithmetic) = match witness {
-        Some((byte, padding)) => (byte, padding, LinearOpcode::RotateData),
-        // Exact one-output actual-VM witnesses use 'j', 'p', '<', 'v',
-        // not the distinct and count-sensitive rotation seed table.
-        None if outputs.len() == 1 && scalar.bits() == 65 => (65, 27, LinearOpcode::CrazyData),
-        None if outputs.len() == 1 && scalar.bits() == 66 => (66, 65, LinearOpcode::CrazyData),
-        None => return Err(ByteEchoBridgeError::UnsupportedEffectTrace),
-    };
+    let (padding, arithmetic) = literal_output_witness(scalar.bits(), outputs.len())
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
     let mut operations = vec![LinearOpcode::NoOperation; padding];
     operations.extend([LinearOpcode::RelocateDataPointer, arithmetic]);
     operations.extend(repeat_n(LinearOpcode::OutputByte, outputs.len()));
@@ -1352,7 +1371,7 @@ pub fn encode_rotated_byte_literal(
         Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
         || vm.input_consumed() != 0
         || vm.output().len() != outputs.len()
-        || vm.output().iter().any(|actual| *actual != byte)
+        || vm.output().iter().any(|actual| *actual != scalar.bits())
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
