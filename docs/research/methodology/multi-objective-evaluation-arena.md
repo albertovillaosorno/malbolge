@@ -1840,6 +1840,31 @@ The original study records remain the result authority.
   85 seconds without a repository-wide acceptance verdict. No OS child
   attestation, source authenticity, or new Malbolge performance proof follows.
 
+- The bounded study-file reader now binds original native `stat_result`,
+  regular-file and parent-directory predicates, and exact buffered/raw stream
+  types instead of late-rebindable public stdlib aliases (`0563832bc`). Seven
+  failing-first substitutions exposed FIFO false admission, forged filesystem
+  or stream type approval, and false rejections of native source bytes.
+  Original study-error classification additionally checks the actual exception
+  class ancestry, not a foreign `__class__` claim or replaced `isinstance`
+  (`bf8cae1c1`); ten more red-first cases cover foreign and native errors,
+  including derived exceptions and suppressed context exits. The 157 focused
+  study-file tests and a 1,092-case integrated suite passed after that change.
+- Retained evidence-file admission likewise binds original native filesystem
+  metadata, symlink/regular/parent mode predicates, and exact native buffer/raw
+  stream identities (`e1d33cf86`). Eight red-first substitutions previously
+  admitted linked paths, directories, or foreign streams, or rejected genuine
+  metadata. The evidence reader now also classifies typed failures by actual
+  native exception ancestry (`afe42d071`); ten failing-first cases reject
+  spoofed `__class__` and `isinstance` while retaining genuine subclasses.
+  After the last change, 458 evidence tests and 1,110 integrated
+  evidence/analyzer/CSV/study-file tests passed, with zero arena BasedPyright
+  diagnostics. Eight pre-existing evidence Ruff findings remained unchanged.
+  These 35 red-first checks protect local file and error admission only; they
+  do not prove atomic filesystem snapshots, source authenticity, host-I/O
+  attestation, or original experiment outcomes. `jig doctor` remained degraded
+  and an independent 90-second `jig check` timed out without a verdict.
+
 ## Results
 
 The offline comparison implementation and synthetic regression evidence
