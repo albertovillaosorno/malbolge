@@ -207,11 +207,12 @@ outside the bounded lexical admission reject without output publication.
 A void function may use a final `return;` in its last lexical scope or an
 implicit return at its closing brace. Byte arguments
 may be admitted source-bound decimal/radix integers or evaluated character
-literals, with one supported parenthesized or unsigned-literal wrapper. The
-frontend checks nonnegative evaluated `i32` arguments and emits the same low
-byte that C `putchar(int)` would write: for example, `putchar(256)` emits NUL,
-`putchar(321)` emits `A`, and `putchar(65559)` emits byte `23`. This does not
-admit arbitrary C integer expressions or signed-negative source arguments.
+literals, with one supported parenthesized, unsigned-literal, or unary `+`/`-`
+wrapper. The frontend checks representable signed `i32` arguments and emits
+the same low byte as C `putchar(int)`: for example, `putchar(256)` emits NUL,
+`putchar(321)` and `putchar(-191)` both emit `A`, and `putchar(65559)` emits
+byte `23`. A signed unary source argument retains its complete source span;
+arbitrary expressions, nested unary operators, and unchecked overflow reject.
 One to 33 writes of zero produce actual NUL bytes. Nonzero output additionally
 requires a verified byte/count layout (for example, `23` once, `65` twice
 or ten times, `146` three times, or `39` thirty-three times). The latter

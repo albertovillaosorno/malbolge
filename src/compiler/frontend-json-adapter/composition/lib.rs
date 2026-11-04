@@ -476,11 +476,13 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
 
 // Each direct `putchar(N)` call has its pinned source-bound Clang preorder:
 // call -> function decay -> declaration ref, followed by the byte literal or
-// one exact parenthesized/unsigned-to-i32 conversion and its child literal.
+// one exact parentheses, unsigned-to-i32, or signed unary conversion and
+// its child literal.
 // Calls are ordered siblings; no expression or effect is discarded.
 #[expect(
     clippy::too_many_lines,
     clippy::too_many_arguments,
+    clippy::cognitive_complexity,
     reason = "exact Clang node metadata and positional proof stay together"
 )]
 fn admitted_output_byte(
@@ -496,17 +498,28 @@ fn admitted_output_byte(
         _ => return None,
     };
     let digits = literal.literal.as_deref()?;
-    // Clang reports the full canonical decimal evaluated i32 argument, not
-    // the putchar byte. The guest libc contract emits its low eight bits.
-    // Require a nonnegative, representable i32 literal; signed negation and
-    // implementation-defined unsigned-to-signed conversions stay unsupported.
-    let evaluated = digits.parse::<i32>().ok()?;
-    if evaluated.is_negative()
-        || digits != evaluated.to_string()
+    // The source-bound leaf is a nonnegative canonical Clang i32 value.
+    // A single checked unary +/- wrapper may change that evaluated i32;
+    // the guest libc contract emits its low eight bits, including negatives.
+    // Reject nonrepresentable operands and unsigned-to-signed conversions.
+    let operand = digits.parse::<i32>().ok()?;
+    if operand.is_negative()
+        || digits != operand.to_string()
         || literal.constant_integer.as_deref() != Some(digits)
     {
         return None;
     }
+    let evaluated = match wrapper {
+        Some(node) if node.kind == "unary-expression" => match node.operation.as_deref() {
+            Some("+") => operand,
+            Some("-") => operand.checked_neg()?,
+            _ => return None,
+        },
+        _ => operand,
+    };
+    // Pinned Clang stores the evaluated signed i32 in canonical decimal:
+    // unary +65 becomes `65`, -191 becomes `-191`, and -0 becomes `0`.
+    let evaluated_digits = evaluated.to_string();
     let [byte, ..] = evaluated.to_le_bytes();
     let call_span = &call.span;
     let cast_span = &cast.span;
@@ -558,9 +571,9 @@ fn admitted_output_byte(
                 && node.linkage.is_none()
                 && node.storage_class.is_none()
                 && node.literal.is_none()
-                // Clang evaluates both parenthesized and converted constants.
-                // The wrapper value must agree with the source-bound literal.
-                && node.constant_integer.as_deref() == Some(digits);
+                // The wrapper must match the checked signed i32 result,
+                // including the source sign for a unary expression.
+                && node.constant_integer.as_deref() == Some(evaluated_digits.as_str());
             let shape = match node.kind.as_str() {
                 "parenthesized-expression" => {
                     node.type_name.as_deref() == Some("i32")
@@ -583,6 +596,17 @@ fn admitted_output_byte(
                         && node.span.begin.line == literal_span.begin.line
                         && node.span.end.line == literal_span.end.line
                         && node.span.begin.column == literal_span.begin.column
+                        && node.span.end.column == literal_span.end.column
+                }
+                "unary-expression" => {
+                    node.type_name.as_deref() == Some("i32")
+                        && matches!(node.operation.as_deref(), Some("+" | "-"))
+                        && literal.type_name.as_deref() == Some("i32")
+                        && node.span.begin.byte.checked_add(1) == Some(literal_span.begin.byte)
+                        && node.span.end.byte == literal_span.end.byte
+                        && node.span.begin.line == literal_span.begin.line
+                        && node.span.end.line == literal_span.end.line
+                        && node.span.begin.column.checked_add(1) == Some(literal_span.begin.column)
                         && node.span.end.column == literal_span.end.column
                 }
                 _ => false,
@@ -885,7 +909,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
             .ok_or(FrontendJsonError::Unsupported)?;
         let nodes_per_call = if matches!(
             fourth.kind.as_str(),
-            "parenthesized-expression" | "cast-expression"
+            "parenthesized-expression" | "cast-expression" | "unary-expression"
         ) {
             5
         } else {
@@ -911,9 +935,15 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         selected_byte = Some(byte);
         let call = group.first().ok_or(FrontendJsonError::Unsupported)?;
         let literal = group.last().ok_or(FrontendJsonError::Unsupported)?;
+        // A sign is part of the materialized value's C source provenance;
+        // keep its complete span rather than attributing -1 to the leaf `1`.
+        let argument = match group.get(3) {
+            Some(wrapper) if wrapper.kind == "unary-expression" => wrapper,
+            _ => literal,
+        };
         scope.previous_end = call.span.end.byte;
         scope.previous_span_has_terminator = false;
-        calls.push((call, literal));
+        calls.push((call, argument));
         offset = end;
     }
     let root = scopes.first().ok_or(FrontendJsonError::Unsupported)?;
@@ -1018,7 +1048,7 @@ fn canonical_literal_output_typed_ir(
         .blocks()
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
-    let first_literal = calls.first().ok_or(FrontendJsonError::Unsupported)?.1;
+    let first_argument = calls.first().ok_or(FrontendJsonError::Unsupported)?.1;
     let mut instructions = Vec::with_capacity(calls.len().saturating_add(1));
     instructions.push(LocatedInstruction::new(
         Instruction::ConstantInteger {
@@ -1026,7 +1056,7 @@ fn canonical_literal_output_typed_ir(
             result: ValueId::new(0),
             type_id: TypeId::new(0),
         },
-        typed_span(&first_literal.span),
+        typed_span(&first_argument.span),
     ));
     for (call, _literal) in calls {
         instructions.push(LocatedInstruction::new(

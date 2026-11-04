@@ -40,12 +40,15 @@ void emit(void) { putchar(0); return; }
 
 The exact pinned-Clang shape admits one through 33 calls to
 `putchar(N);` with optional final `return;`, where every `N` emits the same
-low-eight-bit byte. The evaluated C integer is a nonnegative `i32` value
-(including `256..2147483647`) and must be a bounded single-line integer token
+low-eight-bit byte. The source leaf must be a nonnegative representable `i32`
+value (including `256..2147483647`), from a bounded single-line integer token
 (decimal, octal, hexadecimal or C23 binary) or a single C character literal
-(including bounded escape spellings). One optional exact single pair of
-parentheses or an unsigned `u32` integer token converted to `i32` is also
-admitted per call. For example, `putchar((65)); putchar(65u);`,
+(including bounded escape spellings). One optional exact pair of parentheses,
+unsigned `u32`-to-`i32` conversion, or source-proven unary `+`/`-` on an `i32`
+literal is admitted per call. The wrapper's canonical evaluated signed `i32`
+must agree with the Clang leaf and the unary operator. Negative arguments emit
+their low byte with the complete signed source span. For example,
+`putchar((65)); putchar(65u);`, `putchar(+65); putchar(-191);`,
 `putchar(0x41); putchar(0101);`, `putchar(321); putchar(65);`, and
 `putchar('\0');` retain Clang's source spans and evaluated integer values.
 The C `putchar` low-byte conversion is applied only after checked `i32`
@@ -74,13 +77,14 @@ execute with exact byte output. One `putchar(65)` also has an independently
 checked single-byte guest crazy-operation witness. The backend's currently
 witnessed subset is enumerated in
 `src/compiler/byte-echo-bridge/README.md`; **not** every value or count is
-realizable. Integer tokens over 32 source bytes, negative or unrepresentable
-`i32` values, and more than 33 calls refuse source admission. An
-unwitnessed combination fails layout admission without publishing a `.malbolge` artifact.
+realizable. Integer tokens over 32 source bytes, unrepresentable signed
+`i32` values, unsupported composite/unsigned-negation expressions, and more
+than 33 calls refuse source admission. An unwitnessed combination fails layout
+admission without publishing a `.malbolge` artifact.
 
 An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
-Nested parentheses, nonliteral arithmetic, call-result handling, arbitrary
+Nested parentheses, general arithmetic, call-result handling, arbitrary
 output streams, interleaved effectful statements,
 `getchar`, EOF, I/O errors, general guest libc and C entry ABI remain
 unsupported. Mixing distinct **output bytes** in one source refuses
