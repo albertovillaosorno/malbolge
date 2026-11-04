@@ -5247,3 +5247,58 @@ def test_exact_materialization_keeps_native_model_identities_after_alias(
         patched.setattr(exact_module, alias, dict)
         materialize_exact_plan(source, plan, output)
     assert snapshot_tree(output) == snapshot_tree(oracle)
+
+
+@pytest.mark.parametrize(
+    ("classifier", "verdict"),
+    [
+        ("S_ISDIR", True),
+        ("S_ISDIR", False),
+        ("S_ISREG", False),
+        ("S_ISLNK", True),
+    ],
+)
+def test_exact_snapshot_ignores_late_file_classifier_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classifier: str,
+    verdict: bool,
+) -> None:
+    """Source identity cannot be deleted or denied by a reimported classifier."""
+    source, _ = _synthetic_pair(tmp_path)
+    baseline = snapshot_tree(source)
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, classifier, lambda _mode: verdict)
+        assert snapshot_tree(source) == baseline
+
+
+@pytest.mark.parametrize("classifier", ["S_ISDIR", "S_ISREG", "S_ISLNK"])
+def test_exact_snapshot_does_not_execute_late_classifier_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, classifier: str
+) -> None:
+    """Original stat dispatch must remain independent of foreign class hooks."""
+    source, _ = _synthetic_pair(tmp_path)
+    baseline = snapshot_tree(source)
+    calls = 0
+
+    def forbidden(_mode: int) -> bool:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("late file classification was evaluated")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(exact_module, classifier, forbidden)
+        assert snapshot_tree(source) == baseline
+    assert calls == 0
+
+
+@pytest.mark.parametrize("verdict", [True, False])
+def test_exact_snapshot_rejects_late_host_regular_classifier_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verdict: bool
+) -> None:
+    """Host stat classifier drift is detected before tree identity reads."""
+    source, _ = _synthetic_pair(tmp_path)
+    with monkeypatch.context() as patched:
+        patched.setattr(stat, "S_ISREG", lambda _mode: verdict)
+        with pytest.raises(ExactTreeError, match="filesystem path hooks changed"):
+            _ = snapshot_tree(source)

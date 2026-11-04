@@ -172,8 +172,9 @@ _NATIVE_OS_PATH_ALTSEP = os.path.altsep
 _NATIVE_OS_LSTAT = os.lstat
 _NATIVE_OS_READLINK = os.readlink
 _NATIVE_OS_GETCWD = os.getcwd
-_NATIVE_STAT_ISLNK = stat.S_ISLNK
-_NATIVE_STAT_ISDIR = stat.S_ISDIR
+_NATIVE_STAT_ISLNK = S_ISLNK
+_NATIVE_STAT_ISDIR = S_ISDIR
+_NATIVE_STAT_ISREG = S_ISREG
 _NATIVE_OS_PATH_JOIN = os.path.join
 _NATIVE_PATH_TYPE = _NATIVE_TYPE(Path())
 # Capturing Path.__str__ is insufficient: it reads a mutable cached slot,
@@ -237,6 +238,7 @@ def _require_native_path_hooks(*, direct_file_read: bool = False) -> None:
                 or os.getcwd is not _NATIVE_OS_GETCWD
                 or stat.S_ISLNK is not _NATIVE_STAT_ISLNK
                 or stat.S_ISDIR is not _NATIVE_STAT_ISDIR
+                or stat.S_ISREG is not _NATIVE_STAT_ISREG
                 or sys.audit is not _NATIVE_SYS_AUDIT
                 or builtins.reversed is not _NATIVE_REVERSED
                 or (
@@ -741,7 +743,7 @@ def _entry_mode(path: Path, context: str) -> int | None:
 
 def _is_redirect(path: Path, mode: int) -> bool:
     try:
-        if S_ISLNK(mode):
+        if _NATIVE_STAT_ISLNK(mode):
             return True
         is_junction = _NATIVE_PATH_IS_JUNCTION(path)
     except (_NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR) as error:
@@ -786,8 +788,8 @@ def _admit_opened_file(
     opened = _require_native_status(_NATIVE_OS_FSTAT(descriptor), context)
     named = _require_native_status(_NATIVE_PATH_LSTAT(path), context)
     regular_identity = (
-        S_ISREG(opened.st_mode)
-        and S_ISREG(named.st_mode)
+        _NATIVE_STAT_ISREG(opened.st_mode)
+        and _NATIVE_STAT_ISREG(named.st_mode)
         and (opened.st_dev, opened.st_ino) == (named.st_dev, named.st_ino)
     )
     if not regular_identity or _is_redirect(path, named.st_mode):
@@ -882,7 +884,7 @@ def _verify_closed_source(
         raise _NATIVE_EXACT_TREE_ERROR(message) from error
     final = _require_native_status(final, context)
     if (
-        not S_ISREG(final.st_mode)
+        not _NATIVE_STAT_ISREG(final.st_mode)
         or _is_redirect(path, final.st_mode)
         or _file_identity(before_close) != _file_identity(final)
     ):
@@ -971,9 +973,9 @@ def _record_file(root: Path, path: Path) -> FileRecord | None:
     if _is_redirect(path, mode):
         message = f"symlinks are not supported: {path}"
         raise _NATIVE_EXACT_TREE_ERROR(message)
-    if S_ISDIR(mode):
+    if _NATIVE_STAT_ISDIR(mode):
         return None
-    if not S_ISREG(mode):
+    if not _NATIVE_STAT_ISREG(mode):
         message = f"special filesystem entry is not supported: {path}"
         raise _NATIVE_EXACT_TREE_ERROR(message)
     relative = _NATIVE_RELATIVE_TO(path, root).as_posix()
@@ -1028,7 +1030,7 @@ def _resolved_tree_root(root: Path) -> Path:
     if _is_redirect(root, mode):
         message = f"tree root must not be linked: {root}"
         raise _NATIVE_EXACT_TREE_ERROR(message)
-    if not S_ISDIR(mode):
+    if not _NATIVE_STAT_ISDIR(mode):
         message = f"tree root is not a directory: {root}"
         raise _NATIVE_EXACT_TREE_ERROR(message)
     try:
@@ -1438,7 +1440,7 @@ def _native_make_output_directory(path: Path, *, parents: bool, exist_ok: bool) 
         if not exist_ok:
             raise
         mode = _entry_mode(path, "output directory")
-        if mode is None or not S_ISDIR(mode) or _is_redirect(path, mode):
+        if mode is None or not _NATIVE_STAT_ISDIR(mode) or _is_redirect(path, mode):
             raise
 
 
@@ -1538,14 +1540,14 @@ def _copy_passthrough_entry(
         message = f"symlink is not supported in passthrough root: {relative}"
         raise _NATIVE_EXACT_TREE_ERROR(message)
     output = _safe_tree_path(staging_root, relative)
-    if S_ISDIR(mode):
+    if _NATIVE_STAT_ISDIR(mode):
         _make_output_directory(
             output,
             "passthrough directory",
             parents=True,
             exist_ok=True,
         )
-    elif S_ISREG(mode):
+    elif _NATIVE_STAT_ISREG(mode):
         _copy_passthrough_file(path, output)
     else:
         message = f"special passthrough entry is not supported: {relative}"
@@ -1578,10 +1580,10 @@ def _copy_passthrough_root(
             f"symlink is not supported in passthrough root: {relative_root}"
         )
         raise _NATIVE_EXACT_TREE_ERROR(message)
-    if S_ISREG(mode):
+    if _NATIVE_STAT_ISREG(mode):
         _copy_passthrough_file(source, target)
         return
-    if S_ISDIR(mode):
+    if _NATIVE_STAT_ISDIR(mode):
         _make_output_directory(
             target,
             "passthrough root directory",
