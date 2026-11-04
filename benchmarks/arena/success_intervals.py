@@ -72,6 +72,9 @@ def _binomial_lower_tail_numerator(n: int, k: int, p: int) -> int:
     )
 
 
+_SOURCE_BINOMIAL_LOWER_TAIL_NUMERATOR = _binomial_lower_tail_numerator
+
+
 def _inverted_lower(n: int, k: int) -> int:
     if k == 0:
         return 0
@@ -79,7 +82,9 @@ def _inverted_lower(n: int, k: int) -> int:
     threshold = _SOURCE_GRID_DENOMINATOR**n
     while high - low > 1:
         midpoint = (low + high) // 2
-        upper_tail = threshold - _binomial_lower_tail_numerator(n, k - 1, midpoint)
+        upper_tail = threshold - _SOURCE_BINOMIAL_LOWER_TAIL_NUMERATOR(
+            n, k - 1, midpoint
+        )
         if _SOURCE_TWO_SIDED_TAIL_DENOMINATOR * upper_tail <= threshold:
             low = midpoint
         else:
@@ -94,12 +99,16 @@ def _inverted_upper(n: int, k: int) -> int:
     threshold = _SOURCE_GRID_DENOMINATOR**n
     while high - low > 1:
         midpoint = (low + high) // 2
-        lower_tail = _binomial_lower_tail_numerator(n, k, midpoint)
+        lower_tail = _SOURCE_BINOMIAL_LOWER_TAIL_NUMERATOR(n, k, midpoint)
         if _SOURCE_TWO_SIDED_TAIL_DENOMINATOR * lower_tail <= threshold:
             high = midpoint
         else:
             low = midpoint
     return high
+
+
+_SOURCE_INVERTED_LOWER = _inverted_lower
+_SOURCE_INVERTED_UPPER = _inverted_upper
 
 
 def success_interval_95(verified: int, attempts: int) -> SuccessInterval | None:
@@ -120,10 +129,10 @@ def success_interval_95(verified: int, attempts: int) -> SuccessInterval | None:
     if attempts < 1 or attempts > _SOURCE_MAX_ATTEMPTS or not 0 <= verified <= attempts:
         return None
     lower = _SOURCE_FRACTION(
-        _inverted_lower(attempts, verified), _SOURCE_GRID_DENOMINATOR
+        _SOURCE_INVERTED_LOWER(attempts, verified), _SOURCE_GRID_DENOMINATOR
     )
     upper = _SOURCE_FRACTION(
-        _inverted_upper(attempts, verified), _SOURCE_GRID_DENOMINATOR
+        _SOURCE_INVERTED_UPPER(attempts, verified), _SOURCE_GRID_DENOMINATOR
     )
     return _SOURCE_SUCCESS_INTERVAL(
         lower=[lower.numerator, lower.denominator],

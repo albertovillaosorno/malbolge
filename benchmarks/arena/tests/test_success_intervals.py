@@ -257,3 +257,23 @@ def test_success_interval_ignores_substituted_inference_providers(
                 lambda **record: {**record, "lower": [0, 1], "upper": [0, 1]},
             )
         assert success_intervals.success_interval_95(5, 10) == expected
+
+
+@pytest.mark.parametrize(
+    ("provider", "forged"),
+    [
+        ("_binomial_lower_tail_numerator", 0),
+        ("_inverted_lower", GRID),
+        ("_inverted_upper", 0),
+    ],
+)
+def test_success_interval_ignores_substituted_internal_inference_helpers(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    forged: int,
+) -> None:
+    """Mutable helper aliases cannot forge a narrowed 95% confidence claim."""
+    expected = success_intervals.success_interval_95(5, 10)
+    assert expected is not None
+    monkeypatch.setattr(success_intervals, provider, lambda *_args: forged)
+    assert success_intervals.success_interval_95(5, 10) == expected
