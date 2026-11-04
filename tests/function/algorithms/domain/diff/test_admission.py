@@ -2416,3 +2416,108 @@ def test_admission_rejects_foreign_anchor_after_late_type_alias(
             _ = AdmissionPolicy(
                 0.0, 0.0, 1, 1, structural_policy=foreign, anchor_policy=foreign
             )
+
+
+@pytest.mark.parametrize(
+    "class_name",
+    [
+        "IdentityFile",
+        "IdentityTree",
+        "AdmissionPolicy",
+        "FileAdmissionEvidence",
+        "TreeAdmissionEvidence",
+    ],
+)
+def test_admission_preserves_native_records_after_public_class_alias(
+    monkeypatch: pytest.MonkeyPatch, class_name: str
+) -> None:
+    """Late public class aliases must not redirect native identity or scoring."""
+    source = identity_tree({"source.c": b"unchanged source evidence"})
+    policy = AdmissionPolicy(0.0, 0.0, 1, 1)
+    expected = evaluate_admission(source, source, policy)
+    with monkeypatch.context() as patched:
+        patched.setattr(admission_module, class_name, dict)
+        observed_tree = identity_tree({"source.c": b"unchanged source evidence"})
+        observed = evaluate_admission(source, observed_tree, policy)
+    assert type(observed_tree) is IdentityTree
+    assert type(observed) is TreeAdmissionEvidence
+    assert observed == expected
+
+
+@pytest.mark.parametrize(
+    ("class_name", "invalid"),
+    [
+        ("IdentityFile", "nested-file"),
+        ("IdentityTree", "reference"),
+        ("AdmissionPolicy", "policy"),
+        ("FileAdmissionEvidence", "file-evidence"),
+        ("TreeAdmissionEvidence", "verdict"),
+    ],
+)
+def test_admission_rejects_foreign_receipts_after_public_class_alias(
+    monkeypatch: pytest.MonkeyPatch, class_name: str, invalid: str
+) -> None:
+    """Rebound names cannot certify foreign values as exact native receipts."""
+    source = identity_tree({"source.c": b"unchanged source evidence"})
+    policy = AdmissionPolicy(0.0, 0.0, 1, 1)
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            admission_module, class_name, object if invalid == "verdict" else dict
+        )
+        with pytest.raises(AdmissionPolicyError):
+            if invalid == "nested-file":
+                _ = IdentityTree((cast("IdentityFile", cast("object", {})),))
+            elif invalid == "reference":
+                _ = evaluate_admission(
+                    cast("IdentityTree", cast("object", {})),
+                    cast("IdentityTree", cast("object", {})),
+                    policy,
+                )
+            elif invalid == "policy":
+                _ = evaluate_admission(
+                    source, source, cast("AdmissionPolicy", cast("object", {}))
+                )
+            elif invalid == "file-evidence":
+                _ = TreeAdmissionEvidence(
+                    1.0,
+                    0.0,
+                    0,
+                    0,
+                    (cast("FileAdmissionEvidence", cast("object", {})),),
+                    (),
+                    policy,
+                )
+            else:
+                getter = cast(
+                    "property", TreeAdmissionEvidence.__dict__["admitted"]
+                ).fget
+                assert getter is not None
+                _ = getter(cast("TreeAdmissionEvidence", cast("object", {})))
+
+
+@pytest.mark.parametrize("alias", [object, RuntimeError])
+@pytest.mark.parametrize("route", ["identity", "receipt", "empty", "denied"])
+def test_admission_preserves_native_error_classes_after_public_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: type[object], route: str
+) -> None:
+    """Public error names are not mutable authority for native rejection."""
+    source = identity_tree({"source.c": b"original source"})
+    empty = identity_tree({})
+    policy = AdmissionPolicy(1.0, 1.0, 1, 1)
+    error_name = (
+        "AdmissionError" if route in {"empty", "denied"} else "AdmissionPolicyError"
+    )
+    expected_error = (
+        AdmissionError if error_name == "AdmissionError" else AdmissionPolicyError
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(admission_module, error_name, alias)
+        with pytest.raises(expected_error):
+            if route == "identity":
+                _ = identity_tree({"../source.c": b"source"})
+            elif route == "receipt":
+                _ = FileAdmissionEvidence("source.c", -1.0, None, 0, 0)
+            elif route == "empty":
+                _ = evaluate_admission(empty, source, policy)
+            else:
+                _ = require_admission(source, empty, policy)

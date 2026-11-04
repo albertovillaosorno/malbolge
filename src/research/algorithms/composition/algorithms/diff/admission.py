@@ -180,7 +180,7 @@ def _require_file_path_topology(paths: tuple[str, ...]) -> None:
                 message = (
                     "identity file paths contain an ancestor/descendant overlap"
                 )
-                raise AdmissionPolicyError(message)
+                raise _NATIVE_ADMISSION_POLICY_ERROR(message)
             ancestor += "/" + component
 
 
@@ -207,13 +207,13 @@ class IdentityFile:
         path, canonical = _identity_fields(self)
         if _NATIVE_TYPE(path) is not _NATIVE_STR:
             message = "identity path must use the exact string type"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         if _NATIVE_TYPE(canonical) is not _NATIVE_BYTES:
             message = "identity canonical content must use exact bytes"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         if not _is_portable_relative_path(path):
             message = f"invalid identity path: {path!r}"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
 
 
 # Dataclass construction must not dispatch through a late class hook.
@@ -233,8 +233,10 @@ _IDENTITY_CANONICAL_SLOT = cast(
 
 def _identity_fields(file: IdentityFile) -> tuple[str, bytes]:
     return (
-        cast("str", _IDENTITY_PATH_SLOT.__get__(file, IdentityFile)),
-        cast("bytes", _IDENTITY_CANONICAL_SLOT.__get__(file, IdentityFile)),
+        cast("str", _IDENTITY_PATH_SLOT.__get__(file, _NATIVE_IDENTITY_FILE)),
+        cast(
+            "bytes", _IDENTITY_CANONICAL_SLOT.__get__(file, _NATIVE_IDENTITY_FILE)
+        ),
     )
 
 
@@ -259,17 +261,17 @@ class IdentityTree:
         files = _tree_files(self)
         if _NATIVE_TYPE(files) is not _NATIVE_TUPLE:
             message = "identity tree files must use the exact immutable tuple"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         if _NATIVE_ANY(
-            _NATIVE_TYPE(item) is not IdentityFile for item in files
+            _NATIVE_TYPE(item) is not _NATIVE_IDENTITY_FILE for item in files
         ):
             message = "identity tree contains a foreign file record"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         _require_valid_identity_files(files)
         paths = _NATIVE_TUPLE(_identity_fields(item)[0] for item in files)
         if paths != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(paths))):
             message = "identity tree paths must be unique and sorted"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         _require_file_path_topology(paths)
 
 
@@ -285,7 +287,7 @@ def _require_valid_identity_files(files: tuple[IdentityFile, ...]) -> None:
             _IDENTITY_FILE_VALIDATOR(item)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "identity tree has incomplete native file metadata"
-        raise AdmissionPolicyError(message) from error
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message) from error
 
 
 # Dataclass construction must not dispatch through a late class hook.
@@ -302,7 +304,7 @@ _IDENTITY_FILES_SLOT = cast(
 def _tree_files(tree: IdentityTree) -> tuple[IdentityFile, ...]:
     return cast(
         "tuple[IdentityFile, ...]",
-        _IDENTITY_FILES_SLOT.__get__(tree, IdentityTree),
+        _IDENTITY_FILES_SLOT.__get__(tree, _NATIVE_IDENTITY_TREE),
     )
 
 
@@ -349,16 +351,16 @@ class AdmissionPolicy:
         _validate_fraction("minimum_anchor_coverage", coverage)
         if _NATIVE_TYPE(files) is not _NATIVE_INT or files < _ONE:
             message = "minimum_anchor_files must be a positive integer"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         if _NATIVE_TYPE(per_file) is not _NATIVE_INT or per_file < _ONE:
             message = "minimum_anchors_per_file must be a positive integer"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         if _NATIVE_TYPE(structural) is not _NATIVE_ANCHOR_POLICY:
             message = "structural_policy must use the exact AnchorPolicy type"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         if _NATIVE_TYPE(anchors) is not _NATIVE_ANCHOR_POLICY:
             message = "anchor_policy must use the exact AnchorPolicy type"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         _require_valid_anchor_policies(structural, anchors)
 
 
@@ -376,7 +378,7 @@ def _require_valid_anchor_policies(
         _ORIGINAL_ANCHOR_POLICY_VALIDATOR(anchors)
     except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_FINGERPRINT_POLICY_ERROR) as error:
         message = "admission policy has invalid native anchor metadata"
-        raise AdmissionPolicyError(message) from error
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message) from error
 
 
 # Dataclass construction must not dispatch through a late class hook.
@@ -412,17 +414,17 @@ def _policy_fields(
     policy: AdmissionPolicy,
 ) -> tuple[float, float, int, int, AnchorPolicy, AnchorPolicy]:
     return (
-        cast("float", _POLICY_SOURCE_SLOT.__get__(policy, AdmissionPolicy)),
-        cast("float", _POLICY_COVERAGE_SLOT.__get__(policy, AdmissionPolicy)),
-        cast("int", _POLICY_FILES_SLOT.__get__(policy, AdmissionPolicy)),
-        cast("int", _POLICY_PER_FILE_SLOT.__get__(policy, AdmissionPolicy)),
+        cast("float", _POLICY_SOURCE_SLOT.__get__(policy, _NATIVE_ADMISSION_POLICY)),
+        cast("float", _POLICY_COVERAGE_SLOT.__get__(policy, _NATIVE_ADMISSION_POLICY)),
+        cast("int", _POLICY_FILES_SLOT.__get__(policy, _NATIVE_ADMISSION_POLICY)),
+        cast("int", _POLICY_PER_FILE_SLOT.__get__(policy, _NATIVE_ADMISSION_POLICY)),
         cast(
             "AnchorPolicy",
-            _POLICY_STRUCTURAL_SLOT.__get__(policy, AdmissionPolicy),
+            _POLICY_STRUCTURAL_SLOT.__get__(policy, _NATIVE_ADMISSION_POLICY),
         ),
         cast(
             "AnchorPolicy",
-            _POLICY_ANCHORS_SLOT.__get__(policy, AdmissionPolicy),
+            _POLICY_ANCHORS_SLOT.__get__(policy, _NATIVE_ADMISSION_POLICY),
         ),
     )
 
@@ -434,53 +436,53 @@ def _require_valid_admission_policy(policy: AdmissionPolicy) -> None:
         AdmissionPolicyError: The policy or its nested anchors are invalid.
 
     """
-    if _NATIVE_TYPE(policy) is not AdmissionPolicy:
+    if _NATIVE_TYPE(policy) is not _NATIVE_ADMISSION_POLICY:
         message = "tree admission evidence requires exact AdmissionPolicy"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     try:
         _ADMISSION_POLICY_VALIDATOR(policy)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "admission policy has incomplete native metadata"
-        raise AdmissionPolicyError(message) from error
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message) from error
 
 
 def _require_evidence_fraction(value: object, context: str) -> float:
     if _NATIVE_TYPE(value) is not _NATIVE_FLOAT or not _NATIVE_ISFINITE(value):
         message = f"{context} must use a finite exact float"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     if value < _ZERO or value > _ONE:
         message = f"{context} must be in [0, 1]"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     return value
 
 
 def _require_evidence_count(value: object, context: str) -> int:
     if _NATIVE_TYPE(value) is not _NATIVE_INT or value < _ZERO:
         message = f"{context} must use a non-negative exact integer"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     return value
 
 
 def _require_evidence_path(value: object) -> str:
     if _NATIVE_TYPE(value) is not _NATIVE_STR:
         message = "file admission path must use the exact string type"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     if not _is_portable_relative_path(value):
         message = f"invalid file admission path: {value!r}"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     return value
 
 
 def _require_reason_tuple(value: object) -> tuple[str, ...]:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "tree admission reasons must use the exact immutable tuple"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(
         _NATIVE_TYPE(item) is not _NATIVE_STR or not item for item in items
     ):
         message = "tree admission reasons must contain non-empty exact strings"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     return cast("tuple[str, ...]", value)
 
 
@@ -491,7 +493,7 @@ def _require_file_anchor_relation(
 ) -> None:
     if matched > reference:
         message = "matched anchor count cannot exceed reference anchors"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     if coverage is not None and (
         reference == _ZERO
         or coverage != matched / reference
@@ -501,7 +503,7 @@ def _require_file_anchor_relation(
         or (coverage == 0.0 and matched != _ZERO)
     ):
         message = "file anchor coverage does not match anchor counts"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
 
 
 def _validate_file_admission_evidence(evidence: FileAdmissionEvidence) -> None:
@@ -534,7 +536,7 @@ def _require_valid_file_evidence(
             _FILE_ADMISSION_VALIDATOR(item)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "tree admission has incomplete native file evidence"
-        raise AdmissionPolicyError(message) from error
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message) from error
 
 
 def _require_file_evidence_tuple(
@@ -542,22 +544,22 @@ def _require_file_evidence_tuple(
 ) -> tuple[FileAdmissionEvidence, ...]:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "tree admission files must use the exact immutable tuple"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(
-        _NATIVE_TYPE(item) is not FileAdmissionEvidence for item in items
+        _NATIVE_TYPE(item) is not _NATIVE_FILE_ADMISSION_EVIDENCE for item in items
     ):
         message = "tree admission files must use exact immutable records"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     files = cast("tuple[FileAdmissionEvidence, ...]", value)
     if not files:
         message = "tree admission evidence requires at least one file"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     _require_valid_file_evidence(files)
     paths = _NATIVE_TUPLE(_file_evidence_fields(item)[0] for item in files)
     if paths != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(paths))):
         message = "tree admission file paths must be unique and sorted"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     _require_file_path_topology(paths)
     return files
 
@@ -584,7 +586,7 @@ def _require_equal_evidence_value(
     message: str,
 ) -> None:
     if actual != expected:
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
 
 
 def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
@@ -618,7 +620,7 @@ def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
     )
     if satisfied > eligible:
         message = "satisfied anchor file count cannot exceed eligible files"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     matched_eligible = _NATIVE_SUM(
         _file_evidence_fields(item)[2] is not None
         and _file_evidence_fields(item)[4] > _ZERO
@@ -626,7 +628,7 @@ def _validate_tree_admission_evidence(evidence: TreeAdmissionEvidence) -> None:
     )
     if satisfied > matched_eligible:
         message = "satisfied anchor file count exceeds matched eligible files"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     _validate_policy_bound_evidence(
         evidence, files, aggregates, satisfied, policy
     )
@@ -642,7 +644,7 @@ def _validate_policy_bound_evidence(
     reasons = _require_reason_tuple(
         cast(
             "object",
-            _TREE_REASONS_SLOT.__get__(evidence, TreeAdmissionEvidence),
+            _TREE_REASONS_SLOT.__get__(evidence, _NATIVE_TREE_ADMISSION_EVIDENCE),
         )
     )
     _require_valid_admission_policy(policy)
@@ -653,7 +655,7 @@ def _validate_policy_bound_evidence(
         for item in files
     ):
         message = "file anchor eligibility does not match admission policy"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     expected_satisfied = _NATIVE_SUM(
         _file_evidence_fields(item)[4] > _ZERO
         and _file_evidence_fields(item)[2] is not None
@@ -662,7 +664,7 @@ def _validate_policy_bound_evidence(
     )
     if satisfied != expected_satisfied:
         message = "satisfied anchor file count does not match admission policy"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     aggregate = _new_aggregate_evidence(
         source_similarity=aggregates[0],
         anchor_average=aggregates[1],
@@ -671,7 +673,7 @@ def _validate_policy_bound_evidence(
     )
     if reasons != _reason_tuple(aggregate, policy):
         message = "tree admission reasons do not match admission policy"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -739,29 +741,31 @@ def _file_evidence_fields(
     return (
         cast(
             "str",
-            _FILE_EVIDENCE_PATH_SLOT.__get__(receipt, FileAdmissionEvidence),
+            _FILE_EVIDENCE_PATH_SLOT.__get__(receipt, _NATIVE_FILE_ADMISSION_EVIDENCE),
         ),
         cast(
             "float",
             _FILE_EVIDENCE_SIMILARITY_SLOT.__get__(
-                receipt, FileAdmissionEvidence
+                receipt, _NATIVE_FILE_ADMISSION_EVIDENCE
             ),
         ),
         cast(
             "float | None",
             _FILE_EVIDENCE_COVERAGE_SLOT.__get__(
-                receipt, FileAdmissionEvidence
+                receipt, _NATIVE_FILE_ADMISSION_EVIDENCE
             ),
         ),
         cast(
             "int",
             _FILE_EVIDENCE_REFERENCE_SLOT.__get__(
-                receipt, FileAdmissionEvidence
+                receipt, _NATIVE_FILE_ADMISSION_EVIDENCE
             ),
         ),
         cast(
             "int",
-            _FILE_EVIDENCE_MATCHED_SLOT.__get__(receipt, FileAdmissionEvidence),
+            _FILE_EVIDENCE_MATCHED_SLOT.__get__(
+                receipt, _NATIVE_FILE_ADMISSION_EVIDENCE
+            ),
         ),
     )
 
@@ -813,17 +817,17 @@ class TreeAdmissionEvidence:
             AdmissionPolicyError: The native admission receipt is malformed.
 
         """
-        if _NATIVE_TYPE(self) is not TreeAdmissionEvidence:
+        if _NATIVE_TYPE(self) is not _NATIVE_TREE_ADMISSION_EVIDENCE:
             message = "tree admission requires exact TreeAdmissionEvidence"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         # A raw native receipt can be allocated with an empty reasons slot.
         # Rerun the original decision validator before exposing acceptance.
         try:
             _TREE_ADMISSION_VALIDATOR(self)
         except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "tree admission evidence has incomplete native metadata"
-            raise AdmissionPolicyError(message) from error
-        return not _TREE_REASONS_SLOT.__get__(self, TreeAdmissionEvidence)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message) from error
+        return not _TREE_REASONS_SLOT.__get__(self, _NATIVE_TREE_ADMISSION_EVIDENCE)
 
 
 # Dataclass construction must not dispatch through a late class hook.
@@ -865,7 +869,7 @@ def _tree_evidence_fields(
 ) -> tuple[
     float, float, int, int, tuple[FileAdmissionEvidence, ...], AdmissionPolicy
 ]:
-    owner = TreeAdmissionEvidence
+    owner = _NATIVE_TREE_ADMISSION_EVIDENCE
     return (
         cast("float", _TREE_SOURCE_SLOT.__get__(evidence, owner)),
         cast("float", _TREE_ANCHOR_SLOT.__get__(evidence, owner)),
@@ -891,14 +895,14 @@ def identity_tree(files: dict[str, bytes]) -> IdentityTree:
     """
     if _NATIVE_TYPE(files) is not _NATIVE_DICT:
         message = "identity source files must use the exact dictionary type"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     for path, canonical in files.items():
         if _NATIVE_TYPE(path) is not _NATIVE_STR:
             message = "identity source path must use the exact string type"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
         if _NATIVE_TYPE(canonical) is not _NATIVE_BYTES:
             message = "identity source content must use exact bytes"
-            raise AdmissionPolicyError(message)
+            raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     records = _NATIVE_TUPLE(
         _new_identity_file(path=path, canonical=canonical)
         for path, canonical in _NATIVE_SORTED(files.items())
@@ -917,9 +921,9 @@ def _validate_fraction(name: str, value: object) -> None:
             return
     else:
         message = f"{name} must be a finite numeric fraction in [0, 1]"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     message = f"{name} must be a finite fraction in [0, 1]"
-    raise AdmissionPolicyError(message)
+    raise _NATIVE_ADMISSION_POLICY_ERROR(message)
 
 
 def _digest_set(anchors: tuple[StableAnchor, ...]) -> frozenset[bytes]:
@@ -1039,6 +1043,17 @@ def _aggregate_fields(aggregate: _AggregateEvidence) -> tuple[float, float, int,
     )
 
 
+# Public exports can be rebound by a consumer after import. Native validation,
+# receipt allocation, and slot-owner dispatch retain their original identities.
+_NATIVE_IDENTITY_FILE = IdentityFile
+_NATIVE_IDENTITY_TREE = IdentityTree
+_NATIVE_ADMISSION_POLICY = AdmissionPolicy
+_NATIVE_FILE_ADMISSION_EVIDENCE = FileAdmissionEvidence
+_NATIVE_TREE_ADMISSION_EVIDENCE = TreeAdmissionEvidence
+_NATIVE_ADMISSION_POLICY_ERROR = AdmissionPolicyError
+_NATIVE_ADMISSION_ERROR = AdmissionError
+
+
 # Internal lineage receipts are created after consumer callbacks may have
 # replaced class allocation or initializer hooks. Keep public class construction
 # unchanged while using the captured native allocation/validation path here.
@@ -1076,13 +1091,13 @@ _AGGREGATE_INIT = cast(
 
 
 def _new_identity_file(path: str, canonical: bytes) -> IdentityFile:
-    record = _NATIVE_OBJECT_NEW(IdentityFile)
+    record = _NATIVE_OBJECT_NEW(_NATIVE_IDENTITY_FILE)
     _IDENTITY_FILE_INIT(record, path, canonical)
     return record
 
 
 def _new_identity_tree(files: tuple[IdentityFile, ...]) -> IdentityTree:
-    record = _NATIVE_OBJECT_NEW(IdentityTree)
+    record = _NATIVE_OBJECT_NEW(_NATIVE_IDENTITY_TREE)
     _IDENTITY_TREE_INIT(record, files)
     return record
 
@@ -1094,7 +1109,7 @@ def _new_file_admission_evidence(
     reference_anchor_count: int,
     matched_anchor_count: int,
 ) -> FileAdmissionEvidence:
-    record = _NATIVE_OBJECT_NEW(FileAdmissionEvidence)
+    record = _NATIVE_OBJECT_NEW(_NATIVE_FILE_ADMISSION_EVIDENCE)
     _FILE_ADMISSION_INIT(
         record,
         path,
@@ -1128,7 +1143,7 @@ def _new_tree_admission_evidence(
     reasons: tuple[str, ...],
     policy: AdmissionPolicy,
 ) -> TreeAdmissionEvidence:
-    record = _NATIVE_OBJECT_NEW(TreeAdmissionEvidence)
+    record = _NATIVE_OBJECT_NEW(_NATIVE_TREE_ADMISSION_EVIDENCE)
     _TREE_ADMISSION_INIT(
         record,
         source_similarity,
@@ -1177,7 +1192,7 @@ def _require_valid_evaluation_inputs(
         _IDENTITY_TREE_VALIDATOR(candidate)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "admission identity tree has incomplete native metadata"
-        raise AdmissionPolicyError(message) from error
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message) from error
     _require_valid_admission_policy(policy)
 
 
@@ -1201,21 +1216,21 @@ def evaluate_admission(
 
     """
     if (
-        _NATIVE_TYPE(reference) is not IdentityTree
-        or _NATIVE_TYPE(candidate) is not IdentityTree
+        _NATIVE_TYPE(reference) is not _NATIVE_IDENTITY_TREE
+        or _NATIVE_TYPE(candidate) is not _NATIVE_IDENTITY_TREE
     ):
         message = (
             "admission identity inputs must use the exact IdentityTree type"
         )
-        raise AdmissionPolicyError(message)
-    if _NATIVE_TYPE(policy) is not AdmissionPolicy:
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
+    if _NATIVE_TYPE(policy) is not _NATIVE_ADMISSION_POLICY:
         message = "admission policy must use the exact AdmissionPolicy type"
-        raise AdmissionPolicyError(message)
+        raise _NATIVE_ADMISSION_POLICY_ERROR(message)
     _require_valid_evaluation_inputs(reference, candidate, policy)
     reference_files = _tree_files(reference)
     if not reference_files:
         message = "reference identity tree contains no source evidence"
-        raise AdmissionError(message)
+        raise _NATIVE_ADMISSION_ERROR(message)
     candidate_by_path = {
         _identity_fields(item)[0]: item for item in _tree_files(candidate)
     }
@@ -1277,9 +1292,9 @@ def require_admission(
     evidence = evaluate_admission(reference, candidate, policy)
     reasons = cast(
         "tuple[str, ...]",
-        _TREE_REASONS_SLOT.__get__(evidence, TreeAdmissionEvidence),
+        _TREE_REASONS_SLOT.__get__(evidence, _NATIVE_TREE_ADMISSION_EVIDENCE),
     )
     if reasons:
         message = "; ".join(reasons)
-        raise AdmissionError(message)
+        raise _NATIVE_ADMISSION_ERROR(message)
     return evidence
