@@ -83,6 +83,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralEight,
     /// Nine independent guest-computed binary bytes.
     DistinctLiteralNine,
+    /// Ten independent guest-computed binary bytes.
+    DistinctLiteralTen,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -190,6 +192,7 @@ struct LiteralOutputNodes<'node> {
     seventh_byte: Option<u8>,
     eighth_byte: Option<u8>,
     ninth_byte: Option<u8>,
+    tenth_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -919,6 +922,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut seventh_byte = None;
     let mut eighth_byte = None;
     let mut ninth_byte = None;
+    let mut tenth_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1063,7 +1067,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     (selected_byte, mixed_byte, byte),
                     (Some(b'Z'), Some(b'%'), b'H')
                         | (Some(b'Q'), Some(b'.' | 28), b'O')
-                        | (Some(b'Q'), Some(b'"'), 27)
+                        | (Some(b'Q'), Some(b'"'), 27 | 253)
                         | (Some(b'Y'), Some(b'-'), b'P')
                         | (Some(b'T'), Some(b'"'), b'O' | b'Q')
                         | (Some(b'T'), Some(b'='), b'4' | 141)
@@ -1079,6 +1083,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     (Some(b'T'), Some(b'='), Some(b'4'), b'>')
                         | (Some(b'T'), Some(b'='), Some(141), 209)
                         | (Some(b'Q'), Some(b'"'), Some(27), b'7')
+                        | (Some(b'Q'), Some(b'"'), Some(253), 206)
                         | (Some(b'Q'), Some(28), Some(b'O'), 29)
                         | (Some(b'6'), Some(b'>'), Some(b'5'), 2)
                         | (Some(b'S'), Some(32), Some(23), b'<')
@@ -1094,6 +1099,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                         | (Some(b'6'), Some(b'>'), Some(b'5'), Some(2), b'T')
                         | (Some(b'S'), Some(32), Some(23), Some(b'<'), b'6')
                         | (Some(b'T'), Some(b'='), Some(141), Some(209), 192)
+                        | (Some(b'Q'), Some(b'"'), Some(253), Some(206), 165)
                 ) {
                     return Err(FrontendJsonError::Unsupported);
                 }
@@ -1131,6 +1137,14 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                         fifth_byte,
                         byte,
                     ) != (Some(b'T'), Some(b'='), Some(141), Some(209), Some(192), 180)
+                    && (
+                        selected_byte,
+                        mixed_byte,
+                        third_byte,
+                        fourth_byte,
+                        fifth_byte,
+                        byte,
+                    ) != (Some(b'Q'), Some(b'"'), Some(253), Some(206), Some(165), 152)
                 {
                     return Err(FrontendJsonError::Unsupported);
                 }
@@ -1184,6 +1198,22 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     Some(192),
                     Some(180),
                     191,
+                ) && (
+                    selected_byte,
+                    mixed_byte,
+                    third_byte,
+                    fourth_byte,
+                    fifth_byte,
+                    sixth_byte,
+                    byte,
+                ) != (
+                    Some(b'Q'),
+                    Some(b'"'),
+                    Some(253),
+                    Some(206),
+                    Some(165),
+                    Some(152),
+                    186,
                 ) {
                     return Err(FrontendJsonError::Unsupported);
                 }
@@ -1225,6 +1255,24 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     Some(180),
                     Some(191),
                     210,
+                ) && (
+                    selected_byte,
+                    mixed_byte,
+                    third_byte,
+                    fourth_byte,
+                    fifth_byte,
+                    sixth_byte,
+                    seventh_byte,
+                    byte,
+                ) != (
+                    Some(b'Q'),
+                    Some(b'"'),
+                    Some(253),
+                    Some(206),
+                    Some(165),
+                    Some(152),
+                    Some(186),
+                    182,
                 ) {
                     return Err(FrontendJsonError::Unsupported);
                 }
@@ -1250,10 +1298,57 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     Some(191),
                     Some(210),
                     162,
+                ) && (
+                    selected_byte,
+                    mixed_byte,
+                    third_byte,
+                    fourth_byte,
+                    fifth_byte,
+                    sixth_byte,
+                    seventh_byte,
+                    eighth_byte,
+                    byte,
+                ) != (
+                    Some(b'Q'),
+                    Some(b'"'),
+                    Some(253),
+                    Some(206),
+                    Some(165),
+                    Some(152),
+                    Some(186),
+                    Some(182),
+                    135,
                 ) {
                     return Err(FrontendJsonError::Unsupported);
                 }
                 ninth_byte = Some(byte);
+            } else if calls.len() == 9 && tenth_byte.is_none() {
+                if (
+                    selected_byte,
+                    mixed_byte,
+                    third_byte,
+                    fourth_byte,
+                    fifth_byte,
+                    sixth_byte,
+                    seventh_byte,
+                    eighth_byte,
+                    ninth_byte,
+                    byte,
+                ) != (
+                    Some(b'Q'),
+                    Some(b'"'),
+                    Some(253),
+                    Some(206),
+                    Some(165),
+                    Some(152),
+                    Some(186),
+                    Some(182),
+                    Some(135),
+                    203,
+                ) {
+                    return Err(FrontendJsonError::Unsupported);
+                }
+                tenth_byte = Some(byte);
             } else {
                 return Err(FrontendJsonError::Unsupported);
             }
@@ -1373,6 +1468,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         seventh_byte,
         eighth_byte,
         ninth_byte,
+        tenth_byte,
     ]
     .into_iter()
     .flatten()
@@ -1383,6 +1479,12 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     // The nine-byte recipe also requires the complete witnessed sequence.
     if (2..9).contains(&observed.len())
         && observed == b"T=\x8d\xd1\xc0\xb4\xbf\xd2\xa2"[..observed.len()]
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    // No proper prefix of the ten-byte source witness is executable as this recipe.
+    if (2..10).contains(&observed.len())
+        && observed == b"Q\"\xfd\xce\xa5\x98\xba\xb6\x87\xcb"[..observed.len()]
     {
         return Err(FrontendJsonError::Unsupported);
     }
@@ -1399,6 +1501,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         seventh_byte,
         eighth_byte,
         ninth_byte,
+        tenth_byte,
         returned,
     })
 }
@@ -1440,6 +1543,7 @@ fn canonical_literal_output_typed_ir(
         seventh_byte,
         eighth_byte,
         ninth_byte,
+        tenth_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -1603,9 +1707,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 9
+            && let Some(tenth) = tenth_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![tenth]),
+                    result: ValueId::new(9),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 8 && ninth_byte.is_some() {
+                value: ValueId::new(if index == 9 && tenth_byte.is_some() {
+                    9
+                } else if index == 8 && ninth_byte.is_some() {
                     8
                 } else if index == 7 && eighth_byte.is_some() {
                     7
@@ -1657,7 +1775,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if ninth_byte.is_some() {
+    let mode = if tenth_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralTen
+    } else if ninth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralNine
     } else if eighth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralEight

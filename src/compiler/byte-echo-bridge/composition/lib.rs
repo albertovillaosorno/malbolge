@@ -2082,6 +2082,95 @@ pub fn encode_distinct_literal_nine(
     Ok(layout)
 }
 
+/// Emit one independently VM-witnessed ten-distinct-byte C trace.
+///
+/// The guest executes nine relocated `p` writes, one relocated `*` write,
+/// and ten output instructions. Several output bytes are outside ASCII;
+/// this is a binary output contract, not a text literal convention.
+///
+/// # Errors
+///
+/// Rejects arbitrary ten-byte traces, stale SSA, foreign profiles and
+/// normative VM disagreement before the source can be published.
+pub fn encode_distinct_literal_ten(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let (pairs, remainder) = function.operations.as_chunks::<2>();
+    let [TernaryOperation::ReturnVoid { .. }] = remainder else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if pairs.len() != 10 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut ids = BTreeSet::new();
+    for (index, [constant, output]) in pairs.iter().enumerate() {
+        let (
+            TernaryOperation::MaterializeU8 { result, scalar, .. },
+            TernaryOperation::ByteOutput { value, .. },
+        ) = (constant, output)
+        else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        };
+        if result != value
+            || !ids.insert(*result)
+            || scalar.bits() != b"Q\"\xfd\xce\xa5\x98\xba\xb6\x87\xcb"[index]
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    let mut operations = vec![LinearOpcode::NoOperation; 1];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0usize..10 {
+        operations.extend([
+            if index == 2 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() != 10
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != 10
+        || writes.iter().any(|address| {
+            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+        })
+    {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
+            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+            || vm.output() != b"Q\"\xfd\xce\xa5\x98\xba\xb6\x87\xcb"
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    Ok(layout)
+}
+
 /// Emit three different bytes from independent guest CrazyData operations.
 ///
 /// Exactly three separate `MaterializeU8`/`ByteOutput` SSA pairs and a void

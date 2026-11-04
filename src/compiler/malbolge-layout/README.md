@@ -635,3 +635,15 @@ The normative VM verifies nine distinct bytes, 21 total steps, nine disjoint
 post-source data writes and zero consumed input before publication. Incomplete
 prefixes, reordered bytes, altered SSA, foreign profiles and extra writes
 reject; this is a finite source witness, not generic byte-string lowering.
+
+### Ten distinct guest-computed bytes (bounded mixed arithmetic witness)
+
+The opt-in `--distinct-literal-ten` C path admits exactly ten separate
+source `putchar` constants with proven current-profile binary output
+`51 22 fd ce a5 98 ba b6 87 cb` (hex). One reached no-op and explicit
+relocation precede nine real guest `CrazyData` writes and one `RotateData`
+write (the third arithmetic step); each data write is followed by output.
+The normative VM verifies ten distinct bytes, 23 total steps, ten disjoint
+post-source data writes and zero consumed input before publication. Incomplete
+prefixes, reordered bytes, altered SSA, foreign profiles and extra writes
+reject; this is a finite source witness, not generic byte-string lowering.
