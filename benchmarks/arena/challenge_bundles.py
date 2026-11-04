@@ -91,8 +91,12 @@ class ChallengeBundleError(ValueError):
     """A retained source/oracle bundle differs from canonical generation."""
 
 
+# Preserve the producer-owned failure type across public alias substitutions.
+_SOURCE_CHALLENGE_BUNDLE_ERROR = ChallengeBundleError
+
+
 def _fail(message: str) -> Never:
-    raise ChallengeBundleError(message)
+    raise _SOURCE_CHALLENGE_BUNDLE_ERROR(message)
 
 
 def _bounded_case(case: dict[str, Any]) -> None:
@@ -141,13 +145,13 @@ def _regenerate(
         produced = generate.generate(identity)
     except _CANONICAL_ERROR as error:
         message = "challenge identity cannot regenerate"
-        raise ChallengeBundleError(message) from error
+        raise _SOURCE_CHALLENGE_BUNDLE_ERROR(message) from error
     except Exception as error:
         # The canonical generator is a dependency, not an exception authority.
         # Unexpected ordinary faults must also fail through the typed replay
         # boundary, without formatting caller-defined exception hooks.
         message = "challenge canonical regeneration dependency failed"
-        raise ChallengeBundleError(message) from error
+        raise _SOURCE_CHALLENGE_BUNDLE_ERROR(message) from error
     # Only exact native generator output can serve as comparison evidence.
     # A foreign bytes subclass could override equality to admit forged data.
     if _NATIVE_TYPE(produced) is not _CANONICAL_RESULT:
@@ -158,7 +162,7 @@ def _regenerate(
         # A malformed native result may have unset slots. Do not expose the
         # dependency's raw attribute fault through the replay boundary.
         message = "canonical challenge regeneration produced invalid payload"
-        raise ChallengeBundleError(message) from error
+        raise _SOURCE_CHALLENGE_BUNDLE_ERROR(message) from error
     if _NATIVE_ANY(
         _NATIVE_TYPE(payload) is not _NATIVE_BYTES for payload in payloads
     ):
@@ -227,7 +231,7 @@ def verify_bundle(
         # The hashing dependency must not publish a foreign failure or rely
         # on caller-owned exception formatters for source authentication.
         message = "challenge source SHA-256 computation failed"
-        raise ChallengeBundleError(message) from error
+        raise _SOURCE_CHALLENGE_BUNDLE_ERROR(message) from error
     # A substituted first hash provider must not certify a false workload
     # claim by returning the same native-looking digest as the forged claim.
     if (

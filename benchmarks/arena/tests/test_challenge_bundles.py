@@ -1573,3 +1573,69 @@ def test_challenge_valid_native_case_ignores_constructor_rebinding(
     assert challenge_bundles.verify_bundle(case, PROFILE, files) == (
         case["workload_sha256"]
     )
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("fail", "original challenge failure"),
+        ("case", "exact arena case"),
+        ("files", "canonical files"),
+        ("generator", "identity cannot regenerate"),
+        ("dependency", "regeneration dependency failed"),
+        ("payload", "invalid payload"),
+        ("hash", "SHA-256 computation failed"),
+    ],
+)
+def test_challenge_bundle_error_alias_preserves_native_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """A late public error alias must not corrupt typed replay rejection."""
+    native_error = challenge_bundles.ChallengeBundleError
+    case, files = _direct_bundle()
+
+    def fail_generator(*_args: object, **_kwargs: object) -> None:
+        raise generate.ChallengeError("source-native generator rejection")
+
+    def fail_dependency(*_args: object, **_kwargs: object) -> None:
+        raise OSError("foreign generator failure")
+
+    def fail_hash(_raw: bytes) -> None:
+        raise OSError("unavailable digest provider")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(challenge_bundles, "ChallengeBundleError", replacement)
+        if stage == "generator":
+            patched.setattr(generate, "generate", fail_generator)
+        elif stage == "dependency":
+            patched.setattr(generate, "generate", fail_dependency)
+        elif stage == "payload":
+            patched.setattr(generate, "generate", lambda _identity: object())
+        elif stage == "hash":
+            patched.setattr(challenge_bundles, "sha256", fail_hash)
+        with pytest.raises(native_error, match=diagnostic):
+            if stage == "fail":
+                challenge_bundles._fail("original challenge failure")
+            elif stage == "case":
+                challenge_bundles._bounded_case({})
+            elif stage == "files":
+                challenge_bundles._admit_files({})
+            else:
+                challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_challenge_bundle_error_alias_keeps_valid_source_replay(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """A valid regenerated workload remains byte-exact under error rebinding."""
+    case, files = _direct_bundle()
+    with monkeypatch.context() as patched:
+        patched.setattr(challenge_bundles, "ChallengeBundleError", replacement)
+        assert challenge_bundles.verify_bundle(case, PROFILE, files) == (
+            case["workload_sha256"]
+        )
