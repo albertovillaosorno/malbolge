@@ -617,8 +617,25 @@ def _copy_header_no_replace(source: str, destination: str) -> str:
     return destination
 
 
+def _physical_header_identity(status: os.stat_result) -> tuple[int, ...]:
+    """Exclude read-mutated atime while preserving all header identity guards."""
+    return (
+        status.st_dev,
+        status.st_ino,
+        status.st_nlink,
+        status.st_size,
+        status.st_mode,
+        status.st_mtime_ns,
+        status.st_ctime_ns,
+    )
+
+
 def _physical_header_digest(
-    path: Path, admitted: os.stat_result, *, chunks: list[bytes] | None = None
+    path: Path,
+    admitted: os.stat_result,
+    *,
+    chunks: list[bytes] | None = None,
+    expected_links: int = 1,
 ) -> bytes:
     """Hash one pinned physical header without opening a late FIFO or symlink."""
     flags = (
@@ -631,23 +648,12 @@ def _physical_header_digest(
     if type(descriptor) is not int or descriptor < 0:
         _fail("LLVM RPM header receipt requires native file descriptor")
 
-    def identity(status: os.stat_result) -> tuple[int, ...]:
-        return (
-            status.st_dev,
-            status.st_ino,
-            status.st_nlink,
-            status.st_size,
-            status.st_mode,
-            status.st_mtime_ns,
-            status.st_ctime_ns,
-        )
-
     try:
         opened = os.fstat(descriptor)
         if (
             not _native_regular_status(opened)
-            or opened.st_nlink != 1
-            or identity(opened) != identity(admitted)
+            or opened.st_nlink != expected_links
+            or _physical_header_identity(opened) != _physical_header_identity(admitted)
         ):
             _fail("LLVM RPM header receipt descriptor identity changed")
         digest = hashlib.sha256()
@@ -670,8 +676,8 @@ def _physical_header_digest(
             not _native_regular_status(after)
             or not _native_regular_status(named)
             or read_bytes != admitted.st_size
-            or identity(after) != identity(admitted)
-            or identity(named) != identity(admitted)
+            or _physical_header_identity(after) != _physical_header_identity(admitted)
+            or _physical_header_identity(named) != _physical_header_identity(admitted)
         ):
             _fail("LLVM RPM header receipt identity changed during read")
         return digest.digest()
@@ -761,6 +767,79 @@ def _copy_rpm_include_tree(include_root: Path, destination_include: Path) -> Non
         raise LlvmDevelopmentProvisionError(detail) from error
 
 
+def _detach_listed_cpio_hardlinks(
+    include_root: Path, listed_members: frozenset[PurePosixPath]
+) -> None:
+    """Isolate archive-internal hardlinks before the single-link overlay gate.
+
+    CPIO preserves linked header inodes. A complete, listed group can be
+    materialized into independent staged files; a missing alias can point
+    outside extraction and must instead fail closed.
+    """
+    _reject_include_symlinks(include_root)
+    groups: dict[tuple[int, int], list[Path]] = {}
+    for directory, _folders, files in _physical_header_walk(include_root):
+        for name in files:
+            header = directory / name
+            physical = header.lstat()
+            if not _native_regular_status(physical):
+                _fail("LLVM RPM extraction contains a nonphysical header")
+            if physical.st_nlink <= 1:
+                continue
+            member = PurePosixPath("usr/include").joinpath(
+                *header.relative_to(include_root).parts
+            )
+            if member not in listed_members:
+                _fail("LLVM RPM extraction contains unlisted hardlink header")
+            if not 0 <= physical.st_size <= MAX_RPM_DOWNLOAD_BYTES:
+                _fail("LLVM RPM hardlink header exceeds bounded extraction size")
+            groups.setdefault((physical.st_dev, physical.st_ino), []).append(header)
+
+    serial = 0
+    for (device, inode), headers in groups.items():
+        # Every link must be one of the inventoried, extracted headers. A link
+        # to any unexamined path (even another path in the package) rejects.
+        if any(
+            (status := header.lstat()).st_nlink != len(headers)
+            or (status.st_dev, status.st_ino) != (device, inode)
+            for header in headers
+        ):
+            _fail("LLVM RPM header has an external hardlink")
+        for offset, header in enumerate(headers[:-1]):
+            admitted = header.lstat()
+            if (
+                not _native_regular_status(admitted)
+                or (admitted.st_dev, admitted.st_ino) != (device, inode)
+                or admitted.st_nlink != len(headers) - offset
+            ):
+                _fail("LLVM RPM hardlink group changed during detachment")
+            chunks: list[bytes] = []
+            _ = _physical_header_digest(
+                header, admitted, chunks=chunks, expected_links=admitted.st_nlink
+            )
+            detached = include_root.parent.parent / f".cpio-detached-header-{serial}"
+            serial += 1
+            _write_verified_staging_bytes(detached, b"".join(chunks))
+            if _physical_header_identity(header.lstat()) != _physical_header_identity(
+                admitted
+            ):
+                _fail("LLVM RPM hardlink group changed during detachment")
+            try:
+                os.replace(detached, header)
+            except (OSError, ValueError, TypeError, RuntimeError) as error:
+                raise LlvmDevelopmentProvisionError(
+                    "LLVM RPM hardlink header detachment failed"
+                ) from error
+        last = headers[-1].lstat()
+        if (
+            not _native_regular_status(last)
+            or (last.st_dev, last.st_ino) != (device, inode)
+            or last.st_nlink != 1
+        ):
+            _fail("LLVM RPM hardlink group changed during detachment")
+    _reject_include_symlinks(include_root, require_single_link=True)
+
+
 def _require_listed_extracted_headers(
     include_root: Path, listed_members: frozenset[PurePosixPath]
 ) -> None:
@@ -843,7 +922,7 @@ def _extract_rpm_headers(
         include_root = package_staging / "usr/include"
         if not _preflight_path_status(include_root, include_root.is_dir, "staging"):
             _fail(f"LLVM development package has no /usr/include: {asset.name}")
-        _reject_include_symlinks(include_root, require_single_link=True)
+        _detach_listed_cpio_hardlinks(include_root, listed_members)
         _require_listed_extracted_headers(include_root, listed_members)
         destination_include = destination / "include"
         _require_physical_directories(destination_include, "staging")

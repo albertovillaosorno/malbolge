@@ -5589,3 +5589,74 @@ def test_development_destination_parent_mkdir_stays_on_owned_checkout(
     }
     assert (owned / "llvm-dev").is_dir()
     assert not identity.development_root.exists()
+
+
+@pytest.mark.skipif(os.name != POSIX_OS_NAME, reason="requires POSIX archive hardlinks")
+@pytest.mark.parametrize("extra_link", ["none", "external", "unlisted"])
+def test_rpm_internal_hardlinks_are_detached_only_when_fully_listed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, extra_link: str
+) -> None:
+    """An exact CPIO hardlink group is imported as isolated single-link headers."""
+    identity = _identity(tmp_path)
+    outside = tmp_path / "outside-header.h"
+
+    def synthetic_cpio(
+        arguments: list[str],
+        *,
+        cwd: Path | None = None,
+        **_kwargs: object,
+    ) -> bytes:
+        if arguments[0] == CPIO_EXECUTABLE and cwd is not None:
+            parent = cwd / "usr/include/clang/AST"
+            parent.mkdir(parents=True)
+            first = parent / "AST.h"
+            _ = first.write_bytes(HEADER_BYTES)
+            try:
+                os.link(first, parent / "Alias.h")
+                # CPIO preserves old archived timestamps; reading may update
+                # atime without changing archive identity.
+                os.utime(first, ns=(1_000_000_000, 1_000_000_000))
+                if extra_link == "external":
+                    os.link(first, outside)
+                elif extra_link == "unlisted":
+                    os.link(first, parent / "Unlisted.h")
+            except (OSError, NotImplementedError) as error:
+                pytest.skip(f"hardlinks unavailable: {error}")
+        return b""
+
+    with monkeypatch.context() as isolated:
+        isolated.setattr(
+            llvm_development_validation, "_cpio_payload", _synthetic_hardlinked_payload
+        )
+        isolated.setattr(
+            llvm_development_validation,
+            "_cpio_members",
+            lambda _payload: (
+                "./usr/include/clang/AST/AST.h",
+                "./usr/include/clang/AST/Alias.h",
+            ),
+        )
+        isolated.setattr(llvm_development_validation, "_command_bytes", synthetic_cpio)
+        if extra_link == "none":
+            published = llvm_development_validation.provision_development_identity(
+                tmp_path, identity, downloader=_downloader([])
+            )
+        else:
+            with pytest.raises(
+                llvm_development_validation.LlvmDevelopmentProvisionError,
+                match="hardlink|unlisted",
+            ):
+                _ = llvm_development_validation.provision_development_identity(
+                    tmp_path, identity, downloader=_downloader([])
+                )
+            assert not identity.development_root.exists()
+            if extra_link == "external":
+                assert outside.read_bytes() == HEADER_BYTES
+            return
+
+    first = published / "include/clang/AST/AST.h"
+    alias = published / "include/clang/AST/Alias.h"
+    assert first.read_bytes() == alias.read_bytes() == HEADER_BYTES
+    assert first.stat().st_nlink == alias.stat().st_nlink == 1
+    assert first.stat().st_ino != alias.stat().st_ino
+    assert llvm_development_validation.development_root_matches(identity)
