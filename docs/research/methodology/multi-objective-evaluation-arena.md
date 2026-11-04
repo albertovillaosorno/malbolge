@@ -1294,7 +1294,13 @@ The original study records remain the result authority.
   allocating field objects. Its direct API requires decoded text and an exact
   positive integer column cap; forged NaN/infinite/Boolean limits and nontext
   inputs fail closed instead of bypassing the resource bound or raising host
-  type errors. This preflight is not full CSV syntax or provenance admission.
+  type errors. Signed `bccef7c31` additionally binds the original native
+  `type`, `str`, and `int` identities before any delimiter scan. Three red-first
+  source-shape substitutions previously admitted foreign text or capacity
+  receipts, or rejected a valid CSV. Four follow-up late-alias cases retain
+  correct admission; 37 focused and 848 integrated tests passed, with zero
+  arena type errors. This preflight is not full CSV syntax, source integrity
+  or independent provenance admission.
 - `benchmarks/arena/trial_runs.py` admits a versioned per-trial manifest
   extension under strict opt-in preflight. Synthetic regressions check
   distinct trial-run bindings, raw-file digests, complete shared CSVs, malformed
@@ -1352,6 +1358,15 @@ The original study records remain the result authority.
   regressions reject both a foreign false-empty iterator with a normal close
   receipt and a native iterator redirected to an unrelated empty directory.
   This is a local scanner-identity check, not atomic filesystem attestation.
+  Signed `2fd4fc3bc` also binds original native `type`, `int`, `min`,
+  `tuple`, `any`, `len`, and `set` providers for public run caps and the
+  validated trial/difficulty plan. Twenty red-first cases cover substitutions
+  that widened repetitions, admitted duplicate or noninteger levels, or
+  rejected valid bounded plans. All 423 producer tests and an 860-case
+  producer/host-oracle integration passed, with zero arena type errors.
+  Existing Ruff findings and formatting differences were not changed.
+  These bounds limit requested study work, not physical resource use,
+  process provenance, or the truth of reported measurements.
 - Host-C reference measurement now uses GNU `time` per direct stage to
   report exact `peak_rss_bytes` (maximum observed Linux `ru_maxrss` after
   KiB-to-byte conversion), retained as a third Pareto cost. Invalid, zero,
