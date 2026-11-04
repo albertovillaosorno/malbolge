@@ -1874,6 +1874,64 @@ def test_child_command_argument_budget_rejects_before_host_work(
     assert not host_calls
 
 
+@pytest.mark.parametrize("constant", ["MAX_COMMAND_ARGUMENTS", "MAX_COMMAND_BYTES"])
+def test_runtime_command_budget_substitution_cannot_admit_oversized_argv(
+    monkeypatch: pytest.MonkeyPatch,
+    constant: str,
+) -> None:
+    """Public policy aliases cannot enlarge the bounded exec argument budget."""
+    if constant == "MAX_COMMAND_ARGUMENTS":
+        command = [sys.executable, *(["x"] * 512)]
+    else:
+        command = [sys.executable, "x" * (target_process.MAX_COMMAND_BYTES + 1)]
+    monkeypatch.setattr(target_process, constant, 100_000)
+    with pytest.raises(target_process.TargetProcessError, match="argument"):
+        target_process._admit_command(command)
+
+
+@pytest.mark.parametrize(
+    ("constant", "limit", "reason"),
+    [
+        ("DEFAULT_TIMEOUT_SECONDS", 16, "deadline"),
+        ("DEFAULT_STDOUT_LIMIT", 4097, "stdout"),
+        ("DEFAULT_STDERR_LIMIT", 16385, "stderr"),
+    ],
+)
+def test_runtime_stream_policy_substitution_cannot_admit_expanded_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    constant: str,
+    limit: int,
+    reason: str,
+) -> None:
+    """Child deadlines and stream quotas remain source-stable after rebinding."""
+    monkeypatch.setattr(target_process, constant, 100_000)
+    timeout = limit if constant == "DEFAULT_TIMEOUT_SECONDS" else 1
+    stdout = limit if constant == "DEFAULT_STDOUT_LIMIT" else 4096
+    stderr = limit if constant == "DEFAULT_STDERR_LIMIT" else 16384
+    with pytest.raises(target_process.TargetProcessError, match=reason):
+        target_process._admit_limits(timeout, stdout, stderr)
+
+
+@pytest.mark.parametrize("route", ["ordinary", "limited"])
+def test_runtime_stdin_budget_substitution_cannot_admit_extra_input(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    """256-byte binary-input cap holds before any target process action."""
+    def unexpectedly_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("expanded stdin reached host transport")
+
+    monkeypatch.setattr(target_process, "MAX_STDIN_BYTES", 1024)
+    monkeypatch.setattr(target_process, "_run", unexpectedly_run)
+    run = (
+        target_process.invoke_with_input
+        if route == "ordinary"
+        else target_process.invoke_with_input_limited
+    )
+    with pytest.raises(target_process.TargetProcessError, match="256"):
+        run([sys.executable], bytes(257))
+
+
 def test_child_command_budget_accepts_bounded_utf8_and_maximum_argv() -> None:
     """Byte-count admission must not discard real maximum-length argv runs."""
     command = [

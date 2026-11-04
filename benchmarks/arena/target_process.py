@@ -75,6 +75,13 @@ NUL_CHARACTER = "\0"
 # can substitute receipts for the child streams and status we just checked.
 _NATIVE_COMPLETED_PROCESS = sp.CompletedProcess
 _NATIVE_TIMEOUT_EXPIRED = sp.TimeoutExpired
+# Late changes to public policy aliases must not loosen process admission.
+_SOURCE_DEFAULT_TIMEOUT_SECONDS = DEFAULT_TIMEOUT_SECONDS
+_SOURCE_DEFAULT_STDOUT_LIMIT = DEFAULT_STDOUT_LIMIT
+_SOURCE_DEFAULT_STDERR_LIMIT = DEFAULT_STDERR_LIMIT
+_SOURCE_MAX_STDIN_BYTES = MAX_STDIN_BYTES
+_SOURCE_MAX_COMMAND_ARGUMENTS = MAX_COMMAND_ARGUMENTS
+_SOURCE_MAX_COMMAND_BYTES = MAX_COMMAND_BYTES
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,15 +115,15 @@ def _admit_limits(
     # Comparing against small policy ceilings first also rejects enormous
     # Python integers without an overflowing int-to-float conversion.
     if type(timeout_seconds) not in {int, float} or not (
-        0 < timeout_seconds <= DEFAULT_TIMEOUT_SECONDS
+        0 < timeout_seconds <= _SOURCE_DEFAULT_TIMEOUT_SECONDS
     ):
         _fail("bounded target process requires a deadline within 15 seconds")
     if type(stdout_limit) is not int or not (
-        0 <= stdout_limit <= DEFAULT_STDOUT_LIMIT
+        0 <= stdout_limit <= _SOURCE_DEFAULT_STDOUT_LIMIT
     ):
         _fail("bounded target process requires stdout limit at most 4 KiB")
     if type(stderr_limit) is not int or not (
-        0 <= stderr_limit <= DEFAULT_STDERR_LIMIT
+        0 <= stderr_limit <= _SOURCE_DEFAULT_STDERR_LIMIT
     ):
         _fail("bounded target process requires stderr limit at most 16 KiB")
 
@@ -124,7 +131,7 @@ def _admit_limits(
 def _admit_command(command: list[str]) -> None:
     if type(command) is not list or not command:
         _fail("bounded target command requires a nonempty argument list")
-    if len(command) > MAX_COMMAND_ARGUMENTS:
+    if len(command) > _SOURCE_MAX_COMMAND_ARGUMENTS:
         _fail("bounded target command exceeds argument count limit")
     if type(command[0]) is not str or not command[0]:
         _fail("bounded target command requires a nonempty executable string")
@@ -138,14 +145,14 @@ def _admit_command(command: list[str]) -> None:
             _fail("bounded target command has nonstring or NUL arguments")
         # Bound both Python-side argv allocation and the actual exec byte
         # payload. The NUL terminator counts toward the cumulative budget.
-        if len(argument) > MAX_COMMAND_BYTES:
+        if len(argument) > _SOURCE_MAX_COMMAND_BYTES:
             _fail("bounded target command exceeds argument bytes limit")
         try:
             total_bytes += len(os.fsencode(argument)) + 1
         except UnicodeError as error:
             message = "bounded target command requires encodable filesystem text"
             raise TargetProcessError(message) from error
-        if total_bytes > MAX_COMMAND_BYTES:
+        if total_bytes > _SOURCE_MAX_COMMAND_BYTES:
             _fail("bounded target command exceeds argument bytes limit")
 
 
@@ -714,7 +721,7 @@ def invoke_with_input(
         Complete stdout/stderr and exit status for one child.
 
     """
-    if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
+    if type(input_bytes) is not bytes or len(input_bytes) > _SOURCE_MAX_STDIN_BYTES:
         _fail("bounded target input requires up to 256 exact bytes")
     return _run(
         command,
@@ -764,7 +771,7 @@ def invoke_with_input_limited(
         Complete bounded captured output and child return code.
 
     """
-    if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
+    if type(input_bytes) is not bytes or len(input_bytes) > _SOURCE_MAX_STDIN_BYTES:
         _fail("bounded target input requires up to 256 exact bytes")
     return _run(
         command,
@@ -1030,7 +1037,7 @@ def invoke_with_input_limited_measured(
         Exact guest streams/status and observed per-child peak RSS bytes.
 
     """
-    if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
+    if type(input_bytes) is not bytes or len(input_bytes) > _SOURCE_MAX_STDIN_BYTES:
         _fail("bounded target input requires up to 256 exact bytes")
     result, peak, _ = _measured_limited(
         command,
@@ -1068,7 +1075,7 @@ def invoke_with_input_limited_measured_raw(
         Child status, measured RSS bytes and original GNU time file bytes.
 
     """
-    if type(input_bytes) is not bytes or len(input_bytes) > MAX_STDIN_BYTES:
+    if type(input_bytes) is not bytes or len(input_bytes) > _SOURCE_MAX_STDIN_BYTES:
         _fail("bounded target input requires up to 256 exact bytes")
     return _measured_limited(
         command, input_bytes=input_bytes, timeout_seconds=timeout_seconds
