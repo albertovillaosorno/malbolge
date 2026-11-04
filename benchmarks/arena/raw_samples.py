@@ -137,8 +137,11 @@ class RawSampleError(ValueError):
     """Raw CSV evidence does not exactly match admitted arena observations."""
 
 
+# Keep native failure identity even if consumers rebind the public class.
+_SOURCE_RAW_SAMPLE_ERROR = RawSampleError
+
 def _fail(message: str) -> Never:
-    raise RawSampleError(message)
+    raise _SOURCE_RAW_SAMPLE_ERROR(message)
 
 
 def _row_values(
@@ -221,7 +224,7 @@ def _csv_rows(
     except Exception as error:
         # A substituted preflight dependency cannot leak arbitrary host faults.
         message = f"{label}: arena raw CSV column preflight failed"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     if _SOURCE_TYPE(column_receipt) is not bool:
         _fail(f"{label}: arena raw CSV column preflight returned nonnative verdict")
     if not column_receipt:
@@ -232,7 +235,7 @@ def _csv_rows(
         source_receipt = _SOURCE_COLUMN_LIMIT(text, _SOURCE_LEN(_SOURCE_HEADER_2))
     except Exception as error:
         message = f"{label}: arena raw CSV source column preflight failed"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     if _SOURCE_TYPE(source_receipt) is not bool or not source_receipt:
         _fail(f"{label}: arena raw CSV columns exceed registered count")
     try:
@@ -250,13 +253,13 @@ def _csv_rows(
         source_rows = _limited_rows(source_reader, label, expected_rows)
         if header != source_header or rows != source_rows:
             _fail(f"{label}: arena raw CSV parser differs from source CSV")
-    except RawSampleError as error:
+    except _SOURCE_RAW_SAMPLE_ERROR as error:
         # Only our own exact rejection type may cross this boundary unchanged.
         # A foreign parser can raise a subclass with hostile format hooks.
-        if _SOURCE_TYPE(error) is RawSampleError:
+        if _SOURCE_TYPE(error) is _SOURCE_RAW_SAMPLE_ERROR:
             raise
         message = f"{label}: invalid arena raw CSV parser: {_SOURCE_TYPE(error).__name__}"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     except csv.Error as error:
         # Even an exact native csv.Error can contain caller-owned arguments.
         detail = (
@@ -267,12 +270,12 @@ def _csv_rows(
             else _SOURCE_TYPE(error).__name__
         )
         message = f"{label}: invalid arena raw CSV quotes: {detail}"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     except Exception as error:
         # Unexpected ordinary CSV dependency faults must stay typed and must
         # not invoke a foreign exception formatter while being rejected.
         message = f"{label}: invalid arena raw CSV parser: {_SOURCE_TYPE(error).__name__}"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     return version, metrics, rows
 
 
@@ -286,7 +289,7 @@ def _decode_raw(raw: bytes, label: str) -> str:
         text = raw.decode("utf-8", errors="strict")
     except UnicodeError as error:
         message = f"{label}: invalid arena raw CSV UTF-8: {error}"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     if _SOURCE_NUL in text:
         _fail(f"{label}: NUL in arena raw CSV")
     return text
@@ -322,7 +325,7 @@ def _validate_trial_semantics(row: dict[str, Any], label: str) -> None:
         _require_analyzer_semantic_helpers(label)
     except Exception as error:
         message = f"{label}: invalid reported trial semantics"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
 
 
 def _admit_observation_containers(
@@ -424,7 +427,7 @@ def _checked_sha256(raw: bytes) -> str:
         source_bound = _NATIVE_SHA256(raw).hexdigest()
     except Exception as error:
         message = "arena raw CSV SHA-256 dependency failed"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     if (
         _SOURCE_TYPE(reported) is not str
         or _SOURCE_TYPE(independent) is not str
@@ -466,12 +469,12 @@ def check_rows(
         expected = _SOURCE_COUNTER(
             _row_values(item, version, metrics) for item in observations
         )
-    except RawSampleError:
+    except _SOURCE_RAW_SAMPLE_ERROR:
         raise
     except ValueError as error:
         # Python may refuse an immense native integer's decimal conversion.
         message = f"{label}: raw CSV integer conversion failed"
-        raise RawSampleError(message) from error
+        raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     if _SOURCE_COUNTER(actual_rows) != expected:
         _fail(f"{label}: raw CSV trial/metric rows differ from arena report")
     return _checked_sha256(raw)

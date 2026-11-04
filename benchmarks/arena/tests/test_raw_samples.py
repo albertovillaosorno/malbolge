@@ -1988,3 +1988,61 @@ def test_raw_native_numeric_admission_rejects_joint_boolean_forgery(
             raw_samples.RawSampleError, match="native nonempty observation"
         ):
             raw_samples.check_rows(raw, [record], ROOT_LABEL)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    ("failure", "diagnostic"),
+    [
+        ("empty", "missing or oversized"),
+        ("utf8", "invalid arena raw CSV UTF-8"),
+        ("header", "invalid arena-raw-v1/v2 CSV header"),
+        ("semantics", "invalid reported trial semantics"),
+        ("parser", "native injected parser failure"),
+    ],
+)
+def test_raw_error_rebinding_preserves_native_failure_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    failure: str,
+    diagnostic: str,
+) -> None:
+    """Late error-class substitution cannot relabel a rejected raw source."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+    native_error = raw_samples.RawSampleError
+    if failure == "empty":
+        raw = b""
+    elif failure == "utf8":
+        raw = b"\xff"
+    elif failure == "header":
+        raw = raw.replace(b"algorithm,", b"wrong_name,", 1)
+    elif failure == "semantics":
+        record["trial"] = -1
+        raw = _render([record])
+
+    with monkeypatch.context() as patched:
+        patched.setattr(raw_samples, "RawSampleError", replacement)
+        if failure == "parser":
+            def inject_native(*_args: object, **_kwargs: object) -> None:
+                raise native_error("native injected parser failure")
+
+            patched.setattr(raw_samples.csv, "reader", inject_native)
+        with pytest.raises(native_error, match=diagnostic):
+            raw_samples.check_rows(raw, [record], ROOT_LABEL)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_raw_error_rebinding_keeps_valid_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+) -> None:
+    """Changing the rejection alias cannot invalidate a matching raw file."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+    expected = sha256(raw).hexdigest()
+    with monkeypatch.context() as patched:
+        patched.setattr(raw_samples, "RawSampleError", replacement)
+        assert raw_samples.check_rows(raw, [record], ROOT_LABEL) == expected
