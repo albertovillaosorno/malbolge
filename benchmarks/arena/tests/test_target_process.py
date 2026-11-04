@@ -4219,3 +4219,24 @@ def test_native_completed_process_factory_cannot_forge_child_receipt(
     assert result.returncode == 0
     assert result.stdout == b"actual\n"
     assert result.stderr == b""
+
+
+@pytest.mark.parametrize("alias", [RuntimeError, object])
+@pytest.mark.parametrize("channel", ["null", "stdin"])
+def test_child_deadline_keeps_native_timeout_after_subprocess_alias_change(
+    monkeypatch: pytest.MonkeyPatch,
+    alias: type[object],
+    channel: str,
+) -> None:
+    """Mutable subprocess exports cannot change our native deadline verdict."""
+    native_timeout = sp.TimeoutExpired
+    command = _child("import time; time.sleep(2)")
+    with monkeypatch.context() as patched:
+        patched.setattr(sp, "TimeoutExpired", alias)
+        with pytest.raises(native_timeout):
+            if channel == "null":
+                target_process.invoke(command, timeout_seconds=0.05)
+            else:
+                target_process.invoke_with_input(
+                    command, b"input", timeout_seconds=0.05
+                )

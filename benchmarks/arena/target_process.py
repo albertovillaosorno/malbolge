@@ -74,6 +74,7 @@ NUL_CHARACTER = "\0"
 # Preserve the standard-library completion constructor before dependency hooks
 # can substitute receipts for the child streams and status we just checked.
 _NATIVE_COMPLETED_PROCESS = sp.CompletedProcess
+_NATIVE_TIMEOUT_EXPIRED = sp.TimeoutExpired
 
 
 @dataclass(frozen=True, slots=True)
@@ -454,7 +455,7 @@ def _collect(
             while open_streams:
                 remaining = deadline - monotonic()
                 if remaining <= 0:
-                    raise sp.TimeoutExpired(child.args, limits.timeout_seconds)
+                    raise _NATIVE_TIMEOUT_EXPIRED(child.args, limits.timeout_seconds)
                 for key, mask in watched.select(remaining):
                     if (
                         (key is not registered[0] and key is not registered[1])
@@ -474,7 +475,7 @@ def _collect(
                     )
                     if reached_eof:
                         open_streams.remove(slot)
-    except (TargetProcessError, sp.TimeoutExpired):
+    except (TargetProcessError, _NATIVE_TIMEOUT_EXPIRED):
         # Preserve exact quota and deadline failures from our own transport.
         raise
     except Exception as error:
@@ -661,10 +662,10 @@ def _run(
         stdout, stderr = _collect(child, limits, deadline=deadline)
         remaining = deadline - monotonic()
         if remaining <= 0:
-            raise sp.TimeoutExpired(command, limits.timeout_seconds)
+            raise _NATIVE_TIMEOUT_EXPIRED(command, limits.timeout_seconds)
         try:
             status = child.wait(timeout=remaining)
-        except (sp.TimeoutExpired, TargetProcessError):
+        except (_NATIVE_TIMEOUT_EXPIRED, TargetProcessError):
             # An actual deadline or our own rejection remains authoritative.
             raise
         except Exception as error:
@@ -979,7 +980,7 @@ def _measured_limited(
                 raise
     except Exception as error:
         if error is primary and isinstance(
-            error, (TargetProcessError, sp.TimeoutExpired)
+            error, (TargetProcessError, _NATIVE_TIMEOUT_EXPIRED)
         ):
             # Without a secondary directory fault, preserve the child verdict.
             raise

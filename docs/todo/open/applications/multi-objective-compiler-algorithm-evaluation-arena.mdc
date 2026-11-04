@@ -151,6 +151,10 @@ appearing equally "perfect" after crossing an arbitrary threshold.
   stderr after real child capture; the substituted factory is bypassed.
   This protects local report construction, not independently authenticated
   execution. The separate exact-command identity requirement is unchanged.
+- Native transport-owned deadline errors and exception classification now
+  use an import-bound `subprocess.TimeoutExpired` type. Four red-first cases
+  had leaked substituted errors or a non-exception `TypeError` for null and
+  binary stdin. This guards the local deadline verdict, not OS authenticity.
 - The target producer now binds native emitter and VM completion argument
   lists to exact prepared guest commands before interpreting their output;
   the emitter receives a copy so in-place mutation cannot rewrite the expected

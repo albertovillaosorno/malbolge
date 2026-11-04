@@ -377,6 +377,10 @@ standard-library constructor rather than a replaceable public factory. Four
 red-first substitutions previously changed command, exit code or output bytes
 after a real child had finished; all now retain the captured native values.
 This protects local report construction, not the authenticity of OS execution.
+Timeout failures likewise retain the original `subprocess.TimeoutExpired` type
+when its public alias changes. Four red-first deadline cases cover both null
+stdin and binary stdin, including non-exception replacement aliases. This
+protects local transport decisions, not the OS or other process providers.
 
 To measure a second **real non-EOF classic target pilot**, use:
 
