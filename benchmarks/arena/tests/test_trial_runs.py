@@ -142,3 +142,14 @@ def test_trial_source_limit_rejects_suppressed_error_hook(
     monkeypatch.setattr(trial_runs, "_fail", lambda _message: None)
     with pytest.raises(trial_runs.TrialRunError, match="byte limit"):
         trial_runs.parse_trial_run(oversized)
+
+
+@pytest.mark.parametrize("noncanonical", ["abc", "G" * 64])
+def test_trial_source_rejects_substituted_digest_validator(
+    monkeypatch: pytest.MonkeyPatch,
+    noncanonical: str,
+) -> None:
+    """Matching source values cannot authorize a noncanonical digest."""
+    monkeypatch.setattr(trial_runs, "_digest", lambda value: value)
+    with pytest.raises(trial_runs.TrialRunError, match="lowercase SHA-256"):
+        trial_runs.parse_trial_run(_manifest(noncanonical))

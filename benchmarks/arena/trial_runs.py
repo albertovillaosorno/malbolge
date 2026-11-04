@@ -106,6 +106,9 @@ def _admit_text(text: str) -> None:
 _SOURCE_ADMIT_TEXT = _admit_text
 
 
+_SOURCE_DIGEST = _digest
+
+
 def parse_trial_run(text: str) -> TrialRun:
     """Parse the arena extension without replacing the core run validator.
 
@@ -143,7 +146,7 @@ def parse_trial_run(text: str) -> TrialRun:
     trial = table["trial"]
     if type(trial) is not int or trial < 0:
         _SOURCE_FAIL("arena_trial requires nonnegative integer trial")
-    digest = _digest(table["raw_sha256"])
+    digest = _SOURCE_DIGEST(table["raw_sha256"])
     # The native shape of a returned mapping does not prove that its values
     # were parsed from this manifest. Compare against the retained source
     # parser before binding a trial number or raw-file hash.

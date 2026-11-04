@@ -109,3 +109,17 @@ def test_budget_source_limit_rejects_suppressed_error_hook(
     monkeypatch.setattr(budget_links, "_fail", lambda _message: None)
     with pytest.raises(budget_links.BudgetLinkError, match="byte limit"):
         budget_links.parse_run_budgets(oversized)
+
+
+@pytest.mark.parametrize("forged_seconds", [0, -3])
+def test_budget_source_rejects_substituted_positive_integer_validator(
+    monkeypatch: pytest.MonkeyPatch,
+    forged_seconds: int,
+) -> None:
+    """Matching source values cannot authorize nonpositive resource budgets."""
+    manifest = MANIFEST.replace("seconds = 3", f"seconds = {forged_seconds}")
+    monkeypatch.setattr(
+        budget_links, "_positive_integer", lambda table, key: table[key]
+    )
+    with pytest.raises(budget_links.BudgetLinkError, match="positive integer"):
+        budget_links.parse_run_budgets(manifest)

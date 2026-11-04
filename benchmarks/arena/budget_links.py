@@ -98,6 +98,9 @@ def _admit_text(text: str) -> None:
 _SOURCE_ADMIT_TEXT = _admit_text
 
 
+_SOURCE_POSITIVE_INTEGER = _positive_integer
+
+
 def parse_run_budgets(text: str) -> RunBudgets:
     """Read optional strict arena budget links from experiment-run TOML.
 
@@ -125,8 +128,8 @@ def parse_run_budgets(text: str) -> RunBudgets:
         _SOURCE_FAIL("experiment run budget table is missing")
     if any(type(key) is not str for key in budget):
         _SOURCE_FAIL("experiment run budget table requires native string keys")
-    seconds = _positive_integer(budget, "seconds")
-    memory_mib = _positive_integer(budget, "memory_mib")
+    seconds = _SOURCE_POSITIVE_INTEGER(budget, "seconds")
+    memory_mib = _SOURCE_POSITIVE_INTEGER(budget, "memory_mib")
     # A substituted decoder can return a perfectly native but fabricated
     # budget. Compare the admitted fields with an import-time bound parser of
     # the actual source, not another invocation through the mutable module.
