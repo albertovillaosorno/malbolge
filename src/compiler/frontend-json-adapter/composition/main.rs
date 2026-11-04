@@ -104,6 +104,7 @@ fn execute() -> Result<(), String> {
     let mode_arg = match mode {
         FrontendGuestMode::EmptyVoid => "--empty-void",
         FrontendGuestMode::InitialZeroOutput => "--initial-zero-output",
+        FrontendGuestMode::SeededByteLiteral => "--seeded-byte-literal",
     };
     let mut child = command
         .args(["--", mode_arg, "--typed-stdin"])

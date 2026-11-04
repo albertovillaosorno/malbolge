@@ -179,7 +179,72 @@ class RepositoryToolCompilerTests(unittest.TestCase):
             self.assertEqual(executed.stdout, b"\x00\x00")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:3\n")
 
-    def test_native_zero_output_emits_real_nul_and_nonzero_is_rejected(self) -> None:
+    def test_witnessed_nonzero_c_literals_emit_actual_guest_bytes(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            # The independently witnessed seeded-layout table is count-specific.
+            for byte, outputs in ((23, 1), (65, 2), (146, 3)):
+                with self.subTest(byte=byte, outputs=outputs):
+                    source = root / f"literal-{byte}.c"
+                    target = root / f"literal-{byte}.malbolge"
+                    statements = " ".join(f"putchar({byte});" for _ in range(outputs))
+                    _ = source.write_text(
+                        f"#include <stdio.h>\nvoid emit(void) {{ {statements} return; }}\n",
+                        encoding="ascii",
+                    )
+                    compiled = subprocess.run(
+                        self._command(source, target, "--capsule"),
+                        capture_output=True,
+                        check=False,
+                        timeout=120,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(vm), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, bytes([byte]) * outputs)
+                    self.assertRegex(
+                        executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                    )
+
+    def test_unwitnessed_or_mixed_c_literals_do_not_publish(self) -> None:
+        _ = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            for index, statements in enumerate(
+                (
+                    "putchar(1);",
+                    "putchar(23); putchar(23);",
+                    "putchar(23); putchar(65);",
+                    "putchar(256);",
+                    "putchar(0x17);",
+                )
+            ):
+                with self.subTest(source=statements):
+                    source = root / f"rejected-{index}.c"
+                    target = root / f"rejected-{index}.malbolge"
+                    _ = source.write_text(
+                        f"#include <stdio.h>\nvoid emit(void) {{ {statements} return; }}\n",
+                        encoding="ascii",
+                    )
+                    compiled = subprocess.run(
+                        self._command(source, target, "--capsule"),
+                        capture_output=True,
+                        check=False,
+                        timeout=120,
+                    )
+                    self.assertNotEqual(compiled.returncode, 0)
+                    self.assertFalse(target.exists())
+                    self.assertTrue(compiled.stderr)
+
+    def test_native_zero_output_emits_real_nul_and_unwitnessed_nonzero_refuses(
+        self,
+    ) -> None:
         vm = self._real_binaries()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
             directory = Path(temporary)
@@ -217,7 +282,9 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                 timeout=120,
             )
             self.assertNotEqual(rejected.returncode, 0)
-            self.assertIn(b"normalized frontend rejected", rejected.stderr)
+            # A canonical nonzero byte passes C/IR admission, but this
+            # byte/count pair has no independently verified guest layout.
+            self.assertIn(b"layout backend exited unsuccessfully", rejected.stderr)
             self.assertFalse(rejected_target.exists())
 
 

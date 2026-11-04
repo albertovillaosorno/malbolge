@@ -9,20 +9,20 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Closed normalized Clang-JSON to typed void/one-zero-output adapter.
+//   - Closed normalized Clang-JSON to typed void/literal-output adapter.
 // - Must-Not:
 //   - Parse C, reinterpret calls, silently drop effects, or bypass typed
 //     admission.
 // - Allows:
 //   - Inputs: bounded version-one normalized frontend JSON bytes.
-//   - Outputs: canonical MCTI for no-effect void or exact putchar(0) source.
+//   - Outputs: canonical MCTI for no-effect void or witnessed literal output.
 //   - Side effects: none.
 // - Split-When:
 //   - General C byte-I/O gains independently modeled effect semantics.
 // - Merge-When:
 //   - Native frontend composition owns equivalent validated JSON decoding.
 // - Summary:
-//   - Connects exact C semantics to tested typed void and zero-output slices.
+//   - Connects exact C semantics to tested typed void and literal-output slices.
 // - Description:
 //   - Unknown nodes, additional effects, identity/profile drift all fail closed.
 // - Usage:
@@ -65,10 +65,13 @@ pub enum FrontendGuestMode {
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
     InitialZeroOutput,
+    /// Emit an independently witnessed nonzero byte using guest rotation.
+    SeededByteLiteral,
 }
 
 /// Canonical typed-IR bytes paired with their independently checked guest mode.
 pub type CanonicalGuestProjection = (Vec<u8>, FrontendGuestMode);
+type LiteralOutputProjection = (Vec<u8>, u8);
 
 /// A rejected normalized frontend artifact or typed-IR projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -150,8 +153,9 @@ struct Artifact {
     source: Source,
 }
 
-struct ZeroOutputNodes<'node> {
+struct LiteralOutputNodes<'node> {
     body: &'node Node,
+    byte: u8,
     calls: Vec<(&'node Node, &'node Node)>,
     function: &'node Node,
     returned: &'node Node,
@@ -459,27 +463,35 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
     )
 }
 
-// Each direct `putchar(0)` child must have the exact source-bound Clang
+// Each direct `putchar(N)` child must have the exact source-bound Clang
 // four-node preorder: call -> function decay -> declaration ref, and call
-// -> literal. Calls are ordered siblings, never reordered or discarded.
+// -> canonical decimal byte literal. Calls are ordered siblings, never discarded.
 #[expect(
     clippy::too_many_lines,
     reason = "exact Clang node metadata and positional proof stay together"
 )]
-fn valid_zero_output_call(
+fn admitted_output_byte(
     group: &[Node],
     body: &Node,
     previous_end: u32,
     expected_id: u32,
-) -> bool {
-    let [call, cast, callee, zero] = group else {
-        return false;
+) -> Option<u8> {
+    let [call, cast, callee, literal] = group else {
+        return None;
     };
+    let digits = literal.literal.as_deref()?;
+    // Literal spelling must agree with Clang's evaluated i32 constant. The
+    // native frontend obtains this metadata from Clang, not C text scanning.
+    let byte = digits.parse::<u8>().ok()?;
+    if digits != byte.to_string() || literal.constant_integer.as_deref() != Some(digits) {
+        return None;
+    }
+    let width = u32::try_from(digits.len()).ok()?;
     let call_span = &call.span;
     let cast_span = &cast.span;
     let callee_span = &callee.span;
-    let literal_span = &zero.span;
-    call.id == expected_id
+    let literal_span = &literal.span;
+    let valid = call.id == expected_id
         && call.parent == body.id
         && call.kind == "call-expression"
         && call.type_name.as_deref() == Some("i32")
@@ -494,13 +506,11 @@ fn valid_zero_output_call(
         && callee.kind == "declaration-reference-expression"
         && callee.type_name.as_deref() == Some("fn(i32)->i32")
         && callee.reference.as_deref() == Some("external:putchar")
-        && zero.id == expected_id.saturating_add(3)
-        && zero.parent == call.id
-        && zero.kind == "integer-literal"
-        && zero.type_name.as_deref() == Some("i32")
-        && zero.constant_integer.as_deref() == Some("0")
-        && zero.literal.as_deref() == Some("0")
-        && [call, cast, callee, zero].iter().all(|node| {
+        && literal.id == expected_id.saturating_add(3)
+        && literal.parent == call.id
+        && literal.kind == "integer-literal"
+        && literal.type_name.as_deref() == Some("i32")
+        && [call, cast, callee, literal].iter().all(|node| {
             node.name.is_none()
                 && node.definition.is_none()
                 && node.inline_specified.is_none()
@@ -510,10 +520,10 @@ fn valid_zero_output_call(
         && [call, cast, callee]
             .iter()
             .all(|node| node.constant_integer.is_none() && node.literal.is_none())
-        && [call, callee, zero]
+        && [call, callee, literal]
             .iter()
             .all(|node| node.operation.is_none())
-        && [cast, zero].iter().all(|node| node.reference.is_none())
+        && [cast, literal].iter().all(|node| node.reference.is_none())
         && call_span.begin.byte > previous_end
         && call_span.end.byte < body.span.end.byte
         && call_span.begin.byte == cast_span.begin.byte
@@ -522,8 +532,11 @@ fn valid_zero_output_call(
         && cast_span.end.byte.checked_add(1) == Some(literal_span.begin.byte)
         && literal_span.end.byte < call_span.end.byte
         && cast_span.begin.byte.checked_add(7) == Some(cast_span.end.byte)
-        && literal_span.begin.byte.checked_add(1) == Some(literal_span.end.byte)
-        && call_span.begin.byte.checked_add(10) == Some(call_span.end.byte)
+        && literal_span.begin.byte.checked_add(width) == Some(literal_span.end.byte)
+        && width
+            .checked_add(9)
+            .and_then(|call_width| call_span.begin.byte.checked_add(call_width))
+            == Some(call_span.end.byte)
         && [call_span, cast_span, callee_span, literal_span]
             .iter()
             .all(|span| {
@@ -533,16 +546,16 @@ fn valid_zero_output_call(
                     && span.end.column != 0
                     && span.begin.byte < span.end.byte
                     && (span.begin.line != span.end.line || span.begin.column < span.end.column)
-            })
+            });
+    valid.then_some(byte)
 }
 
-// A bounded sequence of direct calls keeps the same exact metadata and
-// span proof as one call, with no gap in preorder IDs or intervening effects.
+// A bounded sequence must use one identical literal and no other effects.
 #[expect(
     clippy::too_many_lines,
-    reason = "closed bounded C zero-output preorder admission"
+    reason = "closed bounded C literal-output preorder admission"
 )]
-fn admit_zero_output_nodes(nodes: &[Node]) -> Result<ZeroOutputNodes<'_>, FrontendJsonError> {
+fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, FrontendJsonError> {
     let [function, body, rest @ ..] = nodes else {
         return Err(FrontendJsonError::Unsupported);
     };
@@ -601,6 +614,7 @@ fn admit_zero_output_nodes(nodes: &[Node]) -> Result<ZeroOutputNodes<'_>, Fronte
         return Err(FrontendJsonError::Unsupported);
     }
     let mut calls = Vec::with_capacity(groups.len());
+    let mut selected_byte = None;
     let mut previous_end = body.span.begin.byte;
     for (index, group) in groups.iter().enumerate() {
         let id = u32::try_from(index)
@@ -608,31 +622,37 @@ fn admit_zero_output_nodes(nodes: &[Node]) -> Result<ZeroOutputNodes<'_>, Fronte
             .and_then(|value| value.checked_mul(4))
             .and_then(|value| value.checked_add(3))
             .ok_or(FrontendJsonError::Unsupported)?;
-        if !valid_zero_output_call(group, body, previous_end, id) {
+        let byte = admitted_output_byte(group, body, previous_end, id)
+            .ok_or(FrontendJsonError::Unsupported)?;
+        if selected_byte.is_some_and(|previous| previous != byte) {
             return Err(FrontendJsonError::Unsupported);
         }
-        let [call, _, _, zero] = group;
+        selected_byte = Some(byte);
+        let [call, _, _, literal] = group;
         previous_end = call.span.end.byte;
-        calls.push((call, zero));
+        calls.push((call, literal));
     }
     if previous_end >= returned.span.begin.byte {
         return Err(FrontendJsonError::Unsupported);
     }
-    Ok(ZeroOutputNodes {
+    Ok(LiteralOutputNodes {
         body,
+        byte: selected_byte.ok_or(FrontendJsonError::Unsupported)?,
         calls,
         function,
         returned,
     })
 }
 
-/// Compile one through 32 source-proven `putchar(0)` calls and final return
-/// into a successful-output trace, retaining exact source provenance.
+/// Compile one through 32 identical source-proven decimal `putchar(N)` calls
+/// and final return into a successful-output trace with exact provenance.
 #[expect(
     clippy::too_many_lines,
     reason = "canonical typed-effect projection and re-admission"
 )]
-fn canonical_zero_output_typed_ir(bytes: &[u8]) -> Result<Vec<u8>, FrontendJsonError> {
+fn canonical_literal_output_typed_ir(
+    bytes: &[u8],
+) -> Result<LiteralOutputProjection, FrontendJsonError> {
     if bytes.is_empty() || bytes.len() > MAX_FRONTEND_JSON_BYTES {
         return Err(FrontendJsonError::Malformed);
     }
@@ -649,12 +669,13 @@ fn canonical_zero_output_typed_ir(bytes: &[u8]) -> Result<Vec<u8>, FrontendJsonE
     {
         return Err(FrontendJsonError::Unsupported);
     }
-    let ZeroOutputNodes {
+    let LiteralOutputNodes {
         function,
         body,
+        byte,
         calls,
         returned,
-    } = admit_zero_output_nodes(&input.nodes)?;
+    } = admit_literal_output_nodes(&input.nodes)?;
     let void_function = FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
         body_span: span(&body.span),
         definition: String::from("definition"),
@@ -698,7 +719,7 @@ fn canonical_zero_output_typed_ir(bytes: &[u8]) -> Result<Vec<u8>, FrontendJsonE
     let mut instructions = Vec::with_capacity(calls.len().saturating_add(1));
     instructions.push(LocatedInstruction::new(
         Instruction::ConstantInteger {
-            constant: IntegerConstant::new(8, vec![0]),
+            constant: IntegerConstant::new(8, vec![byte]),
             result: ValueId::new(0),
             type_id: TypeId::new(0),
         },
@@ -743,7 +764,7 @@ fn canonical_zero_output_typed_ir(bytes: &[u8]) -> Result<Vec<u8>, FrontendJsonE
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    Ok(encoded)
+    Ok((encoded, byte))
 }
 
 /// Project the two supported C families without dropping observable output.
@@ -757,5 +778,12 @@ pub fn canonical_guest_typed_ir(
     if let Ok(wire) = canonical_void_typed_ir(bytes) {
         return Ok((wire, FrontendGuestMode::EmptyVoid));
     }
-    canonical_zero_output_typed_ir(bytes).map(|wire| (wire, FrontendGuestMode::InitialZeroOutput))
+    canonical_literal_output_typed_ir(bytes).map(|(wire, byte)| {
+        let mode = if byte == 0 {
+            FrontendGuestMode::InitialZeroOutput
+        } else {
+            FrontendGuestMode::SeededByteLiteral
+        };
+        (wire, mode)
+    })
 }

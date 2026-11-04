@@ -77,7 +77,7 @@ fn input() -> Value {
 }
 
 // Exact pinned-Clang preorder is four children per direct output call.
-// Repeating the `putchar(0); ` statement adds exactly twelve source bytes.
+// The source spelling uses canonical decimal literals of one to three digits.
 #[expect(
     clippy::arithmetic_side_effects,
     clippy::indexing_slicing,
@@ -85,20 +85,24 @@ fn input() -> Value {
     clippy::default_numeric_fallback,
     reason = "closed synthetic Clang fixture spans for at most 33 bounded calls"
 )]
-fn repeated_input(outputs: u32) -> Value {
+fn repeated_literal_input(byte: u8, outputs: u32) -> Value {
     let mut source = input();
-    let extra_bytes = outputs.saturating_sub(1).saturating_mul(12);
-    let end = 58 + extra_bytes;
+    let literal = byte.to_string();
+    let digits = u32::try_from(literal.len()).unwrap_or_default();
+    let call_width = 9 + digits;
+    let total_extra = outputs.saturating_mul(digits.saturating_sub(1))
+        + outputs.saturating_sub(1).saturating_mul(12);
+    let end = 58 + total_extra;
     source["nodes"][0]["span"] = span(19, end, 2, 19);
     source["nodes"][1]["span"] = span(35, end, 2, 19);
     let source_span = |begin, end| span(begin, end, 2, 19);
     let mut nodes = vec![source["nodes"][0].clone(), source["nodes"][1].clone()];
     for index in 0..outputs {
-        let begin = 37 + index * 12;
+        let begin = 37 + index * (call_width + 2);
         let id = 3 + index * 4;
         nodes.push(json!({
             "id":id,"parent":2,"kind":"call-expression",
-            "span":source_span(begin,begin+10),
+            "span":source_span(begin,begin+call_width),
             "type":"i32","reference":"external:putchar"
         }));
         nodes.push(json!({
@@ -108,21 +112,24 @@ fn repeated_input(outputs: u32) -> Value {
         }));
         nodes.push(json!({
             "id":id+2,"parent":id+1,"kind":"declaration-reference-expression",
-            "span":source_span(begin,begin+7),
-            "type":"fn(i32)->i32","reference":"external:putchar"
+            "span":source_span(begin,begin+7),"type":"fn(i32)->i32","reference":"external:putchar"
         }));
         nodes.push(json!({
             "id":id+3,"parent":id,"kind":"integer-literal",
-            "span":source_span(begin+8,begin+9),
-            "type":"i32","constant_integer":"0","literal":"0"
+            "span":source_span(begin+8,begin+8+digits),
+            "type":"i32","constant_integer":literal,"literal":literal
         }));
     }
     nodes.push(json!({
         "id":3+outputs*4,"parent":2,"kind":"return-statement",
-        "span":source_span(49+extra_bytes,55+extra_bytes)
+        "span":source_span(49+total_extra,55+total_extra)
     }));
     source["nodes"] = json!(nodes);
     source
+}
+
+fn repeated_input(outputs: u32) -> Value {
+    repeated_literal_input(0, outputs)
 }
 
 #[test]
@@ -167,6 +174,105 @@ fn repeated_zero_calls_preserve_source_and_emit_order() -> Result<(), String> {
             Ok(RunOutcome::Terminated { steps, .. }) if steps == output_count + 1
         ));
         assert_eq!(vm.output(), vec![0; output_count]);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "real VM witness failure must identify the offending source literal"
+)]
+fn witnessed_nonzero_literals_reach_real_guest_byte_output() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    for (byte, outputs) in [(23, 1u32), (65, 2), (146, 3)] {
+        let source = repeated_literal_input(byte, outputs);
+        let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+            .map_err(|error| format!("C literal {byte}: {error:?}"))?;
+        assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+        let module = typed::canonical_module(&wire)
+            .map_err(|error| format!("decode nonzero MCTI: {error:?}"))?;
+        let instructions = module
+            .functions()
+            .first()
+            .and_then(|function| function.blocks().first())
+            .ok_or("missing compiled C literal block")?
+            .instructions();
+        assert_eq!(
+            instructions.len(),
+            usize::try_from(outputs).unwrap_or_default() + 1
+        );
+        assert!(matches!(
+            instructions.first().map(typed::LocatedInstruction::instruction),
+            Some(typed::Instruction::ConstantInteger { constant, .. })
+                if constant.bit_width() == 8 && constant.little_endian() == [byte]
+        ));
+        let compiled = adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile)
+            .map_err(|error| format!("compile guest {byte}: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("load seeded guest {byte}: {error:?}"))?;
+        assert!(matches!(
+            vm.run(compiled.layout().executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(
+            vm.output(),
+            vec![byte; usize::try_from(outputs).unwrap_or_default()]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::default_numeric_fallback,
+    clippy::panic_in_result_fn,
+    reason = "fixed-shape rejected unsupported or drifted C literal fixtures"
+)]
+fn unsupported_or_inconsistent_nonzero_calls_fail_closed() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    let mut mutations = vec![
+        repeated_literal_input(1, 1),
+        repeated_literal_input(23, 2),
+        repeated_literal_input(65, 1),
+        repeated_literal_input(255, 1),
+    ];
+    let mut mismatched = repeated_literal_input(65, 2);
+    mismatched["nodes"][9]["literal"] = json!("66");
+    mismatched["nodes"][9]["constant_integer"] = json!("66");
+    mutations.push(mismatched);
+    let mut hex = repeated_literal_input(23, 1);
+    hex["nodes"][5]["literal"] = json!("0x17");
+    mutations.push(hex);
+    let mut drifted_constant = repeated_literal_input(23, 1);
+    drifted_constant["nodes"][5]["constant_integer"] = json!("22");
+    mutations.push(drifted_constant);
+    let mut range = repeated_literal_input(23, 1);
+    range["nodes"][5]["literal"] = json!("256");
+    range["nodes"][5]["constant_integer"] = json!("256");
+    mutations.push(range);
+    let mut forged_span = repeated_literal_input(65, 2);
+    forged_span["nodes"][9]["span"]["end"]["byte"] = json!(59);
+    mutations.push(forged_span);
+    for (index, source) in mutations.iter().enumerate() {
+        // An unsupported literal may form valid MCTI but MUST be refused by
+        // the independent guest layout; the source adapter itself refuses
+        // incorrect literals, spans, and mixed-byte traces.
+        if index < 4 {
+            let (wire, mode) = canonical_guest_typed_ir(&bytes(source))
+                .map_err(|error| format!("C literal {index} admission: {error:?}"))?;
+            assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+            assert!(
+                adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile).is_err(),
+                "unsupported source byte {index} reached target"
+            );
+        } else {
+            assert!(
+                canonical_guest_typed_ir(&bytes(source)).is_err(),
+                "C literal source mutation {index} was accepted"
+            );
+        }
     }
     Ok(())
 }
@@ -278,7 +384,7 @@ fn forged_output_call_and_metadata_do_not_compile() {
     changed["nodes"][3]["operation"] = json!("lvalue-to-rvalue");
     mutations.push(changed);
     let mut changed = base.clone();
-    changed["nodes"][5]["literal"] = json!("1");
+    changed["nodes"][5]["literal"] = json!("01");
     changed["nodes"][5]["constant_integer"] = json!("1");
     mutations.push(changed);
     let mut changed = base.clone();
