@@ -1204,11 +1204,54 @@ fn witnessed_printable_single_literals_use_guest_crazy_with_exact_phases() -> Re
 }
 
 #[test]
+fn witnessed_double_rotation_single_literals_execute_two_real_guest_writes() -> Result<(), String> {
+    let profile = current_profile();
+    for (byte, padding) in [(b'(', 51), (b')', 48), (b'*', 45)] {
+        let layout = encode_rotated_byte_literal(&source(byte, 1)?, profile)
+            .map_err(|error| format!("double-rotation {byte} rejected: {error:?}"))?;
+        let steps = padding + 5;
+        let first_rotate = padding + 1;
+        let second_rotate = padding + 2;
+        if layout.source().len() != steps
+            || layout.executed_code_positions().len() != steps
+            || layout.data_write_positions().iter().flatten().count() != 2
+        {
+            return Err(format!("double-rotation {byte} guest geometry drift"));
+        }
+        for index in [first_rotate, second_rotate] {
+            let address = u32::try_from(index).map_err(|error| error.to_string())?;
+            if layout
+                .source()
+                .get(index)
+                .and_then(|cell| malbolge::decode_profile_instruction(u32::from(*cell), address))
+                != Some(b'*')
+            {
+                return Err(format!("double-rotation {byte} guest opcode drift"));
+            }
+        }
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), vec![255, 0, 128])
+            .map_err(|error| format!("double-rotation {byte} guest load: {error:?}"))?;
+        if !matches!(vm.run(steps), Ok(RunOutcome::Terminated { steps: count, .. }) if count == steps)
+            || vm.output() != [byte]
+            || vm.input_consumed() != 0
+        {
+            return Err(format!("double-rotation {byte} guest output drift"));
+        }
+        if encode_rotated_byte_literal(&source(byte, 2)?, profile).is_ok() {
+            return Err(format!(
+                "double-rotation {byte} leaked into repeated outputs"
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn seeded_literals_refuse_unsupported_values_and_profiles() -> Result<(), String> {
     const WITNESSED: &[u8] = &[
         4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 29, 36, 37, 38, 39,
-        43, 44, 53, 54, 56, 57, 62, 63, 65, 66, 80, 81, 83, 84, 90, 93, 157, 158, 159, 160, 161,
-        162, 251, 253,
+        40, 41, 42, 43, 44, 53, 54, 56, 57, 62, 63, 65, 66, 80, 81, 83, 84, 90, 93, 157, 158, 159,
+        160, 161, 162, 251, 253,
     ];
     for byte in u8::MIN..=u8::MAX {
         if WITNESSED.contains(&byte) {

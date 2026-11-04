@@ -121,9 +121,12 @@ current-profile bytes and no-op
 prefixes are `5` (53/39), `6` (54/22), `8` (56/36), `9` (57/19),
 `>` (62/30), `?` (63/47), `A` (65/27), `B` (66/65), `P` (80/3),
 `Q` (81/11), `S` (83/0), `T` (84/7), `Z` (90/1), and `]` (93/28).
-The `B` guest has 69 source cells. Every witness is re-executed
-with the normative VM on each bridge invocation, and none authorizes another
-byte, output count, or profile.
+The `B` guest has 69 source cells. Three separately witnessed single-output
+bytes use **two** real guest rotations after relocation: `(` (40/51),
+`)` (41/48), and `*` (42/45), shown as byte/no-op-prefix pairs. Their distinct
+source lengths and two data writes cannot be inferred from one-rotation
+witnesses. Every witness is re-executed with the normative VM on each bridge
+invocation, and none authorizes another byte, output count, or profile.
 For exactly two identical outputs, a **different** table
 admits `55, 64, 65, 66, 163, 164, 165, 182, 183, 200`. For exactly three
 identical outputs, an independently witnessed table admits `3, 4, 5, 6, 7,

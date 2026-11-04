@@ -345,6 +345,36 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                         executed.stderr, f"malbolge-steps-v1:{steps}\n".encode("ascii")
                     )
 
+    def test_real_clang_double_rotation_literals_reach_guest(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for name, call, expected, steps in (
+                ("open-paren", b"putchar('(');", b"(", 56),
+                ("close-paren", b"putchar(41);", b")", 53),
+                ("asterisk", b"putchar('*');", b"*", 50),
+            ):
+                with self.subTest(name=name):
+                    source = Path(temporary) / f"double-rotate-{name}.c"
+                    target = Path(temporary) / f"double-rotate-{name}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + call
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr, f"malbolge-steps-v1:{steps}\n".encode("ascii")
+                    )
+
     def test_real_clang_33_equal_literal_calls_execute_real_guest(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

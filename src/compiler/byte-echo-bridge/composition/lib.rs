@@ -72,6 +72,14 @@ const SINGLE_OUTPUT_CRAZY_WITNESSES: &[(u8, usize)] = &[
     (93, 28), // ']'
 ];
 
+// Separate exact one-output guests execute *two* rotations after relocation.
+// Their extra instruction changes code phases and loader-expanded source length.
+const SINGLE_OUTPUT_DOUBLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
+    (40, 51), // '('
+    (41, 48), // ')'
+    (42, 45), // '*'
+];
+
 /// Profile-specific `(byte, graphical no-op prefix)` rotation witnesses.
 /// Every candidate is independently re-executed by the normative VM.
 /// New witnesses beyond the first 26 prefixes use a bounded 94-phase scan.
@@ -922,6 +930,8 @@ pub enum ByteEchoBridgeError {
     UnsupportedEffectTrace,
 }
 
+// A finite source layout carries one or more guest arithmetic operations.
+type LiteralOutputWitness = (usize, &'static [LinearOpcode]);
 type RotatedByteSeedTable = &'static [(u8, usize)];
 
 // Each output count has a distinct positional decode and loader-expanded
@@ -1304,18 +1314,29 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
 
 // A witness must be tied to the exact output count: changing the count
 // changes both positional encoding and the guest's loader-expanded data.
-fn literal_output_witness(byte: u8, count: usize) -> Option<(usize, LinearOpcode)> {
+fn literal_output_witness(byte: u8, count: usize) -> Option<LiteralOutputWitness> {
     let seeds = rotated_byte_seeds(count)?;
     if let Some((_, padding)) = seeds.iter().find(|(value, _)| *value == byte) {
-        return Some((*padding, LinearOpcode::RotateData));
+        return Some((*padding, &[LinearOpcode::RotateData]));
     }
     if count != 1 {
         return None;
     }
-    SINGLE_OUTPUT_CRAZY_WITNESSES
+    if let Some((_, padding)) = SINGLE_OUTPUT_CRAZY_WITNESSES
         .iter()
         .find(|(value, _)| *value == byte)
-        .map(|(_, padding)| (*padding, LinearOpcode::CrazyData))
+    {
+        return Some((*padding, &[LinearOpcode::CrazyData]));
+    }
+    SINGLE_OUTPUT_DOUBLE_ROTATION_WITNESSES
+        .iter()
+        .find(|(value, _)| *value == byte)
+        .map(|(_, padding)| {
+            (
+                *padding,
+                &[LinearOpcode::RotateData, LinearOpcode::RotateData][..],
+            )
+        })
 }
 
 /// Emits a nonzero `u8` one to thirty-three times using guest data operations.
@@ -1323,9 +1344,9 @@ fn literal_output_witness(byte: u8, count: usize) -> Option<(usize, LinearOpcode
 /// Accepts one `MaterializeU8` with one to thirty-three same-SSA `ByteOutput`s and
 /// `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
-/// word and rotates it in the guest, never on the host. The separately
-/// witnessed single printable-byte literals use exact `p` prefixes instead
-/// of `*`; they do not authorize other bytes or output counts. Every chosen
+/// word and rotates it in the guest, never on the host. Separate exact
+/// one-output witnesses use either `p` or two consecutive `*` operations;
+/// they do not authorize other bytes or output counts. Every chosen
 /// witness is re-executed in the independent VM before publication.
 ///
 /// # Errors
@@ -1365,7 +1386,8 @@ pub fn encode_rotated_byte_literal(
     let (padding, arithmetic) = literal_output_witness(scalar.bits(), outputs.len())
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
     let mut operations = vec![LinearOpcode::NoOperation; padding];
-    operations.extend([LinearOpcode::RelocateDataPointer, arithmetic]);
+    operations.push(LinearOpcode::RelocateDataPointer);
+    operations.extend_from_slice(arithmetic);
     operations.extend(repeat_n(LinearOpcode::OutputByte, outputs.len()));
     operations.push(LinearOpcode::Halt);
     let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
