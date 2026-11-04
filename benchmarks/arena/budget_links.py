@@ -92,6 +92,9 @@ def _admit_text(text: str) -> None:
         _fail("budget run manifest exceeds byte limit")
 
 
+_SOURCE_ADMIT_TEXT = _admit_text
+
+
 def parse_run_budgets(text: str) -> RunBudgets:
     """Read optional strict arena budget links from experiment-run TOML.
 
@@ -102,7 +105,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
         BudgetLinkError: The run lacks the required declared resource limits.
 
     """
-    _admit_text(text)
+    _SOURCE_ADMIT_TEXT(text)
     try:
         document = tomllib.loads(text)
     except Exception as error:

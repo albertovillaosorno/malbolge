@@ -89,3 +89,13 @@ def test_source_budgets_ignore_substituted_result_constructor(
     with monkeypatch.context() as patched:
         patched.setattr(budget_links, "RunBudgets", forged_constructor)
         assert budget_links.parse_run_budgets(MANIFEST) == EXPECTED
+
+
+def test_budget_source_limit_rejects_substituted_text_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced local size preflight cannot admit oversized source TOML."""
+    oversized = MANIFEST + "#" + "x" * budget_links.MAX_RUN_MANIFEST_BYTES
+    monkeypatch.setattr(budget_links, "_admit_text", lambda _text: None)
+    with pytest.raises(budget_links.BudgetLinkError, match="byte limit"):
+        budget_links.parse_run_budgets(oversized)

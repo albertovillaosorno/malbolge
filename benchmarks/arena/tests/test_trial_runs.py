@@ -122,3 +122,13 @@ def test_source_run_identity_ignores_substituted_result_constructor(
     with monkeypatch.context() as patched:
         patched.setattr(trial_runs, "TrialRun", forged_constructor)
         assert trial_runs.parse_trial_run(_manifest("a" * 64)) == expected
+
+
+def test_trial_source_limit_rejects_substituted_text_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced local size preflight cannot admit oversized source TOML."""
+    oversized = _manifest("a" * 64) + "#" + "x" * trial_runs.MAX_RUN_MANIFEST_BYTES
+    monkeypatch.setattr(trial_runs, "_admit_text", lambda _text: None)
+    with pytest.raises(trial_runs.TrialRunError, match="byte limit"):
+        trial_runs.parse_trial_run(oversized)

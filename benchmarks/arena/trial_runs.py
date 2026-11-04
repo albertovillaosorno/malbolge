@@ -100,6 +100,9 @@ def _admit_text(text: str) -> None:
         _fail("per-trial run manifest exceeds byte limit")
 
 
+_SOURCE_ADMIT_TEXT = _admit_text
+
+
 def parse_trial_run(text: str) -> TrialRun:
     """Parse the arena extension without replacing the core run validator.
 
@@ -110,7 +113,7 @@ def parse_trial_run(text: str) -> TrialRun:
         TrialRunError: The arena extension is malformed or missing.
 
     """
-    _admit_text(text)
+    _SOURCE_ADMIT_TEXT(text)
     try:
         document = tomllib.loads(text)
     except Exception as error:
