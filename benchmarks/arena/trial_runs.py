@@ -43,6 +43,9 @@ from benchmarks.arena import analyze
 
 # Preserve an independent source parse when a decoder provider is replaced.
 _SOURCE_TOML_LOADS = tomllib.loads
+# The source digest grammar must not follow late analyzer module substitutions.
+_SOURCE_SHA256_HEX_LENGTH = analyze.SHA256_HEX_LENGTH
+_SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
 
 EXTENSION_NAME = "arena_trial"
 EXTENSION_FIELDS = frozenset({"schema_version", "trial", "raw_sha256"})
@@ -67,9 +70,9 @@ def _fail(message: str) -> Never:
 
 
 def _digest(value: object) -> str:
-    if type(value) is not str or len(value) != analyze.SHA256_HEX_LENGTH:
+    if type(value) is not str or len(value) != _SOURCE_SHA256_HEX_LENGTH:
         _fail("arena_trial requires lowercase SHA-256 raw_sha256")
-    if not set(value) <= analyze.SHA256_ALPHABET:
+    if not set(value) <= _SOURCE_SHA256_ALPHABET:
         _fail("arena_trial requires lowercase SHA-256 raw_sha256")
     return value
 

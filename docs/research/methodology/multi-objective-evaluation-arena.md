@@ -181,6 +181,14 @@ forge native `seconds`, `memory_mib`, `trial`, or `raw_sha256` fields while the
 manifest text stayed unchanged; these conflicts now fail typed admission.
 This checks local parser consistency, not authenticated run provenance or
 physical verification.
+The per-trial digest decoder also captures the original 64-character lowercase
+SHA-256 grammar instead of consulting mutable analyzer-module policy constants.
+Two red-first substitutions previously admitted a three-character or uppercase
+`raw_sha256` in otherwise unchanged source TOML. Both now reject while canonical
+64-character lowercase trial identities remain valid. A combined 780
+per-trial, evidence and analyzer tests pass with zero arena BasedPyright
+messages. This is local input policy stability, not proof that a producer
+measured the referenced bytes.
 
 Version-two `arena-raw-v2` evidence adds an optional exact integer `energy_uj`
 (microjoules) cost to the six preexisting dimensions. Its CSV schema marker is
