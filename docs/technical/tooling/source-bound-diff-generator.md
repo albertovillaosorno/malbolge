@@ -3323,6 +3323,15 @@ passed with clean scoped Ruff and Git checks. Strict BasedPyright has five
 inherited source and 116 inherited test diagnostics, none in added lines.
 Both DCOs were signed and SHA-exact pushed to `origin/main`.
 
+A further native record continuity fix (`bf4e70d26`) pins the original
+`DiffRecipe`, `TransformMode`, `DiffDomain`, and `SourcePinEvidence` types.
+Consumer alias rebinding can no longer falsely deny admitted recipe,
+transform mode, domain, or provenance evidence, or change slot-owner checks.
+Six additional red-first cases now pass; 890 generator/domain/provenance/
+emitter tests passed postcommit, with scoped Ruff and Git checks clean.
+Five existing source and 116 existing test strict typing findings remain;
+none comes from the new code. The signed DCO was SHA-exact pushed to `main`.
+
 These guards do not prevent external filesystem races, direct trusted state
 mutation, or concurrent host changes. A fresh complete diff-suite verdict
 is still pending. `jig doctor --root .` remains degraded because its

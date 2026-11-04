@@ -1974,6 +1974,14 @@ format.
   to `origin/main`. A fresh complete diff run is still pending. `jig doctor`
   remains degraded (missing graph), and bounded `jig check --root .`
   exceeded 90 seconds (exit 124); global acceptance is not established.
+- The generator also pins native `DiffRecipe`, `TransformMode`, `DiffDomain`,
+  and `SourcePinEvidence` classes (`bf4e70d26`) for exact-type checks and
+  original slot-owner access after consumer alias rebinding. Six additional
+  red-first false-denial cases now pass; all 890 postcommit combined
+  generator/domain/provenance/emitter tests passed. Ruff and Git checks are
+  clean, with no new strict typing findings (five source and 116 test
+  diagnostics are inherited). The DCO was signed and SHA-exact pushed to
+  `origin/main`; full integrated and Jig acceptance remain open.
 
 
 - Protected exact-plan validation now retains import-original
