@@ -4377,3 +4377,66 @@ def test_target_echo_reference_git_rejects_mutated_launch_command(
         target_echo_reference._commit()  # ruff: ignore[private-member-access]
     assert len(launched) == 1
     assert launched[0][1] in ("rev-parse", "cat-file")
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    ("scenario", "diagnostic"),
+    [
+        ("plan", "exact StudyPlan"),
+        ("mode", "input mode must be"),
+        ("executable", "explicit absolute paths"),
+        ("quote", "JSON quote serializer failed"),
+    ],
+)
+def test_target_echo_study_error_alias_retains_native_admission(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    scenario: str,
+    diagnostic: str,
+) -> None:
+    """Late public exception replacement must not alter source rejections."""
+    original = target_echo_reference.TargetEchoStudyError
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "TargetEchoStudyError", replacement)
+        if scenario == "quote":
+
+            def bad_json(*_args: object, **_kwargs: object) -> None:
+                raise RuntimeError("untrusted serialization failure")
+
+            patched.setattr(target_echo_reference.json, "dumps", bad_json)
+        with pytest.raises(original, match=diagnostic):
+            if scenario == "plan":
+                target_echo_reference._validate_plan(
+                    cast("target_echo_reference.StudyPlan", object())
+                )
+            elif scenario == "mode":
+                target_echo_reference._validate_input_mode("invalid-mode")
+            elif scenario == "executable":
+                target_echo_reference._admit_executable(Path("relative"))
+            else:
+                target_echo_reference._quote("hostile")
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_target_echo_study_error_alias_preserves_native_error_detail(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Error renderer retains source-class literal detail under public drift."""
+    original = target_echo_reference.TargetEchoStudyError
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "TargetEchoStudyError", replacement)
+        assert (
+            target_echo_reference._safe_error_detail(original("original source detail"))
+            == "original source detail"
+        )
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_target_echo_study_error_alias_preserves_valid_source_quote(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """A public exception alias cannot change stable literal JSON quoting."""
+    with monkeypatch.context() as patched:
+        patched.setattr(target_echo_reference, "TargetEchoStudyError", replacement)
+        assert target_echo_reference._quote("original source") == '"original source"'

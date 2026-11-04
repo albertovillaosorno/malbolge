@@ -138,6 +138,11 @@ class TargetEchoStudyError(ValueError):
     """The bounded target benchmark cannot establish its claimed evidence."""
 
 
+# Keep source-native study rejections and trusted diagnostic classification
+# independent of consumer changes to the public error export.
+_SOURCE_TARGET_ECHO_STUDY_ERROR = TargetEchoStudyError
+
+
 @dataclass(frozen=True, slots=True)
 class StudyPlan:
     """Explicit bounded source geometry and matched repetitions."""
@@ -179,7 +184,7 @@ class _Context:
 
 
 def _fail(message: str) -> Never:
-    raise TargetEchoStudyError(message)
+    raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message)
 
 
 def _quote(text: str) -> str:
@@ -190,7 +195,7 @@ def _quote(text: str) -> str:
         observed = json.dumps(text)
     except Exception as error:
         message = f"target echo JSON quote serializer failed: {type(error).__name__}"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if type(observed) is not str or observed != source:
         _fail("target echo JSON quote serializer disagrees with source")
     return source
@@ -257,7 +262,7 @@ def _safe_error_detail(
 
     """
     if type(error) is trusted or type(error) in (
-        TargetEchoStudyError,
+        _SOURCE_TARGET_ECHO_STUDY_ERROR,
         analyze.ArenaError,
         evidence.EvidenceError,
         experiment_manifest.ExperimentManifestError,
@@ -316,7 +321,7 @@ def _admit_executable(path: Path) -> Path:
         redirected = path.is_symlink()
     except Exception as error:
         message = "target echo executable is missing"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
         type(details) is not os.stat_result
         or type(regular) is not bool
@@ -351,7 +356,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
         source_digest = _NATIVE_SHA256()
     except Exception as error:
         message = "target echo executable SHA-256 setup failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     for path in (emitter, runner):
         try:
             original = path.lstat()
@@ -433,14 +438,14 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             if isinstance(error, TargetEchoStudyError):
                 raise
             message = "target echo executable identity changed"
-            raise TargetEchoStudyError(message) from error
+            raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     try:
         reported = digest.hexdigest()
         verified = independent.hexdigest()
         source = source_digest.hexdigest()
     except Exception as error:
         message = "target echo executable SHA-256 completion failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
         type(reported) is not str
         or type(verified) is not str
@@ -473,7 +478,7 @@ def _commit() -> str:
     except Exception as error:
         # A host resolver is not allowed to leak arbitrary ordinary faults.
         message = "target echo source revision Git lookup failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if git is None:
         _fail("target echo reference requires Git")
     if type(git) is not str or not git or "\0" in git or not Path(git).is_absolute():
@@ -487,11 +492,11 @@ def _commit() -> str:
         executable = os.access(git, os.X_OK)
         if type(executable) is not bool:
             _fail("target echo source revision Git executable invalid access")
-    except TargetEchoStudyError:
+    except _SOURCE_TARGET_ECHO_STUDY_ERROR:
         raise
     except Exception as error:
         message = "target echo source revision Git executable unavailable"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if not stat.S_ISREG(mode) or not executable:
         _fail("target echo source revision Git executable is not an ordinary file")
     # Source revision must belong to this checkout, not an ambient Git dir.
@@ -502,11 +507,11 @@ def _commit() -> str:
                 _fail("target echo Git environment requires native strings")
             if not name.startswith("GIT_"):
                 clean_env[name] = value
-    except TargetEchoStudyError:
+    except _SOURCE_TARGET_ECHO_STUDY_ERROR:
         raise
     except Exception as error:
         message = "target echo Git environment inspection failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     command = [git, "rev-parse", "HEAD"]
     # Preserve the actual prepared object to reject a copied child receipt.
     prepared = command.copy()
@@ -523,7 +528,7 @@ def _commit() -> str:
         )
     except Exception as error:
         message = "target echo reference cannot bind source revision"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
         type(output) is not sp.CompletedProcess
         or type(output.args) is not list
@@ -698,7 +703,7 @@ def _verified_steps(
         return outcome, None
     try:
         return outcome, _parse_step_receipt(execution.stderr)
-    except TargetEchoStudyError:
+    except _SOURCE_TARGET_ECHO_STUDY_ERROR:
         return "tool_failed", None
 
 
@@ -1074,11 +1079,11 @@ def _admit_new_study_workspace(receipt: object) -> Path:
         ):
             _fail("target echo study workspace allocator returned foreign path")
         details = directory.lstat()
-    except TargetEchoStudyError:
+    except _SOURCE_TARGET_ECHO_STUDY_ERROR:
         raise
     except Exception as error:
         message = "target echo study workspace path unavailable"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if type(details) is not os.stat_result or not stat.S_ISDIR(details.st_mode):
         _fail("target echo study workspace must be a physical directory")
     try:
@@ -1094,11 +1099,11 @@ def _admit_new_study_workspace(receipt: object) -> Path:
                 _fail("target echo study workspace scan close receipt invalid")
         if occupied:
             _fail("target echo study workspace was not initially empty")
-    except TargetEchoStudyError:
+    except _SOURCE_TARGET_ECHO_STUDY_ERROR:
         raise
     except Exception as error:
         message = "target echo study workspace contents unavailable"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     return directory
 
 
@@ -1120,7 +1125,7 @@ def _initialize_workspace_folders(directory: Path, names: tuple[str, ...]) -> No
                 error, f"target echo workspace cleanup failed: {detail}"
             )
         message = "target echo study workspace initialization failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
 
 
 def _prepare_context(emitter: Path, runner: Path) -> _Context:
@@ -1129,7 +1134,7 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
         workspace = _TEMP.lstat()
     except Exception as error:
         message = "target echo reference requires repository .temp directory"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if type(workspace) is not os.stat_result:
         _fail("target echo reference repository .temp returned invalid metadata")
     if not stat.S_ISDIR(workspace.st_mode):
@@ -1142,7 +1147,7 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
         host = platform.platform()
     except Exception as error:
         message = "target echo host identity lookup failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
         type(host) is not str
         or not 1 <= len(host) <= MAX_HOST_LABEL_CHARS
@@ -1157,7 +1162,7 @@ def _prepare_context(emitter: Path, runner: Path) -> _Context:
         )
     except Exception as error:
         message = "target echo study workspace creation failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     _initialize_workspace_folders(directory, ("runs", "raw", "candidates"))
     return _Context(
         directory=directory,
@@ -1190,7 +1195,7 @@ def _confirm_retained_bytes(path: Path, expected: bytes) -> None:
         )
     except Exception as error:
         message = f"target echo retained {path.name} cannot confirm written bytes"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if type(actual) is not bytes or actual != expected:
         _fail(f"target echo retained {path.name} written bytes differ from claim")
 
@@ -1201,7 +1206,7 @@ def _write_retained_bytes(path: Path, content: bytes) -> None:
         written = path.write_bytes(content)
     except Exception as error:
         message = f"target echo retained {path.name} write failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if type(written) is not int or written != len(content):
         _fail(f"target echo retained {path.name} has invalid write count")
     _confirm_retained_bytes(path, content)
@@ -1213,14 +1218,14 @@ def _write_retained_text(path: Path, content: str) -> None:
         written = path.write_text(content, encoding="utf-8")
     except Exception as error:
         message = f"target echo retained {path.name} write failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if type(written) is not int or written != len(content):
         _fail(f"target echo retained {path.name} has invalid write count")
     try:
         encoded = content.encode("utf-8")
     except Exception as error:
         message = f"target echo retained {path.name} UTF-8 encoding failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     _confirm_retained_bytes(path, encoded)
 
 
@@ -1233,7 +1238,7 @@ def _study_json_text(document: dict[str, Any]) -> str:
         after = encoder.encode(document)
     except Exception as error:
         message = f"target echo study JSON serializer failed: {type(error).__name__}"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
         type(source) is not str
         or type(observed) is not str
@@ -1261,7 +1266,7 @@ def _rss_json_bytes(receipt: dict[str, object]) -> bytes:
         )
     except Exception as error:
         message = f"target echo RSS JSON serializer failed: {type(error).__name__}"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if type(observed) is not str or observed != source:
         _fail("target echo RSS JSON serializer disagrees with source")
     return (source + "\n").encode("utf-8")
@@ -1464,7 +1469,7 @@ def _checked_sha256(raw: bytes, *, source: str) -> str:
         source_digest = _NATIVE_SHA256(raw).hexdigest()
     except Exception as error:
         message = f"target echo {source} SHA-256 dependency failed"
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     if (
         type(reported) is not str
         or type(independent) is not str
@@ -1510,7 +1515,7 @@ def _audit_retained_study(path: Path) -> dict[str, Any]:
             "target echo source admission failed: "
             f"{_safe_error_detail(error, trusted=target_echo_audit.TargetEchoAuditError)}"
         )
-        raise TargetEchoStudyError(message) from error
+        raise _SOURCE_TARGET_ECHO_STUDY_ERROR(message) from error
     # The auditor's returned report is a dependency receipt. Do not trust a
     # foreign mapping/digest or allow it to dispatch overridden item methods.
     if type(checked) is not dict:
