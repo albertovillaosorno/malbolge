@@ -33,6 +33,30 @@ documented with the tooling rather than duplicated here. Start with the
 [automation README](src/automation/repository/README.md) and the bootstrap
 records under `docs/technical/tooling/`.
 
+### Current bounded compiler demo (Unix)
+
+Once the pinned C frontend and the `malbolge`, `c2malbolge_json`, and
+`malbolge_layout` Rust binaries have been built, compile and execute the
+checked-in two-byte C example without manually invoking intermediate stages:
+
+```sh
+mkdir -p .temp
+src/interface/command-line/composition/scripts/malbolge --repository-tools \
+  compile src/interface/command-line/composition/examples/emit-qp.c \
+  -o .temp/emit-qp.malbolge
+src/interface/command-line/composition/scripts/malbolge --repository-tools \
+  .temp/emit-qp.malbolge --report-steps
+```
+
+The actual Malbolge VM emits `Q.` on stdout and
+`malbolge-steps-v1:8` on stderr. Output paths are no-clobber: use a new
+filename for another compilation. This is a *bounded* source-C lowering
+slice, not a general C compiler; unsupported expressions fail without
+publishing a guest artifact. `malbolge program.c` remains separate host-only
+C debugging, not C-to-Malbolge compilation. See the
+[command-line guide](src/interface/command-line/README.md) for the Windows
+entrypoint, installation, dependencies, raw profiles, and full CLI contract.
+
 ## What this repository is building
 
 The intended developer-facing path is shown below.
