@@ -45,6 +45,8 @@ _SOURCE_SORTED = sorted
 _SOURCE_ENUMERATE = enumerate
 _SOURCE_MIN = min
 _SOURCE_MAX = max
+_SOURCE_ANY = any
+_SOURCE_LEN = len
 
 
 def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
@@ -62,13 +64,13 @@ def holm_adjusted(p_values: list[Fraction]) -> list[Fraction]:
         ValueError: A caller supplied a non-Fraction or out-of-range value.
 
     """
-    if type(p_values) is not list or any(
+    if type(p_values) is not list or _SOURCE_ANY(
         type(value) is not _CANONICAL_FRACTION or not 0 <= value <= 1
         for value in p_values
     ):
         message = "Holm adjustment requires exact rational probabilities in [0, 1]"
         raise ValueError(message)
-    count = len(p_values)
+    count = _SOURCE_LEN(p_values)
     adjusted = [_CANONICAL_FRACTION(1)] * count
     current = _CANONICAL_FRACTION(0)
     for rank, (index, raw) in _SOURCE_ENUMERATE(

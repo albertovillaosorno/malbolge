@@ -190,3 +190,44 @@ def test_holm_native_math_cannot_be_rebound_to_forge_adjustment(
         replacement = forge_zero
     monkeypatch.setattr(multiplicity, provider, replacement, raising=False)
     assert multiplicity.holm_adjusted(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [Fraction(-1, 10), Fraction(11, 10), 0],
+    ids=["negative", "over-one", "integer"],
+)
+def test_holm_rejects_invalid_inputs_after_any_substitution(
+    monkeypatch: pytest.MonkeyPatch, invalid: object
+) -> None:
+    """A false validation receipt cannot make invalid p-values admissible."""
+    monkeypatch.setattr(multiplicity, "any", lambda _values: False, raising=False)
+    with pytest.raises(ValueError, match="exact rational probabilities"):
+        multiplicity.holm_adjusted(cast("list[Fraction]", [Fraction(1, 4), invalid]))
+
+
+def test_holm_preserves_valid_inputs_after_any_substitution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A true validation receipt cannot reject a native valid family."""
+    raw = [Fraction(1, 10), Fraction(1, 5)]
+    expected = multiplicity.holm_adjusted(raw)
+    monkeypatch.setattr(multiplicity, "any", lambda _values: True, raising=False)
+    assert multiplicity.holm_adjusted(raw) == expected
+
+
+@pytest.mark.parametrize("count_delta", [-2, 2], ids=["shorter", "longer"])
+def test_holm_family_length_is_native_after_provider_substitution(
+    monkeypatch: pytest.MonkeyPatch, count_delta: int
+) -> None:
+    """The original family cardinality determines exact Holm ranks."""
+    raw = [Fraction(1, 2), Fraction(1, 100), Fraction(1, 20), Fraction(1, 25)]
+    expected = multiplicity.holm_adjusted(raw)
+    source_len = len
+    monkeypatch.setattr(
+        multiplicity,
+        "len",
+        lambda values: source_len(values) + count_delta,
+        raising=False,
+    )
+    assert multiplicity.holm_adjusted(raw) == expected
