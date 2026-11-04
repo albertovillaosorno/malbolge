@@ -1547,6 +1547,17 @@ The original study records remain the result authority.
   modes changed the checks, and changed lists rejected canonical modes or
   admitted a foreign one. This protects local required-mode dispatch and
   admission; it does not authenticate the external compiler or its results.
+- Linux host-C replay now binds its child `prlimit` virtual-address,
+  CPU-time and output-file hard caps to the original 1-GiB, 16-second and
+  8-MiB policy, including the MiB/KiB conversion used for RSS checks. The
+  emitted resource-controls record and reference-executable read cap use
+  the same source quantities instead of late-bound public aliases. Eleven
+  added regressions reject widened/narrowed metadata, impossible RSS or
+  altered unit conversion, and widened reference-read budgets. Existing
+  kernel tests now exercise an in-child stricter CPU cap and the actual
+  8-MiB inherited file cap without modifying policy constants. These are
+  local command/receipt-consistency checks, not evidence of cgroup-level
+  aggregate limits, original-run attestation or exact resident memory use.
 - Research evidence pending: raw sample content authentication,
   protocol-level manifest linkage, bibliography-backed context, real experiment
   configurations, retained negative/null results, and a reviewed conclusion

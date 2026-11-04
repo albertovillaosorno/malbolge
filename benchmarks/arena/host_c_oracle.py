@@ -79,6 +79,12 @@ RSS_TEMP_PREFIX = "host-c-stage-rss-"
 RSS_TEMP_SUFFIX = ".txt"
 SYSTEM_TOOL_SEARCH_PATH = os.defpath
 KIB_BYTES = 1024
+# Resource-policy and metric units must not follow mutable public aliases.
+_SOURCE_CHILD_VIRTUAL_MEMORY_MIB = CHILD_VIRTUAL_MEMORY_MIB
+_SOURCE_CHILD_CPU_SECONDS = CHILD_CPU_SECONDS
+_SOURCE_CHILD_FILE_BYTES = CHILD_FILE_BYTES
+_SOURCE_MIB_BYTES = MIB_BYTES
+_SOURCE_KIB_BYTES = KIB_BYTES
 OPTIMIZATION_MODES = ("-O0", "-O2")
 # Retain both audited native compiler modes despite mutable reporting aliases.
 _SOURCE_OPTIMIZATION_MODES = OPTIMIZATION_MODES
@@ -193,9 +199,9 @@ def resource_controls_record() -> dict[str, str | int]:
         "platform": LINUX_PLATFORM,
         "limiter": RESOURCE_LIMIT_TOOL,
         "scope": "per-child-inherited-not-aggregate",
-        "virtual_address_space_bytes": CHILD_VIRTUAL_MEMORY_MIB * MIB_BYTES,
-        "cpu_seconds": CHILD_CPU_SECONDS,
-        "output_file_bytes": CHILD_FILE_BYTES,
+        "virtual_address_space_bytes": _SOURCE_CHILD_VIRTUAL_MEMORY_MIB * _SOURCE_MIB_BYTES,
+        "cpu_seconds": _SOURCE_CHILD_CPU_SECONDS,
+        "output_file_bytes": _SOURCE_CHILD_FILE_BYTES,
         "wall_timeout_seconds": SUBPROCESS_TIMEOUT_SECONDS,
         "cleanup": "new-session-best-effort-original-process-group",
         "rss_measurement": "gnu-time-per-stage-max-ru_maxrss-kib",
@@ -248,12 +254,12 @@ def _limited_command(command: list[str]) -> list[str]:
     utility = _system_tool(RESOURCE_LIMIT_TOOL)
     if utility is None:
         _fail("host-C child resource controls require util-linux prlimit")
-    memory = CHILD_VIRTUAL_MEMORY_MIB * MIB_BYTES
+    memory = _SOURCE_CHILD_VIRTUAL_MEMORY_MIB * _SOURCE_MIB_BYTES
     return [
         utility,
         f"--as={memory}:{memory}",
-        f"--cpu={CHILD_CPU_SECONDS}:{CHILD_CPU_SECONDS}",
-        f"--fsize={CHILD_FILE_BYTES}:{CHILD_FILE_BYTES}",
+        f"--cpu={_SOURCE_CHILD_CPU_SECONDS}:{_SOURCE_CHILD_CPU_SECONDS}",
+        f"--fsize={_SOURCE_CHILD_FILE_BYTES}:{_SOURCE_CHILD_FILE_BYTES}",
         "--",
         *command,
     ]
@@ -315,9 +321,12 @@ def _read_stage_rss(path: Path) -> int:
     if not raw.endswith(b"\n") or not _ascii_digits(raw[:-1]):
         _fail("host-C child RSS observation missing or malformed")
     peak_kib = int(raw[:-1])
-    if not 0 < peak_kib <= CHILD_VIRTUAL_MEMORY_MIB * MIB_BYTES // KIB_BYTES:
+    maximum_peak_kib = (
+        _SOURCE_CHILD_VIRTUAL_MEMORY_MIB * _SOURCE_MIB_BYTES // _SOURCE_KIB_BYTES
+    )
+    if not 0 < peak_kib <= maximum_peak_kib:
         _fail("host-C child RSS observation outside child limits")
-    return peak_kib * KIB_BYTES
+    return peak_kib * _SOURCE_KIB_BYTES
 
 
 def _finish_child(child: sp.Popen[bytes]) -> int:
@@ -878,12 +887,12 @@ def _read_reference_executable(directory: Path) -> bytes:
 
     try:
         raw = evidence.read_bounded_regular(
-            directory, "oracle-check", limit=CHILD_FILE_BYTES
+            directory, "oracle-check", limit=_SOURCE_CHILD_FILE_BYTES
         )
     except Exception as error:
         message = "host-C reference executable missing or unsafe"
         raise HostOracleError(message) from error
-    if type(raw) is not bytes or not raw or len(raw) > CHILD_FILE_BYTES:
+    if type(raw) is not bytes or not raw or len(raw) > _SOURCE_CHILD_FILE_BYTES:
         _fail("host-C reference executable returned invalid bytes")
     return raw
 

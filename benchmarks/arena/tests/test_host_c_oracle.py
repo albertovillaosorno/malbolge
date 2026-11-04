@@ -1755,6 +1755,82 @@ def test_host_child_has_real_kernel_limits(tmp_path: Path) -> None:
     host_c_oracle._run([sys.executable, "-c", script], tmp_path, "limits")
 
 
+@pytest.mark.parametrize(
+    ("policy", "substitute"),
+    [
+        ("CHILD_VIRTUAL_MEMORY_MIB", 2048),
+        ("CHILD_VIRTUAL_MEMORY_MIB", 512),
+        ("CHILD_CPU_SECONDS", 32),
+        ("CHILD_CPU_SECONDS", 8),
+        ("CHILD_FILE_BYTES", 16 * 1024 * 1024),
+        ("CHILD_FILE_BYTES", 4 * 1024 * 1024),
+        ("MIB_BYTES", 2 * 1024 * 1024),
+    ],
+)
+def test_host_c_child_resource_caps_match_source_policy(
+    monkeypatch: pytest.MonkeyPatch, policy: str, substitute: int
+) -> None:
+    """Child prlimit argv and audit declarations stay on the original budget."""
+    monkeypatch.setattr(host_c_oracle, policy, substitute)
+    names: list[str] = []
+
+    def tool(name: str) -> str:
+        names.append(name)
+        return "/usr/bin/prlimit"
+
+    monkeypatch.setattr(host_c_oracle, "_system_tool", tool)
+    assert host_c_oracle._limited_command(["guest"]) == [
+        "/usr/bin/prlimit",
+        "--as=1073741824:1073741824",
+        "--cpu=16:16",
+        "--fsize=8388608:8388608",
+        "--",
+        "guest",
+    ]
+    assert names == ["prlimit"]
+    record = host_c_oracle.resource_controls_record()
+    assert record["virtual_address_space_bytes"] == 1073741824
+    assert record["cpu_seconds"] == 16
+    assert record["output_file_bytes"] == 8388608
+
+
+@pytest.mark.parametrize(
+    "policy", ["CHILD_VIRTUAL_MEMORY_MIB", "MIB_BYTES", "KIB_BYTES"]
+)
+def test_host_c_rss_upper_bound_and_units_are_source_bound(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, policy: str
+) -> None:
+    """Public unit and address-space drift cannot credit an impossible peak."""
+    receipt = tmp_path / "rss.txt"
+    _ = receipt.write_bytes(b"1048577\n")
+    alternate = {
+        "CHILD_VIRTUAL_MEMORY_MIB": 2048,
+        "MIB_BYTES": 2 * 1024 * 1024,
+        "KIB_BYTES": 512,
+    }
+    monkeypatch.setattr(host_c_oracle, policy, alternate[policy])
+    with pytest.raises(host_c_oracle.HostOracleError, match="outside child limits"):
+        host_c_oracle._read_stage_rss(receipt)
+    _ = receipt.write_bytes(b"2\n")
+    assert host_c_oracle._read_stage_rss(receipt) == 2048
+
+
+def test_host_c_reference_binary_reader_preserves_source_file_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A widened public limit cannot widen admitted reference artifact bytes."""
+    requested: list[int] = []
+
+    def bounded(_root: Path, _name: str, *, limit: int) -> bytes:
+        requested.append(limit)
+        return b"ELF"
+
+    monkeypatch.setattr(host_c_oracle, "CHILD_FILE_BYTES", 16 * 1024 * 1024)
+    monkeypatch.setattr(evidence, "read_bounded_regular", bounded)
+    assert host_c_oracle._read_reference_executable(tmp_path) == b"ELF"
+    assert requested == [8 * 1024 * 1024]
+
+
 def test_host_child_missing_limit_tool_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2142,12 +2218,18 @@ def test_host_c_cpu_resource_limit_interrupts_busy_child(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The Linux kernel enforces the CPU ceiling, not only wall time."""
-    monkeypatch.setattr(host_c_oracle, "CHILD_CPU_SECONDS", 1)
+    """The kernel enforces a stricter child CPU cap under the fixed policy."""
+    # The child may voluntarily lower its inherited hard ceiling. Do not
+    # mutate the production 16-second limit to make this test fast.
     monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 5)
+    source = (
+        "import resource\n"
+        "resource.setrlimit(resource.RLIMIT_CPU, (1, 1))\n"
+        "while True:\n    pass\n"
+    )
     with pytest.raises(host_c_oracle.HostOracleError, match="failed"):
         host_c_oracle._run(
-            [sys.executable, "-c", "while True: pass"],
+            [sys.executable, "-c", source],
             tmp_path,
             "CPU budget",
         )
@@ -2155,14 +2237,13 @@ def test_host_c_cpu_resource_limit_interrupts_busy_child(
 
 def test_host_c_file_size_resource_limit_blocks_oversized_output(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The child cannot write a file beyond the configured kernel limit."""
-    max_bytes = 1024
-    monkeypatch.setattr(host_c_oracle, "CHILD_FILE_BYTES", max_bytes)
+    """The inherited 8-MiB kernel limit rejects a larger child file."""
+    max_bytes = host_c_oracle.CHILD_FILE_BYTES
     output = tmp_path / "over-limit.dat"
     script = (
-        f"with open({str(output)!r}, 'wb') as writer:\n    writer.write(b'x' * 4096)\n"
+        f"with open({str(output)!r}, 'wb') as writer:\n"
+        f"    writer.write(b'x' * {max_bytes + 4096})\n"
     )
     with pytest.raises(host_c_oracle.HostOracleError, match="failed"):
         host_c_oracle._run([sys.executable, "-c", script], tmp_path, "fsize")
