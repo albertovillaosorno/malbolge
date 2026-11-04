@@ -3083,6 +3083,43 @@ The DCO is on `origin/main`. In-process identity guards do not guarantee
 atomicity against concurrent external filesystem writes or direct trusted
 state mutation; repository-wide Jig acceptance remains unverified.
 
+## Exact-tree error, model, path, and status continuity (2026-11-03)
+
+Exact-tree readers, walkers, and materialization errors now retain their
+original `ExactTreeError` and imported `TreeModelError` identities
+(`d3eedc48f`). Seven red-first tests cover native-error passthrough, host
+read-error wrapping, immutable error details, and malformed portable labels
+under late public alias replacement. All 351 exact and 1,091 adjacent tests
+passed after the DCO was signed and pushed to `main`.
+
+The portable path validator also retains the imported Windows reserved-name
+checker (`2b3e0050a`). Five red-first cases prevent late helper replacement
+from admitting device names, trailing dots, or rejecting canonical labels.
+All 356 postcommit exact and 1,096 adjacent tests passed.
+
+Exact planning and materialization now use import-original model classes and
+instruction-kind enum members (`f2e27b427`) rather than consumer-rebindable
+module names. Eight red-first plan/allocation/foreign-receipt cases and seven
+additional byte-exact publication tests passed, with 371 postcommit exact
+and 1,111 adjacent tests passing. This guard does not protect against direct
+mutation of trusted model-instance storage or concurrent external writers.
+
+Filesystem-type admission also uses original `S_ISDIR`, `S_ISREG`, and
+`S_ISLNK` classifiers (`f17d6c7a6`) instead of mutable module aliases.
+Seven red-first cases prevent lost snapshot files, false denial, and foreign
+classifier callback execution; two host-`stat.S_ISREG` drift checks reject
+changed host policy. All 380 postcommit exact and 1,120 adjacent tests passed.
+
+A fresh correct-cwd integrated diff run then passed all 4,131 tests,
+including the four exact guards and source-binding peer changes.
+
+All four DCOs were pushed SHA-exact to `origin/main`. Scoped Ruff and diff
+checks were clean; strict BasedPyright retains one inherited diagnostic in
+`test_exact.py:4517` outside modified lines and no new diagnostics. The Jig
+doctor remains degraded because the compiled graph is absent; a 75-second
+bounded global `jig check` timed out (exit 124) during native-validator
+scheduling. No green repository-wide Jig verdict is claimed.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

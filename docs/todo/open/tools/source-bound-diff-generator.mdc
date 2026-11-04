@@ -1794,6 +1794,30 @@ format.
   Six inherited probe test-file typing errors remain outside changed lines.
   This DCO was pushed SHA-exact to `main`; broader Jig acceptance is open.
 
+- Exact-tree error classes now preserve import-original `ExactTreeError`
+  and `TreeModelError` identities (`d3eedc48f`). Seven red-first reader,
+  walker, and portable-path alias cases pass; 351 postcommit exact and 1,091
+  adjacent tests passed. Host error diagnostics retain their native detail.
+- Exact-tree portable paths pin the original reserved Windows component
+  checker (`2b3e0050a`). Five red-first device-name, trailing-dot, and
+  safe-label cases passed, with 356 exact and 1,096 adjacent tests green.
+- Exact authoring and publication now pin native `FileRecord`, `TreeSnapshot`,
+  `ExactAuthoringPlan`, instruction/segment classes, and the instruction-kind
+  enum (`f2e27b427`). Eight red-first plan/foreign-receipt and seven
+  materialization alias cases passed, with 371 exact and 1,111 adjacent
+  tests green. Direct trusted-instance mutation remains outside scope.
+- Exact filesystem type admission now pins native `S_ISDIR`, `S_ISLNK`,
+  and `S_ISREG` classifiers (`f17d6c7a6`). Seven red-first omission, false
+  denial, and foreign callback cases and two host-policy drift cases pass;
+  380 postcommit exact and 1,120 adjacent tests passed. A fresh full
+  correct-cwd diff run passed all 4,131 tests, including peer changes.
+  All four scoped DCOs
+  were SHA-exact pushed to `main`, with Ruff and diff checks clean. Strict
+  typing retains one inherited test-only diagnostic at `test_exact.py:4517`.
+  Global Jig doctor remains degraded (graph absent); a bounded 75-second
+  `jig check` timed out at native-validator scheduling, exit 124. Full Jig
+  acceptance remains open; external filesystem races are not isolated.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
