@@ -42,6 +42,11 @@ from benchmarks.challenges import generate
 
 # Keep a source-byte reference when both public digest providers are replaced.
 _NATIVE_SHA256 = sha256
+# Retain original collection and pairing semantics for source admission.
+_NATIVE_SET = set
+_NATIVE_ZIP = zip
+_NATIVE_ANY = any
+_NATIVE_LEN = len
 # Do not let a runtime substitution become the replay oracle itself.
 _CANONICAL_GENERATE = generate.generate
 _CANONICAL_IDENTITY = generate.ChallengeIdentity
@@ -88,8 +93,8 @@ def _fail(message: str) -> Never:
 def _bounded_case(case: dict[str, Any]) -> None:
     if (
         type(case) is not dict
-        or any(type(key) is not str for key in case)
-        or set(case) != _SOURCE_CASE_FIELDS
+        or _NATIVE_ANY(type(key) is not str for key in case)
+        or _NATIVE_SET(case) != _SOURCE_CASE_FIELDS
     ):
         _fail("challenge replay requires an exact arena case")
     if (
@@ -101,8 +106,8 @@ def _bounded_case(case: dict[str, Any]) -> None:
         _fail("challenge replay requires integer identity fields")
     digest = case["workload_sha256"]
     if (
-        len(digest) != _SOURCE_SHA256_HEX_LENGTH
-        or not set(digest) <= _SOURCE_SHA256_ALPHABET
+        _NATIVE_LEN(digest) != _SOURCE_SHA256_HEX_LENGTH
+        or not _NATIVE_SET(digest) <= _SOURCE_SHA256_ALPHABET
     ):
         _fail("challenge replay requires lowercase SHA-256 workload digest")
     if case["version"].bit_length() > _SOURCE_MAX_BUNDLE_VERSION_BITS:
@@ -146,7 +151,7 @@ def _regenerate(
         # dependency's raw attribute fault through the replay boundary.
         message = "canonical challenge regeneration produced invalid payload"
         raise ChallengeBundleError(message) from error
-    if any(type(payload) is not bytes for payload in payloads):
+    if _NATIVE_ANY(type(payload) is not bytes for payload in payloads):
         _fail("canonical challenge regeneration produced invalid payload")
     # Validate malformed/failing dependency receipts above so they keep their
     # typed diagnostic and original cause. A successful replaced generator,
@@ -159,16 +164,16 @@ def _regenerate(
 def _admit_files(files: dict[str, bytes]) -> None:
     if (
         type(files) is not dict
-        or any(type(key) is not str for key in files)
-        or set(files) != set(_SOURCE_BUNDLE_FILES)
+        or _NATIVE_ANY(type(key) is not str for key in files)
+        or _NATIVE_SET(files) != _NATIVE_SET(_SOURCE_BUNDLE_FILES)
     ):
         _fail("challenge bundle must include all three canonical files")
-    if any(type(files[name]) is not bytes for name in _SOURCE_BUNDLE_FILES):
+    if _NATIVE_ANY(type(files[name]) is not bytes for name in _SOURCE_BUNDLE_FILES):
         _fail("challenge bundle payloads must be byte strings")
-    if len(files["oracle.bin"]) != _SOURCE_ORACLE_BYTES:
+    if _NATIVE_LEN(files["oracle.bin"]) != _SOURCE_ORACLE_BYTES:
         _fail("challenge bundle oracle must be four bytes")
-    if len(files["program.c"]) > _SOURCE_MAX_SOURCE_BYTES or (
-        len(files["manifest.json"]) > _SOURCE_MAX_MANIFEST_BYTES
+    if _NATIVE_LEN(files["program.c"]) > _SOURCE_MAX_SOURCE_BYTES or (
+        _NATIVE_LEN(files["manifest.json"]) > _SOURCE_MAX_MANIFEST_BYTES
     ):
         _fail("challenge bundle payload exceeds replay byte limit")
 
@@ -192,9 +197,9 @@ def verify_bundle(
     original_files = files.copy()
     produced = _regenerate(case, profile)
     originals = (produced.source, produced.oracle, produced.manifest)
-    if any(
+    if _NATIVE_ANY(
         files[name] != expected
-        for name, expected in zip(_SOURCE_BUNDLE_FILES, originals, strict=True)
+        for name, expected in _NATIVE_ZIP(_SOURCE_BUNDLE_FILES, originals, strict=True)
     ):
         _fail(
             "retained challenge bundle differs from deterministic regeneration"
@@ -216,9 +221,9 @@ def verify_bundle(
         type(source_hash) is not str
         or type(independent_hash) is not str
         or type(source_bound_hash) is not str
-        or len(source_hash) != _SOURCE_SHA256_HEX_LENGTH
-        or len(independent_hash) != _SOURCE_SHA256_HEX_LENGTH
-        or len(source_bound_hash) != _SOURCE_SHA256_HEX_LENGTH
+        or _NATIVE_LEN(source_hash) != _SOURCE_SHA256_HEX_LENGTH
+        or _NATIVE_LEN(independent_hash) != _SOURCE_SHA256_HEX_LENGTH
+        or _NATIVE_LEN(source_bound_hash) != _SOURCE_SHA256_HEX_LENGTH
         or source_hash != source_bound_hash
         or independent_hash != source_bound_hash
     ):

@@ -52,6 +52,7 @@ from benchmarks.arena.tests.test_evidence import sample_study
 from benchmarks.challenges import generate
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable, Sized
     from pathlib import Path
     from typing import Any
 
@@ -1391,3 +1392,84 @@ def test_mutable_generator_error_alias_cannot_change_replay_failure_type(
     with pytest.raises(challenge_bundles.ChallengeBundleError, match=message) as caught:
         challenge_bundles.verify_bundle(case, PROFILE, files)
     assert caught.value.__cause__ is cause
+
+
+@pytest.mark.parametrize("target", ["case", "files"])
+def test_replay_rejects_set_substitution_that_hides_extra_source_entries(
+    monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    """Replacing a global set helper cannot suppress forbidden source keys."""
+    case, files = _direct_bundle()
+    if target == "case":
+        case["invented"] = "unregistered trial identity"
+        changed: object = case
+        allowed = set[object](challenge_bundles.CASE_FIELDS)
+    else:
+        files["foreign.bin"] = b"unregistered bundle member"
+        changed = files
+        allowed = set[object](challenge_bundles.BUNDLE_FILES)
+    native_set = set
+
+    def hide_foreign_key(value: object) -> set[object]:
+        if value is changed:
+            return allowed
+        return native_set(cast("Iterable[object]", value))
+
+    monkeypatch.setattr(challenge_bundles, "set", hide_foreign_key, raising=False)
+    with pytest.raises(challenge_bundles.ChallengeBundleError):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+def test_replay_rejects_zip_substitution_that_skips_bundle_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged pair iterator cannot certify a corrupted oracle file."""
+    case, files = _direct_bundle()
+    files["oracle.bin"] = b"\x00\x00\x00\x00"
+    assert files["oracle.bin"] != _generated().oracle
+
+    def skip_pairs(*_values: object, strict: bool = False) -> tuple[()]:
+        return ()
+
+    monkeypatch.setattr(challenge_bundles, "zip", skip_pairs, raising=False)
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match="bundle"):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+def test_replay_rejects_any_substitution_that_hides_payload_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An empty mismatch detector cannot certify changed canonical bytes."""
+    case, files = _direct_bundle()
+    files["oracle.bin"] = b"\x00\x00\x00\x00"
+    assert files["oracle.bin"] != _generated().oracle
+    monkeypatch.setattr(challenge_bundles, "any", lambda _entries: False, raising=False)
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match="bundle"):
+        challenge_bundles.verify_bundle(case, PROFILE, files)
+
+
+@pytest.mark.parametrize("target", ["digest", "oracle"])
+def test_challenge_bounds_reject_length_substitution(
+    monkeypatch: pytest.MonkeyPatch, target: str
+) -> None:
+    """The public length lookup must not widen native admission policy."""
+    case, files = _direct_bundle()
+    if target == "digest":
+        case["workload_sha256"] += "a"
+        changed: object = case["workload_sha256"]
+        expected = 64
+    else:
+        files["oracle.bin"] = b"abc"
+        changed = files["oracle.bin"]
+        expected = 4
+    native_len = len
+
+    def forged_length(value: object) -> int:
+        return expected if value is changed else native_len(cast("Sized", value))
+
+    monkeypatch.setattr(challenge_bundles, "len", forged_length, raising=False)
+    with pytest.raises(challenge_bundles.ChallengeBundleError):
+        if target == "digest":
+            challenge_bundles._bounded_case(case)
+        else:
+            challenge_bundles._admit_files(files)
