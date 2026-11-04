@@ -91,6 +91,10 @@ _SOURCE_LIMITER_NAME = LIMITER_NAME
 _SOURCE_CHILD_VIRTUAL_MEMORY_BYTES = CHILD_VIRTUAL_MEMORY_BYTES
 _SOURCE_CHILD_CPU_SECONDS = CHILD_CPU_SECONDS
 _SOURCE_CHILD_OUTPUT_FILE_BYTES = CHILD_OUTPUT_FILE_BYTES
+# RSS receipts and process-group cleanup must retain their native limits.
+_SOURCE_RSS_REPORT_LIMIT = RSS_REPORT_LIMIT
+_SOURCE_KIB_BYTES = KIB_BYTES
+_SOURCE_GROUP_KILL_SIGNAL = GROUP_KILL_SIGNAL
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,7 +272,7 @@ def _terminate_group(child: sp.Popen[bytes]) -> None:
 
     if group_error is None:
         try:
-            signal_receipt: object = os.kill(-pid, GROUP_KILL_SIGNAL)
+            signal_receipt: object = os.kill(-pid, _SOURCE_GROUP_KILL_SIGNAL)
             if signal_receipt is not None:
                 group_error = TargetProcessError(
                     "bounded target cleanup has invalid group signal receipt"
@@ -807,14 +811,14 @@ def _rss_report_bytes(path: Path) -> bytes:
 
     try:
         raw = evidence.read_bounded_regular(
-            path.parent, path.name, limit=RSS_REPORT_LIMIT
+            path.parent, path.name, limit=_SOURCE_RSS_REPORT_LIMIT
         )
     except Exception as error:
         # A reader dependency can raise any ordinary exception, not only its
         # documented EvidenceError. Never format a foreign failure's hooks.
         message = "bounded target GNU time RSS report missing or unsafe"
         raise TargetProcessError(message) from error
-    if type(raw) is not bytes or not 1 <= len(raw) <= RSS_REPORT_LIMIT:
+    if type(raw) is not bytes or not 1 <= len(raw) <= _SOURCE_RSS_REPORT_LIMIT:
         _fail("bounded target GNU time RSS report returned invalid bytes")
     return raw
 
@@ -822,15 +826,15 @@ def _rss_report_bytes(path: Path) -> bytes:
 def _parse_rss_report(raw: bytes) -> int:
     if (
         type(raw) is not bytes
-        or not 1 <= len(raw) <= RSS_REPORT_LIMIT
+        or not 1 <= len(raw) <= _SOURCE_RSS_REPORT_LIMIT
         or not raw.endswith(b"\n")
         or not raw[:-1].isdigit()
     ):
         _fail("bounded target GNU time RSS report missing or malformed")
     kib = int(raw[:-1])
-    if kib <= 0 or kib > CHILD_VIRTUAL_MEMORY_BYTES // KIB_BYTES:
+    if kib <= 0 or kib > _SOURCE_CHILD_VIRTUAL_MEMORY_BYTES // _SOURCE_KIB_BYTES:
         _fail("bounded target GNU time RSS observation outside child limits")
-    return kib * KIB_BYTES
+    return kib * _SOURCE_KIB_BYTES
 
 
 def _rss_report(path: Path) -> int:

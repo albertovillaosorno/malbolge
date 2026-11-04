@@ -4367,3 +4367,72 @@ def test_source_child_limiter_policy_ignores_public_alias(
         sys.executable,
     ]
     assert requested == ["prlimit"]
+
+
+@pytest.mark.parametrize(
+    ("alias", "replacement", "source"),
+    [
+        ("RSS_REPORT_LIMIT", 1024, b"0" * 40 + b"1\n"),
+        ("CHILD_VIRTUAL_MEMORY_BYTES", 2**60, b"1048577\n"),
+    ],
+)
+def test_source_rss_report_policy_rejects_forged_oversize_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    alias: str,
+    replacement: int,
+    source: bytes,
+) -> None:
+    """Mutable RSS report limits cannot enlarge recorded measurement bounds."""
+    monkeypatch.setattr(target_process, alias, replacement)
+    with pytest.raises(target_process.TargetProcessError, match="RSS"):
+        target_process._parse_rss_report(source)
+
+
+def test_source_rss_unit_policy_ignores_public_scale_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced KiB conversion must not change measured peak bytes."""
+    monkeypatch.setattr(target_process, "KIB_BYTES", 1)
+    assert target_process._parse_rss_report(b"10\n") == 10 * 1024
+
+
+def test_source_rss_reader_cap_ignores_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The retained RSS evidence reader cannot receive an enlarged byte cap."""
+    observed_limits: list[int] = []
+
+    def forged_reader(_root: Path, _name: str, *, limit: int) -> bytes:
+        observed_limits.append(limit)
+        return b"10\n"
+
+    monkeypatch.setattr(evidence, "read_bounded_regular", forged_reader)
+    monkeypatch.setattr(target_process, "RSS_REPORT_LIMIT", 100_000)
+    assert target_process._rss_report_bytes(tmp_path / "sample.rss") == b"10\n"
+    assert observed_limits == [32]
+
+
+def test_source_group_cleanup_signal_ignores_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public signal substitution cannot replace SIGKILL with signal zero."""
+    observed: list[tuple[int, int]] = []
+
+    class FinishedChild:
+        pid = 123456
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self) -> int:
+            return 0
+
+    def signal_group(group: int, number: int) -> None:
+        observed.append((group, number))
+
+    monkeypatch.setattr(target_process.os, "getpgid", lambda _pid: 4321)
+    monkeypatch.setattr(target_process.os, "kill", signal_group)
+    monkeypatch.setattr(target_process, "GROUP_KILL_SIGNAL", 0)
+    target_process._terminate_group(cast("sp.Popen[bytes]", FinishedChild()))
+    assert observed == [(-123456, 9)]
