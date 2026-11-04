@@ -1124,6 +1124,14 @@ original test statistic. A 939-case paired/Holm/analyzer/evidence subset
 passed with arena BasedPyright and scoped Ruff lint/format clean. This
 is local arithmetic integrity, not evidence of independent sampling.
 
+Three additional red-first count-admission tests showed that a replaced
+`type` could make boolean `True` count as a native discordant trial and
+produce an otherwise well-formed but false exact p-value. Signed
+`ae0fb3bf5` binds the original `type` and `int` for count validation.
+All 43 direct sign-test and 1,029 integrated statistical/evidence cases
+pass; arena BasedPyright has zero diagnostics. This checks local count
+identity, not paired-sample independence or verifier authenticity.
+
 A further explicit `--adjust-paired-tests` option requires the paired test
 view, then applies exact step-down Holm-Bonferroni correction across the
 complete study-wide family of nonnull paired outcome and cost-sign tests,
