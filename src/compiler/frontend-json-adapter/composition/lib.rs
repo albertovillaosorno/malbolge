@@ -51,6 +51,7 @@ const EXPECTED_ABI: &str = "malbolge-c32-v1";
 const EXPECTED_ARTIFACT: &str = "malbolge-c-frontend-v1";
 const EXPECTED_PROFILE: &str = "malbolge-2026";
 const MAX_FRONTEND_JSON_BYTES: usize = 1_048_576;
+const MAX_NULL_STATEMENTS: usize = 4_094;
 
 /// A rejected normalized frontend artifact or typed-IR projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -155,7 +156,22 @@ fn source_digest(value: &str) -> Result<[u8; 32], FrontendJsonError> {
     Ok(digest)
 }
 
-/// Decode one exact empty-body or explicitly returned void C function.
+// NullStmt has exactly one source semicolon. We discard its *effect*, not its
+// provenance: every omitted node must be a direct ordered child in the body.
+fn valid_null_statement_span(node: &Node, body: &Node, preceding_end: u32) -> bool {
+    let start = &node.span.begin;
+    let end = &node.span.end;
+    start.byte >= preceding_end
+        && start.byte >= body.span.begin.byte
+        && end.byte <= body.span.end.byte
+        && start.byte.checked_add(1) == Some(end.byte)
+        && start.line != 0
+        && start.column != 0
+        && start.line == end.line
+        && start.column.checked_add(1) == Some(end.column)
+}
+
+/// Decode one no-effect void C function with optional source null statements.
 ///
 /// This validates the serialized Clang artifact shape, **not** the contents
 /// of an independently supplied C source. Raw-source digest verification and
@@ -186,11 +202,16 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
     {
         return Err(FrontendJsonError::Unsupported);
     }
-    let (function, body, returned) = match input.nodes.as_slice() {
-        [function, body] => (function, body, None),
-        [function, body, returned] => (function, body, Some(returned)),
-        _ => return Err(FrontendJsonError::Unsupported),
+    let [function, body, statements @ ..] = input.nodes.as_slice() else {
+        return Err(FrontendJsonError::Unsupported);
     };
+    let (nulls, returned) = match statements.split_last() {
+        Some((last, prior)) if last.kind == "return-statement" => (prior, Some(last)),
+        _ => (statements, None),
+    };
+    if nulls.len() > MAX_NULL_STATEMENTS {
+        return Err(FrontendJsonError::Unsupported);
+    }
     if function.kind != "function-declaration"
         || function.parent != 0
         || function.id != 1
@@ -204,9 +225,13 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
         || body.parent != function.id
         || body.id != 2
         || returned.is_some_and(|node| {
-            node.kind != "return-statement" || node.parent != body.id || node.id != 3
+            node.parent != body.id
+                || node.id
+                    != u32::try_from(nulls.len())
+                        .unwrap_or(u32::MAX)
+                        .saturating_add(3)
         })
-        || once(body).chain(returned).any(|node| {
+        || once(body).chain(nulls.iter()).chain(returned).any(|node| {
             node.name.is_some()
                 || node.type_name.is_some()
                 || node.definition.is_some()
@@ -215,6 +240,20 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
                 || node.storage_class.is_some()
         })
     {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    let mut previous_end = body.span.begin.byte;
+    for (index, node) in nulls.iter().enumerate() {
+        if node.kind != "null-statement"
+            || node.parent != body.id
+            || node.id != u32::try_from(index).unwrap_or(u32::MAX).saturating_add(3)
+            || !valid_null_statement_span(node, body, previous_end)
+        {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        previous_end = node.span.end.byte;
+    }
+    if returned.is_some_and(|node| node.span.begin.byte < previous_end) {
         return Err(FrontendJsonError::Unsupported);
     }
     let void_function = if let Some(return_node) = returned {

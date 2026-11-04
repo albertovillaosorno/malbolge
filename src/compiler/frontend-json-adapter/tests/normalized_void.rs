@@ -277,3 +277,138 @@ fn empty_c_void_body_reaches_verified_implicit_guest_halt() -> Result<(), String
     );
     Ok(())
 }
+
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "fixed normalized Clang JSON fixture fields"
+)]
+fn null_statement_input(explicit_return: bool) -> Value {
+    let mut artifact = input();
+    let (end, digest) = if explicit_return {
+        (
+            29,
+            "da0b6e6b01ebc4961392983157795f7bd56fedcb93689e4e8af1e8ad575bff7e",
+        )
+    } else {
+        (
+            21,
+            "1d54ba3f70dcaeb691fa09cf124b000137304e061b14365760b0ff7c55bbd096",
+        )
+    };
+    artifact["source"]["id"] = json!("fixtures/void-null.c");
+    artifact["source"]["sha256"] = json!(digest);
+    artifact["nodes"] = json!([
+        {"id":1, "parent":0, "kind":"function-declaration", "span":span(0,end),
+         "name":"noop", "type":"fn()->void", "definition":"definition",
+         "inline_specified":false, "linkage":"external", "storage_class":"none"},
+        {"id":2, "parent":1, "kind":"compound-statement", "span":span(16,end)},
+        {"id":3, "parent":2, "kind":"null-statement", "span":span(17,18)},
+        {"id":4, "parent":2, "kind":"null-statement", "span":span(19,20)}
+    ]);
+    if explicit_return {
+        artifact["nodes"]
+            .as_array_mut()
+            .expect("known array")
+            .push(json!({"id":5, "parent":2, "kind":"return-statement",
+                         "span":span(21,28)}));
+    }
+    artifact
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "fully specified source-shaped JSON and independently executed guest"
+)]
+fn source_null_statements_preserve_void_return_and_execute_under_real_vm() -> Result<(), String> {
+    for explicit in [false, true] {
+        let source = if explicit {
+            b"void noop(void) {; ; return;}\n".as_slice()
+        } else {
+            b"void noop(void) {; ;}\n".as_slice()
+        };
+        assert_eq!(source.len(), if explicit { 30 } else { 22 });
+        let artifact = null_statement_input(explicit);
+        let projected = decode_void_frontend_json(&bytes(&artifact))
+            .map_err(|error| format!("null-statement C projection: {error:?}"))?;
+        assert_eq!(
+            projected
+                .void_function()
+                .map(typed::FrontendReturnVoidFunction::explicit_return),
+            Some(explicit)
+        );
+        let wire = canonical_void_typed_ir(&bytes(&artifact))
+            .map_err(|error| format!("null-statement typed IR: {error:?}"))?;
+        let decoded = typed::canonical_module(&wire)
+            .map_err(|error| format!("re-admit null-statement MCTI: {error:?}"))?;
+        assert_eq!(decoded.source_sha256(), projected.source_sha256());
+        let profile = target_profile("malbolge-2026").ok_or("current profile missing")?;
+        let generated = compile_canonical_typed_empty_void(&wire, profile)
+            .map_err(|error| format!("null-statement guest lowering: {error:?}"))?;
+        let mut machine =
+            ProfileMachine::from_source(profile, generated.layout().source(), Vec::new())
+                .map_err(|error| format!("null-statement VM load: {error:?}"))?;
+        assert!(matches!(
+            machine.run(2),
+            Ok(RunOutcome::Terminated { steps: 2, .. })
+        ));
+        assert!(machine.output().is_empty());
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::default_numeric_fallback,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    reason = "fixed JSON mutation slots must fail closed"
+)]
+fn void_null_statement_admission_rejects_effects_and_false_source_order() {
+    let base = null_statement_input(true);
+    let mut cases = Vec::new();
+    for (index, field, replacement) in [
+        (2, "kind", json!("call-expression")),
+        (2, "parent", json!(1)),
+        (2, "id", json!(4)),
+        (2, "span", span(16, 18)),
+        (2, "span", span(17, 19)),
+        (2, "span", span(29, 30)),
+        (3, "span", span(16, 17)),
+        (3, "span", span(17, 18)),
+        (4, "parent", json!(1)),
+        (4, "id", json!(7)),
+        (4, "span", span(19, 22)),
+    ] {
+        let mut candidate = base.clone();
+        candidate["nodes"][index][field] = replacement;
+        cases.push(candidate);
+    }
+    {
+        let mut altered = base.clone();
+        altered["nodes"][3]["reference"] = json!("external:putchar");
+        cases.push(altered);
+    }
+    {
+        let mut altered = base.clone();
+        altered["nodes"]
+            .as_array_mut()
+            .expect("known nodes")
+            .swap(3, 4);
+        cases.push(altered);
+    }
+    let mut altered = base;
+    altered["nodes"]
+        .as_array_mut()
+        .expect("known nodes")
+        .swap(2, 4);
+    cases.push(altered);
+    for (index, candidate) in cases.iter().enumerate() {
+        assert!(
+            canonical_void_typed_ir(&bytes(candidate)).is_err(),
+            "modified null statement {index} unexpectedly admitted"
+        );
+    }
+}
