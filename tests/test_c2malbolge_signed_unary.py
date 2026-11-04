@@ -107,6 +107,7 @@ class SignedUnaryCompilerTests(unittest.TestCase):
             cases = (
                 ("positive", "putchar(+65);", b"A"),
                 ("negative", "putchar(-191);", b"A"),
+                ("negative-parenthesized", "putchar(-(191));", b"A"),
                 ("fifteen-negative-one", "putchar(-1);" * 15, b"\xff" * 15),
             )
             for name, source, expected in cases:
@@ -132,7 +133,7 @@ class SignedUnaryCompilerTests(unittest.TestCase):
             work = Path(temporary)
             for name, source in (
                 ("bitwise", "putchar(~65);"),
-                ("nested", "putchar(-(1));"),
+                ("nested-unary", "putchar(-( +1 ));"),
             ):
                 with self.subTest(name=name):
                     result, target = self.compile_source(work, source, name)

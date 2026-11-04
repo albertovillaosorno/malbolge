@@ -44,11 +44,13 @@ low-eight-bit byte. The source leaf must be a nonnegative representable `i32`
 value (including `256..2147483647`), from a bounded single-line integer token
 (decimal, octal, hexadecimal or C23 binary) or a single C character literal
 (including bounded escape spellings). Up to three exact, source-bound pairs of
-parentheses may enclose the literal or one checked signed unary `+`/`-` applied
-directly to an `i32` literal. For unsigned `u32` source tokens, a single
-checked `u32`-to-`i32` conversion may wrap up to three pairs of parentheses;
-unsigned unary expressions are rejected. Only one sign or conversion is
-admitted per call. The wrapper's canonical
+parentheses may enclose the literal and/or one checked signed unary `+`/`-`
+applied to an `i32` literal or a parenthesized `i32` literal. For example,
+`putchar(-(191))` and `putchar(+((65)))` preserve the sign's full
+source span and the inner operand's checked value. For unsigned `u32`
+source tokens, a single checked `u32`-to-`i32` conversion may wrap up to
+three pairs of parentheses; unsigned unary expressions are rejected.
+Only one sign or conversion is admitted per call. The wrapper's canonical
 evaluated signed `i32` must agree with the Clang leaf and unary operator.
 Negative arguments emit their low byte with the complete signed source span.
 For example, `putchar((65)); putchar(65u);`, `putchar(+65); putchar(-191);`,
@@ -87,11 +89,11 @@ admission without publishing a `.malbolge` artifact.
 
 An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
-More than three parentheses, a unary operator outside a parenthesized
-operand, general arithmetic, call-result handling, arbitrary output streams,
-interleaved effectful statements, `getchar`, EOF, I/O errors, general
-guest libc and C entry ABI remain unsupported. Mixing distinct
-**output bytes** in one source refuses admission; distinct `i32` literals
+More than three parentheses, multiple unary operators, whitespace between
+a unary sign and its operand, general arithmetic, call-result handling,
+arbitrary output streams, interleaved effectful statements, `getchar`, EOF,
+I/O errors, general guest libc and C entry ABI remain unsupported.
+Mixing distinct **output bytes** in one source refuses admission; distinct `i32` literals
 with the same low byte preserve their own source spans.
 The pinned Clang frontend must supply the source-bound integer or character
 token, its canonical evaluated `i32` value and a bounded single-line span;

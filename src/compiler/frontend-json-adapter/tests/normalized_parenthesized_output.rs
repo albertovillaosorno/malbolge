@@ -114,6 +114,36 @@ fn input(parentheses: u32, sign: Option<&str>, digits: &str, suffix: &str) -> Va
     })
 }
 
+// Move the one source sign before the parentheses without modifying the
+// literal leaf offsets. This models pinned Clang for `-(191)` and `+((65))`.
+#[expect(
+    clippy::arithmetic_side_effects,
+    clippy::indexing_slicing,
+    reason = "bounded synthetic normalized nodes"
+)]
+fn outer_sign_input(parentheses: u32, sign: &str, digits: &str) -> Value {
+    let mut source = input(parentheses, Some(sign), digits, "");
+    source["nodes"][5]["kind"] = json!("unary-expression");
+    source["nodes"][5]["operation"] = json!(sign);
+    let argument_end = 46 + parentheses * 2 + u32::try_from(digits.len()).unwrap_or_default();
+    for index in 1..=parentheses {
+        let begin = 45 + index;
+        let end = argument_end - index + 1;
+        let node = &mut source["nodes"][5 + usize::try_from(index).unwrap_or_default()];
+        node["kind"] = json!("parenthesized-expression");
+        drop(
+            node.as_object_mut()
+                .and_then(|fields| fields.remove("operation")),
+        );
+        node["constant_integer"] = json!(digits);
+        node["span"]["begin"]["byte"] = json!(begin);
+        node["span"]["begin"]["column"] = json!(begin - 18);
+        node["span"]["end"]["byte"] = json!(end);
+        node["span"]["end"]["column"] = json!(end - 18);
+    }
+    source
+}
+
 fn encode(source: &Value) -> Result<Vec<u8>, String> {
     serde_json::to_vec(source).map_err(|error| error.to_string())
 }
@@ -171,6 +201,51 @@ fn nested_source_constants_execute_as_single_guest_a() -> Result<(), String> {
 }
 
 #[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "a changed guest effect or provenance must fail this regression"
+)]
+fn outer_signed_parentheses_execute_with_proven_source_span() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    for (parentheses, sign, digits) in [(1, "-", "191"), (2, "+", "65")] {
+        let source = outer_sign_input(parentheses, sign, digits);
+        let (wire, mode) = canonical_guest_typed_ir(&encode(&source)?)
+            .map_err(|error| format!("{source} rejected: {error:?}"))?;
+        assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+        let module = typed::canonical_module(&wire)
+            .map_err(|error| format!("canonical typed IR: {error:?}"))?;
+        let constant = module
+            .functions()
+            .first()
+            .and_then(|function| function.blocks().first())
+            .and_then(|block| block.instructions().first())
+            .ok_or("missing guest constant")?;
+        assert!(matches!(
+            constant.instruction(),
+            typed::Instruction::ConstantInteger { constant, .. }
+                if constant.bit_width() == 8 && constant.little_endian() == [65]
+        ));
+        assert_eq!(constant.span().begin().byte(), 45);
+        assert_eq!(
+            constant.span().end().byte(),
+            45 + 1
+                + parentheses.saturating_mul(2)
+                + u32::try_from(digits.len()).unwrap_or_default()
+        );
+        let guest = adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile)
+            .map_err(|error| format!("guest compilation: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, guest.layout().source(), Vec::new())
+            .map_err(|error| format!("guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(guest.layout().executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.output(), b"A");
+    }
+    Ok(())
+}
+
+#[test]
 fn forged_or_unbounded_wrapper_nodes_reject() -> Result<(), String> {
     let valid = input(2, Some("-"), "191", "");
     let mut invalid = valid.clone();
@@ -185,6 +260,16 @@ fn forged_or_unbounded_wrapper_nodes_reject() -> Result<(), String> {
     let mut invalid = valid.clone();
     invalid["nodes"][7]["operation"] = json!("~");
     assert!(canonical_guest_typed_ir(&encode(&invalid)?).is_err());
+    let outer = outer_sign_input(1, "-", "191");
+    let mut wrong_inner_value = outer.clone();
+    wrong_inner_value["nodes"][6]["constant_integer"] = json!("-191");
+    assert!(canonical_guest_typed_ir(&encode(&wrong_inner_value)?).is_err());
+    let mut wrong_outer_sign = outer.clone();
+    wrong_outer_sign["nodes"][5]["operation"] = json!("~");
+    assert!(canonical_guest_typed_ir(&encode(&wrong_outer_sign)?).is_err());
+    let mut wrong_paren_span = outer;
+    wrong_paren_span["nodes"][6]["span"]["begin"]["byte"] = json!(45);
+    assert!(canonical_guest_typed_ir(&encode(&wrong_paren_span)?).is_err());
     let too_deep = input(4, None, "65", "");
     assert!(canonical_guest_typed_ir(&encode(&too_deep)?).is_err());
     let mut invalid = input(2, None, "65", "u");

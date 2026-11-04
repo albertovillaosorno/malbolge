@@ -478,8 +478,9 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
 
 // Each direct putchar call has the pinned Clang semantic preorder:
 // call -> function decay -> declaration ref -> bounded argument wrappers ->
-// literal. Only source-exact parentheses, one signed unary or one unsigned
-// integral cast may surround a leaf; no folded arithmetic is inferred.
+// literal. One signed unary may occur at any position in a source-exact
+// parenthesis chain; a separate unsigned integral cast may surround a leaf.
+// No folded arithmetic is inferred.
 #[expect(
     clippy::too_many_lines,
     clippy::too_many_arguments,
@@ -503,12 +504,19 @@ fn admitted_output_byte(
     let integral_cast = wrappers.first().is_some_and(|node| {
         node.kind == "cast-expression" && node.operation.as_deref() == Some("integral-cast")
     });
-    let unary = wrappers
-        .last()
-        .filter(|node| node.kind == "unary-expression");
-    if integral_cast && unary.is_some() {
+    let unary_index = wrappers
+        .iter()
+        .position(|node| node.kind == "unary-expression");
+    if (integral_cast && unary_index.is_some())
+        || wrappers
+            .iter()
+            .filter(|node| node.kind == "unary-expression")
+            .count()
+            > 1
+    {
         return None;
     }
+    let unary = unary_index.and_then(|index| wrappers.get(index));
     let digits = literal.literal.as_deref()?;
     // The source-bound leaf must be a nonnegative representable i32 value,
     // even when Clang inferred unsigned u32 for the source token.
@@ -582,7 +590,14 @@ fn admitted_output_byte(
             || node.linkage.is_some()
             || node.storage_class.is_some()
             || node.literal.is_some()
-            || node.constant_integer.as_deref() != Some(evaluated_digits.as_str())
+            || node.constant_integer.as_deref()
+                != Some(
+                    if unary_index.is_some_and(|unary_position| index > unary_position) {
+                        digits
+                    } else {
+                        evaluated_digits.as_str()
+                    },
+                )
         {
             return None;
         }
@@ -614,7 +629,7 @@ fn admitted_output_byte(
                     && node_span.end.column == child_span.end.column
             }
             "unary-expression" => {
-                index.saturating_add(1) == wrappers.len()
+                unary_index == Some(index)
                     && !integral_cast
                     && node.type_name.as_deref() == Some("i32")
                     && child.type_name.as_deref() == Some("i32")

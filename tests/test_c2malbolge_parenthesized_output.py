@@ -116,6 +116,9 @@ class ParenthesizedCCompilerTests(unittest.TestCase):
                 ("signed", "((-191))"),
                 ("unsigned", "((65u))"),
                 ("signed-triple", "(((+65)))"),
+                ("outer-positive", "+((65))"),
+                ("outer-negative", "-((191))"),
+                ("mixed-negative", "(-(191))"),
             ):
                 with self.subTest(argument=argument):
                     result, target = self.compile_source(
@@ -168,7 +171,8 @@ class ParenthesizedCCompilerTests(unittest.TestCase):
             directory = Path(temporary)
             for name, argument in (
                 ("four-level", "((((65))))"),
-                ("unary-parenthesized", "+(65)"),
+                ("two-signs", "-(+65)"),
+                ("unary-arithmetic", "-(65 + 0)"),
                 ("arithmetic", "65 + 0"),
             ):
                 with self.subTest(argument=argument):
