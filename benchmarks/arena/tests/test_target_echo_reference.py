@@ -2351,6 +2351,42 @@ def test_tool_fingerprint_rejects_unverified_hash_provider_receipts(
         assert caught.value.__cause__ is failure
 
 
+def test_tool_fingerprint_rejects_jointly_forged_hash_providers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two mutable SHA entrypoints cannot jointly relabel actual tool bytes."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"trusted-emitter")
+    _ = runner.write_bytes(b"trusted-runner")
+    expected = sha256()
+    for raw in (b"trusted-emitter", b"trusted-runner"):
+        expected.update(len(raw).to_bytes(8, "big"))
+        expected.update(raw)
+    assert expected.hexdigest() != "0" * 64
+
+    class ForgedHash:
+        def update(self, raw: bytes) -> None:
+            del raw
+
+        def hexdigest(self) -> str:
+            return "0" * 64
+
+    with monkeypatch.context() as patch:
+        patch.setattr(target_echo_reference, "sha256", lambda: ForgedHash())
+        patch.setattr(
+            target_echo_reference.hashlib,
+            "new",
+            lambda *_args, **_kwargs: ForgedHash(),
+        )
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="SHA-256 receipt differs from tool bytes",
+        ):
+            _ = target_echo_reference._tool_identity(emitter, runner)
+
+
 def test_tool_fingerprint_rejects_symlink_substitution_after_admission(
     tmp_path: Path,
 ) -> None:
@@ -3017,6 +3053,31 @@ def test_producer_hash_receipts_must_bind_exact_source_bytes(
         assert not list((tmp_path / TARGET_RAW).iterdir())
     if site == "rss-sidecar":
         assert not list((tmp_path / TARGET_RSS).iterdir())
+
+
+def test_producer_rejects_jointly_forged_source_hash_providers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pair of substituted hash constructors cannot relabel source bytes."""
+    raw = b"original retained source bytes"
+    assert sha256(raw).hexdigest() != "0" * 64
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return "0" * 64
+
+    with monkeypatch.context() as patch:
+        patch.setattr(target_echo_reference, "sha256", lambda _raw: ForgedHash())
+        patch.setattr(
+            target_echo_reference.hashlib,
+            "new",
+            lambda *_args, **_kwargs: ForgedHash(),
+        )
+        with pytest.raises(
+            target_echo_reference.TargetEchoStudyError,
+            match="SHA-256 differs from source bytes",
+        ):
+            _ = target_echo_reference._checked_sha256(raw, source="test")
 
 
 @pytest.mark.parametrize("tamper_after_audit", [False, True])

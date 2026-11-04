@@ -62,6 +62,8 @@ from benchmarks.arena import (
 )
 from scripts.validate import experiment_manifest, target_profile
 
+# Keep the native hash constructor independent of both public entrypoints.
+_NATIVE_SHA256 = sha256
 _SOURCE_JSON_ENCODER = json.JSONEncoder
 _ROOT = Path(__file__).resolve().parents[2]
 _TEMP = _ROOT / ".temp"
@@ -346,6 +348,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
     try:
         digest = sha256()
         independent = hashlib.new("sha256")
+        source_digest = _NATIVE_SHA256()
     except Exception as error:
         message = "target echo executable SHA-256 setup failed"
         raise TargetEchoStudyError(message) from error
@@ -381,6 +384,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 length_prefix = opened.st_size.to_bytes(8, "big")
                 digest.update(length_prefix)
                 independent.update(length_prefix)
+                source_digest.update(length_prefix)
                 remaining = opened.st_size
                 while remaining:
                     requested = min(remaining, 1024 * 1024)
@@ -389,6 +393,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                         _fail("target echo executable identity changed")
                     digest.update(chunk)
                     independent.update(chunk)
+                    source_digest.update(chunk)
                     remaining -= len(chunk)
                 trailer = os.read(descriptor, 1)
                 if (
@@ -432,17 +437,22 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
     try:
         reported = digest.hexdigest()
         verified = independent.hexdigest()
+        source = source_digest.hexdigest()
     except Exception as error:
         message = "target echo executable SHA-256 completion failed"
         raise TargetEchoStudyError(message) from error
     if (
         type(reported) is not str
         or type(verified) is not str
+        or type(source) is not str
         or len(reported) != analyze.SHA256_HEX_LENGTH
         or len(verified) != analyze.SHA256_HEX_LENGTH
+        or len(source) != analyze.SHA256_HEX_LENGTH
         or not set(reported) <= analyze.SHA256_ALPHABET
         or not set(verified) <= analyze.SHA256_ALPHABET
+        or not set(source) <= analyze.SHA256_ALPHABET
         or reported != verified
+        or reported != source
     ):
         _fail("target echo executable SHA-256 receipt differs from tool bytes")
     return "local-compiler-vm-sha256:" + reported
@@ -1451,17 +1461,22 @@ def _checked_sha256(raw: bytes, *, source: str) -> str:
     try:
         reported = sha256(raw).hexdigest()
         independent = hashlib.new("sha256", raw).hexdigest()
+        source_digest = _NATIVE_SHA256(raw).hexdigest()
     except Exception as error:
         message = f"target echo {source} SHA-256 dependency failed"
         raise TargetEchoStudyError(message) from error
     if (
         type(reported) is not str
         or type(independent) is not str
+        or type(source_digest) is not str
         or len(reported) != analyze.SHA256_HEX_LENGTH
         or len(independent) != analyze.SHA256_HEX_LENGTH
+        or len(source_digest) != analyze.SHA256_HEX_LENGTH
         or not set(reported) <= analyze.SHA256_ALPHABET
         or not set(independent) <= analyze.SHA256_ALPHABET
+        or not set(source_digest) <= analyze.SHA256_ALPHABET
         or reported != independent
+        or reported != source_digest
     ):
         _fail(f"target echo {source} SHA-256 differs from source bytes")
     return reported
