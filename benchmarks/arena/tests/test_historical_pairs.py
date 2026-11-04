@@ -1938,3 +1938,79 @@ def test_historical_lowered_public_caps_preserve_native_inputs(
     historical_pairs._require_bounded_csv_header(raw[0])
     sources = historical_pairs._load_source(REPO, BASE + PREFIX)
     assert sources.protocol.repetitions == PAIR_COUNT
+
+
+@pytest.mark.parametrize("forgery", ["timing", "header"])
+def test_historical_csv_parser_cannot_invent_native_source_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    forgery: str,
+) -> None:
+    """A plausible CSV parser receipt must match the actual native CSV text."""
+    source = (REPO / BASE / PREFIX / "raw.csv").read_text(encoding="utf-8")
+    fields = historical_pairs.REGISTERED_RAW_COLUMNS[
+        "prefix_decomposition_measurement"
+    ]
+    native_reader = csv.DictReader
+
+    class ForgedReader:
+        def __init__(self, stream: Any, *, strict: bool) -> None:
+            self.native = native_reader(stream, strict=strict)
+            native_fields = self.native.fieldnames
+            assert native_fields is not None
+            self.fieldnames = (
+                list(reversed(native_fields)) if forgery == "header" else native_fields
+            )
+
+        def __iter__(self) -> Self:
+            return self
+
+        def __next__(self) -> dict[str, str]:
+            row = next(self.native)
+            if forgery == "timing":
+                row["elapsed_nanoseconds"] = str(int(row["elapsed_nanoseconds"]) + 1)
+            return row
+
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", ForgedReader)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="CSV.*source"
+    ):
+        historical_pairs._csv_rows(
+            source, registered_fields=fields, expected_rows=2 * PAIR_COUNT
+        )
+
+
+@pytest.mark.parametrize("source", [PREFIX, REUSE])
+def test_historical_build_report_rejects_parser_forged_elapsed_timing(
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+) -> None:
+    """A source-timing forgery must not enter either published paired study."""
+    native_reader = csv.DictReader
+
+    class AlteredTimingReader(native_reader):
+        def __next__(self) -> dict[str, str | None]:
+            row = super().__next__()
+            original = row["elapsed_nanoseconds"]
+            assert type(original) is str
+            row["elapsed_nanoseconds"] = str(int(original) + 1)
+            return row
+
+    monkeypatch.setattr(historical_pairs.csv, "DictReader", AlteredTimingReader)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="CSV.*source"
+    ):
+        historical_pairs.build_report(REPO, BASE + source)
+
+
+def test_historical_canonical_csv_reader_preserves_blank_physical_lines() -> None:
+    """Original CSV reader and DictReader both skip trailing blank records."""
+    source = (REPO / BASE / PREFIX / "raw.csv").read_text(encoding="utf-8")
+    fields = historical_pairs.REGISTERED_RAW_COLUMNS[
+        "prefix_decomposition_measurement"
+    ]
+    original = historical_pairs._csv_rows(
+        source, registered_fields=fields, expected_rows=2 * PAIR_COUNT
+    )
+    assert historical_pairs._csv_rows(
+        source + "\n", registered_fields=fields, expected_rows=2 * PAIR_COUNT
+    ) == original

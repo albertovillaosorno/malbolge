@@ -109,6 +109,8 @@ _SOURCE_MIB_TO_BYTES = MIB_TO_BYTES
 _SOURCE_SHA256_LENGTH = analyze.SHA256_HEX_LENGTH
 _SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
 _SOURCE_NUL = analyze.NUL
+_SOURCE_CSV_READER = csv.reader
+_SOURCE_STRING_IO = StringIO
 
 REGISTERED_RAW_COLUMNS = {
     "prefix_decomposition_measurement": frozenset({
@@ -312,7 +314,54 @@ def _csv_rows(
         message = f"malformed historical raw CSV parser: {type(error).__name__}"
         raise HistoricalEvidenceError(message) from error
     _csv_shape(fields, records, registered_fields=registered_fields)
+    _require_source_csv_rows(text, fields, records, expected_rows=expected_rows)
     return records
+
+
+def _require_source_csv_rows(
+    text: str,
+    fields: list[str],
+    records: list[dict[str, str]],
+    *,
+    expected_rows: int,
+) -> None:
+    """Check parser receipts against a separately bound native CSV reader.
+
+    The public DictReader may supply valid-looking but invented timing values;
+    only the original CSV source text may determine admitted rows and columns.
+    """
+    try:
+        reader = _SOURCE_CSV_READER(
+            _SOURCE_STRING_IO(text, newline=""),
+            delimiter=",",
+            quotechar='"',
+            strict=True,
+        )
+        source_fields = next(reader, None)
+        if type(source_fields) is not list or any(
+            type(field) is not str for field in source_fields
+        ):
+            _fail("historical source CSV header is not native")
+        source_rows: list[dict[str, str]] = []
+        for values in reader:
+            if type(values) is not list or any(
+                type(value) is not str for value in values
+            ):
+                _fail("historical source CSV row is not native")
+            if not values:
+                continue  # DictReader ignores completely empty physical lines.
+            if len(source_rows) >= expected_rows:
+                _fail("historical source CSV exceeds registered trial count")
+            if len(values) != len(source_fields):
+                _fail("historical source CSV has incomplete or excess columns")
+            source_rows.append(dict(zip(source_fields, values, strict=True)))
+    except HistoricalEvidenceError:
+        raise
+    except Exception as error:
+        message = "historical source CSV parser failed"
+        raise HistoricalEvidenceError(message) from error
+    if fields != source_fields or records != source_rows:
+        _fail("historical raw CSV parser receipt differs from source")
 
 
 def _extension(
