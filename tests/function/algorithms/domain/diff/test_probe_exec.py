@@ -5659,3 +5659,73 @@ def test_probe_native_execution_error_survives_late_module_alias(
                 assert caught.value is native_failure
             elif route == "native-status":
                 assert type(caught.value.__cause__) is PermissionError
+
+
+@pytest.mark.parametrize(
+    ("route", "reason"),
+    [
+        ("tool", "tool identifier must be a non-empty string"),
+        ("identifier", "program identifier must be a non-empty string"),
+        ("path", "unsafe probe relative path"),
+        ("rooted", "root must use the exact ProbeRoot type"),
+        ("stdin", "stdin must use exact bytes"),
+        ("timeout", "timeout must be positive"),
+        ("program", "program requires at least one command"),
+        ("context", "source-immutability flag must use an exact boolean"),
+        ("transcript", "transcript digest must be exactly 32 bytes"),
+        ("batch", "program batch must use the exact immutable tuple type"),
+        ("incomplete", "batch contains incomplete native metadata"),
+        ("unicode", "tool identifier must use portable UTF-8 text"),
+    ],
+)
+def test_probe_program_rejections_ignore_late_public_error_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    reason: str,
+) -> None:
+    """Probe admission does not execute a consumer-supplied exception factory."""
+    calls = 0
+    command = ProbeCommand(executable=ToolExecutable("python"))
+    context = ProbeRunContext(tmp_path, tmp_path, ())
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign probe error factory: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(probe_exec_module, "ProbeProgramError", foreign_error)
+        with pytest.raises(ProbeProgramError, match=reason):
+            if route == "tool":
+                _ = ToolExecutable("")
+            elif route == "identifier":
+                _ = ProbeProgram("", (command,))
+            elif route == "path":
+                _ = PathArgument(ProbeRoot.SOURCE, "../escape")
+            elif route == "rooted":
+                _ = RootedExecutable(
+                    cast("ProbeRoot", cast("object", "foreign")), "valid"
+                )
+            elif route == "stdin":
+                _ = ProbeCommand(
+                    ToolExecutable("python"), stdin=cast("bytes", object())
+                )
+            elif route == "timeout":
+                _ = ProbeCommand(ToolExecutable("python"), timeout_ms=0)
+            elif route == "program":
+                _ = ProbeProgram("accepted", ())
+            elif route == "context":
+                _ = ProbeRunContext(
+                    tmp_path, tmp_path, (), cast("bool", cast("object", 1))
+                )
+            elif route == "transcript":
+                _ = ProbeTranscript("accepted", b"short", 1)
+            elif route == "batch":
+                _ = probe_exec_module._validate_probe_batch([], context)
+            elif route == "incomplete":
+                incomplete = object.__new__(ProbeProgram)
+                _ = probe_exec_module._validate_probe_batch((incomplete,), context)
+            elif route == "unicode":
+                _ = ToolExecutable("unpaired\ud800")
+    assert calls == 0, f"{route} executed a foreign probe error factory"

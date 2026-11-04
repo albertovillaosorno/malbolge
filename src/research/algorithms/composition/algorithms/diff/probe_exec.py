@@ -309,7 +309,8 @@ class ProbeExecutionError(RuntimeError):
     """Raised when a probe cannot execute deterministically and safely."""
 
 
-# The exported name is writable, but internal errors retain native identity.
+# The exported names are writable, but errors retain native identity.
+_NATIVE_PROBE_PROGRAM_ERROR = ProbeProgramError
 _NATIVE_PROBE_EXECUTION_ERROR = ProbeExecutionError
 
 
@@ -357,10 +358,10 @@ ProbeArgument = str | PathArgument
 def _require_portable_probe_identifier(value: object, context: str) -> str:
     if _NATIVE_TYPE(value) is not _NATIVE_STR or not value:
         message = f"{context} must be a non-empty string"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     if _NUL in value:
         message = f"{context} must not contain NUL bytes"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     _require_portable_utf8_text(value, context)
     return value
 
@@ -370,7 +371,7 @@ def _require_portable_utf8_text(value: str, context: str) -> None:
         _ = value.encode("utf-8")
     except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"{context} must use portable UTF-8 text"
-        raise ProbeProgramError(message) from error
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -441,7 +442,7 @@ def _require_fs_encodable(value: str, context: str) -> None:
         _ = value.encode(_FILESYSTEM_ENCODING, _FILESYSTEM_ERRORS)
     except _NATIVE_UNICODE_ERROR as error:
         message = f"{context} must be filesystem-encodable"
-        raise ProbeProgramError(message) from error
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message) from error
 
 
 def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
@@ -455,7 +456,7 @@ def _validate_argv_strings(arguments: tuple[ProbeArgument, ...]) -> None:
         _NUL in item for item in arguments if _NATIVE_TYPE(item) is _NATIVE_STR
     ):
         message = "probe argv strings must not contain NUL bytes"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     for argument in arguments:
         if _NATIVE_TYPE(argument) is _NATIVE_STR:
             _require_fs_encodable(argument, "probe argv string")
@@ -468,20 +469,20 @@ def _validate_command_shape(command: ProbeCommand) -> None:
     stdin = _probe_field(command, ProbeCommand, "stdin")
     if _NATIVE_TYPE(executable) not in {ToolExecutable, RootedExecutable}:
         message = "probe executable must use an exact executable record"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     if _NATIVE_TYPE(arguments) is not _NATIVE_TUPLE:
         message = "probe arguments must use the exact immutable tuple type"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     admitted_arguments = cast("tuple[ProbeArgument, ...]", arguments)
     if _NATIVE_ANY(
         _NATIVE_TYPE(argument) not in {_NATIVE_STR, PathArgument}
         for argument in admitted_arguments
     ):
         message = "probe arguments contain a foreign argument record"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     if _NATIVE_TYPE(stdin) is not _NATIVE_BYTES:
         message = "probe stdin must use exact bytes"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     _validate_argv_strings(admitted_arguments)
 
 
@@ -490,12 +491,12 @@ def _validate_command_integer(
 ) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_INT:
         message = f"{context} must use the exact integer type"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     minimum = _ONE if positive else _ZERO
     if value < minimum:
         qualifier = "positive" if positive else "non-negative"
         message = f"{context} must be {qualifier}"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
 
 
 def _validate_command_limits(command: ProbeCommand) -> None:
@@ -516,12 +517,12 @@ def _validate_command_limits(command: ProbeCommand) -> None:
         _probe_field(command, ProbeCommand, "digest_stdout")
     ) is not _NATIVE_BOOL:
         message = "probe stdout digest selector must use an exact boolean"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     if _NATIVE_TYPE(
         _probe_field(command, ProbeCommand, "digest_exit_code")
     ) is not _NATIVE_BOOL:
         message = "probe exit digest selector must use an exact boolean"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -613,16 +614,16 @@ class ProbeProgram:
         commands = _probe_field(self, ProbeProgram, "commands")
         if _NATIVE_TYPE(commands) is not _NATIVE_TUPLE:
             message = "probe commands must use the exact immutable tuple type"
-            raise ProbeProgramError(message)
+            raise _NATIVE_PROBE_PROGRAM_ERROR(message)
         if not commands:
             message = "probe program requires at least one command"
-            raise ProbeProgramError(message)
+            raise _NATIVE_PROBE_PROGRAM_ERROR(message)
         if _NATIVE_ANY(
             _NATIVE_TYPE(command) is not ProbeCommand
             for command in cast("tuple[object, ...]", commands)
         ):
             message = "probe program contains a foreign command record"
-            raise ProbeProgramError(message)
+            raise _NATIVE_PROBE_PROGRAM_ERROR(message)
 
 
 # Generated dataclass init methods consult mutable class post-init hooks.
@@ -636,28 +637,28 @@ def _validate_path(value: object, context: str) -> None:
     # The probe execution authority must use an exact native host path.
     if _NATIVE_TYPE(value) is not _NATIVE_PLATFORM_PATH_TYPE:
         message = f"{context} must use exact pathlib Path"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     if _native_path_hooks_changed():
         message = f"{context} native path hooks changed"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     raw = _NATIVE_PATH_STRING(value)
     if _native_path_hooks_changed():
         message = f"{context} native path hooks changed"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     if _NUL in raw:
         message = f"{context} must not contain NUL bytes"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     _require_fs_encodable(raw, context)
 
 
 def _validate_tool_binding(binding: object) -> tuple[str, Path]:
     if _NATIVE_TYPE(binding) is not _NATIVE_TUPLE:
         message = "probe tool binding must be an exact pair"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     pair = cast("tuple[object, ...]", binding)
     if _NATIVE_LEN(pair) != _TOOL_BINDING_LENGTH:
         message = "probe tool binding must be an exact pair"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     tool_id, tool_path = pair
     tool_id = _require_portable_probe_identifier(
         tool_id, "probe tool identifier"
@@ -669,14 +670,14 @@ def _validate_tool_binding(binding: object) -> tuple[str, Path]:
 def _validate_tool_bindings(value: object) -> tuple[str, ...]:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = "probe tool bindings must use the exact immutable tuple type"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     bindings = cast("tuple[object, ...]", value)
     identifiers = _NATIVE_TUPLE(
         _validate_tool_binding(binding)[0] for binding in bindings
     )
     if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = "probe tool bindings must be unique and sorted"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     return identifiers
 
 
@@ -727,7 +728,7 @@ class ProbeRunContext:
             _probe_field(self, ProbeRunContext, "enforce_source_immutable")
         ) is not _NATIVE_BOOL:
             message = "probe source-immutability flag must use an exact boolean"
-            raise ProbeProgramError(message)
+            raise _NATIVE_PROBE_PROGRAM_ERROR(message)
 
 
 # Generated dataclass init methods consult mutable class post-init hooks.
@@ -775,11 +776,11 @@ class ProbeTranscript:
             or _NATIVE_LEN(digest) != _SHA256_BYTES
         ):
             message = "probe transcript digest must be exactly 32 bytes"
-            raise ProbeProgramError(message)
+            raise _NATIVE_PROBE_PROGRAM_ERROR(message)
         selected = _probe_field(self, ProbeTranscript, "digested_commands")
         if _NATIVE_TYPE(selected) is not _NATIVE_INT or selected < _ZERO:
             message = "probe transcript selected count must be non-negative int"
-            raise ProbeProgramError(message)
+            raise _NATIVE_PROBE_PROGRAM_ERROR(message)
 
 
 # Generated dataclass init methods consult mutable class post-init hooks.
@@ -914,16 +915,16 @@ def _command_result_returncode(result: _CommandResult) -> int:
 def _validate_probe_root(root: object) -> None:
     if _NATIVE_TYPE(root) is not ProbeRoot:
         message = "probe root must use the exact ProbeRoot type"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
 
 
 def _validate_relative_path(relative_path: object) -> None:
     if _NATIVE_TYPE(relative_path) is not _NATIVE_STR:
         message = "probe relative path must use the exact string type"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     if _NUL in relative_path:
         message = "probe relative paths must not contain NUL bytes"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     _require_fs_encodable(relative_path, "probe relative path")
     _require_portable_utf8_text(relative_path, "probe relative path")
     # PureWindowsPath delegates to mutable ntpath helpers. Validate lexical
@@ -941,7 +942,7 @@ def _validate_relative_path(relative_path: object) -> None:
         message = (
             f"unsafe probe relative path (including NUL): {relative_path!r}"
         )
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
 
 
 def _native_path_inside(path: Path, root: Path) -> bool:
@@ -1993,17 +1994,17 @@ def _validate_probe_batch(
 ) -> tuple[ProbeProgram, ...]:
     if _NATIVE_TYPE(programs) is not _NATIVE_TUPLE:
         message = "probe program batch must use the exact immutable tuple type"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     items = cast("tuple[object, ...]", programs)
     if _NATIVE_ANY(
         _NATIVE_TYPE(program) is not ProbeProgram for program in items
     ):
         message = "probe program batch contains a foreign program record"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     admitted = cast("tuple[ProbeProgram, ...]", programs)
     if _NATIVE_TYPE(context) is not ProbeRunContext:
         message = "probe run context must use the exact ProbeRunContext type"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     # Exact native records can be allocated without their original constructors.
     # Revalidate all nested metadata before any filesystem or process preflight.
     try:
@@ -2029,14 +2030,14 @@ def _validate_probe_batch(
                         _PATH_ARGUMENT_VALIDATOR(cast("PathArgument", argument))
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "probe batch contains incomplete native metadata"
-        raise ProbeProgramError(message) from error
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message) from error
     identifiers = _NATIVE_TUPLE(
         cast("str", _probe_field(program, ProbeProgram, "probe_id"))
         for program in admitted
     )
     if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(_NATIVE_SET(identifiers))):
         message = "probe programs must have unique sorted identifiers"
-        raise ProbeProgramError(message)
+        raise _NATIVE_PROBE_PROGRAM_ERROR(message)
     return admitted
 
 
