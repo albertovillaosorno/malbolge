@@ -3459,3 +3459,56 @@ def test_generator_domain_rejection_retains_original_error_after_alias(
         with pytest.raises(DomainContractError, match=message):
             validator(candidate)
     assert calls == 0
+
+
+@pytest.mark.parametrize("replacement", [object, dict])
+def test_generator_accepts_native_source_receipt_after_public_type_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: type[object],
+) -> None:
+    """A consumer rename cannot falsely deny an admitted source receipt."""
+    evidence = SourcePinEvidence(file_count=1, snapshot_sha256="0" * 64)
+    validator = cast(
+        "Callable[[object], None]",
+        vars(generate_module)["_require_source_provenance_evidence"],
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "SourcePinEvidence", replacement)
+        validator(evidence)
+
+
+@pytest.mark.parametrize("replacement", [object, dict])
+def test_generator_accepts_native_domain_record_after_public_type_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: type[object],
+) -> None:
+    """Consumer changes to a public domain name cannot deny native hooks."""
+    recipe = replace(
+        _recipe(tmp_path, mode=TransformMode.COMPATIBLE),
+        domain_module=_domain_module(tmp_path),
+    )
+    preflight = cast(
+        "Callable[[DiffRecipe], None]", vars(generate_module)["_preflight_domain"]
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "DiffDomain", replacement)
+        preflight(recipe)
+    assert not recipe.output_algorithm.exists()
+
+
+@pytest.mark.parametrize("field", ["DiffRecipe", "TransformMode"])
+def test_generator_native_recipe_types_survive_public_class_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """Consumer changes to recipe names cannot deny admitted native inputs."""
+    recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, field, dict)
+        with pytest.raises(
+            DiffGeneratorUnavailableError, match="compatible generation requires"
+        ):
+            write_algorithm(recipe)
+    assert not recipe.output_algorithm.exists()

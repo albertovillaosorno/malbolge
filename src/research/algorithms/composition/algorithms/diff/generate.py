@@ -67,7 +67,9 @@ from algorithms.diff.protected import protect_exact_plan
 from algorithms.diff.provenance import SourcePinError, SourcePinEvidence
 from algorithms.diff.source_binding import SourceBindingPolicy
 
-# Consumer modules may rebind imported error names during domain callbacks.
+# Consumer modules may rebind imported records and error names in callbacks.
+_NATIVE_DOMAIN_RECORD = DiffDomain
+_NATIVE_SOURCE_PIN_EVIDENCE_RECORD = SourcePinEvidence
 _NATIVE_DOMAIN_CONTRACT_ERROR = DomainContractError
 _NATIVE_SOURCE_PIN_ERROR = SourcePinError
 
@@ -208,6 +210,9 @@ class TransformMode(StrEnum):
     COMPATIBLE = "compatible"
 
 
+_NATIVE_TRANSFORM_MODE = TransformMode
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class DiffRecipe:
     """Declarative inputs and policy for one generated transform."""
@@ -280,6 +285,9 @@ class DiffRecipe:
         )
 
 
+# The original recipe class must remain authoritative after consumer callbacks.
+_NATIVE_DIFF_RECIPE = DiffRecipe
+
 # Public recipes can be passed through consumer callbacks that replace their
 # class descriptors. Read each original native field slot once before any
 # validation or domain execution, then carry this independent immutable view
@@ -347,7 +355,7 @@ def _snapshot_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
     """Capture original stored fields without late recipe class dispatch."""
 
     def field(name: str) -> object:
-        return cast("object", _RECIPE_SLOTS[name].__get__(recipe, DiffRecipe))
+        return cast("object", _RECIPE_SLOTS[name].__get__(recipe, _NATIVE_DIFF_RECIPE))
 
     return _RECIPE_SNAPSHOT_NEW(
         _RecipeSnapshot,
@@ -595,7 +603,7 @@ def _validate_profile_text(value: object) -> None:
 
 def _validate_recipe_identity(recipe: _RecipeLike) -> None:
     _validate_profile_text(recipe.profile)
-    if _NATIVE_TYPE(recipe.mode) is not TransformMode:
+    if _NATIVE_TYPE(recipe.mode) is not _NATIVE_TRANSFORM_MODE:
         message = "mode must use the exact TransformMode type"
         raise _NATIVE_TYPE_ERROR(message)
 
@@ -664,7 +672,7 @@ def _validate_identity_flags(recipe: _RecipeLike) -> None:
 
 def _validate_recipe(recipe: DiffRecipe) -> _RecipeSnapshot:
     _require_native_recipe_snapshot_hooks()
-    if _NATIVE_TYPE(recipe) is not DiffRecipe:
+    if _NATIVE_TYPE(recipe) is not _NATIVE_DIFF_RECIPE:
         message = "diff recipe must use the exact DiffRecipe type"
         raise _NATIVE_TYPE_ERROR(message)
     snapshot = _snapshot_recipe(recipe)
@@ -792,7 +800,7 @@ def _require_source_provenance_evidence(value: object) -> None:
         DomainContractError: Evidence is foreign, incomplete, or inconsistent.
 
     """
-    if _NATIVE_TYPE(value) is not SourcePinEvidence:
+    if _NATIVE_TYPE(value) is not _NATIVE_SOURCE_PIN_EVIDENCE_RECORD:
         message = "domain source provenance hook must return SourcePinEvidence"
         raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     try:
@@ -812,16 +820,16 @@ def _preflight_domain(recipe: _RecipeLike) -> None:
         raise _NATIVE_GENERATOR_UNAVAILABLE_ERROR(message)
     domain = load_diff_domain(recipe.domain_module)
     _require_native_recipe_snapshot_hooks()
-    if _NATIVE_TYPE(domain) is not DiffDomain:
+    if _NATIVE_TYPE(domain) is not _NATIVE_DOMAIN_RECORD:
         message = "domain loader must return exact DiffDomain"
         raise _NATIVE_DOMAIN_CONTRACT_ERROR(message)
     source_hook = cast(
         "Callable[[Path], SourcePinEvidence]",
-        _DOMAIN_SOURCE_HOOK_SLOT.__get__(domain, DiffDomain),
+        _DOMAIN_SOURCE_HOOK_SLOT.__get__(domain, _NATIVE_DOMAIN_RECORD),
     )
     oracle_hook = cast(
         "Callable[[Path], None]",
-        _DOMAIN_ORACLE_HOOK_SLOT.__get__(domain, DiffDomain),
+        _DOMAIN_ORACLE_HOOK_SLOT.__get__(domain, _NATIVE_DOMAIN_RECORD),
     )
     _require_source_provenance_evidence(source_hook(recipe.source_root))
     _require_native_recipe_snapshot_hooks()
@@ -850,10 +858,10 @@ def write_algorithm(recipe: DiffRecipe) -> None:
     if recipe_view.domain_module is not None:
         _preflight_domain(recipe_view)
         _require_native_recipe_snapshot_hooks()
-    elif recipe_view.mode is TransformMode.COMPATIBLE:
+    elif recipe_view.mode is _NATIVE_TRANSFORM_MODE.COMPATIBLE:
         message = "compatible generation requires a domain module"
         raise _NATIVE_GENERATOR_UNAVAILABLE_ERROR(message)
-    if recipe_view.mode is TransformMode.EXACT_BASELINE:
+    if recipe_view.mode is _NATIVE_TRANSFORM_MODE.EXACT_BASELINE:
         # Domain code runs after recipe preflight and may replace host hooks.
         _require_native_host_realpath("output_algorithm")
         _write_exact_algorithm(recipe_view)
