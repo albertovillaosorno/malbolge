@@ -3204,3 +3204,110 @@ def test_host_c_retained_write_error_cannot_expand_source_diagnostic(
         )
     assert str(caught.value).endswith("x" * 256)
     assert not str(caught.value).endswith("x" * 257)
+
+
+def test_host_c_comparison_arms_cannot_be_swapped_through_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """O0 and O2 labels remain paired to the original compiler modes."""
+    expected = reference_study.ALGORITHMS
+    monkeypatch.setattr(
+        reference_study,
+        "ALGORITHMS",
+        ((expected[0][0], "-O2"), (expected[1][0], "-O0")),
+    )
+    case = {"family": FAMILY, "difficulty": 4, "seed": 7, "version": 1}
+    monkeypatch.setattr(
+        reference_study, "_generate_bundle", lambda *_a, **_k: (case, "digest")
+    )
+    seen: list[tuple[str, str]] = []
+
+    def record_attempt(
+        _env: object, _bundle: object, *, trial: int, arm: tuple[str, str]
+    ) -> tuple[dict[str, object], dict[str, str]]:
+        assert trial == 0
+        seen.append(arm)
+        return ({"experiment_manifest": f"runs/{arm[0]}.toml"}, {})
+
+    monkeypatch.setattr(reference_study, "_write_attempt", record_attempt)
+    plan = reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+    env = reference_study._Env(
+        reference_study._ROOT, plan, "a" * 40, "host", "toolchain", ".temp/study"
+    )
+    rows, artifacts = reference_study._write_case(env, 4)
+    assert len(rows) == 2
+    assert artifacts == {}
+    assert tuple(seen) == expected
+
+
+def test_host_c_study_baseline_cannot_be_relabelled_through_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The declared baseline cannot be changed without changing the study."""
+    original = reference_study.BASELINE
+    monkeypatch.setattr(reference_study, "BASELINE", "host-clang-O2")
+    plan = reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+    env = reference_study._Env(
+        reference_study._ROOT, plan, "a" * 40, "host", "toolchain", ".temp/study"
+    )
+    report = reference_study._document(env, [])
+    assert report["study"]["baseline"] == original
+
+
+def test_host_c_generated_challenge_profile_cannot_be_relabelled(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Generation retains the original target even after public alias swap."""
+    original = reference_study.PROFILE
+    monkeypatch.setattr(reference_study, "PROFILE", "malbolge-2026.2")
+    seen: list[str] = []
+    profile = reference_study.target_profile
+    fingerprint = profile.profile_fingerprint(
+        profile.load_document(profile.DEFAULT_PROFILE), original
+    )
+    manifest = json.dumps(
+        {"identity": {"target_profile_fingerprint": fingerprint}}
+    ).encode()
+
+    def fake_generate(
+        identity: generate.ChallengeIdentity,
+    ) -> generate.GeneratedChallenge:
+        seen.append(identity.profile)
+        return reference_study.generate.GeneratedChallenge(b"C", b"O", manifest)
+
+    monkeypatch.setattr(reference_study.generate, "generate", fake_generate)
+    monkeypatch.setattr(reference_study, "_write_retained_bytes", lambda *_a: None)
+    _, observed = reference_study._generate_bundle(tmp_path, FAMILY, 4, seed=7)
+    assert seen == [original]
+    assert observed == fingerprint
+
+
+def test_host_c_run_manifest_verifier_cannot_be_relabelled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutable verifier branding cannot authenticate a different oracle."""
+    original = reference_study.VERIFIER
+    monkeypatch.setattr(reference_study, "VERIFIER", "forged-verifier-v1")
+    plan = reference_study.StudyPlan(FAMILY, (4,), 7, 1)
+    env = reference_study._Env(
+        reference_study._ROOT, plan, "a" * 40, "host", "toolchain", ".temp/study"
+    )
+    profile = reference_study.target_profile
+    fingerprint = profile.profile_fingerprint(
+        profile.load_document(profile.DEFAULT_PROFILE), reference_study.PROFILE
+    )
+    meta = reference_study._ManifestMeta(env, fingerprint, "d" * 64)
+    row = {
+        "algorithm": reference_study.BASELINE,
+        "case": {
+            "seed": 7,
+            "family": FAMILY,
+            "difficulty": 4,
+            "workload_sha256": "b" * 64,
+        },
+        "outcome": analyze.VERIFIED,
+        "raw_sample": ".temp/study/raw/attempt.csv",
+        "trial": 0,
+    }
+    text = reference_study._manifest(row, meta)
+    assert f'oracle = "{original}"' in text

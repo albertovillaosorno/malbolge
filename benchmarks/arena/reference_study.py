@@ -91,6 +91,12 @@ BASELINE = "host-clang-O0"
 CANDIDATE = "host-clang-O2"
 ALGORITHMS = ((BASELINE, "-O0"), (CANDIDATE, "-O2"))
 VERIFIER = "generated-challenge-native-C-entry-oracle-v1"
+# Each paired host-C comparison is a stable algorithm, mode, verifier, and
+# target-profile contract. Runtime aliases cannot silently relabel the arms.
+_SOURCE_PROFILE = PROFILE
+_SOURCE_BASELINE = BASELINE
+_SOURCE_ALGORITHMS = ALGORITHMS
+_SOURCE_VERIFIER = VERIFIER
 BUDGET_SECONDS = 60
 BUDGET_MEMORY_MIB = 1024
 MAX_DIFFICULTIES = 4
@@ -386,7 +392,7 @@ def _manifest(row: dict[str, Any], meta: _ManifestMeta) -> str:
         "[challenge]",
         f"family = {_quote(case["family"])}",
         f"difficulty = {case["difficulty"]}",
-        f"target_profile = {_quote(PROFILE)}",
+        f"target_profile = {_quote(_SOURCE_PROFILE)}",
         f"target_profile_fingerprint = {_quote(profile_fingerprint)}",
         "",
         "[budget]",
@@ -395,7 +401,7 @@ def _manifest(row: dict[str, Any], meta: _ManifestMeta) -> str:
         "",
         "[verification]",
         "required = true",
-        f"oracle = {_quote(VERIFIER)}",
+        f"oracle = {_quote(_SOURCE_VERIFIER)}",
         "",
         "[provenance]",
         'implementation = "benchmarks/arena/reference_study.py"',
@@ -499,7 +505,7 @@ def _generate_bundle(
         family=family,
         version=1,
         seed=seed,
-        profile=PROFILE,
+        profile=_SOURCE_PROFILE,
         nodes=nodes,
     )
     generated = generate.generate(identity)
@@ -583,7 +589,7 @@ def _measure(
         case["family"],
         case["version"],
         case["seed"],
-        PROFILE,
+        _SOURCE_PROFILE,
         case["difficulty"],
     )
     started = time.perf_counter_ns()
@@ -606,7 +612,7 @@ def _measure(
             "case": case.copy(),
             "trial": trial,
             "outcome": outcome,
-            "verifier": VERIFIER,
+            "verifier": _SOURCE_VERIFIER,
             "verifier_verdict": (
                 analyze.ACCEPTED
                 if outcome == analyze.VERIFIED
@@ -659,7 +665,7 @@ def _write_case(
     rows: list[dict[str, Any]] = []
     artifacts: dict[str, dict[str, str]] = {}
     for trial in range(environment.plan.trials):
-        for arm in ALGORITHMS:
+        for arm in _SOURCE_ALGORITHMS:
             row, artifact = _write_attempt(
                 environment,
                 (case, fingerprint),
@@ -683,12 +689,12 @@ def _document(
             "id": f"host-C-reference-{plan.family}-seed-{plan.seed}",
             "question": "Does Clang O2 reduce time or code size vs O0?",
             "hypothesis": "O2 improves verified time/size frontier on C.",
-            "baseline": BASELINE,
+            "baseline": _SOURCE_BASELINE,
             "rejection_observation": (
                 "O2 is dominated by O0 at all difficulties."
             ),
             "stage": "host-c-reference-not-malbolge",
-            "target_profile": PROFILE,
+            "target_profile": _SOURCE_PROFILE,
             "host": environment.host,
             "toolchain": environment.toolchain,
             "budget": {
@@ -1094,7 +1100,7 @@ def _validate_plan(plan: StudyPlan) -> None:
             plan.family,
             1,
             plan.seed,
-            PROFILE,
+            _SOURCE_PROFILE,
             nodes,
         ).validate()
         if nodes > host_c_oracle.MAX_REPLAY_NODES:
