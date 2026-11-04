@@ -1108,6 +1108,12 @@ The correction and independent receipt now retain the original `sorted`,
 Eight red-first substitutions that could forge adjusted fractions fail under
 `c0e281be2`; 965 integrated tests and arena type checking passed. This only
 protects local arithmetic admission, not p-value provenance or independence.
+Signed `cab4911de` further binds native `any` and `len` before input
+validation and adjustment. Six red-first substitutions previously accepted
+out-of-range or non-rational p-values, falsely rejected valid inputs, or
+changed the adjusted family size. All six and 1,009 statistical/analyzer/
+evidence tests passed, with arena BasedPyright and scoped Ruff checks clean.
+This checks local correction inputs, not valid marginal null probabilities.
 
 Holm controls family-wise error under arbitrary test dependence *only when*
 its marginal p-values are valid. It does not establish pair independence,
