@@ -94,6 +94,11 @@ _SOURCE_MAX_ARTIFACT_INDEX_BYTES = MAX_ARTIFACT_INDEX_BYTES
 _SOURCE_MAX_RESOURCE_CONTROLS_BYTES = MAX_RESOURCE_CONTROLS_BYTES
 _SOURCE_MAX_FAILURES_BYTES = MAX_FAILURES_BYTES
 RUN_PREFIX = "arena-host-c-study-"
+# These labels define the ignored source-tree admission boundary.
+_SOURCE_PART_COUNT = PART_COUNT
+_SOURCE_ROOT_PART = ROOT_PART
+_SOURCE_STUDY_LEAF = STUDY_LEAF
+_SOURCE_RUN_PREFIX = RUN_PREFIX
 STAGE = "host-c-reference-not-malbolge"
 TOOLCHAIN = "repo-pinned-clang-22.1.8"
 PRODUCER_IMPLEMENTATION = "benchmarks/arena/reference_study.py"
@@ -217,11 +222,15 @@ def _prefix(relative: str) -> str:
     if type(relative) is not str:
         _fail("host-C audit requires a canonical ignored study path")
     parts = relative.split("/")
-    if len(parts) != PART_COUNT or parts[0] != ROOT_PART or parts[2] != STUDY_LEAF:
+    if (
+        len(parts) != _SOURCE_PART_COUNT
+        or parts[0] != _SOURCE_ROOT_PART
+        or parts[2] != _SOURCE_STUDY_LEAF
+    ):
         _fail("host-C audit requires .temp/arena-host-c-study-*/study.json")
     directory = parts[1]
-    suffix = directory.removeprefix(RUN_PREFIX)
-    if not directory.startswith(RUN_PREFIX) or not suffix:
+    suffix = directory.removeprefix(_SOURCE_RUN_PREFIX)
+    if not directory.startswith(_SOURCE_RUN_PREFIX) or not suffix:
         _fail("host-C audit requires a generated host-C study directory")
     if not suffix.isascii() or not all(
         char.isalnum() or char == UNDERSCORE for char in suffix

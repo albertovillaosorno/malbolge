@@ -2916,3 +2916,24 @@ def test_host_c_audit_toolchain_identity_does_not_follow_mutable_label(
 
     with pytest.raises(reference_audit.ReferenceAuditError, match="toolchain"):
         reference_audit.audit(relative)
+
+
+@pytest.mark.parametrize(
+    ("policy", "forged", "path"),
+    [
+        ("PART_COUNT", 4, ".temp/arena-host-c-study-x/study.json/extra"),
+        ("ROOT_PART", "foreign", "foreign/arena-host-c-study-x/study.json"),
+        ("STUDY_LEAF", "other.json", ".temp/arena-host-c-study-x/other.json"),
+        ("RUN_PREFIX", "foreign-", ".temp/foreign-x/study.json"),
+    ],
+)
+def test_host_c_audit_path_authority_rejects_mutable_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+    forged: object,
+    path: str,
+) -> None:
+    """Late public path policy changes must not authorize foreign study roots."""
+    monkeypatch.setattr(reference_audit, policy, forged)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="requires"):
+        reference_audit._prefix(path)
