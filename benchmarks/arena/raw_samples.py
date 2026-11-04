@@ -59,6 +59,9 @@ _SOURCE_LEN = len
 _SOURCE_TUPLE = tuple
 _SOURCE_NEXT = next
 _SOURCE_LIST = list
+# Dependency failures must use native exception-family identities.
+_SOURCE_EXCEPTION = Exception
+_SOURCE_UNICODE_ERROR = UnicodeError
 # A replaced csv.reader must not be the authority for the retained source.
 _SOURCE_CSV_READER = csv.reader
 # Preserve the bounded source column scanner against public substitution.
@@ -221,7 +224,7 @@ def _csv_rows(
     _require_bounded_csv_header(text, label)
     try:
         column_receipt = csv_admission.within_column_limit(text, _SOURCE_LEN(_SOURCE_HEADER_2))
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         # A substituted preflight dependency cannot leak arbitrary host faults.
         message = f"{label}: arena raw CSV column preflight failed"
         raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
@@ -233,7 +236,7 @@ def _csv_rows(
     # thousands of fields. Confirm the source scan before parser allocation.
     try:
         source_receipt = _SOURCE_COLUMN_LIMIT(text, _SOURCE_LEN(_SOURCE_HEADER_2))
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         message = f"{label}: arena raw CSV source column preflight failed"
         raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     if _SOURCE_TYPE(source_receipt) is not bool or not source_receipt:
@@ -271,7 +274,7 @@ def _csv_rows(
         )
         message = f"{label}: invalid arena raw CSV quotes: {detail}"
         raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         # Unexpected ordinary CSV dependency faults must stay typed and must
         # not invoke a foreign exception formatter while being rejected.
         message = f"{label}: invalid arena raw CSV parser: {_SOURCE_TYPE(error).__name__}"
@@ -287,7 +290,7 @@ def _decode_raw(raw: bytes, label: str) -> str:
         _fail(f"{label}: missing or oversized arena raw CSV")
     try:
         text = raw.decode("utf-8", errors="strict")
-    except UnicodeError as error:
+    except _SOURCE_UNICODE_ERROR as error:
         message = f"{label}: invalid arena raw CSV UTF-8: {error}"
         raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     if _SOURCE_NUL in text:
@@ -323,7 +326,7 @@ def _validate_trial_semantics(row: dict[str, Any], label: str) -> None:
         analyze._relative(row["raw_sample"], f"{where}.raw_sample")  # ruff: ignore[private-member-access]
         analyze._metrics_shape(row["metrics"], where)  # ruff: ignore[private-member-access]
         _require_analyzer_semantic_helpers(label)
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         message = f"{label}: invalid reported trial semantics"
         raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
 
@@ -425,7 +428,7 @@ def _checked_sha256(raw: bytes) -> str:
         # attribute hashlib.sha256 can be replaced alongside the bound alias.
         independent = hashlib.new("sha256", raw).hexdigest()
         source_bound = _NATIVE_SHA256(raw).hexdigest()
-    except Exception as error:
+    except _SOURCE_EXCEPTION as error:
         message = "arena raw CSV SHA-256 dependency failed"
         raise _SOURCE_RAW_SAMPLE_ERROR(message) from error
     if (

@@ -2046,3 +2046,65 @@ def test_raw_error_rebinding_keeps_valid_digest(
     with monkeypatch.context() as patched:
         patched.setattr(raw_samples, "RawSampleError", replacement)
         assert raw_samples.check_rows(raw, [record], ROOT_LABEL) == expected
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("preflight", "column preflight failed"),
+        ("source-preflight", "source column preflight failed"),
+        ("csv-reader", "invalid arena raw CSV parser: OSError"),
+        ("semantic", "invalid reported trial semantics"),
+        ("digest", "SHA-256 dependency failed"),
+        ("utf8", "invalid arena raw CSV UTF-8"),
+    ],
+)
+def test_raw_csv_native_catch_aliases_preserve_typed_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """Native decoder, parser and digest faults cannot escape typed admission."""
+    with monkeypatch.context() as patched:
+        if stage == "utf8":
+            patched.setattr(raw_samples, "UnicodeError", replacement, raising=False)
+        else:
+            patched.setattr(raw_samples, "Exception", replacement, raising=False)
+        def fail(*_args: object, **_kwargs: object) -> None:
+            raise OSError("provider fault")
+        if stage == "preflight":
+            patched.setattr(raw_samples.csv_admission, "within_column_limit", fail)
+        elif stage == "source-preflight":
+            patched.setattr(raw_samples, "_SOURCE_COLUMN_LIMIT", fail)
+        elif stage == "csv-reader":
+            patched.setattr(raw_samples.csv, "reader", fail)
+        elif stage == "digest":
+            patched.setattr(raw_samples, "sha256", fail)
+        with pytest.raises(raw_samples.RawSampleError, match=diagnostic):
+            if stage in ("preflight", "source-preflight", "csv-reader"):
+                raw_samples._csv_rows("a,b\n1,2\n", ROOT_LABEL, expected_rows=1)
+            elif stage == "semantic":
+                raw_samples._validate_trial_semantics({}, ROOT_LABEL)
+            elif stage == "digest":
+                raw_samples._checked_sha256(b"fixed source bytes")
+            else:
+                raw_samples._decode_raw(b"\xff", ROOT_LABEL)
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_raw_csv_valid_source_ignores_native_catch_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    replacement: object,
+) -> None:
+    """A byte-exact valid raw sample is unaffected by error name rebinding."""
+    record = sample_study(tmp_path)["observations"][0]
+    source = _render([record])
+    with monkeypatch.context() as patched:
+        patched.setattr(raw_samples, "Exception", replacement, raising=False)
+        patched.setattr(raw_samples, "UnicodeError", replacement, raising=False)
+        assert raw_samples.check_rows(source, [record], ROOT_LABEL) == sha256(
+            source
+        ).hexdigest()
