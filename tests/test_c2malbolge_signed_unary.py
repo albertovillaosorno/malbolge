@@ -108,6 +108,13 @@ class SignedUnaryCompilerTests(unittest.TestCase):
                 ("positive", "putchar(+65);", b"A"),
                 ("negative", "putchar(-191);", b"A"),
                 ("negative-parenthesized", "putchar(-(191));", b"A"),
+                ("negative-parenthesized-zero", "putchar(-(0));", b"\x00"),
+                ("positive-double-parenthesized-zero", "putchar(+((0)));", b"\x00"),
+                (
+                    "signed-and-plain-same-byte",
+                    "putchar(-(191)); putchar(65);",
+                    b"AA",
+                ),
                 ("fifteen-negative-one", "putchar(-1);" * 15, b"\xff" * 15),
             )
             for name, source, expected in cases:
