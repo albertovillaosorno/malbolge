@@ -61,6 +61,37 @@ proof of timing precision, host CPU instructions, physical power or a memory
 budget. For long-running or externally interrupted programs, no successful
 terminal count is issued. A failing stderr write reports a nonzero exit.
 
+## One-command bounded C-to-Malbolge compilation
+
+After building the repository-pinned C frontend, Rust JSON adapter, layout
+backend, and public `malbolge` binary, the top-level command exposes the same
+verified pipeline as the Python driver without manual intermediate stages:
+
+```sh
+malbolge compile src/interface/command-line/composition/examples/emit-plus.c \
+  -o .temp/compiled-plus.malbolge
+malbolge .temp/compiled-plus.malbolge --report-steps
+```
+
+The first command publishes a current-profile `.malbolge` **capsule** and the
+second independently executes it with the normative VM, emitting `+`. On Unix,
+use `malbolge --repository-tools compile ...` through the installed shim to
+select the current debug CLI while the installed release binary is stale.
+The compile mode accepts exactly one `.c` path followed by `-o` and a fresh
+`.malbolge` path. It inherits stable source-digest checking, source bounds,
+exact pinned tool selection, independent guest acceptance, atomic no-clobber
+publication, and nonzero diagnostics from `c2malbolge.py`. It never runs C on
+the host as a compilation substitute. Existing `malbolge program.c` remains a
+separate host-only *debug run*.
+
+The command requires Python 3.14 (repository-provisioned when available,
+otherwise `python3.14` on Unix `PATH` or `py -3.14` on Windows), plus the
+already-built pinned tools. It does not bootstrap, download, or rebuild them.
+This is a working slice for the
+currently bounded admitted C shapes, **not** the completed turnkey installer,
+a full C compiler, or CUDA evidence. For explicit tool paths, direct use of
+`c2malbolge.py` remains supported below.
+
 ## Bounded source-C-to-guest composition (opt-in)
 
 `composition/scripts/c2malbolge.py` composes the existing pinned native C
@@ -152,7 +183,10 @@ binary. This wrapper selector is not forwarded to the normative VM.
 directory, guest headers and existing `c2malbolge_json` / `malbolge_layout`
 Rust binaries. It does not install or build them; missing tools fail rather than
 falling back to host Clang or synthetic JSON. The source ID defaults to the
-source filename (use `--source-id` for an explicit portable identity). Tool
+source filename when it satisfies the frontend's portable ASCII grammar.
+Filenames containing spaces, Unicode or other nonportable characters instead
+receive a stable `source-<SHA-256>.c` identity derived from the filename bytes;
+`--source-id` still overrides this in direct Python mode. Tool
 path overrides cannot be mixed with this mode. Source identity checks, guest
 verification, private staging, no-clobber publication and `--capsule` semantics
 are identical to the explicit-tool invocation. This is a repository development

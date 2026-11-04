@@ -190,6 +190,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def default_source_id(source: str) -> str:
+    """Use the basename when portable, otherwise an unambiguous stable digest."""
+    basename = Path(source).name
+    allowed = frozenset(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+    )
+    if (
+        basename
+        and basename not in (".", "..")
+        and all(character in allowed for character in basename)
+    ):
+        return basename
+    return f"source-{hashlib.sha256(os.fsencode(basename)).hexdigest()}.c"
+
+
 def parse_arguments(
     argv: list[str] | None = None, *, repository_root: Path = REPOSITORY_ROOT
 ) -> Arguments:
@@ -246,7 +261,7 @@ def parse_arguments(
                     f"repository-pinned {flag} directory is unavailable: {directory}"
                 )
         if source_id is None:
-            source_id = Path(source).name
+            source_id = default_source_id(source)
     elif missing := [flag for flag, value in configured.items() if value is None]:
         parser.error(
             "explicit compiler tools required without --repository-tools: "

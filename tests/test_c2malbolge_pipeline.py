@@ -31,14 +31,17 @@
 
 """Subprocess composition tests; child stubs are not compiler implementations."""
 
+import hashlib
 import os
+import runpy
 import subprocess
 import sys
 import tempfile
 import textwrap
 import unittest
+from collections.abc import Callable
 from pathlib import Path
-from typing import final, override
+from typing import cast, final, override
 
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
@@ -221,6 +224,29 @@ class CToMalbolgeDriverTests(unittest.TestCase):
         self.assertIn(b"already exists", completed.stderr)
         self.assert_stages(b"")
         self.assertEqual(self.target.read_bytes(), b"existing")
+
+    def test_repository_default_source_id_accepts_portable_basenames_and_encodes_others(
+        self,
+    ) -> None:
+        # A physical filename is not the logical Clang source identity. The
+        # default must stay portable without changing the selected source bytes.
+        module = runpy.run_path(str(DRIVER), run_name="malbolge_driver_test")
+        default_source_id = cast(Callable[[str], str], module["default_source_id"])
+        self.assertEqual(default_source_id("folder/ordinary-name.c"), "ordinary-name.c")
+        self.assertEqual(default_source_id("other/ordinary-name.c"), "ordinary-name.c")
+        for basename in ("source with spaces.c", "caf\u00e9.c", "a:b.c"):
+            with self.subTest(basename=basename):
+                expected = (
+                    f"source-{hashlib.sha256(os.fsencode(basename)).hexdigest()}.c"
+                )
+                self.assertEqual(default_source_id(f"folder/{basename}"), expected)
+                self.assertTrue(
+                    all(
+                        byte in "abcdefghijklmnopqrstuvwxyz0123456789-."
+                        for byte in expected
+                    )
+                )
+                self.assertEqual(default_source_id(f"other/{basename}"), expected)
 
     def test_invalid_portable_source_id_prevents_all_stages(self):
         for source_id in ("/absolute.c", "../bad.c", "a//b.c", "a\\b.c"):

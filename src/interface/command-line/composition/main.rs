@@ -58,6 +58,7 @@ use malbolge::{
 };
 
 const CHECKPOINT_INFO_ARGUMENT: &str = "--checkpoint-info";
+const COMPILE_ARGUMENT: &str = "compile";
 const EXTRACT_CHECKPOINT_ARGUMENT: &str = "--extract-checkpoint";
 const FOLLOW_PROGRESS_ARGUMENT: &str = "--follow-progress";
 const C_EXTENSION: &str = "c";
@@ -536,6 +537,9 @@ fn run() -> Result<ExitCode, String> {
         write_usage()?;
         return Ok(ExitCode::SUCCESS);
     }
+    if first_argument == OsStr::new(COMPILE_ARGUMENT) {
+        return run_compile_command(&mut arguments);
+    }
     if first_argument == OsStr::new(CHECKPOINT_INFO_ARGUMENT) {
         return run_checkpoint_info_command(&mut arguments);
     }
@@ -550,6 +554,81 @@ fn run() -> Result<ExitCode, String> {
         .map_err(|error| format!("cannot open source path: {error}"))?;
     let forwarded = arguments.collect::<Vec<_>>();
     dispatch(&canonical, &forwarded)
+}
+
+fn run_compile_command(
+    arguments: &mut impl Iterator<Item = OsString>,
+) -> Result<ExitCode, String> {
+    let Some(source) = arguments.next() else {
+        return Err(String::from(
+            "compile requires input.c -o output.malbolge",
+        ));
+    };
+    let Some(option) = arguments.next() else {
+        return Err(String::from(
+            "compile requires input.c -o output.malbolge",
+        ));
+    };
+    let Some(output) = arguments.next() else {
+        return Err(String::from(
+            "compile requires input.c -o output.malbolge",
+        ));
+    };
+    if option != OsStr::new("-o") || arguments.next().is_some() {
+        return Err(String::from(
+            "compile requires exactly input.c -o output.malbolge",
+        ));
+    }
+    if !Path::new(&source)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(C_EXTENSION))
+    {
+        return Err(String::from("compile source must have a .c extension"));
+    }
+    if !Path::new(&output)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case(MALBOLGE_EXTENSION))
+    {
+        return Err(String::from(
+            "compile output must have a .malbolge extension",
+        ));
+    }
+    let root = repository_root().ok_or_else(|| {
+        String::from("cannot locate repository root for C-to-Malbolge compilation")
+    })?;
+    let driver = root.join(
+        "src/interface/command-line/composition/scripts/c2malbolge.py",
+    );
+    if !driver.is_file() {
+        return Err(format!("C-to-Malbolge driver is missing: {}", driver.display()));
+    }
+    let python = if cfg!(windows) {
+        root.join(".dependencies/python/3.14.7/python.exe")
+    } else {
+        root.join(".dependencies/python/3.14.7/bin/python")
+    };
+    let mut command = if python.is_file() {
+        Command::new(python)
+    } else if cfg!(windows) {
+        let mut launcher = Command::new("py");
+        let _configured = launcher.arg("-3.14");
+        launcher
+    } else {
+        Command::new("python3.14")
+    };
+    let status = command
+        .arg("-B")
+        .arg(driver)
+        .arg("--repository-tools")
+        .arg("--capsule")
+        .arg("--output")
+        .arg(output)
+        .arg(source)
+        .status()
+        .map_err(|error| format!("cannot start C-to-Malbolge driver: {error}"))?;
+    Ok(exit_code(status))
 }
 
 fn run_checkpoint_info_command(
@@ -1103,6 +1182,7 @@ fn write_usage() -> Result<(), String> {
         "Usage: malbolge <program.malbolge> ",
         "[--input-stdin] [--report-steps]\n",
         "       malbolge <program.c> [program args...]\n",
+        "       malbolge compile <input.c> -o <output.malbolge>\n",
         "       malbolge --checkpoint-info ",
         "<program.malbolge.progress.json>\n",
         "       malbolge --extract-checkpoint <state-codec> ",
@@ -1117,6 +1197,8 @@ fn write_usage() -> Result<(), String> {
         "to stderr (opt-in).\n",
         "  .c         Debug-run C directly on the host via a ",
         "temporary binary.\n",
+        "  compile    Publish a verified current-profile capsule using ",
+        "built repository tools.\n",
         "  --checkpoint-info  Validate and inspect durable checkpoint ",
         "metadata.\n",
         "  --extract-checkpoint  Emit verified opaque checkpoint state.\n",
