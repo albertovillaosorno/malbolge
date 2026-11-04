@@ -3120,6 +3120,47 @@ doctor remains degraded because the compiled graph is absent; a 75-second
 bounded global `jig check` timed out (exit 124) during native-validator
 scheduling. No green repository-wide Jig verdict is claimed.
 
+## Native source-binding policy and identity continuation (2026-11-03)
+
+Source-binding policy and recovery failures now preserve the original
+`SourceBindingPolicyError` and `SourceBindingError` identities
+(`94d2a09fa`). A late public-class substitution previously changed native
+policy, HKDF, envelope, and recovery rejection into raw `TypeError`.
+Six red-first cases now retain typed native errors. All 214 postcommit
+source-binding tests and 709 adjacent admission/protection/gate tests
+passed; a subsequent correct-cwd full diff run passed 4,131 cases.
+
+Source-binding record admission and allocation also retain the import-original
+`AnchorPolicy`, `StableAnchor`, `IdentityTree`, `IdentityFile`, policy,
+share, and envelope classes (`03a451257`). Late names could otherwise
+falsely deny valid source evidence or reach descriptor errors on foreign
+records. Seven red-first failures plus two other alias checks now pass,
+with 223 postcommit source-binding, 531 adjacent protection/gate, and 718
+preformat adjacent cases green. The earlier 4,131-case complete run predates
+this guard and is not treated as its full integration result.
+
+Source-binding selection and fraction arithmetic now call import-original
+`stable_anchors` and `Decimal` (`dbd444107`). Three red-first regressions
+cover a late selector that erased genuine anchors and a decimal substitute
+that reduced a five-share threshold to three. All 226 postcommit focused
+and 461 adjacent source-binding/protection checks passed. All three DCOs
+had clean scoped Ruff, strict BasedPyright, and Git diff checks. A new
+complete diff suite is still needed after the later peer changes.
+
+Portable behavior-program errors also now use the original
+`BehaviorProgramError` (`daed14ada`) for malformed program selectors,
+context receipts, missing native bug records, and safe diagnostics.
+Four red-first late-alias cases reproduced raw `TypeError` or lost
+original exception detail. The 287 postcommit behavior-program tests and
+558 adjacent behavior/gate tests passed. Scoped Ruff, strict typing,
+and Git checks were clean. This unit was not present in the earlier
+4,131-case full-suite verdict.
+
+These in-process aliases do not provide isolation against direct trusted
+instance-storage mutation or concurrent external filesystem writers.
+Repository-wide Jig acceptance is still unverified; the compiled graph
+was absent in recent `jig doctor` checks and bounded global checks timed out.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

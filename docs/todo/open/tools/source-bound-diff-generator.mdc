@@ -1818,6 +1818,40 @@ format.
   `jig check` timed out at native-validator scheduling, exit 124. Full Jig
   acceptance remains open; external filesystem races are not isolated.
 
+- Source-binding policy and key-recovery errors now use the original
+  `SourceBindingPolicyError` and `SourceBindingError` classes (`94d2a09fa`).
+  Six red-first late-alias cases prevent raw `TypeError` in policy, HKDF,
+  envelope, and recovery admission. All 214 postcommit source-binding and
+  709 adjacent admission/protection/gate tests passed, with a subsequent
+  stable 4,131-case complete diff run. Scoped Ruff, strict BasedPyright,
+  and Git diff checks were clean.
+- Source-binding identity and metadata records now pin the native imported
+  `AnchorPolicy`, `StableAnchor`, `IdentityTree`, and `IdentityFile` types,
+  plus the native policy, share, and binding record classes (`03a451257`).
+  Seven red-first native-record and foreign-record alias failures plus two
+  additional alias cases are green. All 223 postcommit source-binding,
+  531 adjacent protection/gate, and 718 preformat adjacent tests passed;
+  Ruff, strict typing, and diff checks were clean. The 4,131-case full
+  verdict predates this change, so it is not claimed as its integration.
+- Source-binding anchor selection and threshold conversion now use
+  import-original `stable_anchors` and `Decimal` (`dbd444107`). Three
+  red-first late-alias cases previously dropped genuine anchors or reduced
+  a five-share binding threshold to three. All 226 postcommit focused and
+  461 adjacent source-binding/protection tests passed, with scoped Ruff,
+  strict typing, and diff checks clean. Full integration with later peer
+  changes remains to be verified. These process-local guards do not
+  isolate direct mutation of trusted storage or external filesystem races;
+  repository-wide Jig acceptance remains open.
+
+- Portable behavior-program rejection now preserves the native
+  `BehaviorProgramError` identity (`daed14ada`) across program/context
+  validation, missing bug receipts, and safe native error rendering. Four
+  red-first alias cases previously leaked `TypeError` or lost trusted
+  diagnostic details. All 287 postcommit focused and 558 adjacent behavior/
+  gate tests passed, with scoped Ruff, strict typing, and Git checks clean.
+  Its later integrated verdict remains pending alongside concurrent peer
+  changes; no full-suite pass is inferred from the focused evidence.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
