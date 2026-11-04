@@ -3071,6 +3071,18 @@ These in-process checks do not isolate direct trusted-state mutation or
 concurrent external filesystem writes. `jig doctor` still reports an absent
 compiled graph; repository-wide Jig acceptance remains unverified.
 
+Probe execution also preserves its own native `ProbeExecutionError`
+identity after a consumer rebinds the exported class name (`260983e59`).
+The original class now governs internal raises, catches, and safe fault
+messages. Four red-first cases cover delegated snapshot errors, native
+status preservation, host permission denials, and original diagnostics.
+All 459 postcommit probe tests and 4,101 full integrated diff tests passed;
+scoped Ruff, source strict BasedPyright, and diff checks were clean. Six
+older probe test-file typing diagnostics remain outside changed lines.
+The DCO is on `origin/main`. In-process identity guards do not guarantee
+atomicity against concurrent external filesystem writes or direct trusted
+state mutation; repository-wide Jig acceptance remains unverified.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

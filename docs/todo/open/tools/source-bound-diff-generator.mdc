@@ -1785,6 +1785,15 @@ format.
   External filesystem writers, direct trusted-state mutation, and full
   repository Jig acceptance remain outside these focused guarantees.
 
+- Probe execution now retains its original `ProbeExecutionError` class for
+  internal construction, native-error catches, and diagnostic rendering
+  (`260983e59`). Four red-first late public-class-alias cases cover
+  snapshot conversion, native status passthrough, permission denial, and
+  preserved native detail. All 459 postcommit focused and 4,101 integrated
+  diff tests passed, with scoped Ruff/diff and source strict typing clean.
+  Six inherited probe test-file typing errors remain outside changed lines.
+  This DCO was pushed SHA-exact to `main`; broader Jig acceptance is open.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
