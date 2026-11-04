@@ -3277,6 +3277,33 @@ commit identities. These checks cannot exclude concurrent host mutation,
 trusted instance-state changes, or external filesystem writers. The global
 Jig gate is still not accepted because the compiled graph is absent.
 
+## Native provenance and domain loader error identity (2026-11-03)
+
+Provenance rejection now captures its original `SourcePinError` for all
+metadata, selected-root, symlink, source-read, and snapshot failures
+(`14c8748f4`). The directory-walk catch uses the same native identity;
+a consumer-rebound public exception cannot execute a foreign factory or
+turn a rejected symlink into a `TypeError`. Ten red-first public-alias
+regressions passed, followed by 763 postcommit provenance/exact/domain
+tests. Error causes and native reader notes retain their prior behavior.
+
+The dynamic domain loader likewise captures its original
+`DomainContractError` (`07c087f3a`) for native path, filesystem status,
+import, hook-validation, and module-registration failures. Its internal
+exception catch remains stable after a loaded consumer changes the public
+error name, so the rejected module is rolled back. Eight red-first cases
+now pass, including an imported consumer replacing the error name before
+an invalid hook is detected. All 771 postcommit domain/provenance/exact
+tests passed from the required test-directory working directory. Both
+scoped DCOs are signed and SHA-exact pushed to `origin/main`, with Ruff,
+strict BasedPyright, and Git diff checks clean.
+
+These tests do not establish isolation against external filesystem writers,
+concurrent host mutations, or direct trusted instance-state changes. The
+complete diff suite has not yet been rerun after both units. `jig doctor`
+remains degraded because the compiled graph is absent; repository-wide
+Jig acceptance is still outstanding.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

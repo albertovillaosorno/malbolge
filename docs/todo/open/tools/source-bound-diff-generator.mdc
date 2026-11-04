@@ -1939,6 +1939,24 @@ format.
   host races, or external filesystem writers. Repository-wide Jig acceptance
   remains open: `jig doctor` reports a missing compiled graph.
 
+- Source-pin provenance now preserves the import-original `SourcePinError`
+  (`14c8748f4`) for invalid metadata, filesystem traversal, and exact-reader
+  failures, including the traversal exception catch. Ten red-first late
+  public-alias tests now pass; a substituted consumer exception factory never
+  executes. All 763 postcommit provenance/exact/domain adjacent tests passed.
+- Dynamic consumer-domain loading now preserves the native
+  `DomainContractError` (`07c087f3a`) through path, status, import, hook,
+  and registration rejection. Eight red-first public-alias cases, including
+  a consumer rebinding the host error during its import, now pass while
+  module registration is restored on failure. All 771 postcommit
+  domain/provenance/exact adjacent tests passed. Both DCOs were signed and
+  SHA-exact pushed to `origin/main`. Scoped Ruff, strict BasedPyright, and
+  Git checks passed with zero findings. The full diff collection has not
+  been rerun after these additions; external filesystem races and direct
+  trusted state mutation remain outside this process-local guard. Jig
+  doctor remains degraded because its compiled graph is absent, leaving
+  global governance acceptance open.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
