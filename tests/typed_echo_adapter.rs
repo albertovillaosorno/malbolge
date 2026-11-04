@@ -5179,3 +5179,52 @@ fn empty_void_typed_and_ternary_cli_publish_real_capsules() -> Result<(), String
     assert!(!output_path.exists());
     Ok(())
 }
+
+#[test]
+#[expect(clippy::panic_in_result_fn, reason = "real publisher assertions")]
+fn empty_void_typed_and_ternary_stdin_publish_identical_guest_source() -> Result<(), String> {
+    let owned = OwnedFixture::new()?;
+    let typed = wire(&fixture_with_instructions(
+        Vec::new(),
+        "fixtures/empty-void-stdin.c",
+    )?)?;
+    let compiled = adapter::compile_canonical_typed_empty_void(&typed, current_profile())
+        .map_err(|error| format!("compile empty stdin fixture: {error:?}"))?;
+    for (kind, canonical) in [
+        ("--typed-stdin", typed.as_slice()),
+        ("--ternary-stdin", compiled.ternary_bytes()),
+    ] {
+        let target = owned.path(&format!("{kind}.malbolge"));
+        let mut child = Command::new(env!("CARGO_BIN_EXE_malbolge_layout"))
+            .arg("--profile")
+            .arg(current_profile().id())
+            .arg("--output")
+            .arg(&target)
+            .arg("--")
+            .arg("--empty-void")
+            .arg(kind)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| format!("launch empty stdin publisher: {error}"))?;
+        let mut producer = child.stdin.take().ok_or("empty stdin pipe missing")?;
+        producer
+            .write_all(canonical)
+            .map_err(|error| format!("write empty stdin canonical wire: {error}"))?;
+        drop(producer);
+        let result = child
+            .wait_with_output()
+            .map_err(|error| format!("finish empty stdin publisher: {error}"))?;
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(result.stdout.is_empty());
+        let actual =
+            fs::read(&target).map_err(|error| format!("read empty stdin source: {error}"))?;
+        assert_eq!(actual, compiled.layout().source());
+    }
+    Ok(())
+}
