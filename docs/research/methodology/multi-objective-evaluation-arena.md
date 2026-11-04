@@ -1738,6 +1738,33 @@ The original study records remain the result authority.
 - Performance evidence pending: raw measurements plus a reproducible
   scaling/statistical summary tied to exact workload and hardware/software
   identity.
+- The optional budget and per-trial TOML readers now retain their native
+  `BudgetLinkError` and `TrialRunError` identities (`fc31a7514`) when public
+  error aliases are replaced. Twelve failing-first rejection cases cover
+  malformed syntax, negative limits, invalid SHA-256 or non-UTF-8 source, and
+  foreign exception factories; valid inputs remain admitted. All 56 focused
+  and 1,336 adjacent arena tests passed after this change.
+- The bounded JSON study reader likewise retains native `StudyFileError`
+  construction and classification (`03aca1664`) across path, stream, close,
+  and descriptor failures. Ten failing-first rejections and two valid-input
+  alias cases pass; 140 focused and 1,064 adjacent tests passed. Original
+  read errors survive cleanup without claiming atomic filesystem snapshots.
+- Linked evidence admission retains native `EvidenceError` construction,
+  cleanup classification, nested diagnostic rendering, and CLI errors
+  (`cb5ed584c`). Fourteen failing-first alias cases and two valid-input
+  cases pass; 440 focused and 636 adjacent tests passed. This preserves a
+  local typed error boundary, not source authenticity or host attestation.
+- Arena JSON parsing, independent source decoding, study-file admission,
+  and CLI diagnostic selection retain native `ArenaError` (`f1932092d`).
+  Eleven failing-first cases demonstrated lost duplicate-field details and
+  foreign exception types before the fix. All 458 focused and 1,732 adjacent
+  tests passed after it, with zero arena BasedPyright diagnostics. Scoped
+  strict Ruff findings were unchanged from their inherited baselines.
+  These four changes do not alter evidence acceptance criteria, validate
+  statistical assumptions, or establish complete repository acceptance.
+  `jig doctor --root .` remains degraded (installation and compiled graph
+  absent); a bounded 80-second `jig check --root .` timed out without a
+  verdict, so the global Jig acceptance gate is still unresolved.
 
 ## Results
 
