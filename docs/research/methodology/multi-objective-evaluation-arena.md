@@ -1869,6 +1869,16 @@ The original study records remain the result authority.
   do not prove atomic filesystem snapshots, source authenticity, host-I/O
   attestation, or original experiment outcomes. `jig doctor` remained degraded
   and an independent 90-second `jig check` timed out without a verdict.
+- The expanded local arena sweep passed 761 adjacent manifest, challenge,
+  budget, raw-sample, trial-run and report-output cases, plus 181 isolated
+  statistical and Git-path cases. An additional mixed host-C/statistical run
+  reported 509 passes, 17 skips and **102 failures**. The required
+  `.dependencies/llvm/22.1.8/jig-bin/clang.bin` and `.temp` directory were
+  both absent; host-C preflight returned its unavailable-compiler/workspace
+  rejection before affected tests reached their injected behavior. The
+  unpinned system Clang is not a replacement for the source-pinned binary.
+  These failures remain an unresolved environment/acceptance gate, not a
+  completed host-C verification or evidence of a new source-code regression.
 
 ## Results
 
