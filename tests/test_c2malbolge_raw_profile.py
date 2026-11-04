@@ -64,6 +64,7 @@ EXAMPLE_SEVEN = ROOT / "docs/technical/examples/corpus/emit-seven.c"
 EXAMPLE_EIGHT = ROOT / "docs/technical/examples/corpus/emit-eight.c"
 EXAMPLE_NINE = ROOT / "docs/technical/examples/corpus/emit-nine.c"
 EXAMPLE_TEN = ROOT / "docs/technical/examples/corpus/emit-ten.c"
+EXAMPLE_ELEVEN = ROOT / "docs/technical/examples/corpus/emit-eleven.c"
 
 
 @final
@@ -207,6 +208,36 @@ class RawProfileNativePipelineTests(unittest.TestCase):
             self.assertEqual(outputs[0].stdout, outputs[1].stdout)
             self.assertEqual(outputs[0].stderr, outputs[1].stderr)
 
+    def assert_raw_and_capsule_case(
+        self,
+        directory: Path,
+        name: str,
+        source: Path,
+        expected: bytes,
+        steps: int,
+    ) -> None:
+        outputs: list[subprocess.CompletedProcess[bytes]] = []
+        for capsule in (False, True):
+            mode = "capsule" if capsule else "raw"
+            guest_file = directory / f"{name}-{mode}.malbolge"
+            built = self.compile_c(source, guest_file, capsule=capsule)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            self.assertTrue(guest_file.is_file())
+            if not capsule:
+                self.assertTrue(
+                    all(33 <= byte <= 126 for byte in guest_file.read_bytes())
+                )
+            executed = self.run_guest(guest_file, raw=not capsule)
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, expected)
+            self.assertEqual(
+                executed.stderr,
+                f"malbolge-steps-v1:{steps}\n".encode("ascii"),
+            )
+            outputs.append(executed)
+        self.assertEqual(outputs[0].stdout, outputs[1].stdout)
+        self.assertEqual(outputs[0].stderr, outputs[1].stderr)
+
     def test_five_through_ten_binary_guest_bytes_raw_match_capsule(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory_name:
             directory = Path(directory_name)
@@ -229,30 +260,19 @@ class RawProfileNativePipelineTests(unittest.TestCase):
                 ),
             ):
                 with self.subTest(name=name):
-                    outputs: list[subprocess.CompletedProcess[bytes]] = []
-                    for capsule in (False, True):
-                        mode = "capsule" if capsule else "raw"
-                        guest_file = directory / f"{name}-{mode}.malbolge"
-                        built = self.compile_c(source, guest_file, capsule=capsule)
-                        self.assertEqual(built.returncode, 0, built.stderr)
-                        self.assertTrue(guest_file.is_file())
-                        if not capsule:
-                            self.assertTrue(
-                                all(
-                                    33 <= byte <= 126
-                                    for byte in guest_file.read_bytes()
-                                )
-                            )
-                        executed = self.run_guest(guest_file, raw=not capsule)
-                        self.assertEqual(executed.returncode, 0, executed.stderr)
-                        self.assertEqual(executed.stdout, expected)
-                        self.assertEqual(
-                            executed.stderr,
-                            f"malbolge-steps-v1:{steps}\n".encode("ascii"),
-                        )
-                        outputs.append(executed)
-                    self.assertEqual(outputs[0].stdout, outputs[1].stdout)
-                    self.assertEqual(outputs[0].stderr, outputs[1].stderr)
+                    self.assert_raw_and_capsule_case(
+                        directory, name, source, expected, steps
+                    )
+
+    def test_eleven_distinct_guest_bytes_raw_match_capsule(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory_name:
+            self.assert_raw_and_capsule_case(
+                Path(directory_name),
+                "eleven-distinct",
+                EXAMPLE_ELEVEN,
+                b"P\x1d\x1a6\x05\xb4\xba\xb3\x84\xcf\x9e",
+                24,
+            )
 
 
 if __name__ == "__main__":
