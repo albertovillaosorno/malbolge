@@ -1452,6 +1452,13 @@ The original study records remain the result authority.
   rewriting workload, family or source after preflight. The 1,097-case
   challenge/evidence/raw integration subset and arena type checking passed;
   none of this authenticates the generator, hashing backend or host.
+  Signed `cb8a10110` also binds native type, dict, string, integer and bytes
+  identities at replay admission. Nine red-first cases demonstrate that late
+  constructor replacement previously executed foreign case/file iterators,
+  admitted boolean workload identity fields or rejected valid source bytes.
+  All 125 post-commit challenge tests and 645 adjacent challenge/evidence/report
+  tests passed with zero arena type errors and no new strict Ruff diagnostics.
+  These are post-import Python type checks, not generator or OS attestation.
 - The challenge-bundle replay, host-C reference-study producer, and host-C
   canonical source oracle now corroborate SHA-256 using `hashlib.new` rather
   than mutable aliases of one `hashlib.sha256` provider. In each boundary, a
