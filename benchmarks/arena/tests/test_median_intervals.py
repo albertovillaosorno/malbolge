@@ -229,3 +229,34 @@ def test_median_interval_ignores_substituted_inference_providers(
                 lambda **record: {**record, "coverage": [0, 1]},
             )
         assert median_intervals.median_interval_95(list(range(10))) == expected
+
+
+def test_median_interval_rejects_forged_sample_count_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted length cannot turn five samples into ten observations."""
+    values = list(range(5))
+    monkeypatch.setattr(median_intervals, "len", lambda *_args: 10, raising=False)
+    assert median_intervals.median_interval_95(values) is None
+
+
+def test_median_interval_rejects_forged_integer_sample_validator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted predicate cannot admit boolean costs as integer trials."""
+    values = cast("list[int]", [1, 2, 3, 4, 5, True])
+    monkeypatch.setattr(median_intervals, "any", lambda *_args: False, raising=False)
+    assert median_intervals.median_interval_95(values) is None
+
+
+def test_median_interval_ignores_forged_order_statistics_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Source costs, not a substituted sort, determine reported endpoints."""
+    values = list(range(10))
+    expected = median_intervals.median_interval_95(values)
+    assert expected is not None
+    monkeypatch.setattr(
+        median_intervals, "sorted", lambda *_args: [99] * 10, raising=False
+    )
+    assert median_intervals.median_interval_95(values) == expected

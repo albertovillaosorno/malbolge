@@ -46,6 +46,9 @@ _SOURCE_MIN_SAMPLES = MIN_SAMPLES
 _SOURCE_MAX_SAMPLES = MAX_SAMPLES
 _SOURCE_REQUESTED_CONFIDENCE = REQUESTED_CONFIDENCE
 _SOURCE_FRACTION = Fraction
+_SOURCE_LEN = len
+_SOURCE_ANY = any
+_SOURCE_SORTED = sorted
 
 
 class MedianInterval(TypedDict):
@@ -77,10 +80,10 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
     """
     if type(values) is not list:
         return None
-    size = len(values)
+    size = _SOURCE_LEN(values)
     if size < _SOURCE_MIN_SAMPLES or size > _SOURCE_MAX_SAMPLES:
         return None
-    if any(type(value) is not int for value in values):
+    if _SOURCE_ANY(type(value) is not int for value in values):
         return None
     denominator = 1 << size
     confidence = _SOURCE_REQUESTED_CONFIDENCE
@@ -101,7 +104,7 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
     if rank == 0:
         return None
     exact_coverage = _SOURCE_FRACTION(denominator - 2 * tail, denominator)
-    ordered = sorted(values)
+    ordered = _SOURCE_SORTED(values)
     return _SOURCE_MEDIAN_INTERVAL(
         lower=ordered[rank - 1],
         upper=ordered[-rank],
