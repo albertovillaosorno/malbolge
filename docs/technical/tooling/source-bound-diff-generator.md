@@ -3304,6 +3304,31 @@ complete diff suite has not yet been rerun after both units. `jig doctor`
 remains degraded because the compiled graph is absent; repository-wide
 Jig acceptance is still outstanding.
 
+## Native emitter and generator error continuity (2026-11-03)
+
+The standalone Rust emitter now captures its original `RustEmissionError`
+(`07d211f31`) for internal rejection paths, safe failure detail, and atomic
+publication cleanup. A late consumer alias can no longer execute a foreign
+error factory or turn a native cleanup rejection into `TypeError`. Four
+red-first cases and 723 adjacent tests passed; 196 emitter/path checks
+passed postcommit. Ruff, source strict typing, and Git checks were clean.
+The emitter test file retains 33 older strict typing diagnostics.
+
+The public generator now captures its original unsupported-mode error,
+its imported `DomainContractError`, and the delegated `SourcePinError`
+catch (`7ab2100bf`). Six red-first cases cover compatible generation with
+and without an admitted domain plus foreign and incomplete source-pin
+receipts. All 884 postcommit generator/domain/provenance/emitter tests
+passed with clean scoped Ruff and Git checks. Strict BasedPyright has five
+inherited source and 116 inherited test diagnostics, none in added lines.
+Both DCOs were signed and SHA-exact pushed to `origin/main`.
+
+These guards do not prevent external filesystem races, direct trusted state
+mutation, or concurrent host changes. A fresh complete diff-suite verdict
+is still pending. `jig doctor --root .` remains degraded because its
+compiled graph is absent; a bounded `jig check --root .` exited 124 after
+90 seconds without completing global governance validation.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

@@ -1957,6 +1957,24 @@ format.
   doctor remains degraded because its compiled graph is absent, leaving
   global governance acceptance open.
 
+- Rust emission now retains the original `RustEmissionError` for native
+  rejection, safe diagnostic classification, and publication cleanup
+  (`07d211f31`). Four red-first public-alias cases pass, preserving the
+  original exception cause without invoking consumer callbacks. All 723
+  adjacent emitter/generator/protected/path tests passed, followed by 196
+  postcommit emitter/path tests. Ruff, source strict typing, and Git checks
+  were clean; 33 older emitter test typing findings remain.
+- Public generator orchestration now pins its own unavailable-mode error,
+  imported domain contract error, and delegated source-pin catch
+  (`7ab2100bf`). Six red-first alias cases cover missing and admitted
+  domains plus malformed provenance receipts. All 884 postcommit combined
+  generator/domain/provenance/emitter tests passed; scoped Ruff and Git
+  checks passed. Five source and 116 test strict typing findings predate
+  this change, with none on new lines. Both DCOs were signed and pushed
+  to `origin/main`. A fresh complete diff run is still pending. `jig doctor`
+  remains degraded (missing graph), and bounded `jig check --root .`
+  exceeded 90 seconds (exit 124); global acceptance is not established.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
