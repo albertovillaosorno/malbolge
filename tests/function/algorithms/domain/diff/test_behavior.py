@@ -45,6 +45,7 @@ from types import MemberDescriptorType
 from typing import cast
 
 import pytest
+from algorithms.diff import behavior as behavior_module
 from algorithms.diff.behavior import (
     BehaviorAdmissionError,
     BehaviorEvidence,
@@ -1734,3 +1735,52 @@ def test_behavior_incomplete_receipt_keeps_typed_error_after_late_alias(
         finally:
             builtins.__dict__["AttributeError"] = original
     assert type(caught) is BehaviorPolicyError, caught
+
+
+@pytest.mark.parametrize("alias", [object, RuntimeError])
+@pytest.mark.parametrize(
+    "entrypoint",
+    [
+        "invalid-identifier",
+        "invalid-digest",
+        "invalid-profile",
+        "invalid-observation",
+        "invalid-threshold",
+        "foreign-profile",
+        "incomplete-verdict",
+    ],
+)
+def test_behavior_native_policy_error_survives_late_public_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: type[object], entrypoint: str
+) -> None:
+    """Late public error aliases cannot change native behavior rejection."""
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, "BehaviorPolicyError", alias)
+        with pytest.raises(BehaviorPolicyError):
+            if entrypoint == "invalid-identifier":
+                _ = IdentityProbe("", b"digest")
+            elif entrypoint == "invalid-digest":
+                _ = IdentityProbe("id", b"")
+            elif entrypoint == "invalid-profile":
+                _ = BehaviorProfile((cast("IdentityProbe", object()),), (), ())
+            elif entrypoint == "invalid-observation":
+                _ = BugObservation("bug", cast("BugState", object()))
+            elif entrypoint == "invalid-threshold":
+                _ = evaluate_behavior(_profile(), _observations(), -1.0)
+            elif entrypoint == "foreign-profile":
+                _ = evaluate_behavior(
+                    cast("BehaviorProfile", object()), _observations(), 0.8
+                )
+            else:
+                _ = object.__new__(BehaviorEvidence).admitted
+
+
+@pytest.mark.parametrize("alias", [object, RuntimeError])
+def test_behavior_native_admission_error_survives_late_public_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: type[object]
+) -> None:
+    """Mandatory compatibility denial retains the native error class."""
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, "BehaviorAdmissionError", alias)
+        with pytest.raises(BehaviorAdmissionError, match="compatibility"):
+            _ = require_behavior(_profile(), _observations(compatible=False), 0.8)

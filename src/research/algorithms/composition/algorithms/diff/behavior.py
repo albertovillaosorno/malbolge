@@ -74,6 +74,12 @@ class BehaviorAdmissionError(RuntimeError):
     """Raised when mandatory behavior evidence does not admit a candidate."""
 
 
+# Consumer-loaded modules may replace public exception names after import.
+# Rejection authority keeps the original native classes.
+_NATIVE_BEHAVIOR_POLICY_ERROR = BehaviorPolicyError
+_NATIVE_BEHAVIOR_ADMISSION_ERROR = BehaviorAdmissionError
+
+
 class BugState(StrEnum):
     """Observed candidate state for one known historical defect."""
 
@@ -85,22 +91,22 @@ class BugState(StrEnum):
 def _require_identifier(value: object, context: str) -> str:
     if _NATIVE_TYPE(value) is not _NATIVE_STR or not value:
         message = f"{context} must be a non-empty string"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if _NUL in value:
         message = f"{context} must be portable UTF-8 text without NUL"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     try:
         _ = value.encode("utf-8")
     except _NATIVE_UNICODE_ENCODE_ERROR as error:
         message = f"{context} must be portable UTF-8 text"
-        raise BehaviorPolicyError(message) from error
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message) from error
     return value
 
 
 def _require_digest(value: object, context: str) -> bytes:
     if _NATIVE_TYPE(value) is not _NATIVE_BYTES or not value:
         message = f"{context} must be non-empty exact bytes"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     return value
 
 
@@ -228,16 +234,16 @@ def _probe_ids(
     identifiers = _NATIVE_TUPLE(_probe_identifier(item) for item in probes)
     if _NATIVE_ANY(not identifier for identifier in identifiers):
         message = "behavior probe identifiers must be non-empty"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if identifiers != _NATIVE_TUPLE(_NATIVE_SORTED(identifiers)):
         message = "behavior probes must be sorted by probe_id"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     return identifiers
 
 
 def _validate_unique(values: tuple[str, ...], message: str) -> None:
     if _NATIVE_LEN(values) != _NATIVE_LEN(_NATIVE_SET(values)):
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
 
 def _validate_correction_ids(bugs: tuple[BugProbe, ...]) -> None:
@@ -247,7 +253,7 @@ def _validate_correction_ids(bugs: tuple[BugProbe, ...]) -> None:
     )
     if _NATIVE_ANY(not correction_id for correction_id in correction_ids):
         message = "bug probes require non-empty correction identifiers"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     _validate_unique(
         correction_ids, "bug correction identifiers must be unique"
     )
@@ -260,11 +266,11 @@ def _require_probe_tuple(
 ) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = f"{context} must use the exact immutable tuple type"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(_NATIVE_TYPE(item) is not item_type for item in items):
         message = f"{context} contains a foreign probe record"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     # Exact native type does not imply the child constructor ran. Nested
     # records control the source-bound behavior decision, so validate their
     # stored fields using their original, captured constructors' guards.
@@ -283,7 +289,7 @@ def _require_probe_tuple(
             validator(item)
     except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = f"{context} contains incomplete native probe metadata"
-        raise BehaviorPolicyError(message) from error
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -321,7 +327,7 @@ class BehaviorProfile:
         _require_probe_tuple(bugs, BugProbe, "bug probes")
         if not identity:
             message = "behavior profile requires at least one identity probe"
-            raise BehaviorPolicyError(message)
+            raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         groups = (
             _probe_ids(identity),
             _probe_ids(compatibility),
@@ -464,7 +470,7 @@ class CompatibilityObservation:
             and _NATIVE_TYPE(compatible) is not _NATIVE_BOOL
         ):
             message = "compatibility observation must be bool or None"
-            raise BehaviorPolicyError(message)
+            raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -517,7 +523,7 @@ class BugObservation:
         )
         if _NATIVE_TYPE(state) is not BugState:
             message = "bug observation state must use the exact BugState type"
-            raise BehaviorPolicyError(message)
+            raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -554,7 +560,7 @@ def _probe_identifier(
     if kind is BugProbe:
         return cast("str", _BUG_PROBE_ID_SLOT.__get__(probe, BugProbe))
     message = "behavior probe identifier requires exact probe record"
-    raise BehaviorPolicyError(message)
+    raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
 
 def _observation_identifier(
@@ -583,7 +589,7 @@ def _observation_identifier(
     message = (
         "behavior observation identifier requires exact observation record"
     )
-    raise BehaviorPolicyError(message)
+    raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
 
 def _require_observation_tuple(
@@ -595,11 +601,11 @@ def _require_observation_tuple(
 ) -> None:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = f"{context} must use the exact immutable tuple type"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(_NATIVE_TYPE(item) is not item_type for item in items):
         message = f"{context} contains a foreign observation record"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     validator = cast(
         "Callable[[object], None]",
         _IDENTITY_OBSERVATION_VALIDATOR
@@ -615,7 +621,7 @@ def _require_observation_tuple(
             validator(item)
     except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = f"{context} contains incomplete native observation metadata"
-        raise BehaviorPolicyError(message) from error
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message) from error
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -697,30 +703,30 @@ def _observations_fields(
 def _require_evidence_similarity(value: object) -> float:
     if _NATIVE_TYPE(value) is not _NATIVE_FLOAT or not _NATIVE_ISFINITE(value):
         message = "behavior evidence similarity must use a finite exact float"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if value < _ZERO or value > _ONE:
         message = "behavior evidence similarity must be in [0, 1]"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     return value
 
 
 def _require_evidence_count(value: object, context: str, minimum: int) -> int:
     if _NATIVE_TYPE(value) is not _NATIVE_INT or value < minimum:
         message = f"{context} must use an exact integer >= {minimum}"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     return value
 
 
 def _require_string_tuple(value: object, context: str) -> tuple[str, ...]:
     if _NATIVE_TYPE(value) is not _NATIVE_TUPLE:
         message = f"{context} must use the exact immutable tuple type"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     items = cast("tuple[object, ...]", value)
     if _NATIVE_ANY(
         _NATIVE_TYPE(item) is not _NATIVE_STR or not item for item in items
     ):
         message = f"{context} must contain non-empty exact strings"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     return cast("tuple[str, ...]", value)
 
 
@@ -744,20 +750,20 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
     )
     if matched > total:
         message = "matched identity probe count cannot exceed total"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if similarity != matched / total:
         message = "behavior evidence similarity does not match probe counts"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     apply = _require_string_tuple(apply_values, "corrections to apply")
     skip = _require_string_tuple(skip_values, "corrections to skip")
     if _NATIVE_LEN(apply) != _NATIVE_LEN(_NATIVE_SET(apply)) or _NATIVE_LEN(
         skip
     ) != _NATIVE_LEN(_NATIVE_SET(skip)):
         message = "behavior correction routes must not contain duplicates"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if _NATIVE_SET(apply) & _NATIVE_SET(skip):
         message = "behavior correction routes must be disjoint"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     _ = _require_string_tuple(
         cast(
             "object", _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence)
@@ -819,14 +825,14 @@ class BehaviorEvidence:
         """
         if _NATIVE_TYPE(self) is not BehaviorEvidence:
             message = "behavior evidence requires exact BehaviorEvidence"
-            raise BehaviorPolicyError(message)
+            raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         # Exact native receipts can be allocated without this constructor.
         # Re-check the original binding before exposing a public verdict.
         try:
             _BEHAVIOR_EVIDENCE_VALIDATOR(self)
         except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
             message = "behavior evidence has incomplete native metadata"
-            raise BehaviorPolicyError(message) from error
+            raise _NATIVE_BEHAVIOR_POLICY_ERROR(message) from error
         return not _BEHAVIOR_REASONS_SLOT.__get__(self, BehaviorEvidence)
 
 
@@ -956,9 +962,9 @@ def _validate_fraction(name: str, value: object) -> float:
             return value
     else:
         message = f"{name} must be a finite numeric fraction in [0, 1]"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     message = f"{name} must be a finite fraction in [0, 1]"
-    raise BehaviorPolicyError(message)
+    raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
 
 def _observation_map(
@@ -975,7 +981,7 @@ def _observation_map(
         message = (
             "behavior observations must have unique sorted probe identifiers"
         )
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     return {_observation_identifier(item): item for item in observations}
 
 
@@ -988,7 +994,7 @@ def _require_observation_shape(
         message = (
             f"{kind} observation identifiers do not match behavior profile"
         )
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
 
 def _identity_evidence(
@@ -1007,7 +1013,7 @@ def _identity_evidence(
         observation = observed[_probe_identifier(probe)]
         if _NATIVE_TYPE(observation) is not IdentityObservation:
             message = "internal identity observation type mismatch"
-            raise BehaviorPolicyError(message)
+            raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         digest = cast(
             "bytes | None",
             _IDENTITY_OBSERVATION_DIGEST_SLOT.__get__(
@@ -1040,7 +1046,7 @@ def _compatibility_reasons(
         observation = observed[_probe_identifier(probe)]
         if _NATIVE_TYPE(observation) is not CompatibilityObservation:
             message = "internal compatibility observation type mismatch"
-            raise BehaviorPolicyError(message)
+            raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         if _COMPATIBILITY_OBSERVATION_VALUE_SLOT.__get__(
             observation, CompatibilityObservation
         ) is not True:
@@ -1065,7 +1071,7 @@ def _bug_routing(
         observation = observed[_probe_identifier(probe)]
         if _NATIVE_TYPE(observation) is not BugObservation:
             message = "internal bug observation type mismatch"
-            raise BehaviorPolicyError(message)
+            raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         state = cast(
             "BugState",
             _BUG_OBSERVATION_STATE_SLOT.__get__(observation, BugObservation),
@@ -1118,10 +1124,10 @@ def _require_behavior_evidence_sources(
 ) -> None:
     if _NATIVE_TYPE(profile) is not BehaviorProfile:
         message = "behavior evidence requires exact BehaviorProfile"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if _NATIVE_TYPE(observations) is not BehaviorObservations:
         message = "behavior evidence requires exact BehaviorObservations"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     # Revalidate original, nested records even when a caller supplied a raw
     # exact outer profile/observation object that skipped its initializer.
     try:
@@ -1129,7 +1135,7 @@ def _require_behavior_evidence_sources(
         _BEHAVIOR_OBSERVATIONS_VALIDATOR(observations)
     except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
         message = "behavior evidence has incomplete native source metadata"
-        raise BehaviorPolicyError(message) from error
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message) from error
 
 
 def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
@@ -1155,15 +1161,15 @@ def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
         or _NATIVE_LEN(_profile_fields(profile)[0]) != total_count
     ):
         message = "behavior evidence probe counts do not match observations"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if (apply, skip) != (apply_values, skip_values):
         message = (
             "behavior evidence correction routes do not match observations"
         )
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if reasons != _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence):
         message = "behavior evidence reasons do not match observations"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
 
 def evaluate_behavior(
@@ -1187,12 +1193,12 @@ def evaluate_behavior(
     """
     if _NATIVE_TYPE(profile) is not BehaviorProfile:
         message = "behavior profile must use the exact BehaviorProfile type"
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     if _NATIVE_TYPE(observations) is not BehaviorObservations:
         message = (
             "behavior observations must use the exact BehaviorObservations type"
         )
-        raise BehaviorPolicyError(message)
+        raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     _require_behavior_evidence_sources(profile, observations)
     validated_minimum = _validate_fraction(
         "minimum_similarity", minimum_similarity
@@ -1236,5 +1242,5 @@ def require_behavior(
     )
     if reasons:
         message = "; ".join(reasons)
-        raise BehaviorAdmissionError(message)
+        raise _NATIVE_BEHAVIOR_ADMISSION_ERROR(message)
     return evidence
