@@ -132,6 +132,14 @@ CASES = (
         21,
         1215,
     ),
+    Case(
+        "emit-nine",
+        "45229743a0d515e503b190695307694985a7ba47c2dc74f616839e8bf680f430",
+        "1d09fccde1f7d346ebc7e72439b82544da2dda37ff2a6e93b020996189e7bbeb",
+        bytes((0x54, 0x3D, 0x8D, 0xD1, 0xC0, 0xB4, 0xBF, 0xD2, 0xA2)),
+        21,
+        1215,
+    ),
 )
 
 

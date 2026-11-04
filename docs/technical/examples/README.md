@@ -31,3 +31,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   US and CAN, byte-exact regeneration and 21-step VM receipt.
 - `corpus/emit-eight.md`: eight distinct guest-computed bytes including ETB,
   SOH and ACK, byte-exact regeneration and 21-step VM receipt.
+- `corpus/emit-nine.md`: nine distinct guest-computed bytes including seven
+  high-bit values, byte-exact regeneration and 21-step VM receipt.

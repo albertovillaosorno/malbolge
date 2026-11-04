@@ -146,6 +146,12 @@ fn public_compile_preserves_witnessed_output_sequences() -> Result<(), String> {
             b"S \x17<6\x01R\x06",
             21,
         ),
+        (
+            "nine-distinct-binary",
+            "putchar(84); putchar(61); putchar(141); putchar(209); putchar(192); putchar(180); putchar(191); putchar(210); putchar(162);",
+            b"T=\x8d\xd1\xc0\xb4\xbf\xd2\xa2",
+            21,
+        ),
         ("void-a", "(void) putchar ( 65 );", b"A", 31),
     ];
     for (name, statements, expected, steps) in cases {
