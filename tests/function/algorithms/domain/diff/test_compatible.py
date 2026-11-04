@@ -5250,3 +5250,118 @@ def test_compatible_snapshot_rejection_keeps_imported_error_identity(
             else:
                 require_unchanged(tmp_path, baseline, "candidate")
     assert caught.value.__cause__ is failure
+
+
+@pytest.mark.parametrize(
+    ("route", "operation", "message"),
+    [
+        (
+            "correction path",
+            lambda: CompatibleCorrectionBinding("../unsafe", 0, "fix"),
+            "unsafe compatible tree path",
+        ),
+        (
+            "correction index",
+            lambda: CompatibleCorrectionBinding("out", -1, "fix"),
+            "edit index must be non-negative",
+        ),
+        (
+            "correction identity",
+            lambda: CompatibleCorrectionBinding("out", 0, ""),
+            "correction ID must be a non-empty string",
+        ),
+        (
+            "unicode path",
+            lambda: CompatibleCorrectionBinding("broken\ud800", 0, "fix"),
+            "unsafe compatible tree path",
+        ),
+        (
+            "copy source",
+            lambda: CompatibleInstruction(
+                "out", CompatibleFileKind.COPY_CANDIDATE
+            ),
+            "source-backed instruction lost source path",
+        ),
+        (
+            "literal state",
+            lambda: CompatibleInstruction(
+                "out", CompatibleFileKind.CREATE_LITERAL
+            ),
+            "literal creation has invalid source state",
+        ),
+        (
+            "literal bytes",
+            lambda: CompatibleInstruction(
+                "out", CompatibleFileKind.CREATE_LITERAL,
+                literal=cast("bytes", cast("object", bytearray(b"unsafe"))),
+            ),
+            "literal evidence must use exact bytes",
+        ),
+        (
+            "foreign kind",
+            lambda: CompatibleInstruction(
+                "out", cast("CompatibleFileKind", object())
+            ),
+            "instruction kind must use the exact enum type",
+        ),
+        (
+            "instruction path",
+            lambda: CompatibleInstruction(
+                "../unsafe", CompatibleFileKind.CREATE_LITERAL, literal=b"safe"
+            ),
+            "unsafe compatible tree path",
+        ),
+        (
+            "copy extras",
+            lambda: CompatibleInstruction(
+                "out", CompatibleFileKind.COPY_CANDIDATE,
+                source_path="source", literal=b"extra",
+            ),
+            "candidate copy carries unrelated payload evidence",
+        ),
+    ],
+)
+def test_compatible_native_rejection_ignores_late_error_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    route: str,
+    operation: Callable[[], object],
+    message: str,
+) -> None:
+    """Native compatible records must not call a substituted error factory."""
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign error factory executed: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "CompatiblePlanError", foreign_error)
+        with pytest.raises(CompatiblePlanError, match=message):
+            _ = operation()
+    assert not calls, f"foreign error factory called for {route}"
+
+
+def test_compatible_native_error_detail_ignores_late_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Native compatible error diagnostics preserve genuine trusted detail."""
+    expected = "trusted compatible failure"
+    error = CompatiblePlanError(expected)
+    detail = cast(
+        "Callable[[Exception], str]",
+        vars(compatible_module)["_safe_compatible_error_detail"],
+    )
+    calls = 0
+
+    def foreign_error(message: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign error factory: {message}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(compatible_module, "CompatiblePlanError", foreign_error)
+        observed = detail(error)
+    assert observed == expected
+    assert not calls
