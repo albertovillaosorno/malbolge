@@ -43,19 +43,22 @@ The exact pinned-Clang shape admits one through 33 calls to
 low-eight-bit byte. The source leaf must be a nonnegative representable `i32`
 value (including `256..2147483647`), from a bounded single-line integer token
 (decimal, octal, hexadecimal or C23 binary) or a single C character literal
-(including bounded escape spellings). One optional exact pair of parentheses,
-unsigned `u32`-to-`i32` conversion, or source-proven unary `+`/`-` on an `i32`
-literal is admitted per call. The wrapper's canonical evaluated signed `i32`
-must agree with the Clang leaf and the unary operator. Negative arguments emit
-their low byte with the complete signed source span. For example,
-`putchar((65)); putchar(65u);`, `putchar(+65); putchar(-191);`,
+(including bounded escape spellings). Up to three exact, source-bound pairs of
+parentheses may enclose the literal or one checked signed unary `+`/`-` applied
+directly to an `i32` literal. For unsigned `u32` source tokens, a single
+checked `u32`-to-`i32` conversion may wrap up to three pairs of parentheses;
+unsigned unary expressions are rejected. Only one sign or conversion is
+admitted per call. The wrapper's canonical
+evaluated signed `i32` must agree with the Clang leaf and unary operator.
+Negative arguments emit their low byte with the complete signed source span.
+For example, `putchar((65)); putchar(65u);`, `putchar(+65); putchar(-191);`,
 `putchar(0x41); putchar(0101);`, `putchar(321); putchar(65);`, and
 `putchar('\0');` retain Clang's source spans and evaluated integer values.
 The C `putchar` low-byte conversion is applied only after checked `i32`
 admission, never by truncating a malformed or overflowing JSON integer.
 Each call proves its direct `putchar` reference, one exact literal argument
 and function-to-pointer decay;
-the complete normalized preorder contains four or five nodes per call, plus
+the complete normalized preorder contains four to eight nodes per call, plus
 two structural nodes and optional explicit `return;`, preserving exact source
 ancestry and ordered nonoverlapping spans. Lexical compound scopes may contain
 these calls and inert statements; each nested scope preserves its own Clang
@@ -84,12 +87,12 @@ admission without publishing a `.malbolge` artifact.
 
 An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
-Nested parentheses, general arithmetic, call-result handling, arbitrary
-output streams, interleaved effectful statements,
-`getchar`, EOF, I/O errors, general guest libc and C entry ABI remain
-unsupported. Mixing distinct **output bytes** in one source refuses
-admission; distinct `i32` literals with the same low byte preserve their own
-source spans.
+More than three parentheses, a unary operator outside a parenthesized
+operand, general arithmetic, call-result handling, arbitrary output streams,
+interleaved effectful statements, `getchar`, EOF, I/O errors, general
+guest libc and C entry ABI remain unsupported. Mixing distinct
+**output bytes** in one source refuses admission; distinct `i32` literals
+with the same low byte preserve their own source spans.
 The pinned Clang frontend must supply the source-bound integer or character
 token, its canonical evaluated `i32` value and a bounded single-line span;
 the adapter never decodes C integer or escape syntax or accepts fabricated

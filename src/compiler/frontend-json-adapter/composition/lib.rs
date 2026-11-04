@@ -57,6 +57,8 @@ const MAX_FRONTEND_JSON_BYTES: usize = 1_048_576;
 const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
 const MAX_COMPOUND_DEPTH: usize = 64;
 const MAX_LITERAL_OUTPUT_CALLS: usize = 33;
+const MAX_OUTPUT_PARENTHESES: usize = 3;
+const MAX_OUTPUT_ARGUMENT_WRAPPERS: usize = MAX_OUTPUT_PARENTHESES + 1;
 const MAX_INERT_OUTPUT_STATEMENTS: usize = 128;
 const MAX_NESTED_OUTPUT_SCOPES: usize = 128;
 
@@ -474,11 +476,10 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
     )
 }
 
-// Each direct `putchar(N)` call has its pinned source-bound Clang preorder:
-// call -> function decay -> declaration ref, followed by the byte literal or
-// one exact parentheses, unsigned-to-i32, or signed unary conversion and
-// its child literal.
-// Calls are ordered siblings; no expression or effect is discarded.
+// Each direct putchar call has the pinned Clang semantic preorder:
+// call -> function decay -> declaration ref -> bounded argument wrappers ->
+// literal. Only source-exact parentheses, one signed unary or one unsigned
+// integral cast may surround a leaf; no folded arithmetic is inferred.
 #[expect(
     clippy::too_many_lines,
     clippy::too_many_arguments,
@@ -492,46 +493,53 @@ fn admitted_output_byte(
     expected_id: u32,
     previous_span_has_terminator: bool,
 ) -> Option<u8> {
-    let (call, cast, callee, wrapper, literal) = match group {
-        [call, cast, callee, literal] => (call, cast, callee, None, literal),
-        [call, cast, callee, wrapper, literal] => (call, cast, callee, Some(wrapper), literal),
-        _ => return None,
+    let [call, cast, callee, rest @ ..] = group else {
+        return None;
     };
+    let (literal, wrappers) = rest.split_last()?;
+    if wrappers.len() > MAX_OUTPUT_ARGUMENT_WRAPPERS {
+        return None;
+    }
+    let integral_cast = wrappers.first().is_some_and(|node| {
+        node.kind == "cast-expression" && node.operation.as_deref() == Some("integral-cast")
+    });
+    let unary = wrappers
+        .last()
+        .filter(|node| node.kind == "unary-expression");
+    if integral_cast && unary.is_some() {
+        return None;
+    }
     let digits = literal.literal.as_deref()?;
-    // The source-bound leaf is a nonnegative canonical Clang i32 value.
-    // A single checked unary +/- wrapper may change that evaluated i32;
-    // the guest libc contract emits its low eight bits, including negatives.
-    // Reject nonrepresentable operands and unsigned-to-signed conversions.
+    // The source-bound leaf must be a nonnegative representable i32 value,
+    // even when Clang inferred unsigned u32 for the source token.
     let operand = digits.parse::<i32>().ok()?;
     if operand.is_negative()
         || digits != operand.to_string()
         || literal.constant_integer.as_deref() != Some(digits)
+        || literal.type_name.as_deref() != Some(if integral_cast { "u32" } else { "i32" })
+        || (integral_cast && literal.kind != "integer-literal")
     {
         return None;
     }
-    let evaluated = match wrapper {
-        Some(node) if node.kind == "unary-expression" => match node.operation.as_deref() {
+    let evaluated = match unary {
+        Some(node) => match node.operation.as_deref() {
             Some("+") => operand,
             Some("-") => operand.checked_neg()?,
             _ => return None,
         },
-        _ => operand,
+        None => operand,
     };
-    // Pinned Clang stores the evaluated signed i32 in canonical decimal:
-    // unary +65 becomes `65`, -191 becomes `-191`, and -0 becomes `0`.
     let evaluated_digits = evaluated.to_string();
     let [byte, ..] = evaluated.to_le_bytes();
     let call_span = &call.span;
     let cast_span = &cast.span;
     let callee_span = &callee.span;
     let literal_span = &literal.span;
-    let argument_span = wrapper.map_or(literal_span, |node| &node.span);
+    let argument_span = wrappers.first().map_or(literal_span, |node| &node.span);
     let source_width = literal_span.end.byte.checked_sub(literal_span.begin.byte)?;
-    // Clang evaluates decimal, octal, hexadecimal and C23 binary integer
-    // tokens to the same canonical decimal i32 value. Their source spelling
-    // can be wider than the evaluated number; preserve the complete bounded
-    // single-line token span rather than re-parsing C spelling here.
-    // Character tokens similarly include quotes and possible escape bytes.
+    // Clang already decodes decimal, octal, hexadecimal, C23 binary and
+    // character tokens. Retain its evaluated integer and exact source span;
+    // never guess the spelling from a normalized decimal string.
     let width = match literal.kind.as_str() {
         "integer-literal"
             if (1..=32).contains(&source_width)
@@ -557,84 +565,92 @@ fn admitted_output_byte(
         }
         _ => return None,
     };
-    let valid_wrapper = match wrapper {
-        None => {
-            literal.parent == call.id
-                && literal.id == expected_id.checked_add(3)?
-                && literal.type_name.as_deref() == Some("i32")
+
+    let mut parent_id = call.id;
+    let mut next_id = expected_id.checked_add(3)?;
+    let mut parentheses = 0usize;
+    for (index, node) in wrappers.iter().enumerate() {
+        let child = wrappers.get(index.saturating_add(1)).unwrap_or(literal);
+        let node_span = &node.span;
+        let child_span = &child.span;
+        if node.id != next_id
+            || node.parent != parent_id
+            || node.name.is_some()
+            || node.reference.is_some()
+            || node.definition.is_some()
+            || node.inline_specified.is_some()
+            || node.linkage.is_some()
+            || node.storage_class.is_some()
+            || node.literal.is_some()
+            || node.constant_integer.as_deref() != Some(evaluated_digits.as_str())
+        {
+            return None;
         }
-        Some(node) => {
-            let metadata_closed = node.name.is_none()
-                && node.reference.is_none()
-                && node.definition.is_none()
-                && node.inline_specified.is_none()
-                && node.linkage.is_none()
-                && node.storage_class.is_none()
-                && node.literal.is_none()
-                // The wrapper must match the checked signed i32 result,
-                // including the source sign for a unary expression.
-                && node.constant_integer.as_deref() == Some(evaluated_digits.as_str());
-            let shape = match node.kind.as_str() {
-                "parenthesized-expression" => {
-                    node.type_name.as_deref() == Some("i32")
-                        && node.operation.is_none()
-                        && literal.type_name.as_deref() == Some("i32")
-                        && node.span.begin.byte.checked_add(1) == Some(literal_span.begin.byte)
-                        && literal_span.end.byte.checked_add(1) == Some(node.span.end.byte)
-                        && node.span.begin.line == node.span.end.line
-                        && literal_span.begin.line == literal_span.end.line
-                        && node.span.begin.column.checked_add(1) == Some(literal_span.begin.column)
-                        && literal_span.end.column.checked_add(1) == Some(node.span.end.column)
-                }
-                "cast-expression" => {
-                    node.type_name.as_deref() == Some("i32")
-                        && node.operation.as_deref() == Some("integral-cast")
-                        && literal.kind == "integer-literal"
-                        && literal.type_name.as_deref() == Some("u32")
-                        && node.span.begin.byte == literal_span.begin.byte
-                        && node.span.end.byte == literal_span.end.byte
-                        && node.span.begin.line == literal_span.begin.line
-                        && node.span.end.line == literal_span.end.line
-                        && node.span.begin.column == literal_span.begin.column
-                        && node.span.end.column == literal_span.end.column
-                }
-                "unary-expression" => {
-                    node.type_name.as_deref() == Some("i32")
-                        && matches!(node.operation.as_deref(), Some("+" | "-"))
-                        && literal.type_name.as_deref() == Some("i32")
-                        && node.span.begin.byte.checked_add(1) == Some(literal_span.begin.byte)
-                        && node.span.end.byte == literal_span.end.byte
-                        && node.span.begin.line == literal_span.begin.line
-                        && node.span.end.line == literal_span.end.line
-                        && node.span.begin.column.checked_add(1) == Some(literal_span.begin.column)
-                        && node.span.end.column == literal_span.end.column
-                }
-                _ => false,
-            };
-            node.id == expected_id.checked_add(3)?
-                && node.parent == call.id
-                && literal.id == expected_id.checked_add(4)?
-                && literal.parent == node.id
-                && metadata_closed
-                && shape
+        let shape = match node.kind.as_str() {
+            "parenthesized-expression" => {
+                parentheses = parentheses.checked_add(1)?;
+                parentheses <= MAX_OUTPUT_PARENTHESES
+                    && node.type_name == child.type_name
+                    && node.operation.is_none()
+                    && node_span.begin.byte.checked_add(1) == Some(child_span.begin.byte)
+                    && child_span.end.byte.checked_add(1) == Some(node_span.end.byte)
+                    && node_span.begin.line == node_span.end.line
+                    && child_span.begin.line == child_span.end.line
+                    && node_span.begin.line == child_span.begin.line
+                    && node_span.begin.column.checked_add(1) == Some(child_span.begin.column)
+                    && child_span.end.column.checked_add(1) == Some(node_span.end.column)
+            }
+            "cast-expression" => {
+                index == 0
+                    && integral_cast
+                    && node.type_name.as_deref() == Some("i32")
+                    && child.type_name.as_deref() == Some("u32")
+                    && node.operation.as_deref() == Some("integral-cast")
+                    && node_span.begin.byte == child_span.begin.byte
+                    && node_span.end.byte == child_span.end.byte
+                    && node_span.begin.line == child_span.begin.line
+                    && node_span.end.line == child_span.end.line
+                    && node_span.begin.column == child_span.begin.column
+                    && node_span.end.column == child_span.end.column
+            }
+            "unary-expression" => {
+                index.saturating_add(1) == wrappers.len()
+                    && !integral_cast
+                    && node.type_name.as_deref() == Some("i32")
+                    && child.type_name.as_deref() == Some("i32")
+                    && matches!(node.operation.as_deref(), Some("+" | "-"))
+                    && node_span.begin.byte.checked_add(1) == Some(child_span.begin.byte)
+                    && node_span.end.byte == child_span.end.byte
+                    && node_span.begin.line == child_span.begin.line
+                    && node_span.end.line == child_span.end.line
+                    && node_span.begin.column.checked_add(1) == Some(child_span.begin.column)
+                    && node_span.end.column == child_span.end.column
+            }
+            _ => false,
+        };
+        if !shape {
+            return None;
         }
-    };
+        parent_id = node.id;
+        next_id = next_id.checked_add(1)?;
+    }
     let argument_width = argument_span
         .end
         .byte
         .checked_sub(argument_span.begin.byte)?;
-    let valid = valid_wrapper
+    let valid = literal.id == next_id
+        && literal.parent == parent_id
         && call.id == expected_id
         && call.parent == body.id
         && call.kind == "call-expression"
         && call.type_name.as_deref() == Some("i32")
         && call.reference.as_deref() == Some("external:putchar")
-        && cast.id == expected_id.saturating_add(1)
+        && cast.id == expected_id.checked_add(1)?
         && cast.parent == call.id
         && cast.kind == "cast-expression"
         && cast.type_name.as_deref() == Some("ptr(fn(i32)->i32)")
         && cast.operation.as_deref() == Some("function-to-pointer")
-        && callee.id == expected_id.saturating_add(2)
+        && callee.id == expected_id.checked_add(2)?
         && callee.parent == cast.id
         && callee.kind == "declaration-reference-expression"
         && callee.type_name.as_deref() == Some("fn(i32)->i32")
@@ -653,8 +669,7 @@ fn admitted_output_byte(
             .iter()
             .all(|node| node.operation.is_none())
         && [cast, literal].iter().all(|node| node.reference.is_none())
-        // Clang NullStmt and CompoundStmt spans include their final delimiter.
-        // The next call may begin exactly where that span ends.
+        // NullStmt and CompoundStmt spans include their final delimiter.
         && (call_span.begin.byte > previous_end
             || (previous_span_has_terminator && call_span.begin.byte == previous_end))
         && call_span.end.byte < body.span.end.byte
@@ -765,7 +780,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     if call_nodes.is_empty()
         || call_nodes.len()
             > MAX_LITERAL_OUTPUT_CALLS
-                .saturating_mul(5)
+                .saturating_mul(4 + MAX_OUTPUT_ARGUMENT_WRAPPERS)
                 .saturating_add(MAX_INERT_OUTPUT_STATEMENTS.saturating_mul(2))
                 .saturating_add(MAX_NESTED_OUTPUT_SCOPES)
         || function.kind != "function-declaration"
@@ -904,19 +919,25 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         if calls.len() >= MAX_LITERAL_OUTPUT_CALLS {
             return Err(FrontendJsonError::Unsupported);
         }
-        let fourth = call_nodes
-            .get(offset.saturating_add(3))
+        let mut argument_end = offset
+            .checked_add(3)
             .ok_or(FrontendJsonError::Unsupported)?;
-        let nodes_per_call = if matches!(
-            fourth.kind.as_str(),
-            "parenthesized-expression" | "cast-expression" | "unary-expression"
-        ) {
-            5
-        } else {
-            4
-        };
-        let end = offset
-            .checked_add(nodes_per_call)
+        for _ in 0..MAX_OUTPUT_ARGUMENT_WRAPPERS {
+            let Some(argument_node) = call_nodes.get(argument_end) else {
+                return Err(FrontendJsonError::Unsupported);
+            };
+            if !matches!(
+                argument_node.kind.as_str(),
+                "parenthesized-expression" | "cast-expression" | "unary-expression"
+            ) {
+                break;
+            }
+            argument_end = argument_end
+                .checked_add(1)
+                .ok_or(FrontendJsonError::Unsupported)?;
+        }
+        let end = argument_end
+            .checked_add(1)
             .ok_or(FrontendJsonError::Unsupported)?;
         let group = call_nodes
             .get(offset..end)
@@ -935,12 +956,12 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         selected_byte = Some(byte);
         let call = group.first().ok_or(FrontendJsonError::Unsupported)?;
         let literal = group.last().ok_or(FrontendJsonError::Unsupported)?;
-        // A sign is part of the materialized value's C source provenance;
-        // keep its complete span rather than attributing -1 to the leaf `1`.
-        let argument = match group.get(3) {
-            Some(wrapper) if wrapper.kind == "unary-expression" => wrapper,
-            _ => literal,
-        };
+        // Attribute signed constants to their complete source sign rather
+        // than the positive leaf; parentheses retain checked source spans.
+        let argument = group
+            .iter()
+            .find(|argument_node| argument_node.kind == "unary-expression")
+            .unwrap_or(literal);
         scope.previous_end = call.span.end.byte;
         scope.previous_span_has_terminator = false;
         calls.push((call, argument));
