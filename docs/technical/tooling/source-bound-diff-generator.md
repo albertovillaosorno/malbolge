@@ -3205,6 +3205,40 @@ Jig acceptance remain open. `jig doctor` is degraded while its compiled
 graph is absent. These guards cannot prevent direct trusted object-state
 mutation, racing host changes, or concurrent filesystem writes.
 
+
+## Native admission and canonical identity continuity (2026-11-03)
+
+Tree-source admission now pins original native identity, policy, and evidence
+record classes for allocation, exact-type checks, and slotted field reads;
+it also pins native admission-policy and denial exception classes
+(`16804fc56`). Rebinding exported names previously falsely denied valid
+source receipts, broke allocation with `TypeError`, or replaced typed
+rejections. Eighteen new alias regression cases include seventeen red-first
+failures, and all 205 focused and 383 adjacent postcommit checks passed.
+
+Fingerprint policy, anchor, and coverage rejection now retain the original
+`FingerprintPolicyError` (`54fddf1a2`). Ten red-first late public-alias
+cases cover malformed native policy, digest, coverage, foreign source, and
+foreign anchor metadata. All 304 adjacent fingerprint/admission tests passed
+postcommit. Generic canonicalization similarly retains its original
+`CanonicalIdentityError` (`4b2999166`) across line normalization,
+whitespace collapse, both text entry modes, and policy admission. Ten
+red-first late-alias cases and 426 postcommit adjacent checks passed.
+
+All three scoped DCOs were signed and SHA-exact pushed to `origin/main`.
+Scoped Ruff, strict BasedPyright, and Git checks were clean. A complete diff
+suite invoked from its test directory recorded 4,248 passing tests in
+141.65 seconds (exit 0). An earlier root-directory invocation failed
+thirteen subprocess node selectors because those child invocations expect
+test filenames relative to the test directory; a correct-directory targeted
+replay passed thirty related tests. The passing full run supersedes that
+invocation for the collected tests.
+
+These guards cannot prevent direct trusted instance-state mutation,
+concurrent host-module edits, or external filesystem writers. The repository
+Jig graph remains absent, so `jig doctor` is degraded; the full governance
+gate has not been shown to pass and remains an open requirement.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

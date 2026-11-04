@@ -1884,6 +1884,31 @@ format.
   filesystem races and direct trusted-storage changes remain outside the
   in-process guard, and repository-wide Jig acceptance is still open.
 
+
+- Source-admission native records, slot-owner dispatch, and typed errors now
+  retain the original `IdentityFile`, `IdentityTree`, `AdmissionPolicy`,
+  `FileAdmissionEvidence`, `TreeAdmissionEvidence`, `AdmissionPolicyError`,
+  and `AdmissionError` identities (`16804fc56`). Eighteen new alias cases
+  cover false native denial, foreign-record rejection, and typed failure;
+  seventeen initially failed red-first. All 205 focused and 383 postcommit
+  adjacent admission/fingerprint/gate tests passed, with scoped Ruff and
+  strict BasedPyright clean.
+- Fingerprint native rejection retains original `FingerprintPolicyError`
+  (`54fddf1a2`); ten red-first late-alias failures now preserve typed
+  rejection across policy, anchor, coverage, source, and foreign records.
+  All 304 adjacent fingerprint/admission tests passed postcommit, with
+  scoped Ruff, strict typing, and Git checks clean.
+- Generic canonical identity helpers retain native `CanonicalIdentityError`
+  (`4b2999166`) for foreign data and policy inputs after late export
+  rebinding. Ten red-first error-class cases now pass. All 426 combined
+  canonical/fingerprint/admission/gate tests passed postcommit, with scoped
+  Ruff, strict typing, and Git checks clean. All three DCOs were signed and
+  SHA-exact pushed to `main` with the coordinated peer changes. A correct-cwd
+  full diff run recorded 4,248 tests passed in 141.65 seconds (exit 0).
+  This in-process protection does not isolate external filesystem races or
+  direct mutation of trusted instance storage. Global Jig acceptance is
+  still unresolved because the compiled graph is absent.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
