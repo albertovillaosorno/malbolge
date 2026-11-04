@@ -41,6 +41,7 @@ MAX_DISCORDANT_PAIRS = 4096
 # An external alias substitution cannot extend the fixed inference budget.
 _SOURCE_MAX_DISCORDANT_PAIRS = MAX_DISCORDANT_PAIRS
 _SOURCE_FRACTION = Fraction
+_SOURCE_MIN = min
 
 
 class PairedExactTest(TypedDict):
@@ -55,6 +56,9 @@ _SOURCE_PAIRED_EXACT_TEST = PairedExactTest
 
 def _valid_count(value: int) -> bool:
     return type(value) is int and value >= 0
+
+
+_SOURCE_VALID_COUNT = _valid_count
 
 
 def two_sided_sign_test(left: int, right: int) -> PairedExactTest | None:
@@ -74,19 +78,21 @@ def two_sided_sign_test(left: int, right: int) -> PairedExactTest | None:
         Exact reduced probability fraction or None for unavailable comparisons.
 
     """
-    if not _valid_count(left) or not _valid_count(right):
+    if not _SOURCE_VALID_COUNT(left) or not _SOURCE_VALID_COUNT(right):
         return None
     size = left + right
     if size == 0 or size > _SOURCE_MAX_DISCORDANT_PAIRS:
         return None
-    smaller = min(left, right)
+    smaller = _SOURCE_MIN(left, right)
     denominator = 1 << size
     tail = 0
     binomial = 1
     for index in range(smaller + 1):
         tail += binomial
         binomial = binomial * (size - index) // (index + 1)
-    probability = min(_SOURCE_FRACTION(1), _SOURCE_FRACTION(2 * tail, denominator))
+    probability = _SOURCE_MIN(
+        _SOURCE_FRACTION(1), _SOURCE_FRACTION(2 * tail, denominator)
+    )
     return _SOURCE_PAIRED_EXACT_TEST(
         discordant_pairs=size,
         p_two_sided=[probability.numerator, probability.denominator],

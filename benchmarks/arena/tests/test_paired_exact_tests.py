@@ -187,3 +187,23 @@ def test_paired_sign_test_ignores_substituted_inference_providers(
                 lambda **record: {**record, "p_two_sided": [0, 1]},
             )
         assert paired_exact_tests.two_sided_sign_test(6, 0) == expected
+
+
+@pytest.mark.parametrize(("left", "right"), [(True, 0), (-1, 2), (2, False)])
+def test_pair_count_admission_rejects_substituted_validator(
+    monkeypatch: pytest.MonkeyPatch, left: int, right: int
+) -> None:
+    """A substituted count guard cannot admit invalid Bernoulli populations."""
+    monkeypatch.setattr(paired_exact_tests, "_valid_count", lambda *_args: True)
+    assert paired_exact_tests.two_sided_sign_test(left, right) is None
+
+
+@pytest.mark.parametrize("forged", [0, 2])
+def test_paired_sign_test_does_not_trust_injected_minimum_provider(
+    monkeypatch: pytest.MonkeyPatch, forged: int
+) -> None:
+    """A foreign minimum provider cannot narrow or inflate the exact p-value."""
+    expected = paired_exact_tests.two_sided_sign_test(6, 0)
+    assert expected is not None
+    monkeypatch.setattr(paired_exact_tests, "min", lambda *_args: forged, raising=False)
+    assert paired_exact_tests.two_sided_sign_test(6, 0) == expected
