@@ -62,7 +62,22 @@ from scripts.validate import experiment_manifest
 _ROOT = Path(__file__).resolve().parents[2]
 _NATIVE_SHA256 = sha256
 _NATIVE_JSON_LOADS = json.loads
+_JSON_OBJECT_PARSER_NAME = "JSONObject"
+_JSON_ARRAY_PARSER_NAME = "JSONArray"
+_JSON_STRING_PARSER_NAME = "scanstring"
+_JSON_SCANNER_MODULE_NAME = "scanner"
+_JSON_SCANNER_FACTORY_NAME = "make_scanner"
 _NATIVE_JSON_DECODER = json.JSONDecoder
+_NATIVE_JSON_DECODER_INIT = json.JSONDecoder.__init__
+_NATIVE_JSON_DECODER_DECODE = json.JSONDecoder.decode
+_NATIVE_JSON_DECODER_RAW = json.JSONDecoder.raw_decode
+_NATIVE_JSON_OBJECT_PARSER = getattr(json.decoder, _JSON_OBJECT_PARSER_NAME)
+_NATIVE_JSON_ARRAY_PARSER = getattr(json.decoder, _JSON_ARRAY_PARSER_NAME)
+_NATIVE_JSON_STRING_PARSER = getattr(json.decoder, _JSON_STRING_PARSER_NAME)
+_NATIVE_JSON_SCANNER_MODULE = getattr(json.decoder, _JSON_SCANNER_MODULE_NAME)
+_NATIVE_JSON_SCANNER_FACTORY = getattr(
+    getattr(json, _JSON_SCANNER_MODULE_NAME), _JSON_SCANNER_FACTORY_NAME
+)
 MAX_ARTIFACT_INDEX_BYTES = 1024 * 1024
 PART_COUNT = 3
 ROOT_PART = ".temp"
@@ -293,18 +308,40 @@ def _matches_native_json_tree(received: object, original: object) -> bool:
     return kind in (str, int, bool, type(None)) and received == original
 
 
+def _require_source_json_decoder() -> None:
+    """Reject mutable decoder internals shared by both JSON parse paths."""
+    if (
+        _NATIVE_JSON_DECODER.__init__ is not _NATIVE_JSON_DECODER_INIT
+        or _NATIVE_JSON_DECODER.decode is not _NATIVE_JSON_DECODER_DECODE
+        or _NATIVE_JSON_DECODER.raw_decode is not _NATIVE_JSON_DECODER_RAW
+        or getattr(json.decoder, _JSON_OBJECT_PARSER_NAME)
+        is not _NATIVE_JSON_OBJECT_PARSER
+        or getattr(json.decoder, _JSON_ARRAY_PARSER_NAME)
+        is not _NATIVE_JSON_ARRAY_PARSER
+        or getattr(json.decoder, _JSON_STRING_PARSER_NAME)
+        is not _NATIVE_JSON_STRING_PARSER
+        or getattr(json.decoder, _JSON_SCANNER_MODULE_NAME)
+        is not _NATIVE_JSON_SCANNER_MODULE
+        or getattr(getattr(json, _JSON_SCANNER_MODULE_NAME), _JSON_SCANNER_FACTORY_NAME)
+        is not _NATIVE_JSON_SCANNER_FACTORY
+    ):
+        _fail("host-C retained JSON decoder provider differs from source")
+
+
 def _read_json(
     relative: str, *, limit: int, fingerprints: dict[str, bytes | None]
 ) -> object:
     raw = _read_bounded_evidence(relative, limit=limit)
     try:
         source_text = raw.decode("utf-8")
+        _require_source_json_decoder()
         decoder = json.loads
         parsed = decoder(
             source_text,
             object_pairs_hook=_unique_pairs,
             parse_constant=_reject_nonfinite,
         )
+        _require_source_json_decoder()
         # Even the saved json.loads function resolves the current mutable
         # json.JSONDecoder class. Independently decode with the class bound at
         # import so a forged class cannot certify its own output.
@@ -312,6 +349,7 @@ def _read_json(
             object_pairs_hook=_unique_pairs,
             parse_constant=_reject_nonfinite,
         ).decode(source_text)
+        _require_source_json_decoder()
         if not _matches_native_json_tree(parsed, original):
             _fail(f"host-C retained JSON decoder differs from source: {relative}")
         # Never return a mutable object still owned by a substituted decoder.

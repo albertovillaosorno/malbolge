@@ -1989,6 +1989,118 @@ def test_host_c_retained_json_rejects_replaced_decoder_class(
     assert not fingerprints
 
 
+@pytest.mark.parametrize("provider", ["decode", "raw_decode", "scanner"])
+def test_host_c_retained_json_rejects_shared_json_decoder_providers(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """Shared decoder internals cannot forge both parsing receipts."""
+    source = b'{"schema_version":1,"failures":{"trial":"failed"}}'
+    forged = {"schema_version": 1, "failures": {"trial": "accepted"}}
+    assert json.loads(source) != forged
+    fingerprints: dict[str, bytes | None] = {}
+    with monkeypatch.context() as patch:
+        patch.setattr(evidence, "read_bounded_regular", lambda *_a, **_kw: source)
+        if provider == "decode":
+            patch.setattr(json.JSONDecoder, "decode", lambda _self, _raw: forged)
+        elif provider == "raw_decode":
+            patch.setattr(
+                json.JSONDecoder,
+                "raw_decode",
+                lambda _self, raw, idx=0: (forged, len(raw)),
+            )
+        else:
+            patch.setattr(
+                getattr(json, reference_audit._JSON_SCANNER_MODULE_NAME),
+                "make_scanner",
+                lambda _self: lambda raw, idx: (forged, len(raw)),
+            )
+        with pytest.raises(
+            reference_audit.ReferenceAuditError,
+            match="JSON decoder.*source",
+        ):
+            reference_audit._read_json(
+                ".temp/arena-host-c-study-test/failures.json",
+                limit=reference_audit.MAX_FAILURES_BYTES,
+                fingerprints=fingerprints,
+            )
+    assert not fingerprints
+
+
+@pytest.mark.parametrize(
+    "provider", ["__init__", "JSONObject", "JSONArray", "scanstring", "scanner-module"]
+)
+def test_host_c_retained_json_rejects_shared_decoder_helper_substitutions(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    """Even equivalent mutable decoder helpers cannot attest source parsing."""
+    source = b'{"schema_version":1,"failures":{"trial":"failed"}}'
+    fingerprints: dict[str, bytes | None] = {}
+    with monkeypatch.context() as patch:
+        patch.setattr(evidence, "read_bounded_regular", lambda *_a, **_kw: source)
+        if provider == "__init__":
+            native = json.JSONDecoder.__init__
+
+            def init_wrapper(instance: json.JSONDecoder, **kwargs: Any) -> None:
+                native(instance, **kwargs)
+
+            patch.setattr(json.JSONDecoder, "__init__", init_wrapper)
+        elif provider == "scanner-module":
+            patch.setattr(
+                json.decoder,
+                "scanner",
+                SimpleNamespace(
+                    make_scanner=reference_audit._NATIVE_JSON_SCANNER_FACTORY
+                ),
+            )
+        else:
+            native = getattr(json.decoder, provider)
+
+            def helper_wrapper(*args: object, **kwargs: object) -> object:
+                return native(*args, **kwargs)
+
+            patch.setattr(json.decoder, provider, helper_wrapper)
+        with pytest.raises(
+            reference_audit.ReferenceAuditError,
+            match="JSON decoder provider differs from source",
+        ):
+            reference_audit._read_json(
+                ".temp/arena-host-c-study-test/failures.json",
+                limit=reference_audit.MAX_FAILURES_BYTES,
+                fingerprints=fingerprints,
+            )
+    assert not fingerprints
+
+
+def test_host_c_retained_json_rechecks_decoder_provider_after_public_parse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public parser cannot replace shared decode methods mid-admission."""
+    source = b'{"schema_version":1,"failures":{"trial":"failed"}}'
+    original = json.loads
+    fingerprints: dict[str, bytes | None] = {}
+    with monkeypatch.context() as patch:
+        patch.setattr(evidence, "read_bounded_regular", lambda *_a, **_kw: source)
+
+        def substituted(*args: Any, **kwargs: Any) -> object:
+            result = original(*args, **kwargs)
+            patch.setattr(json.JSONDecoder, "raw_decode", lambda *_a, **_kw: None)
+            return result
+
+        patch.setattr(reference_audit.json, "loads", substituted)
+        with pytest.raises(
+            reference_audit.ReferenceAuditError,
+            match="JSON decoder provider differs from source",
+        ):
+            reference_audit._read_json(
+                ".temp/arena-host-c-study-test/failures.json",
+                limit=reference_audit.MAX_FAILURES_BYTES,
+                fingerprints=fingerprints,
+            )
+    assert not fingerprints
+
+
 def test_host_c_retained_json_rejects_foreign_nested_key_before_comparison(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
