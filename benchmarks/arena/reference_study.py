@@ -68,6 +68,12 @@ _NATIVE_SHA256 = sha256
 # Bind source JSON classes before mutable public decoder/writer replacement.
 _SOURCE_JSON_DECODER = json.JSONDecoder
 _SOURCE_JSON_ENCODER = json.JSONEncoder
+# Source class identity alone cannot protect mutable decoder methods.
+_SOURCE_JSON_DECODE_METHOD = json.JSONDecoder.decode
+_SOURCE_JSON_RAW_DECODE_METHOD = json.JSONDecoder.raw_decode
+_SOURCE_SCAN_MODULE_NAME = "scanner"
+_SOURCE_JSON_SCANNER = getattr(json, _SOURCE_SCAN_MODULE_NAME)
+_SOURCE_JSON_SCAN_FACTORY = _SOURCE_JSON_SCANNER.make_scanner
 # Source class methods and their module-global factories remain mutable even
 # when the public JSONEncoder alias itself has been replaced.
 _SOURCE_JSON_ENCODE_METHOD = json.JSONEncoder.encode
@@ -101,6 +107,18 @@ class ReferenceStudyError(ValueError):
 
 def _fail(message: str) -> Never:
     raise ReferenceStudyError(message)
+
+
+def _require_source_json_decoder() -> None:
+    """Reject forged shared decoder methods and scan providers."""
+    original_providers = (
+        _SOURCE_JSON_DECODER.decode is _SOURCE_JSON_DECODE_METHOD,
+        _SOURCE_JSON_DECODER.raw_decode is _SOURCE_JSON_RAW_DECODE_METHOD,
+        getattr(json, _SOURCE_SCAN_MODULE_NAME) is _SOURCE_JSON_SCANNER,
+        _SOURCE_JSON_SCANNER.make_scanner is _SOURCE_JSON_SCAN_FACTORY,
+    )
+    if not all(original_providers):
+        _fail("host-C bundle fingerprint differs from source JSON decoder")
 
 
 def _require_source_json_encoder(message: str) -> None:
@@ -392,36 +410,68 @@ def _manifest(row: dict[str, Any], meta: _ManifestMeta) -> str:
     return text
 
 
-def _profile_fingerprint_from_bundle_manifest(manifest: object) -> str:
-    """Admit one native digest that matches the generated manifest's bytes."""
-    if type(manifest) is not bytes:
-        _fail("host-C bundle manifest must contain native JSON bytes")
+def _read_source_bundle_json(manifest: bytes) -> tuple[object, object]:
+    """Compare native JSON decode providers before returning either receipt.
+
+    Returns:
+        Public and source parser receipts for later identity comparison.
+
+    Raises:
+        ReferenceStudyError: The JSON source decoder cannot be corroborated.
+
+    """
+    _require_source_json_decoder()
     try:
         reported = json.loads(manifest)
+    except Exception as error:
+        message = "host-C bundle manifest source JSON is invalid"
+        raise ReferenceStudyError(message) from error
+    _require_source_json_decoder()
+    try:
         source = _SOURCE_JSON_DECODER().decode(manifest.decode("utf-8"))
     except Exception as error:
         message = "host-C bundle manifest source JSON is invalid"
         raise ReferenceStudyError(message) from error
+    _require_source_json_decoder()
+    return reported, source
 
-    def fingerprint(document: object) -> str:
-        if type(document) is not dict or any(type(key) is not str for key in document):
-            _fail("host-C bundle manifest has nonnative identity fields")
-        identity = document.get("identity")
-        if type(identity) is not dict or any(type(key) is not str for key in identity):
-            _fail("host-C bundle manifest has nonnative identity fields")
-        value = identity.get("target_profile_fingerprint")
-        prefix = target_profile.PROFILE_FINGERPRINT_PREFIX
-        if (
-            type(value) is not str
-            or not value.startswith(prefix)
-            or len(value) != len(prefix) + analyze.SHA256_HEX_LENGTH
-            or not set(value[len(prefix):]) <= analyze.SHA256_ALPHABET
-        ):
-            _fail("host-C bundle manifest has invalid profile fingerprint")
-        return value
 
-    reported_value = fingerprint(reported)
-    if reported_value != fingerprint(source):
+def _bundle_profile_fingerprint(document: object) -> str:
+    """Admit only a canonical native profile digest from parsed JSON.
+
+    Returns:
+        Canonical profile fingerprint.
+
+    """
+    if type(document) is not dict or any(
+        type(key) is not str for key in document
+    ):
+        _fail("host-C bundle manifest has nonnative identity fields")
+    identity = document.get("identity")
+    if type(identity) is not dict or any(
+        type(key) is not str for key in identity
+    ):
+        _fail("host-C bundle manifest has nonnative identity fields")
+    value = identity.get("target_profile_fingerprint")
+    prefix = target_profile.PROFILE_FINGERPRINT_PREFIX
+    if (
+        type(value) is not str
+        or not value.startswith(prefix)
+        or len(value) != len(prefix) + analyze.SHA256_HEX_LENGTH
+        or not set(value[len(prefix):]) <= analyze.SHA256_ALPHABET
+    ):
+        _fail("host-C bundle manifest has invalid profile fingerprint")
+    return value
+
+
+def _profile_fingerprint_from_bundle_manifest(manifest: object) -> str:
+    """Admit one native digest that matches the generated manifest's bytes."""
+    if type(manifest) is not bytes:
+        _fail("host-C bundle manifest must contain native JSON bytes")
+    reported, source = _read_source_bundle_json(manifest)
+
+    reported_value = _bundle_profile_fingerprint(reported)
+    if reported_value != _bundle_profile_fingerprint(source):
         _fail("host-C bundle fingerprint differs from source JSON")
     return reported_value
 

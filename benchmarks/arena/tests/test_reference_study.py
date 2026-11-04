@@ -2954,6 +2954,74 @@ def test_host_c_bundle_fingerprint_rejects_replaced_cached_decoder(
             reference_study._profile_fingerprint_from_bundle_manifest(manifest)
 
 
+@pytest.mark.parametrize("method", ["decode", "raw_decode"])
+def test_host_c_bundle_fingerprint_rejects_shared_decoder_method_forgery(
+    monkeypatch: pytest.MonkeyPatch, method: str,
+) -> None:
+    """Two agreeing cached and source decoders cannot forge a fingerprint."""
+    prefix = reference_study.target_profile.PROFILE_FINGERPRINT_PREFIX
+    original = prefix + "a" * analyze.SHA256_HEX_LENGTH
+    forged = prefix + "b" * analyze.SHA256_HEX_LENGTH
+    manifest = json.dumps(
+        {"identity": {"target_profile_fingerprint": original}}
+    ).encode()
+    fake: dict[str, object] = {
+        "identity": {"target_profile_fingerprint": forged}
+    }
+
+    def replaced_decode(instance: object, text: str) -> dict[str, object]:
+        del instance, text
+        return fake
+
+    def replaced_raw_decode(
+        instance: object, text: str, idx: int = 0
+    ) -> tuple[dict[str, object], int]:
+        del instance, idx
+        return fake, len(text)
+
+    providers = {"decode": replaced_decode, "raw_decode": replaced_raw_decode}
+    with monkeypatch.context() as patch:
+        patch.setattr(json.JSONDecoder, method, providers[method])
+        assert (
+            json.loads(manifest)["identity"]["target_profile_fingerprint"]
+            == forged
+        )
+        reader_name = "_profile_fingerprint_from_bundle_manifest"
+        reader = getattr(reference_study, reader_name)
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="bundle fingerprint differs from source",
+        ):
+            _ = reader(manifest)
+
+
+def test_host_c_bundle_fingerprint_rejects_replaced_scanner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed JSON scanner cannot authorize a generated profile identity."""
+    prefix = reference_study.target_profile.PROFILE_FINGERPRINT_PREFIX
+    original = prefix + "a" * analyze.SHA256_HEX_LENGTH
+    manifest = json.dumps(
+        {"identity": {"target_profile_fingerprint": original}}
+    ).encode()
+    scanner_name = "scanner"
+    scanner_module = getattr(json, scanner_name)
+    scanner_factory = scanner_module.make_scanner
+
+    def altered_factory(*args: object, **kwargs: object) -> object:
+        return scanner_factory(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(scanner_module, "make_scanner", altered_factory)
+        reader_name = "_profile_fingerprint_from_bundle_manifest"
+        reader = getattr(reference_study, reader_name)
+        with pytest.raises(
+            reference_study.ReferenceStudyError,
+            match="bundle fingerprint differs from source JSON decoder",
+        ):
+            _ = reader(manifest)
+
+
 def test_host_c_bundle_fingerprint_accepts_equivalent_json_decoder(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
