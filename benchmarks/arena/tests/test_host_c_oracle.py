@@ -773,6 +773,82 @@ def test_host_c_canonical_generation_rejects_malformed_result(
             )
 
 
+@pytest.mark.parametrize("route", ["replay", "reference"])
+@pytest.mark.parametrize("missing", ["source", "oracle", "manifest"])
+def test_host_c_rejects_incomplete_native_generator_result(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    missing: str,
+) -> None:
+    """An incompletely initialized native result fails through typed replay."""
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    original = generate.generate(identity)
+    partial = object.__new__(generate.GeneratedChallenge)
+    for field in ("source", "oracle", "manifest"):
+        if field != missing:
+            object.__setattr__(partial, field, getattr(original, field))
+    expected_digest = sha256(original.source).hexdigest()
+    monkeypatch.setattr(generate, "generate", lambda _identity: partial)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="generator.*payload") as caught:
+        if route == "replay":
+            host_c_oracle._canonical_payload(_case(), PROFILE, expected_digest)
+        else:
+            host_c_oracle._reference_source(identity, "-O0")
+    assert type(caught.value.__cause__) is AttributeError
+
+
+@pytest.mark.parametrize("route", ["replay", "reference"])
+def test_host_c_rejects_substituted_native_generator_source(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    """A replaced generator cannot establish its own canonical C bytes."""
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    original = generate.generate(identity)
+    fake_source = original.source + b"\n/* invented source */\n"
+    forged = generate.GeneratedChallenge(
+        source=fake_source, oracle=original.oracle, manifest=original.manifest
+    )
+    monkeypatch.setattr(generate, "generate", lambda _identity: forged)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="generator.*provider"):
+        if route == "replay":
+            host_c_oracle._canonical_payload(
+                _case(), PROFILE, sha256(fake_source).hexdigest()
+            )
+        else:
+            host_c_oracle._reference_source(identity, "-O0")
+
+
+@pytest.mark.parametrize("route", ["replay", "reference"])
+def test_host_c_rejects_rebound_generator_result_type(
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+) -> None:
+    """A mutable result-class alias cannot certify fabricated native C."""
+    identity = generate.ChallengeIdentity("arithmetic-dag", 1, 7, PROFILE, NODES)
+    original = generate.generate(identity)
+    fake_source = original.source + b"\n/* result alias changed */\n"
+
+    class ForgedResult:
+        def __init__(self, *, source: bytes, oracle: bytes, manifest: bytes) -> None:
+            del source
+            self.source = fake_source
+            self.oracle = oracle
+            self.manifest = manifest
+
+    monkeypatch.setattr(generate, "GeneratedChallenge", ForgedResult)
+    monkeypatch.setattr(host_c_oracle, "_require_local_scratch_root", lambda: None)
+    with pytest.raises(host_c_oracle.HostOracleError, match="generator.*payload"):
+        if route == "replay":
+            host_c_oracle._canonical_payload(
+                _case(), PROFILE, sha256(fake_source).hexdigest()
+            )
+        else:
+            host_c_oracle._reference_source(identity, "-O0")
+
+
 class _ForgedHostDigest(str):
     """A substituted digest subclass can lie about source hash equality."""
 

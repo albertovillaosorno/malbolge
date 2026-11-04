@@ -54,6 +54,10 @@ from benchmarks.challenges import generate
 
 # Preserve a source-byte digest provider when public constructors are replaced.
 _NATIVE_SHA256 = sha256
+# A replaced generator may otherwise certify fabricated C and oracle bytes.
+_CANONICAL_GENERATE = generate.generate
+_CANONICAL_IDENTITY = generate.ChallengeIdentity
+_CANONICAL_RESULT = generate.GeneratedChallenge
 
 MAX_REPLAY_CASES = 16
 MAX_REPLAY_NODES = 512
@@ -597,11 +601,22 @@ def _generate_canonical(
     except Exception as error:
         message = f"host-C {scope} regeneration dependency failed"
         raise HostOracleError(message) from error
-    if type(generated) is not generate.GeneratedChallenge or any(
-        type(payload) is not bytes
-        for payload in (generated.source, generated.oracle, generated.manifest)
-    ):
+    if type(generated) is not _CANONICAL_RESULT:
         _fail("host-C canonical challenge generator returned invalid payload")
+    try:
+        payloads = (generated.source, generated.oracle, generated.manifest)
+    except Exception as error:
+        # Even an exact native dataclass may have unset slots; the missing
+        # payload must not escape as an untyped host attribute error.
+        message = "host-C canonical challenge generator returned invalid payload"
+        raise HostOracleError(message) from error
+    if any(type(payload) is not bytes for payload in payloads):
+        _fail("host-C canonical challenge generator returned invalid payload")
+    # A native-shaped successful receipt from a replaced generator cannot
+    # independently establish the very C/oracle source it advertises. Keep
+    # dependency failures and malformed return types typed above.
+    if generate.generate is not _CANONICAL_GENERATE:
+        _fail("host-C canonical challenge generator provider changed")
     return generated
 
 
@@ -628,7 +643,7 @@ def _canonical_payload(
         _fail("host-C challenge oracle source requires canonical SHA-256")
     _bounded_nodes(case["difficulty"], limit=MAX_REPLAY_NODES, scope="challenge oracle")
     generated = _generate_canonical(
-        generate.ChallengeIdentity(
+        _CANONICAL_IDENTITY(
             family=case["family"],
             version=case["version"],
             seed=case["seed"],
@@ -820,7 +835,7 @@ def _reference_source(
 ) -> generate.GeneratedChallenge:
     if type(mode) is not str or mode not in OPTIMIZATION_MODES:
         _fail("unsupported host-C reference optimization mode")
-    if type(identity) is not generate.ChallengeIdentity:
+    if type(identity) is not _CANONICAL_IDENTITY:
         _fail("host-C reference identity requires canonical challenge fields")
     if (
         type(identity.family) is not str
