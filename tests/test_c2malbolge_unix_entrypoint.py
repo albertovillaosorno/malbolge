@@ -281,6 +281,16 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
             None,
         )
 
+    def test_installed_compiler_nested_blocks_keep_guest_output_order(self) -> None:
+        # The actual pinned Clang frontend sees a nested compound with an
+        # effectful call; the compiler must not flatten away its output.
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\n"
+            + b"void emit(void) { putchar('A'); { putchar('A'); } }\n",
+            b"AA",
+            b"malbolge-steps-v1:27\n",
+        )
+
     def test_installed_compiler_emits_witnessed_ascii_output(self) -> None:
         self._assert_installed_guest_output(
             b"#include <stdio.h>\nvoid emit(void) { putchar(65); putchar(65); return; }\n",

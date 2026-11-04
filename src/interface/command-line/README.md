@@ -161,12 +161,17 @@ shortcut, not an automatic production compiler installation.
 In explicit-tool mode all three executables are caller-trusted capabilities.
 This bounded integration entrypoint is **not** the finished turnkey installer
 or an arbitrary C compiler. It accepts only exact normalized Clang shapes:
-effect-free void functions (including nested scopes, standalone `0;` and
-`(void)0;`) and direct `putchar(N);` calls. Up to 128 source-proven
-inert `;`, `0;`, and `(void)0;` direct-body statements may occur before,
-between, or after those calls; they contribute no guest byte effects.
-A void function may use `return;` or an implicit return at its closing brace.
-Byte arguments
+effect-free void functions (including standalone `0;` and `(void)0;`) and
+literal `putchar(N);` calls in their original lexical compound scopes. Up to
+128 nested blocks at a maximum compound depth of 64 may surround the output
+calls. Up to 128 source-proven inert `;`, `0;`, and `(void)0;` statements
+may occur before, between, or after calls at any admitted depth; they
+contribute no guest byte effects. For example, sibling blocks containing
+`{ putchar(65); } { ; putchar(65); }` emit the two bytes `AA` in order.
+Nested early returns, effectful non-output statements and source shapes
+outside the bounded lexical admission reject without output publication.
+A void function may use a final `return;` in its last lexical scope or an
+implicit return at its closing brace. Byte arguments
 may be admitted source-bound decimal/radix integers or evaluated character
 literals, with one supported parenthesized or unsigned-literal wrapper. The
 frontend checks nonnegative evaluated `i32` arguments and emits the same low
@@ -174,8 +179,9 @@ byte that C `putchar(int)` would write: for example, `putchar(256)` emits NUL,
 `putchar(321)` emits `A`, and `putchar(65559)` emits byte `23`. This does not
 admit arbitrary C integer expressions or signed-negative source arguments.
 One to 32 writes of zero produce actual NUL bytes. Nonzero output additionally
-requires a verified byte/count layout (for example, `23` once, `65` twice,
-or `146` three times). Unwitnessed byte/count pairs, mixed byte values,
+requires a verified byte/count layout (for example, `23` once, `65` twice
+or ten times, or `146` three times). Unwitnessed byte/count pairs, mixed
+byte values,
 interleaved nonzero expressions or other unsupported operations, excess
 calls, the general C process-return ABI and guest libc remain unsupported.
 Each accepted output runs in the independent VM.

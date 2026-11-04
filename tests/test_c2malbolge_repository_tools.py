@@ -184,10 +184,10 @@ class RepositoryToolCompilerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
             root = Path(temporary)
             # The independently witnessed seeded-layout table is count-specific.
-            for byte, outputs in ((23, 1), (65, 2), (146, 3)):
+            for byte, outputs in ((23, 1), (65, 2), (146, 3), (65, 10)):
                 with self.subTest(byte=byte, outputs=outputs):
-                    source = root / f"literal-{byte}.c"
-                    target = root / f"literal-{byte}.malbolge"
+                    source = root / f"literal-{byte}-{outputs}.c"
+                    target = root / f"literal-{byte}-{outputs}.malbolge"
                     statements = " ".join(f"putchar({byte});" for _ in range(outputs))
                     _ = source.write_text(
                         f"#include <stdio.h>\nvoid emit(void) {{ {statements} return; }}\n",
@@ -283,6 +283,54 @@ class RepositoryToolCompilerTests(unittest.TestCase):
             self.assertEqual(executed.returncode, 0, executed.stderr)
             self.assertEqual(executed.stdout, b"AA")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:27\n")
+
+    def test_repository_mode_sibling_scopes_preserve_guest_output(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            source, target = root / "sibling-blocks.c", root / "sibling-blocks.malbolge"
+            # Clang nests the calls under distinct CompoundStmt parents;
+            # adjacent }{ and }return; tokens must preserve source order.
+            _ = source.write_bytes(
+                b"#include <stdio.h>\n"
+                + b"void emit(void) { { putchar(65); }{ ; putchar(65); }return; }\n"
+            )
+            compiled = subprocess.run(
+                self._command(source, target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(vm), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"AA")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:27\n")
+
+    def test_repository_mode_nested_early_return_refuses_publication(self) -> None:
+        _ = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            source, target = root / "early-return.c", root / "early-return.malbolge"
+            # Flattening this block would incorrectly emit an unreachable A.
+            _ = source.write_bytes(
+                b"#include <stdio.h>\n"
+                + b"void emit(void) { putchar(65); { return; } putchar(65); }\n"
+            )
+            compiled = subprocess.run(
+                self._command(source, target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"normalized frontend rejected", compiled.stderr)
+            self.assertFalse(target.exists())
 
     def test_repository_mode_interleaved_nonzero_expression_refuses_publication(
         self,
