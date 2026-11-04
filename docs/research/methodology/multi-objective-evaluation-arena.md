@@ -1084,6 +1084,12 @@ binomial coefficient and a descending coefficient recurrence. Canonical but
 mathematically false helper p-values reject before reporting or Holm
 correction. This verifies conditional-binomial arithmetic, not the unproven
 sampling independence, symmetric-sign null, or reported measurements.
+Signed `3f1eb0677` additionally pins native `range` inside the source exact
+conditional-binomial tail. Three red-first loop substitutions produced
+false zero/inflated p-values or dependency faults; all now preserve the
+original test statistic. A 939-case paired/Holm/analyzer/evidence subset
+passed with arena BasedPyright and scoped Ruff lint/format clean. This
+is local arithmetic integrity, not evidence of independent sampling.
 
 A further explicit `--adjust-paired-tests` option requires the paired test
 view, then applies exact step-down Holm-Bonferroni correction across the
