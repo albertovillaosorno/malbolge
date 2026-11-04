@@ -69,6 +69,10 @@ class FingerprintPolicyError(ValueError):
     """Raised when stable-anchor policy is internally invalid."""
 
 
+# Consumer imports may rebind the exported name after native policy creation.
+_NATIVE_FINGERPRINT_POLICY_ERROR = FingerprintPolicyError
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class AnchorPolicy:
     """Deterministic content-defined anchor selection policy."""
@@ -99,12 +103,12 @@ class AnchorPolicy:
             or _NATIVE_TYPE(selection_modulus) is not _NATIVE_INT
         ):
             message = "anchor window and selection modulus must be integers"
-            raise FingerprintPolicyError(message)
+            raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
         if window_bytes < _ONE or selection_modulus < _ONE:
             message = (
                 "anchor window and selection modulus must be positive integers"
             )
-            raise FingerprintPolicyError(message)
+            raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
 
 
 # Generated dataclass constructors resolve class validators late. Pin the
@@ -156,10 +160,10 @@ class StableAnchor:
         native_bytes = _NATIVE_TYPE(digest) is _NATIVE_BYTES
         if not native_bytes or _NATIVE_LEN(digest) != _SHA256_BYTES:
             message = "stable anchor digest must be exactly 32 bytes"
-            raise FingerprintPolicyError(message)
+            raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
         if _NATIVE_TYPE(offset) is not _NATIVE_INT or offset < _ZERO:
             message = "stable anchor offset must be a non-negative integer"
-            raise FingerprintPolicyError(message)
+            raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
 
 
 _STABLE_ANCHOR_VALIDATOR = cast(
@@ -187,14 +191,14 @@ def _anchor_fields(anchor: StableAnchor) -> tuple[bytes, int]:
 def _require_coverage_count(value: object, context: str) -> int:
     if _NATIVE_TYPE(value) is not _NATIVE_INT or value < _ZERO:
         message = f"{context} must be a non-negative integer"
-        raise FingerprintPolicyError(message)
+        raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
     return value
 
 
 def _require_coverage_ratio(value: object) -> float:
     if _NATIVE_TYPE(value) is not _NATIVE_FLOAT or not 0.0 <= value <= 1.0:
         message = "anchor coverage ratio must be an exact float in [0, 1]"
-        raise FingerprintPolicyError(message)
+        raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
     return value
 
 
@@ -210,7 +214,7 @@ def _validate_anchor_coverage(coverage: AnchorCoverage) -> None:
     )
     if matched > total:
         message = "matched anchor coverage cannot exceed total anchors"
-        raise FingerprintPolicyError(message)
+        raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
     ratio = _require_coverage_ratio(ratio_value)
     expected = 1.0 if total == _ZERO else matched / total
     # Float rounding can conceal a nonempty difference at the endpoints:
@@ -222,7 +226,7 @@ def _validate_anchor_coverage(coverage: AnchorCoverage) -> None:
         or (ratio == 0.0 and matched != _ZERO)
     ):
         message = "anchor coverage ratio does not match anchor counts"
-        raise FingerprintPolicyError(message)
+        raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -380,10 +384,10 @@ def stable_anchors(
     """
     if _NATIVE_TYPE(data) is not _NATIVE_BYTES:
         message = "stable anchor input must use exact bytes"
-        raise FingerprintPolicyError(message)
+        raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
     if _NATIVE_TYPE(policy) is not _NATIVE_ANCHOR_POLICY:
         message = "stable anchor policy must use the exact AnchorPolicy type"
-        raise FingerprintPolicyError(message)
+        raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
     # Exact native type alone does not prove that callers ran __init__.
     # Revalidate original slotted metadata before it controls hash windows.
     try:
@@ -391,7 +395,7 @@ def stable_anchors(
         window_bytes, selection_modulus = _policy_fields(policy)
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "stable anchor policy has incomplete native metadata"
-        raise FingerprintPolicyError(message) from error
+        raise _NATIVE_FINGERPRINT_POLICY_ERROR(message) from error
     if _NATIVE_LEN(data) < window_bytes:
         return _small_input_anchor(data)
     selected, fallback_offset = _scan_anchor_windows(
@@ -425,18 +429,18 @@ def anchor_coverage(
     native_candidate = candidate_type is _NATIVE_TUPLE
     if not native_reference or not native_candidate:
         message = "anchor coverage inputs must use exact immutable tuples"
-        raise FingerprintPolicyError(message)
+        raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
     for anchor in (*reference, *candidate):
         if _NATIVE_TYPE(anchor) is not _NATIVE_STABLE_ANCHOR:
             message = "anchor coverage inputs contain a foreign anchor record"
-            raise FingerprintPolicyError(message)
+            raise _NATIVE_FINGERPRINT_POLICY_ERROR(message)
         # A fabricated exact StableAnchor can carry invalid native slots even
         # though its class identity passes the public admission gate.
         try:
             _STABLE_ANCHOR_VALIDATOR(anchor)
         except _NATIVE_ATTRIBUTE_ERROR as error:
             message = "anchor coverage input has incomplete native anchor metadata"
-            raise FingerprintPolicyError(message) from error
+            raise _NATIVE_FINGERPRINT_POLICY_ERROR(message) from error
     reference_digests = {_anchor_fields(anchor)[0] for anchor in reference}
     candidate_digests = {_anchor_fields(anchor)[0] for anchor in candidate}
     total = _NATIVE_LEN(reference_digests)

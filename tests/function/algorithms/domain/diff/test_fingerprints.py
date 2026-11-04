@@ -1084,3 +1084,31 @@ def test_fingerprint_rejects_foreign_record_after_late_class_alias(
                 _ = stable_anchors(b"source", cast("AnchorPolicy", foreign))
             else:
                 _ = anchor_coverage((cast("StableAnchor", foreign),), ())
+
+
+@pytest.mark.parametrize("alias", [object, RuntimeError])
+@pytest.mark.parametrize(
+    "route",
+    ["policy", "anchor", "coverage", "source", "foreign-anchor"],
+)
+def test_fingerprints_preserve_native_error_after_public_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: type[object], route: str
+) -> None:
+    """A mutable exported error name must not change fingerprint rejection."""
+    source = (StableAnchor(b"a" * 32, 0),)
+    with monkeypatch.context() as patched:
+        patched.setattr(fingerprints_module, "FingerprintPolicyError", alias)
+        with pytest.raises(FingerprintPolicyError):
+            if route == "policy":
+                _ = AnchorPolicy(0, 1)
+            elif route == "anchor":
+                _ = StableAnchor(b"bad digest", 0)
+            elif route == "coverage":
+                _ = AnchorCoverage(1, 0, 1.0)
+            elif route == "source":
+                _ = stable_anchors(cast("bytes", cast("object", "source")))
+            else:
+                _ = anchor_coverage(
+                    source,
+                    (cast("StableAnchor", cast("object", {})),),
+                )
