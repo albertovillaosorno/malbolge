@@ -2875,3 +2875,44 @@ def test_host_c_audit_research_claims_do_not_follow_mutable_policy(
 
     with pytest.raises(reference_audit.ReferenceAuditError, match="research claims"):
         reference_audit.audit(relative)
+
+
+@pytest.mark.parametrize("replacement", ["provider", "limit"])
+def test_host_c_audit_resource_policy_rejects_rebound_producer(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: str,
+) -> None:
+    """A rewritten source-policy provider cannot certify changed child limits."""
+    directory, relative = live_pilot
+    path = directory / "resource-controls.json"
+    recorded = json.loads(path.read_text(encoding="utf-8"))
+    recorded["cpu_seconds"] += 1
+    path.write_text(json.dumps(recorded), encoding="utf-8")
+    if replacement == "provider":
+        monkeypatch.setattr(host_c_oracle, "resource_controls_record", lambda: recorded)
+    else:
+        monkeypatch.setattr(host_c_oracle, "CHILD_CPU_SECONDS", recorded["cpu_seconds"])
+
+    with pytest.raises(reference_audit.ReferenceAuditError, match="resource-control"):
+        reference_audit.audit(relative)
+
+
+def test_host_c_audit_toolchain_identity_does_not_follow_mutable_label(
+    live_pilot: tuple[Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rewritten run manifests cannot relabel actual Clang as a new toolchain."""
+    directory, relative = live_pilot
+    _change_json(directory / "study.json", "toolchain")
+    for path in (directory / "runs").glob("*.toml"):
+        source = path.read_text(encoding="utf-8")
+        assert source.count(reference_audit.TOOLCHAIN) == 1
+        path.write_text(
+            source.replace(reference_audit.TOOLCHAIN, "unreviewed-compiler"),
+            encoding="utf-8",
+        )
+    monkeypatch.setattr(reference_audit, "TOOLCHAIN", "unreviewed-compiler")
+
+    with pytest.raises(reference_audit.ReferenceAuditError, match="toolchain"):
+        reference_audit.audit(relative)

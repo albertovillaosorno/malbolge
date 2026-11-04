@@ -107,7 +107,13 @@ PRODUCER_RESEARCH_CLAIMS = {
 }
 # Audit provenance cannot follow substituted producer labels or hypothesis text.
 _SOURCE_STAGE = STAGE
+_SOURCE_TOOLCHAIN = TOOLCHAIN
 _SOURCE_PRODUCER_RESEARCH_CLAIMS = tuple(PRODUCER_RESEARCH_CLAIMS.items())
+# A retained child-limit receipt must match the original producer policy,
+# not a replacement helper or mutable producer configuration seen at audit time.
+_SOURCE_RESOURCE_CONTROL_POLICY = tuple(
+    host_c_oracle.resource_controls_record().items()
+)
 REQUIRED_OBJECTIVES = ["elapsed_ns", "artifact_bytes"]
 CURRENT_OBJECTIVES = [*REQUIRED_OBJECTIVES, "peak_rss_bytes"]
 RSS_RESOURCE_POLICY_VERSION = 2
@@ -443,10 +449,11 @@ def _check_stage(document: dict[str, Any], prefix: str) -> None:
         study[field] != expected for field, expected in _SOURCE_PRODUCER_RESEARCH_CLAIMS
     ):
         _fail("host-C reference producer research claims differ")
-    if (
-        study["baseline"] != reference_study.BASELINE
-        or study["toolchain"] != TOOLCHAIN
-        or study["objectives"] not in (REQUIRED_OBJECTIVES, CURRENT_OBJECTIVES)
+    if study["toolchain"] != _SOURCE_TOOLCHAIN:
+        _fail("host-C reference audit toolchain differs from source")
+    if study["baseline"] != reference_study.BASELINE or study["objectives"] not in (
+        REQUIRED_OBJECTIVES,
+        CURRENT_OBJECTIVES,
     ):
         _fail("host-C reference audit configured arms or objectives differ")
     expected_budget = {
@@ -716,7 +723,7 @@ def _check_retained_failures(
 
 
 def _expected_resource_policy(version: int) -> dict[str, str | int]:
-    expected = host_c_oracle.resource_controls_record()
+    expected = dict(_SOURCE_RESOURCE_CONTROL_POLICY)
     if version == 1:
         expected = {
             key: value
