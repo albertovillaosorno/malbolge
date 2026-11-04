@@ -62,6 +62,10 @@ class BudgetLinkError(ValueError):
     """Incompatible or missing run resource limit declaration."""
 
 
+# Rejection identity must survive consumer rebinding of the public error.
+_SOURCE_BUDGET_LINK_ERROR = BudgetLinkError
+
+
 @dataclass(frozen=True, slots=True)
 class RunBudgets:
     """Reported resource limits in the arena's exact base units."""
@@ -75,7 +79,7 @@ _SOURCE_RUN_BUDGETS = RunBudgets
 
 
 def _fail(message: str) -> Never:
-    raise BudgetLinkError(message)
+    raise _SOURCE_BUDGET_LINK_ERROR(message)
 
 
 _SOURCE_FAIL = _fail
@@ -97,7 +101,7 @@ def _admit_text(text: str) -> None:
         encoded_size = _SOURCE_LEN(text.encode("utf-8"))
     except UnicodeEncodeError as error:
         message = "budget run manifest requires strict UTF-8 text"
-        raise BudgetLinkError(message) from error
+        raise _SOURCE_BUDGET_LINK_ERROR(message) from error
     if encoded_size > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _SOURCE_FAIL("budget run manifest exceeds byte limit")
 
@@ -125,7 +129,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
         # The parser is a dependency: all ordinary faults must stay typed.
         # Preserve the cause without invoking foreign exception formatters.
         message = "invalid experiment run budget TOML"
-        raise BudgetLinkError(message) from error
+        raise _SOURCE_BUDGET_LINK_ERROR(message) from error
     if _SOURCE_TYPE(document) is not _SOURCE_DICT:
         _SOURCE_FAIL("invalid experiment run budget TOML root")
     if _SOURCE_ANY(_SOURCE_TYPE(key) is not _SOURCE_STR for key in document):
@@ -144,7 +148,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
         source = _SOURCE_TOML_LOADS(text)
     except Exception as error:
         message = "experiment run budget source TOML could not be parsed"
-        raise BudgetLinkError(message) from error
+        raise _SOURCE_BUDGET_LINK_ERROR(message) from error
     source_budget = source.get("budget")
     if (
         _SOURCE_TYPE(source_budget) is not _SOURCE_DICT

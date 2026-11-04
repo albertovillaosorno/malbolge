@@ -200,3 +200,36 @@ def test_budget_native_shape_providers_are_source_bound(
 
     monkeypatch.setattr(budget_links, provider, forged_operation, raising=False)
     assert budget_links.parse_run_budgets(MANIFEST) == EXPECTED
+
+
+@pytest.mark.parametrize(
+    ("source", "failure"),
+    [
+        ("not source TOML", "invalid experiment run budget TOML"),
+        ("[budget]\nseconds = 0\nmemory_mib = 5\n", "positive integer"),
+        ("[budget]\nseconds = 1\n#\ud800\nmemory_mib = 5\n", "strict UTF-8"),
+    ],
+)
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_budget_rejection_preserves_native_error_after_public_alias_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    failure: str,
+    replacement: object,
+) -> None:
+    """Malformed source remains a typed admission failure after alias drift."""
+    original = budget_links.BudgetLinkError
+    with monkeypatch.context() as patched:
+        patched.setattr(budget_links, "BudgetLinkError", replacement)
+        with pytest.raises(original, match=failure):
+            budget_links.parse_run_budgets(source)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_budget_valid_source_ignores_replaced_public_error_alias(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """A renamed error class does not influence valid budget results."""
+    with monkeypatch.context() as patched:
+        patched.setattr(budget_links, "BudgetLinkError", replacement)
+        assert budget_links.parse_run_budgets(MANIFEST) == EXPECTED

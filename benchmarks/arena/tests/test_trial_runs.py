@@ -261,3 +261,36 @@ def test_trial_source_bound_native_shape_providers(
     assert trial_runs.parse_trial_run(_manifest("a" * 64)) == trial_runs.TrialRun(
         trial=7, raw_sha256="a" * 64
     )
+
+
+@pytest.mark.parametrize(
+    ("source", "failure"),
+    [
+        ("not source TOML", "invalid per-trial manifest TOML"),
+        (_manifest("G" * 64), "lowercase SHA-256"),
+        ("[arena_trial]\n#\ud800\ntrial = 0\n", "strict UTF-8"),
+    ],
+)
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_trial_rejection_preserves_native_error_after_public_alias_rebinding(
+    monkeypatch: pytest.MonkeyPatch,
+    source: str,
+    failure: str,
+    replacement: object,
+) -> None:
+    """Bad run identity remains a typed failure after error alias drift."""
+    original = trial_runs.TrialRunError
+    with monkeypatch.context() as patched:
+        patched.setattr(trial_runs, "TrialRunError", replacement)
+        with pytest.raises(original, match=failure):
+            trial_runs.parse_trial_run(source)
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_trial_valid_source_ignores_replaced_public_error_alias(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Error alias changes cannot affect successful source admission."""
+    with monkeypatch.context() as patched:
+        patched.setattr(trial_runs, "TrialRunError", replacement)
+        assert trial_runs.parse_trial_run(_manifest("a" * 64)).trial == 7

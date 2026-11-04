@@ -70,6 +70,10 @@ class TrialRunError(ValueError):
     """Invalid source-reported per-trial run identity."""
 
 
+# Rejection identity must survive consumer rebinding of the public error.
+_SOURCE_TRIAL_RUN_ERROR = TrialRunError
+
+
 @dataclass(frozen=True, slots=True)
 class TrialRun:
     """Exact trial number and the raw bytes declared by a recorded run."""
@@ -83,7 +87,7 @@ _SOURCE_TRIAL_RUN = TrialRun
 
 
 def _fail(message: str) -> Never:
-    raise TrialRunError(message)
+    raise _SOURCE_TRIAL_RUN_ERROR(message)
 
 
 _SOURCE_FAIL = _fail
@@ -109,7 +113,7 @@ def _admit_text(text: str) -> None:
         encoded_size = _SOURCE_LEN(text.encode("utf-8"))
     except UnicodeEncodeError as error:
         message = "per-trial run manifest requires strict UTF-8 text"
-        raise TrialRunError(message) from error
+        raise _SOURCE_TRIAL_RUN_ERROR(message) from error
     if encoded_size > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _SOURCE_FAIL("per-trial run manifest exceeds byte limit")
 
@@ -137,7 +141,7 @@ def parse_trial_run(text: str) -> TrialRun:
         # The parser is a dependency: all ordinary faults must stay typed.
         # Preserve the cause without invoking foreign exception formatters.
         message = "invalid per-trial manifest TOML"
-        raise TrialRunError(message) from error
+        raise _SOURCE_TRIAL_RUN_ERROR(message) from error
     if _SOURCE_TYPE(document) is not _SOURCE_DICT:
         _SOURCE_FAIL("invalid per-trial manifest TOML root")
     if _SOURCE_ANY(_SOURCE_TYPE(key) is not _SOURCE_STR for key in document):
@@ -165,7 +169,7 @@ def parse_trial_run(text: str) -> TrialRun:
         source = _SOURCE_TOML_LOADS(text)
     except Exception as error:
         message = "per-trial manifest source TOML could not be parsed"
-        raise TrialRunError(message) from error
+        raise _SOURCE_TRIAL_RUN_ERROR(message) from error
     source_table = source.get(_SOURCE_EXTENSION_NAME)
     if (
         _SOURCE_TYPE(source_table) is not _SOURCE_DICT
