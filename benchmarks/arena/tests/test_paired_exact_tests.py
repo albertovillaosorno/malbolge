@@ -153,3 +153,18 @@ def test_bounded_discordant_pairs_keep_large_exact_probabilities() -> None:
     assert balanced is not None
     assert balanced["p_two_sided"] == [1, 1]
     assert paired_exact_tests.two_sided_sign_test(count + 1, 0) is None
+
+
+@pytest.mark.parametrize("substituted", [1, 10000])
+def test_paired_sign_test_source_bound_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    substituted: int,
+) -> None:
+    """Replacing a public bound cannot expand or suppress valid inference."""
+    original_limit = paired_exact_tests.MAX_DISCORDANT_PAIRS
+    expected = paired_exact_tests.two_sided_sign_test(6, 0)
+    assert expected is not None
+    assert paired_exact_tests.two_sided_sign_test(original_limit + 1, 0) is None
+    monkeypatch.setattr(paired_exact_tests, "MAX_DISCORDANT_PAIRS", substituted)
+    assert paired_exact_tests.two_sided_sign_test(6, 0) == expected
+    assert paired_exact_tests.two_sided_sign_test(original_limit + 1, 0) is None

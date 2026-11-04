@@ -38,6 +38,8 @@ from fractions import Fraction
 from typing import TypedDict
 
 MAX_DISCORDANT_PAIRS = 4096
+# An external alias substitution cannot extend the fixed inference budget.
+_SOURCE_MAX_DISCORDANT_PAIRS = MAX_DISCORDANT_PAIRS
 
 
 class PairedExactTest(TypedDict):
@@ -71,7 +73,7 @@ def two_sided_sign_test(left: int, right: int) -> PairedExactTest | None:
     if not _valid_count(left) or not _valid_count(right):
         return None
     size = left + right
-    if size == 0 or size > MAX_DISCORDANT_PAIRS:
+    if size == 0 or size > _SOURCE_MAX_DISCORDANT_PAIRS:
         return None
     smaller = min(left, right)
     denominator = 1 << size
