@@ -233,6 +233,20 @@ hashes that source equality alone previously admitted. Their 1,025-case
 integrated budget/trial/evidence/analyzer/raw suite and arena BasedPyright
 check pass; these results do not attest host I/O or source authenticity.
 
+Two more red-first run-extension audits found that substituted module-level
+`type` and `any` providers could certify nonnative TOML decoder receipts.
+The budget reader admitted a foreign seconds object with fabricated arithmetic
+and source-equality behavior, or a mapping with nonstring keys; signed
+`539efe1a6` binds native `type`, `any`, `dict`, `str`, and `int` admission.
+Seven regressions now reject those receipts, and 1,400 integrated arena
+cases plus its BasedPyright check pass. The trial reader similarly admitted
+an object pretending to equal a native trial number and a foreign root key.
+Signed `3a4644f6f` binds the same native providers for `arena_trial`:
+seven regressions now reject, 1,422 integrated cases and 40 postcommit
+trial/budget cases pass, and arena BasedPyright reports zero diagnostics.
+These checks preserve local decoded value and shape consistency; they do not
+authenticate manifest authors, raw files, or resource use.
+
 Version-two `arena-raw-v2` evidence adds an optional exact integer `energy_uj`
 (microjoules) cost to the six preexisting dimensions. Its CSV schema marker is
 `2` and its fixed header adds one column without changing version-one bytes.
@@ -1004,6 +1018,17 @@ boundary on hosts without `pread`. All 114 focused study-file cases and
 539 combined reader/analyzer/CSV cases pass; arena BasedPyright reports zero
 diagnostics. This protects local source-content agreement, not atomic file
 snapshots, provenance or physical experiment authenticity.
+
+Eight further red-first study-file regressions found two distinct local
+admission bypasses. A replaced `len` skipped the independent descriptor
+reread and admitted altered JSON; replaced byte/minimum/buffer providers
+also changed valid reads. Signed `756920b41` binds these native operations.
+A replaced `type` then allowed a redirected `Path` subclass to name one file
+while reading another; substituted `getattr` could bypass the native open-flag
+lookup. Signed `f871e894c` binds native type and flag resolution. All 128
+postcommit study-file cases and 1,393 integrated arena cases pass with zero
+arena BasedPyright diagnostics. The reader remains a local source/descriptor
+consistency check, not an atomic snapshot or OS provenance attestation.
 
 Evidence preflight now also retains the exact SHA-256 of each bounded run
 manifest and reopens every manifest after report assembly. In strict raw-row
