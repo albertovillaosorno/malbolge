@@ -116,6 +116,10 @@ parts:
     kind: composition
     language: python
     responsibility: Sequence exact C frontend and verified compiler stages.
+  - id: part-0018
+    path: composition/scripts/c2malbolge
+    kind: composition
+    responsibility: Invoke the bounded C compiler from installed Unix paths.
 projects: []
 tests: []
 graph:

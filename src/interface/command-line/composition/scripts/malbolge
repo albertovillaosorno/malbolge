@@ -1,7 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-export MALBOLGE_ROOT="$(cd -- "$script_dir/../../../../.." && pwd)"
+# Follow installation symlinks before locating the adjacent VM binary.
+script="${BASH_SOURCE[0]}"
+for ((depth = 0; depth < 32; depth++)); do
+  [[ -L "$script" ]] || break
+  parent="$(cd -P -- "$(dirname -- "$script")" && pwd)"
+  link="$(readlink "$script")"
+  if [[ "$link" = /* ]]; then
+    script="$link"
+  else
+    script="$parent/$link"
+  fi
+done
+if [[ -L "$script" ]]; then
+  echo 'malbolge: too many symbolic links in command path' >&2
+  exit 1
+fi
+script_dir="$(cd -P -- "$(dirname -- "$script")" && pwd)"
+MALBOLGE_ROOT="$(cd -- "$script_dir/../../../../.." && pwd)"
+export MALBOLGE_ROOT
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) binary="$script_dir/bin/malbolge.exe" ;;
   *) binary="$script_dir/bin/malbolge" ;;

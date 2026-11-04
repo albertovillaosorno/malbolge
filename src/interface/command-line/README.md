@@ -85,6 +85,13 @@ python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
   --capsule examples/noop.c
 ```
 
+On Unix, the `composition/scripts/c2malbolge` executable shim invokes this
+same Python 3.14 driver with unchanged options and exit status. The existing
+`composition/scripts/install-unix.sh [destination]` now installs both
+`malbolge` and `c2malbolge` command symlinks. Each shim resolves its original
+repository script path even when invoked through an installation symlink;
+installation does not build the native C frontend or Rust binaries.
+
 When the repository-pinned Clang frontend and Rust binaries have already been
 built, an opt-in shortcut selects those exact repository-local tools and
 resources without copying their paths or inventing normalized JSON:
@@ -92,6 +99,15 @@ resources without copying their paths or inventing normalized JSON:
 ```sh
 python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
   --repository-tools --capsule --output .temp/noop.malbolge examples/noop.c
+```
+
+After installing the Unix shims into a directory on `PATH`, the same command
+can be run directly as:
+
+```sh
+c2malbolge --repository-tools --capsule \
+  --output .temp/noop.malbolge examples/noop.c
+malbolge .temp/noop.malbolge --report-steps
 ```
 
 `--repository-tools` selects the pinned LLVM 22.1.8 frontend, Clang resource
@@ -107,14 +123,16 @@ shortcut, not an automatic production compiler installation.
 In explicit-tool mode all three executables are caller-trusted capabilities.
 This is a
 bounded integration entrypoint, **not** the finished turnkey installer or
-arbitrary C compiler. It currently accepts only the exact normalized Clang shapes admitted by
-the JSON adapter: effect-free void functions (including nested scopes,
-standalone `0;` and `(void)0;`), plus one through 32 consecutive
-`putchar(0);` statements followed by `return;` in a void function. Each
-call emits one actual `0x00` byte in source order through the independently
-checked Malbolge VM. Nonzero arguments, interleaved effects, excess calls,
-the general C process-return ABI and guest libc remain unsupported rather
-than silently dropping effects.
+arbitrary C compiler. It currently accepts only the exact normalized
+Clang shapes admitted by the JSON adapter: effect-free void functions
+(including nested scopes, standalone `0;` and `(void)0;`), and consecutive
+`putchar(N);` statements followed by `return;` in a void function. One to
+32 writes of `0` produce actual NUL bytes. Only independently witnessed
+nonzero byte/count pairs can compile: currently `23` once, `65` twice, or
+`146` three times. Other nonzero values/counts, mixed byte values,
+noncanonical integer spellings, interleaved effects, excess calls, the
+general C process-return ABI and guest libc remain unsupported rather than
+silently dropping effects. Each accepted output runs in the independent VM.
 The pinned Clang frontend is required for real source compilation; its
 absence cannot be replaced by synthetic JSON test evidence. The three source
 digest reads constrain a specific invocation, not a persistent filesystem
