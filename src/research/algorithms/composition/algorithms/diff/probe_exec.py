@@ -268,7 +268,7 @@ def _native_path_stat(path: Path) -> os.stat_result:
         or Path.__str__ is not _NATIVE_PATH_STRING
     ):
         message = "probe native path hooks changed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     result = _NATIVE_OS_STAT(_NATIVE_PATH_STRING(path))
     if (
         _native_path_hooks_changed()
@@ -276,7 +276,7 @@ def _native_path_stat(path: Path) -> os.stat_result:
         or Path.__str__ is not _NATIVE_PATH_STRING
     ):
         message = "probe native path hooks changed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     return result
 
 
@@ -307,6 +307,10 @@ class ProbeProgramError(ValueError):
 
 class ProbeExecutionError(RuntimeError):
     """Raised when a probe cannot execute deterministically and safely."""
+
+
+# The exported name is writable, but internal errors retain native identity.
+_NATIVE_PROBE_EXECUTION_ERROR = ProbeExecutionError
 
 
 class ProbeRoot(StrEnum):
@@ -956,7 +960,7 @@ def _native_resolved_path(result: Path, description: str) -> Path:
     """Reject a foreign Path subtype before containment or process use."""
     if _NATIVE_TYPE(result) is not _NATIVE_PLATFORM_PATH_TYPE:
         message = f"probe {description} requires native resolved Path"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     return result
 
 
@@ -971,21 +975,21 @@ def _require_native_host_resolver() -> None:
         or Path.with_segments is not _NATIVE_PATH_WITH_SEGMENTS
     ):
         message = "probe native path hooks changed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if (
         Path.joinpath is not _NATIVE_PATH_JOINPATH
         or Path.__new__ is not _NATIVE_PATH_NEW
         or PurePath.__init__ is not _NATIVE_PURE_PATH_INIT
     ):
         message = "probe native path hooks changed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if (
         os.path.realpath is not _NATIVE_HOST_REALPATH
         or os.lstat is not _NATIVE_HOST_LSTAT
         or os.readlink is not _NATIVE_HOST_READLINK
     ):
         message = "probe native host resolver changed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if (
         os.getcwd is not _NATIVE_HOST_GETCWD
         or stat.S_ISLNK is not _NATIVE_HOST_ISLINK
@@ -998,7 +1002,7 @@ def _require_native_host_resolver() -> None:
         or builtins.isinstance is not _NATIVE_ISINSTANCE
     ):
         message = "probe native host resolver changed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
 
 
 def _resolved_root(path: Path, description: str) -> Path:
@@ -1012,7 +1016,7 @@ def _resolved_root(path: Path, description: str) -> Path:
         message = (
             f"probe {description} root resolution failed: {path}: {detail}"
         )
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     _require_native_host_resolver()
     return _native_resolved_path(resolved, f"{description} root")
 
@@ -1054,14 +1058,14 @@ def _rooted_path(
     ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe path resolution failed: {candidate}: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     _require_native_host_resolver()
     resolved = _native_resolved_path(resolved, "rooted path")
     try:
         _ = _NATIVE_RELATIVE_TO(resolved, root)
     except _NATIVE_VALUE_ERROR as error:
         message = f"probe path escapes authorized root: {relative_path!r}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     _require_native_host_resolver()
     return candidate
 
@@ -1075,7 +1079,7 @@ def _resolved_tool_path(path: Path) -> Path:
     ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe tool resolution failed: {path}: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     _require_native_host_resolver()
     return _native_resolved_path(resolved, "tool")
 
@@ -1102,27 +1106,27 @@ def _native_executable_status(receipt: object) -> os.stat_result:
     """
     if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = "probe executable requires native filesystem status"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     return receipt
 
 
 def _require_executable(path: Path) -> None:
     try:
         receipt = _NATIVE_PATH_STAT(path)
-    except ProbeExecutionError:
+    except _NATIVE_PROBE_EXECUTION_ERROR:
         raise
     except _NATIVE_FILE_NOT_FOUND_ERROR as error:
         message = "probe executable is unavailable"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     except (
         _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
     ) as error:
         reason = _safe_probe_error_detail(error)
         message = f"probe executable status failed: {path}: {reason}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     if not S_ISREG(_native_executable_status(receipt).st_mode):
         message = "probe executable is unavailable"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
 
 
 def _resolve_executable(
@@ -1135,7 +1139,7 @@ def _resolve_executable(
         path = _tool_map(context).get(tool_id)
         if path is None:
             message = f"unresolved probe tool: {tool_id}"
-            raise ProbeExecutionError(message)
+            raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     else:
         path = _rooted_path(executable, context, scratch_root)
     _require_executable(path)
@@ -1454,13 +1458,13 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
             "probe direct child reaping failed: "
             + _safe_probe_error_detail(error)
         )
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     if direct_error is not None:
         message = (
             "probe direct child termination failed: "
             + _safe_probe_error_detail(direct_error)
         )
-        failure = ProbeExecutionError(message)
+        failure = _NATIVE_PROBE_EXECUTION_ERROR(message)
         if group_error is not None:
             BaseException.add_note(
                 failure,
@@ -1473,7 +1477,7 @@ def _stop_child(process: subprocess.Popen[bytes]) -> None:
             "probe process group cleanup failed: "
             + _safe_probe_error_detail(group_error)
         )
-        raise ProbeExecutionError(message) from group_error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from group_error
 
 
 def _spawn_probe(
@@ -1493,7 +1497,7 @@ def _spawn_probe(
         or subprocess.PIPE is not _NATIVE_SUBPROCESS_PIPE
     ):
         message = "probe native subprocess launch aliases changed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     try:
         return _NATIVE_POPEN(
             argv,
@@ -1508,7 +1512,7 @@ def _spawn_probe(
         message = "probe command launch failed: " + _safe_probe_error_detail(
             error
         )
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def _capture_pipes(
@@ -1525,7 +1529,7 @@ def _capture_pipes(
     """
     if process.stdout is None or process.stderr is None:
         message = "probe subprocess capture pipes are unavailable"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     return process.stdout, process.stderr
 
 
@@ -1548,7 +1552,7 @@ def _start_writer(
     stream = process.stdin
     if stream is None:
         message = "probe subprocess stdin pipe is unavailable"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if not data:
         _close_probe_pipe(stream, "stdin")
         return None
@@ -1575,7 +1579,7 @@ def _safe_probe_error_detail(error: BaseException) -> str:
         _NATIVE_RUNTIME_ERROR,
         _NATIVE_VALUE_ERROR,
         _NATIVE_EXACT_TREE_ERROR,
-        ProbeExecutionError,
+        _NATIVE_PROBE_EXECUTION_ERROR,
     ):
         # Exact native error classes can still acquire late class getters.
         # Fetch the BaseException slot without dispatching through those hooks.
@@ -1675,17 +1679,17 @@ def _require_healthy_pipes(running: _RunningProbe) -> None:
     stderr = cast("_PipeCapture", _running_read(running, "stderr"))
     if cast("bool", _capture_read(stdout, "exceeded")):
         message = "probe command exceeded stdout limit"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if cast("bool", _capture_read(stderr, "exceeded")):
         message = "probe command exceeded stderr limit"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if (
         _capture_read(stdout, "error") is not None
         or _capture_read(stderr, "error") is not None
         or cast("list[Exception]", _running_read(running, "stdin_errors"))
     ):
         message = "probe command pipe communication failed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     _require_finished_workers(running)
 
 
@@ -1721,7 +1725,7 @@ def _require_finished_workers(running: _RunningProbe) -> None:
     )
     if reader_failed or writer_failed:
         message = "probe command pipe communication failed"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
 
 
 def _capture_complete(running: _RunningProbe) -> bool:
@@ -1748,7 +1752,7 @@ def _wait_for_bounded_pipes(running: _RunningProbe, deadline: float) -> None:
         _require_healthy_pipes(running)
         if time.monotonic() >= deadline:
             message = "probe command exceeded its timeout"
-            raise ProbeExecutionError(message)
+            raise _NATIVE_PROBE_EXECUTION_ERROR(message)
         if _capture_complete(running):
             return
         time.sleep(_POLL_SECONDS)
@@ -1772,7 +1776,7 @@ def _start_capture_checked(
         message = "probe worker startup failed: " + _safe_probe_error_detail(
             error
         )
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def _close_failed_running_pipes(running: _RunningProbe, failure: Exception) -> None:
@@ -1808,7 +1812,7 @@ def _probe_wall_deadline(timeout_ms: int) -> float:
         return time.monotonic() + timeout_ms / 1000
     except _NATIVE_OVERFLOW_ERROR as error:
         message = "probe command has an unrepresentable timeout"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def _launch_command(
@@ -1852,7 +1856,7 @@ def _launch_command(
     except _NATIVE_EXCEPTION as error:
         try:
             _stop_child(process)
-        except ProbeExecutionError as cleanup_error:
+        except _NATIVE_PROBE_EXECUTION_ERROR as cleanup_error:
             BaseException.add_note(
                 error,
                 "probe child cleanup also failed: "
@@ -1882,19 +1886,19 @@ def _run_command(
         "int", _probe_field(command, ProbeCommand, "max_stdout_bytes")
     ):
         message = "probe command exceeded stdout limit"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if _NATIVE_LEN(stderr) > cast(
         "int", _probe_field(command, ProbeCommand, "max_stderr_bytes")
     ):
         message = "probe command exceeded stderr limit"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     if cast(
         "int | None", _probe_field(command, ProbeCommand, "expected_exit_code")
     ) is not None and returncode != cast(
         "int | None", _probe_field(command, ProbeCommand, "expected_exit_code")
     ):
         message = "probe command returned an unexpected exit code"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     return _new_command_result(
         stdout=stdout,
         returncode=returncode,
@@ -1940,7 +1944,7 @@ def _temporary_probe_root(
     ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe temporary root failed: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def _run_program(
@@ -2051,14 +2055,14 @@ def _snapshot_probe_tree(root: Path, context: str) -> TreeSnapshot:
     except _NATIVE_EXACT_TREE_ERROR as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe {context} snapshot rejected: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def _native_inode_status(receipt: object, context: str) -> os.stat_result:
     """Require an OS-provided identity receipt before trusting inode fields."""
     if _NATIVE_TYPE(receipt) is not _NATIVE_STAT_RESULT:
         message = f"probe {context} inode status must be native"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     return receipt
 
 
@@ -2086,14 +2090,14 @@ def _source_file_inode_keys(source: Path) -> frozenset[tuple[int, int]]:
                 ),
             )
         )
-    except ProbeExecutionError:
+    except _NATIVE_PROBE_EXECUTION_ERROR:
         raise
     except (
         _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
     ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe source inode status failed: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def _repository_inode_status(path: Path) -> os.stat_result | None:
@@ -2108,7 +2112,7 @@ def _repository_inode_status(path: Path) -> os.stat_result | None:
     """
     try:
         return _native_inode_status(_NATIVE_PATH_STAT(path), "repository")
-    except ProbeExecutionError:
+    except _NATIVE_PROBE_EXECUTION_ERROR:
         raise
     except _NATIVE_FILE_NOT_FOUND_ERROR:
         return None
@@ -2117,7 +2121,7 @@ def _repository_inode_status(path: Path) -> os.stat_result | None:
     ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe repository path status failed: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
 
 
 def _require_disjoint_source_inode(source: Path, path: Path) -> None:
@@ -2134,7 +2138,7 @@ def _require_disjoint_source_inode(source: Path, path: Path) -> None:
         return
     if (status.st_dev, status.st_ino) in _source_file_inode_keys(source):
         message = "probe repository path aliases original source inode"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
 
 
 def _require_repository_argument_disjoint(
@@ -2164,12 +2168,12 @@ def _require_repository_argument_disjoint(
     ) as error:
         detail = _safe_probe_error_detail(error)
         message = f"probe repository argument resolution failed: {detail}"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     _require_native_host_resolver()
     resolved = _native_resolved_path(resolved, "repository argument")
     if _native_path_inside(resolved, original_source):
         message = "probe repository path overlaps original source tree"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     _require_disjoint_source_inode(original_source, resolved)
 
 
@@ -2220,7 +2224,7 @@ def _require_mirror_unchanged(root: Path, baseline: TreeSnapshot) -> None:
         _snapshot_probe_tree(root, "isolated source mirror"), baseline
     ):
         message = "behavior probe modified its isolated source mirror"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
 
 
 def _run_isolated_batch(
@@ -2238,7 +2242,7 @@ def _run_isolated_batch(
         _NATIVE_OS_ERROR, _NATIVE_VALUE_ERROR, _NATIVE_RUNTIME_ERROR
     ) as error:
         message = "probe temporary parent resolution failed"
-        raise ProbeExecutionError(message) from error
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
     _require_native_host_resolver()
     temporary_parent = _native_resolved_path(
         temporary_parent, "temporary parent"
@@ -2248,7 +2252,7 @@ def _run_isolated_batch(
     )
     if _native_path_inside(temporary_parent, original_source):
         message = "probe temporary parent overlaps original source tree"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
     with _temporary_probe_root(
         "diff-probe-batch-", parent=temporary_parent
     ) as batch:
@@ -2266,7 +2270,7 @@ def _run_isolated_batch(
     ) as error:
             detail = _safe_probe_error_detail(error)
             message = f"probe source mirror creation failed: {detail}"
-            raise ProbeExecutionError(message) from error
+            raise _NATIVE_PROBE_EXECUTION_ERROR(message) from error
         isolated = ProbeRunContext(
             source_root=mirror_root,
             repository_root=cast(
@@ -2281,7 +2285,7 @@ def _run_isolated_batch(
         baseline = _snapshot_probe_tree(mirror_root, "isolated source mirror")
         if not _snapshots_match_native(baseline, source):
             message = "probe source tree changed while creating its mirror"
-            raise ProbeExecutionError(message)
+            raise _NATIVE_PROBE_EXECUTION_ERROR(message)
         transcripts: list[ProbeTranscript] = []
         for program in programs:
             transcripts.append(
@@ -2309,7 +2313,7 @@ def _require_original_source_unchanged(
         _snapshot_probe_tree(source_root, "source"), baseline
     ):
         message = "behavior probe modified candidate source tree"
-        raise ProbeExecutionError(message)
+        raise _NATIVE_PROBE_EXECUTION_ERROR(message)
 
 
 def run_probe_programs(

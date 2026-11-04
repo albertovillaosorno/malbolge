@@ -5617,3 +5617,45 @@ def test_probe_native_exact_error_detail_survives_late_alias(
     with monkeypatch.context() as patched:
         patched.setattr(probe_exec_module, "ExactTreeError", LookupError)
         assert detail(failure) == "native probe detail"
+
+
+@pytest.mark.parametrize("route", ["snapshot", "status", "native-status", "detail"])
+def test_probe_native_execution_error_survives_late_module_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, route: str
+) -> None:
+    """A late public class alias must not rewrite native probe failures."""
+    native_failure = ProbeExecutionError("native probe operation denied")
+
+    def failed_snapshot(_path: Path) -> object:
+        raise ExactTreeError("reader denied")
+
+    def failed_status(_path: Path) -> os.stat_result:
+        raise native_failure
+
+    def failed_host_status(_path: Path) -> os.stat_result:
+        raise PermissionError("host denied")
+
+    with monkeypatch.context() as patched:
+        if route == "snapshot":
+            patched.setattr(probe_exec_module, "snapshot_tree", failed_snapshot)
+        elif route == "status":
+            patched.setattr(probe_exec_module, "_NATIVE_PATH_STAT", failed_status)
+        elif route == "native-status":
+            patched.setattr(probe_exec_module, "_NATIVE_PATH_STAT", failed_host_status)
+        patched.setattr(probe_exec_module, "ProbeExecutionError", LookupError)
+        if route == "detail":
+            detail = cast(
+                "Callable[[BaseException], str]",
+                vars(probe_exec_module)["_safe_probe_error_detail"],
+            )
+            assert detail(native_failure) == "native probe operation denied"
+        else:
+            with pytest.raises(ProbeExecutionError) as caught:
+                if route == "snapshot":
+                    _ = probe_exec_module._snapshot_probe_tree(tmp_path, "source")
+                else:
+                    probe_exec_module._require_executable(tmp_path)
+            if route == "status":
+                assert caught.value is native_failure
+            elif route == "native-status":
+                assert type(caught.value.__cause__) is PermissionError
