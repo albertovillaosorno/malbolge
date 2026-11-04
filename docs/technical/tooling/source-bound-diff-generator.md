@@ -3370,6 +3370,29 @@ The complete diff test collection from the current integrated HEAD is
 still pending; global Jig governance acceptance is also open because the
 compiled graph is missing.
 
+## Native portable probe-program rejection identity (2026-11-03)
+
+The `ProbeExecutionError` native identity was already retained; portable
+probe metadata rejection now also captures the original
+`ProbeProgramError` (`f6e9af064`). A late public alias to a consumer
+exception factory previously replaced typed validation failures. The
+original error class is now used for executable IDs and roots, argv and
+stdin, command limits, probe IDs, run-context tool bindings, transcripts,
+and immutable or incomplete batch records. No foreign error factory runs.
+
+Twelve red-first alias cases passed after the fix. The full probe module
+passed 471 tests, and all 1,199 postcommit combined
+probe/behavior-programs/behavior/provenance tests passed. Ruff, the
+production module's strict BasedPyright check, and Git diff check passed.
+Six inherited typing findings remain in pre-existing probe test lines.
+The DCO was signed and SHA-exact pushed to `origin/main`.
+
+The process-local check does not isolate external host races or direct
+trusted instance-state mutation. A fresh full diff collection has not
+been completed yet at this evidence point. `jig doctor` is degraded
+because its compiled graph is absent; a bounded 65-second
+`jig check --root .` timed out, so Jig governance remains unaccepted.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

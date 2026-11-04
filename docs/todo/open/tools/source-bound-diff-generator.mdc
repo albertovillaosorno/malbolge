@@ -2009,6 +2009,19 @@ format.
   races or directly mutated trusted evidence; full repository Jig
   acceptance remains pending (missing compiled graph).
 
+- Portable probe-program admission now preserves the original
+  `ProbeProgramError` (`f6e9af064`) when consumers rebind its public name.
+  Twelve red-first cases cover invalid identifiers, executable roots,
+  relative paths, command input/timeout, program and context metadata,
+  transcript digest, batch shape, incomplete native records, and invalid
+  Unicode without invoking a substituted exception factory. The complete
+  probe module passed 471 tests, and all 1,199 postcommit
+  probe/behavior-programs/behavior/provenance adjacent tests passed.
+  Source strict typing, Ruff, and Git checks were clean; six older test
+  typing findings remain. The signed DCO was SHA-exact pushed to `main`.
+  Full integrated diff validation remains pending at this evidence point;
+  `jig doctor` remains degraded and a bounded `jig check --root .` timed out.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
