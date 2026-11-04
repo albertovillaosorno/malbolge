@@ -250,7 +250,7 @@ artifact that does not need the explicit `--raw-profile` runner flag. Both
 modes are tested against exact guest stdout and instruction counts. This is
 a finite separately witnessed byte sequence, not arbitrary string output.
 
-Five larger **binary** teaching pairs are retained in the
+Six larger **binary** teaching pairs are retained in the
 [versioned example corpus][binary-corpus]:
 [`emit-qesc79-v1`](../../../docs/technical/examples/corpus/emit-qesc79.md)
 computes bytes `51 22 1b 37 39` (`Q`, quote, ESC, `7`, `9`) in 23 steps;
@@ -261,10 +261,13 @@ computes `36 3e 35 02 54 1f 18` (`6`, `>`, `5`, STX, `T`, US, CAN)
 in 21 steps;
 [`emit-eight-v1`](../../../docs/technical/examples/corpus/emit-eight.md)
 computes `53 20 17 3c 36 01 52 06` (`S`, space, ETB, `<`, `6`, SOH, `R`, ACK)
-in 21 steps; and
+in 21 steps;
 [`emit-nine-v1`](../../../docs/technical/examples/corpus/emit-nine.md)
 computes `54 3d 8d d1 c0 b4 bf d2 a2` (`T`, `=`, seven high-bit values)
-in 21 steps.
+in 21 steps; and
+[`emit-ten-v1`](../../../docs/technical/examples/corpus/emit-ten.md)
+computes `51 22 fd ce a5 98 ba b6 87 cb` (`Q`, quote, eight high-bit values)
+in 23 steps.
 The committed capsules are reproducible outputs from actual pinned source-C
 compilation and execute without host-level byte substitutions. For example:
 
@@ -283,6 +286,9 @@ malbolge --repository-tools \
   --report-steps | od -An -tx1
 malbolge --repository-tools \
   docs/technical/examples/corpus/emit-nine.malbolge \
+  --report-steps | od -An -tx1
+malbolge --repository-tools \
+  docs/technical/examples/corpus/emit-ten.malbolge \
   --report-steps | od -An -tx1
 ```
 

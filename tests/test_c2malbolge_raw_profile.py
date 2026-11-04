@@ -63,6 +63,7 @@ EXAMPLE_QOP6 = ROOT / "docs/technical/examples/corpus/emit-qop6.c"
 EXAMPLE_SEVEN = ROOT / "docs/technical/examples/corpus/emit-seven.c"
 EXAMPLE_EIGHT = ROOT / "docs/technical/examples/corpus/emit-eight.c"
 EXAMPLE_NINE = ROOT / "docs/technical/examples/corpus/emit-nine.c"
+EXAMPLE_TEN = ROOT / "docs/technical/examples/corpus/emit-ten.c"
 
 
 @final
@@ -206,7 +207,7 @@ class RawProfileNativePipelineTests(unittest.TestCase):
             self.assertEqual(outputs[0].stdout, outputs[1].stdout)
             self.assertEqual(outputs[0].stderr, outputs[1].stderr)
 
-    def test_five_through_nine_binary_guest_bytes_raw_match_capsule(self) -> None:
+    def test_five_through_ten_binary_guest_bytes_raw_match_capsule(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory_name:
             directory = Path(directory_name)
             for name, source, expected, steps in (
@@ -219,6 +220,12 @@ class RawProfileNativePipelineTests(unittest.TestCase):
                     EXAMPLE_NINE,
                     b"T=\x8d\xd1\xc0\xb4\xbf\xd2\xa2",
                     21,
+                ),
+                (
+                    "ten-distinct",
+                    EXAMPLE_TEN,
+                    b'Q"\xfd\xce\xa5\x98\xba\xb6\x87\xcb',
+                    23,
                 ),
             ):
                 with self.subTest(name=name):

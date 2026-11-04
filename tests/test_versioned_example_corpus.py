@@ -140,6 +140,14 @@ CASES = (
         21,
         1215,
     ),
+    Case(
+        "emit-ten",
+        "eeacae21350d6c88dbfbd8be4b1d1294e04be60868324463b8a97e24a5553675",
+        "7befd3c590d03e94889bc93348bb37c51358f4b719dc2f371e07f918130386b0",
+        bytes((0x51, 0x22, 0xFD, 0xCE, 0xA5, 0x98, 0xBA, 0xB6, 0x87, 0xCB)),
+        23,
+        1231,
+    ),
 )
 
 

@@ -152,6 +152,12 @@ fn public_compile_preserves_witnessed_output_sequences() -> Result<(), String> {
             b"T=\x8d\xd1\xc0\xb4\xbf\xd2\xa2",
             21,
         ),
+        (
+            "ten-distinct-binary",
+            "putchar('Q'); putchar('\"'); putchar(253); putchar(206); putchar(165); putchar(152); putchar(186); putchar(182); putchar(135); putchar(203);",
+            b"Q\"\xfd\xce\xa5\x98\xba\xb6\x87\xcb",
+            23,
+        ),
         ("void-a", "(void) putchar ( 65 );", b"A", 31),
     ];
     for (name, statements, expected, steps) in cases {

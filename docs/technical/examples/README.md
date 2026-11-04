@@ -33,3 +33,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   SOH and ACK, byte-exact regeneration and 21-step VM receipt.
 - `corpus/emit-nine.md`: nine distinct guest-computed bytes including seven
   high-bit values, byte-exact regeneration and 21-step VM receipt.
+- `corpus/emit-ten.md`: ten distinct guest-computed bytes including eight
+  high-bit values, byte-exact regeneration and 23-step VM receipt.
