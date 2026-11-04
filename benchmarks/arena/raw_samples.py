@@ -93,6 +93,14 @@ _SOURCE_OBSERVATION_FIELDS = frozenset(analyze.OBSERVATION_FIELDS)
 _SOURCE_CASE_FIELDS = frozenset(analyze.CASE_FIELDS)
 _SOURCE_COST_METRICS = analyze.COST_METRICS
 _SOURCE_ELAPSED = analyze.ELAPSED
+# A direct raw receipt also preserves native outcome/verifier semantics.
+_SOURCE_NUL = analyze.NUL
+_SOURCE_OUTCOMES = analyze.OUTCOMES
+_SOURCE_VERDICTS = frozenset({analyze.ACCEPTED, analyze.REJECTED, analyze.NOT_RUN})
+_SOURCE_VERIFIED = analyze.VERIFIED
+_SOURCE_VERIFIER_REJECTED = analyze.VERIFIER_REJECTED
+_SOURCE_ACCEPTED = analyze.ACCEPTED
+_SOURCE_REJECTED = analyze.REJECTED
 
 
 class RawSampleError(ValueError):
@@ -249,7 +257,7 @@ def _decode_raw(raw: bytes, label: str) -> str:
     except UnicodeError as error:
         message = f"{label}: invalid arena raw CSV UTF-8: {error}"
         raise RawSampleError(message) from error
-    if analyze.NUL in text:
+    if _SOURCE_NUL in text:
         _fail(f"{label}: NUL in arena raw CSV")
     return text
 
@@ -316,6 +324,18 @@ def _admit_observation_containers(
             or any(type(quantity) is not int for quantity in metrics.values())
         ):
             _fail(message)
+        # The imported analyzer's public symbols may be replaced by an
+        # optimizer caller; independent verifier verdicts remain fixed here.
+        outcome = row["outcome"]
+        verdict = row["verifier_verdict"]
+        if (
+            outcome not in _SOURCE_OUTCOMES
+            or verdict not in _SOURCE_VERDICTS
+            or (outcome == _SOURCE_VERIFIED) != (verdict == _SOURCE_ACCEPTED)
+            or (outcome == _SOURCE_VERIFIER_REJECTED) != (verdict == _SOURCE_REJECTED)
+            or (outcome == _SOURCE_VERIFIED and row["verifier"] == row["algorithm"])
+        ):
+            _fail(f"{label}: invalid reported trial semantics")
         _validate_trial_semantics(row, label)
         # A self-consistent repeated CSV/observation pair is still only one
         # reported attempt. Match the analyzer's case/trial uniqueness key.

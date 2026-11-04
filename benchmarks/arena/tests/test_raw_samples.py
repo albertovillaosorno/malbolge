@@ -1668,3 +1668,27 @@ def test_raw_report_shape_cannot_expand_with_mutable_analyzer_policy(
     raw = _render([record])
     with pytest.raises(raw_samples.RawSampleError, match="native nonempty observation"):
         raw_samples.check_rows(raw, [record], ROOT_LABEL)
+
+
+@pytest.mark.parametrize("kind", ["outcome", "verdict", "contradiction", "nul"])
+def test_raw_verdict_policy_aliases_cannot_certify_foreign_claims(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+) -> None:
+    """Self-consistent raw rows cannot rewrite native verifier semantics."""
+    record = sample_study(tmp_path)["observations"][0]
+    if kind == "outcome":
+        record["outcome"] = "forged_outcome"
+        monkeypatch.setattr(analyze, "OUTCOMES", analyze.OUTCOMES | {"forged_outcome"})
+    elif kind == "verdict":
+        record["verifier_verdict"] = "approved"
+        monkeypatch.setattr(analyze, "ACCEPTED", "approved")
+    elif kind == "contradiction":
+        record["outcome"] = "no_solution"
+        monkeypatch.setattr(analyze, "VERIFIED", "no_solution")
+    else:
+        record["algorithm"] = "nul\x00algorithm"
+        monkeypatch.setattr(analyze, "NUL", "not-a-nul")
+    with pytest.raises(raw_samples.RawSampleError):
+        raw_samples.check_rows(_render([record]), [record], ROOT_LABEL)
