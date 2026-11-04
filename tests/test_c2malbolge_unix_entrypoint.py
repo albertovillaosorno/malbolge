@@ -234,6 +234,16 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
             b"malbolge-steps-v1:27\n",
         )
 
+    def test_installed_compiler_preserves_inert_interleaved_statements(self) -> None:
+        # Actual installed compiler and guest VM must retain output order
+        # when Clang represents direct inert statements between the calls.
+        self._assert_installed_guest_output(
+            b"#include <stdio.h>\n"
+            + b"void emit(void) { putchar(65); ; putchar(65); 0; return; }\n",
+            b"AA",
+            b"malbolge-steps-v1:27\n",
+        )
+
     def test_installed_compiler_emits_witnessed_ascii_output(self) -> None:
         self._assert_installed_guest_output(
             b"#include <stdio.h>\nvoid emit(void) { putchar(65); putchar(65); return; }\n",

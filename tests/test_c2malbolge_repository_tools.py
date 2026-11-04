@@ -256,6 +256,76 @@ class RepositoryToolCompilerTests(unittest.TestCase):
             self.assertIn(b"normalized frontend rejected", refused.stderr)
             self.assertFalse(rejected.exists())
 
+    def test_repository_mode_inert_statements_between_output_calls(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            source, target = root / "inert.c", root / "inert.malbolge"
+            # Both statements are source-proven inert; their AST nodes must
+            # not be misread as independent guest output or discarded calls.
+            _ = source.write_bytes(
+                b"#include <stdio.h>\n"
+                + b"void emit(void) { putchar(65); ; putchar(65); 0; return; }\n"
+            )
+            compiled = subprocess.run(
+                self._command(source, target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(vm), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"AA")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:27\n")
+
+    def test_repository_mode_interleaved_nonzero_expression_refuses_publication(
+        self,
+    ) -> None:
+        _ = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            source, target = root / "effect.c", root / "effect.malbolge"
+            _ = source.write_bytes(
+                b"#include <stdio.h>\n"
+                + b"void emit(void) { putchar(65); 1; putchar(65); return; }\n"
+            )
+            compiled = subprocess.run(
+                self._command(source, target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"normalized frontend rejected", compiled.stderr)
+            self.assertFalse(target.exists())
+
+    def test_repository_mode_excess_inert_statements_refuse_publication(self) -> None:
+        _ = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            source, target = root / "excess.c", root / "excess.malbolge"
+            # Source-admitted no-op statements still have a hard AST bound.
+            _ = source.write_bytes(
+                b"#include <stdio.h>\nvoid emit(void) { putchar(65); "
+                + (b"; " * 129)
+                + b"putchar(65); return; }\n"
+            )
+            compiled = subprocess.run(
+                self._command(source, target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"normalized frontend rejected", compiled.stderr)
+            self.assertFalse(target.exists())
+
     def test_pinned_radix_c_literals_emit_witnessed_guest_byte(self) -> None:
         vm = self._real_binaries()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

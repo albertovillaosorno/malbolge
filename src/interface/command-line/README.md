@@ -150,8 +150,11 @@ In explicit-tool mode all three executables are caller-trusted capabilities.
 This bounded integration entrypoint is **not** the finished turnkey installer
 or an arbitrary C compiler. It accepts only exact normalized Clang shapes:
 effect-free void functions (including nested scopes, standalone `0;` and
-`(void)0;`) and consecutive `putchar(N);` statements in void functions with
-an explicit `return;` or implicit return at the closing brace. Byte arguments
+`(void)0;`) and direct `putchar(N);` calls. Up to 128 source-proven
+inert `;`, `0;`, and `(void)0;` direct-body statements may occur before,
+between, or after those calls; they contribute no guest byte effects.
+A void function may use `return;` or an implicit return at its closing brace.
+Byte arguments
 may be admitted source-bound decimal/radix integers or evaluated character
 literals, with one supported parenthesized or unsigned-literal wrapper. The
 frontend checks nonnegative evaluated `i32` arguments and emits the same low
@@ -161,9 +164,9 @@ admit arbitrary C integer expressions or signed-negative source arguments.
 One to 32 writes of zero produce actual NUL bytes. Nonzero output additionally
 requires a verified byte/count layout (for example, `23` once, `65` twice,
 or `146` three times). Unwitnessed byte/count pairs, mixed byte values,
-interleaved effects, excess calls, the general C process-return ABI and guest
-libc remain unsupported rather than silently dropping effects. Each accepted
-output runs in the independent VM.
+interleaved nonzero expressions or other unsupported operations, excess
+calls, the general C process-return ABI and guest libc remain unsupported.
+Each accepted output runs in the independent VM.
 The pinned Clang frontend is required for real source compilation; its
 absence cannot be replaced by synthetic JSON test evidence. The three source
 digest reads constrain a specific invocation, not a persistent filesystem
