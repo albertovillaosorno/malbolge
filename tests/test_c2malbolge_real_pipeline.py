@@ -43,9 +43,10 @@ from typing import final
 ROOT = Path(__file__).resolve().parents[1]
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
 SOURCE = b"void noop(void) { return; }\n"
+EMPTY_SOURCE = b"void noop(void) {}\n"
 
 # This source-bound JSON producer is not a Clang substitute. It creates only
-# the exact, independently admitted normalized three-node void-return wire.
+# the exact, independently admitted normalized two/three-node void wire.
 FRONTEND = """#!/usr/bin/env python3
 import hashlib
 import json
@@ -54,18 +55,22 @@ from pathlib import Path
 import sys
 
 source = Path(sys.argv[-1]).read_bytes()
-assert source == b"void noop(void) { return; }\\n"
+implicit = source == b"void noop(void) {}\\n"
+assert implicit or source == b"void noop(void) { return; }\\n"
 source_id = sys.argv[sys.argv.index("--source-id") + 1]
 def span(begin, end):
     return {"begin": {"byte": begin, "line": 1, "column": begin + 1},
             "end": {"byte": end, "line": 1, "column": end + 1}}
+end = 18 if implicit else 27
 nodes = [
-    {"id":1, "parent":0, "kind":"function-declaration", "span":span(0,27),
+    {"id":1, "parent":0, "kind":"function-declaration", "span":span(0,end),
      "name":"noop", "type":"fn()->void", "definition":"definition",
      "inline_specified":False, "linkage":"external", "storage_class":"none"},
-    {"id":2, "parent":1, "kind":"compound-statement", "span":span(16,27)},
-    {"id":3, "parent":2, "kind":"return-statement", "span":span(18,25)}
+    {"id":2, "parent":1, "kind":"compound-statement", "span":span(16,end)},
 ]
+if not implicit:
+    nodes.append({"id":3, "parent":2, "kind":"return-statement",
+                  "span":span(18,25)})
 if os.environ.get("MALBOLGE_TEST_FORGED_EFFECT") == "1":
     nodes.append({"id":4, "parent":2, "kind":"call-expression",
                   "span":span(18,25)})
@@ -98,14 +103,16 @@ def real_binaries() -> tuple[Path, Path, Path] | None:
     return None
 
 
-def fixture_files(directory: Path) -> tuple[Path, Path, Path]:
+def fixture_files(
+    directory: Path, *, empty_body: bool = False
+) -> tuple[Path, Path, Path]:
     """Create a bounded C source and a deliberately controlled JSON producer."""
     frontend = directory / "frontend-stub"
     source = directory / "noop.c"
     target = directory / "noop.malbolge"
     _ = frontend.write_text(FRONTEND, encoding="utf-8")
     _ = frontend.chmod(0o700)
-    _ = source.write_bytes(SOURCE)
+    _ = source.write_bytes(EMPTY_SOURCE if empty_body else SOURCE)
     return frontend, source, target
 
 
@@ -148,6 +155,7 @@ def run_compiler(
         env=environment,
         capture_output=True,
         check=False,
+        timeout=120,
     )
 
 
@@ -158,48 +166,60 @@ class CToMalbolgeRealPipelineTests(unittest.TestCase):
         if binaries is None or os.name != "posix":
             self.skipTest("real Rust compiler/layout/VM binaries on POSIX required")
         adapter, layout, vm = binaries
-        for capsule in (False, True):
-            with (
-                self.subTest(capsule=capsule),
-                tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary,
-            ):
-                frontend, source, target = fixture_files(Path(temporary))
-                compiled = run_compiler(
-                    frontend, source, target, adapter, layout, capsule=capsule
-                )
-                self.assertEqual(compiled.returncode, 0, compiled.stderr)
-                self.assertTrue(target.is_file())
-                if capsule:
-                    self.assertGreater(target.stat().st_size, len(SOURCE))
-                else:
-                    self.assertEqual(target.stat().st_size, 2)
-                executed = subprocess.run(
-                    [str(vm), str(target), "--report-steps"],
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(executed.returncode, 0, executed.stderr)
-                self.assertEqual(executed.stdout, b"")
-                self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
+        for empty_body in (False, True):
+            for capsule in (False, True):
+                with (
+                    self.subTest(empty_body=empty_body, capsule=capsule),
+                    tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary,
+                ):
+                    frontend, source, target = fixture_files(
+                        Path(temporary), empty_body=empty_body
+                    )
+                    compiled = run_compiler(
+                        frontend, source, target, adapter, layout, capsule=capsule
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(target.is_file())
+                    if capsule:
+                        self.assertGreater(
+                            target.stat().st_size, len(source.read_bytes())
+                        )
+                    else:
+                        self.assertEqual(target.stat().st_size, 2)
+                    executed = subprocess.run(
+                        [str(vm), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"")
+                    self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
 
     def test_extra_normalized_call_is_rejected_before_guest_publication(self) -> None:
         binaries = real_binaries()
         if binaries is None or os.name != "posix":
             self.skipTest("real Rust compiler/layout/VM binaries on POSIX required")
         adapter, layout, _ = binaries
-        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
-            frontend, source, target = fixture_files(Path(temporary))
-            compiled = run_compiler(
-                frontend,
-                source,
-                target,
-                adapter,
-                layout,
-                invalid_effect=True,
-            )
-            self.assertNotEqual(compiled.returncode, 0)
-            self.assertIn(b"normalized frontend rejected", compiled.stderr)
-            self.assertFalse(target.exists())
+        for empty_body in (False, True):
+            with (
+                self.subTest(empty_body=empty_body),
+                tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary,
+            ):
+                frontend, source, target = fixture_files(
+                    Path(temporary), empty_body=empty_body
+                )
+                compiled = run_compiler(
+                    frontend,
+                    source,
+                    target,
+                    adapter,
+                    layout,
+                    invalid_effect=True,
+                )
+                self.assertNotEqual(compiled.returncode, 0)
+                self.assertIn(b"normalized frontend rejected", compiled.stderr)
+                self.assertFalse(target.exists())
 
 
 if __name__ == "__main__":
