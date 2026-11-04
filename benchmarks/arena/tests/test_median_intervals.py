@@ -191,3 +191,22 @@ def test_median_interval_rejects_non_list_collection() -> None:
     """A malformed direct call cannot leak untyped collection errors."""
     values = cast("list[int]", (1, 2, 3, 4, 5, 6))
     assert median_intervals.median_interval_95(values) is None
+
+
+@pytest.mark.parametrize("substituted", [Fraction(1, 2), Fraction(99, 100)])
+def test_median_source_policy_ignores_mutable_confidence_alias(
+    monkeypatch: pytest.MonkeyPatch, substituted: Fraction
+) -> None:
+    """A renamed confidence target cannot publish a non-95% rank interval."""
+    expected = median_intervals.median_interval_95(list(range(10)))
+    assert expected is not None
+    monkeypatch.setattr(median_intervals, "REQUESTED_CONFIDENCE", substituted)
+    assert median_intervals.median_interval_95(list(range(10))) == expected
+
+
+def test_median_source_policy_preserves_finite_sample_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing a public alias cannot grant inference past the source cap."""
+    monkeypatch.setattr(median_intervals, "MAX_SAMPLES", 10000)
+    assert median_intervals.median_interval_95(list(range(4097))) is None

@@ -42,6 +42,11 @@ MAX_ATTEMPTS = 512
 GRID_DENOMINATOR = 4096
 TWO_SIDED_TAIL_DENOMINATOR = 40
 
+# Fixed inference geometry must not follow mutable public aliases.
+_SOURCE_MAX_ATTEMPTS = MAX_ATTEMPTS
+_SOURCE_GRID_DENOMINATOR = GRID_DENOMINATOR
+_SOURCE_TWO_SIDED_TAIL_DENOMINATOR = TWO_SIDED_TAIL_DENOMINATOR
+
 
 class SuccessInterval(TypedDict):
     """Conservatively rounded exact binomial success probability interval."""
@@ -53,8 +58,8 @@ class SuccessInterval(TypedDict):
 
 
 def _binomial_lower_tail_numerator(n: int, k: int, p: int) -> int:
-    total = GRID_DENOMINATOR**n
-    q = GRID_DENOMINATOR - p
+    total = _SOURCE_GRID_DENOMINATOR**n
+    q = _SOURCE_GRID_DENOMINATOR - p
     if k < n // 2:
         return sum(comb(n, i) * p**i * q ** (n - i) for i in range(k + 1))
     return total - sum(
@@ -65,14 +70,14 @@ def _binomial_lower_tail_numerator(n: int, k: int, p: int) -> int:
 def _inverted_lower(n: int, k: int) -> int:
     if k == 0:
         return 0
-    low, high = 0, GRID_DENOMINATOR
-    threshold = GRID_DENOMINATOR**n
+    low, high = 0, _SOURCE_GRID_DENOMINATOR
+    threshold = _SOURCE_GRID_DENOMINATOR**n
     while high - low > 1:
         midpoint = (low + high) // 2
         upper_tail = threshold - _binomial_lower_tail_numerator(
             n, k - 1, midpoint
         )
-        if TWO_SIDED_TAIL_DENOMINATOR * upper_tail <= threshold:
+        if _SOURCE_TWO_SIDED_TAIL_DENOMINATOR * upper_tail <= threshold:
             low = midpoint
         else:
             high = midpoint
@@ -81,13 +86,13 @@ def _inverted_lower(n: int, k: int) -> int:
 
 def _inverted_upper(n: int, k: int) -> int:
     if k == n:
-        return GRID_DENOMINATOR
-    low, high = 0, GRID_DENOMINATOR
-    threshold = GRID_DENOMINATOR**n
+        return _SOURCE_GRID_DENOMINATOR
+    low, high = 0, _SOURCE_GRID_DENOMINATOR
+    threshold = _SOURCE_GRID_DENOMINATOR**n
     while high - low > 1:
         midpoint = (low + high) // 2
         lower_tail = _binomial_lower_tail_numerator(n, k, midpoint)
-        if TWO_SIDED_TAIL_DENOMINATOR * lower_tail <= threshold:
+        if _SOURCE_TWO_SIDED_TAIL_DENOMINATOR * lower_tail <= threshold:
             high = midpoint
         else:
             low = midpoint
@@ -109,10 +114,10 @@ def success_interval_95(verified: int, attempts: int) -> SuccessInterval | None:
     """
     if type(verified) is not int or type(attempts) is not int:
         return None
-    if attempts < 1 or attempts > MAX_ATTEMPTS or not 0 <= verified <= attempts:
+    if attempts < 1 or attempts > _SOURCE_MAX_ATTEMPTS or not 0 <= verified <= attempts:
         return None
-    lower = Fraction(_inverted_lower(attempts, verified), GRID_DENOMINATOR)
-    upper = Fraction(_inverted_upper(attempts, verified), GRID_DENOMINATOR)
+    lower = Fraction(_inverted_lower(attempts, verified), _SOURCE_GRID_DENOMINATOR)
+    upper = Fraction(_inverted_upper(attempts, verified), _SOURCE_GRID_DENOMINATOR)
     return SuccessInterval(
         lower=[lower.numerator, lower.denominator],
         upper=[upper.numerator, upper.denominator],

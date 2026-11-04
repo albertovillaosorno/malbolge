@@ -211,3 +211,33 @@ def test_invalid_or_empty_bernoulli_population_produces_no_interval(
 ) -> None:
     """Unsupported raw values cannot masquerade as a success-rate bound."""
     assert success_intervals.success_interval_95(verified, attempts) is None
+
+
+@pytest.mark.parametrize("substituted", [2, 80])
+def test_success_source_policy_ignores_mutable_tail_alias(
+    monkeypatch: pytest.MonkeyPatch, substituted: int
+) -> None:
+    """An altered tail policy cannot silently narrow 95% confidence bounds."""
+    expected = success_intervals.success_interval_95(5, 10)
+    assert expected is not None
+    monkeypatch.setattr(success_intervals, "TWO_SIDED_TAIL_DENOMINATOR", substituted)
+    assert success_intervals.success_interval_95(5, 10) == expected
+
+
+@pytest.mark.parametrize("substituted", [16, 1024])
+def test_success_source_policy_preserves_exact_grid(
+    monkeypatch: pytest.MonkeyPatch, substituted: int
+) -> None:
+    """A replaced public grid cannot change reported rational endpoints."""
+    expected = success_intervals.success_interval_95(5, 10)
+    assert expected is not None
+    monkeypatch.setattr(success_intervals, "GRID_DENOMINATOR", substituted)
+    assert success_intervals.success_interval_95(5, 10) == expected
+
+
+def test_success_source_policy_preserves_finite_attempt_ceiling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed maximum cannot authorize unbounded confidence inversion."""
+    monkeypatch.setattr(success_intervals, "MAX_ATTEMPTS", 10000)
+    assert success_intervals.success_interval_95(0, 513) is None

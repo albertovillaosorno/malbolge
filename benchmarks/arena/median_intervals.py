@@ -41,6 +41,11 @@ MIN_SAMPLES = 6
 MAX_SAMPLES = 4096
 REQUESTED_CONFIDENCE = Fraction(19, 20)
 
+# Fixed inference geometry must not follow mutable public aliases.
+_SOURCE_MIN_SAMPLES = MIN_SAMPLES
+_SOURCE_MAX_SAMPLES = MAX_SAMPLES
+_SOURCE_REQUESTED_CONFIDENCE = REQUESTED_CONFIDENCE
+
 
 class MedianInterval(TypedDict):
     """Exact attainable sample-median confidence interval."""
@@ -69,11 +74,12 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
     if type(values) is not list:
         return None
     size = len(values)
-    if size < MIN_SAMPLES or size > MAX_SAMPLES:
+    if size < _SOURCE_MIN_SAMPLES or size > _SOURCE_MAX_SAMPLES:
         return None
     if any(type(value) is not int for value in values):
         return None
     denominator = 1 << size
+    confidence = _SOURCE_REQUESTED_CONFIDENCE
     tail = 0
     binomial = 1
     rank = 0
@@ -81,9 +87,8 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
     # Recurrence uses exact integer arithmetic without enormous factorials.
     for j in range(size // 2):
         proposed_tail = tail + binomial
-        if proposed_tail * 2 * REQUESTED_CONFIDENCE.denominator > (
-            denominator
-            * (REQUESTED_CONFIDENCE.denominator - REQUESTED_CONFIDENCE.numerator)
+        if proposed_tail * 2 * confidence.denominator > (
+            denominator * (confidence.denominator - confidence.numerator)
         ):
             break
         rank = j + 1
