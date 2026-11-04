@@ -107,8 +107,17 @@ can be run directly as:
 ```sh
 c2malbolge --repository-tools --capsule \
   --output .temp/noop.malbolge examples/noop.c
-malbolge .temp/noop.malbolge --report-steps
+malbolge --repository-tools .temp/noop.malbolge --report-steps
 ```
+
+For the **Unix `malbolge` shim**, a leading `--repository-tools` selects the
+existing repository-built `.cache/rust/target/debug/malbolge` VM. This is useful
+when the `scripts/bin/malbolge` release binary was built against older sources:
+the compiler and guest runner then use the current repository binaries. If the
+debug VM has not been built, this explicit selector rejects without silently
+running an outdated release VM. Without the selector, `malbolge` retains its
+original installed-release behavior; `build-unix.sh` refreshes that release
+binary. This wrapper selector is not forwarded to the normative VM.
 
 `--repository-tools` selects the pinned LLVM 22.1.8 frontend, Clang resource
 directory, guest headers and existing `c2malbolge_json` / `malbolge_layout`

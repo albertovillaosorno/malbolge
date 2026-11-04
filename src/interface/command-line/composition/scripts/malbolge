@@ -19,6 +19,18 @@ fi
 script_dir="$(cd -P -- "$(dirname -- "$script")" && pwd)"
 MALBOLGE_ROOT="$(cd -- "$script_dir/../../../../.." && pwd)"
 export MALBOLGE_ROOT
+# The Unix install points to a separately built release VM. A repository
+# compiler session can opt into the matching *already built* debug VM instead,
+# without trusting an old release executable or silently rebuilding anything.
+if [[ "${1:-}" == "--repository-tools" ]]; then
+  shift
+  binary="$MALBOLGE_ROOT/.cache/rust/target/debug/malbolge"
+  if [[ ! -x "$binary" ]]; then
+    echo 'malbolge: repository VM binary is not built; run cargo build --bin malbolge' >&2
+    exit 1
+  fi
+  exec "$binary" "$@"
+fi
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) binary="$script_dir/bin/malbolge.exe" ;;
   *) binary="$script_dir/bin/malbolge" ;;

@@ -94,6 +94,26 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(completed.stdout, b"program.malbolge\n--report-steps\n")
 
+    def test_repository_vm_refuses_missing_binary_without_release_fallback(
+        self,
+    ) -> None:
+        script_dir = self.directory / "copied tool" / "scripts"
+        binary = script_dir / "bin" / "malbolge"
+        binary.parent.mkdir(parents=True)
+        shim = script_dir / "malbolge"
+        _ = shutil.copy2(VM_SHIM, shim)
+        _ = binary.write_text('#!/bin/sh\nprintf "fallback\n"\n', encoding="ascii")
+        binary.chmod(0o700)
+        completed = subprocess.run(
+            [str(shim), "--repository-tools", "program.malbolge"],
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn(b"repository VM binary is not built", completed.stderr)
+        self.assertNotIn(b"fallback", completed.stdout)
+
     def test_installer_links_both_vm_and_compiler_commands(self) -> None:
         self.install()
         for name in ("malbolge", "c2malbolge"):
@@ -146,8 +166,15 @@ class UnixCompilerEntrypointTests(unittest.TestCase):
         )
         self.assertEqual(compiled.returncode, 0, compiled.stderr)
         self.assertTrue(target.is_file())
+        # Run through the *installed* VM shim using the same repository tool
+        # family. The package-local release VM can be older than this compiler.
         executed = subprocess.run(
-            [str(binaries[3]), str(target), "--report-steps"],
+            [
+                str(self.install_dir / "malbolge"),
+                "--repository-tools",
+                str(target),
+                "--report-steps",
+            ],
             capture_output=True,
             check=False,
             timeout=30,
