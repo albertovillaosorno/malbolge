@@ -324,6 +324,44 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                         executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
                     )
 
+    def test_pinned_putchar_i32_arguments_emit_low_byte_in_guest(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            # C putchar converts int to unsigned char: the full argument is
+            # source-checked, but the guest observes only its low eight bits.
+            for index, (argument, outputs, expected) in enumerate(
+                ((256, 1, b"\x00"), (321, 2, b"AA"), (65559, 1, b"\x17"))
+            ):
+                with self.subTest(argument=argument, outputs=outputs):
+                    source = root / f"wide-{index}.c"
+                    target = root / f"wide-{index}.malbolge"
+                    statements = " ".join(
+                        f"putchar({argument});" for _ in range(outputs)
+                    )
+                    _ = source.write_text(
+                        f"#include <stdio.h>\nvoid emit(void) {{ {statements} return; }}\n",
+                        encoding="ascii",
+                    )
+                    compiled = subprocess.run(
+                        self._command(source, target, "--capsule"),
+                        capture_output=True,
+                        check=False,
+                        timeout=120,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(vm), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertRegex(
+                        executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                    )
+
     def test_unwitnessed_or_mixed_c_literals_do_not_publish(self) -> None:
         _ = self._real_binaries()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
@@ -333,7 +371,7 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                     "putchar(1);",
                     "putchar(23); putchar(23);",
                     "putchar(23); putchar(65);",
-                    "putchar(256);",
+                    "putchar(-1);",
                 )
             ):
                 with self.subTest(source=statements):
