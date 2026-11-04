@@ -3362,3 +3362,100 @@ def test_generator_rejections_keep_native_exception_classes(
         finally:
             setattr(builtins, error_name, native_alias)
     assert type(caught) is native_alias
+
+
+@pytest.mark.parametrize(
+    ("route", "message"),
+    [
+        ("preflight", "domain preflight requires"),
+        ("missing-domain", "compatible generation requires"),
+        ("admitted-domain", "preflight passed"),
+    ],
+)
+def test_generator_unavailable_rejection_retains_native_error_after_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    route: str,
+    message: str,
+) -> None:
+    """Native unsupported modes must not call a substituted exception alias."""
+    recipe = _recipe(tmp_path, mode=TransformMode.COMPATIBLE)
+    if route == "admitted-domain":
+        recipe = replace(recipe, domain_module=_domain_module(tmp_path))
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"consumer callback: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "DiffGeneratorUnavailableError", foreign_error)
+        with pytest.raises(DiffGeneratorUnavailableError, match=message):
+            if route == "preflight":
+                validator = cast(
+                    "Callable[[DiffRecipe], None]",
+                    vars(generate_module)["_preflight_domain"],
+                )
+                validator(recipe)
+            else:
+                write_algorithm(recipe)
+    assert calls == 0
+    assert not recipe.output_algorithm.exists()
+
+
+def test_generator_provenance_catch_retains_native_source_error_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A late source-error alias cannot replace native receipt rejection."""
+    incomplete = object.__new__(SourcePinEvidence)
+    validator = cast(
+        "Callable[[object], None]",
+        vars(generate_module)["_require_source_provenance_evidence"],
+    )
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"consumer callback: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "SourcePinError", foreign_error)
+        with pytest.raises(
+            DomainContractError, match="source provenance evidence is invalid"
+        ):
+            validator(incomplete)
+    assert calls == 0
+
+
+@pytest.mark.parametrize("receipt", ["foreign", "incomplete"])
+def test_generator_domain_rejection_retains_original_error_after_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    receipt: str,
+) -> None:
+    """Invalid consumer receipts cannot invoke a replaced domain error name."""
+    validator = cast(
+        "Callable[[object], None]",
+        vars(generate_module)["_require_source_provenance_evidence"],
+    )
+    candidate: object = (
+        object() if receipt == "foreign" else object.__new__(SourcePinEvidence)
+    )
+    message = (
+        "must return SourcePinEvidence"
+        if receipt == "foreign"
+        else "source provenance evidence is invalid"
+    )
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"consumer callback: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(generate_module, "DomainContractError", foreign_error)
+        with pytest.raises(DomainContractError, match=message):
+            validator(candidate)
+    assert calls == 0
