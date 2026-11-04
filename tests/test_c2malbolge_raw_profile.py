@@ -204,7 +204,6 @@ class RawProfileNativePipelineTests(unittest.TestCase):
             self.assertEqual(outputs[0].stdout, outputs[1].stdout)
             self.assertEqual(outputs[0].stderr, outputs[1].stderr)
 
-
     def test_five_through_seven_binary_guest_bytes_raw_match_capsule(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory_name:
             directory = Path(directory_name)
@@ -223,7 +222,10 @@ class RawProfileNativePipelineTests(unittest.TestCase):
                         self.assertTrue(guest_file.is_file())
                         if not capsule:
                             self.assertTrue(
-                                all(33 <= byte <= 126 for byte in guest_file.read_bytes())
+                                all(
+                                    33 <= byte <= 126
+                                    for byte in guest_file.read_bytes()
+                                )
                             )
                         executed = self.run_guest(guest_file, raw=not capsule)
                         self.assertEqual(executed.returncode, 0, executed.stderr)
