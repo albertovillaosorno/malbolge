@@ -37,7 +37,7 @@ import hmac
 import os
 import subprocess
 import sys
-from collections.abc import Iterable, Sized
+from collections.abc import Callable, Iterable, Sized
 from dataclasses import replace
 from types import MemberDescriptorType
 from typing import cast, override
@@ -884,3 +884,85 @@ def test_decrypt_rejects_foreign_payload_after_public_class_alias(
                 _RFC_NONCE,
                 cast("AuthenticatedPayload", cast("object", foreign)),
             )
+
+
+@pytest.mark.parametrize(
+    ("route", "operation", "message"),
+    [
+        (
+            "key",
+            lambda: chacha20_poly1305_encrypt(b"short", _RFC_NONCE, b""),
+            "key must be 32 bytes",
+        ),
+        (
+            "nonce",
+            lambda: chacha20_poly1305_encrypt(_RFC_KEY, b"short", b""),
+            "nonce must be 12 bytes",
+        ),
+        (
+            "plaintext",
+            lambda: chacha20_poly1305_encrypt(
+                _RFC_KEY, _RFC_NONCE,
+                cast("bytes", cast("object", bytearray(b"unsafe"))),
+            ),
+            "plaintext must use exact bytes",
+        ),
+        (
+            "aad",
+            lambda: chacha20_poly1305_encrypt(
+                _RFC_KEY, _RFC_NONCE, b"",
+                aad=cast("bytes", cast("object", bytearray(b"unsafe"))),
+            ),
+            "associated data must use exact bytes",
+        ),
+        (
+            "tag",
+            lambda: AuthenticatedPayload(b"cipher", b"short"),
+            "tag must be 16 bytes",
+        ),
+        (
+            "foreign payload",
+            lambda: chacha20_poly1305_decrypt(
+                _RFC_KEY, _RFC_NONCE,
+                cast("AuthenticatedPayload", object()),
+            ),
+            "exact authenticated type",
+        ),
+        (
+            "incomplete payload",
+            lambda: chacha20_poly1305_decrypt(
+                _RFC_KEY, _RFC_NONCE, object.__new__(AuthenticatedPayload),
+            ),
+            "missing authenticated fields",
+        ),
+        (
+            "authentication",
+            lambda: chacha20_poly1305_decrypt(
+                _RFC_KEY,
+                _RFC_NONCE,
+                AuthenticatedPayload(b"cipher", bytes(16)),
+            ),
+            "authentication failed",
+        ),
+    ],
+)
+def test_payload_native_rejections_ignore_late_error_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    route: str,
+    operation: Callable[[], object],
+    message: str,
+) -> None:
+    """Invalid authenticated inputs never dispatch a substituted error class."""
+    calls = 0
+
+    def forged_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"replaced exception callback: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(payload_module, "PayloadCryptoError", forged_error)
+        with pytest.raises(PayloadCryptoError, match=message):
+            _ = operation()
+    assert calls == 0, f"{route} invoked the substituted error callback"

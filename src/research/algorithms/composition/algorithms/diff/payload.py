@@ -84,10 +84,14 @@ class PayloadCryptoError(ValueError):
     """Raised when authenticated payload inputs or tags are invalid."""
 
 
+# Preserve the public rejection type across late consumer alias changes.
+_NATIVE_PAYLOAD_CRYPTO_ERROR = PayloadCryptoError
+
+
 def _require_bytes(value: object, context: str) -> bytes:
     if _NATIVE_TYPE(value) is not _NATIVE_BYTES:
         message = f"{context} must use exact bytes"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
     return value
 
 
@@ -116,7 +120,7 @@ class AuthenticatedPayload:
         tag = _require_bytes(raw_tag, "ChaCha20-Poly1305 tag")
         if _NATIVE_LEN(tag) != _TAG_BYTES:
             message = "ChaCha20-Poly1305 tag must be 16 bytes"
-            raise PayloadCryptoError(message)
+            raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
 
 
 # The public record name may be rebound by consumers; native authenticated
@@ -155,7 +159,7 @@ def _payload_fields(payload: AuthenticatedPayload) -> tuple[bytes, bytes]:
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "ChaCha20-Poly1305 payload is missing authenticated fields"
-        raise PayloadCryptoError(message) from error
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message) from error
 
 
 def _new_authenticated_payload(ciphertext: bytes, tag: bytes) -> AuthenticatedPayload:
@@ -170,10 +174,10 @@ def _require_key_nonce(key: object, nonce: object) -> None:
     nonce_bytes = _require_bytes(nonce, "ChaCha20-Poly1305 nonce")
     if _NATIVE_LEN(key_bytes) != _KEY_BYTES:
         message = "ChaCha20-Poly1305 key must be 32 bytes"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
     if _NATIVE_LEN(nonce_bytes) != _NONCE_BYTES:
         message = "ChaCha20-Poly1305 nonce must be 12 bytes"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
 
 
 def _rotate_left(value: int, amount: int) -> int:
@@ -217,7 +221,7 @@ def _initial_state(key: bytes, nonce: bytes, counter: int) -> tuple[int, ...]:
 def _chacha20_block(key: bytes, nonce: bytes, counter: int) -> bytes:
     if counter < _ZERO or counter > _COUNTER_MAX:
         message = "ChaCha20 block counter exceeds 32-bit domain"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
     initial = _initial_state(key, nonce, counter)
     state = _NATIVE_LIST(initial)
     for _ in _NATIVE_RANGE(10):
@@ -249,7 +253,7 @@ def _chacha20_xor(
     blocks = _block_count(_NATIVE_LEN(data))
     if blocks and initial_counter + blocks - _ONE > _COUNTER_MAX:
         message = "ChaCha20 payload exceeds the RFC 8439 counter space"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
     output = _NATIVE_BYTEARRAY(_NATIVE_LEN(data))
     for block_index in _NATIVE_RANGE(blocks):
         offset = block_index * _BLOCK_BYTES
@@ -267,7 +271,7 @@ def _chacha20_xor(
 def _poly1305_mac(message: bytes, one_time_key: bytes) -> bytes:
     if _NATIVE_LEN(one_time_key) != _KEY_BYTES:
         error_message = "Poly1305 one-time key must be 32 bytes"
-        raise PayloadCryptoError(error_message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(error_message)
     r = _NATIVE_FROM_BYTES(one_time_key[:16], byteorder="little") & _POLY_R_MASK
     s = _NATIVE_FROM_BYTES(one_time_key[16:], byteorder="little")
     accumulator = _ZERO
@@ -288,7 +292,7 @@ def _mac_data(aad: bytes, ciphertext: bytes) -> bytes:
     maximum = (1 << 64) - _ONE
     if _NATIVE_LEN(aad) > maximum or _NATIVE_LEN(ciphertext) > maximum:
         message = "ChaCha20-Poly1305 length exceeds 64-bit AEAD encoding"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
     return b"".join(
         (
             aad,
@@ -347,13 +351,13 @@ def chacha20_poly1305_decrypt(
     _require_key_nonce(key, nonce)
     if _NATIVE_TYPE(payload) is not _NATIVE_AUTHENTICATED_PAYLOAD:
         message = "ChaCha20-Poly1305 payload must use the exact authenticated type"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
     ciphertext, tag = _payload_fields(payload)
     _ = _require_bytes(ciphertext, "ChaCha20-Poly1305 ciphertext")
     _ = _require_bytes(tag, "ChaCha20-Poly1305 tag")
     if _NATIVE_LEN(tag) != _TAG_BYTES:
         message = "ChaCha20-Poly1305 tag must be 16 bytes"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
     _ = _require_bytes(aad, "ChaCha20-Poly1305 associated data")
     one_time_key = _chacha20_block(key, nonce, _ZERO)[:_KEY_BYTES]
     expected = _poly1305_mac(_mac_data(aad, ciphertext), one_time_key)
@@ -361,7 +365,7 @@ def chacha20_poly1305_decrypt(
     # replace the process-global hmac function during source evaluation.
     if not _native_compare_digest(expected, tag):
         message = "ChaCha20-Poly1305 authentication failed"
-        raise PayloadCryptoError(message)
+        raise _NATIVE_PAYLOAD_CRYPTO_ERROR(message)
     return _chacha20_xor(
         key,
         nonce,
