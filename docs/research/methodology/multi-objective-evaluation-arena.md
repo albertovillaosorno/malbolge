@@ -1779,6 +1779,36 @@ The original study records remain the result authority.
   not reported as green. The tests are synthetic and local, not real guest
   performance provenance or final repository acceptance.
 
+- The optional 95% success-probability interval now admits only the original
+  exact native integer count type (`2166f94a4`), not a replaced public `int`.
+  Three red-first cases exposed false acceptance of Boolean trials and
+  rejection of legitimate integer observations. All 44 focused and 626
+  adjacent statistical/analyzer tests passed; this does not establish iid
+  sampling or authenticate reported successes.
+- The exact Holm multiple-test adjustment retains its original `ValueError`
+  rejection boundary (`044f8d07f`). Six red-first cases exposed foreign
+  exception types and untyped failures from malformed probability families
+  after a late public error-class substitution. The 42 focused and 634
+  adjacent tests passed; no new family-wise inference is claimed.
+- The retained v1/v2 raw-CSV checker now admits native trial, case and metric
+  integers using its import-bound integer type (`3b335e88d`). Three red-first
+  cases demonstrated that late substitutions could certify matching Boolean
+  report/CSV claims or reject valid records. The 1,313-case adjacent evidence
+  integration passed. It also retains the original `RawSampleError` across
+  direct admission, CSV parser, source hashing, cleanup and diagnostics
+  (`671df162c`). Ten additional red-first rejection cases plus two valid
+  controls passed; 1,355 raw/analyzer/evidence/trial integration cases passed.
+  A matching CSV digest is only a local source-consistency receipt, not
+  authenticated measurement provenance.
+- The real host-C *reference-study producer* likewise retains its original
+  `ReferenceStudyError` across direct rejections, nested exception handling
+  and the operator's native diagnostic selection (`05d99b097`). Sixteen
+  red-first tests exposed wrongly typed failures, lost native CLI details and
+  falsely rejected valid provider values. All 439 producer cases and 447
+  adjacent host-C oracle cases passed; arena BasedPyright remained at zero
+  errors. These fixes do not verify compiled Malbolge programs or provide an
+  end-to-end Jig acceptance verdict.
+
 ## Results
 
 The offline comparison implementation and synthetic regression evidence
