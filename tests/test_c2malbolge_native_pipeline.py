@@ -59,6 +59,11 @@ STANDALONE_ZERO = b"void noop(void) { 0; return; }\n"
 CAST_ZERO = b"void noop(void) { (void)0; return; }\n"
 CAST_ONE = b"void noop(void) { (void)1; return; }\n"
 CAST_BINARY = b"void noop(void) { (void)(1+2); return; }\n"
+ZERO_OUTPUT = b"#include <stdio.h>\nvoid emit(void) { putchar(0); return; }\n"
+NONZERO_OUTPUT = b"#include <stdio.h>\nvoid emit(void) { putchar(1); return; }\n"
+EXTRA_OUTPUT = (
+    b"#include <stdio.h>\nvoid emit(void) { putchar(0); putchar(0); return; }\n"
+)
 EFFECTFUL_VOID = b"void noop(void) { volatile int value = 1; }\n"
 INVALID_C = b"void noop(void) { return\n"
 
@@ -186,6 +191,37 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
             self.assertEqual(compiled.returncode, 0, compiled.stderr)
             self.assertEqual(target.stat().st_size, 2)
             self._run_guest(tools[4], target)
+
+    def test_real_clang_zero_output_executes_a_real_guest_nul_byte(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            source = Path(temporary) / "emit.c"
+            target = Path(temporary) / "emit.malbolge"
+            _ = source.write_bytes(ZERO_OUTPUT)
+            compiled = self._compile(tools, source, target, capsule=True)
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(tools[4]), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"\x00")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:2\n")
+
+    def test_real_clang_nonzero_or_duplicate_output_rejects_guest(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            for index, content in enumerate((NONZERO_OUTPUT, EXTRA_OUTPUT)):
+                with self.subTest(source=content):
+                    source = Path(temporary) / f"invalid-emit-{index}.c"
+                    target = Path(temporary) / f"invalid-emit-{index}.malbolge"
+                    _ = source.write_bytes(content)
+                    compiled = self._compile(tools, source, target)
+                    self.assertNotEqual(compiled.returncode, 0)
+                    self.assertFalse(target.exists())
+                    self.assertIn(b"normalized frontend rejected", compiled.stderr)
 
     def test_real_clang_effects_and_syntax_errors_do_not_publish_guest(self) -> None:
         tools = self._tools()

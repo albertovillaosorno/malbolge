@@ -37,7 +37,7 @@ use std::ffi::{OsStr, OsString};
 use std::io::{self, Read as _, Write as _};
 use std::process::{Command, ExitCode, Stdio};
 
-use malbolge_c_frontend_json_adapter::canonical_void_typed_ir;
+use malbolge_c_frontend_json_adapter::{FrontendGuestMode, canonical_guest_typed_ir};
 use serde as _;
 use serde_json as _;
 
@@ -89,7 +89,7 @@ fn execute() -> Result<(), String> {
         .take(MAX_JSON_BYTES + 1)
         .read_to_end(&mut input)
         .map_err(|error| format!("cannot read normalized JSON stdin: {error}"))?;
-    let typed = canonical_void_typed_ir(&input)
+    let (typed, mode) = canonical_guest_typed_ir(&input)
         .map_err(|error| format!("normalized frontend rejected: {error:?}"))?;
     let mut command = Command::new(backend);
     let _arguments = command.args([
@@ -101,8 +101,12 @@ fn execute() -> Result<(), String> {
     if capsule {
         let _capsule_argument = command.arg("--capsule");
     }
+    let mode_arg = match mode {
+        FrontendGuestMode::EmptyVoid => "--empty-void",
+        FrontendGuestMode::InitialZeroOutput => "--initial-zero-output",
+    };
     let mut child = command
-        .args(["--", "--empty-void", "--typed-stdin"])
+        .args(["--", mode_arg, "--typed-stdin"])
         .stdin(Stdio::piped())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())

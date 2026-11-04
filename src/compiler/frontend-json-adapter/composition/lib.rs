@@ -42,8 +42,10 @@ use serde::Deserialize;
 use std::iter::once;
 use std::str;
 use typed::{
-    FrontendArtifact, FrontendArtifactSpec, FrontendFallthroughVoidFunctionSpec, FrontendPosition,
-    FrontendReturnVoidFunction, FrontendReturnVoidFunctionSpec, FrontendSpan, canonical_bytes,
+    BasicBlock, BasicBlockSpec, FrontendArtifact, FrontendArtifactSpec,
+    FrontendFallthroughVoidFunctionSpec, FrontendPosition, FrontendReturnVoidFunction,
+    FrontendReturnVoidFunctionSpec, FrontendSpan, Function, FunctionSpec, Instruction,
+    IntegerConstant, LocatedInstruction, Module, ModuleSpec, TypeId, ValueId, canonical_bytes,
     canonical_module, lower_frontend_artifact,
 };
 
@@ -53,6 +55,18 @@ const EXPECTED_PROFILE: &str = "malbolge-2026";
 const MAX_FRONTEND_JSON_BYTES: usize = 1_048_576;
 const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
 const MAX_COMPOUND_DEPTH: usize = 64;
+
+/// Which independently checked guest effect trace can realize this C source.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FrontendGuestMode {
+    /// No byte effects, then a guest halt.
+    EmptyVoid,
+    /// Emit a literal zero byte, then a guest halt.
+    InitialZeroOutput,
+}
+
+/// Canonical typed-IR bytes paired with their independently checked guest mode.
+pub type CanonicalGuestProjection = (Vec<u8>, FrontendGuestMode);
 
 /// A rejected normalized frontend artifact or typed-IR projection.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -115,6 +129,7 @@ struct Node {
     name: Option<String>,
     operation: Option<String>,
     parent: u32,
+    reference: Option<String>,
     span: Span,
     storage_class: Option<String>,
     #[serde(rename = "type")]
@@ -131,6 +146,14 @@ struct Artifact {
     profile: Target,
     schema_version: u16,
     source: Source,
+}
+
+struct ZeroOutputNodes<'node> {
+    body: &'node Node,
+    call: &'node Node,
+    function: &'node Node,
+    literal: &'node Node,
+    returned: &'node Node,
 }
 
 const fn position(value: &Position) -> FrontendPosition {
@@ -345,6 +368,7 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
             let is_zero = node.kind == "integer-literal";
             let is_zero_cast = node.kind == "cast-expression";
             node.name.is_some()
+                || node.reference.is_some()
                 || (!is_zero && !is_zero_cast && node.type_name.is_some())
                 || (!is_zero && node.constant_integer.is_some())
                 || (!is_zero && node.literal.is_some())
@@ -423,4 +447,278 @@ pub fn canonical_void_typed_ir(bytes: &[u8]) -> Result<Vec<u8>, FrontendJsonErro
         return Err(FrontendJsonError::InvalidTypedIr);
     }
     Ok(encoded)
+}
+
+const fn typed_span(value: &Span) -> typed::SourceSpan {
+    let begin = &value.begin;
+    let end = &value.end;
+    typed::SourceSpan::new(
+        typed::SourcePosition::new(begin.byte, begin.line, begin.column),
+        typed::SourcePosition::new(end.byte, end.line, end.column),
+    )
+}
+
+// Narrow source-shaped proof for one `putchar(0)` statement. No alternate
+// argument, call, cast, declaration-reference or extra child can be omitted.
+// It is intentionally not a general expression evaluator or guest libc.
+#[expect(
+    clippy::too_many_lines,
+    clippy::suspicious_operation_groupings,
+    reason = "exact pinned-Clang preorder compares end of call to start of return"
+)]
+fn admit_zero_output_nodes(nodes: &[Node]) -> Result<ZeroOutputNodes<'_>, FrontendJsonError> {
+    let [function, body, call, cast, callee, zero, returned] = nodes else {
+        return Err(FrontendJsonError::Unsupported);
+    };
+    if function.kind != "function-declaration"
+        || function.id != 1
+        || function.parent != 0
+        || function.name.as_deref().is_none_or(str::is_empty)
+        || function.type_name.as_deref() != Some("fn()->void")
+        || function.definition.as_deref() != Some("definition")
+        || function.inline_specified != Some(false)
+        || function.linkage.as_deref() != Some("external")
+        || function.storage_class.as_deref() != Some("none")
+        || function.constant_integer.is_some()
+        || function.literal.is_some()
+        || function.operation.is_some()
+        || function.reference.is_some()
+        || body.id != 2
+        || body.parent != 1
+        || body.kind != "compound-statement"
+        || call.id != 3
+        || call.parent != 2
+        || call.kind != "call-expression"
+        || call.type_name.as_deref() != Some("i32")
+        || call.reference.as_deref() != Some("external:putchar")
+        || cast.id != 4
+        || cast.parent != 3
+        || cast.kind != "cast-expression"
+        || cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
+        || cast.operation.as_deref() != Some("function-to-pointer")
+        || callee.id != 5
+        || callee.parent != 4
+        || callee.kind != "declaration-reference-expression"
+        || callee.type_name.as_deref() != Some("fn(i32)->i32")
+        || callee.reference.as_deref() != Some("external:putchar")
+        || zero.id != 6
+        || zero.parent != 3
+        || zero.kind != "integer-literal"
+        || zero.type_name.as_deref() != Some("i32")
+        || zero.constant_integer.as_deref() != Some("0")
+        || zero.literal.as_deref() != Some("0")
+        || returned.id != 7
+        || returned.parent != 2
+        || returned.kind != "return-statement"
+        || [body, call, cast, callee, zero, returned]
+            .iter()
+            .any(|node| {
+                node.name.is_some()
+                    || node.definition.is_some()
+                    || node.inline_specified.is_some()
+                    || node.linkage.is_some()
+                    || node.storage_class.is_some()
+            })
+        || [body, returned].iter().any(|node| {
+            node.type_name.is_some()
+                || node.reference.is_some()
+                || node.operation.is_some()
+                || node.constant_integer.is_some()
+                || node.literal.is_some()
+        })
+        || [call, cast, callee]
+            .iter()
+            .any(|node| node.constant_integer.is_some() || node.literal.is_some())
+        || [call, callee, zero]
+            .iter()
+            .any(|node| node.operation.is_some())
+        || [cast, zero].iter().any(|node| node.reference.is_some())
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    let function_span = &function.span;
+    let body_span = &body.span;
+    let call_span = &call.span;
+    let cast_span = &cast.span;
+    let callee_span = &callee.span;
+    let literal_span = &zero.span;
+    let return_span = &returned.span;
+    // Clang's closed preorder: function/body -> call -> function decay/ref,
+    // call -> literal, then terminal return. The equal cast/ref spans are
+    // intentional; none of these locations is invented by the adapter.
+    if function_span.begin.byte > body_span.begin.byte
+        || function_span.end.byte < body_span.end.byte
+        || body_span.begin.byte >= call_span.begin.byte
+        || call_span.end.byte >= body_span.end.byte
+        || call_span.begin.byte != cast_span.begin.byte
+        || cast_span.begin.byte != callee_span.begin.byte
+        || cast_span.end.byte != callee_span.end.byte
+        || cast_span.end.byte.checked_add(1) != Some(literal_span.begin.byte)
+        || literal_span.end.byte >= call_span.end.byte
+        || call_span.end.byte >= return_span.begin.byte
+        || return_span.end.byte >= body_span.end.byte
+        || cast_span.begin.byte.checked_add(7) != Some(cast_span.end.byte)
+        || literal_span.begin.byte.checked_add(1) != Some(literal_span.end.byte)
+        || call_span.begin.byte.checked_add(10) != Some(call_span.end.byte)
+        || [
+            function_span,
+            body_span,
+            call_span,
+            cast_span,
+            callee_span,
+            literal_span,
+            return_span,
+        ]
+        .iter()
+        .any(|span| {
+            span.begin.line == 0
+                || span.begin.column == 0
+                || span.end.line == 0
+                || span.end.column == 0
+                || span.begin.byte >= span.end.byte
+                || (span.begin.line == span.end.line && span.begin.column >= span.end.column)
+        })
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    Ok(ZeroOutputNodes {
+        body,
+        call,
+        function,
+        literal: zero,
+        returned,
+    })
+}
+
+/// Compile only the Clang-proven `void emit(void) { putchar(0); return; }`
+/// shape into a successful-output trace, retaining exact source provenance.
+#[expect(
+    clippy::too_many_lines,
+    reason = "canonical typed-effect projection and re-admission"
+)]
+fn canonical_zero_output_typed_ir(bytes: &[u8]) -> Result<Vec<u8>, FrontendJsonError> {
+    if bytes.is_empty() || bytes.len() > MAX_FRONTEND_JSON_BYTES {
+        return Err(FrontendJsonError::Malformed);
+    }
+    let input: Artifact =
+        serde_json::from_slice(bytes).map_err(|_error| FrontendJsonError::Malformed)?;
+    if input.schema_version != 1
+        || input.identity != EXPECTED_ARTIFACT
+        || input.profile.abi_id != EXPECTED_ABI
+        || input.profile.target_profile != EXPECTED_PROFILE
+        || input.clang.version != "22.1.8"
+        || input.clang.target != "wasm32-unknown-unknown"
+        || input.clang.language != "c23"
+        || input.source.id.is_empty()
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    let ZeroOutputNodes {
+        function,
+        body,
+        call,
+        literal,
+        returned,
+    } = admit_zero_output_nodes(&input.nodes)?;
+    let void_function = FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
+        body_span: span(&body.span),
+        definition: String::from("definition"),
+        function_span: span(&function.span),
+        inline_specified: false,
+        linkage: String::from("external"),
+        name: function
+            .name
+            .clone()
+            .ok_or(FrontendJsonError::Unsupported)?,
+        return_span: span(&returned.span),
+        signature: String::from("fn()->void"),
+        storage_class: String::from("none"),
+    });
+    let artifact = FrontendArtifact::new_void(
+        FrontendArtifactSpec {
+            abi_id: input.profile.abi_id,
+            artifact_id: input.identity,
+            clang_target: input.clang.target,
+            clang_version: input.clang.version,
+            functions: Vec::new(),
+            language: input.clang.language,
+            schema_version: input.schema_version,
+            source_id: input.source.id,
+            source_sha256: source_digest(&input.source.sha256)?,
+            target_profile: input.profile.target_profile,
+        },
+        void_function,
+    );
+    let base =
+        lower_frontend_artifact(&artifact).map_err(|_error| FrontendJsonError::InvalidTypedIr)?;
+    let original = base
+        .functions()
+        .first()
+        .ok_or(FrontendJsonError::InvalidTypedIr)?;
+    let block = original
+        .blocks()
+        .first()
+        .ok_or(FrontendJsonError::InvalidTypedIr)?;
+    let instructions = vec![
+        LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: IntegerConstant::new(8, vec![0]),
+                result: ValueId::new(0),
+                type_id: TypeId::new(0),
+            },
+            typed_span(&literal.span),
+        ),
+        LocatedInstruction::new(
+            Instruction::ByteOutput {
+                value: ValueId::new(0),
+            },
+            typed_span(&call.span),
+        ),
+    ];
+    let compiled_function = Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: block.id(),
+            instructions,
+            phis: block.phis().to_vec(),
+            span: block.span(),
+            terminator: block.terminator().clone(),
+            terminator_span: block.terminator_span(),
+        })],
+        entry: original.entry(),
+        id: original.id(),
+        name: String::from(original.name()),
+        parameters: original.parameters().to_vec(),
+        signature: original.signature(),
+        span: original.span(),
+    });
+    let module = Module::new(ModuleSpec {
+        abi_id: String::from(base.abi_id()),
+        format_version: base.format_version(),
+        functions: vec![compiled_function],
+        globals: base.globals().to_vec(),
+        proof_obligations: base.proof_obligations().to_vec(),
+        source_id: String::from(base.source_id()),
+        source_sha256: *base.source_sha256(),
+        target_profile: String::from(base.target_profile()),
+        types: base.types().to_vec(),
+    });
+    let encoded = canonical_bytes(&module).map_err(|_error| FrontendJsonError::InvalidTypedIr)?;
+    if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
+        return Err(FrontendJsonError::InvalidTypedIr);
+    }
+    Ok(encoded)
+}
+
+/// Project the two supported C families without dropping observable output.
+///
+/// # Errors
+///
+/// Refuses unsupported Clang shapes, metadata drift and invalid typed IR.
+pub fn canonical_guest_typed_ir(
+    bytes: &[u8],
+) -> Result<CanonicalGuestProjection, FrontendJsonError> {
+    if let Ok(wire) = canonical_void_typed_ir(bytes) {
+        return Ok((wire, FrontendGuestMode::EmptyVoid));
+    }
+    canonical_zero_output_typed_ir(bytes).map(|wire| (wire, FrontendGuestMode::InitialZeroOutput))
 }

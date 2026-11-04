@@ -9,7 +9,7 @@ contains the JSON dependency; the VM's dependency-free crate remains unchanged.
 
 ## Supported slice
 
-The complete normalized artifact must contain exactly one no-argument external
+For the effect-free void family, the complete normalized artifact must contain exactly one no-argument external
 `fn()->void` definition with a compound body containing only standalone
 null statements (`;`), single-digit standalone zero expressions (`0;`),
 exact casts of zero to void (`(void)0;`), nested compound scopes, and an optional final `return;` (including inside
@@ -26,6 +26,29 @@ artifact.
 Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.
+
+## First observable guest C output
+
+A separate **exact** pinned-Clang source shape is also executable:
+
+```c
+#include <stdio.h>
+void emit(void) { putchar(0); return; }
+```
+
+Its seven normalized nodes must prove a direct `putchar(0)` call with one
+literal-zero argument, exact function-to-pointer callee decay, a terminal void
+return, and no other effects. The adapter emits canonical MCTI containing an
+8-bit zero constant and one `ByteOutput` instruction. The downstream publisher
+selects `--initial-zero-output --typed-stdin` and independently verifies the
+result through the real Malbolge VM. Guest stdout contains exactly `0x00`.
+This is successful-output evidence only: call-result handling, general
+`putchar`, other byte values, `getchar`, EOF, I/O errors, guest libc and C entry
+ABI remain unsupported. Nonzero or multiple output calls refuse compilation.
+
+`canonical_guest_typed_ir` selects this trace or the existing effect-free void
+trace without dropping observable effects. `canonical_void_typed_ir` preserves
+its prior no-effect-only admission contract and callers.
 
 `canonical_void_typed_ir` returns MCTI bytes ready for the opt-in
 `malbolge_layout --empty-void --typed-stdin` publisher. This adapter does not
