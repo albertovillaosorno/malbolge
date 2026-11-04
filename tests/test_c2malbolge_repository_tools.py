@@ -212,6 +212,50 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                         executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
                     )
 
+    def test_repository_mode_wrapped_unsigned_c_literals_reach_guest(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            source = root / "wrapped-unsigned.c"
+            target = root / "wrapped-unsigned.malbolge"
+            # Clang generates five AST nodes for each wrapped argument.
+            # An omitted return is an implicit void return, not a lost effect.
+            _ = source.write_bytes(
+                b"#include <stdio.h>\n"
+                + b"void emit(void) { putchar((65)); putchar(65u); }\n"
+            )
+            compiled = subprocess.run(
+                self._command(source, target, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(vm), str(target), "--report-steps"],
+                capture_output=True,
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"AA")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:27\n")
+
+            nested = root / "nested.c"
+            rejected = root / "nested.malbolge"
+            _ = nested.write_bytes(
+                b"#include <stdio.h>\nvoid emit(void) { putchar(((65))); }\n"
+            )
+            refused = subprocess.run(
+                self._command(nested, rejected, "--capsule"),
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"normalized frontend rejected", refused.stderr)
+            self.assertFalse(rejected.exists())
+
     def test_pinned_radix_c_literals_emit_witnessed_guest_byte(self) -> None:
         vm = self._real_binaries()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
