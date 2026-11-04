@@ -52,6 +52,7 @@ _NATIVE_SHA256 = sha256
 _SOURCE_COUNTER = Counter
 _SOURCE_STRING_IO = StringIO
 _SOURCE_TYPE = type
+_SOURCE_INT = int
 _SOURCE_ANY = any
 _SOURCE_SET = set
 _SOURCE_LEN = len
@@ -363,17 +364,18 @@ def _admit_observation_containers(
                     "raw_sample",
                 )
             )
-            or _SOURCE_TYPE(row["trial"]) is not int
+            or _SOURCE_TYPE(row["trial"]) is not _SOURCE_INT
             or _SOURCE_ANY(
                 _SOURCE_TYPE(case[name]) is not str
                 for name in ("family", "workload_sha256")
             )
             or _SOURCE_ANY(
-                _SOURCE_TYPE(case[name]) is not int
+                _SOURCE_TYPE(case[name]) is not _SOURCE_INT
                 for name in ("version", "difficulty", "seed")
             )
             or _SOURCE_ANY(
-                _SOURCE_TYPE(quantity) is not int for quantity in metrics.values()
+                _SOURCE_TYPE(quantity) is not _SOURCE_INT
+                for quantity in metrics.values()
             )
         ):
             _fail(message)

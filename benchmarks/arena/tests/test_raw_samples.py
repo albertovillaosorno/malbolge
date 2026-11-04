@@ -1951,3 +1951,40 @@ def test_raw_csv_valid_source_ignores_replaced_list_constructor(
         raw_samples.check_rows(raw, [observation], ROOT_LABEL)
         == sha256(raw).hexdigest()
     )
+
+
+@pytest.mark.parametrize("replacement", [bool, object])
+def test_raw_native_numeric_admission_keeps_valid_source_after_int_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+) -> None:
+    """Changing a public integer alias cannot reject native reported rows."""
+    record = sample_study(tmp_path)["observations"][0]
+    raw = _render([record])
+    expected = raw_samples.check_rows(raw, [record], ROOT_LABEL)
+    with monkeypatch.context() as patched:
+        patched.setattr(raw_samples, "int", replacement, raising=False)
+        assert raw_samples.check_rows(raw, [record], ROOT_LABEL) == expected
+
+
+def test_raw_native_numeric_admission_rejects_joint_boolean_forgery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Even matching raw text cannot authorize boolean trial/cost identities."""
+    record = sample_study(tmp_path)["observations"][0]
+    record["trial"] = True
+    case = record["case"]
+    for name in ("version", "difficulty", "seed"):
+        case[name] = True
+    for name in record["metrics"]:
+        record["metrics"][name] = True
+    raw = _render([record])
+    with monkeypatch.context() as patched:
+        patched.setattr(raw_samples, "int", bool, raising=False)
+        patched.setattr(analyze, "int", bool, raising=False)
+        with pytest.raises(
+            raw_samples.RawSampleError, match="native nonempty observation"
+        ):
+            raw_samples.check_rows(raw, [record], ROOT_LABEL)
