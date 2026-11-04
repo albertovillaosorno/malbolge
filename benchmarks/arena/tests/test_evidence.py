@@ -4192,3 +4192,95 @@ def test_evidence_native_stream_ignores_replaced_io_class_aliases(
         patched.setattr(evidence.io, "BufferedReader", _ForeignEvidenceBuffer)
         patched.setattr(evidence.io, "FileIO", _ForeignEvidenceRaw)
         assert evidence.read_bounded_regular(tmp_path, source.name, limit=1024) == payload
+
+
+class _ForgedEvidenceClassError(OSError):
+    """A dependency error spoofing the exported evidence error class."""
+
+    def __getattribute__(self, name: str) -> object:
+        if name == "__class__":
+            return evidence.EvidenceError
+        return super().__getattribute__(name)
+
+
+@pytest.mark.parametrize("phase", ["fdopen", "read"])
+@pytest.mark.parametrize("spoof", ["class", "isinstance"])
+def test_evidence_reader_rejects_foreign_error_classification_spoofs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    spoof: str,
+) -> None:
+    """Foreign I/O errors cannot substitute a native typed rejection."""
+    source = tmp_path / "raw.bin"
+    _ = source.write_bytes(b"native source")
+    foreign: OSError = (
+        _ForgedEvidenceClassError("foreign I/O error")
+        if spoof == "class"
+        else OSError("foreign I/O error")
+    )
+
+    def reject(*_args: object, **_kwargs: object) -> Any:
+        raise foreign
+
+    with monkeypatch.context() as patched:
+        if spoof == "isinstance":
+            patched.setattr(
+                evidence, "isinstance", lambda *_args: True, raising=False
+            )
+        if phase == "fdopen":
+            patched.setattr(evidence.os, "fdopen", reject)
+        else:
+            patched.setattr(evidence, "_read_complete", reject)
+        expected = (
+            "stream could not open" if phase == "fdopen" else "stream access failed"
+        )
+        with pytest.raises(evidence.EvidenceError, match=expected) as caught:
+            evidence.read_bounded_regular(tmp_path, source.name, limit=1024)
+    assert caught.value.__cause__ is foreign
+
+
+@pytest.mark.parametrize("phase", ["fdopen", "read", "suppressed-read"])
+@pytest.mark.parametrize("subclass", [False, True], ids=["source", "subclass"])
+def test_evidence_reader_retains_native_failure_under_replaced_isinstance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    phase: str,
+    subclass: bool,
+) -> None:
+    """Original typed failures and subclasses survive false error predicates."""
+    source = tmp_path / "raw.bin"
+    _ = source.write_bytes(b"native source")
+
+    class DerivedEvidenceError(evidence.EvidenceError):
+        pass
+
+    error_class = DerivedEvidenceError if subclass else evidence.EvidenceError
+    native = error_class("native evidence rejected")
+
+    def reject(*_args: object, **_kwargs: object) -> Any:
+        raise native
+
+    original_open = evidence._open_evidence
+
+    @contextmanager
+    def suppressing_open(path: Path) -> Iterator[IO[bytes]]:
+        with original_open(path) as stream:
+            try:
+                yield stream
+            except evidence.EvidenceError:
+                pass
+
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence, "isinstance", lambda *_args: False, raising=False)
+        if phase == "fdopen":
+            patched.setattr(evidence.os, "fdopen", reject)
+        else:
+            patched.setattr(evidence, "_read_complete", reject)
+            if phase == "suppressed-read":
+                patched.setattr(evidence, "_open_evidence", suppressing_open)
+        with pytest.raises(
+            evidence.EvidenceError, match="native evidence rejected"
+        ) as caught:
+            evidence.read_bounded_regular(tmp_path, source.name, limit=1024)
+    assert caught.value is native

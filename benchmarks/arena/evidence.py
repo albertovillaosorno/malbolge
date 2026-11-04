@@ -107,12 +107,20 @@ _SOURCE_EVIDENCE_ERROR = EvidenceError
 # Filesystem and stream admission must not accept late-rebound public stdlib
 # type or mode classifiers as native source evidence.
 _SOURCE_TYPE = type
+_SOURCE_ISSUBCLASS = issubclass
 _SOURCE_STAT_RESULT = os.stat_result
 _SOURCE_ISLNK = stat.S_ISLNK
 _SOURCE_ISREG = stat.S_ISREG
 _SOURCE_ISDIR = stat.S_ISDIR
 _SOURCE_BUFFERED_READER = io.BufferedReader
 _SOURCE_FILE_IO = io.FileIO
+
+
+def _source_error(error: Exception) -> bool:
+    # A foreign exception can spoof __class__, and a late rebound public
+    # isinstance() can classify a foreign fault as a trusted evidence error.
+    # Inspect the actual class ancestry while preserving derived native errors.
+    return _SOURCE_ISSUBCLASS(_SOURCE_TYPE(error), _SOURCE_EVIDENCE_ERROR)
 
 
 def _fail(message: str) -> Never:
@@ -331,7 +339,7 @@ def _open_evidence(path: Path) -> IO[bytes]:
                 error,
                 _cleanup_note("evidence descriptor cleanup also failed", close_error),
             )
-        if isinstance(error, _SOURCE_EVIDENCE_ERROR):
+        if _source_error(error):
             raise error  # ruff: ignore[TRY201]
         message = f"evidence stream could not open: {path}"
         raise _SOURCE_EVIDENCE_ERROR(message) from error
@@ -416,7 +424,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
                 _cleanup_note("evidence stream cleanup also failed", error),
             )
             error = primary
-        if isinstance(error, _SOURCE_EVIDENCE_ERROR):
+        if _source_error(error):
             # It may be the earlier body exception, not the active close error.
             raise error  # ruff: ignore[TRY201]
         message = f"evidence stream access failed: {relative}"
@@ -425,7 +433,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
     # returning True from __exit__. Never publish previously read bytes (or
     # access uninitialized read state) after such a suppressed rejection.
     if primary is not None:
-        if isinstance(primary, _SOURCE_EVIDENCE_ERROR):
+        if _source_error(primary):
             raise primary
         message = f"evidence stream access failed: {relative}"
         raise _SOURCE_EVIDENCE_ERROR(message) from primary
