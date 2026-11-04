@@ -49,6 +49,11 @@ _SOURCE_FRACTION = Fraction
 _SOURCE_LEN = len
 _SOURCE_ANY = any
 _SOURCE_SORTED = sorted
+# A replaced loop provider or native shape type must not forge coverage.
+_SOURCE_TYPE = type
+_SOURCE_LIST = list
+_SOURCE_INT = int
+_SOURCE_RANGE = range
 
 
 class MedianInterval(TypedDict):
@@ -78,12 +83,12 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
         or None for invalid integer samples or sizes outside the bounded domain.
 
     """
-    if type(values) is not list:
+    if _SOURCE_TYPE(values) is not _SOURCE_LIST:
         return None
     size = _SOURCE_LEN(values)
     if size < _SOURCE_MIN_SAMPLES or size > _SOURCE_MAX_SAMPLES:
         return None
-    if _SOURCE_ANY(type(value) is not int for value in values):
+    if _SOURCE_ANY(_SOURCE_TYPE(value) is not _SOURCE_INT for value in values):
         return None
     denominator = 1 << size
     confidence = _SOURCE_REQUESTED_CONFIDENCE
@@ -92,7 +97,7 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
     rank = 0
     # Coverage [X_(k), X_(n-k+1)] = 1 - 2 * P(Bin(n, 1/2) < k).
     # Recurrence uses exact integer arithmetic without enormous factorials.
-    for j in range(size // 2):
+    for j in _SOURCE_RANGE(size // 2):
         proposed_tail = tail + binomial
         if proposed_tail * 2 * confidence.denominator > (
             denominator * (confidence.denominator - confidence.numerator)

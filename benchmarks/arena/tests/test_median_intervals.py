@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import comb
-from typing import cast
+from typing import Never, cast
 
 import pytest
 
@@ -260,3 +260,62 @@ def test_median_interval_ignores_forged_order_statistics_provider(
         median_intervals, "sorted", lambda *_args: [99] * 10, raising=False
     )
     assert median_intervals.median_interval_95(values) == expected
+
+
+def test_median_rejects_boolean_cost_under_replaced_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged integer type receipt cannot turn True into a cost sample."""
+    samples = cast("list[int]", [0, 1, 2, 3, 4, True])
+    native_type = type
+    monkeypatch.setattr(
+        median_intervals,
+        "type",
+        lambda value: int if value is True else native_type(value),
+        raising=False,
+    )
+    assert median_intervals.median_interval_95(samples) is None
+
+
+def test_median_rejects_tuple_under_replaced_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A foreign collection must not obtain the native list admission receipt."""
+    samples = cast("list[int]", tuple(range(10)))
+    native_type = type
+    monkeypatch.setattr(
+        median_intervals,
+        "type",
+        lambda value: list if value is samples else native_type(value),
+        raising=False,
+    )
+    assert median_intervals.median_interval_95(samples) is None
+
+
+def test_median_rank_rejects_replaced_binomial_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Rank and exact coverage must not depend on a module-level range alias."""
+    samples = list(range(20))
+    expected = median_intervals.median_interval_95(samples)
+    assert expected is not None
+    monkeypatch.setattr(
+        median_intervals, "range", lambda size: [0] * size, raising=False
+    )
+    assert median_intervals.median_interval_95(samples) == expected
+
+
+@pytest.mark.parametrize("provider", ["type", "list", "int", "range"])
+def test_median_native_admission_operations_are_source_bound(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Public builtin aliases cannot alter ordinary interval computation."""
+    samples = list(range(10))
+    expected = median_intervals.median_interval_95(samples)
+    assert expected is not None
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail(f"public {provider} called instead of source native")
+
+    monkeypatch.setattr(median_intervals, provider, forbidden, raising=False)
+    assert median_intervals.median_interval_95(samples) == expected
