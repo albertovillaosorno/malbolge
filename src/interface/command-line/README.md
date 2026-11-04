@@ -250,6 +250,31 @@ artifact that does not need the explicit `--raw-profile` runner flag. Both
 modes are tested against exact guest stdout and instruction counts. This is
 a finite separately witnessed byte sequence, not arbitrary string output.
 
+Two larger **binary** teaching pairs are retained in the
+[versioned example corpus][binary-corpus]:
+[`emit-qesc79-v1`](../../../docs/technical/examples/corpus/emit-qesc79.md)
+computes bytes `51 22 1b 37 39` (`Q`, quote, ESC, `7`, `9`) in 23 steps;
+[`emit-qop6-v1`](../../../docs/technical/examples/corpus/emit-qop6.md)
+computes `51 1c 4f 1d 50 1b` (`Q`, FS, `O`, GS, `P`, ESC) in 15 steps.
+The committed capsules are reproducible outputs from actual pinned source-C
+compilation and execute without host-level byte substitutions. For example:
+
+```sh
+malbolge --repository-tools \
+  docs/technical/examples/corpus/emit-qesc79.malbolge \
+  --report-steps | od -An -tx1
+malbolge --repository-tools \
+  docs/technical/examples/corpus/emit-qop6.malbolge \
+  --report-steps | od -An -tx1
+```
+
+These selected `malbolge-2026` capsules preserve nonprinting guest bytes;
+printing the output as a shell string would obscure their identity. The linked
+corpus records pin hashes and fresh-build commands. These finite exact traces
+do not constitute general byte-stream or string-output lowering.
+
+[binary-corpus]: ../../../docs/technical/examples/versioned-c-malbolge-corpus.md
+
 For the **Unix `malbolge` shim**, a leading `--repository-tools` selects the
 existing repository-built `.cache/rust/target/debug/malbolge` VM. This is useful
 when the `scripts/bin/malbolge` release binary was built against older sources:
