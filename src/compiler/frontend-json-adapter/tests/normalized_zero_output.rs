@@ -531,6 +531,131 @@ fn malformed_argument_wrappers_fail_closed() {
     }
 }
 
+// Insert the exact pinned Clang direct-child preorder of an inert C statement
+// between two identical putchar(65) calls. All following IDs and source
+// positions move, including the nested second-call ancestry and return.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    clippy::unwrap_used,
+    clippy::default_numeric_fallback,
+    reason = "bounded synthetic Clang two-call preorder with source spans"
+)]
+fn interleaved_output_input(kind: &str) -> Value {
+    let mut source = repeated_literal_input(65, 2);
+    let is_cast = kind == "cast-expression";
+    let consumed = if is_cast { 2u64 } else { 1u64 };
+    let shift = if is_cast { 8u64 } else { 2u64 };
+    let nodes = source["nodes"].as_array_mut().unwrap();
+    for node in nodes.iter_mut().skip(6) {
+        let id = node["id"].as_u64().unwrap();
+        node["id"] = json!(id + consumed);
+        let parent = node["parent"].as_u64().unwrap();
+        if parent > 2 {
+            node["parent"] = json!(parent + consumed);
+        }
+        for side in ["begin", "end"] {
+            for coordinate in ["byte", "column"] {
+                let value = node["span"][side][coordinate].as_u64().unwrap();
+                node["span"][side][coordinate] = json!(value + shift);
+            }
+        }
+    }
+    let inert = match kind {
+        "integer-literal" => json!({
+            "id":7, "parent":2, "kind":kind, "span":span(50,51,2,19),
+            "type":"i32", "constant_integer":"0", "literal":"0"
+        }),
+        "cast-expression" => json!({
+            "id":7, "parent":2, "kind":kind, "span":span(50,57,2,19),
+            "type":"void", "operation":"to-void"
+        }),
+        _ => json!({
+            "id":7, "parent":2, "kind":kind, "span":span(50,51,2,19)
+        }),
+    };
+    nodes.insert(6, inert);
+    if is_cast {
+        nodes.insert(
+            7,
+            json!({
+                "id":8, "parent":7, "kind":"integer-literal",
+                "span":span(56,57,2,19), "type":"i32",
+                "constant_integer":"0", "literal":"0"
+            }),
+        );
+    }
+    for index in [0, 1] {
+        let value = nodes[index]["span"]["end"]["byte"].as_u64().unwrap();
+        nodes[index]["span"]["end"]["byte"] = json!(value + shift);
+        let column = nodes[index]["span"]["end"]["column"].as_u64().unwrap();
+        nodes[index]["span"]["end"]["column"] = json!(column + shift);
+    }
+    source
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-proven no-effect statements must not change real guest bytes"
+)]
+fn inert_clang_statements_preserve_two_guest_output_effects() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    for kind in ["null-statement", "integer-literal", "cast-expression"] {
+        let source = interleaved_output_input(kind);
+        assert!(canonical_void_typed_ir(&bytes(&source)).is_err());
+        let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+            .map_err(|error| format!("interleaved C {kind}: {error:?}"))?;
+        assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+        let module = typed::canonical_module(&wire)
+            .map_err(|error| format!("decode interleaved MCTI: {error:?}"))?;
+        let effects = module
+            .functions()
+            .first()
+            .and_then(|function| function.blocks().first())
+            .ok_or("missing typed output block")?
+            .instructions();
+        assert_eq!(effects.len(), 3);
+        let compiled = adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile)
+            .map_err(|error| format!("compile interleaved C {kind}: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("load interleaved guest: {error:?}"))?;
+        let steps = compiled.layout().executed_code_positions().len();
+        assert!(matches!(vm.run(steps), Ok(RunOutcome::Terminated { .. })));
+        assert_eq!(vm.output(), b"AA");
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    clippy::default_numeric_fallback,
+    reason = "negative source mutations protect the newly admitted no-effect gate"
+)]
+fn interleaved_clang_effects_and_forged_metadata_fail_closed() {
+    let mut mutations = Vec::new();
+    let mut value = interleaved_output_input("integer-literal");
+    value["nodes"][6]["literal"] = json!("1");
+    value["nodes"][6]["constant_integer"] = json!("1");
+    mutations.push(value);
+    let mut value = interleaved_output_input("null-statement");
+    value["nodes"][6]["reference"] = json!("external:getchar");
+    mutations.push(value);
+    let mut value = interleaved_output_input("null-statement");
+    value["nodes"][6]["parent"] = json!(3);
+    mutations.push(value);
+    let mut value = interleaved_output_input("cast-expression");
+    value["nodes"][7]["constant_integer"] = json!("1");
+    mutations.push(value);
+    for (index, source) in mutations.iter().enumerate() {
+        assert!(
+            canonical_guest_typed_ir(&bytes(source)).is_err(),
+            "forged interleaved Clang statement {index} was admitted"
+        );
+    }
+}
+
 // A native void function can end at its closing brace without a ReturnStmt.
 #[expect(
     clippy::indexing_slicing,
@@ -600,7 +725,9 @@ fn implicit_output_return_requires_closed_body_and_complete_call_groups() {
     mutations.push(unmatched_line);
     let mut extra_effect = base.clone();
     extra_effect["nodes"].as_array_mut().unwrap().push(json!({
-        "id":7, "parent":2, "kind":"null-statement", "span":span(48,49,2,19)
+        "id":7, "parent":2, "kind":"integer-literal",
+        "span":span(48,49,2,19), "type":"i32",
+        "constant_integer":"1", "literal":"1"
     }));
     mutations.push(extra_effect);
     let mut lost_operand = base;

@@ -38,7 +38,7 @@ A separate **exact** pinned-Clang source shape is also executable:
 void emit(void) { putchar(0); return; }
 ```
 
-The exact pinned-Clang shape admits one through 32 **consecutive** calls to
+The exact pinned-Clang shape admits one through 32 calls to
 `putchar(N);` with optional final `return;`, where every `N` emits the same
 low-eight-bit byte. The evaluated C integer is a nonnegative `i32` value
 (including `256..2147483647`) and must be a bounded single-line integer token
@@ -54,8 +54,13 @@ Each call proves its direct `putchar` reference, one exact literal argument
 and function-to-pointer decay;
 the complete normalized preorder contains four or five nodes per call, plus
 two structural nodes and optional explicit `return;`, preserving exact source
-ancestry and ordered nonoverlapping spans. The adapter emits one
-canonical `u8` constant and the corresponding number of `ByteOutput` effects.
+ancestry and ordered nonoverlapping spans. Up to 128 direct-child inert
+statements (`;`, `0;`, or `(void)0;`) may occur before, between or after the
+calls; the adapter checks each complete source-bound semantic node and preserves
+the output effects without inventing any guest I/O for those statements.
+Nonzero literal expressions, unexpected metadata, nested bodies and other
+side effects still reject. The adapter emits one canonical `u8` constant and
+the corresponding number of `ByteOutput` effects.
 For zero, the downstream publisher uses `--initial-zero-output --typed-stdin`,
 which independently verifies guest stdout of one to 32 NUL bytes. Nonzero
 bytes use the separate `--seeded-byte-literal --typed-stdin` backend, where
@@ -71,7 +76,7 @@ layout admission without publishing a `.malbolge` artifact.
 An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
 Nested parentheses, nonliteral arithmetic, call-result handling, arbitrary
-output streams, interleaved statements,
+output streams, interleaved effectful statements,
 `getchar`, EOF, I/O errors, general guest libc and C entry ABI remain
 unsupported. Mixing distinct **output bytes** in one source refuses
 admission; distinct `i32` literals with the same low byte preserve their own

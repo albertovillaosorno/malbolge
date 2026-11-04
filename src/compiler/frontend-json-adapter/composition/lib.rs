@@ -57,6 +57,7 @@ const MAX_FRONTEND_JSON_BYTES: usize = 1_048_576;
 const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
 const MAX_COMPOUND_DEPTH: usize = 64;
 const MAX_ZERO_OUTPUT_CALLS: usize = 32;
+const MAX_INERT_OUTPUT_STATEMENTS: usize = 128;
 
 /// Which independently checked guest effect trace can realize this C source.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -469,6 +470,7 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
 // Calls are ordered siblings; no expression or effect is discarded.
 #[expect(
     clippy::too_many_lines,
+    clippy::too_many_arguments,
     reason = "exact Clang node metadata and positional proof stay together"
 )]
 fn admitted_output_byte(
@@ -476,6 +478,7 @@ fn admitted_output_byte(
     body: &Node,
     previous_end: u32,
     expected_id: u32,
+    previous_was_null: bool,
 ) -> Option<u8> {
     let (call, cast, callee, wrapper, literal) = match group {
         [call, cast, callee, literal] => (call, cast, callee, None, literal),
@@ -616,7 +619,10 @@ fn admitted_output_byte(
             .iter()
             .all(|node| node.operation.is_none())
         && [cast, literal].iter().all(|node| node.reference.is_none())
-        && call_span.begin.byte > previous_end
+        // A Clang NullStmt already spans its terminator semicolon. Its
+        // following call can begin at precisely the end of that span.
+        && (call_span.begin.byte > previous_end
+            || (previous_was_null && call_span.begin.byte == previous_end))
         && call_span.end.byte < body.span.end.byte
         && call_span.begin.byte == cast_span.begin.byte
         && cast_span.begin.byte == callee_span.begin.byte
@@ -648,6 +654,67 @@ fn admitted_output_byte(
     valid.then_some(byte)
 }
 
+// Between direct output calls, discard only the same exact source-bound
+// no-effect statements admitted by the void-return frontend. Never infer that
+// an unrecognized expression lacks observable effects.
+fn inert_output_statement(
+    nodes: &[Node],
+    body: &Node,
+    previous_end: u32,
+    expected_id: u32,
+) -> Option<(usize, u32)> {
+    let node = nodes.first()?;
+    let closed_metadata = |node: &Node| {
+        node.name.is_none()
+            && node.reference.is_none()
+            && node.definition.is_none()
+            && node.inline_specified.is_none()
+            && node.linkage.is_none()
+            && node.storage_class.is_none()
+    };
+    if node.id != expected_id
+        || node.parent != body.id
+        || !closed_metadata(node)
+        || node.span.begin.byte <= body.span.begin.byte
+        || node.span.begin.byte < previous_end
+        || node.span.end.byte >= body.span.end.byte
+    {
+        return None;
+    }
+    let end = node.span.end.byte;
+    match node.kind.as_str() {
+        "null-statement"
+            if node.type_name.is_none()
+                && node.operation.is_none()
+                && node.constant_integer.is_none()
+                && node.literal.is_none()
+                && valid_single_byte_statement_span(node, body, previous_end) =>
+        {
+            Some((1, end))
+        }
+        "integer-literal"
+            if node.type_name.as_deref() == Some("i32")
+                && node.operation.is_none()
+                && node.constant_integer.as_deref() == Some("0")
+                && node.literal.as_deref() == Some("0")
+                && valid_single_byte_statement_span(node, body, previous_end) =>
+        {
+            Some((1, end))
+        }
+        "cast-expression" => {
+            let child = nodes.get(1)?;
+            (node.constant_integer.is_none()
+                && node.literal.is_none()
+                && closed_metadata(child)
+                && child.operation.is_none()
+                && child.id == expected_id.checked_add(1)?
+                && valid_zero_void_cast(node, Some(child)))
+            .then_some((2, end))
+        }
+        _ => None,
+    }
+}
+
 // A bounded sequence must use one identical literal and no other effects.
 #[expect(
     clippy::too_many_lines,
@@ -662,7 +729,10 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         _ => (None, rest),
     };
     if call_nodes.is_empty()
-        || call_nodes.len() > MAX_ZERO_OUTPUT_CALLS.saturating_mul(5)
+        || call_nodes.len()
+            > MAX_ZERO_OUTPUT_CALLS
+                .saturating_mul(5)
+                .saturating_add(MAX_INERT_OUTPUT_STATEMENTS.saturating_mul(2))
         || function.kind != "function-declaration"
         || function.id != 1
         || function.parent != 0
@@ -715,15 +785,32 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut calls = Vec::new();
     let mut selected_byte = None;
     let mut previous_end = body.span.begin.byte;
+    let mut previous_was_null = false;
+    let mut inert_count = 0usize;
     let mut offset = 0usize;
     while offset < call_nodes.len() {
-        if calls.len() >= MAX_ZERO_OUTPUT_CALLS {
-            return Err(FrontendJsonError::Unsupported);
-        }
         let id = u32::try_from(offset)
             .ok()
             .and_then(|value| value.checked_add(3))
             .ok_or(FrontendJsonError::Unsupported)?;
+        let remaining = call_nodes
+            .get(offset..)
+            .ok_or(FrontendJsonError::Unsupported)?;
+        if let Some((consumed, end)) = inert_output_statement(remaining, body, previous_end, id) {
+            inert_count = inert_count.saturating_add(1);
+            if inert_count > MAX_INERT_OUTPUT_STATEMENTS {
+                return Err(FrontendJsonError::Unsupported);
+            }
+            previous_end = end;
+            previous_was_null = remaining
+                .first()
+                .is_some_and(|node| node.kind == "null-statement");
+            offset = offset.saturating_add(consumed);
+            continue;
+        }
+        if calls.len() >= MAX_ZERO_OUTPUT_CALLS {
+            return Err(FrontendJsonError::Unsupported);
+        }
         let fourth = call_nodes
             .get(offset.saturating_add(3))
             .ok_or(FrontendJsonError::Unsupported)?;
@@ -741,7 +828,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         let group = call_nodes
             .get(offset..end)
             .ok_or(FrontendJsonError::Unsupported)?;
-        let byte = admitted_output_byte(group, body, previous_end, id)
+        let byte = admitted_output_byte(group, body, previous_end, id, previous_was_null)
             .ok_or(FrontendJsonError::Unsupported)?;
         if selected_byte.is_some_and(|previous| previous != byte) {
             return Err(FrontendJsonError::Unsupported);
@@ -750,6 +837,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         let call = group.first().ok_or(FrontendJsonError::Unsupported)?;
         let literal = group.last().ok_or(FrontendJsonError::Unsupported)?;
         previous_end = call.span.end.byte;
+        previous_was_null = false;
         calls.push((call, literal));
         offset = end;
     }
@@ -766,7 +854,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
 }
 
 /// Compile one through 32 identical source-proven byte `putchar(N)` calls
-/// and explicit or implicit void return with exact source provenance.
+/// with bounded inert statements and an explicit or implicit void return.
 #[expect(
     clippy::too_many_lines,
     reason = "canonical typed-effect projection and re-admission"
