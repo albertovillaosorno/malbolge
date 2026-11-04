@@ -40,6 +40,7 @@ from __future__ import annotations
 import csv
 import json
 import sys
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
@@ -2014,3 +2015,107 @@ def test_historical_canonical_csv_reader_preserves_blank_physical_lines() -> Non
     assert historical_pairs._csv_rows(
         source + "\n", registered_fields=fields, expected_rows=2 * PAIR_COUNT
     ) == original
+
+
+@pytest.mark.parametrize("kind", ["outcome", "profile", "kind", "metric"])
+def test_historical_identity_ignores_mutable_semantic_labels(
+    monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A mutable label cannot reinterpret nonclassic or failed source runs."""
+    relative = BASE + PREFIX
+    sources = historical_pairs._load_source(REPO, relative)
+    manifest = sources.manifest
+    protocol = sources.protocol
+    if kind == "outcome":
+        assert manifest.run is not None
+        manifest = replace(manifest, run=replace(manifest.run, outcome="rejected"))
+        monkeypatch.setattr(historical_pairs, "RUN_SUCCEEDED", "rejected")
+    elif kind == "profile":
+        manifest = replace(manifest, target_profile="malbolge-2026")
+        monkeypatch.setattr(historical_pairs, "CLASSIC_PROFILE", "malbolge-2026")
+    elif kind == "kind":
+        protocol = replace(protocol, kind="stochastic")
+        monkeypatch.setattr(historical_pairs, "DETERMINISTIC_KIND", "stochastic")
+    else:
+        protocol = replace(
+            protocol,
+            metrics=tuple(m for m in protocol.metrics if m != "elapsed_nanoseconds"),
+        )
+        monkeypatch.setattr(
+            historical_pairs, "ELAPSED_SOURCE_FIELD", "independent_verifier_calls"
+        )
+    with pytest.raises(historical_pairs.HistoricalEvidenceError):
+        historical_pairs._source_identity(
+            manifest,
+            protocol,
+            relative,
+            source_commit=sources.source_commit,
+        )
+
+
+def test_historical_extension_ignores_mutable_public_registration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unsupported extension cannot become registered by dictionary edits."""
+    updated = dict(historical_pairs.EXTENSION_CONFIG)
+    updated["foreign_measurement"] = ("candidate", "accepted", "size", "calls")
+    monkeypatch.setattr(historical_pairs, "EXTENSION_CONFIG", updated)
+    with pytest.raises(
+        historical_pairs.HistoricalEvidenceError, match="unsupported"
+    ):
+        historical_pairs._extension({"foreign_measurement": {}})
+
+
+def test_historical_csv_schema_ignores_mutable_public_registration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An added CSV field is not source-registered by a mutable field map."""
+    directory = _copy_source(tmp_path, PREFIX)
+    raw_path = directory / "raw.csv"
+    raw = raw_path.read_text(encoding="utf-8")
+    raw_path.write_text(
+        "\n".join(f"{row},foreign" for row in raw.splitlines()) + "\n",
+        encoding="utf-8",
+    )
+    updated = dict(historical_pairs.REGISTERED_RAW_COLUMNS)
+    original = updated["prefix_decomposition_measurement"]
+    updated["prefix_decomposition_measurement"] = original | {"foreign"}
+    monkeypatch.setattr(historical_pairs, "REGISTERED_RAW_COLUMNS", updated)
+    with pytest.raises(historical_pairs.HistoricalEvidenceError, match="CSV columns"):
+        historical_pairs.build_report(tmp_path, TEMP)
+
+
+@pytest.mark.parametrize("field", ["VERIFIED", "ACCEPTED"])
+def test_historical_reported_outcome_ignores_mutable_analyzer_labels(
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    """The retained success outcome cannot become a caller-invented verdict."""
+    relative = BASE + PREFIX
+    sources = historical_pairs._load_source(REPO, relative)
+    original = historical_pairs._reported_row(
+        sources.records[0], sources.manifest, relative=relative
+    )
+    monkeypatch.setattr(historical_pairs.analyze, field, "forged-success")
+    observed = historical_pairs._reported_row(
+        sources.records[0], sources.manifest, relative=relative
+    )
+    assert observed["outcome"] == original["outcome"]
+    assert observed["verifier_verdict"] == original["verifier_verdict"]
+
+
+def test_historical_schema_registration_ignores_inplace_config_edits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Mutation of the original exported map cannot change a source registry."""
+    original = historical_pairs._extension(
+        {"prefix_decomposition_measurement": {}}
+    )[1]
+    monkeypatch.setitem(
+        historical_pairs.EXTENSION_CONFIG,
+        "prefix_decomposition_measurement",
+        ("forged", "metadata", "not", "source"),
+    )
+    assert historical_pairs._extension(
+        {"prefix_decomposition_measurement": {}}
+    )[1] == original

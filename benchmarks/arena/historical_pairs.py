@@ -111,6 +111,13 @@ _SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
 _SOURCE_NUL = analyze.NUL
 _SOURCE_CSV_READER = csv.reader
 _SOURCE_STRING_IO = StringIO
+_SOURCE_RUN_SUCCEEDED = RUN_SUCCEEDED
+_SOURCE_CLASSIC_PROFILE = CLASSIC_PROFILE
+_SOURCE_DETERMINISTIC_KIND = DETERMINISTIC_KIND
+_SOURCE_ELAPSED_SOURCE_FIELD = ELAPSED_SOURCE_FIELD
+_SOURCE_VERIFIED = analyze.VERIFIED
+_SOURCE_ACCEPTED = analyze.ACCEPTED
+_SOURCE_EXTENSION_CONFIG = {name: tuple(fields) for name, fields in EXTENSION_CONFIG.items()}
 
 REGISTERED_RAW_COLUMNS = {
     "prefix_decomposition_measurement": frozenset({
@@ -137,6 +144,10 @@ REGISTERED_RAW_COLUMNS = {
         "quality_map_sha256",
         "elapsed_nanoseconds",
     }),
+}
+# A mutable public registration map cannot alter historical source schemas.
+_SOURCE_REGISTERED_RAW_COLUMNS = {
+    name: frozenset(fields) for name, fields in REGISTERED_RAW_COLUMNS.items()
 }
 
 
@@ -371,7 +382,7 @@ def _extension(
         type(key) is not str for key in manifest
     ):
         _fail("historical measurement manifest requires native string keys")
-    available = [name for name in EXTENSION_CONFIG if name in manifest]
+    available = [name for name in _SOURCE_EXTENSION_CONFIG if name in manifest]
     if len(available) != 1:
         _fail("unsupported historical paired measurement extension")
     section = manifest[available[0]]
@@ -379,7 +390,7 @@ def _extension(
         type(key) is not str for key in section
     ):
         _fail("historical measurement extension requires native string keys")
-    return section, EXTENSION_CONFIG[available[0]]
+    return section, _SOURCE_EXTENSION_CONFIG[available[0]]
 
 
 def _require(condition: object, message: str) -> None:
@@ -404,7 +415,7 @@ def _source_identity(
         "historical evidence must be a run record",
     )
     _require(
-        run.outcome == RUN_SUCCEEDED,
+        run.outcome == _SOURCE_RUN_SUCCEEDED,
         "historical paired run must report success",
     )
     _require(
@@ -437,15 +448,15 @@ def _source_identity(
         "historical adapter only supports version-one challenge families",
     )
     _require(
-        protocol.kind == DETERMINISTIC_KIND,
+        protocol.kind == _SOURCE_DETERMINISTIC_KIND,
         "historical paired study must be deterministic",
     )
     _require(
-        manifest.target_profile == CLASSIC_PROFILE,
+        manifest.target_profile == _SOURCE_CLASSIC_PROFILE,
         "historical paired study requires frozen classic profile",
     )
     _require(
-        ELAPSED_SOURCE_FIELD in protocol.metrics,
+        _SOURCE_ELAPSED_SOURCE_FIELD in protocol.metrics,
         "historical protocol did not preregister elapsed time",
     )
 
@@ -469,9 +480,9 @@ def _reported_row(
             "workload_sha256": run.workload_sha256,
         },
         "trial": _integer(source["repetition"], "repetition"),
-        "outcome": analyze.VERIFIED,
+        "outcome": _SOURCE_VERIFIED,
         "verifier": manifest.oracle,
-        "verifier_verdict": analyze.ACCEPTED,
+        "verifier_verdict": _SOURCE_ACCEPTED,
         "experiment_manifest": f"{relative}/experiment.toml",
         "raw_sample": f"{relative}/raw.csv",
         "metrics": {
@@ -677,7 +688,7 @@ def _load_source(root: Path, relative: str) -> _StudySources:
     _ = _extension(manifest_data)
     manifest_data = _require_source_toml(manifest_data, manifest_text)
     extension_name = next(
-        name for name in EXTENSION_CONFIG if name in manifest_data
+        name for name in _SOURCE_EXTENSION_CONFIG if name in manifest_data
     )
     protocol = benchmark_protocol.parse_protocol(benchmark_text)
     if protocol.repetitions > _SOURCE_MAX_HISTORICAL_REPETITIONS:
@@ -689,7 +700,7 @@ def _load_source(root: Path, relative: str) -> _StudySources:
         protocol=protocol,
         records=_csv_rows(
             sources["raw.csv"][0],
-            registered_fields=REGISTERED_RAW_COLUMNS[extension_name],
+            registered_fields=_SOURCE_REGISTERED_RAW_COLUMNS[extension_name],
             expected_rows=2 * protocol.repetitions,
         ),
         fingerprints={name: sources[name][1] for name in names},
