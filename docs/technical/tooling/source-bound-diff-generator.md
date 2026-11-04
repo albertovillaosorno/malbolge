@@ -3239,6 +3239,16 @@ concurrent host-module edits, or external filesystem writers. The repository
 Jig graph remains absent, so `jig doctor` is degraded; the full governance
 gate has not been shown to pass and remains an open requirement.
 
+
+Semantic source-placement validation also retains its import-original
+`SemanticPlacementError` (`f364f2f1a`) across native locator, edit, and
+plan validation. Eight red-first late-alias cases previously leaked a raw
+`TypeError` or substituted error. All 897 postcommit correct-directory
+semantic/mapped/relocatable/compatible tests passed with scoped Ruff,
+strict BasedPyright, and Git checks clean. This DCO was signed and
+SHA-exact pushed to `main`. It postdates the earlier full-suite collection,
+so no later complete integrated verdict is inferred from that result.
+
 ## Verification
 
 Generic tests use only repository-owned synthetic fixtures and cover:

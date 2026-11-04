@@ -1909,6 +1909,16 @@ format.
   direct mutation of trusted instance storage. Global Jig acceptance is
   still unresolved because the compiled graph is absent.
 
+
+- Semantic source-placement failures now preserve the original
+  `SemanticPlacementError` (`f364f2f1a`) when consumers rebind the public
+  error name. Eight red-first cases cover incomplete native locator, edit,
+  and plan receipts plus an empty locator. All 897 postcommit
+  semantic/mapped/relocatable/compatible tests passed from the required
+  test-directory working directory, with scoped Ruff, strict BasedPyright,
+  and Git checks clean. The DCO was SHA-exact pushed to `main`; the earlier
+  4,248-case full-suite pass predates this additional regression unit.
+
 ## Acceptance
 
 - Exact baseline source plus emitted transform reproduces the local oracle
