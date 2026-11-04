@@ -3539,3 +3539,72 @@ def test_target_audit_linked_input_caps_do_not_follow_mutable_dependencies(
     assert retained["runs/sample.toml"][1] == manifest_cap
     assert retained["raw/sample.csv"][1] == raw_cap
     assert retained["rss/sample.json"][1] == rss_cap
+
+
+def _minimal_native_study_bytes() -> bytes:
+    """A complete schema-v1 study without invoking a real target producer."""
+    source = {
+        "schema_version": 1,
+        "study": {
+            "id": "target-source-parser-control",
+            "question": "Does source JSON remain authoritative?",
+            "hypothesis": "Public parser substitution is rejected.",
+            "baseline": "direct-echo",
+            "rejection_observation": "A foreign parser supplies unrelated fields.",
+            "stage": "synthetic-audit-control",
+            "target_profile": "malbolge-1998",
+            "host": "test-host",
+            "toolchain": "test-toolchain",
+            "budget": {"time_ns": 10, "memory_bytes": 10},
+            "objectives": ["elapsed_ns", "artifact_bytes"],
+        },
+        "observations": [
+            {
+                "algorithm": "direct-echo",
+                "case": {
+                    "family": "test-source-family",
+                    "version": 1,
+                    "difficulty": 1,
+                    "seed": 0,
+                    "workload_sha256": "a" * 64,
+                },
+                "trial": 0,
+                "outcome": analyze.VERIFIED,
+                "verifier": "independent-test-oracle",
+                "verifier_verdict": analyze.ACCEPTED,
+                "experiment_manifest": "runs/test.toml",
+                "raw_sample": "raw/test.csv",
+                "metrics": {"elapsed_ns": 1, "artifact_bytes": 1},
+            }
+        ],
+    }
+    encoded = json.dumps(source, sort_keys=True).encode("utf-8")
+    assert analyze.parse_document(encoded.decode("utf-8")) == source
+    return encoded
+
+
+def test_target_study_uses_source_parser_not_replaced_public_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retained bytes cannot be reinterpreted by a swapped public parser."""
+    raw = _minimal_native_study_bytes()
+    source = json.loads(raw)
+    forged = copy.deepcopy(source)
+    forged["study"]["question"] = "Forged research claim"
+    monkeypatch.setattr(audit, "_native_regular_bytes", lambda *_args, **_kwargs: raw)
+    monkeypatch.setattr(audit.analyze, "parse_document", lambda _text: forged)
+    document, digest = audit._document(".temp/arena-target-echo-test/study.json")
+    assert document == source
+    assert digest == sha256(raw).hexdigest()
+
+
+def test_target_study_rejects_invalid_json_even_if_public_parser_forgets_shape(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed source bytes cannot inherit a forged admitted document."""
+    monkeypatch.setattr(audit, "_native_regular_bytes", lambda *_args, **_kwargs: b"{}")
+    monkeypatch.setattr(
+        audit.analyze, "parse_document", lambda _text: {"schema_version": 1}
+    )
+    with pytest.raises(analyze.ArenaError, match="root"):
+        audit._document(".temp/arena-target-echo-test/study.json")

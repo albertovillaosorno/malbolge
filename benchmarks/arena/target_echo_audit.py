@@ -64,7 +64,8 @@ from scripts.validate import experiment_manifest
 # Keep an original source-digest constructor alongside the public providers.
 _NATIVE_SHA256 = sha256
 
-# Keep the source decoder separate from the mutable public TOML entrypoint.
+# Keep original source decoders separate from mutable public parser entrypoints.
+_SOURCE_PARSE_DOCUMENT = analyze.parse_document
 _SOURCE_TOML_LOADS = tomllib.loads
 _SOURCE_JSON_DECODER = json.JSONDecoder
 _SOURCE_JSON_ENCODER = json.JSONEncoder
@@ -335,7 +336,7 @@ def _document(relative: str) -> tuple[dict[str, Any], str]:
         relative,
         limit=_SOURCE_STUDY_BYTES,
     )
-    return analyze.parse_document(data.decode("utf-8")), _source_sha256(data)
+    return _SOURCE_PARSE_DOCUMENT(data.decode("utf-8")), _source_sha256(data)
 
 
 def _mode(document: dict[str, Any]) -> str:
