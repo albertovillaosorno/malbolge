@@ -1190,3 +1190,89 @@ def test_model_unencodable_path_rejection_survives_unicode_exception_alias(
     assert caught is not None, route
     assert "canonical relative path" in str(caught)
     assert type(caught.__cause__) is UnicodeEncodeError
+
+
+@pytest.mark.parametrize(
+    ("route", "build", "message"),
+    [
+        (
+            "file",
+            lambda: FileRecord("../unsafe", _HASH, 1),
+            "canonical relative path",
+        ),
+        (
+            "snapshot",
+            lambda: TreeSnapshot(
+                cast("tuple[FileRecord, ...]", cast("object", []))
+            ),
+            "exact immutable tuple",
+        ),
+        (
+            "slice",
+            lambda: SourceSlice(-1, 1),
+            "non-negative offset",
+        ),
+        (
+            "literal",
+            lambda: OracleLiteral(
+                cast("bytes", cast("object", bytearray(b"x")))
+            ),
+            "exact bytes",
+        ),
+        (
+            "instruction",
+            lambda: ExactInstruction(
+                "out", ExactInstructionKind.COPY_SOURCE, _HASH
+            ),
+            "copy-source requires only source_path",
+        ),
+        (
+            "plan",
+            lambda: ExactAuthoringPlan(
+                TreeSnapshot(()),
+                TreeSnapshot(()),
+                cast("tuple[ExactInstruction, ...]", cast("object", [])),
+            ),
+            "exact immutable records",
+        ),
+        (
+            "plan reference",
+            lambda: ExactAuthoringPlan(
+                TreeSnapshot(()),
+                TreeSnapshot((FileRecord("out", _HASH, 0),)),
+                (
+                    ExactInstruction(
+                        "out", ExactInstructionKind.COPY_SOURCE, _HASH,
+                        source_path="missing",
+                    ),
+                ),
+            ),
+            "source path is absent",
+        ),
+        (
+            "unicode path",
+            lambda: FileRecord("broken\ud800", _HASH, 1),
+            "canonical relative path",
+        ),
+    ],
+)
+def test_model_native_rejection_ignores_late_error_alias(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    route: str,
+    build: Callable[[], object],
+    message: str,
+) -> None:
+    """A changed public exception binding cannot execute consumer code."""
+    calls = 0
+
+    def foreign_error(detail: str) -> RuntimeError:
+        nonlocal calls
+        calls += 1
+        return RuntimeError(f"foreign error called: {detail}")
+
+    with monkeypatch.context() as patched:
+        patched.setattr(model_module, "TreeModelError", foreign_error)
+        with pytest.raises(TreeModelError, match=message):
+            _ = build()
+    assert calls == 0, f"{route} dispatched the foreign exception callback"
