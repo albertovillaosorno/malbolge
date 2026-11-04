@@ -212,6 +212,39 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                         executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
                     )
 
+    def test_pinned_radix_c_literals_emit_witnessed_guest_byte(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            # Source spelling is Clang-owned; the guest result is byte 23.
+            for index, literal in enumerate(("0x17", "027")):
+                with self.subTest(literal=literal):
+                    source = root / f"radix-{index}.c"
+                    target = root / f"radix-{index}.malbolge"
+                    _ = source.write_text(
+                        "#include <stdio.h>\n"
+                        + f"void emit(void) {{ putchar({literal}); return; }}\n",
+                        encoding="ascii",
+                    )
+                    compiled = subprocess.run(
+                        self._command(source, target, "--capsule"),
+                        capture_output=True,
+                        check=False,
+                        timeout=120,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(vm), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"\x17")
+                    self.assertRegex(
+                        executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                    )
+
     def test_unwitnessed_or_mixed_c_literals_do_not_publish(self) -> None:
         _ = self._real_binaries()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
@@ -222,7 +255,6 @@ class RepositoryToolCompilerTests(unittest.TestCase):
                     "putchar(23); putchar(23);",
                     "putchar(23); putchar(65);",
                     "putchar(256);",
-                    "putchar(0x17);",
                 )
             ):
                 with self.subTest(source=statements):
