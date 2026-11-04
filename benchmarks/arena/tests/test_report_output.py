@@ -1150,3 +1150,90 @@ def test_substituted_getattr_cannot_conceal_joint_json_factory_forgery(
             report_output.publish({"status": "ready"}, output)
     assert not output.records
     assert not output.flushed
+
+
+@pytest.mark.parametrize(
+    "alias", ["dict", "list", "tuple", "str", "int", "float", "bool"]
+)
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_report_json_native_shape_ignores_public_builtin_aliases(
+    monkeypatch: pytest.MonkeyPatch, alias: str, replacement: object
+) -> None:
+    """Late aliases cannot reinterpret true JSON shapes or reject valid data."""
+    report = {"values": [True, 2, 1.5, None, ("ready",)]}
+    expected = json.dumps(report, sort_keys=True, indent=2) + "\n"
+    with monkeypatch.context() as patched:
+        patched.setattr(report_output, alias, replacement, raising=False)
+        output = _FakeStream("healthy")
+        report_output.publish(report, output)
+        assert output.records == [expected]
+        assert output.flushed
+        invalid = _FakeStream("healthy")
+        with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+            report_output.publish({"foreign": object()}, invalid)
+        assert not invalid.records
+        assert not invalid.flushed
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("fail", "native operator rejection"),
+        ("serialize", "JSON serialization failed"),
+        ("write", "stdout write failed"),
+        ("short", "did not accept exact text length"),
+        ("flush", "stdout flush failed"),
+    ],
+)
+def test_report_output_error_alias_preserves_native_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """Publication rejection type must not be redirected by a public alias."""
+    native_error = report_output.ReportOutputError
+    with monkeypatch.context() as patched:
+        patched.setattr(report_output, "ReportOutputError", replacement)
+        with pytest.raises(native_error, match=diagnostic):
+            if stage == "fail":
+                report_output._fail("native operator rejection")
+            elif stage == "serialize":
+                report_output.publish({"foreign": object()}, _FakeStream("healthy"))
+            else:
+                mode = {
+                    "write": WRITE_FAULT_MODE,
+                    "short": SHORT_MODE,
+                    "flush": FLUSH_FAULT_MODE,
+                }[stage]
+                report_output.publish({"status": "ready"}, _FakeStream(mode))
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_report_output_native_diagnostic_aliases_preserve_errors(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Provider and shape rejection retain true native exception classes."""
+    with monkeypatch.context() as patched:
+        patched.setattr(report_output, "TypeError", replacement, raising=False)
+        patched.setattr(report_output, "ValueError", replacement, raising=False)
+        with pytest.raises(TypeError, match="native JSON values"):
+            report_output._admit_native_json({"foreign": object()})
+        patched.setattr(
+            report_output.json.encoder, "encode_basestring_ascii", lambda text: text
+        )
+        with pytest.raises(ValueError, match="provider changed"):
+            report_output._require_source_json_providers()
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_report_output_exception_alias_retains_stream_failure(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """The caught native exception family is not a mutable lookup."""
+    native_error = report_output.ReportOutputError
+    with monkeypatch.context() as patched:
+        patched.setattr(report_output, "Exception", replacement, raising=False)
+        with pytest.raises(native_error, match="stdout write failed"):
+            report_output.publish({"status": "ready"}, _FakeStream(WRITE_FAULT_MODE))

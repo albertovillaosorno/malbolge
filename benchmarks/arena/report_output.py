@@ -45,6 +45,17 @@ _NATIVE_ANY = any
 _NATIVE_SET = set
 _NATIVE_ID = id
 _NATIVE_ORD = ord
+# Bind JSON shape and failure identities before late module-level rebinding.
+_NATIVE_DICT = dict
+_NATIVE_LIST = list
+_NATIVE_TUPLE = tuple
+_NATIVE_STR = str
+_NATIVE_INT = int
+_NATIVE_FLOAT = float
+_NATIVE_BOOL = bool
+_NATIVE_TYPE_ERROR = TypeError
+_NATIVE_VALUE_ERROR = ValueError
+_NATIVE_EXCEPTION = Exception
 
 # Retain a bound stdlib iterator before a runtime provider can replace the
 # public JSONEncoder class or either encoding method. The reported record
@@ -82,8 +93,11 @@ class ReportOutputError(ValueError):
     """Operator output did not confirm a complete flushed JSON record."""
 
 
+_SOURCE_REPORT_OUTPUT_ERROR = ReportOutputError
+
+
 def _fail(message: str) -> Never:
-    raise ReportOutputError(message)
+    raise _SOURCE_REPORT_OUTPUT_ERROR(message)
 
 
 def _flush_complete(stream: TextReportStream) -> None:
@@ -95,10 +109,10 @@ def _flush_complete(stream: TextReportStream) -> None:
     """
     try:
         flushed = stream.flush()
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         # A stream can raise any ordinary exception; do not format its hooks.
         message = "arena report stdout flush failed"
-        raise ReportOutputError(message) from error
+        raise _SOURCE_REPORT_OUTPUT_ERROR(message) from error
     if flushed is not None:
         _fail("arena report stdout flush returned noncanonical completion")
 
@@ -110,7 +124,7 @@ def _native_scalar_text(value: object) -> bool:
         Whether this is a complete Unicode scalar-value sequence.
 
     """
-    return _NATIVE_TYPE(value) is str and not _NATIVE_ANY(
+    return _NATIVE_TYPE(value) is _NATIVE_STR and not _NATIVE_ANY(
         0xD800 <= _NATIVE_ORD(character) <= 0xDFFF for character in value
     )
 
@@ -126,37 +140,44 @@ def _admit_native_json(report: object) -> None:
         TypeError: A value or mapping key is not an exact JSON-native type.
 
     """
-    if _NATIVE_TYPE(report) is not dict:
+    if _NATIVE_TYPE(report) is not _NATIVE_DICT:
         message = "arena report requires an exact native JSON object root"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     pending: list[object] = [report]
     seen: set[int] = _NATIVE_SET()
     while pending:
         value = pending.pop()
         kind = _NATIVE_TYPE(value)
         # Type identity cannot dispatch caller-owned metaclass equality.
-        if kind is dict or kind is list or kind is tuple:
+        if kind is _NATIVE_DICT or kind is _NATIVE_LIST or kind is _NATIVE_TUPLE:
             identity = _NATIVE_ID(value)
             if identity in seen:
                 continue
             seen.add(identity)
-        if _NATIVE_TYPE(value) is dict:
+        if _NATIVE_TYPE(value) is _NATIVE_DICT:
             for key, child in value.items():
                 if not _native_scalar_text(key):
                     message = "arena report requires native Unicode JSON keys"
-                    raise TypeError(message)
+                    raise _NATIVE_TYPE_ERROR(message)
                 pending.append(child)
-        elif _NATIVE_TYPE(value) is list or _NATIVE_TYPE(value) is tuple:
+        elif (
+            _NATIVE_TYPE(value) is _NATIVE_LIST or _NATIVE_TYPE(value) is _NATIVE_TUPLE
+        ):
             pending.extend(value)
-        elif kind is str:
+        elif kind is _NATIVE_STR:
             if not _native_scalar_text(value):
                 message = "arena report requires Unicode scalar string values"
-                raise TypeError(message)
-        elif value is None or kind is int or kind is float or kind is bool:
+                raise _NATIVE_TYPE_ERROR(message)
+        elif (
+            value is None
+            or kind is _NATIVE_INT
+            or kind is _NATIVE_FLOAT
+            or kind is _NATIVE_BOOL
+        ):
             continue
         else:
             message = "arena report requires native JSON values and containers"
-            raise TypeError(message)
+            raise _NATIVE_TYPE_ERROR(message)
 
 
 def _require_source_json_providers() -> None:
@@ -174,7 +195,7 @@ def _require_source_json_providers() -> None:
         is not _CANONICAL_PY_ITERATOR_FACTORY
     ):
         message = "arena report JSON source encoder provider changed"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
 
 
 def _serialize_canonical_report(report: dict[str, Any]) -> str:
@@ -199,25 +220,25 @@ def _serialize_canonical_report(report: dict[str, Any]) -> str:
     # or the ASCII escaper *during* its own call. Reattest before asking
     # later encoders to corroborate its result.
     _require_source_json_providers()
-    if _NATIVE_TYPE(serialized) is not str:
+    if _NATIVE_TYPE(serialized) is not _NATIVE_STR:
         message = "arena report JSON encoder returned nonnative text"
-        raise TypeError(message)
+        raise _NATIVE_TYPE_ERROR(message)
     # An exact string alone is not evidence that a serializer returned
     # this report: independently invoke the canonical encoder contract
     # before publishing even one byte to the output stream.
-    canonical = json.JSONEncoder(
-        sort_keys=True, indent=2, allow_nan=False
-    ).encode(report)
+    canonical = json.JSONEncoder(sort_keys=True, indent=2, allow_nan=False).encode(
+        report
+    )
     _require_source_json_providers()
-    if _NATIVE_TYPE(canonical) is not str or serialized != canonical:
+    if _NATIVE_TYPE(canonical) is not _NATIVE_STR or serialized != canonical:
         message = "arena report JSON encoder returned a noncanonical record"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     # json.dumps and json.JSONEncoder normally share a single replaceable
     # class. Agreement between both is not independent when that class is
     # substituted or its encoder methods are modified after module import.
-    if _NATIVE_TYPE(independent) is not str or serialized != independent:
+    if _NATIVE_TYPE(independent) is not _NATIVE_STR or serialized != independent:
         message = "arena report JSON differs from canonical source encoding"
-        raise ValueError(message)
+        raise _NATIVE_VALUE_ERROR(message)
     return serialized
 
 
@@ -230,17 +251,17 @@ def publish(report: dict[str, Any], stream: TextReportStream) -> None:
     """
     try:
         record = _serialize_canonical_report(report) + "\n"
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         # A serializer dependency may fail unexpectedly; never format hooks
         # on a foreign failure or accept forged text before touching stdout.
         message = "arena report JSON serialization failed"
-        raise ReportOutputError(message) from error
+        raise _SOURCE_REPORT_OUTPUT_ERROR(message) from error
     try:
         written = stream.write(record)
-    except Exception as error:
+    except _NATIVE_EXCEPTION as error:
         # Preserve the original exception without invoking its __str__ hook.
         message = "arena report stdout write failed"
-        raise ReportOutputError(message) from error
-    if _NATIVE_TYPE(written) is not int or written != _NATIVE_LEN(record):
+        raise _SOURCE_REPORT_OUTPUT_ERROR(message) from error
+    if _NATIVE_TYPE(written) is not _NATIVE_INT or written != _NATIVE_LEN(record):
         _fail("arena report stdout write did not accept exact text length")
     _flush_complete(stream)
