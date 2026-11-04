@@ -54,6 +54,7 @@ use ternary::{
 
 /// Profile-specific `(byte, graphical no-op prefix)` rotation witnesses.
 /// Every candidate is independently re-executed by the normative VM.
+/// New witnesses beyond the first 26 prefixes use a bounded 94-phase scan.
 const ROTATED_BYTE_SEEDS: &[(u8, usize)] = &[
     (4, 23),
     (5, 20),
@@ -61,12 +62,32 @@ const ROTATED_BYTE_SEEDS: &[(u8, usize)] = &[
     (9, 7),
     (10, 4),
     (11, 1),
+    (12, 28),
+    (13, 39),
+    (14, 36),
+    (15, 33),
+    (16, 30),
+    (17, 27),
     (18, 24),
     (19, 21),
     (20, 18),
     (21, 6),
     (22, 3),
     (23, 0),
+    (25, 53),
+    (29, 47),
+    (36, 64),
+    (37, 61),
+    (38, 58),
+    (39, 46),
+    (43, 52),
+    (44, 49),
+    (157, 63),
+    (158, 60),
+    (159, 57),
+    (160, 54),
+    (161, 51),
+    (162, 48),
     (251, 22),
     (253, 19),
 ];

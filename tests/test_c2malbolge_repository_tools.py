@@ -326,6 +326,40 @@ class RepositoryToolCompilerTests(unittest.TestCase):
             self.assertIn(b"normalized frontend rejected", compiled.stderr)
             self.assertFalse(target.exists())
 
+    def test_pinned_extended_single_literals_use_guest_rotation(self) -> None:
+        vm = self._real_binaries()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            root = Path(temporary)
+            # Output values come from actual guest rotation, not host printing.
+            for byte, expected, steps in ((39, b"'", 50), (157, b"\x9d", 67)):
+                with self.subTest(byte=byte):
+                    source = root / f"literal-{byte}.c"
+                    target = root / f"literal-{byte}.malbolge"
+                    _ = source.write_text(
+                        "#include <stdio.h>\n"
+                        + f"void emit(void) {{ putchar({byte}); return; }}\n",
+                        encoding="ascii",
+                    )
+                    compiled = subprocess.run(
+                        self._command(source, target, "--capsule"),
+                        capture_output=True,
+                        check=False,
+                        timeout=120,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(vm), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=35,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertEqual(
+                        executed.stderr,
+                        f"malbolge-steps-v1:{steps}\n".encode("ascii"),
+                    )
+
     def test_pinned_radix_c_literals_emit_witnessed_guest_byte(self) -> None:
         vm = self._real_binaries()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:

@@ -233,9 +233,12 @@ emission.
   outside the demonstrated boundary.
 - The separate `--seeded-byte-literal` compiler publisher admits one
   complete current-profile typed/MCTR `u8` literal-output function for
-  14 independently verified nonzero guest rotation seeds. Real `j`, `*`,
-  byte output and halt steps, exact source/data separation and observed
-  output bytes are VM-checked before atomic raw/capsule publication.
+  34 independently verified nonzero guest rotation seeds, including 20
+  additional bytes independently witnessed in a 26..93-prefix scan.
+  Real `j`, `*`, byte output and halt steps, exact source/data separation
+  and observed output bytes are VM-checked before atomic raw/capsule
+  publication. Pinned C `putchar(39)` and `putchar(157)` demonstrate new
+  actual guest byte output rather than host-side emulation.
 - The same explicit publisher now admits ten distinct two-output `u8`
   literal witnesses, each using one real data relocation/rotation and
   two output instructions. New seed-specific source positions and

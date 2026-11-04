@@ -1167,8 +1167,11 @@ computation, heap, C ABI or guest libc/EOF realization.
 An opt-in `encode_rotated_byte_literal` bridge admits one exact
 `MaterializeU8` with one to thirty-three same-SSA `ByteOutput`s, followed
 by `ReturnVoid`.
-For one output, 14 current-profile nonzero bytes are realized:
-`4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253`. A bounded
+For one output, 34 current-profile nonzero bytes are realized:
+`4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+22, 23, 25, 29, 36, 37, 38, 39, 43, 44, 157, 158, 159, 160, 161,
+162, 251, 253`. Twenty additional distinct witnesses use no-op prefixes
+27 through 64, selected by a bounded 94-phase real-VM scan. A bounded
 graphical no-op prefix,
 `j` relocation, `*` rotate, output and halt execute in the actual guest
 VM. Source-dependent loader-expanded data is rotated into accumulator

@@ -714,8 +714,9 @@ instruction.
 - An opt-in seeded nonzero `u8` literal pilot now executes real guest
   `j` relocated loader data and `*` rotation before one byte output.
   Canonical MCTI/MCTR SSA provenance and independent layout admission
-  are preserved; 14 current-profile values have seed-specific guest VM
-  output witnesses, while unknown values and extra operations reject.
+  are preserved; 34 current-profile values have seed-specific guest VM
+  output witnesses (20 added after an independent 26..93 no-op scan), while
+  unknown values and extra operations reject.
   `--seeded-byte-literal` publishes MCTI/MCTR file/stdin raw/capsules only
   after exact output/no-input VM preflight. This is not general arithmetic,
   arbitrary constant materialization, repeated output or guest ABI.

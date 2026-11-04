@@ -1086,7 +1086,10 @@ fn all_seeded_nonzero_literals_execute_real_guest_rotate_output() -> Result<(), 
 
 #[test]
 fn seeded_literals_refuse_unsupported_values_and_profiles() -> Result<(), String> {
-    const WITNESSED: &[u8] = &[4, 5, 6, 9, 10, 11, 18, 19, 20, 21, 22, 23, 251, 253];
+    const WITNESSED: &[u8] = &[
+        4, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 29, 36, 37, 38, 39,
+        43, 44, 157, 158, 159, 160, 161, 162, 251, 253,
+    ];
     for byte in u8::MIN..=u8::MAX {
         if WITNESSED.contains(&byte) {
             continue;
@@ -2530,6 +2533,124 @@ fn witnessed_eight_output_literals_preserve_guest_computation() -> Result<(), St
             != Err(ByteEchoBridgeError::UnsupportedEffectTrace)
         {
             return Err(format!("unwitnessed literal {byte} x{outputs} admitted"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn witnessed_new_single_output_literals_execute_real_guest() -> Result<(), String> {
+    for (byte, padding) in [
+        (12, 28),
+        (13, 39),
+        (14, 36),
+        (15, 33),
+        (16, 30),
+        (17, 27),
+        (25, 53),
+        (29, 47),
+        (36, 64),
+        (37, 61),
+        (38, 58),
+        (39, 46),
+        (43, 52),
+        (44, 49),
+        (157, 63),
+        (158, 60),
+        (159, 57),
+        (160, 54),
+        (161, 51),
+        (162, 48),
+    ] {
+        let program = source(byte, 1)?;
+        let layout = encode_rotated_byte_literal(&program, current_profile())
+            .map_err(|error| format!("new single-byte {byte} rejected: {error:?}"))?;
+        if layout.source().len() != padding + 4
+            || layout
+                .data_write_positions()
+                .iter()
+                .filter(|x| x.is_some())
+                .count()
+                != 1
+        {
+            return Err(format!("new single-byte {byte} geometry drift"));
+        }
+        let mut vm =
+            ProfileMachine::from_source(current_profile(), layout.source(), vec![255, 0, 128])
+                .map_err(|error| format!("new single-byte {byte} guest load: {error:?}"))?;
+        if !matches!(vm.run(padding + 4),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == padding + 4)
+            || vm.input_consumed() != 0
+            || vm.output() != [byte]
+        {
+            return Err(format!("new single-byte {byte} guest mismatch"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "broader 94-phase single-byte search requires real profiled VM runs"]
+fn independently_probe_single_output_rotation_witnesses() -> Result<(), String> {
+    use bridge::layout::{LinearOpcode, encode_linear_layout};
+    use std::collections::BTreeMap;
+
+    let mut witnessed = BTreeMap::new();
+    for padding in 26..94 {
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::RotateData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        let Ok(layout) = encode_linear_layout(current_profile(), &operations) else {
+            continue;
+        };
+        let Ok(mut vm) =
+            ProfileMachine::from_source(current_profile(), layout.source(), Vec::new())
+        else {
+            continue;
+        };
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+        {
+            continue;
+        }
+        let [byte] = vm.output() else {
+            continue;
+        };
+        if *byte != 0 {
+            let _first: &mut usize = witnessed.entry(*byte).or_insert(padding);
+        }
+    }
+    // Check the independently derived first successful prefix for every new
+    // source byte. Earlier phases are already covered by the original seeds.
+    for (byte, padding) in [
+        (12, 28),
+        (13, 39),
+        (14, 36),
+        (15, 33),
+        (16, 30),
+        (17, 27),
+        (25, 53),
+        (29, 47),
+        (36, 64),
+        (37, 61),
+        (38, 58),
+        (39, 46),
+        (43, 52),
+        (44, 49),
+        (157, 63),
+        (158, 60),
+        (159, 57),
+        (160, 54),
+        (161, 51),
+        (162, 48),
+    ] {
+        if witnessed.get(&byte) != Some(&padding) {
+            return Err(format!("one-byte witness {byte} drifted: {witnessed:?}"));
         }
     }
     Ok(())

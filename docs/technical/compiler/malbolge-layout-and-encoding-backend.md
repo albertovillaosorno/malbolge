@@ -406,8 +406,10 @@ publication remain distinct guarantees.
 
 The explicit `--seeded-byte-literal` mode admits one verified nonzero
 `u8` literal and one to thirty-three matching outputs via canonical MCTI
-or MCTR file/stdin. The original 14-value current-profile seed table
-remains exclusive to single-output sources. Ten different byte values
+or MCTR file/stdin. The expanded 34-value current-profile seed table
+remains exclusive to single-output sources. Twenty new values were
+independently witnessed in a 26..93 no-op prefix scan and rechecked by
+source admission and the normative VM. Ten different byte values
 `55, 64, 65, 66, 163, 164, 165, 182, 183, 200` have a separately
 verified two-output seed table. Third- through thirty-third-output phases
 add 21, 24, 18, 19, 18, 21, 21, 25, 17, 20, 19, 22, 17, 24,
