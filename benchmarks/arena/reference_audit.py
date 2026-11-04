@@ -61,6 +61,9 @@ from scripts.validate import experiment_manifest
 
 _ROOT = Path(__file__).resolve().parents[2]
 _NATIVE_SHA256 = sha256
+_NATIVE_TYPE = type
+_NATIVE_BOOL = bool
+_NATIVE_ANY = any
 _NATIVE_JSON_LOADS = json.loads
 _JSON_OBJECT_PARSER_NAME = "JSONObject"
 _JSON_ARRAY_PARSER_NAME = "JSONArray"
@@ -155,6 +158,7 @@ class _AuditData:
     study_fingerprint: bytes
 
 
+_SOURCE_AUDIT_OPTIONS_TYPE = AuditOptions
 DEFAULT_AUDIT_OPTIONS = AuditOptions()
 
 
@@ -206,8 +210,8 @@ def _safe_error_detail(error: Exception) -> str:
 
 def _admit_options(options: AuditOptions) -> None:
     """Require precise opt-ins before any input reads or native child work."""
-    if type(options) is not AuditOptions or any(
-        type(value) is not bool
+    if _NATIVE_TYPE(options) is not _SOURCE_AUDIT_OPTIONS_TYPE or _NATIVE_ANY(
+        _NATIVE_TYPE(value) is not _NATIVE_BOOL
         for value in (
             options.replay_oracles,
             options.rebuild_binaries,

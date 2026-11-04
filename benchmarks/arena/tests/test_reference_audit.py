@@ -74,6 +74,63 @@ INDEX_MISSING = "missing"
 INDEX_BAD_TYPE = "bad-type"
 
 
+@pytest.mark.parametrize("alias", ["type", "bool", "any"])
+def test_host_c_audit_options_reject_foreign_flags_under_public_aliases(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Public builtins cannot certify an invalid native replay opt-in."""
+    invalid = 1
+    options = replace(
+        reference_audit.AuditOptions(), replay_oracles=cast("bool", invalid)
+    )
+    replacements: dict[str, object] = {
+        "type": lambda value: bool if value is invalid else type(value),
+        "bool": int,
+        "any": lambda _items: False,
+    }
+    monkeypatch.setattr(reference_audit, alias, replacements[alias], raising=False)
+    with pytest.raises(reference_audit.ReferenceAuditError, match="exact booleans"):
+        reference_audit._admit_options(options)
+
+
+def test_host_c_audit_options_reject_forged_outer_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unrelated object cannot claim the source audit option type."""
+    foreign = SimpleNamespace(
+        replay_oracles=False,
+        rebuild_binaries=False,
+        require_source_commit_object=False,
+        require_resource_controls_record=False,
+    )
+    native_type = type
+    monkeypatch.setattr(
+        reference_audit,
+        "type",
+        lambda value: (
+            reference_audit.AuditOptions if value is foreign else native_type(value)
+        ),
+        raising=False,
+    )
+    with pytest.raises(reference_audit.ReferenceAuditError, match="exact booleans"):
+        reference_audit._admit_options(cast("reference_audit.AuditOptions", foreign))
+
+
+@pytest.mark.parametrize("alias", ["type", "bool", "any", "AuditOptions"])
+def test_host_c_audit_options_remain_valid_under_public_aliases(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """Changing late aliases must not reject original valid audit options."""
+    options = reference_audit.AuditOptions(
+        replay_oracles=True,
+        rebuild_binaries=False,
+        require_source_commit_object=True,
+        require_resource_controls_record=False,
+    )
+    monkeypatch.setattr(reference_audit, alias, object(), raising=False)
+    reference_audit._admit_options(options)
+
+
 @pytest.fixture
 def live_pilot() -> Generator[tuple[Path, str]]:
     """Build an actual two-difficulty pinned-Clang host reference study.
