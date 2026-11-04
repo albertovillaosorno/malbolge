@@ -1159,7 +1159,7 @@ def test_child_timeout_is_reported_as_replay_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A sleeping Linux child exceeds its deadline and is reaped."""
-    monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setattr(host_c_oracle, "_SOURCE_SUBPROCESS_TIMEOUT_SECONDS", 0.2)
     with pytest.raises(host_c_oracle.HostOracleError, match="timed out"):
         host_c_oracle._run(
             [sys.executable, "-c", "import time; time.sleep(4)"],
@@ -2205,7 +2205,7 @@ def test_host_c_group_termination_reaps_spawned_descendants(
         "[(time.sleep(0.01)) for _ in range(200) if not p.exists()]"
     )
     if timeout:
-        monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 0.6)
+        monkeypatch.setattr(host_c_oracle, "_SOURCE_SUBPROCESS_TIMEOUT_SECONDS", 0.6)
         with pytest.raises(host_c_oracle.HostOracleError, match="timed out"):
             host_c_oracle._run([sys.executable, "-c", parent], tmp_path, "descendant")
     else:
@@ -2221,7 +2221,7 @@ def test_host_c_cpu_resource_limit_interrupts_busy_child(
     """The kernel enforces a stricter child CPU cap under the fixed policy."""
     # The child may voluntarily lower its inherited hard ceiling. Do not
     # mutate the production 16-second limit to make this test fast.
-    monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 5)
+    monkeypatch.setattr(host_c_oracle, "_SOURCE_SUBPROCESS_TIMEOUT_SECONDS", 5)
     source = (
         "import resource\n"
         "resource.setrlimit(resource.RLIMIT_CPU, (1, 1))\n"
@@ -2531,6 +2531,100 @@ def test_host_c_rss_temp_creation_fault_is_typed(
     with pytest.raises(host_c_oracle.HostOracleError, match="temporary") as error:
         _ = host_c_oracle._run([sys.executable, "-c", "pass"], tmp_path, "RSS")
     assert type(error.value.__cause__) is fault
+
+
+def test_host_c_rss_source_byte_cap_rejects_widened_public_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A public alias cannot authorize an oversized numeric RSS receipt."""
+    report = tmp_path / "rss.txt"
+    report.write_bytes(b"0" * 31 + b"1\n")
+    monkeypatch.setattr(host_c_oracle, "RSS_REPORT_MAX_BYTES", 64)
+    with pytest.raises(host_c_oracle.HostOracleError, match="RSS observation"):
+        host_c_oracle._read_stage_rss(report)
+
+
+def test_host_c_rss_source_byte_cap_admits_native_report_when_alias_lowers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lowering a public reader cap cannot exclude a native report."""
+    report = tmp_path / "rss.txt"
+    report.write_bytes(b"1\n")
+    monkeypatch.setattr(host_c_oracle, "RSS_REPORT_MAX_BYTES", 1)
+    assert host_c_oracle._read_stage_rss(report) == 1024
+
+
+def test_host_c_rss_temporary_descriptor_source_cap_rejects_widened_alias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A forged oversized descriptor must not reach a native host syscall."""
+    foreign = host_c_oracle.MAX_NATIVE_DESCRIPTOR + 1
+
+    def forbidden_fstat(descriptor: int) -> os.stat_result:
+        pytest.fail(f"foreign descriptor reached fstat: {descriptor}")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(host_c_oracle, "MAX_NATIVE_DESCRIPTOR", foreign + 1)
+        patch.setattr(host_c_oracle.os, "fstat", forbidden_fstat)
+        with pytest.raises(
+            host_c_oracle.HostOracleError, match="temporary descriptor"
+        ):
+            host_c_oracle._admit_rss_temporary_receipt(
+                (foreign, str(tmp_path / "host-c-stage-rss-foreign.txt")), tmp_path
+            )
+
+
+def test_host_c_rss_temporary_descriptor_ignores_reduced_public_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A valid opened native fd stays admissible under public alias drift."""
+    fd, path = host_c_oracle.tempfile.mkstemp(
+        dir=tmp_path, prefix="host-c-stage-rss-", suffix=".txt"
+    )
+    try:
+        monkeypatch.setattr(host_c_oracle, "MAX_NATIVE_DESCRIPTOR", 0)
+        assert host_c_oracle._admit_rss_temporary_receipt(
+            (fd, path), tmp_path
+        ) == (fd, path)
+    finally:
+        os.close(fd)
+        Path(path).unlink()
+
+
+def test_host_c_cleanup_detail_keeps_source_length_under_public_drift(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A mutated public cap cannot emit unbounded native cleanup notes."""
+    monkeypatch.setattr(host_c_oracle, "MAX_CLEANUP_DETAIL_CHARS", 4096)
+    error = host_c_oracle.HostOracleError("x" * 1000)
+    assert len(host_c_oracle._cleanup_error_detail(error)) == 256
+
+
+def test_host_c_child_timeout_receipt_keeps_original_source_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retained per-child wall cap does not track a mutable timeout alias."""
+    monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 60)
+    assert host_c_oracle.resource_controls_record()["wall_timeout_seconds"] == 15
+
+
+def test_host_c_child_communicate_deadline_ignores_widened_public_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed reporting timeout cannot lengthen the actual child wait."""
+    deadlines: list[int] = []
+
+    class Child:
+        returncode = 0
+
+        def communicate(self, *, timeout: int) -> tuple[bytes, bytes]:
+            deadlines.append(timeout)
+            return b"", b""
+
+    monkeypatch.setattr(host_c_oracle, "SUBPROCESS_TIMEOUT_SECONDS", 60)
+    monkeypatch.setattr(host_c_oracle, "_finish_child", lambda _child: 0)
+    host_c_oracle._wait_child(cast("Any", Child()), "original deadline")
+    assert deadlines == [15]
 
 
 def test_host_c_rss_rejects_impossible_peak_above_address_space_limit(

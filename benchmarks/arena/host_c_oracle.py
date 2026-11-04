@@ -79,7 +79,11 @@ RSS_TEMP_PREFIX = "host-c-stage-rss-"
 RSS_TEMP_SUFFIX = ".txt"
 SYSTEM_TOOL_SEARCH_PATH = os.defpath
 KIB_BYTES = 1024
-# Resource-policy and metric units must not follow mutable public aliases.
+# Child duration, RSS receipts and descriptor safety must also be independent
+# of mutable reporting aliases, like the other registered resource limits.
+_SOURCE_SUBPROCESS_TIMEOUT_SECONDS = SUBPROCESS_TIMEOUT_SECONDS
+_SOURCE_RSS_REPORT_MAX_BYTES = RSS_REPORT_MAX_BYTES
+_SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
 _SOURCE_CHILD_VIRTUAL_MEMORY_MIB = CHILD_VIRTUAL_MEMORY_MIB
 _SOURCE_CHILD_CPU_SECONDS = CHILD_CPU_SECONDS
 _SOURCE_CHILD_FILE_BYTES = CHILD_FILE_BYTES
@@ -112,6 +116,7 @@ def _fail(message: str) -> Never:
 
 
 MAX_CLEANUP_DETAIL_CHARS = 256
+_SOURCE_MAX_CLEANUP_DETAIL_CHARS = MAX_CLEANUP_DETAIL_CHARS
 
 
 def _cleanup_error_detail(error: Exception) -> str:
@@ -147,7 +152,7 @@ def _cleanup_error_detail(error: Exception) -> str:
         if detail:
             return "".join(
                 character if " " <= character <= "~" else "?"
-                for character in detail[:MAX_CLEANUP_DETAIL_CHARS]
+                for character in detail[:_SOURCE_MAX_CLEANUP_DETAIL_CHARS]
             )
     return kind.__name__
 
@@ -202,7 +207,7 @@ def resource_controls_record() -> dict[str, str | int]:
         "virtual_address_space_bytes": _SOURCE_CHILD_VIRTUAL_MEMORY_MIB * _SOURCE_MIB_BYTES,
         "cpu_seconds": _SOURCE_CHILD_CPU_SECONDS,
         "output_file_bytes": _SOURCE_CHILD_FILE_BYTES,
-        "wall_timeout_seconds": SUBPROCESS_TIMEOUT_SECONDS,
+        "wall_timeout_seconds": _SOURCE_SUBPROCESS_TIMEOUT_SECONDS,
         "cleanup": "new-session-best-effort-original-process-group",
         "rss_measurement": "gnu-time-per-stage-max-ru_maxrss-kib",
         "rss_tool": RSS_MEASUREMENT_TOOL,
@@ -311,12 +316,12 @@ def _read_stage_rss(path: Path) -> int:
 
     try:
         raw = evidence.read_bounded_regular(
-            path.parent, path.name, limit=RSS_REPORT_MAX_BYTES
+            path.parent, path.name, limit=_SOURCE_RSS_REPORT_MAX_BYTES
         )
     except Exception as error:
         message = "host-C child RSS observation missing or unsafe"
         raise HostOracleError(message) from error
-    if type(raw) is not bytes or len(raw) > RSS_REPORT_MAX_BYTES:
+    if type(raw) is not bytes or len(raw) > _SOURCE_RSS_REPORT_MAX_BYTES:
         _fail("host-C child RSS observation returned invalid bytes")
     if not raw.endswith(b"\n") or not _ascii_digits(raw[:-1]):
         _fail("host-C child RSS observation missing or malformed")
@@ -396,7 +401,7 @@ def _wait_child(child: sp.Popen[bytes], label: str) -> None:
     reaped: int | None = None
     try:
         try:
-            _ = child.communicate(timeout=SUBPROCESS_TIMEOUT_SECONDS)
+            _ = child.communicate(timeout=_SOURCE_SUBPROCESS_TIMEOUT_SECONDS)
             observed = child.returncode
         except sp.TimeoutExpired as error:
             message = f"host-C challenge oracle {label} timed out"
@@ -439,7 +444,7 @@ def _admit_rss_temporary_receipt(receipt: object, cwd: Path) -> tuple[int, str]:
     if (
         type(descriptor) is not int
         or descriptor < 0
-        or descriptor > MAX_NATIVE_DESCRIPTOR
+        or descriptor > _SOURCE_MAX_NATIVE_DESCRIPTOR
     ):
         _fail("host-C challenge oracle RSS temporary descriptor invalid")
     if (
