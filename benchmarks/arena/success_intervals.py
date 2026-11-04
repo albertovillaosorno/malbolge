@@ -48,6 +48,9 @@ _SOURCE_GRID_DENOMINATOR = GRID_DENOMINATOR
 _SOURCE_TWO_SIDED_TAIL_DENOMINATOR = TWO_SIDED_TAIL_DENOMINATOR
 _SOURCE_FRACTION = Fraction
 _SOURCE_COMB = comb
+_SOURCE_TYPE = type
+_SOURCE_RANGE = range
+_SOURCE_SUM = sum
 
 
 class SuccessInterval(TypedDict):
@@ -66,9 +69,11 @@ def _binomial_lower_tail_numerator(n: int, k: int, p: int) -> int:
     total = _SOURCE_GRID_DENOMINATOR**n
     q = _SOURCE_GRID_DENOMINATOR - p
     if k < n // 2:
-        return sum(_SOURCE_COMB(n, i) * p**i * q ** (n - i) for i in range(k + 1))
-    return total - sum(
-        _SOURCE_COMB(n, i) * p**i * q ** (n - i) for i in range(k + 1, n + 1)
+        return _SOURCE_SUM(
+            _SOURCE_COMB(n, i) * p**i * q ** (n - i) for i in _SOURCE_RANGE(k + 1)
+        )
+    return total - _SOURCE_SUM(
+        _SOURCE_COMB(n, i) * p**i * q ** (n - i) for i in _SOURCE_RANGE(k + 1, n + 1)
     )
 
 
@@ -124,7 +129,7 @@ def success_interval_95(verified: int, attempts: int) -> SuccessInterval | None:
         Exact rational outward bounds or no result for unsupported counts.
 
     """
-    if type(verified) is not int or type(attempts) is not int:
+    if _SOURCE_TYPE(verified) is not int or _SOURCE_TYPE(attempts) is not int:
         return None
     if attempts < 1 or attempts > _SOURCE_MAX_ATTEMPTS or not 0 <= verified <= attempts:
         return None

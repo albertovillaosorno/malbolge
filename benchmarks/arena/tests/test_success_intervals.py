@@ -277,3 +277,32 @@ def test_success_interval_ignores_substituted_internal_inference_helpers(
     assert expected is not None
     monkeypatch.setattr(success_intervals, provider, lambda *_args: forged)
     assert success_intervals.success_interval_95(5, 10) == expected
+
+
+@pytest.mark.parametrize("provider", ["range", "sum"])
+@pytest.mark.parametrize("counts", [(5, 10), (1, 10), (9, 10)])
+def test_success_interval_ignores_substituted_binomial_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    counts: tuple[int, int],
+) -> None:
+    """Forged empty loops or sums must not narrow an exact-tail interval."""
+    expected = success_intervals.success_interval_95(*counts)
+    assert expected is not None
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            success_intervals,
+            provider,
+            lambda *_args: 0 if provider == "sum" else [],
+            raising=False,
+        )
+        assert success_intervals.success_interval_95(*counts) == expected
+
+
+def test_success_interval_rejects_forged_native_count_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A substituted type cannot turn a bool into a Bernoulli count."""
+    monkeypatch.setattr(success_intervals, "type", lambda *_args: int, raising=False)
+    assert success_intervals.success_interval_95(True, 10) is None
+    assert success_intervals.success_interval_95(1, False) is None
