@@ -1002,3 +1002,151 @@ def test_unicode_ordinal_provider_must_match_native_scanner(
             report_output.publish({"identity": value}, output)
         assert not output.records
         assert not output.flushed
+
+
+def test_substituted_type_cannot_admit_foreign_mapping_methods(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only true built-in mappings can enter native JSON preflight."""
+    output = _FakeStream("healthy")
+    foreign = _HostileDict({"value": 1})
+    real_type = type
+    monkeypatch.setattr(
+        report_output,
+        "type",
+        lambda value: (
+            dict if isinstance(value, _HostileDict) else real_type(value)
+        ),
+        raising=False,
+    )
+    with pytest.raises(
+        report_output.ReportOutputError, match="JSON serialization"
+    ) as error:
+        report_output.publish(foreign, output)
+    assert type(error.value.__cause__) is TypeError
+    assert not output.records
+    assert not output.flushed
+
+
+class _ForgedWrittenCount(int):
+    """Pretend that a one-character stream write was complete."""
+
+    def __ne__(self, _other: object) -> bool:
+        return False
+
+
+class _ForgedWrittenStream(_FakeStream):
+    """Accept a single character while returning an untrusted count."""
+
+    def write(self, record: str, /) -> int:
+        self.records.append(record[:1])
+        return _ForgedWrittenCount(1)
+
+
+def test_substituted_type_cannot_forge_complete_stdout_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged equality must not turn short output into operator success."""
+    output = _ForgedWrittenStream("healthy")
+    real_type = type
+    monkeypatch.setattr(
+        report_output,
+        "type",
+        lambda value: (
+            int if isinstance(value, _ForgedWrittenCount) else real_type(value)
+        ),
+        raising=False,
+    )
+    with pytest.raises(report_output.ReportOutputError, match=BAD_LENGTH):
+        report_output.publish({"status": "reported"}, output)
+    assert output.records == ["{"]
+    assert not output.flushed
+
+
+def test_valid_report_ignores_late_non_native_type_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A false type provider cannot suppress an actual valid record."""
+    output = _FakeStream("healthy")
+    monkeypatch.setattr(
+        report_output,
+        "type",
+        lambda value: type(None) if value is None else object,
+        raising=False,
+    )
+    report_output.publish({"status": "reported"}, output)
+    assert output.flushed
+    assert output.records
+
+
+class _ForgedJsonFactoryLookup:
+    """Publish historical factory identities despite later substitution."""
+
+    def __init__(self, factories: dict[str, object]) -> None:
+        self.factories = factories
+
+    def __call__(self, owner: object, name: str) -> object:
+        assert owner is json.encoder
+        return self.factories[name]
+
+
+@pytest.mark.skipif(
+    getattr(json.encoder, "c_make_encoder", None) is None,
+    reason="host JSON C encoder is unavailable",
+)
+def test_substituted_getattr_cannot_conceal_joint_json_factory_forgery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Forged provider inspection cannot certify two swapped JSON engines."""
+    output = _FakeStream("healthy")
+    wrong = '{"status": "fabricated"}'
+    c_factory_name = "c_make_encoder"
+    python_factory_name = "_make_iterencode"
+    native_factories = {
+        c_factory_name: getattr(json.encoder, c_factory_name),
+        python_factory_name: getattr(json.encoder, python_factory_name),
+    }
+
+    def substituted_c_factory(
+        *args: object, **kwargs: object
+    ) -> Callable[[object, int], list[str]]:
+        del args, kwargs
+
+        def iterator(report: object, indent: int) -> list[str]:
+            del report, indent
+            return [wrong]
+
+        return iterator
+
+    def substituted_python_factory(
+        *args: object, **kwargs: object
+    ) -> Callable[[object, int], Iterator[str]]:
+        del args, kwargs
+
+        def iterator(report: object, indent: int) -> Iterator[str]:
+            del report, indent
+            return iter([wrong])
+
+        return iterator
+
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            report_output.json.encoder, "c_make_encoder", substituted_c_factory
+        )
+        patched.setattr(
+            report_output.json.encoder,
+            "_make_iterencode",
+            substituted_python_factory,
+        )
+        patched.setattr(
+            report_output,
+            "getattr",
+            _ForgedJsonFactoryLookup(native_factories),
+            raising=False,
+        )
+        with pytest.raises(
+            report_output.ReportOutputError, match="JSON serialization"
+        ):
+            report_output.publish({"status": "ready"}, output)
+    assert not output.records
+    assert not output.flushed
