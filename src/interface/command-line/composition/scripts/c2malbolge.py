@@ -41,6 +41,7 @@ import os
 import stat
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -213,31 +214,51 @@ def compile_source(arguments: Arguments) -> None:
     admit_source_identity(normalized, arguments.source_id, expected)
     if source_digest(source) != expected:
         raise PipelineError("source changed during frontend compilation")
-    command = [
-        arguments.json_adapter,
-        "--layout-backend",
-        arguments.layout_backend,
-        "--output",
-        arguments.output,
-    ]
-    if arguments.capsule:
-        command.append("--capsule")
+    target = Path(arguments.output)
     try:
-        completed = subprocess.run(command, input=normalized, check=False)
+        stage = tempfile.TemporaryDirectory(prefix=".c2malbolge-", dir=target.parent)
     except OSError as error:
-        raise PipelineError(
-            f"cannot execute JSON-to-target adapter: {error}"
-        ) from error
-    if completed.returncode != 0:
-        raise PipelineError(
-            f"JSON-to-target adapter failed with status {completed.returncode}"
-        )
-    try:
-        published = Path(arguments.output).lstat()
-    except OSError as error:
-        raise PipelineError(f"adapter did not publish a target: {error}") from error
-    if not stat.S_ISREG(published.st_mode) or published.st_size < 2:
-        raise PipelineError("adapter did not publish a regular Malbolge target")
+        raise PipelineError(f"cannot stage guest target: {error}") from error
+
+    # The downstream layout publisher runs on a private path. Do not expose
+    # its artifact until source identity and the final guest file are checked.
+    with stage as directory:
+        staged = Path(directory) / target.name
+        command = [
+            arguments.json_adapter,
+            "--layout-backend",
+            arguments.layout_backend,
+            "--output",
+            str(staged),
+        ]
+        if arguments.capsule:
+            command.append("--capsule")
+        try:
+            completed = subprocess.run(command, input=normalized, check=False)
+        except OSError as error:
+            raise PipelineError(
+                f"cannot execute JSON-to-target adapter: {error}"
+            ) from error
+        if completed.returncode != 0:
+            raise PipelineError(
+                f"JSON-to-target adapter failed with status {completed.returncode}"
+            )
+        try:
+            published = staged.lstat()
+        except OSError as error:
+            raise PipelineError(f"adapter did not publish a target: {error}") from error
+        if not stat.S_ISREG(published.st_mode) or published.st_size < 2:
+            raise PipelineError("adapter did not publish a regular Malbolge target")
+        if source_digest(source) != expected:
+            raise PipelineError("source changed during guest compilation")
+        try:
+            # The link is atomic and fails if a peer occupied the target while
+            # compilation ran; a rename would silently replace it on POSIX.
+            os.link(staged, target)
+        except FileExistsError as error:
+            raise PipelineError("output path already exists (no-clobber)") from error
+        except OSError as error:
+            raise PipelineError(f"cannot publish guest target: {error}") from error
 
 
 def main() -> int:

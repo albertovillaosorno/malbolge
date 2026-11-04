@@ -68,8 +68,11 @@ frontend, the normalized JSON-to-typed adapter, and the verified Malbolge
 layout publisher in **sequence**. A nonzero frontend exit, oversized JSON,
 changed C source, or JSON source-ID/SHA-256 mismatch stops before invoking the
 JSON adapter. The adapter then performs canonical typed/ternary admission;
-the layout backend independently verifies and publishes the resulting guest
-program with its no-clobber and VM checks.
+the layout backend independently verifies the guest program. The driver stages
+the result privately, rechecks the original C source after guest compilation,
+and publishes via an atomic no-clobber link only if the source is still stable.
+Failures and late output-name collisions leave no published guest artifact from
+the driver; the layout backend retains its own no-clobber and VM checks.
 
 ```sh
 python3.14 -B src/interface/command-line/composition/scripts/c2malbolge.py \
@@ -89,5 +92,6 @@ supported by the JSON adapter (one no-effect `void` function with optional
 null statements (`;`) and optional final `return;`), and does not implement C
 process-return ABI or guest libc.
 The pinned Clang frontend is required for real source compilation; its
-absence cannot be replaced by synthetic JSON test evidence. The two source
-reads constrain a specific invocation, not a persistent filesystem snapshot.
+absence cannot be replaced by synthetic JSON test evidence. The three source
+digest reads constrain a specific invocation, not a persistent filesystem
+snapshot; external consumers must still manage later source changes.
