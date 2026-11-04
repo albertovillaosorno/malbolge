@@ -54,6 +54,7 @@ import pytest
 
 from benchmarks.arena import analyze
 from benchmarks.arena import budget_links
+from benchmarks.arena import challenge_bundles
 from benchmarks.arena import evidence
 from benchmarks.arena import trial_runs
 
@@ -3775,3 +3776,127 @@ def test_evidence_fdopen_cannot_replace_native_source_stream(
                     pass
     assert not read_called
     assert (tmp_path / "raw.csv").read_bytes() == b"original"
+
+
+@pytest.mark.parametrize(
+    ("policy", "substitute", "field", "value"),
+    [
+        ("MAX_BUNDLE_VERSION_BITS", 65, "version", 1 << 64),
+        ("MAX_BUNDLE_NODES", 4097, "difficulty", 4097),
+    ],
+    ids=["version-bits", "node-limit"],
+)
+def test_evidence_bundle_directory_cannot_widen_challenge_policy(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+    substitute: int,
+    field: str,
+    value: int,
+) -> None:
+    """Source identity caps apply before building challenge bundle paths."""
+    case: dict[str, Any] = {
+        "family": "arithmetic-dag",
+        "version": 1,
+        "seed": 7,
+        "difficulty": 4,
+    }
+    case[field] = value
+    monkeypatch.setattr(challenge_bundles, policy, substitute)
+    with pytest.raises(evidence.EvidenceError, match="challenge"):
+        evidence._bundle_directory(case, "bundles")
+
+
+def _synthetic_bundle_inspection_document(count: int) -> dict[str, Any]:
+    """Create distinct reported cases without doing any filesystem work."""
+    return {
+        "study": {"target_profile": "malbolge-2026.3"},
+        "observations": [
+            {
+                "case": {
+                    "family": "arithmetic-dag",
+                    "version": 1,
+                    "seed": seed,
+                    "difficulty": 4,
+                    "workload_sha256": "a" * 64,
+                }
+            }
+            for seed in range(count)
+        ],
+    }
+
+
+def test_evidence_bundle_count_cannot_be_raised_by_public_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A 65th distinct bundle must fail before source replay proceeds."""
+    report = _synthetic_bundle_inspection_document(65)
+    inspected = 0
+
+    def original_receipt(case: dict[str, Any], _profile: str, _files: object) -> str:
+        nonlocal inspected
+        inspected += 1
+        return cast("str", case["workload_sha256"])
+
+    monkeypatch.setattr(challenge_bundles, "MAX_BUNDLE_CASES", 65)
+    monkeypatch.setattr(challenge_bundles, "verify_bundle", original_receipt)
+    monkeypatch.setattr(evidence, "_bundle_source", lambda *_a, **_kw: b"source")
+    with pytest.raises(evidence.EvidenceError, match="too many distinct challenge"):
+        evidence._bundle_inspection(report, tmp_path, "bundles")
+    assert inspected == 64
+
+
+def test_evidence_bundle_files_do_not_follow_public_schema_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Always inspect all registered retained bytes regardless of alias drift."""
+    report = _synthetic_bundle_inspection_document(1)
+    inspected: list[str] = []
+
+    def capture_source(_root: Path, relative: str, *, limit: int) -> bytes:
+        assert limit > 0
+        inspected.append(relative.rsplit("/", 1)[1])
+        return b"source"
+
+    def original_receipt(case: dict[str, Any], _profile: str, _files: object) -> str:
+        return cast("str", case["workload_sha256"])
+
+    monkeypatch.setattr(evidence, "_bundle_source", capture_source)
+    monkeypatch.setattr(challenge_bundles, "verify_bundle", original_receipt)
+    monkeypatch.setattr(challenge_bundles, "BUNDLE_FILES", ("program.c",))
+    inspection = evidence._bundle_inspection(report, tmp_path, "bundles")
+    assert inspected == ["program.c", "oracle.bin", "manifest.json"]
+    assert len(inspection.retained_sha256) == 3
+
+
+def test_evidence_source_challenge_policy_preserves_valid_bundle_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lowered public caps cannot change the native evidence replay policy."""
+    report = _synthetic_bundle_inspection_document(2)
+    checked: list[str] = []
+
+    def capture_source(_root: Path, relative: str, *, limit: int) -> bytes:
+        assert limit > 0
+        checked.append(relative)
+        return b"source"
+
+    def original_receipt(case: dict[str, Any], _profile: str, _files: object) -> str:
+        return cast("str", case["workload_sha256"])
+
+    monkeypatch.setattr(evidence, "_bundle_source", capture_source)
+    monkeypatch.setattr(challenge_bundles, "verify_bundle", original_receipt)
+    for policy, substitute in (
+        ("MAX_BUNDLE_CASES", 1),
+        ("MAX_BUNDLE_VERSION_BITS", 0),
+        ("MAX_BUNDLE_NODES", 1),
+        ("BUNDLE_FILES", ("extra.txt",)),
+    ):
+        monkeypatch.setattr(challenge_bundles, policy, substitute)
+    inspection = evidence._bundle_inspection(report, tmp_path, "bundles")
+    assert len(inspection.sources) == 2
+    assert len(inspection.retained_sha256) == len(checked) == 6
+    assert {relative.rsplit("/", 1)[1] for relative in checked} == {
+        "program.c",
+        "oracle.bin",
+        "manifest.json",
+    }

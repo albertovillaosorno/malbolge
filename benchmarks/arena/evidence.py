@@ -79,6 +79,11 @@ BUNDLE_FILE_LIMITS = {
 # Per-file provenance caps stay fixed even when public aliases are rebound.
 _SOURCE_MAX_MANIFEST_BYTES = MAX_MANIFEST_BYTES
 _SOURCE_BUNDLE_FILE_LIMITS = BUNDLE_FILE_LIMITS.copy()
+# Cross-module challenge replay policy is fixed at import, not caller-writable.
+_SOURCE_MAX_BUNDLE_CASES = challenge_bundles.MAX_BUNDLE_CASES
+_SOURCE_MAX_BUNDLE_NODES = challenge_bundles.MAX_BUNDLE_NODES
+_SOURCE_MAX_BUNDLE_VERSION_BITS = challenge_bundles.MAX_BUNDLE_VERSION_BITS
+_SOURCE_BUNDLE_FILES = challenge_bundles.BUNDLE_FILES
 RUN_RECORD_KIND = experiment_manifest.RUN_RECORD_KIND
 RUN_OUTCOMES = {
     "verified": "success",
@@ -704,9 +709,9 @@ def _bundle_source(
 
 
 def _bundle_directory(case: dict[str, Any], relative_root: str) -> str:
-    if case["version"].bit_length() > challenge_bundles.MAX_BUNDLE_VERSION_BITS:
+    if case["version"].bit_length() > _SOURCE_MAX_BUNDLE_VERSION_BITS:
         _fail("challenge bundle version exceeds bounded identity limit")
-    if case["difficulty"] > challenge_bundles.MAX_BUNDLE_NODES:
+    if case["difficulty"] > _SOURCE_MAX_BUNDLE_NODES:
         _fail("challenge replay exceeds 4096-node preflight limit")
     return (
         f"{relative_root}/{case["family"]}/v{case["version"]}/"
@@ -743,13 +748,13 @@ def _bundle_inspection(
                 _fail("repeated challenge case has different workload digest")
             continue
         cases.add(key)
-        if len(cases) > challenge_bundles.MAX_BUNDLE_CASES:
+        if len(cases) > _SOURCE_MAX_BUNDLE_CASES:
             _fail("too many distinct challenge bundles for replay")
         files = {
             name: _bundle_source(
                 root, f"{directory}/{name}", limit=_SOURCE_BUNDLE_FILE_LIMITS[name]
             )
-            for name in challenge_bundles.BUNDLE_FILES
+            for name in _SOURCE_BUNDLE_FILES
         }
         regenerated = challenge_bundles.verify_bundle(
             case,
