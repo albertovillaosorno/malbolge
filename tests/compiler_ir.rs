@@ -1699,6 +1699,96 @@ fn explicit_void_source_bound_checkpoint_matches_only_the_exact_return() -> Resu
     remove_directory
 }
 
+// An independently valid checkpoint is not equivalent to the normalized
+// `return;` function just because its outer source digest and spans match.
+fn altered_void_checkpoint(fresh: &Module, case: u8) -> Result<Module, String> {
+    let [function] = fresh.functions() else {
+        return Err(String::from("fresh void function missing"));
+    };
+    let [block] = function.blocks() else {
+        return Err(String::from("fresh void block missing"));
+    };
+    let instructions = if case == 0 {
+        vec![LocatedInstruction::new(
+            Instruction::ByteInput {
+                result: ValueId::new(0),
+                type_id: TypeId::new(0),
+            },
+            SourceSpan::new(
+                SourcePosition::new(1222, 35, 16),
+                SourcePosition::new(1223, 35, 17),
+            ),
+        )]
+    } else {
+        Vec::new()
+    };
+    let terminator_span = if case == 1 {
+        SourceSpan::new(
+            SourcePosition::new(1225, 35, 19),
+            block.terminator_span().end(),
+        )
+    } else {
+        block.terminator_span()
+    };
+    let modified_function = Function::new(FunctionSpec {
+        blocks: vec![BasicBlock::new(BasicBlockSpec {
+            id: block.id(),
+            instructions,
+            phis: Vec::new(),
+            span: block.span(),
+            terminator: block.terminator().clone(),
+            terminator_span,
+        })],
+        entry: function.entry(),
+        id: function.id(),
+        name: String::from(if case == 3 { "foreign" } else { function.name() }),
+        parameters: function.parameters().to_vec(),
+        signature: function.signature(),
+        span: function.span(),
+    });
+    let mut types = fresh.types().to_vec();
+    if case == 2 {
+        types.push(TypeEntry::new(TypeId::new(2), TypeDef::Bool));
+    }
+    Ok(Module::new(ModuleSpec {
+        abi_id: String::from(fresh.abi_id()),
+        format_version: fresh.format_version(),
+        functions: vec![modified_function],
+        globals: fresh.globals().to_vec(),
+        proof_obligations: fresh.proof_obligations().to_vec(),
+        source_id: String::from(fresh.source_id()),
+        source_sha256: *fresh.source_sha256(),
+        target_profile: String::from(fresh.target_profile()),
+        types,
+    }))
+}
+
+#[test]
+fn explicit_void_source_bound_resume_rejects_valid_but_altered_checkpoints()
+-> Result<(), String> {
+    let expected = supported_void_projection();
+    let fresh = lower_frontend_artifact(&expected)
+        .map_err(|error| format!("lower exact void projection: {error:?}"))?;
+    for (case, label) in [
+        (0u8, "void-added-byte-input"),
+        (1, "void-saved-return-span"),
+        (2, "void-extra-unused-type"),
+        (3, "void-changed-name"),
+    ] {
+        let altered = altered_void_checkpoint(&fresh, case)?;
+        if altered.source_sha256() != fresh.source_sha256()
+            || altered.functions().first().map(Function::span)
+                != fresh.functions().first().map(Function::span)
+        {
+            return Err(format!("{label} changed outer source provenance"));
+        }
+        assert_source_bound_rejects_admitted_module(
+            &expected, &altered, label,
+        )?;
+    }
+    Ok(())
+}
+
 #[test]
 fn progress_crash_resume_restores_committed_ir() -> Result<(), String> {
     let first_bytes = canonical_golden_bytes(GOLDEN_PATH)
@@ -2046,7 +2136,8 @@ fn assert_source_bound_rejects_admitted_module(
             .map_err(|error| format!("encode {label} IR: {error:?}"))?;
         write(&progress, encoded)
             .map_err(|error| format!("write {label} IR: {error}"))?;
-        let interpreter = repository_python();
+        let interpreter = var_os("MALBOLGE_TEST_PYTHON")
+            .map_or_else(repository_python, PathBuf::from);
         let unrestricted = resume_typed_ir_from_progress(
             &interpreter, &inspector, &progress,
         );
