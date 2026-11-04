@@ -3853,3 +3853,92 @@ def test_target_audit_metadata_uses_original_stat_result_class(
     else:
         with pytest.raises(audit.TargetEchoAuditError, match="invalid metadata"):
             audit._tool_file_identity(cast("Any", ForeignStat()))
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink"])
+def test_target_audit_tool_admission_rejects_rebound_regular_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A public stat predicate cannot turn a directory/link into an executable."""
+    binary = tmp_path / "binary"
+    if kind == "directory":
+        binary.mkdir()
+    else:
+        target = tmp_path / "real-binary"
+        target.write_bytes(b"valid executable")
+        binary.symlink_to(target)
+    monkeypatch.setattr(audit, "stat", SimpleNamespace(S_ISREG=lambda _mode: True))
+    with pytest.raises(audit.TargetEchoAuditError, match="regular"):
+        audit._admit_tool(binary)
+
+
+def test_target_audit_tool_identity_rejects_rebound_mode_before_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Physical descriptor admission must precede potentially unsafe host IO."""
+    directory = tmp_path / "directory"
+    directory.mkdir()
+    runner = tmp_path / "runner"
+    runner.write_bytes(b"runner")
+    monkeypatch.setattr(audit, "stat", SimpleNamespace(S_ISREG=lambda _mode: True))
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("nonregular target reached descriptor open")
+
+    monkeypatch.setattr(audit.os, "open", forbidden)
+    with pytest.raises(audit.TargetEchoAuditError, match="identity"):
+        audit._tool_identity(directory, runner)
+
+
+@pytest.mark.parametrize("kind", ["directory", "symlink"])
+def test_target_audit_git_rejects_rebound_executable_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str
+) -> None:
+    """A forged regular-file verdict cannot launch a nonphysical Git tool."""
+    executable = tmp_path / "git"
+    if kind == "directory":
+        executable.mkdir()
+    else:
+        target = tmp_path / "real-git"
+        target.write_bytes(b"#!/bin/sh\nexit 0\n")
+        executable.symlink_to(target)
+    monkeypatch.setattr(audit.shutil, "which", lambda *_a, **_kw: str(executable))
+    monkeypatch.setattr(audit.os, "access", lambda *_a, **_kw: True)
+    monkeypatch.setattr(audit, "stat", SimpleNamespace(S_ISREG=lambda _mode: True))
+
+    def forbidden(*_args: object, **_kwargs: object) -> Never:
+        pytest.fail("nonphysical Git path reached process execution")
+
+    monkeypatch.setattr(audit.sp, "run", forbidden)
+    with pytest.raises(audit.TargetEchoAuditError, match="physical executable"):
+        audit._require_git_commit("a" * 40)
+
+
+def test_target_audit_valid_executables_ignore_rebound_regular_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A later denying stat hook cannot discard original native files."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    emitter.write_bytes(b"emitter")
+    runner.write_bytes(b"runner")
+    monkeypatch.setattr(audit, "stat", SimpleNamespace(S_ISREG=lambda _mode: False))
+    assert audit._admit_tool(emitter) == emitter
+    assert audit._tool_identity(emitter, runner).startswith("local-compiler-vm-sha256:")
+
+
+def test_target_audit_valid_git_ignores_rebound_regular_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Original regular Git executables remain eligible under alias drift."""
+    git = tmp_path / "git"
+    git.write_bytes(b"#!/bin/sh\nexit 0\n")
+    git.chmod(0o700)
+    monkeypatch.setattr(audit.shutil, "which", lambda *_a, **_kw: str(git))
+    monkeypatch.setattr(audit, "stat", SimpleNamespace(S_ISREG=lambda _mode: False))
+
+    def original_receipt(command: list[str], **_kwargs: object) -> object:
+        return sp.CompletedProcess(command, 0, b"commit\n", b"")
+
+    monkeypatch.setattr(audit.sp, "run", original_receipt)
+    audit._require_git_commit("a" * 40)

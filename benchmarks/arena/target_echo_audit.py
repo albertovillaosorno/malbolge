@@ -76,6 +76,7 @@ _NATIVE_TUPLE = tuple
 _NATIVE_DICT = dict
 _NATIVE_COMPLETED_PROCESS = sp.CompletedProcess
 _NATIVE_STAT_RESULT = os.stat_result
+_NATIVE_S_ISREG = stat.S_ISREG
 
 # Keep an original source-digest constructor alongside the public providers.
 _NATIVE_SHA256 = sha256
@@ -852,7 +853,7 @@ def _require_git_commit(commit: str) -> None:
         raise _SOURCE_TARGET_ECHO_AUDIT_ERROR(message) from error
     if _NATIVE_TYPE(metadata) is not _NATIVE_STAT_RESULT:
         _fail("target audit Git commit object requires native executable metadata")
-    if not stat.S_ISREG(metadata.st_mode) or allowed is not True:
+    if not _NATIVE_S_ISREG(metadata.st_mode) or allowed is not True:
         _fail("target audit Git commit object requires physical executable")
     # Ambient Git object/database selectors cannot redirect local admission.
     # Reject foreign environment names before their startswith hooks can forge
@@ -1039,7 +1040,7 @@ def _admit_tool(path: Path) -> Path:
     details = path.lstat()
     if _NATIVE_TYPE(details) is not _NATIVE_STAT_RESULT:
         _fail("target audit requires regular native executable metadata")
-    if not stat.S_ISREG(details.st_mode) or details.st_size <= 0:
+    if not _NATIVE_S_ISREG(details.st_mode) or details.st_size <= 0:
         _fail("target audit requires regular nonempty executable files")
     if details.st_size > _SOURCE_TOOL_BYTES:
         _fail("target audit executable exceeds 128 MiB limit")
@@ -1073,7 +1074,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             original = path.lstat()
             if _NATIVE_TYPE(original) is not _NATIVE_STAT_RESULT:
                 _fail("target audit executable identity changed: invalid metadata")
-            if not stat.S_ISREG(original.st_mode) or original.st_size <= 0:
+            if not _NATIVE_S_ISREG(original.st_mode) or original.st_size <= 0:
                 _fail("target audit executable identity changed")
             if original.st_size > _SOURCE_TOOL_BYTES:
                 _fail("target audit executable exceeds 128 MiB limit")
@@ -1092,7 +1093,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 opened = os.fstat(descriptor)
                 if _NATIVE_TYPE(opened) is not _NATIVE_STAT_RESULT:
                     _fail("target audit executable identity changed: invalid metadata")
-                if not stat.S_ISREG(opened.st_mode) or (
+                if not _NATIVE_S_ISREG(opened.st_mode) or (
                     _tool_file_identity(opened) != _tool_file_identity(original)
                 ):
                     _fail("target audit executable identity changed")
@@ -1149,7 +1150,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
             latest = path.lstat()
             if _NATIVE_TYPE(latest) is not _NATIVE_STAT_RESULT:
                 _fail("target audit executable identity changed: invalid metadata")
-            if not stat.S_ISREG(latest.st_mode) or (
+            if not _NATIVE_S_ISREG(latest.st_mode) or (
                 _tool_file_identity(latest) != _tool_file_identity(original)
             ):
                 _fail("target audit executable identity changed")
