@@ -214,6 +214,23 @@ supplied to compilation instead, the runner selects the embedded profile,
 without a `--raw-profile` flag. These are finite, witness-verified byte
 transitions, not arbitrary C output-stream support.
 
+The three-byte `composition/examples/emit-zph.c` example performs three
+independent C `putchar` calls producing `Z%H`. It is an executable witness
+for the newly admitted distinct-byte triples, not a string-printing shortcut:
+
+```sh
+c2malbolge --repository-tools --output .temp/emit-zph-raw.malbolge \
+  src/interface/command-line/composition/examples/emit-zph.c
+malbolge --repository-tools .temp/emit-zph-raw.malbolge \
+  --raw-profile malbolge-2026 --report-steps
+```
+
+The normative guest VM emits `Z%H` and reports `malbolge-steps-v1:8`. The
+same checked-in C source, compiled with `--capsule` to a different output
+path, emits identical bytes and steps without explicit `--raw-profile`.
+The other independently witnessed three-byte outputs are `Q.O` (9 steps)
+and `Y-P` (10 steps); unsupported triples still fail before publication.
+
 For the **Unix `malbolge` shim**, a leading `--repository-tools` selects the
 existing repository-built `.cache/rust/target/debug/malbolge` VM. This is useful
 when the `scripts/bin/malbolge` release binary was built against older sources:

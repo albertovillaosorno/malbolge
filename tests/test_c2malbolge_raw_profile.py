@@ -56,6 +56,7 @@ ADAPTER = BIN_ROOT / "c2malbolge_json"
 LAYOUT = BIN_ROOT / "malbolge_layout"
 VM = BIN_ROOT / "malbolge"
 EXAMPLE_Q = ROOT / "src/interface/command-line/composition/examples/emit-qp.c"
+EXAMPLE_ZPH = ROOT / "src/interface/command-line/composition/examples/emit-zph.c"
 
 
 @final
@@ -113,10 +114,25 @@ class RawProfileNativePipelineTests(unittest.TestCase):
             for name, source_text, expected, steps in (
                 ("zero-z", "putchar(0); putchar('Z');", b"\x00Z", 5),
                 ("checked-in-qp", None, b"Q.", 8),
+                ("checked-in-zph", None, b"Z%H", 8),
+                (
+                    "q-period-o",
+                    "putchar('Q'); putchar('.'); putchar('O');",
+                    b"Q.O",
+                    9,
+                ),
+                (
+                    "y-hyphen-p",
+                    "putchar('Y'); putchar('-'); putchar('P');",
+                    b"Y-P",
+                    10,
+                ),
             ):
                 with self.subTest(name=name):
                     source = directory / f"{name}.c"
-                    if source_text is None:
+                    if name == "checked-in-zph":
+                        source = EXAMPLE_ZPH
+                    elif source_text is None:
                         source = EXAMPLE_Q
                     else:
                         _ = source.write_text(
