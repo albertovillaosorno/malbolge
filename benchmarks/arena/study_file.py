@@ -42,6 +42,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Never
 
 MAX_STUDY_BYTES = 16 * 1024 * 1024
+# Public reporting aliases cannot widen the original source-file read cap.
+_SOURCE_MAX_STUDY_BYTES = MAX_STUDY_BYTES
 MAX_NATIVE_DESCRIPTOR = 2**31 - 1
 # Read directly from the original opened descriptor to cross-check any
 # replaceable buffered-reader receipt against source bytes, not just metadata.
@@ -98,7 +100,7 @@ def _admit_descriptor(receipt: object, *, source: str) -> int:
 
 
 def _admit_limit(limit: int) -> None:
-    if type(limit) is not int or not 0 < limit <= MAX_STUDY_BYTES:
+    if type(limit) is not int or not 0 < limit <= _SOURCE_MAX_STUDY_BYTES:
         _fail("arena study byte limit must be a positive integer up to 16 MiB")
 
 

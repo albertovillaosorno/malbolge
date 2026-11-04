@@ -120,6 +120,35 @@ def test_invalid_direct_study_budget_rejects_before_open(
     assert not attempted_open
 
 
+@pytest.mark.parametrize("invalid_limit", [16 * 1024 * 1024 + 1, 32 * 1024 * 1024])
+def test_study_reader_cannot_raise_source_cap_through_public_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_limit: int,
+) -> None:
+    """A replaced public budget must not admit over-16-MiB study reads."""
+    monkeypatch.setattr(study_file, "MAX_STUDY_BYTES", 64 * 1024 * 1024)
+
+    def forbidden_path(*args: object, **kwargs: object) -> object:
+        _ = (args, kwargs)
+        pytest.fail("oversized study cap reached filesystem admission")
+
+    monkeypatch.setattr(study_file, "_admit_path", forbidden_path)
+    with pytest.raises(study_file.StudyFileError, match="byte limit"):
+        study_file.read_study_bytes(tmp_path / "irrelevant.json", limit=invalid_limit)
+
+
+def test_study_reader_cannot_lower_source_cap_through_public_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Original bounded input stays valid after a public budget substitution."""
+    path = tmp_path / STABLE_INPUT
+    _ = path.write_bytes(STUDY_SAMPLE)
+    monkeypatch.setattr(study_file, "MAX_STUDY_BYTES", 1)
+    assert study_file.read_study_bytes(path, limit=1024) == STUDY_SAMPLE
+
+
 def test_exact_declared_study_budget_still_reads_normal_file(
     tmp_path: Path,
 ) -> None:
