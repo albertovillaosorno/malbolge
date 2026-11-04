@@ -4298,3 +4298,72 @@ def test_child_deadline_keeps_native_timeout_after_subprocess_alias_change(
                 target_process.invoke_with_input(
                     command, b"input", timeout_seconds=0.05
                 )
+
+
+@pytest.mark.parametrize("forged_descriptor", [2**31, 2**50])
+def test_source_native_pipe_descriptor_cap_ignores_public_alias(
+    monkeypatch: pytest.MonkeyPatch, forged_descriptor: int
+) -> None:
+    """A mutable public ceiling cannot admit a non-C-int pipe descriptor."""
+    monkeypatch.setattr(target_process, "MAX_NATIVE_DESCRIPTOR", 2**63)
+    with pytest.raises(
+        target_process.TargetProcessError, match="native pipe descriptor"
+    ):
+        target_process._admit_pipe_descriptor(forged_descriptor, channel="output")
+
+
+def test_source_command_nul_guard_ignores_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Changing the public sentinel cannot admit an embedded exec NUL."""
+    monkeypatch.setattr(target_process, "NUL_CHARACTER", "!")
+    with pytest.raises(target_process.TargetProcessError, match="NUL"):
+        target_process._admit_command([sys.executable, "arg\0payload"])
+
+
+def test_source_system_tool_path_ignores_public_alias(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Replacing a module search-path alias cannot redirect OS tool lookup."""
+    observed: list[str | None] = []
+
+    def unavailable(_name: str, *, path: str | None = None) -> None:
+        observed.append(path)
+
+    monkeypatch.setattr(target_process, "SYSTEM_TOOL_SEARCH_PATH", "/tmp/rogue")
+    monkeypatch.setattr(target_process.shutil, "which", unavailable)
+    assert target_process._system_tool("prlimit") is None
+    assert observed == [os.defpath]
+
+
+@pytest.mark.skipif(sys.platform != LINUX_PLATFORM, reason="Linux prlimit policy")
+@pytest.mark.parametrize(
+    ("alias", "forged"),
+    [
+        ("LIMITER_NAME", "no-limits"),
+        ("CHILD_VIRTUAL_MEMORY_BYTES", 2**50),
+        ("CHILD_CPU_SECONDS", 100_000),
+        ("CHILD_OUTPUT_FILE_BYTES", 2**50),
+    ],
+)
+def test_source_child_limiter_policy_ignores_public_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: str, forged: str | int
+) -> None:
+    """A replaced limiter name or capacity cannot relax the child wrapper."""
+    requested: list[str] = []
+
+    def resolved(name: str) -> str:
+        requested.append(name)
+        return "/usr/bin/prlimit"
+
+    monkeypatch.setattr(target_process, "_system_tool", resolved)
+    monkeypatch.setattr(target_process, alias, forged)
+    assert target_process._limited_command([sys.executable], enforce=True) == [
+        "/usr/bin/prlimit",
+        "--as=1073741824:1073741824",
+        "--cpu=8:8",
+        "--fsize=8388608:8388608",
+        "--",
+        sys.executable,
+    ]
+    assert requested == ["prlimit"]

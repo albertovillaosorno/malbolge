@@ -82,6 +82,15 @@ _SOURCE_DEFAULT_STDERR_LIMIT = DEFAULT_STDERR_LIMIT
 _SOURCE_MAX_STDIN_BYTES = MAX_STDIN_BYTES
 _SOURCE_MAX_COMMAND_ARGUMENTS = MAX_COMMAND_ARGUMENTS
 _SOURCE_MAX_COMMAND_BYTES = MAX_COMMAND_BYTES
+# Native descriptor, command grammar, and OS limiter policy must not follow
+# replaceable module aliases after the process transport has been imported.
+_SOURCE_MAX_NATIVE_DESCRIPTOR = MAX_NATIVE_DESCRIPTOR
+_SOURCE_NUL_CHARACTER = NUL_CHARACTER
+_SOURCE_SYSTEM_TOOL_SEARCH_PATH = SYSTEM_TOOL_SEARCH_PATH
+_SOURCE_LIMITER_NAME = LIMITER_NAME
+_SOURCE_CHILD_VIRTUAL_MEMORY_BYTES = CHILD_VIRTUAL_MEMORY_BYTES
+_SOURCE_CHILD_CPU_SECONDS = CHILD_CPU_SECONDS
+_SOURCE_CHILD_OUTPUT_FILE_BYTES = CHILD_OUTPUT_FILE_BYTES
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +111,7 @@ def _fail(message: str) -> Never:
 
 def _admit_pipe_descriptor(receipt: object, *, channel: str) -> int:
     """Admit native signed C-int descriptors before any host pipe operation."""
-    if type(receipt) is not int or not 0 <= receipt <= MAX_NATIVE_DESCRIPTOR:
+    if type(receipt) is not int or not 0 <= receipt <= _SOURCE_MAX_NATIVE_DESCRIPTOR:
         _fail(f"bounded target {channel} requires a native pipe descriptor")
     return receipt
 
@@ -141,7 +150,7 @@ def _admit_command(command: list[str]) -> None:
         _fail("bounded target command requires an absolute executable path")
     total_bytes = 0
     for argument in command:
-        if type(argument) is not str or NUL_CHARACTER in argument:
+        if type(argument) is not str or _SOURCE_NUL_CHARACTER in argument:
             _fail("bounded target command has nonstring or NUL arguments")
         # Bound both Python-side argv allocation and the actual exec byte
         # payload. The NUL terminator counts toward the cumulative budget.
@@ -159,7 +168,7 @@ def _admit_command(command: list[str]) -> None:
 def _system_tool(name: str) -> str | None:
     """Resolve OS-owned resource tools without trusting a caller's PATH."""
     try:
-        resolved = shutil.which(name, path=SYSTEM_TOOL_SEARCH_PATH)
+        resolved = shutil.which(name, path=_SOURCE_SYSTEM_TOOL_SEARCH_PATH)
     except Exception as error:
         # Host tool resolvers may raise unexpected ordinary dependency errors.
         message = f"bounded target system tool lookup failed: {name}"
@@ -169,7 +178,7 @@ def _system_tool(name: str) -> str | None:
     if (
         type(resolved) is not str
         or not resolved
-        or NUL_CHARACTER in resolved
+        or _SOURCE_NUL_CHARACTER in resolved
         or not Path(resolved).is_absolute()
     ):
         _fail(f"bounded target system tool has invalid executable path: {name}")
@@ -204,14 +213,14 @@ def _limited_command(command: list[str], *, enforce: bool) -> list[str]:
         return command
     if sys.platform != LINUX_PLATFORM:
         _fail("bounded target child resource controls require Linux")
-    utility = _system_tool(LIMITER_NAME)
+    utility = _system_tool(_SOURCE_LIMITER_NAME)
     if utility is None:
         _fail("bounded target child resource controls require prlimit")
     return [
         utility,
-        f"--as={CHILD_VIRTUAL_MEMORY_BYTES}:{CHILD_VIRTUAL_MEMORY_BYTES}",
-        f"--cpu={CHILD_CPU_SECONDS}:{CHILD_CPU_SECONDS}",
-        f"--fsize={CHILD_OUTPUT_FILE_BYTES}:{CHILD_OUTPUT_FILE_BYTES}",
+        f"--as={_SOURCE_CHILD_VIRTUAL_MEMORY_BYTES}:{_SOURCE_CHILD_VIRTUAL_MEMORY_BYTES}",
+        f"--cpu={_SOURCE_CHILD_CPU_SECONDS}:{_SOURCE_CHILD_CPU_SECONDS}",
+        f"--fsize={_SOURCE_CHILD_OUTPUT_FILE_BYTES}:{_SOURCE_CHILD_OUTPUT_FILE_BYTES}",
         "--",
         *command,
     ]
@@ -446,7 +455,7 @@ def _collect(
                     type(key) is not selectors.SelectorKey
                     or key.fileobj is not stream_fds[slot]
                     or type(key.fd) is not int
-                    or not 0 <= key.fd <= MAX_NATIVE_DESCRIPTOR
+                    or not 0 <= key.fd <= _SOURCE_MAX_NATIVE_DESCRIPTOR
                     or type(stream_fd) is not int
                     or stream_fd != stream_fds[slot]
                     or key.fd != stream_fd
