@@ -51,6 +51,11 @@ EXTENSION_NAME = "arena_trial"
 EXTENSION_FIELDS = frozenset({"schema_version", "trial", "raw_sha256"})
 SCHEMA_VERSION = 1
 MAX_RUN_MANIFEST_BYTES = 1_048_576
+# The version-one extension identity and resource cap are fixed at import.
+_SOURCE_EXTENSION_NAME = EXTENSION_NAME
+_SOURCE_EXTENSION_FIELDS = EXTENSION_FIELDS
+_SOURCE_SCHEMA_VERSION = SCHEMA_VERSION
+_SOURCE_MAX_RUN_MANIFEST_BYTES = MAX_RUN_MANIFEST_BYTES
 
 
 class TrialRunError(ValueError):
@@ -80,14 +85,14 @@ def _digest(value: object) -> str:
 def _admit_text(text: str) -> None:
     if type(text) is not str:
         _fail("per-trial run manifest requires exact str text")
-    if len(text) > MAX_RUN_MANIFEST_BYTES:
+    if len(text) > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _fail("per-trial run manifest exceeds byte limit")
     try:
         encoded_size = len(text.encode("utf-8"))
     except UnicodeEncodeError as error:
         message = "per-trial run manifest requires strict UTF-8 text"
         raise TrialRunError(message) from error
-    if encoded_size > MAX_RUN_MANIFEST_BYTES:
+    if encoded_size > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _fail("per-trial run manifest exceeds byte limit")
 
 
@@ -113,17 +118,17 @@ def parse_trial_run(text: str) -> TrialRun:
         _fail("invalid per-trial manifest TOML root")
     if any(type(key) is not str for key in document):
         _fail("per-trial manifest TOML requires native string keys")
-    table = document.get(EXTENSION_NAME)
+    table = document.get(_SOURCE_EXTENSION_NAME)
     if (
         type(table) is not dict
         or any(type(key) is not str for key in table)
-        or set(table) != EXTENSION_FIELDS
+        or set(table) != _SOURCE_EXTENSION_FIELDS
     ):
         _fail(
             "arena_trial requires exact schema_version/trial/raw_sha256 and native string keys"
         )
     version = table["schema_version"]
-    if type(version) is not int or version != SCHEMA_VERSION:
+    if type(version) is not int or version != _SOURCE_SCHEMA_VERSION:
         _fail("arena_trial requires schema_version = 1")
     trial = table["trial"]
     if type(trial) is not int or trial < 0:
@@ -137,10 +142,10 @@ def parse_trial_run(text: str) -> TrialRun:
     except Exception as error:
         message = "per-trial manifest source TOML could not be parsed"
         raise TrialRunError(message) from error
-    source_table = source.get(EXTENSION_NAME)
+    source_table = source.get(_SOURCE_EXTENSION_NAME)
     if (
         type(source_table) is not dict
-        or set(source_table) != EXTENSION_FIELDS
+        or set(source_table) != _SOURCE_EXTENSION_FIELDS
         or type(source_table.get("schema_version")) is not int
         or source_table["schema_version"] != version
         or type(source_table.get("trial")) is not int

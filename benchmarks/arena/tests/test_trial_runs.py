@@ -71,3 +71,35 @@ def test_mutable_analyzer_policy_cannot_admit_noncanonical_run_digest(
             patch.setattr(analyze, "SHA256_ALPHABET", frozenset("0123456789abcdefG"))
         with pytest.raises(trial_runs.TrialRunError, match="lowercase SHA-256"):
             _ = trial_runs.parse_trial_run(_manifest(digest))
+
+
+@pytest.mark.parametrize("policy", ["name", "fields", "version"])
+def test_public_trial_schema_policy_cannot_admit_foreign_source(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+) -> None:
+    """A replaced schema policy cannot redefine canonical trial identity."""
+    source = _manifest("a" * 64)
+    if policy == "name":
+        source = source.replace("arena_trial", "alternate_trial", 1)
+        monkeypatch.setattr(trial_runs, "EXTENSION_NAME", "alternate_trial")
+    elif policy == "fields":
+        source += "extra = 1\n"
+        monkeypatch.setattr(
+            trial_runs, "EXTENSION_FIELDS", trial_runs.EXTENSION_FIELDS | {"extra"}
+        )
+    else:
+        source = source.replace("schema_version = 1", "schema_version = 2", 1)
+        monkeypatch.setattr(trial_runs, "SCHEMA_VERSION", 2)
+    with pytest.raises(trial_runs.TrialRunError, match="arena_trial"):
+        trial_runs.parse_trial_run(source)
+
+
+def test_public_trial_size_limit_cannot_admit_oversized_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An oversized manifest must fail regardless of runtime limit changes."""
+    oversized = _manifest("a" * 64) + "#" + "x" * trial_runs.MAX_RUN_MANIFEST_BYTES
+    monkeypatch.setattr(trial_runs, "MAX_RUN_MANIFEST_BYTES", len(oversized) + 1)
+    with pytest.raises(trial_runs.TrialRunError, match="byte limit"):
+        trial_runs.parse_trial_run(oversized)

@@ -60,3 +60,13 @@ def test_source_budget_unit_conversion_ignores_mutable_policy_drift(
     with monkeypatch.context() as patched:
         patched.setattr(budget_links, conversion, forged_factor)
         assert budget_links.parse_run_budgets(MANIFEST) == EXPECTED
+
+
+def test_public_budget_size_limit_cannot_admit_oversized_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A changed runtime limit cannot authorize oversized source TOML."""
+    oversized = MANIFEST + "#" + "x" * budget_links.MAX_RUN_MANIFEST_BYTES
+    monkeypatch.setattr(budget_links, "MAX_RUN_MANIFEST_BYTES", len(oversized) + 1)
+    with pytest.raises(budget_links.BudgetLinkError, match="byte limit"):
+        budget_links.parse_run_budgets(oversized)

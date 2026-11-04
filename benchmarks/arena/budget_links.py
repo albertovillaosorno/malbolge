@@ -48,6 +48,7 @@ BYTES_PER_MIB = 1_048_576
 _SOURCE_NANOSECONDS_PER_SECOND = NANOSECONDS_PER_SECOND
 _SOURCE_BYTES_PER_MIB = BYTES_PER_MIB
 MAX_RUN_MANIFEST_BYTES = 1_048_576
+_SOURCE_MAX_RUN_MANIFEST_BYTES = MAX_RUN_MANIFEST_BYTES
 
 
 class BudgetLinkError(ValueError):
@@ -76,14 +77,14 @@ def _positive_integer(table: dict[str, object], key: str) -> int:
 def _admit_text(text: str) -> None:
     if type(text) is not str:
         _fail("budget run manifest requires exact str text")
-    if len(text) > MAX_RUN_MANIFEST_BYTES:
+    if len(text) > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _fail("budget run manifest exceeds byte limit")
     try:
         encoded_size = len(text.encode("utf-8"))
     except UnicodeEncodeError as error:
         message = "budget run manifest requires strict UTF-8 text"
         raise BudgetLinkError(message) from error
-    if encoded_size > MAX_RUN_MANIFEST_BYTES:
+    if encoded_size > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _fail("budget run manifest exceeds byte limit")
 
 
