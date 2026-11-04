@@ -153,3 +153,35 @@ def test_trial_source_rejects_substituted_digest_validator(
     monkeypatch.setattr(trial_runs, "_digest", lambda value: value)
     with pytest.raises(trial_runs.TrialRunError, match="lowercase SHA-256"):
         trial_runs.parse_trial_run(_manifest(noncanonical))
+
+
+def test_trial_limit_rejects_substituted_length_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced module length cannot shrink a source before byte admission."""
+    original_len = len
+    ceiling = trial_runs.MAX_RUN_MANIFEST_BYTES
+    oversized = _manifest("a" * 64) + "#" + "x" * ceiling
+    monkeypatch.setattr(
+        trial_runs,
+        "len",
+        lambda value: 0 if original_len(value) > ceiling else original_len(value),
+        raising=False,
+    )
+    with pytest.raises(trial_runs.TrialRunError, match="byte limit"):
+        trial_runs.parse_trial_run(oversized)
+
+
+def test_trial_digest_rejects_substituted_character_set_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced set factory cannot erase forbidden digest glyphs."""
+    native_set = set
+    monkeypatch.setattr(
+        trial_runs,
+        "set",
+        lambda value: native_set() if type(value) is str else native_set(value),
+        raising=False,
+    )
+    with pytest.raises(trial_runs.TrialRunError, match="lowercase SHA-256"):
+        trial_runs.parse_trial_run(_manifest("G" * 64))

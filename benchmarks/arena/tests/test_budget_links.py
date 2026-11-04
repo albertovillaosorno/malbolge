@@ -123,3 +123,13 @@ def test_budget_source_rejects_substituted_positive_integer_validator(
     )
     with pytest.raises(budget_links.BudgetLinkError, match="positive integer"):
         budget_links.parse_run_budgets(manifest)
+
+
+def test_budget_limit_rejects_substituted_length_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A replaced module length cannot shrink a source before byte admission."""
+    oversized = MANIFEST + "#" + "x" * budget_links.MAX_RUN_MANIFEST_BYTES
+    monkeypatch.setattr(budget_links, "len", lambda _value: 0, raising=False)
+    with pytest.raises(budget_links.BudgetLinkError, match="byte limit"):
+        budget_links.parse_run_budgets(oversized)

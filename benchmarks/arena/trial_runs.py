@@ -43,6 +43,8 @@ from benchmarks.arena import analyze
 
 # Preserve an independent source parse when a decoder provider is replaced.
 _SOURCE_TOML_LOADS = tomllib.loads
+_SOURCE_LEN = len
+_SOURCE_SET = set
 # The source digest grammar must not follow late analyzer module substitutions.
 _SOURCE_SHA256_HEX_LENGTH = analyze.SHA256_HEX_LENGTH
 _SOURCE_SHA256_ALPHABET = analyze.SHA256_ALPHABET
@@ -82,9 +84,9 @@ _SOURCE_FAIL = _fail
 
 
 def _digest(value: object) -> str:
-    if type(value) is not str or len(value) != _SOURCE_SHA256_HEX_LENGTH:
+    if type(value) is not str or _SOURCE_LEN(value) != _SOURCE_SHA256_HEX_LENGTH:
         _SOURCE_FAIL("arena_trial requires lowercase SHA-256 raw_sha256")
-    if not set(value) <= _SOURCE_SHA256_ALPHABET:
+    if not _SOURCE_SET(value) <= _SOURCE_SHA256_ALPHABET:
         _SOURCE_FAIL("arena_trial requires lowercase SHA-256 raw_sha256")
     return value
 
@@ -92,10 +94,10 @@ def _digest(value: object) -> str:
 def _admit_text(text: str) -> None:
     if type(text) is not str:
         _SOURCE_FAIL("per-trial run manifest requires exact str text")
-    if len(text) > _SOURCE_MAX_RUN_MANIFEST_BYTES:
+    if _SOURCE_LEN(text) > _SOURCE_MAX_RUN_MANIFEST_BYTES:
         _SOURCE_FAIL("per-trial run manifest exceeds byte limit")
     try:
-        encoded_size = len(text.encode("utf-8"))
+        encoded_size = _SOURCE_LEN(text.encode("utf-8"))
     except UnicodeEncodeError as error:
         message = "per-trial run manifest requires strict UTF-8 text"
         raise TrialRunError(message) from error
@@ -135,7 +137,7 @@ def parse_trial_run(text: str) -> TrialRun:
     if (
         type(table) is not dict
         or any(type(key) is not str for key in table)
-        or set(table) != _SOURCE_EXTENSION_FIELDS
+        or _SOURCE_SET(table) != _SOURCE_EXTENSION_FIELDS
     ):
         _SOURCE_FAIL(
             "arena_trial requires exact schema_version/trial/raw_sha256 and native string keys"
@@ -158,7 +160,7 @@ def parse_trial_run(text: str) -> TrialRun:
     source_table = source.get(_SOURCE_EXTENSION_NAME)
     if (
         type(source_table) is not dict
-        or set(source_table) != _SOURCE_EXTENSION_FIELDS
+        or _SOURCE_SET(source_table) != _SOURCE_EXTENSION_FIELDS
         or type(source_table.get("schema_version")) is not int
         or source_table["schema_version"] != version
         or type(source_table.get("trial")) is not int
