@@ -3921,3 +3921,143 @@ def test_host_c_scratch_rejects_rebound_stat_result_type(
     monkeypatch.setattr(host_c_oracle.os, "stat_result", ForeignStat)
     with pytest.raises(host_c_oracle.HostOracleError, match="metadata"):
         host_c_oracle._require_local_scratch_root()
+
+
+@pytest.mark.parametrize("boundary", ["compiler", "tool-access", "tool-name"])
+def test_host_c_preflight_rejects_foreign_receipts_under_replaced_type(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """A late public type helper must not certify native host preflight."""
+    tool = tmp_path / "physical-tool"
+    tool.write_bytes(b"physical")
+    tool.chmod(0o700)
+    workspace = tmp_path / "scratch"
+    workspace.mkdir()
+    native_type = type
+    foreign: object = (
+        1 if boundary != "tool-name" else _ForeignNativeWorkspaceText(str(tool))
+    )
+    monkeypatch.setattr(
+        host_c_oracle,
+        "type",
+        lambda item: (
+            (bool if boundary != "tool-name" else str)
+            if item is foreign
+            else native_type(item)
+        ),
+        raising=False,
+    )
+    if boundary == "compiler":
+        monkeypatch.setattr(host_c_oracle, "_PINNED_CLANG", tool)
+        monkeypatch.setattr(host_c_oracle, "_TEMP", workspace)
+        native_is_file = Path.is_file
+        monkeypatch.setattr(
+            Path, "is_file", lambda path: 1 if path == tool else native_is_file(path)
+        )
+        with pytest.raises(host_c_oracle.HostOracleError, match="presence"):
+            host_c_oracle._require_local_scratch_root()
+    else:
+        monkeypatch.setattr(
+            host_c_oracle.shutil,
+            "which",
+            lambda *_a, **_kw: foreign if boundary == "tool-name" else str(tool),
+        )
+        if boundary == "tool-access":
+            monkeypatch.setattr(host_c_oracle.os, "access", lambda *_a, **_kw: 1)
+        with pytest.raises(
+            host_c_oracle.HostOracleError, match="access|invalid executable"
+        ):
+            host_c_oracle._system_tool("prlimit")
+
+
+@pytest.mark.parametrize("boundary", ["workspace", "rss-tuple"])
+def test_host_c_owned_receipt_rejects_rebound_type_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """Foreign context or descriptor receipts cannot forge native class checks."""
+    native_type = type
+    if boundary == "workspace":
+        root = tmp_path / "scratch"
+        root.mkdir()
+        child = root / "arena-host-c-oracle-owned"
+        child.mkdir()
+        foreign: object = _ForeignNativeWorkspaceText(str(child))
+        monkeypatch.setattr(host_c_oracle, "_TEMP", root)
+        monkeypatch.setattr(
+            host_c_oracle,
+            "type",
+            lambda item: str if item is foreign else native_type(item),
+            raising=False,
+        )
+        with pytest.raises(host_c_oracle.HostOracleError, match="invalid path receipt"):
+            host_c_oracle._admit_native_workspace_receipt(
+                cast("str", foreign), prefix="arena-host-c-oracle-"
+            )
+    else:
+        file = tmp_path / "host-c-stage-rss-owned.txt"
+        file.write_bytes(b"receipt")
+        fd = os.open(file, os.O_RDONLY)
+        try:
+
+            class ForeignTuple(tuple[int, str]):
+                pass
+
+            foreign = ForeignTuple((fd, str(file)))
+            monkeypatch.setattr(
+                host_c_oracle,
+                "type",
+                lambda item: tuple if item is foreign else native_type(item),
+                raising=False,
+            )
+            with pytest.raises(
+                host_c_oracle.HostOracleError, match="temporary receipt"
+            ):
+                host_c_oracle._admit_rss_temporary_receipt(foreign, tmp_path)
+        finally:
+            os.close(fd)
+
+
+@pytest.mark.parametrize("boundary", ["compiler", "tool", "workspace", "rss-tuple"])
+def test_host_c_native_receipts_ignore_rebound_type_helper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    """Native file and workspace evidence survive public type alias drift."""
+    monkeypatch.setattr(host_c_oracle, "type", lambda _item: object, raising=False)
+    if boundary == "compiler":
+        compiler = tmp_path / "compiler"
+        compiler.write_bytes(b"compiler")
+        scratch = tmp_path / "scratch"
+        scratch.mkdir()
+        monkeypatch.setattr(host_c_oracle, "_PINNED_CLANG", compiler)
+        monkeypatch.setattr(host_c_oracle, "_TEMP", scratch)
+        host_c_oracle._require_local_scratch_root()
+    elif boundary == "tool":
+        utility = tmp_path / "utility"
+        utility.write_bytes(b"utility")
+        utility.chmod(0o700)
+        monkeypatch.setattr(
+            host_c_oracle.shutil, "which", lambda *_a, **_kw: str(utility)
+        )
+        assert host_c_oracle._system_tool("prlimit") == str(utility)
+    elif boundary == "workspace":
+        root = tmp_path / "scratch"
+        root.mkdir()
+        directory = root / "arena-host-c-oracle-native"
+        directory.mkdir()
+        monkeypatch.setattr(host_c_oracle, "_TEMP", root)
+        assert (
+            host_c_oracle._admit_native_workspace_receipt(
+                str(directory), prefix="arena-host-c-oracle-"
+            )
+            == directory
+        )
+    else:
+        file = tmp_path / "host-c-stage-rss-native.txt"
+        file.write_bytes(b"receipt")
+        fd = os.open(file, os.O_RDONLY)
+        try:
+            assert host_c_oracle._admit_rss_temporary_receipt(
+                (fd, str(file)), tmp_path
+            ) == (fd, str(file))
+        finally:
+            os.close(fd)

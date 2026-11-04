@@ -178,7 +178,7 @@ def _require_local_scratch_root() -> None:
     except Exception as error:
         message = "pinned host-C compiler unavailable"
         raise _SOURCE_HOST_ORACLE_ERROR(message) from error
-    if type(compiler_available) is not bool:
+    if _NATIVE_TYPE(compiler_available) is not bool:
         _fail("pinned host-C compiler returned invalid presence receipt")
     if not compiler_available:
         _fail("pinned host-C compiler or local temporary directory unavailable")
@@ -242,7 +242,7 @@ def _system_tool(name: str) -> str | None:
     if resolved is None:
         return None
     if (
-        type(resolved) is not str
+        _NATIVE_TYPE(resolved) is not str
         or not resolved
         or "\0" in resolved
         or not Path(resolved).is_absolute()
@@ -255,7 +255,7 @@ def _system_tool(name: str) -> str | None:
             _fail(f"host-C resource tool path inspection invalid: {name}")
         mode = details.st_mode
         executable = os.access(resolved, os.X_OK)
-        if type(executable) is not bool:
+        if _NATIVE_TYPE(executable) is not bool:
             _fail(f"host-C resource tool access inspection invalid: {name}")
     except _SOURCE_HOST_ORACLE_ERROR:
         raise
@@ -454,17 +454,17 @@ def _close_rss_temporary_descriptor(descriptor: int) -> None:
 
 
 def _admit_rss_temporary_receipt(receipt: object, cwd: Path) -> tuple[int, str]:
-    if type(receipt) is not tuple or len(receipt) != 2:
+    if _NATIVE_TYPE(receipt) is not tuple or len(receipt) != 2:
         _fail("host-C challenge oracle RSS temporary receipt invalid")
     descriptor, pathname = receipt
     if (
-        type(descriptor) is not int
+        _NATIVE_TYPE(descriptor) is not int
         or descriptor < 0
         or descriptor > _SOURCE_MAX_NATIVE_DESCRIPTOR
     ):
         _fail("host-C challenge oracle RSS temporary descriptor invalid")
     if (
-        type(pathname) is not str
+        _NATIVE_TYPE(pathname) is not str
         or "\x00" in pathname
         or Path(pathname).parent != cwd
         or not Path(pathname).name.startswith(RSS_TEMP_PREFIX)
@@ -724,7 +724,7 @@ def _admit_native_workspace_receipt(receipt: object, *, prefix: str) -> Path:
     not proof of race-free ownership. A rejected path must never reach
     TemporaryDirectory.__exit__, which could recursively remove it.
     """
-    if type(receipt) is not str or not receipt or type(prefix) is not str:
+    if _NATIVE_TYPE(receipt) is not str or not receipt or _NATIVE_TYPE(prefix) is not str:
         _fail("host-C workspace context returned invalid path receipt")
     try:
         directory = Path(receipt)
