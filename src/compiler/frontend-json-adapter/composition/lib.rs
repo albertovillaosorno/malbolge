@@ -39,11 +39,12 @@ pub mod typed;
 #[cfg(test)]
 use malbolge as _;
 use serde::Deserialize;
+use std::iter::once;
 use std::str;
 use typed::{
-    FrontendArtifact, FrontendArtifactSpec, FrontendPosition, FrontendReturnVoidFunction,
-    FrontendReturnVoidFunctionSpec, FrontendSpan, canonical_bytes, canonical_module,
-    lower_frontend_artifact,
+    FrontendArtifact, FrontendArtifactSpec, FrontendFallthroughVoidFunctionSpec, FrontendPosition,
+    FrontendReturnVoidFunction, FrontendReturnVoidFunctionSpec, FrontendSpan, canonical_bytes,
+    canonical_module, lower_frontend_artifact,
 };
 
 const EXPECTED_ABI: &str = "malbolge-c32-v1";
@@ -154,7 +155,7 @@ fn source_digest(value: &str) -> Result<[u8; 32], FrontendJsonError> {
     Ok(digest)
 }
 
-/// Decode one exact three-node, explicit void-return normalized C function.
+/// Decode one exact empty-body or explicitly returned void C function.
 ///
 /// This validates the serialized Clang artifact shape, **not** the contents
 /// of an independently supplied C source. Raw-source digest verification and
@@ -185,8 +186,10 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
     {
         return Err(FrontendJsonError::Unsupported);
     }
-    let [function, body, returned] = input.nodes.as_slice() else {
-        return Err(FrontendJsonError::Unsupported);
+    let (function, body, returned) = match input.nodes.as_slice() {
+        [function, body] => (function, body, None),
+        [function, body, returned] => (function, body, Some(returned)),
+        _ => return Err(FrontendJsonError::Unsupported),
     };
     if function.kind != "function-declaration"
         || function.parent != 0
@@ -200,10 +203,10 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
         || body.kind != "compound-statement"
         || body.parent != function.id
         || body.id != 2
-        || returned.kind != "return-statement"
-        || returned.parent != body.id
-        || returned.id != 3
-        || [body, returned].iter().any(|node| {
+        || returned.is_some_and(|node| {
+            node.kind != "return-statement" || node.parent != body.id || node.id != 3
+        })
+        || once(body).chain(returned).any(|node| {
             node.name.is_some()
                 || node.type_name.is_some()
                 || node.definition.is_some()
@@ -214,6 +217,36 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    let void_function = if let Some(return_node) = returned {
+        FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
+            body_span: span(&body.span),
+            definition: String::from("definition"),
+            function_span: span(&function.span),
+            inline_specified: false,
+            linkage: String::from("external"),
+            name: function
+                .name
+                .clone()
+                .ok_or(FrontendJsonError::Unsupported)?,
+            return_span: span(&return_node.span),
+            signature: String::from("fn()->void"),
+            storage_class: String::from("none"),
+        })
+    } else {
+        FrontendReturnVoidFunction::new_fallthrough(FrontendFallthroughVoidFunctionSpec {
+            body_span: span(&body.span),
+            definition: String::from("definition"),
+            function_span: span(&function.span),
+            inline_specified: false,
+            linkage: String::from("external"),
+            name: function
+                .name
+                .clone()
+                .ok_or(FrontendJsonError::Unsupported)?,
+            signature: String::from("fn()->void"),
+            storage_class: String::from("none"),
+        })
+    };
     let artifact = FrontendArtifact::new_void(
         FrontendArtifactSpec {
             abi_id: input.profile.abi_id,
@@ -227,34 +260,7 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
             source_sha256: source_digest(&input.source.sha256)?,
             target_profile: input.profile.target_profile,
         },
-        FrontendReturnVoidFunction::new(FrontendReturnVoidFunctionSpec {
-            body_span: span(&body.span),
-            definition: function
-                .definition
-                .clone()
-                .ok_or(FrontendJsonError::Unsupported)?,
-            function_span: span(&function.span),
-            inline_specified: function
-                .inline_specified
-                .ok_or(FrontendJsonError::Unsupported)?,
-            linkage: function
-                .linkage
-                .clone()
-                .ok_or(FrontendJsonError::Unsupported)?,
-            name: function
-                .name
-                .clone()
-                .ok_or(FrontendJsonError::Unsupported)?,
-            return_span: span(&returned.span),
-            signature: function
-                .type_name
-                .clone()
-                .ok_or(FrontendJsonError::Unsupported)?,
-            storage_class: function
-                .storage_class
-                .clone()
-                .ok_or(FrontendJsonError::Unsupported)?,
-        }),
+        void_function,
     );
     let _validated =
         lower_frontend_artifact(&artifact).map_err(|_error| FrontendJsonError::InvalidTypedIr)?;

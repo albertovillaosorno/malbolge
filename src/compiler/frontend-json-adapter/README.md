@@ -10,7 +10,10 @@ contains the JSON dependency; the VM's dependency-free crate remains unchanged.
 ## Supported slice
 
 The complete normalized artifact must contain exactly one no-argument external
-`fn()->void` definition with one compound body containing just `return;`.
+`fn()->void` definition with a compound body containing either just `return;`
+or no statements (`void noop(void) {}`). The latter uses the original body
+span to attribute its defined implicit return; no invented C return statement
+is inserted into the frontend artifact.
 Clang metadata, target identity, source digest spelling, semantic preorder,
 parent IDs, field grammar and typed-IR provenance are all checked. Unknown or
 duplicate fields, extra source statements and all non-void programs reject.

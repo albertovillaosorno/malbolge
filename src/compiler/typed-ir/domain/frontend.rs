@@ -258,11 +258,34 @@ pub struct FrontendReturnVoidFunctionSpec {
     pub storage_class: String,
 }
 
-/// One frontend function with a single explicit no-value return.
+/// Construction payload for a void function with an empty compound body.
+/// The implicit return belongs to the body, not to a synthetic C statement.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FrontendFallthroughVoidFunctionSpec {
+    /// Normalized compound-statement span.
+    pub body_span: FrontendSpan,
+    /// Normalized declaration definition classification.
+    pub definition: String,
+    /// Complete function-declaration span.
+    pub function_span: FrontendSpan,
+    /// Whether the source declaration explicitly specified `inline`.
+    pub inline_specified: bool,
+    /// Normalized declaration linkage classification.
+    pub linkage: String,
+    /// Portable source-level function name.
+    pub name: String,
+    /// Canonical normalized function type spelling.
+    pub signature: String,
+    /// Normalized declaration storage-class classification.
+    pub storage_class: String,
+}
+
+/// One frontend void function with either an explicit return or empty fallthrough.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FrontendReturnVoidFunction {
     body_span: FrontendSpan,
     definition: String,
+    explicit_return: bool,
     function_span: FrontendSpan,
     inline_specified: bool,
     linkage: String,
@@ -283,6 +306,12 @@ impl FrontendReturnVoidFunction {
     #[must_use]
     pub fn definition(&self) -> &str {
         &self.definition
+    }
+
+    /// Returns whether the source contains an actual `return;` statement.
+    #[must_use]
+    pub const fn explicit_return(&self) -> bool {
+        self.explicit_return
     }
 
     /// Returns the complete function span.
@@ -315,6 +344,7 @@ impl FrontendReturnVoidFunction {
         Self {
             body_span: spec.body_span,
             definition: spec.definition,
+            explicit_return: true,
             function_span: spec.function_span,
             inline_specified: spec.inline_specified,
             linkage: spec.linkage,
@@ -325,7 +355,25 @@ impl FrontendReturnVoidFunction {
         }
     }
 
-    /// Returns the normalized return-statement span.
+    /// Constructs an empty-body void function with an implicit return.
+    /// The body span is also the source attribution for its IR terminator.
+    #[must_use]
+    pub fn new_fallthrough(spec: FrontendFallthroughVoidFunctionSpec) -> Self {
+        Self {
+            body_span: spec.body_span,
+            definition: spec.definition,
+            explicit_return: false,
+            function_span: spec.function_span,
+            inline_specified: spec.inline_specified,
+            linkage: spec.linkage,
+            name: spec.name,
+            return_span: spec.body_span,
+            signature: spec.signature,
+            storage_class: spec.storage_class,
+        }
+    }
+
+    /// Returns either an explicit return span or the empty body's span.
     #[must_use]
     pub const fn return_span(&self) -> FrontendSpan {
         self.return_span

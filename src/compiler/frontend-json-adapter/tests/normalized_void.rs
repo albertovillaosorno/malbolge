@@ -85,6 +85,11 @@ fn normalized_clang_void_json_reaches_canonical_typed_ir_and_real_guest() -> Res
     let projection = decode_void_frontend_json(&bytes(&input))
         .map_err(|error| format!("normalized JSON projection: {error:?}"))?;
     assert_eq!(projection.source_id(), "fixtures/void-return.c");
+    assert!(
+        projection
+            .void_function()
+            .is_some_and(typed::FrontendReturnVoidFunction::explicit_return)
+    );
     let typed_wire = canonical_void_typed_ir(&bytes(&input))
         .map_err(|error| format!("canonical MCTI: {error:?}"))?;
     let decoded = typed::canonical_module(&typed_wire)
@@ -164,6 +169,9 @@ fn normalized_clang_json_rejects_effects_schema_drift_and_duplicate_fields() {
     changed["nodes"][0]["extra"] = json!("ignored-by-wrong-parser");
     cases.push(changed);
     let mut changed = base.clone();
+    changed["nodes"][2]["span"] = changed["nodes"][1]["span"].clone();
+    cases.push(changed);
+    let mut changed = base.clone();
     changed["nodes"]
         .as_array_mut()
         .expect("nodes are array")
@@ -193,4 +201,79 @@ fn normalized_clang_json_rejects_effects_schema_drift_and_duplicate_fields() {
         canonical_void_typed_ir(&vec![b' '; 1_048_577]),
         Err(FrontendJsonError::Malformed)
     );
+}
+
+#[test]
+#[expect(
+    clippy::cognitive_complexity,
+    clippy::default_numeric_fallback,
+    clippy::indexing_slicing,
+    clippy::panic_in_result_fn,
+    clippy::shadow_unrelated,
+    clippy::too_many_lines,
+    reason = "source-shaped JSON and real guest checks share one complete C fixture"
+)]
+fn empty_c_void_body_reaches_verified_implicit_guest_halt() -> Result<(), String> {
+    let source = b"void noop(void) {}";
+    let mut artifact = input();
+    artifact["source"]["id"] = json!("fixtures/void-fallthrough.c");
+    artifact["source"]["sha256"] =
+        json!("13ef0aee923d209381921481fc34e0ac1fa6240b29d0d43e7056f4ecfc00fbcf");
+    artifact["nodes"] = json!([
+        {"id":1, "parent":0, "kind":"function-declaration",
+         "span":span(0,18), "name":"noop", "type":"fn()->void",
+         "definition":"definition", "inline_specified":false,
+         "linkage":"external", "storage_class":"none"},
+        {"id":2, "parent":1, "kind":"compound-statement", "span":span(16,18)}
+    ]);
+    let normalized = bytes(&artifact);
+    let projected = decode_void_frontend_json(&normalized)
+        .map_err(|error| format!("empty C body rejected: {error:?}"))?;
+    let function = projected.void_function().ok_or("missing void function")?;
+    assert!(
+        !function.explicit_return(),
+        "empty body is a fallthrough, not return;"
+    );
+    assert_eq!(function.return_span(), function.body_span());
+    let typed_wire = canonical_void_typed_ir(&normalized)
+        .map_err(|error| format!("empty C body canonical IR: {error:?}"))?;
+    let decoded = typed::canonical_module(&typed_wire)
+        .map_err(|error| format!("decode empty C body: {error:?}"))?;
+    let [function] = decoded.functions() else {
+        return Err(String::from("missing guest function"));
+    };
+    let [block] = function.blocks() else {
+        return Err(String::from("missing guest return block"));
+    };
+    assert!(matches!(
+        block.terminator(),
+        typed::Terminator::Return { value: None }
+    ));
+    assert_eq!(block.terminator_span().begin().byte(), 16);
+    assert_eq!(block.terminator_span().end().byte(), 18);
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    let guest = compile_canonical_typed_empty_void(&typed_wire, profile)
+        .map_err(|error| format!("compile empty C guest: {error:?}"))?;
+    let mut vm = ProfileMachine::from_source(profile, guest.layout().source(), Vec::new())
+        .map_err(|error| format!("load empty C guest: {error:?}"))?;
+    assert!(matches!(
+        vm.run(2),
+        Ok(RunOutcome::Terminated { steps: 2, .. })
+    ));
+    assert!(vm.output().is_empty());
+    assert_eq!(source.len(), 18);
+
+    let mut unsupported = artifact.clone();
+    unsupported["nodes"][1]["kind"] = json!("return-statement");
+    assert_eq!(
+        canonical_void_typed_ir(&bytes(&unsupported)),
+        Err(FrontendJsonError::Unsupported)
+    );
+    let mut invalid_location = artifact;
+    invalid_location["nodes"][1]["span"] = span(18, 20);
+    assert_eq!(
+        canonical_void_typed_ir(&bytes(&invalid_location)),
+        Err(FrontendJsonError::InvalidTypedIr)
+    );
+    Ok(())
 }

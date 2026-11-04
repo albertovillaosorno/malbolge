@@ -51,7 +51,8 @@ use malbolge as _;
 use typed_ir::{
     BasicBlock, BasicBlockSpec, BinaryOp, BlockId, CallTarget,
     CanonicalDecodeError, CanonicalError, CastOp, CompareOp, FrontendArtifact,
-    FrontendArtifactSpec, FrontendLoweringError, FrontendPosition,
+    FrontendArtifactSpec, FrontendFallthroughVoidFunctionSpec,
+    FrontendLoweringError, FrontendPosition,
     FrontendReturnIntegerFunction, FrontendReturnIntegerFunctionSpec,
     FrontendReturnVoidFunction, FrontendReturnVoidFunctionSpec, FrontendSpan,
     Function, FunctionId, FunctionSpec, Global, GlobalId,
@@ -539,6 +540,33 @@ fn frontend_void_projection(signature: &str, returned: FrontendSpan) -> Frontend
 
 fn supported_void_projection() -> FrontendArtifact {
     frontend_void_projection("fn()->void", frontend_span(1224, 18, 1232, 26))
+}
+
+fn frontend_fallthrough_projection(signature: &str, body: FrontendSpan) -> FrontendArtifact {
+    FrontendArtifact::new_void(
+        FrontendArtifactSpec {
+            abi_id: String::from(ABI_ID),
+            artifact_id: String::from("malbolge-c-frontend-v1"),
+            clang_target: String::from("wasm32-unknown-unknown"),
+            clang_version: String::from("22.1.8"),
+            functions: Vec::new(),
+            language: String::from("c23"),
+            schema_version: 1,
+            source_id: String::from("fixtures/void-empty.c"),
+            source_sha256: LOWERING_SOURCE_HASH,
+            target_profile: String::from(PROFILE_ID),
+        },
+        FrontendReturnVoidFunction::new_fallthrough(FrontendFallthroughVoidFunctionSpec {
+            body_span: body,
+            definition: String::from("definition"),
+            function_span: frontend_span(1207, 1, 1235, 29),
+            inline_specified: false,
+            linkage: String::from("external"),
+            name: String::from("noop"),
+            signature: String::from(signature),
+            storage_class: String::from("none"),
+        }),
+    )
 }
 
 fn constant(result: u32, value: u8, source_byte: u32) -> LocatedInstruction {
@@ -1578,6 +1606,52 @@ fn normalized_explicit_void_return_lowers_to_canonical_typed_ir() -> Result<(), 
         enter_typed_ir_compiler_stage(TypedIrCompilerStageInput::Fresh(&frontend)),
         Ok(module)
     );
+    Ok(())
+}
+
+#[test]
+fn empty_void_frontend_has_distinct_implicit_source_attribution() -> Result<(), String> {
+    let body = frontend_span(1222, 16, 1235, 29);
+    let frontend = frontend_fallthrough_projection("fn()->void", body);
+    let projected = frontend
+        .void_function()
+        .ok_or("missing projected void function")?;
+    assert!(!projected.explicit_return());
+    assert_eq!(projected.return_span(), body);
+    let module = lower_frontend_artifact(&frontend)
+        .map_err(|error| format!("lower empty function: {error:?}"))?;
+    let [function] = module.functions() else {
+        return Err(String::from("expected one function"));
+    };
+    let [block] = function.blocks() else {
+        return Err(String::from("expected one empty body"));
+    };
+    assert_eq!(block.span(), block.terminator_span());
+    assert!(block.instructions().is_empty());
+    assert!(matches!(
+        block.terminator(),
+        Terminator::Return { value: None }
+    ));
+    let bytes =
+        canonical_bytes(&module).map_err(|error| format!("encode empty function: {error:?}"))?;
+    assert_eq!(canonical_module(&bytes), Ok(module.clone()));
+    assert_eq!(
+        enter_typed_ir_compiler_stage(TypedIrCompilerStageInput::Fresh(&frontend)),
+        Ok(module)
+    );
+    assert!(matches!(
+        lower_frontend_artifact(&frontend_fallthrough_projection("fn()->i32", body)),
+        Err(FrontendLoweringError::UnsupportedSemantics)
+    ));
+    assert!(matches!(
+        lower_frontend_artifact(&frontend_fallthrough_projection(
+            "fn()->void",
+            frontend_span(1235, 29, 1240, 34)
+        )),
+        Err(FrontendLoweringError::Validation(
+            ValidationError::SourceProvenance
+        ))
+    ));
     Ok(())
 }
 

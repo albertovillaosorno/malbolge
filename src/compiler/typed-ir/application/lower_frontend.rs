@@ -209,9 +209,9 @@ pub(super) fn admit_frontend_function(
     Ok(value)
 }
 
-// A real normalized `return;` has a statement span but no expression,
-// result value, or integer-literal location. Only the exact empty-effect
-// shape may reach the separately verified two-cell target publisher.
+// An explicit `return;` has a statement span, while a truly empty compound
+// body falls through implicitly with the whole body as source attribution.
+// Neither introduces an expression or host-computed guest effect.
 pub(super) fn admit_void_frontend_function(
     function: &FrontendReturnVoidFunction,
 ) -> Result<(), FrontendLoweringError> {
@@ -236,6 +236,8 @@ pub(super) fn admit_void_frontend_function(
         || !valid_span(returned)
         || returned.begin().byte() == returned.end().byte()
         || !span_contains(body, returned)
+        || (function.explicit_return() && returned == body)
+        || (!function.explicit_return() && returned != body)
     {
         return Err(FrontendLoweringError::Validation(
             ValidationError::SourceProvenance,
