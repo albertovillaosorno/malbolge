@@ -61,6 +61,9 @@ from benchmarks.arena import (
 from benchmarks.arena import target_echo_reference as producer
 from scripts.validate import experiment_manifest
 
+# Keep an original source-digest constructor alongside the public providers.
+_NATIVE_SHA256 = sha256
+
 # Keep the source decoder separate from the mutable public TOML entrypoint.
 _SOURCE_TOML_LOADS = tomllib.loads
 _SOURCE_JSON_DECODER = json.JSONDecoder
@@ -174,6 +177,7 @@ def _source_sha256(data: bytes) -> str:
     try:
         digest = sha256(data).hexdigest()
         independent = hashlib.new("sha256", data).hexdigest()
+        source_bound = _NATIVE_SHA256(data).hexdigest()
     except Exception as error:
         message = "target audit source hash computation failed"
         raise TargetEchoAuditError(message) from error
@@ -181,8 +185,8 @@ def _source_sha256(data: bytes) -> str:
         type(value) is not str
         or len(value) != DIGEST_HEX_LENGTH
         or not set(value) <= analyze.SHA256_ALPHABET
-        for value in (digest, independent)
-    ) or digest != independent:
+        for value in (digest, independent, source_bound)
+    ) or digest != source_bound or independent != source_bound:
         _fail("target audit source returned invalid SHA-256 fingerprint")
     return digest
 
@@ -967,6 +971,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
     try:
         digest = sha256()
         independent = hashlib.new("sha256")
+        source_bound = _NATIVE_SHA256()
     except Exception as error:
         message = "target audit executable SHA-256 setup failed"
         raise TargetEchoAuditError(message) from error
@@ -1001,6 +1006,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                 length_prefix = opened.st_size.to_bytes(8, "big")
                 digest.update(length_prefix)
                 independent.update(length_prefix)
+                source_bound.update(length_prefix)
                 remaining = opened.st_size
                 while remaining:
                     requested = min(remaining, 1024 * 1024)
@@ -1009,6 +1015,7 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
                         _fail("target audit executable identity changed")
                     digest.update(chunk)
                     independent.update(chunk)
+                    source_bound.update(chunk)
                     remaining -= len(chunk)
                 trailer = os.read(descriptor, 1)
                 if (
@@ -1064,17 +1071,22 @@ def _tool_identity(emitter: Path, runner: Path) -> str:
     try:
         reported = digest.hexdigest()
         verified = independent.hexdigest()
+        source_bound_receipt = source_bound.hexdigest()
     except Exception as error:
         message = "target audit executable SHA-256 completion failed"
         raise TargetEchoAuditError(message) from error
     if (
         type(reported) is not str
         or type(verified) is not str
+        or type(source_bound_receipt) is not str
         or len(reported) != analyze.SHA256_HEX_LENGTH
         or len(verified) != analyze.SHA256_HEX_LENGTH
+        or len(source_bound_receipt) != analyze.SHA256_HEX_LENGTH
         or not set(reported) <= analyze.SHA256_ALPHABET
         or not set(verified) <= analyze.SHA256_ALPHABET
-        or reported != verified
+        or not set(source_bound_receipt) <= analyze.SHA256_ALPHABET
+        or reported != source_bound_receipt
+        or verified != source_bound_receipt
     ):
         _fail("target audit executable SHA-256 receipt differs from tool bytes")
     return "local-compiler-vm-sha256:" + reported

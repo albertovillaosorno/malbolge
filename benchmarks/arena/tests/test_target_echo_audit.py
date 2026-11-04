@@ -46,6 +46,7 @@ import tempfile
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Never, cast
 
 import pytest
@@ -114,6 +115,27 @@ def test_target_source_rejects_invalid_or_forged_hash_receipt(
     row = {"algorithm": "direct", "case": {"difficulty": 1}, "trial": 0}
     with pytest.raises(audit.TargetEchoAuditError, match="SHA-256"):
         audit._check_source(row, ".temp/arena-target-echo-test", "eof")
+
+
+def test_target_source_rejects_jointly_forged_hash_constructors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An agreement between two forged hash providers proves no source bytes."""
+    data = b"canonical Malbolge source bytes"
+    false_digest = "0" * 64
+    assert sha256(data).hexdigest() != false_digest
+
+    class ForgedHash:
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(audit, "sha256", lambda _data: ForgedHash())
+    monkeypatch.setattr(
+        audit, "hashlib",
+        SimpleNamespace(new=lambda _name, _data: ForgedHash()),
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="SHA-256"):
+        audit._source_sha256(data)
 
 
 @pytest.mark.parametrize("stage", ["construct", "digest"])
@@ -1130,6 +1152,36 @@ def test_tool_fingerprint_rejects_unverified_hash_provider_receipts(
         audit._tool_identity(emitter, runner)
     if receipt == "fault":
         assert caught.value.__cause__ is failure
+
+
+def test_target_tool_rejects_jointly_forged_hash_constructors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Two forged digest constructors cannot certify uninspected tool bytes."""
+    emitter = tmp_path / "emitter"
+    runner = tmp_path / "runner"
+    _ = emitter.write_bytes(b"genuine-emitter")
+    _ = runner.write_bytes(b"genuine-runner")
+    false_digest = "0" * 64
+    expected = sha256()
+    for contents in (b"genuine-emitter", b"genuine-runner"):
+        expected.update(len(contents).to_bytes(8, "big"))
+        expected.update(contents)
+    assert expected.hexdigest() != false_digest
+
+    class ForgedHash:
+        def update(self, _data: bytes) -> None:
+            pass
+
+        def hexdigest(self) -> str:
+            return false_digest
+
+    monkeypatch.setattr(audit, "sha256", ForgedHash)
+    monkeypatch.setattr(
+        audit, "hashlib", SimpleNamespace(new=lambda _name: ForgedHash()),
+    )
+    with pytest.raises(audit.TargetEchoAuditError, match="SHA-256"):
+        audit._tool_identity(emitter, runner)
 
 
 def test_tool_fingerprint_rejects_symlink_substitution_after_admission(
