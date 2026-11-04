@@ -63,6 +63,16 @@ CASE_FIELDS = frozenset({
     "difficulty",
     "workload_sha256",
 })
+# Replay eligibility must not be widened by late mutations of public policy.
+_SOURCE_MAX_BUNDLE_NODES = MAX_BUNDLE_NODES
+_SOURCE_MAX_BUNDLE_VERSION_BITS = MAX_BUNDLE_VERSION_BITS
+_SOURCE_SHA256_HEX_LENGTH = SHA256_HEX_LENGTH
+_SOURCE_SHA256_ALPHABET = SHA256_ALPHABET
+_SOURCE_MAX_SOURCE_BYTES = MAX_SOURCE_BYTES
+_SOURCE_MAX_MANIFEST_BYTES = MAX_MANIFEST_BYTES
+_SOURCE_ORACLE_BYTES = ORACLE_BYTES
+_SOURCE_BUNDLE_FILES = BUNDLE_FILES
+_SOURCE_CASE_FIELDS = CASE_FIELDS
 
 
 class ChallengeBundleError(ValueError):
@@ -77,7 +87,7 @@ def _bounded_case(case: dict[str, Any]) -> None:
     if (
         type(case) is not dict
         or any(type(key) is not str for key in case)
-        or set(case) != CASE_FIELDS
+        or set(case) != _SOURCE_CASE_FIELDS
     ):
         _fail("challenge replay requires an exact arena case")
     if (
@@ -88,14 +98,17 @@ def _bounded_case(case: dict[str, Any]) -> None:
     if type(case["version"]) is not int or type(case["seed"]) is not int:
         _fail("challenge replay requires integer identity fields")
     digest = case["workload_sha256"]
-    if len(digest) != SHA256_HEX_LENGTH or not set(digest) <= SHA256_ALPHABET:
+    if (
+        len(digest) != _SOURCE_SHA256_HEX_LENGTH
+        or not set(digest) <= _SOURCE_SHA256_ALPHABET
+    ):
         _fail("challenge replay requires lowercase SHA-256 workload digest")
-    if case["version"].bit_length() > MAX_BUNDLE_VERSION_BITS:
+    if case["version"].bit_length() > _SOURCE_MAX_BUNDLE_VERSION_BITS:
         _fail("challenge replay requires a bounded version identity")
     nodes = case["difficulty"]
     if type(nodes) is not int or nodes < 1:
         _fail("challenge replay requires positive integer nodes")
-    if nodes > MAX_BUNDLE_NODES:
+    if nodes > _SOURCE_MAX_BUNDLE_NODES:
         _fail("challenge replay exceeds 4096-node preflight limit")
 
 
@@ -145,15 +158,15 @@ def _admit_files(files: dict[str, bytes]) -> None:
     if (
         type(files) is not dict
         or any(type(key) is not str for key in files)
-        or set(files) != set(BUNDLE_FILES)
+        or set(files) != set(_SOURCE_BUNDLE_FILES)
     ):
         _fail("challenge bundle must include all three canonical files")
-    if any(type(files[name]) is not bytes for name in BUNDLE_FILES):
+    if any(type(files[name]) is not bytes for name in _SOURCE_BUNDLE_FILES):
         _fail("challenge bundle payloads must be byte strings")
-    if len(files["oracle.bin"]) != ORACLE_BYTES:
+    if len(files["oracle.bin"]) != _SOURCE_ORACLE_BYTES:
         _fail("challenge bundle oracle must be four bytes")
-    if len(files["program.c"]) > MAX_SOURCE_BYTES or (
-        len(files["manifest.json"]) > MAX_MANIFEST_BYTES
+    if len(files["program.c"]) > _SOURCE_MAX_SOURCE_BYTES or (
+        len(files["manifest.json"]) > _SOURCE_MAX_MANIFEST_BYTES
     ):
         _fail("challenge bundle payload exceeds replay byte limit")
 
@@ -175,7 +188,7 @@ def verify_bundle(
     originals = (produced.source, produced.oracle, produced.manifest)
     if any(
         files[name] != expected
-        for name, expected in zip(BUNDLE_FILES, originals, strict=True)
+        for name, expected in zip(_SOURCE_BUNDLE_FILES, originals, strict=True)
     ):
         _fail(
             "retained challenge bundle differs from deterministic regeneration"
@@ -197,9 +210,9 @@ def verify_bundle(
         type(source_hash) is not str
         or type(independent_hash) is not str
         or type(source_bound_hash) is not str
-        or len(source_hash) != SHA256_HEX_LENGTH
-        or len(independent_hash) != SHA256_HEX_LENGTH
-        or len(source_bound_hash) != SHA256_HEX_LENGTH
+        or len(source_hash) != _SOURCE_SHA256_HEX_LENGTH
+        or len(independent_hash) != _SOURCE_SHA256_HEX_LENGTH
+        or len(source_bound_hash) != _SOURCE_SHA256_HEX_LENGTH
         or source_hash != source_bound_hash
         or independent_hash != source_bound_hash
     ):

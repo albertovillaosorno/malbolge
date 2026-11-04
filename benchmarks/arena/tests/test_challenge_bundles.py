@@ -1206,3 +1206,103 @@ def test_full_evidence_pipeline_rejects_oracle_or_raw_drift(
     admitted = analyze.parse_document(json.dumps(document))
     with pytest.raises(evidence.EvidenceError, match=r"bundle|raw SHA-256"):
         evidence.validate_links(admitted, tmp_path, policy=_all_policy())
+
+
+@pytest.mark.parametrize(
+    ("policy", "substitute", "field", "value"),
+    [
+        ("CASE_FIELDS", challenge_bundles.CASE_FIELDS | {"invented"}, "invented", 1),
+        ("MAX_BUNDLE_NODES", 4097, "difficulty", 4097),
+        ("MAX_BUNDLE_VERSION_BITS", 65, "version", 1 << 64),
+        ("SHA256_HEX_LENGTH", 3, "workload_sha256", "abc"),
+        (
+            "SHA256_ALPHABET",
+            challenge_bundles.SHA256_ALPHABET | {"g"},
+            "workload_sha256",
+            "g" * 64,
+        ),
+    ],
+    ids=["case-fields", "node-limit", "version-bits", "digest-length", "hex-alphabet"],
+)
+def test_challenge_case_source_policy_cannot_be_rebound(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+    substitute: object,
+    field: str,
+    value: object,
+) -> None:
+    """Public policy edits cannot admit an identity rejected by native replay."""
+    case, _files = _direct_bundle()
+    case[field] = value
+    monkeypatch.setattr(challenge_bundles, policy, substitute)
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match="challenge"):
+        challenge_bundles._bounded_case(case)
+
+
+@pytest.mark.parametrize(
+    ("policy", "substitute", "member", "payload"),
+    [
+        (
+            "MAX_SOURCE_BYTES",
+            challenge_bundles.MAX_SOURCE_BYTES + 1,
+            "program.c",
+            b"x" * (challenge_bundles.MAX_SOURCE_BYTES + 1),
+        ),
+        (
+            "MAX_MANIFEST_BYTES",
+            challenge_bundles.MAX_MANIFEST_BYTES + 1,
+            "manifest.json",
+            b"x" * (challenge_bundles.MAX_MANIFEST_BYTES + 1),
+        ),
+        ("ORACLE_BYTES", 3, "oracle.bin", b"abc"),
+    ],
+    ids=["source-limit", "manifest-limit", "oracle-length"],
+)
+def test_challenge_file_source_policy_cannot_be_rebound(
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+    substitute: object,
+    member: str,
+    payload: bytes,
+) -> None:
+    """Increasing local limits cannot admit unregistered bundle contents."""
+    _case, files = _direct_bundle()
+    files[member] = payload
+    monkeypatch.setattr(challenge_bundles, policy, substitute)
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match="bundle"):
+        challenge_bundles._admit_files(files)
+
+
+def test_challenge_bundle_file_names_are_source_bound(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An added file cannot become part of the canonical replay schema."""
+    _case, files = _direct_bundle()
+    files["extra.txt"] = b"invented"
+    monkeypatch.setattr(
+        challenge_bundles,
+        "BUNDLE_FILES",
+        (*challenge_bundles.BUNDLE_FILES, "extra.txt"),
+    )
+    with pytest.raises(challenge_bundles.ChallengeBundleError, match="bundle"):
+        challenge_bundles._admit_files(files)
+
+
+def test_challenge_replay_keeps_native_policy_after_public_limits_lowered(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Public settings cannot reject valid original bytes or change replay."""
+    case, files = _direct_bundle()
+    for policy, substitute in (
+        ("CASE_FIELDS", frozenset()),
+        ("MAX_BUNDLE_NODES", 1),
+        ("MAX_BUNDLE_VERSION_BITS", 0),
+        ("SHA256_HEX_LENGTH", 3),
+        ("SHA256_ALPHABET", frozenset()),
+        ("MAX_SOURCE_BYTES", 1),
+        ("MAX_MANIFEST_BYTES", 1),
+        ("ORACLE_BYTES", 1),
+        ("BUNDLE_FILES", ("not-a-source.txt",)),
+    ):
+        monkeypatch.setattr(challenge_bundles, policy, substitute)
+    assert challenge_bundles.verify_bundle(case, PROFILE, files) == case["workload_sha256"]
