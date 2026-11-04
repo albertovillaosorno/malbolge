@@ -161,8 +161,12 @@ class HistoricalEvidenceError(ValueError):
     """Retained paired research evidence has an incompatible identity."""
 
 
+# Preserve the importer-owned typed failure and CLI diagnostic authority.
+_SOURCE_HISTORICAL_EVIDENCE_ERROR = HistoricalEvidenceError
+
+
 def _fail(message: str) -> Never:
-    raise HistoricalEvidenceError(message)
+    raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message)
 
 
 def _native_error_detail(error: Exception, *trusted: type[Exception]) -> str:
@@ -202,7 +206,7 @@ def _source(root: Path, relative: str) -> tuple[str, str]:
     except Exception as error:
         # Hash dependencies are not an authority for exception formatting.
         message = "historical source hash computation failed"
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     if any(
         type(fingerprint) is not str
         or len(fingerprint) != _SOURCE_SHA256_LENGTH
@@ -284,7 +288,7 @@ def _admit_csv_text(text: str) -> None:
         size = len(text.encode("utf-8"))
     except UnicodeError as error:
         message = "historical raw CSV requires strict UTF-8 text"
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     if size > _SOURCE_MAX_SOURCE_BYTES:
         _fail("historical raw CSV requires exact bounded text")
 
@@ -310,7 +314,7 @@ def _csv_rows(
     except Exception as error:
         # Never trust the preflight dependency to supply or format a verdict.
         message = "historical raw CSV column preflight failed"
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     if type(column_receipt) is not bool:
         _fail("historical raw CSV column preflight returned nonnative verdict")
     if not column_receipt:
@@ -323,17 +327,17 @@ def _csv_rows(
         if type(fields) is not list or any(type(field) is not str for field in fields):
             _fail("historical raw CSV parser returned non-native CSV header")
         records = _bounded_csv_rows(reader, expected_rows)
-    except HistoricalEvidenceError:
+    except _SOURCE_HISTORICAL_EVIDENCE_ERROR:
         raise
     except csv.Error as error:
         detail = _native_error_detail(error, csv.Error)
         message = f"malformed historical raw CSV: {detail}"
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     except Exception as error:
         # Any ordinary CSV dependency failure must remain a typed rejection.
         # The exception class is safe to report; its formatter is not.
         message = f"malformed historical raw CSV parser: {type(error).__name__}"
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     _csv_shape(fields, records, registered_fields=registered_fields)
     _require_source_csv_rows(text, fields, records, expected_rows=expected_rows)
     return records
@@ -376,11 +380,11 @@ def _require_source_csv_rows(
             if len(values) != len(source_fields):
                 _fail("historical source CSV has incomplete or excess columns")
             source_rows.append(dict(zip(source_fields, values, strict=True)))
-    except HistoricalEvidenceError:
+    except _SOURCE_HISTORICAL_EVIDENCE_ERROR:
         raise
     except Exception as error:
         message = "historical source CSV parser failed"
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     if fields != source_fields or records != source_rows:
         _fail("historical raw CSV parser receipt differs from source")
 
@@ -662,7 +666,7 @@ def _require_source_toml(document: object, text: str) -> dict[str, Any]:
         matches = _same_native_toml(document, source)
     except Exception as error:
         message = "historical source TOML validation failed"
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     if not matches:
         _fail("historical decoded values differ from source TOML")
     # A substituted equivalent parser may hold a mutable alias to its receipt.
@@ -854,7 +858,7 @@ def _admitted_report_json(document: dict[str, Any]) -> str:
             "historical paired JSON serializer failed: "
             f"{type(error).__name__}"
         )
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     _require_source_json_encoder()
     try:
         observed = json.dumps(document)
@@ -863,7 +867,7 @@ def _admitted_report_json(document: dict[str, Any]) -> str:
             "historical paired JSON serializer failed: "
             f"{type(error).__name__}"
         )
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
     _require_source_json_encoder()
     if (
         type(source) is not str
@@ -934,7 +938,7 @@ def build_report(root: Path, relative: str) -> dict[str, Any]:
             RecursionError,
             csv.Error,
             tomllib.TOMLDecodeError,
-            HistoricalEvidenceError,
+            _SOURCE_HISTORICAL_EVIDENCE_ERROR,
             evidence.EvidenceError,
             analyze.ArenaError,
             experiment_manifest.ExperimentManifestError,
@@ -942,7 +946,7 @@ def build_report(root: Path, relative: str) -> dict[str, Any]:
         )
         diagnostic = _native_error_detail(error, *native_parser_errors)
         message = f"historical paired source inconsistent: {diagnostic}"
-        raise HistoricalEvidenceError(message) from error
+        raise _SOURCE_HISTORICAL_EVIDENCE_ERROR(message) from error
 
 
 def main() -> int:
@@ -960,7 +964,7 @@ def main() -> int:
         report = build_report(args.root, args.source)
         report_output.publish(report, sys.stdout)
     except (
-        HistoricalEvidenceError,
+        _SOURCE_HISTORICAL_EVIDENCE_ERROR,
         experiment_manifest.ExperimentManifestError,
         benchmark_protocol.BenchmarkProtocolError,
         report_output.ReportOutputError,
@@ -969,7 +973,7 @@ def main() -> int:
     ) as error:
         detail = _native_error_detail(
             error,
-            HistoricalEvidenceError,
+            _SOURCE_HISTORICAL_EVIDENCE_ERROR,
             experiment_manifest.ExperimentManifestError,
             benchmark_protocol.BenchmarkProtocolError,
             report_output.ReportOutputError,

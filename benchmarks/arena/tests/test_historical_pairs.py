@@ -2266,3 +2266,110 @@ def test_historical_integer_preserves_valid_source_under_alias_mutation(
         historical_pairs, provider, replacements[provider], raising=False
     )
     assert historical_pairs._integer("12", "repetition") == 12
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+@pytest.mark.parametrize(
+    ("stage", "diagnostic"),
+    [
+        ("fail", "native historical rejection"),
+        ("number", "invalid historical numeric field"),
+        ("utf8", "strict UTF-8 text"),
+        ("csv-reader", "malformed historical raw CSV: invalid source CSV"),
+        ("csv-preflight", "column preflight failed"),
+        ("json-writer", "JSON serializer failed: OSError"),
+        ("source-hash", "source hash computation failed"),
+        ("build", "historical paired source inconsistent: original failure"),
+    ],
+)
+def test_historical_error_alias_preserves_native_rejection(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    stage: str,
+    diagnostic: str,
+) -> None:
+    """Native retained-evidence errors keep their type and diagnostic."""
+    original_error = historical_pairs.HistoricalEvidenceError
+    fields = historical_pairs.REGISTERED_RAW_COLUMNS[
+        "prefix_decomposition_measurement"
+    ]
+    with monkeypatch.context() as patched:
+        patched.setattr(historical_pairs, "HistoricalEvidenceError", replacement)
+        if stage == "csv-reader":
+            def malformed(*_args: object, **_kwargs: object) -> None:
+                raise csv.Error("invalid source CSV")
+            patched.setattr(historical_pairs.csv, "DictReader", malformed)
+        elif stage == "csv-preflight":
+            def unavailable(*_args: object, **_kwargs: object) -> None:
+                raise OSError("preflight unavailable")
+            patched.setattr(
+                historical_pairs.csv_admission, "within_column_limit", unavailable
+            )
+        elif stage == "json-writer":
+            def failed_json(*_args: object, **_kwargs: object) -> None:
+                raise OSError("writer unavailable")
+            patched.setattr(historical_pairs.json, "dumps", failed_json)
+        elif stage == "source-hash":
+            patched.setattr(
+                historical_pairs.evidence,
+                "read_bounded_regular",
+                lambda *_args, **_kwargs: b"source contents",
+            )
+            def unavailable_hash(_raw: bytes) -> None:
+                raise OSError("hash unavailable")
+            patched.setattr(historical_pairs, "sha256", unavailable_hash)
+        elif stage == "build":
+            def missing_run(*_args: object, **_kwargs: object) -> None:
+                raise original_error("original failure")
+            patched.setattr(historical_pairs, "_build_report", missing_run)
+        with pytest.raises(original_error, match=diagnostic):
+            if stage == "fail":
+                historical_pairs._fail("native historical rejection")
+            elif stage == "number":
+                historical_pairs._integer("NaN", "cost")
+            elif stage == "utf8":
+                historical_pairs._admit_csv_text("\ud800")
+            elif stage in ("csv-reader", "csv-preflight"):
+                historical_pairs._csv_rows(
+                    "repetition,strategy_id\n0,baseline\n",
+                    registered_fields=fields,
+                    expected_rows=1,
+                )
+            elif stage == "json-writer":
+                historical_pairs._admitted_report_json({"status": "reported"})
+            elif stage == "source-hash":
+                historical_pairs._source(REPO, BASE + PREFIX)
+            else:
+                historical_pairs.build_report(REPO, BASE + PREFIX)
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_historical_error_alias_preserves_cli_native_detail(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    replacement: object,
+) -> None:
+    """CLI still reports the original bounded native importer error."""
+    native_error = historical_pairs.HistoricalEvidenceError
+    def failed_report(*_args: object, **_kwargs: object) -> None:
+        raise native_error("exact retained source error")
+    with monkeypatch.context() as patched:
+        patched.setattr(historical_pairs, "HistoricalEvidenceError", replacement)
+        patched.setattr(historical_pairs, "build_report", failed_report)
+        patched.setattr(sys, "argv", ["historical-pairs", BASE + PREFIX])
+        with pytest.raises(SystemExit, match="2"):
+            historical_pairs.main()
+    captured = capsys.readouterr()
+    assert not captured.out
+    assert "exact retained source error" in captured.err
+
+
+@pytest.mark.parametrize("replacement", [object(), RuntimeError])
+def test_historical_error_alias_preserves_valid_replay(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Valid retained research evidence still imports under a late error alias."""
+    expected = _result(REUSE)
+    with monkeypatch.context() as patched:
+        patched.setattr(historical_pairs, "HistoricalEvidenceError", replacement)
+        assert _result(REUSE) == expected
