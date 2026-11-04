@@ -58,6 +58,9 @@ VM = BIN_ROOT / "malbolge"
 EXAMPLE_Q = ROOT / "src/interface/command-line/composition/examples/emit-qp.c"
 EXAMPLE_ZPH = ROOT / "src/interface/command-line/composition/examples/emit-zph.c"
 EXAMPLE_T4 = ROOT / "src/interface/command-line/composition/examples/emit-t4.c"
+EXAMPLE_QESC79 = ROOT / "docs/technical/examples/corpus/emit-qesc79.c"
+EXAMPLE_QOP6 = ROOT / "docs/technical/examples/corpus/emit-qop6.c"
+EXAMPLE_SEVEN = ROOT / "docs/technical/examples/corpus/emit-seven.c"
 
 
 @final
@@ -200,6 +203,38 @@ class RawProfileNativePipelineTests(unittest.TestCase):
                 outputs.append(executed)
             self.assertEqual(outputs[0].stdout, outputs[1].stdout)
             self.assertEqual(outputs[0].stderr, outputs[1].stderr)
+
+
+    def test_five_through_seven_binary_guest_bytes_raw_match_capsule(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory_name:
+            directory = Path(directory_name)
+            for name, source, expected, steps in (
+                ("five-distinct", EXAMPLE_QESC79, b'Q"\x1b79', 23),
+                ("six-distinct", EXAMPLE_QOP6, b"Q\x1cO\x1dP\x1b", 15),
+                ("seven-distinct", EXAMPLE_SEVEN, b"6>5\x02T\x1f\x18", 21),
+            ):
+                with self.subTest(name=name):
+                    outputs: list[subprocess.CompletedProcess[bytes]] = []
+                    for capsule in (False, True):
+                        mode = "capsule" if capsule else "raw"
+                        guest_file = directory / f"{name}-{mode}.malbolge"
+                        built = self.compile_c(source, guest_file, capsule=capsule)
+                        self.assertEqual(built.returncode, 0, built.stderr)
+                        self.assertTrue(guest_file.is_file())
+                        if not capsule:
+                            self.assertTrue(
+                                all(33 <= byte <= 126 for byte in guest_file.read_bytes())
+                            )
+                        executed = self.run_guest(guest_file, raw=not capsule)
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(executed.stdout, expected)
+                        self.assertEqual(
+                            executed.stderr,
+                            f"malbolge-steps-v1:{steps}\n".encode("ascii"),
+                        )
+                        outputs.append(executed)
+                    self.assertEqual(outputs[0].stdout, outputs[1].stdout)
+                    self.assertEqual(outputs[0].stderr, outputs[1].stderr)
 
 
 if __name__ == "__main__":

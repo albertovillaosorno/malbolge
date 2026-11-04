@@ -33,7 +33,7 @@
 
 use std::fs::{create_dir_all, read, remove_dir_all, write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output, id};
+use std::process::{id, Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use malbolge as _;
@@ -120,6 +120,24 @@ fn public_compile_preserves_witnessed_output_sequences() -> Result<(), String> {
             "four-distinct",
             "putchar('T'); putchar('='); putchar('4'); putchar('>');",
             b"T=4>",
+            21,
+        ),
+        (
+            "five-distinct-binary",
+            "putchar('Q'); putchar('\"'); putchar(27); putchar('7'); putchar('9');",
+            b"Q\"\x1b79",
+            23,
+        ),
+        (
+            "six-distinct-binary",
+            "putchar(81); putchar(28); putchar(79); putchar(29); putchar(80); putchar(27);",
+            b"Q\x1cO\x1dP\x1b",
+            15,
+        ),
+        (
+            "seven-distinct-binary",
+            "putchar('6'); putchar('>'); putchar('5'); putchar(2); putchar('T'); putchar(31); putchar(24);",
+            b"6>5\x02T\x1f\x18",
             21,
         ),
         ("void-a", "(void) putchar ( 65 );", b"A", 31),

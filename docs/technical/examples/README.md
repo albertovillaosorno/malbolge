@@ -23,3 +23,9 @@ External source authority, research conclusions, legal analysis, or TODO state.
   stable capsule digest, reproducible compilation, and VM output contract.
 - `corpus/emit-t4.md`: versioned four-distinct-byte guest C example,
   byte-identical regeneration, and 21-step normative VM trace.
+- `corpus/emit-qesc79.md`: five distinct C/guest bytes with embedded ESC,
+  deterministic capsule identity, and 23-step VM evidence.
+- `corpus/emit-qop6.md`: six guest-computed bytes including FS, GS and ESC,
+  SHA-pinned capsule and 15-step normative VM execution.
+- `corpus/emit-seven.md`: seven distinct guest-computed bytes including STX,
+  US and CAN, byte-exact regeneration and 21-step VM receipt.
