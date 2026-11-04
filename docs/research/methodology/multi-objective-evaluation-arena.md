@@ -1857,10 +1857,15 @@ The original study records remain the result authority.
   metadata. The evidence reader now also classifies typed failures by actual
   native exception ancestry (`afe42d071`); ten failing-first cases reject
   spoofed `__class__` and `isinstance` while retaining genuine subclasses.
-  After the last change, 458 evidence tests and 1,110 integrated
-  evidence/analyzer/CSV/study-file tests passed, with zero arena BasedPyright
-  diagnostics. Eight pre-existing evidence Ruff findings remained unchanged.
-  These 35 red-first checks protect local file and error admission only; they
+  Descriptor, byte-budget, root and relative-path preflights also bind the
+  original native `type`, `int`, `str` and concrete Path types (`7fd2e09e7`).
+  Ten additional red-first cases reject Boolean descriptors and limits,
+  subclass paths, forged resolution receipts, and altered type checks while
+  preserving legitimate inputs. The 468 evidence tests and 1,120 integrated
+  evidence/analyzer/CSV/study-file tests passed after that commit, with zero
+  arena BasedPyright diagnostics. Eight pre-existing evidence Ruff findings
+  remained unchanged and the scoped line-length check passed.
+  These 45 red-first checks protect local file and error admission only; they
   do not prove atomic filesystem snapshots, source authenticity, host-I/O
   attestation, or original experiment outcomes. `jig doctor` remained degraded
   and an independent 90-second `jig check` timed out without a verdict.
