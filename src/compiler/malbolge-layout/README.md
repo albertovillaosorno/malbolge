@@ -598,3 +598,15 @@ The normative VM independently emits all six binary bytes in 15 steps with
 no consumed input. Both raw and capsule publishers recheck this witness;
 unsupported values, partial prefixes, extra output, or stale SSA fail closed.
 This does not implement general C string output or the guest C runtime.
+
+### Seven distinct guest-computed bytes (bounded binary witness)
+
+The opt-in `--distinct-literal-seven` path admits only the independently
+verified current-profile C output trace `36 3e 35 02 54 1f 18` (hex). Seven
+source-bound `u8` SSA definitions survive canonical typed/MCTR admission.
+Five inert no-ops and one data-pointer relocation precede seven separate
+guest `CrazyData` writes and outputs, with data cells outside the source.
+Both raw and capsule publication require normative VM output of these exact
+seven bytes in 21 steps, independent of unused input. Incorrect prefixes,
+reordered bytes, extra output and altered SSA are rejected without publication.
+This remains a finite witness, not general C byte-string lowering.
