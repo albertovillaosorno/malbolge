@@ -104,6 +104,15 @@ class EvidenceError(ValueError):
 # Reject with the original evidence class, including while classifying cleanup
 # failures and rendering trusted nested diagnostics after consumer rebinding.
 _SOURCE_EVIDENCE_ERROR = EvidenceError
+# Filesystem and stream admission must not accept late-rebound public stdlib
+# type or mode classifiers as native source evidence.
+_SOURCE_TYPE = type
+_SOURCE_STAT_RESULT = os.stat_result
+_SOURCE_ISLNK = stat.S_ISLNK
+_SOURCE_ISREG = stat.S_ISREG
+_SOURCE_ISDIR = stat.S_ISDIR
+_SOURCE_BUFFERED_READER = io.BufferedReader
+_SOURCE_FILE_IO = io.FileIO
 
 
 def _fail(message: str) -> Never:
@@ -166,7 +175,7 @@ def _admit_root(root: Path) -> None:
 
 def _native_stat(details: os.stat_result) -> os.stat_result:
     """Require native metadata before consulting identity or size fields."""
-    if type(details) is not os.stat_result:
+    if _SOURCE_TYPE(details) is not _SOURCE_STAT_RESULT:
         _fail("evidence returned invalid filesystem metadata")
     return details
 
@@ -223,10 +232,10 @@ def regular_path(
     for segment in segments:
         current /= segment
         mode = _path_lstat(current, relative).st_mode
-        if stat.S_ISLNK(mode):
+        if _SOURCE_ISLNK(mode):
             _fail(f"evidence symlink is not admitted: {relative}")
     details = _path_lstat(current, relative)
-    if not stat.S_ISREG(details.st_mode) or details.st_size == 0:
+    if not _SOURCE_ISREG(details.st_mode) or details.st_size == 0:
         _fail(f"evidence must be a nonempty ordinary file: {relative}")
     if limit is not None and details.st_size > limit:
         _fail(f"evidence exceeds byte limit: {relative}")
@@ -251,7 +260,7 @@ def _parent_identity(path: Path, relative: str) -> tuple[int, int]:
         parent = _native_stat(path.parent.stat())
     except Exception as error:
         raise _SOURCE_EVIDENCE_ERROR(message) from error
-    if not stat.S_ISDIR(parent.st_mode):
+    if not _SOURCE_ISDIR(parent.st_mode):
         _fail(message)
     return parent.st_dev, parent.st_ino
 
@@ -304,7 +313,10 @@ def _open_evidence(path: Path) -> IO[bytes]:
         # The original raw descriptor must own the actual native file read.
         # A foreign stream can report its inode yet fabricate returned bytes;
         # even a native buffer may wrap a substituted raw source or handle.
-        if type(stream) is not io.BufferedReader or type(stream.raw) is not io.FileIO:
+        if (
+            _SOURCE_TYPE(stream) is not _SOURCE_BUFFERED_READER
+            or _SOURCE_TYPE(stream.raw) is not _SOURCE_FILE_IO
+        ):
             _fail(f"evidence stream is not a native buffered file: {path}")
         if _admit_descriptor(stream.fileno(), source="stream") != descriptor:
             _fail(f"evidence stream descriptor differs from opened descriptor: {path}")
@@ -368,7 +380,7 @@ def read_bounded_regular(root: Path, relative: str, *, limit: int) -> bytes:
             try:
                 opened_fd = _admit_descriptor(stream.fileno(), source="stream")
                 opened = _native_stat(os.fstat(opened_fd))
-                if not stat.S_ISREG(opened.st_mode) or (
+                if not _SOURCE_ISREG(opened.st_mode) or (
                     _file_identity(original) != _file_identity(opened)
                 ):
                     _fail(

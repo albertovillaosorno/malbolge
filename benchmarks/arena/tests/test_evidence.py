@@ -4051,3 +4051,144 @@ def test_evidence_error_rebinding_leaves_native_bytes_unchanged(
     with monkeypatch.context() as patched:
         patched.setattr(evidence, "EvidenceError", replacement)
         assert evidence.read_bounded_regular(tmp_path, path.name, limit=1024) == payload
+
+
+@pytest.mark.parametrize("predicate", ["S_ISLNK", "S_ISREG"])
+def test_evidence_mode_predicate_rebinding_cannot_admit_foreign_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, predicate: str
+) -> None:
+    """Late mode-classifier aliases cannot authorize a link or a directory."""
+    source = tmp_path / "original"
+    source.mkdir()
+    _ = (source / "raw.bin").write_bytes(b"native source")
+    alias = tmp_path / "alias"
+    alias.symlink_to(source, target_is_directory=True)
+    with monkeypatch.context() as patched:
+        patched.setattr(
+            evidence.stat, predicate, lambda _mode: predicate != "S_ISLNK"
+        )
+        if predicate == "S_ISLNK":
+            with pytest.raises(evidence.EvidenceError, match="symlink"):
+                evidence.regular_path(tmp_path, "alias/raw.bin")
+        else:
+            with pytest.raises(evidence.EvidenceError, match="ordinary file"):
+                evidence.regular_path(tmp_path, "original")
+
+
+@pytest.mark.parametrize("predicate", ["S_ISREG", "S_ISDIR"])
+def test_evidence_mode_predicate_rebinding_preserves_native_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, predicate: str
+) -> None:
+    """A replaced public classifier cannot reject genuine source metadata."""
+    source = tmp_path / "raw.bin"
+    payload = b"native source"
+    _ = source.write_bytes(payload)
+    parent = source.parent.stat()
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence.stat, predicate, lambda _mode: False)
+        if predicate == "S_ISDIR":
+            # pathlib.resolve itself uses stat.S_ISDIR on this platform.
+            assert evidence._parent_identity(source, source.name) == (
+                parent.st_dev,
+                parent.st_ino,
+            )
+        else:
+            assert evidence.read_bounded_regular(tmp_path, source.name, limit=1024) == payload
+
+
+def test_evidence_rejects_foreign_metadata_with_rebound_native_stat_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A public stat_result alias cannot confer native filesystem identity."""
+    source = tmp_path / "raw.bin"
+    _ = source.write_bytes(b"native source")
+    original_lstat = Path.lstat
+
+    def substituted_lstat(target: Path, *args: Any, **kwargs: Any) -> stat_result:
+        if target == source:
+            return cast("stat_result", _ForeignEvidenceStat())
+        return original_lstat(target, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence.os, "stat_result", _ForeignEvidenceStat)
+        patched.setattr(Path, "lstat", substituted_lstat)
+        with pytest.raises(evidence.EvidenceError, match="invalid filesystem metadata"):
+            evidence.regular_path(tmp_path, source.name)
+
+
+def test_evidence_native_metadata_ignores_rebound_stat_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Substituted public stat result identities cannot discard valid bytes."""
+    source = tmp_path / "raw.bin"
+    payload = b"native source"
+    _ = source.write_bytes(payload)
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence.os, "stat_result", _ForeignEvidenceStat)
+        assert evidence.read_bounded_regular(tmp_path, source.name, limit=1024) == payload
+
+
+class _ForeignEvidenceBuffer:
+    """Forged fdopen result with an apparently correct raw descriptor."""
+
+    raw: object
+
+    def __init__(self, descriptor: int) -> None:
+        self.descriptor = descriptor
+        self.raw = _ForeignEvidenceRaw()
+
+    def fileno(self) -> int:
+        return self.descriptor
+
+
+class _ForeignEvidenceRaw:
+    """Foreign raw reader that must never be used as a source receipt."""
+
+
+def test_evidence_rejects_stream_with_replaced_io_class_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Late io.BufferedReader/FileIO replacement cannot approve fake fdopen."""
+    source = tmp_path / "raw.bin"
+    _ = source.write_bytes(b"native source")
+    original_open = evidence.os.open
+    descriptors: list[int] = []
+
+    def traced_open(target: Path, flags: int) -> int:
+        descriptor = original_open(target, flags)
+        descriptors.append(descriptor)
+        return descriptor
+
+    def foreign_fdopen(descriptor: int, _mode: str) -> Any:
+        return _ForeignEvidenceBuffer(descriptor)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence.os, "open", traced_open)
+        patched.setattr(evidence.os, "fdopen", foreign_fdopen)
+        patched.setattr(evidence.io, "BufferedReader", _ForeignEvidenceBuffer)
+        patched.setattr(evidence.io, "FileIO", _ForeignEvidenceRaw)
+        try:
+            with pytest.raises(evidence.EvidenceError, match="native buffered file"):
+                evidence._open_evidence(source)
+        finally:
+            for descriptor in descriptors:
+                try:
+                    evidence.os.close(descriptor)
+                except OSError:
+                    pass
+    assert len(descriptors) == 1
+    with pytest.raises(OSError):
+        evidence.os.fstat(descriptors[0])
+
+
+def test_evidence_native_stream_ignores_replaced_io_class_aliases(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Valid buffered source bytes survive public stream-name replacement."""
+    source = tmp_path / "raw.bin"
+    payload = b"native source"
+    _ = source.write_bytes(payload)
+    with monkeypatch.context() as patched:
+        patched.setattr(evidence.io, "BufferedReader", _ForeignEvidenceBuffer)
+        patched.setattr(evidence.io, "FileIO", _ForeignEvidenceRaw)
+        assert evidence.read_bounded_regular(tmp_path, source.name, limit=1024) == payload
