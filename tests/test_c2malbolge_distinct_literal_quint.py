@@ -72,7 +72,7 @@ class DistinctLiteralQuintSourceTests(unittest.TestCase):
             self.skipTest("pinned compiler and normative guest VM required")
 
     def compile(
-        self, directory: Path, name: str, statements: str
+        self, directory: Path, name: str, statements: str, *, capsule: bool = True
     ) -> tuple[subprocess.CompletedProcess[bytes], Path]:
         source = directory / f"{name}.c"
         guest = directory / f"{name}.malbolge"
@@ -99,7 +99,7 @@ class DistinctLiteralQuintSourceTests(unittest.TestCase):
                 f"fixtures/{name}.c",
                 "--output",
                 str(guest),
-                "--capsule",
+                *(["--capsule"] if capsule else []),
                 str(source),
             ],
             capture_output=True,
@@ -123,6 +123,40 @@ class DistinctLiteralQuintSourceTests(unittest.TestCase):
             self.assertEqual(guest.returncode, 0, guest.stderr)
             self.assertEqual(guest.stdout, OUTPUT)
             self.assertEqual(guest.stderr, b"malbolge-steps-v1:23\n")
+
+    def test_raw_profile_matches_capsule_binary_guest_output(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as name:
+            directory = Path(name)
+            compiled, artifact = self.compile(
+                directory, "five-guest-raw", SOURCE, capsule=False
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            guest = subprocess.run(
+                [
+                    str(VM),
+                    str(artifact),
+                    "--raw-profile",
+                    "malbolge-2026",
+                    "--report-steps",
+                ],
+                capture_output=True,
+                check=False,
+                timeout=60,
+            )
+            self.assertEqual(guest.returncode, 0, guest.stderr)
+            self.assertEqual(guest.stdout, OUTPUT)
+            self.assertEqual(guest.stderr, b"malbolge-steps-v1:23\n")
+
+    def test_preexisting_target_refuses_clobber(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as name:
+            directory = Path(name)
+            artifact = directory / "preexisting.malbolge"
+            _ = artifact.write_bytes(b"previous-owner-binary\x00")
+            compiled, target = self.compile(directory, "preexisting", SOURCE)
+            self.assertEqual(target, artifact)
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertEqual(artifact.read_bytes(), b"previous-owner-binary\x00")
 
     def test_unproved_five_byte_traces_and_prefixes_never_publish(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as name:
