@@ -59,6 +59,8 @@ const MAX_COMPOUND_DEPTH: usize = 64;
 const MAX_LITERAL_OUTPUT_CALLS: usize = 33;
 const MAX_OUTPUT_PARENTHESES: usize = 3;
 const MAX_OUTPUT_ARGUMENT_WRAPPERS: usize = MAX_OUTPUT_PARENTHESES + 1;
+// Bound extra same-line source bytes between AST-delimited C tokens.
+const MAX_OUTPUT_INLINE_PADDING: u32 = 16;
 const MAX_INERT_OUTPUT_STATEMENTS: usize = 128;
 const MAX_NESTED_OUTPUT_SCOPES: usize = 128;
 
@@ -481,6 +483,24 @@ const fn typed_span(value: &Span) -> typed::SourceSpan {
     )
 }
 
+// Clang's normalized preorder has complete semantic ancestry but carries only
+// offsets, not source text. Accept short gaps around source delimiters only
+// when byte and column distances agree on one line. The pinned AST, source
+// digest check, and closed node grammar still prove the guest byte effect.
+fn bounded_inline_gap(before: &Position, after: &Position, required: u32) -> bool {
+    before.line != 0
+        && before.line == after.line
+        && before.column != 0
+        && before
+            .byte
+            .checked_add(required)
+            .is_some_and(|start| start <= after.byte)
+        && after.byte.checked_sub(before.byte).is_some_and(|gap| {
+            gap <= required.saturating_add(MAX_OUTPUT_INLINE_PADDING)
+                && after.column.checked_sub(before.column) == Some(gap)
+        })
+}
+
 // Each direct putchar call has the pinned Clang semantic preorder:
 // call -> function decay -> declaration ref -> bounded argument wrappers ->
 // literal. One signed unary may occur at any position in a source-exact
@@ -612,13 +632,8 @@ fn admitted_output_byte(
                 parentheses <= MAX_OUTPUT_PARENTHESES
                     && node.type_name == child.type_name
                     && node.operation.is_none()
-                    && node_span.begin.byte.checked_add(1) == Some(child_span.begin.byte)
-                    && child_span.end.byte.checked_add(1) == Some(node_span.end.byte)
-                    && node_span.begin.line == node_span.end.line
-                    && child_span.begin.line == child_span.end.line
-                    && node_span.begin.line == child_span.begin.line
-                    && node_span.begin.column.checked_add(1) == Some(child_span.begin.column)
-                    && child_span.end.column.checked_add(1) == Some(node_span.end.column)
+                    && bounded_inline_gap(&node_span.begin, &child_span.begin, 1)
+                    && bounded_inline_gap(&child_span.end, &node_span.end, 1)
             }
             "cast-expression" => {
                 index == 0
@@ -639,11 +654,9 @@ fn admitted_output_byte(
                     && node.type_name.as_deref() == Some("i32")
                     && child.type_name.as_deref() == Some("i32")
                     && matches!(node.operation.as_deref(), Some("+" | "-"))
-                    && node_span.begin.byte.checked_add(1) == Some(child_span.begin.byte)
+                    && bounded_inline_gap(&node_span.begin, &child_span.begin, 1)
                     && node_span.end.byte == child_span.end.byte
-                    && node_span.begin.line == child_span.begin.line
                     && node_span.end.line == child_span.end.line
-                    && node_span.begin.column.checked_add(1) == Some(child_span.begin.column)
                     && node_span.end.column == child_span.end.column
             }
             _ => false,
@@ -654,10 +667,6 @@ fn admitted_output_byte(
         parent_id = node.id;
         next_id = next_id.checked_add(1)?;
     }
-    let argument_width = argument_span
-        .end
-        .byte
-        .checked_sub(argument_span.begin.byte)?;
     let valid = literal.id == next_id
         && literal.parent == parent_id
         && call.id == expected_id
@@ -696,14 +705,12 @@ fn admitted_output_byte(
         && call_span.begin.byte == cast_span.begin.byte
         && cast_span.begin.byte == callee_span.begin.byte
         && cast_span.end.byte == callee_span.end.byte
-        && cast_span.end.byte.checked_add(1) == Some(argument_span.begin.byte)
-        && argument_span.end.byte < call_span.end.byte
+        && bounded_inline_gap(&cast_span.end, &argument_span.begin, 1)
+        && bounded_inline_gap(&argument_span.end, &call_span.end, 1)
+        && cast_span.begin.column == call_span.begin.column
+        && cast_span.begin.line == call_span.begin.line
         && cast_span.begin.byte.checked_add(7) == Some(cast_span.end.byte)
         && literal_span.begin.byte.checked_add(width) == Some(literal_span.end.byte)
-        && argument_width
-            .checked_add(9)
-            .and_then(|call_width| call_span.begin.byte.checked_add(call_width))
-            == Some(call_span.end.byte)
         && [
             call_span,
             cast_span,

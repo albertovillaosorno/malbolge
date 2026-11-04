@@ -58,6 +58,13 @@ For example, `putchar((65)); putchar(65u);`, `putchar(+65); putchar(-191);`,
 `putchar('\0');` retain Clang's source spans and evaluated integer values.
 The C `putchar` low-byte conversion is applied only after checked `i32`
 admission, never by truncating a malformed or overflowing JSON integer.
+Ordinary one-line spacing around `putchar (` calls, literal arguments,
+parentheses and the optional unary sign is supported. Each separating gap
+requires its Clang-reported byte and column distance to agree and admits at
+most 16 additional bytes beyond the syntactic delimiter; arbitrary long gaps
+and cross-line argument wrappers remain unsupported. The normalized JSON does
+not contain the source text: the closed pinned-Clang AST and the public driver's
+source SHA-256 check remain the semantic and source-authenticity boundaries.
 Each call proves its direct `putchar` reference, one exact literal argument
 and function-to-pointer decay;
 the complete normalized preorder contains four to eight nodes per call, plus
@@ -89,8 +96,8 @@ admission without publishing a `.malbolge` artifact.
 
 An omitted final `return;` uses the original function body span to model
 C's defined implicit void return; no synthetic source statement is added.
-More than three parentheses, multiple unary operators, whitespace between
-a unary sign and its operand, general arithmetic, call-result handling,
+More than three parentheses, multiple unary operators, multiline
+argument spacing, general arithmetic, call-result handling,
 arbitrary output streams, interleaved effectful statements, `getchar`, EOF,
 I/O errors, general guest libc and C entry ABI remain unsupported.
 Mixing distinct **output bytes** generally refuses admission. One strictly
