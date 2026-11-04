@@ -869,3 +869,35 @@ def test_report_accepts_valid_non_bmp_unicode_scalar() -> None:
     report_output.publish(record, output)
     assert output.records == [json.dumps(record, sort_keys=True, indent=2) + "\n"]
     assert output.flushed
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    ["replace-scalar", "append-nested-item", "add-field", "remove-field"],
+)
+def test_mutating_public_json_dumps_cannot_rewrite_report_before_publication(
+    monkeypatch: pytest.MonkeyPatch, mutation: str
+) -> None:
+    """Source-bound JSON must describe the report before untrusted encoding."""
+    output = _FakeStream("healthy")
+    report: dict[str, object] = {"status": "ready", "rows": [1]}
+    native_dumps = json.dumps
+
+    def substituted_dumps(_value: object, **_options: object) -> str:
+        if mutation == "replace-scalar":
+            report["status"] = "forged"
+        elif mutation == "append-nested-item":
+            rows = report["rows"]
+            assert type(rows) is list
+            rows.append(2)
+        elif mutation == "add-field":
+            report["extra"] = "forged"
+        else:
+            del report["rows"]
+        return native_dumps(report, sort_keys=True, indent=2, allow_nan=False)
+
+    monkeypatch.setattr(report_output.json, "dumps", substituted_dumps)
+    with pytest.raises(report_output.ReportOutputError, match="JSON serialization"):
+        report_output.publish(report, output)
+    assert not output.records
+    assert not output.flushed

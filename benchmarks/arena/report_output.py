@@ -179,6 +179,12 @@ def _serialize_canonical_report(report: dict[str, Any]) -> str:
     # costs must not produce an invalid but apparently successful report.
     _admit_native_json(report)
     _require_source_json_providers()
+    # Capture the report before invoking the replaceable public serializer.
+    # It could mutate an otherwise native dict/list graph in place; if we
+    # rendered source JSON afterward, all encoders could agree on the forged
+    # post-mutation contents instead of the caller's original report.
+    independent = "".join(_CANONICAL_JSON_CHUNKS(report))
+    _require_source_json_providers()
     serialized = json.dumps(report, sort_keys=True, indent=2, allow_nan=False)
     # The replaceable writer can swap shared native iterator factories
     # or the ASCII escaper *during* its own call. Reattest before asking
@@ -200,8 +206,6 @@ def _serialize_canonical_report(report: dict[str, Any]) -> str:
     # json.dumps and json.JSONEncoder normally share a single replaceable
     # class. Agreement between both is not independent when that class is
     # substituted or its encoder methods are modified after module import.
-    independent = "".join(_CANONICAL_JSON_CHUNKS(report))
-    _require_source_json_providers()
     if type(independent) is not str or serialized != independent:
         message = "arena report JSON differs from canonical source encoding"
         raise ValueError(message)
