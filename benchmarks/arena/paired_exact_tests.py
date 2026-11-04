@@ -40,6 +40,7 @@ from typing import TypedDict
 MAX_DISCORDANT_PAIRS = 4096
 # An external alias substitution cannot extend the fixed inference budget.
 _SOURCE_MAX_DISCORDANT_PAIRS = MAX_DISCORDANT_PAIRS
+_SOURCE_FRACTION = Fraction
 
 
 class PairedExactTest(TypedDict):
@@ -47,6 +48,9 @@ class PairedExactTest(TypedDict):
 
     discordant_pairs: int
     p_two_sided: list[int]
+
+
+_SOURCE_PAIRED_EXACT_TEST = PairedExactTest
 
 
 def _valid_count(value: int) -> bool:
@@ -82,8 +86,8 @@ def two_sided_sign_test(left: int, right: int) -> PairedExactTest | None:
     for index in range(smaller + 1):
         tail += binomial
         binomial = binomial * (size - index) // (index + 1)
-    probability = min(Fraction(1), Fraction(2 * tail, denominator))
-    return PairedExactTest(
+    probability = min(_SOURCE_FRACTION(1), _SOURCE_FRACTION(2 * tail, denominator))
+    return _SOURCE_PAIRED_EXACT_TEST(
         discordant_pairs=size,
         p_two_sided=[probability.numerator, probability.denominator],
     )

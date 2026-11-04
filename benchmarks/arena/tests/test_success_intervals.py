@@ -76,8 +76,7 @@ def _reference_grid_bound(n: int, k: int, *, lower: bool) -> int:
             max(
                 index
                 for index in range(GRID + 1)
-                if 1 - _reference_lower_tail(n, k - 1, Fraction(index, GRID))
-                <= TAIL
+                if 1 - _reference_lower_tail(n, k - 1, Fraction(index, GRID)) <= TAIL
             )
             if k != 0
             else 0
@@ -140,9 +139,7 @@ def test_binomial_bounds_are_symmetric_in_success_failure_exchange() -> None:
     for attempts in (1, 2, 7, 10, 21):
         for verified in range(attempts + 1):
             left = success_intervals.success_interval_95(verified, attempts)
-            right = success_intervals.success_interval_95(
-                attempts - verified, attempts
-            )
+            right = success_intervals.success_interval_95(attempts - verified, attempts)
             assert left is not None
             assert right is not None
             assert Fraction(*left["lower"]) == 1 - Fraction(*right["upper"])
@@ -151,9 +148,7 @@ def test_binomial_bounds_are_symmetric_in_success_failure_exchange() -> None:
 
 def test_lower_upper_bounds_monotone_in_success_count() -> None:
     """More reported successes cannot lower both confidence endpoints."""
-    intervals = [
-        success_intervals.success_interval_95(k, 15) for k in range(16)
-    ]
+    intervals = [success_intervals.success_interval_95(k, 15) for k in range(16)]
     assert all(interval is not None for interval in intervals)
     for left, right in pairwise(intervals):
         assert left is not None
@@ -241,3 +236,24 @@ def test_success_source_policy_preserves_finite_attempt_ceiling(
     """A changed maximum cannot authorize unbounded confidence inversion."""
     monkeypatch.setattr(success_intervals, "MAX_ATTEMPTS", 10000)
     assert success_intervals.success_interval_95(0, 513) is None
+
+
+@pytest.mark.parametrize("provider", ["fraction", "comb", "report"])
+def test_success_interval_ignores_substituted_inference_providers(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """A substituted arithmetic or record provider cannot forge 95% bounds."""
+    expected = success_intervals.success_interval_95(5, 10)
+    assert expected is not None
+    with monkeypatch.context() as patched:
+        if provider == "fraction":
+            patched.setattr(success_intervals, "Fraction", lambda *args: Fraction(0))
+        elif provider == "comb":
+            patched.setattr(success_intervals, "comb", lambda *args: 1)
+        else:
+            patched.setattr(
+                success_intervals,
+                "SuccessInterval",
+                lambda **record: {**record, "lower": [0, 1], "upper": [0, 1]},
+            )
+        assert success_intervals.success_interval_95(5, 10) == expected

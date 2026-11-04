@@ -168,3 +168,22 @@ def test_paired_sign_test_source_bound_limit(
     monkeypatch.setattr(paired_exact_tests, "MAX_DISCORDANT_PAIRS", substituted)
     assert paired_exact_tests.two_sided_sign_test(6, 0) == expected
     assert paired_exact_tests.two_sided_sign_test(original_limit + 1, 0) is None
+
+
+@pytest.mark.parametrize("provider", ["fraction", "report"])
+def test_paired_sign_test_ignores_substituted_inference_providers(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Forged rational arithmetic or record factories cannot change p-values."""
+    expected = paired_exact_tests.two_sided_sign_test(6, 0)
+    assert expected is not None
+    with monkeypatch.context() as patched:
+        if provider == "fraction":
+            patched.setattr(paired_exact_tests, "Fraction", lambda *args: Fraction(0))
+        else:
+            patched.setattr(
+                paired_exact_tests,
+                "PairedExactTest",
+                lambda **record: {**record, "p_two_sided": [0, 1]},
+            )
+        assert paired_exact_tests.two_sided_sign_test(6, 0) == expected

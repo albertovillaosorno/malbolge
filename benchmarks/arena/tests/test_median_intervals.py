@@ -210,3 +210,22 @@ def test_median_source_policy_preserves_finite_sample_ceiling(
     """Changing a public alias cannot grant inference past the source cap."""
     monkeypatch.setattr(median_intervals, "MAX_SAMPLES", 10000)
     assert median_intervals.median_interval_95(list(range(4097))) is None
+
+
+@pytest.mark.parametrize("provider", ["fraction", "report"])
+def test_median_interval_ignores_substituted_inference_providers(
+    monkeypatch: pytest.MonkeyPatch, provider: str
+) -> None:
+    """Confidence coverage cannot change through mutable output providers."""
+    expected = median_intervals.median_interval_95(list(range(10)))
+    assert expected is not None
+    with monkeypatch.context() as patched:
+        if provider == "fraction":
+            patched.setattr(median_intervals, "Fraction", lambda *args: Fraction(0))
+        else:
+            patched.setattr(
+                median_intervals,
+                "MedianInterval",
+                lambda **record: {**record, "coverage": [0, 1]},
+            )
+        assert median_intervals.median_interval_95(list(range(10))) == expected

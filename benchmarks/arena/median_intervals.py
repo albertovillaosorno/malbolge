@@ -45,6 +45,7 @@ REQUESTED_CONFIDENCE = Fraction(19, 20)
 _SOURCE_MIN_SAMPLES = MIN_SAMPLES
 _SOURCE_MAX_SAMPLES = MAX_SAMPLES
 _SOURCE_REQUESTED_CONFIDENCE = REQUESTED_CONFIDENCE
+_SOURCE_FRACTION = Fraction
 
 
 class MedianInterval(TypedDict):
@@ -54,6 +55,9 @@ class MedianInterval(TypedDict):
     upper: int
     coverage: list[int]
     sample_count: int
+
+
+_SOURCE_MEDIAN_INTERVAL = MedianInterval
 
 
 def median_interval_95(values: list[int]) -> MedianInterval | None:
@@ -96,9 +100,9 @@ def median_interval_95(values: list[int]) -> MedianInterval | None:
         binomial = binomial * (size - j) // (j + 1)
     if rank == 0:
         return None
-    exact_coverage = Fraction(denominator - 2 * tail, denominator)
+    exact_coverage = _SOURCE_FRACTION(denominator - 2 * tail, denominator)
     ordered = sorted(values)
-    return MedianInterval(
+    return _SOURCE_MEDIAN_INTERVAL(
         lower=ordered[rank - 1],
         upper=ordered[-rank],
         coverage=[exact_coverage.numerator, exact_coverage.denominator],
