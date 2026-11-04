@@ -141,6 +141,14 @@ by `math.comb`. The report must match both exact observed rank endpoints and
 the canonical achieved coverage; widened bounds or invented confidence cannot
 enter either operator view. This arithmetic check does not validate iid draws.
 
+Seven red-first median-helper regressions also show that replaced native
+`type`, `list`, or `int` providers could admit boolean costs or non-list
+samples, while a replaced `range` changed exact binomial ranks and coverage
+for unchanged 20-sample input. Signed `5653e4308` binds these source-native
+providers: all 47 focused median and 1,066 statistical/evidence integration
+cases pass, with zero arena BasedPyright diagnostics. This preserves local
+arithmetic and input-shape integrity, not independent sampling or verifiers.
+
 A third optional inference view, `--success-intervals-95`, bounds the
 reported probability of verifier success among **all** attempts, retaining
 failure outcomes rather than treating only successful trials as a random
