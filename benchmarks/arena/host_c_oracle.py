@@ -116,8 +116,13 @@ class HostOracleError(ValueError):
     """Host-C execution failed to reproduce a canonical challenge oracle."""
 
 
+# Preserve typed local replay rejection and safe cleanup detail even if the
+# publicly exported class name is rebound by a consumer after import.
+_SOURCE_HOST_ORACLE_ERROR = HostOracleError
+
+
 def _fail(message: str) -> Never:
-    raise HostOracleError(message)
+    raise _SOURCE_HOST_ORACLE_ERROR(message)
 
 
 MAX_CLEANUP_DETAIL_CHARS = 256
@@ -134,7 +139,7 @@ def _cleanup_error_detail(error: Exception) -> str:
     """
     kind = type(error)
     if kind in (
-        HostOracleError,
+        _SOURCE_HOST_ORACLE_ERROR,
         OSError,
         PermissionError,
         ValueError,
@@ -168,7 +173,7 @@ def _require_local_scratch_root() -> None:
         compiler_available = _PINNED_CLANG.is_file()
     except Exception as error:
         message = "pinned host-C compiler unavailable"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if type(compiler_available) is not bool:
         _fail("pinned host-C compiler returned invalid presence receipt")
     if not compiler_available:
@@ -177,7 +182,7 @@ def _require_local_scratch_root() -> None:
         details = _TEMP.lstat()
     except Exception as error:
         message = "host-C physical temporary directory unavailable"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if type(details) is not os.stat_result:
         _fail("host-C physical temporary directory returned invalid metadata")
     # This is a static check, not a cross-process filesystem race guarantee.
@@ -229,7 +234,7 @@ def _system_tool(name: str) -> str | None:
         resolved = shutil.which(name, path=_SOURCE_SYSTEM_TOOL_SEARCH_PATH)
     except Exception as error:
         message = f"host-C resource tool lookup failed: {name}"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if resolved is None:
         return None
     if (
@@ -248,11 +253,11 @@ def _system_tool(name: str) -> str | None:
         executable = os.access(resolved, os.X_OK)
         if type(executable) is not bool:
             _fail(f"host-C resource tool access inspection invalid: {name}")
-    except HostOracleError:
+    except _SOURCE_HOST_ORACLE_ERROR:
         raise
     except Exception as error:
         message = f"host-C resource tool path inspection failed: {name}"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if not stat.S_ISREG(mode) or not executable:
         _fail(f"host-C resource tool is not a physical executable: {name}")
     return resolved
@@ -325,7 +330,7 @@ def _read_stage_rss(path: Path) -> int:
         )
     except Exception as error:
         message = "host-C child RSS observation missing or unsafe"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if type(raw) is not bytes or len(raw) > _SOURCE_RSS_REPORT_MAX_BYTES:
         _fail("host-C child RSS observation returned invalid bytes")
     if not raw.endswith(b"\n") or not _ascii_digits(raw[:-1]):
@@ -358,7 +363,9 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
             polled = child.poll()
             if polled is not None and type(polled) is not int:
                 failures.append(
-                    HostOracleError("host-C challenge oracle child poll was nonnative")
+                    _SOURCE_HOST_ORACLE_ERROR(
+                        "host-C challenge oracle child poll was nonnative"
+                    )
                 )
             if polled is None or type(polled) is not int:
                 direct_receipt = child.kill()
@@ -388,7 +395,7 @@ def _finish_child(child: sp.Popen[bytes]) -> int:
         failures.append(error)
     if failures:
         message = "host-C challenge oracle child cleanup failed"
-        failure = HostOracleError(message)
+        failure = _SOURCE_HOST_ORACLE_ERROR(message)
         for _ in failures[1:]:
             failure.add_note("additional host-C child cleanup failure")
         raise failure from failures[0]
@@ -410,15 +417,15 @@ def _wait_child(child: sp.Popen[bytes], label: str) -> None:
             observed = child.returncode
         except sp.TimeoutExpired as error:
             message = f"host-C challenge oracle {label} timed out"
-            raise HostOracleError(message) from error
+            raise _SOURCE_HOST_ORACLE_ERROR(message) from error
         except Exception as error:
             message = f"host-C challenge oracle {label} transport failed"
-            raise HostOracleError(message) from error
+            raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     finally:
         original = sys.exception()
         try:
             reaped = _finish_child(child)
-        except HostOracleError as error:
+        except _SOURCE_HOST_ORACLE_ERROR as error:
             if original is None:
                 raise
             # Keep the original exception even if it overrides add_note.
@@ -437,7 +444,7 @@ def _close_rss_temporary_descriptor(descriptor: int) -> None:
         receipt = os.close(descriptor)
     except Exception as error:
         message = "host-C challenge oracle RSS descriptor close failed"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if receipt is not None:
         _fail("host-C challenge oracle RSS descriptor close receipt invalid")
 
@@ -467,7 +474,7 @@ def _admit_rss_temporary_receipt(receipt: object, cwd: Path) -> tuple[int, str]:
     except Exception as error:
         _close_rss_temporary_descriptor(descriptor)
         message = "host-C challenge oracle RSS temporary inode unavailable"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if (
         type(opened) is not os.stat_result
         or type(named) is not os.stat_result
@@ -496,7 +503,7 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
         )
     except Exception as error:
         message = "host-C challenge oracle RSS temporary receipt unavailable"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     fd, output_path = _admit_rss_temporary_receipt(temporary, cwd)
     try:
         _close_rss_temporary_descriptor(fd)
@@ -523,7 +530,7 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
             )
         except Exception as error:
             message = f"host-C challenge oracle {label} could not start"
-            raise HostOracleError(message) from error
+            raise _SOURCE_HOST_ORACLE_ERROR(message) from error
         _wait_child(child, label)
         # A successful child wait is not evidence that Popen represented the
         # stage we requested. Only the unmodified native argv object passed
@@ -532,7 +539,7 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
             launched_arguments = child.args
         except Exception as error:
             message = "host-C challenge oracle child command receipt unavailable"
-            raise HostOracleError(message) from error
+            raise _SOURCE_HOST_ORACLE_ERROR(message) from error
         if (
             type(launched_arguments) is not list
             or launched_arguments is not command_receipt
@@ -559,7 +566,7 @@ def _bounded_child(command: list[str], cwd: Path, label: str) -> int:
                 )
             else:
                 message = "host-C challenge oracle RSS receipt cleanup failed"
-                raise HostOracleError(message) from error
+                raise _SOURCE_HOST_ORACLE_ERROR(message) from error
 
 
 def _run(command: list[str], cwd: Path, label: str) -> int:
@@ -620,10 +627,10 @@ def _generate_canonical(
         generated = generate.generate(identity)
     except generate.ChallengeError as error:
         message = f"host-C {scope} identity cannot regenerate"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     except Exception as error:
         message = f"host-C {scope} regeneration dependency failed"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if type(generated) is not _CANONICAL_RESULT:
         _fail("host-C canonical challenge generator returned invalid payload")
     try:
@@ -632,7 +639,7 @@ def _generate_canonical(
         # Even an exact native dataclass may have unset slots; the missing
         # payload must not escape as an untyped host attribute error.
         message = "host-C canonical challenge generator returned invalid payload"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if any(type(payload) is not bytes for payload in payloads):
         _fail("host-C canonical challenge generator returned invalid payload")
     # A native-shaped successful receipt from a replaced generator cannot
@@ -684,7 +691,7 @@ def _canonical_payload(
         # Hashing is a dependency; its faults must remain typed replay
         # failures without invoking foreign exception formatting hooks.
         message = "host-C challenge source hash computation failed"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if (
         type(digest) is not str
         or type(independent) is not str
@@ -726,11 +733,11 @@ def _admit_native_workspace_receipt(receipt: object, *, prefix: str) -> Path:
         ):
             _fail("host-C workspace context returned foreign path")
         details = directory.lstat()
-    except HostOracleError:
+    except _SOURCE_HOST_ORACLE_ERROR:
         raise
     except Exception as error:
         message = "host-C workspace context path unavailable"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if type(details) is not os.stat_result or not stat.S_ISDIR(details.st_mode):
         _fail("host-C workspace context requires a physical directory")
     try:
@@ -746,11 +753,11 @@ def _admit_native_workspace_receipt(receipt: object, *, prefix: str) -> Path:
                 _fail("host-C workspace context scan close receipt invalid")
         if occupied:
             _fail("host-C workspace context requires an initially empty directory")
-    except HostOracleError:
+    except _SOURCE_HOST_ORACLE_ERROR:
         raise
     except Exception as error:
         message = "host-C workspace context inventory unavailable"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     return directory
 
 
@@ -768,7 +775,7 @@ def _native_workspace(prefix: str) -> Iterator[Path]:
         cleanup_name = workspace.name
     except Exception as error:
         message = "host-C workspace context cleanup target unavailable"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if type(cleanup_name) is not str or cleanup_name != temporary:
         _fail("host-C workspace context cleanup target mismatches entry")
     try:
@@ -794,7 +801,7 @@ def _native_workspace(prefix: str) -> Iterator[Path]:
             receipt = workspace.__exit__(None, None, None)
         except Exception as error:
             message = "host-C workspace cleanup failed"
-            raise HostOracleError(message) from error
+            raise _SOURCE_HOST_ORACLE_ERROR(message) from error
         if receipt is not None:
             _fail("host-C workspace cleanup returned invalid receipt")
 
@@ -845,10 +852,10 @@ def replay_one(
             for mode in _SOURCE_OPTIMIZATION_MODES:
                 _replay_mode(directory, mode)
     except Exception as error:
-        if type(error) is HostOracleError:
+        if type(error) is _SOURCE_HOST_ORACLE_ERROR:
             raise
         message = "host-C oracle workspace creation, I/O, or cleanup failed"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     return source_sha256
 
 
@@ -901,7 +908,7 @@ def _read_reference_executable(directory: Path) -> bytes:
         )
     except Exception as error:
         message = "host-C reference executable missing or unsafe"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     if type(raw) is not bytes or not raw or len(raw) > _SOURCE_CHILD_FILE_BYTES:
         _fail("host-C reference executable returned invalid bytes")
     return raw
@@ -927,10 +934,10 @@ def rebuild_reference(
             _replay_mode(directory, mode)
             return _read_reference_executable(directory)
     except Exception as error:
-        if type(error) is HostOracleError:
+        if type(error) is _SOURCE_HOST_ORACLE_ERROR:
             raise
         message = "host-C reference workspace creation, I/O, or cleanup failed"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
 
 
 def measure_reference(
@@ -956,10 +963,10 @@ def measure_reference(
             elapsed = time.perf_counter_ns() - started
             artifact = _read_reference_executable(directory)
     except Exception as error:
-        if type(error) is HostOracleError:
+        if type(error) is _SOURCE_HOST_ORACLE_ERROR:
             raise
         message = "host-C reference workspace creation, I/O, or cleanup failed"
-        raise HostOracleError(message) from error
+        raise _SOURCE_HOST_ORACLE_ERROR(message) from error
     return ReferenceMeasurement(
         elapsed_ns=elapsed,
         executable=artifact,

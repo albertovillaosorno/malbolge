@@ -3733,3 +3733,64 @@ def test_host_c_direct_workspace_preserves_rejection_over_exit_failure(
     assert caught.value is primary
     assert len(getattr(primary, "__notes__", [])) == 1
     assert "workspace cleanup also failed" in primary.__notes__[0]
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+@pytest.mark.parametrize(
+    ("scenario", "diagnostic"),
+    [
+        ("invalid-mode", "unsupported host-C reference optimization mode"),
+        ("bad-nodes", "positive integer nodes"),
+        ("missing-clang", "pinned host-C compiler"),
+        ("failed-generator", "regeneration dependency failed"),
+    ],
+)
+def test_host_c_public_error_alias_cannot_replace_native_rejections(
+    monkeypatch: pytest.MonkeyPatch,
+    replacement: object,
+    scenario: str,
+    diagnostic: str,
+) -> None:
+    """Foreign error aliases cannot change local verifier rejection types."""
+    original = host_c_oracle.HostOracleError
+    with monkeypatch.context() as patched:
+        patched.setattr(host_c_oracle, "HostOracleError", replacement)
+        if scenario == "missing-clang":
+            patched.setattr(
+                host_c_oracle,
+                "_PINNED_CLANG",
+                SimpleNamespace(is_file=lambda: False),
+            )
+        if scenario == "failed-generator":
+
+            def denied_generate(_identity: object) -> None:
+                raise RuntimeError("untrusted generator failure")
+
+            patched.setattr(generate, "generate", denied_generate)
+        with pytest.raises(original, match=diagnostic):
+            if scenario == "invalid-mode":
+                host_c_oracle.rebuild_reference(
+                    cast("generate.ChallengeIdentity", object()), "-Oz"
+                )
+            elif scenario == "bad-nodes":
+                host_c_oracle._bounded_nodes(0, limit=16, scope="test")
+            elif scenario == "missing-clang":
+                host_c_oracle._require_local_scratch_root()
+            else:
+                host_c_oracle._generate_canonical(
+                    cast("generate.ChallengeIdentity", object()), scope="test"
+                )
+
+
+@pytest.mark.parametrize("replacement", [RuntimeError, object()])
+def test_host_c_public_error_alias_does_not_hide_native_cleanup_detail(
+    monkeypatch: pytest.MonkeyPatch, replacement: object
+) -> None:
+    """Native cleanup error arguments survive changes to public class names."""
+    original = host_c_oracle.HostOracleError
+    error = original("native source cleanup failed")
+    with monkeypatch.context() as patched:
+        patched.setattr(host_c_oracle, "HostOracleError", replacement)
+        assert (
+            host_c_oracle._cleanup_error_detail(error) == "native source cleanup failed"
+        )
