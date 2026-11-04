@@ -1818,6 +1818,27 @@ The original study records remain the result authority.
   BasedPyright errors. These are local audit consistency checks, not
   authentication of original experiments, independent target verification,
   or a whole-repository Jig verdict.
+- The retained target-echo auditor now binds original `TargetEchoAuditError`
+  and `TargetReplayToolError` classes across direct failures, replay receipts,
+  nested catch paths, and its trusted diagnostic whitelist (`590349dd0`).
+  Twelve failing-first alias cases previously redirected native failures or
+  hid safe diagnostics from the original audit and dependency classes. All
+  363 dedicated auditor cases passed after this fix; the 12 new cases passed
+  again post-commit, with clean Ruff and zero BasedPyright findings.
+- The same auditor now binds its native input type, length, `any` and `all`
+  providers and the original audit-option, process-completion, and file-stat
+  classes (`ad96a50b6`). Thirteen additional failing-first checks reject
+  forged booleans, foreign buffers, byte-limit and path bypasses, and copied
+  tool receipts while retaining valid native values. All 370 then-collected
+  tests passed before the final six class-identity cases were added; those
+  six and the other seven new cases passed again after commit. The complete
+  376-case run exceeded its 120-second bound, and one expensive real-study
+  fixture exceeded a separate 65-second bound; neither was counted as a
+  passing full-suite verdict. The bounded runs and zero BasedPyright/Ruff
+  findings support this local admission hardening only. `jig doctor`
+  reported a degraded state with no compiled graph; `jig check` exceeded
+  85 seconds without a repository-wide acceptance verdict. No OS child
+  attestation, source authenticity, or new Malbolge performance proof follows.
 
 ## Results
 
