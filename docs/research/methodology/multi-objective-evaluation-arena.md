@@ -217,6 +217,15 @@ per-trial, evidence and analyzer tests pass with zero arena BasedPyright
 messages. This is local input policy stability, not proof that a producer
 measured the referenced bytes.
 
+The two manifest readers now bind their original text-preflight, error,
+positive-integer/digest, length and digest-character-set providers to prevent
+late module substitution from skipping source-cap or input-policy rejection.
+Eleven red-first negatives in `ebb2c9fa3`, `ce7f4ef14`, `88c9d224e` and
+`d32783c1c` reject oversized TOML, zero/negative budgets and noncanonical
+hashes that source equality alone previously admitted. Their 1,025-case
+integrated budget/trial/evidence/analyzer/raw suite and arena BasedPyright
+check pass; these results do not attest host I/O or source authenticity.
+
 Version-two `arena-raw-v2` evidence adds an optional exact integer `energy_uj`
 (microjoules) cost to the six preexisting dimensions. Its CSV schema marker is
 `2` and its fixed header adds one column without changing version-one bytes.
