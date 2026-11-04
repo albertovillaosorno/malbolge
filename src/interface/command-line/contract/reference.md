@@ -46,8 +46,7 @@ fallback is considered. An opt-in `--raw-profile ID` selects one exact
 registered canonical profile for **unframed raw source only**. Without this
 option, the raw classic default remains unchanged. The option composes with
 `--input-stdin` and `--report-steps`, but rejects unknown IDs, missing
-arguments or duplicates
-before execution. A capsule rejects a simultaneous `--raw-profile`: its own
+arguments or duplicate flags before execution. A capsule rejects a simultaneous `--raw-profile`: its own
 profile ID and fingerprint always decide VM dispatch, never a caller override.
 The option has no special meaning for host-debug `.c` source, whose arguments
 retain their original forwarding contract.
@@ -77,12 +76,14 @@ Interactive DOOM input belongs to the versioned host-capability runner work.
 
 ### Optional current-profile adaptive width and resident worker
 
-Adaptive width is disabled by default. For a capsule whose declared profile is
-exactly the current canonical profile, `MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1` asks
-the trusted product verifier selector for the narrowest supported proof whose
-hidden input policy admits the exact pre-buffered input. `0` explicitly keeps
-canonical construction; any other value fails closed. Raw classic source and
-historical-profile capsules ignore this setting.
+Adaptive width is disabled by default. For a current-profile capsule or
+unframed raw source explicitly selected with `--raw-profile malbolge-2026`,
+`MALBOLGE_PROFILE_ADAPTIVE_WIDTH=1` asks the trusted product verifier selector
+for the narrowest supported proof whose hidden input policy admits the exact
+pre-buffered input. `0` explicitly keeps canonical construction; any other
+value fails closed. Classic raw source, historical-profile capsules, and
+explicitly selected historical raw source ignore this setting. The same
+current-profile restriction applies to the resident-worker backend below.
 
 When adaptive selection finds no strictly narrower proof, construction remains
 canonical. For example, a current-profile QP capsule with empty input selects

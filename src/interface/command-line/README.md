@@ -63,7 +63,10 @@ values and duplicate flags fail before guest execution. The option **cannot**
 be used with a capsule: capsule identity and fingerprint remain authoritative,
 and attempting to override either fails before guest execution. Prefer capsules
 from `malbolge compile` for self-describing, portable current-profile output.
-The option does not apply to host-only `.c` debug execution.
+An explicitly selected *current-profile raw* program uses the same opt-in
+adaptive-width and resident-worker settings as a current-profile capsule;
+the default classic raw path remains unaffected. The option does not apply
+to host-only `.c` debug execution.
 
 ## Opt-in guest instruction count
 
@@ -191,6 +194,25 @@ layout; other bytes or counts still reject without publication.
 The same supported byte is also available from `putchar(299)` through C's
 low-byte conversion, including when publishing raw graphical `.malbolge`
 instead of a capsule.
+
+A checked-in two-distinct-byte example,
+`composition/examples/emit-qp.c`, uses separate calls to `putchar('Q')` and
+`putchar('.')`. Both bytes are realized by independently verified guest
+arithmetic, rather than repeating a saved accumulator or substituting host
+output. When the pinned native tools are built, the following compiles and
+runs the current-profile program as **raw** graphical Malbolge:
+
+```sh
+c2malbolge --repository-tools --output .temp/emit-qp-raw.malbolge \
+  src/interface/command-line/composition/examples/emit-qp.c
+malbolge --repository-tools .temp/emit-qp-raw.malbolge \
+  --raw-profile malbolge-2026 --report-steps
+```
+
+The guest emits `Q.` and reports `malbolge-steps-v1:8`. If `--capsule` is
+supplied to compilation instead, the runner selects the embedded profile,
+without a `--raw-profile` flag. These are finite, witness-verified byte
+transitions, not arbitrary C output-stream support.
 
 For the **Unix `malbolge` shim**, a leading `--repository-tools` selects the
 existing repository-built `.cache/rust/target/debug/malbolge` VM. This is useful
