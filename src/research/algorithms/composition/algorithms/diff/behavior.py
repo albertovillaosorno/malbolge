@@ -87,6 +87,8 @@ class BugState(StrEnum):
     FIXED = "fixed"
     UNKNOWN = "unknown"
 
+_NATIVE_BUG_STATE_TYPE = BugState
+
 
 def _require_identifier(value: object, context: str) -> str:
     if _NATIVE_TYPE(value) is not _NATIVE_STR or not value:
@@ -133,10 +135,14 @@ class IdentityProbe:
         _ = _require_digest(
             cast(
                 "bytes",
-                _IDENTITY_PROBE_DIGEST_SLOT.__get__(self, IdentityProbe),
+                _IDENTITY_PROBE_DIGEST_SLOT.__get__(
+                    self, _NATIVE_IDENTITY_PROBE_TYPE
+                ),
             ),
             "identity probe digest",
         )
+
+_NATIVE_IDENTITY_PROBE_TYPE = IdentityProbe
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -174,6 +180,8 @@ class CompatibilityProbe:
             _probe_identifier(self), "compatibility probe ID"
         )
 
+_NATIVE_COMPATIBILITY_PROBE_TYPE = CompatibilityProbe
+
 
 # Pin the original validator before consumers can replace class hooks.
 _COMPATIBILITY_PROBE_ID_SLOT = cast(
@@ -208,9 +216,16 @@ class BugProbe:
         """Require canonical bug and correction identities."""
         _ = _require_identifier(_probe_identifier(self), "bug probe ID")
         _ = _require_identifier(
-            cast("str", _BUG_PROBE_CORRECTION_SLOT.__get__(self, BugProbe)),
+            cast(
+                "str",
+                _BUG_PROBE_CORRECTION_SLOT.__get__(
+                    self, _NATIVE_BUG_PROBE_TYPE
+                ),
+            ),
             "bug correction ID",
         )
+
+_NATIVE_BUG_PROBE_TYPE = BugProbe
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -248,7 +263,10 @@ def _validate_unique(values: tuple[str, ...], message: str) -> None:
 
 def _validate_correction_ids(bugs: tuple[BugProbe, ...]) -> None:
     correction_ids = _NATIVE_TUPLE(
-        cast("str", _BUG_PROBE_CORRECTION_SLOT.__get__(item, BugProbe))
+        cast(
+            "str",
+            _BUG_PROBE_CORRECTION_SLOT.__get__(item, _NATIVE_BUG_PROBE_TYPE),
+        )
         for item in bugs
     )
     if _NATIVE_ANY(not correction_id for correction_id in correction_ids):
@@ -277,10 +295,10 @@ def _require_probe_tuple(
     validator = cast(
         "Callable[[object], None]",
         _IDENTITY_PROBE_VALIDATOR
-        if item_type is IdentityProbe
+        if item_type is _NATIVE_IDENTITY_PROBE_TYPE
         else (
             _COMPATIBILITY_PROBE_VALIDATOR
-            if item_type is CompatibilityProbe
+            if item_type is _NATIVE_COMPATIBILITY_PROBE_TYPE
             else _BUG_PROBE_VALIDATOR
         ),
     )
@@ -320,11 +338,15 @@ class BehaviorProfile:
 
         """
         identity, compatibility, bugs = _profile_fields(self)
-        _require_probe_tuple(identity, IdentityProbe, "identity probes")
         _require_probe_tuple(
-            compatibility, CompatibilityProbe, "compatibility probes"
+            identity, _NATIVE_IDENTITY_PROBE_TYPE, "identity probes"
         )
-        _require_probe_tuple(bugs, BugProbe, "bug probes")
+        _require_probe_tuple(
+            compatibility,
+            _NATIVE_COMPATIBILITY_PROBE_TYPE,
+            "compatibility probes",
+        )
+        _require_probe_tuple(bugs, _NATIVE_BUG_PROBE_TYPE, "bug probes")
         if not identity:
             message = "behavior profile requires at least one identity probe"
             raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
@@ -340,6 +362,8 @@ class BehaviorProfile:
             all_ids, "behavior probe identifiers must be globally unique"
         )
         _validate_correction_ids(bugs)
+
+_NATIVE_BEHAVIOR_PROFILE_TYPE = BehaviorProfile
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -367,7 +391,7 @@ def _profile_fields(
     tuple[CompatibilityProbe, ...],
     tuple[BugProbe, ...],
 ]:
-    owner = BehaviorProfile
+    owner = _NATIVE_BEHAVIOR_PROFILE_TYPE
     return (
         cast(
             "tuple[IdentityProbe, ...]",
@@ -408,11 +432,13 @@ class IdentityObservation:
         digest = cast(
             "bytes | None",
             _IDENTITY_OBSERVATION_DIGEST_SLOT.__get__(
-                self, IdentityObservation
+                self, _NATIVE_IDENTITY_OBSERVATION_TYPE
             ),
         )
         if digest is not None:
             _ = _require_digest(digest, "identity observation digest")
+
+_NATIVE_IDENTITY_OBSERVATION_TYPE = IdentityObservation
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -462,7 +488,7 @@ class CompatibilityObservation:
         compatible = cast(
             "bool | None",
             _COMPATIBILITY_OBSERVATION_VALUE_SLOT.__get__(
-                self, CompatibilityObservation
+                self, _NATIVE_COMPATIBILITY_OBSERVATION_TYPE
             ),
         )
         if (
@@ -471,6 +497,8 @@ class CompatibilityObservation:
         ):
             message = "compatibility observation must be bool or None"
             raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
+
+_NATIVE_COMPATIBILITY_OBSERVATION_TYPE = CompatibilityObservation
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -519,11 +547,15 @@ class BugObservation:
         )
         state = cast(
             "BugState",
-            _BUG_OBSERVATION_STATE_SLOT.__get__(self, BugObservation),
+            _BUG_OBSERVATION_STATE_SLOT.__get__(
+                self, _NATIVE_BUG_OBSERVATION_TYPE
+            ),
         )
-        if _NATIVE_TYPE(state) is not BugState:
+        if _NATIVE_TYPE(state) is not _NATIVE_BUG_STATE_TYPE:
             message = "bug observation state must use the exact BugState type"
             raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
+
+_NATIVE_BUG_OBSERVATION_TYPE = BugObservation
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -548,17 +580,23 @@ def _probe_identifier(
 ) -> str:
     """Read a validated probe ID without mutable class field dispatch."""
     kind = _NATIVE_TYPE(probe)
-    if kind is IdentityProbe:
+    if kind is _NATIVE_IDENTITY_PROBE_TYPE:
         return cast(
-            "str", _IDENTITY_PROBE_ID_SLOT.__get__(probe, IdentityProbe)
+            "str", _IDENTITY_PROBE_ID_SLOT.__get__(
+                probe, _NATIVE_IDENTITY_PROBE_TYPE
+            )
         )
-    if kind is CompatibilityProbe:
+    if kind is _NATIVE_COMPATIBILITY_PROBE_TYPE:
         return cast(
             "str",
-            _COMPATIBILITY_PROBE_ID_SLOT.__get__(probe, CompatibilityProbe),
+            _COMPATIBILITY_PROBE_ID_SLOT.__get__(
+                probe, _NATIVE_COMPATIBILITY_PROBE_TYPE
+            ),
         )
-    if kind is BugProbe:
-        return cast("str", _BUG_PROBE_ID_SLOT.__get__(probe, BugProbe))
+    if kind is _NATIVE_BUG_PROBE_TYPE:
+        return cast(
+            "str", _BUG_PROBE_ID_SLOT.__get__(probe, _NATIVE_BUG_PROBE_TYPE)
+        )
     message = "behavior probe identifier requires exact probe record"
     raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
@@ -570,21 +608,23 @@ def _observation_identifier(
 ) -> str:
     """Read a validated observation ID from its original immutable slot."""
     kind = _NATIVE_TYPE(observation)
-    if kind is IdentityObservation:
+    if kind is _NATIVE_IDENTITY_OBSERVATION_TYPE:
         return cast(
             "str", _IDENTITY_OBSERVATION_ID_SLOT.__get__(
-                observation, IdentityObservation
+                observation, _NATIVE_IDENTITY_OBSERVATION_TYPE
             )
         )
-    if kind is CompatibilityObservation:
+    if kind is _NATIVE_COMPATIBILITY_OBSERVATION_TYPE:
         return cast(
             "str", _COMPATIBILITY_OBSERVATION_ID_SLOT.__get__(
-                observation, CompatibilityObservation
+                observation, _NATIVE_COMPATIBILITY_OBSERVATION_TYPE
             )
         )
-    if kind is BugObservation:
+    if kind is _NATIVE_BUG_OBSERVATION_TYPE:
         return cast(
-            "str", _BUG_OBSERVATION_ID_SLOT.__get__(observation, BugObservation)
+            "str", _BUG_OBSERVATION_ID_SLOT.__get__(
+                observation, _NATIVE_BUG_OBSERVATION_TYPE
+            )
         )
     message = (
         "behavior observation identifier requires exact observation record"
@@ -609,10 +649,10 @@ def _require_observation_tuple(
     validator = cast(
         "Callable[[object], None]",
         _IDENTITY_OBSERVATION_VALIDATOR
-        if item_type is IdentityObservation
+        if item_type is _NATIVE_IDENTITY_OBSERVATION_TYPE
         else (
             _COMPATIBILITY_OBSERVATION_VALIDATOR
-            if item_type is CompatibilityObservation
+            if item_type is _NATIVE_COMPATIBILITY_OBSERVATION_TYPE
             else _BUG_OBSERVATION_VALIDATOR
         ),
     )
@@ -648,14 +688,18 @@ class BehaviorObservations:
         """Require immutable exact observation records for every category."""
         identity, compatibility, bugs = _observations_fields(self)
         _require_observation_tuple(
-            identity, IdentityObservation, "identity observations"
+            identity, _NATIVE_IDENTITY_OBSERVATION_TYPE, "identity observations"
         )
         _require_observation_tuple(
             compatibility,
-            CompatibilityObservation,
+            _NATIVE_COMPATIBILITY_OBSERVATION_TYPE,
             "compatibility observations",
         )
-        _require_observation_tuple(bugs, BugObservation, "bug observations")
+        _require_observation_tuple(
+            bugs, _NATIVE_BUG_OBSERVATION_TYPE, "bug observations"
+        )
+
+_NATIVE_BEHAVIOR_OBSERVATIONS_TYPE = BehaviorObservations
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -683,7 +727,7 @@ def _observations_fields(
     tuple[CompatibilityObservation, ...],
     tuple[BugObservation, ...],
 ]:
-    owner = BehaviorObservations
+    owner = _NATIVE_BEHAVIOR_OBSERVATIONS_TYPE
     return (
         cast(
             "tuple[IdentityObservation, ...]",
@@ -766,7 +810,9 @@ def _validate_behavior_evidence(evidence: BehaviorEvidence) -> None:
         raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     _ = _require_string_tuple(
         cast(
-            "object", _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence)
+            "object", _BEHAVIOR_REASONS_SLOT.__get__(
+                evidence, _NATIVE_BEHAVIOR_EVIDENCE_TYPE
+            )
         ),
         "behavior evidence reasons",
     )
@@ -823,7 +869,7 @@ class BehaviorEvidence:
             True exactly when no deterministic rejection reason exists.
 
         """
-        if _NATIVE_TYPE(self) is not BehaviorEvidence:
+        if _NATIVE_TYPE(self) is not _NATIVE_BEHAVIOR_EVIDENCE_TYPE:
             message = "behavior evidence requires exact BehaviorEvidence"
             raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         # Exact native receipts can be allocated without this constructor.
@@ -833,7 +879,11 @@ class BehaviorEvidence:
         except (_NATIVE_ATTRIBUTE_ERROR, _NATIVE_TYPE_ERROR) as error:
             message = "behavior evidence has incomplete native metadata"
             raise _NATIVE_BEHAVIOR_POLICY_ERROR(message) from error
-        return not _BEHAVIOR_REASONS_SLOT.__get__(self, BehaviorEvidence)
+        return not _BEHAVIOR_REASONS_SLOT.__get__(
+            self, _NATIVE_BEHAVIOR_EVIDENCE_TYPE
+        )
+
+_NATIVE_BEHAVIOR_EVIDENCE_TYPE = BehaviorEvidence
 
 
 # Pin the original validator before consumers can replace class hooks.
@@ -905,7 +955,7 @@ def _new_behavior_evidence(
     minimum_similarity: float,
 ) -> BehaviorEvidence:
     """Validate internal decisions without late evidence class constructors."""
-    evidence = _NATIVE_OBJECT_NEW(BehaviorEvidence)
+    evidence = _NATIVE_OBJECT_NEW(_NATIVE_BEHAVIOR_EVIDENCE_TYPE)
     _BEHAVIOR_EVIDENCE_INIT(
         evidence,
         similarity,
@@ -933,7 +983,7 @@ def _behavior_evidence_fields(
     BehaviorObservations,
     float,
 ]:
-    owner = BehaviorEvidence
+    owner = _NATIVE_BEHAVIOR_EVIDENCE_TYPE
     return (
         cast("float", _BEHAVIOR_SIMILARITY_SLOT.__get__(evidence, owner)),
         cast("int", _BEHAVIOR_MATCHED_SLOT.__get__(evidence, owner)),
@@ -1011,13 +1061,13 @@ def _identity_evidence(
     reasons: list[str] = []
     for probe in expected:
         observation = observed[_probe_identifier(probe)]
-        if _NATIVE_TYPE(observation) is not IdentityObservation:
+        if _NATIVE_TYPE(observation) is not _NATIVE_IDENTITY_OBSERVATION_TYPE:
             message = "internal identity observation type mismatch"
             raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         digest = cast(
             "bytes | None",
             _IDENTITY_OBSERVATION_DIGEST_SLOT.__get__(
-                observation, IdentityObservation
+                observation, _NATIVE_IDENTITY_OBSERVATION_TYPE
             ),
         )
         if digest is None:
@@ -1026,7 +1076,9 @@ def _identity_evidence(
             )
             continue
         matched += digest == cast(
-            "bytes", _IDENTITY_PROBE_DIGEST_SLOT.__get__(probe, IdentityProbe)
+            "bytes", _IDENTITY_PROBE_DIGEST_SLOT.__get__(
+                probe, _NATIVE_IDENTITY_PROBE_TYPE
+            )
         )
     return matched, _NATIVE_TUPLE(reasons)
 
@@ -1044,11 +1096,14 @@ def _compatibility_reasons(
     reasons: list[str] = []
     for probe in expected:
         observation = observed[_probe_identifier(probe)]
-        if _NATIVE_TYPE(observation) is not CompatibilityObservation:
+        if (
+            _NATIVE_TYPE(observation)
+            is not _NATIVE_COMPATIBILITY_OBSERVATION_TYPE
+        ):
             message = "internal compatibility observation type mismatch"
             raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         if _COMPATIBILITY_OBSERVATION_VALUE_SLOT.__get__(
-            observation, CompatibilityObservation
+            observation, _NATIVE_COMPATIBILITY_OBSERVATION_TYPE
         ) is not True:
             reasons.append(
                 f"compatibility probe failed: {_probe_identifier(probe)}"
@@ -1069,20 +1124,32 @@ def _bug_routing(
     reasons: list[str] = []
     for probe in expected:
         observation = observed[_probe_identifier(probe)]
-        if _NATIVE_TYPE(observation) is not BugObservation:
+        if _NATIVE_TYPE(observation) is not _NATIVE_BUG_OBSERVATION_TYPE:
             message = "internal bug observation type mismatch"
             raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
         state = cast(
             "BugState",
-            _BUG_OBSERVATION_STATE_SLOT.__get__(observation, BugObservation),
+            _BUG_OBSERVATION_STATE_SLOT.__get__(
+                observation, _NATIVE_BUG_OBSERVATION_TYPE
+            ),
         )
-        if state is BugState.PRESENT:
+        if state is _NATIVE_BUG_STATE_TYPE.PRESENT:
             apply.append(
-                cast("str", _BUG_PROBE_CORRECTION_SLOT.__get__(probe, BugProbe))
+                cast(
+                    "str",
+                    _BUG_PROBE_CORRECTION_SLOT.__get__(
+                        probe, _NATIVE_BUG_PROBE_TYPE
+                    ),
+                )
             )
-        elif state is BugState.FIXED:
+        elif state is _NATIVE_BUG_STATE_TYPE.FIXED:
             skip.append(
-                cast("str", _BUG_PROBE_CORRECTION_SLOT.__get__(probe, BugProbe))
+                cast(
+                    "str",
+                    _BUG_PROBE_CORRECTION_SLOT.__get__(
+                        probe, _NATIVE_BUG_PROBE_TYPE
+                    ),
+                )
             )
         else:
             reasons.append(f"bug probe unresolved: {_probe_identifier(probe)}")
@@ -1122,10 +1189,10 @@ def _behavior_decision(
 def _require_behavior_evidence_sources(
     profile: BehaviorProfile, observations: BehaviorObservations
 ) -> None:
-    if _NATIVE_TYPE(profile) is not BehaviorProfile:
+    if _NATIVE_TYPE(profile) is not _NATIVE_BEHAVIOR_PROFILE_TYPE:
         message = "behavior evidence requires exact BehaviorProfile"
         raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
-    if _NATIVE_TYPE(observations) is not BehaviorObservations:
+    if _NATIVE_TYPE(observations) is not _NATIVE_BEHAVIOR_OBSERVATIONS_TYPE:
         message = "behavior evidence requires exact BehaviorObservations"
         raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
     # Revalidate original, nested records even when a caller supplied a raw
@@ -1167,7 +1234,9 @@ def _validate_behavior_evidence_binding(evidence: BehaviorEvidence) -> None:
             "behavior evidence correction routes do not match observations"
         )
         raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
-    if reasons != _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence):
+    if reasons != _BEHAVIOR_REASONS_SLOT.__get__(
+        evidence, _NATIVE_BEHAVIOR_EVIDENCE_TYPE
+    ):
         message = "behavior evidence reasons do not match observations"
         raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
 
@@ -1191,10 +1260,10 @@ def evaluate_behavior(
         BehaviorPolicyError: Profile, observations, or threshold is invalid.
 
     """
-    if _NATIVE_TYPE(profile) is not BehaviorProfile:
+    if _NATIVE_TYPE(profile) is not _NATIVE_BEHAVIOR_PROFILE_TYPE:
         message = "behavior profile must use the exact BehaviorProfile type"
         raise _NATIVE_BEHAVIOR_POLICY_ERROR(message)
-    if _NATIVE_TYPE(observations) is not BehaviorObservations:
+    if _NATIVE_TYPE(observations) is not _NATIVE_BEHAVIOR_OBSERVATIONS_TYPE:
         message = (
             "behavior observations must use the exact BehaviorObservations type"
         )
@@ -1238,7 +1307,9 @@ def require_behavior(
     evidence = evaluate_behavior(profile, observations, minimum_similarity)
     reasons = cast(
         "tuple[str, ...]",
-        _BEHAVIOR_REASONS_SLOT.__get__(evidence, BehaviorEvidence),
+        _BEHAVIOR_REASONS_SLOT.__get__(
+            evidence, _NATIVE_BEHAVIOR_EVIDENCE_TYPE
+        ),
     )
     if reasons:
         message = "; ".join(reasons)

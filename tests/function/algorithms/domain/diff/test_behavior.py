@@ -1784,3 +1784,40 @@ def test_behavior_native_admission_error_survives_late_public_alias(
         patched.setattr(behavior_module, "BehaviorAdmissionError", alias)
         with pytest.raises(BehaviorAdmissionError, match="compatibility"):
             _ = require_behavior(_profile(), _observations(compatible=False), 0.8)
+
+
+@pytest.mark.parametrize(
+    "alias",
+    [
+        "BugState",
+        "IdentityProbe",
+        "CompatibilityProbe",
+        "BugProbe",
+        "IdentityObservation",
+        "CompatibilityObservation",
+        "BugObservation",
+        "BehaviorProfile",
+        "BehaviorObservations",
+        "BehaviorEvidence",
+    ],
+)
+def test_behavior_original_receipts_survive_late_public_class_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: str
+) -> None:
+    """A late class alias cannot reinterpret native probes or verdicts."""
+    profile = _profile()
+    observations = _observations()
+    expected = evaluate_behavior(profile, observations, 0.8)
+    with monkeypatch.context() as patched:
+        patched.setattr(behavior_module, alias, dict)
+        cloned_profile = BehaviorProfile(
+            profile.identity, profile.compatibility, profile.bugs
+        )
+        cloned_observations = BehaviorObservations(
+            observations.identity, observations.compatibility, observations.bugs
+        )
+        assert cloned_profile == profile
+        assert cloned_observations == observations
+        assert evaluate_behavior(profile, observations, 0.8) == expected
+        assert require_behavior(profile, observations, 0.8).admitted
+        assert expected.admitted
