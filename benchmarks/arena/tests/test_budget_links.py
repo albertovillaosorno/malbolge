@@ -99,3 +99,13 @@ def test_budget_source_limit_rejects_substituted_text_admission(
     monkeypatch.setattr(budget_links, "_admit_text", lambda _text: None)
     with pytest.raises(budget_links.BudgetLinkError, match="byte limit"):
         budget_links.parse_run_budgets(oversized)
+
+
+def test_budget_source_limit_rejects_suppressed_error_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An overridden error hook cannot silently ignore an oversized manifest."""
+    oversized = MANIFEST + "#" + "x" * budget_links.MAX_RUN_MANIFEST_BYTES
+    monkeypatch.setattr(budget_links, "_fail", lambda _message: None)
+    with pytest.raises(budget_links.BudgetLinkError, match="byte limit"):
+        budget_links.parse_run_budgets(oversized)

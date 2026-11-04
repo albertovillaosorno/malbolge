@@ -71,25 +71,28 @@ def _fail(message: str) -> Never:
     raise BudgetLinkError(message)
 
 
+_SOURCE_FAIL = _fail
+
+
 def _positive_integer(table: dict[str, object], key: str) -> int:
     value = table.get(key)
     if type(value) is not int or value <= 0:
-        _fail(f"experiment run budget.{key} must be a positive integer")
+        _SOURCE_FAIL(f"experiment run budget.{key} must be a positive integer")
     return value
 
 
 def _admit_text(text: str) -> None:
     if type(text) is not str:
-        _fail("budget run manifest requires exact str text")
+        _SOURCE_FAIL("budget run manifest requires exact str text")
     if len(text) > _SOURCE_MAX_RUN_MANIFEST_BYTES:
-        _fail("budget run manifest exceeds byte limit")
+        _SOURCE_FAIL("budget run manifest exceeds byte limit")
     try:
         encoded_size = len(text.encode("utf-8"))
     except UnicodeEncodeError as error:
         message = "budget run manifest requires strict UTF-8 text"
         raise BudgetLinkError(message) from error
     if encoded_size > _SOURCE_MAX_RUN_MANIFEST_BYTES:
-        _fail("budget run manifest exceeds byte limit")
+        _SOURCE_FAIL("budget run manifest exceeds byte limit")
 
 
 _SOURCE_ADMIT_TEXT = _admit_text
@@ -114,14 +117,14 @@ def parse_run_budgets(text: str) -> RunBudgets:
         message = "invalid experiment run budget TOML"
         raise BudgetLinkError(message) from error
     if type(document) is not dict:
-        _fail("invalid experiment run budget TOML root")
+        _SOURCE_FAIL("invalid experiment run budget TOML root")
     if any(type(key) is not str for key in document):
-        _fail("experiment run budget TOML requires native string keys")
+        _SOURCE_FAIL("experiment run budget TOML requires native string keys")
     budget = document.get("budget")
     if type(budget) is not dict:
-        _fail("experiment run budget table is missing")
+        _SOURCE_FAIL("experiment run budget table is missing")
     if any(type(key) is not str for key in budget):
-        _fail("experiment run budget table requires native string keys")
+        _SOURCE_FAIL("experiment run budget table requires native string keys")
     seconds = _positive_integer(budget, "seconds")
     memory_mib = _positive_integer(budget, "memory_mib")
     # A substituted decoder can return a perfectly native but fabricated
@@ -140,7 +143,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
         or type(source_budget.get("memory_mib")) is not int
         or source_budget["memory_mib"] != memory_mib
     ):
-        _fail("experiment run budget differs from source TOML")
+        _SOURCE_FAIL("experiment run budget differs from source TOML")
     return _SOURCE_RUN_BUDGETS(
         time_ns=seconds * _SOURCE_NANOSECONDS_PER_SECOND,
         memory_bytes=memory_mib * _SOURCE_BYTES_PER_MIB,

@@ -78,26 +78,29 @@ def _fail(message: str) -> Never:
     raise TrialRunError(message)
 
 
+_SOURCE_FAIL = _fail
+
+
 def _digest(value: object) -> str:
     if type(value) is not str or len(value) != _SOURCE_SHA256_HEX_LENGTH:
-        _fail("arena_trial requires lowercase SHA-256 raw_sha256")
+        _SOURCE_FAIL("arena_trial requires lowercase SHA-256 raw_sha256")
     if not set(value) <= _SOURCE_SHA256_ALPHABET:
-        _fail("arena_trial requires lowercase SHA-256 raw_sha256")
+        _SOURCE_FAIL("arena_trial requires lowercase SHA-256 raw_sha256")
     return value
 
 
 def _admit_text(text: str) -> None:
     if type(text) is not str:
-        _fail("per-trial run manifest requires exact str text")
+        _SOURCE_FAIL("per-trial run manifest requires exact str text")
     if len(text) > _SOURCE_MAX_RUN_MANIFEST_BYTES:
-        _fail("per-trial run manifest exceeds byte limit")
+        _SOURCE_FAIL("per-trial run manifest exceeds byte limit")
     try:
         encoded_size = len(text.encode("utf-8"))
     except UnicodeEncodeError as error:
         message = "per-trial run manifest requires strict UTF-8 text"
         raise TrialRunError(message) from error
     if encoded_size > _SOURCE_MAX_RUN_MANIFEST_BYTES:
-        _fail("per-trial run manifest exceeds byte limit")
+        _SOURCE_FAIL("per-trial run manifest exceeds byte limit")
 
 
 _SOURCE_ADMIT_TEXT = _admit_text
@@ -122,24 +125,24 @@ def parse_trial_run(text: str) -> TrialRun:
         message = "invalid per-trial manifest TOML"
         raise TrialRunError(message) from error
     if type(document) is not dict:
-        _fail("invalid per-trial manifest TOML root")
+        _SOURCE_FAIL("invalid per-trial manifest TOML root")
     if any(type(key) is not str for key in document):
-        _fail("per-trial manifest TOML requires native string keys")
+        _SOURCE_FAIL("per-trial manifest TOML requires native string keys")
     table = document.get(_SOURCE_EXTENSION_NAME)
     if (
         type(table) is not dict
         or any(type(key) is not str for key in table)
         or set(table) != _SOURCE_EXTENSION_FIELDS
     ):
-        _fail(
+        _SOURCE_FAIL(
             "arena_trial requires exact schema_version/trial/raw_sha256 and native string keys"
         )
     version = table["schema_version"]
     if type(version) is not int or version != _SOURCE_SCHEMA_VERSION:
-        _fail("arena_trial requires schema_version = 1")
+        _SOURCE_FAIL("arena_trial requires schema_version = 1")
     trial = table["trial"]
     if type(trial) is not int or trial < 0:
-        _fail("arena_trial requires nonnegative integer trial")
+        _SOURCE_FAIL("arena_trial requires nonnegative integer trial")
     digest = _digest(table["raw_sha256"])
     # The native shape of a returned mapping does not prove that its values
     # were parsed from this manifest. Compare against the retained source
@@ -160,5 +163,5 @@ def parse_trial_run(text: str) -> TrialRun:
         or type(source_table.get("raw_sha256")) is not str
         or source_table["raw_sha256"] != digest
     ):
-        _fail("per-trial manifest identity differs from source TOML")
+        _SOURCE_FAIL("per-trial manifest identity differs from source TOML")
     return _SOURCE_TRIAL_RUN(trial=trial, raw_sha256=digest)

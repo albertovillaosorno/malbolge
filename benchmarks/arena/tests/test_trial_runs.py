@@ -132,3 +132,13 @@ def test_trial_source_limit_rejects_substituted_text_admission(
     monkeypatch.setattr(trial_runs, "_admit_text", lambda _text: None)
     with pytest.raises(trial_runs.TrialRunError, match="byte limit"):
         trial_runs.parse_trial_run(oversized)
+
+
+def test_trial_source_limit_rejects_suppressed_error_hook(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An overridden error hook cannot silently ignore an oversized manifest."""
+    oversized = _manifest("a" * 64) + "#" + "x" * trial_runs.MAX_RUN_MANIFEST_BYTES
+    monkeypatch.setattr(trial_runs, "_fail", lambda _message: None)
+    with pytest.raises(trial_runs.TrialRunError, match="byte limit"):
+        trial_runs.parse_trial_run(oversized)
