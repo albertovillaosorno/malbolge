@@ -223,3 +223,16 @@ Both raw and capsule publication require normative VM output of these exact
 seven bytes in 21 steps, independent of unused input. Incorrect prefixes,
 reordered bytes, extra output and altered SSA are rejected without publication.
 This remains a finite witness, not general C byte-string lowering.
+
+### Eight distinct guest-computed bytes (bounded mixed arithmetic witness)
+
+The opt-in `--distinct-literal-eight` C path admits exactly eight separate
+source `putchar` constants with the independently verified current-profile
+binary stdout `53 20 17 3c 36 01 52 06` (hex): `S`, space, ETB, `<`, `6`,
+SOH, `R`, ACK. Three no-ops and one data-pointer relocation precede seven
+real guest `CrazyData` writes and a final `RotateData` write, each followed by
+guest output, then halt. The normative VM proves all eight distinct bytes in
+21 steps with disjoint post-source data writes, independent of unused input.
+Incomplete prefixes, reordered bytes, duplicate SSA and foreign profiles
+reject without publishing an output. This is one finite source witness, not
+arbitrary binary C output or general lowering.
