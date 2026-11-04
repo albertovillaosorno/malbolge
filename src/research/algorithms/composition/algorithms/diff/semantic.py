@@ -82,6 +82,10 @@ class SemanticPlacementError(RuntimeError):
     """Raised when semantic edit placement is missing, ambiguous, or unsafe."""
 
 
+# Preserve native rejection independently of late consumer export aliases.
+_NATIVE_SEMANTIC_PLACEMENT_ERROR = SemanticPlacementError
+
+
 @dataclass(frozen=True, slots=True, init=False)
 class SemanticLocator:
     """Hashed source-unit range plus immediate canonical context."""
@@ -113,7 +117,7 @@ class SemanticLocator:
         for group in groups:
             if _NATIVE_TYPE(group) is not _NATIVE_TUPLE:
                 message = "semantic locator digests must use immutable tuples"
-                raise SemanticPlacementError(message)
+                raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
             items = cast("tuple[object, ...]", group)
             if _NATIVE_ANY(
                 _NATIVE_TYPE(digest) is not _NATIVE_BYTES
@@ -121,10 +125,10 @@ class SemanticLocator:
                 for digest in items
             ):
                 message = "semantic locator digests must be exact SHA-256 bytes"
-                raise SemanticPlacementError(message)
+                raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
         if not _NATIVE_ANY(groups):
             message = "semantic locator requires source or context evidence"
-            raise SemanticPlacementError(message)
+            raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
 
 
 _LOCATOR_VALIDATOR = cast(
@@ -171,7 +175,7 @@ def _stored_semantic_locator(
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "semantic locator is missing evidence fields"
-        raise SemanticPlacementError(message) from error
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message) from error
 
 
 def read_semantic_locator(
@@ -180,7 +184,7 @@ def read_semantic_locator(
     """Validate native locator evidence before exposing its stored hashes."""
     if _NATIVE_TYPE(locator) is not SemanticLocator:
         message = "semantic locator reader requires the exact locator type"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     _LOCATOR_VALIDATOR(locator)
     return _stored_semantic_locator(locator)
 
@@ -215,15 +219,15 @@ class SemanticEdit:
         locator, replacement, replacement_digests = _stored_semantic_edit(self)
         if _NATIVE_TYPE(locator) is not SemanticLocator:
             message = "semantic edit locator must use the exact locator type"
-            raise SemanticPlacementError(message)
+            raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
         # A constructor-bypassed exact locator is not validated evidence.
         _LOCATOR_VALIDATOR(locator)
         if _NATIVE_TYPE(replacement) is not _NATIVE_BYTES:
             message = "semantic replacement must use exact bytes"
-            raise SemanticPlacementError(message)
+            raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
         if _NATIVE_TYPE(replacement_digests) is not _NATIVE_TUPLE:
             message = "semantic replacement digests must use an immutable tuple"
-            raise SemanticPlacementError(message)
+            raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
         items = cast("tuple[object, ...]", replacement_digests)
         if _NATIVE_ANY(
             _NATIVE_TYPE(digest) is not _NATIVE_BYTES
@@ -231,7 +235,7 @@ class SemanticEdit:
             for digest in items
         ):
             message = "semantic replacement digests must be exact SHA-256 bytes"
-            raise SemanticPlacementError(message)
+            raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
 
 
 _EDIT_VALIDATOR = cast(
@@ -277,7 +281,7 @@ def _stored_semantic_edit(
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "semantic edit is missing metadata fields"
-        raise SemanticPlacementError(message) from error
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message) from error
 
 
 def read_semantic_edit(
@@ -286,7 +290,7 @@ def read_semantic_edit(
     """Validate native edit and locator evidence before exposing its fields."""
     if _NATIVE_TYPE(edit) is not SemanticEdit:
         message = "semantic edit reader requires the exact edit type"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     _EDIT_VALIDATOR(edit)
     return _stored_semantic_edit(edit)
 
@@ -312,12 +316,12 @@ class SemanticAuthoringPlan:
         edits = _stored_semantic_plan(self)
         if _NATIVE_TYPE(edits) is not _NATIVE_TUPLE:
             message = "semantic edits must use the exact immutable tuple type"
-            raise SemanticPlacementError(message)
+            raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
         if _NATIVE_ANY(
             _NATIVE_TYPE(edit) is not SemanticEdit for edit in edits
         ):
             message = "semantic plan contains a foreign edit record"
-            raise SemanticPlacementError(message)
+            raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
         # Exact nested records may bypass their frozen dataclass initializers.
         for edit in edits:
             _EDIT_VALIDATOR(edit)
@@ -349,14 +353,14 @@ def _stored_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ..
         )
     except _NATIVE_ATTRIBUTE_ERROR as error:
         message = "semantic plan is missing edit fields"
-        raise SemanticPlacementError(message) from error
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message) from error
 
 
 def read_semantic_plan(plan: SemanticAuthoringPlan) -> tuple[SemanticEdit, ...]:
     """Validate native plan and nested edit evidence before exposing edits."""
     if _NATIVE_TYPE(plan) is not SemanticAuthoringPlan:
         message = "semantic plan reader requires the exact authoring-plan type"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     _PLAN_VALIDATOR(plan)
     return _stored_semantic_plan(plan)
 
@@ -1091,10 +1095,10 @@ def build_semantic_plan(
         or _NATIVE_TYPE(target) is not MappedView
     ):
         message = "semantic build inputs must use exact MappedView records"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     if _NATIVE_TYPE(context_units) is not _NATIVE_INT or context_units < _ONE:
         message = "semantic placement context_units must be a positive integer"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     source_digests = _view_digests(source)
     target_digests = _view_digests(target)
     context = _new_build_context(
@@ -1185,7 +1189,7 @@ def _unique_position(
             "semantic source locator is missing or ambiguous: "
             f"found {_NATIVE_LEN(positions)} placements"
         )
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     return positions[0]
 
 
@@ -1244,13 +1248,13 @@ def _require_nonoverlapping_edits(ordered: tuple[_LocatedEdit, ...]) -> None:
                 message = (
                     "semantic edits overlap or reorder in candidate source"
                 )
-                raise SemanticPlacementError(message)
+                raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
             insertion_boundaries.add(unit_start)
         if previous is not None and (
             raw_start < previous[4] or unit_start < previous[2]
         ):
             message = "semantic edits overlap or reorder in candidate source"
-            raise SemanticPlacementError(message)
+            raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
         previous = fields
 
 
@@ -1280,7 +1284,7 @@ def _expected_digests(
 def _validate_mapper(value: object) -> None:
     if not _NATIVE_CALLABLE(value):
         message = "semantic mapper must be callable"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
 
 
 def _map_semantic_output(
@@ -1292,13 +1296,13 @@ def _map_semantic_output(
         # Callback exceptions may define executable or failing __str__ hooks.
         # Preserve the original error as the cause without formatting it.
         message = "semantic mapper failed after edit application"
-        raise SemanticPlacementError(message) from error
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message) from error
     if _NATIVE_TYPE(mapped) is not MappedView:
         message = "semantic mapper must return the exact MappedView type"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     if read_mapped_view(mapped)[0] != output:
         message = "semantic mapper must describe the actual output bytes"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     return mapped
 
 
@@ -1319,10 +1323,10 @@ def apply_semantic_plan(
     """
     if _NATIVE_TYPE(candidate) is not MappedView:
         message = "semantic candidate must use the exact MappedView type"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     if _NATIVE_TYPE(plan) is not SemanticAuthoringPlan:
         message = "semantic plan must use the exact authoring-plan type"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     # Replay only original, fully validated nested source/target evidence.
     _PLAN_VALIDATOR(plan)
     _validate_mapper(mapper)
@@ -1334,5 +1338,5 @@ def apply_semantic_plan(
     observed = _view_digests(_map_semantic_output(mapper, output))
     if observed != expected:
         message = "semantic edit changed canonical units at a replacement seam"
-        raise SemanticPlacementError(message)
+        raise _NATIVE_SEMANTIC_PLACEMENT_ERROR(message)
     return output

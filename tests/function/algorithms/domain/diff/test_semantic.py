@@ -1906,3 +1906,22 @@ def test_semantic_mapper_rejects_late_exception_alias(
     assert type(caught) is SemanticPlacementError, caught
     assert "mapper failed" in str(caught)
     assert type(caught.__cause__) is RuntimeError
+
+
+@pytest.mark.parametrize("alias", [object, RuntimeError])
+@pytest.mark.parametrize("route", ["locator", "edit", "plan", "empty-locator"])
+def test_semantic_preserves_native_error_after_public_alias(
+    monkeypatch: pytest.MonkeyPatch, alias: type[object], route: str
+) -> None:
+    """Late exported exception rebinding must not alter native rejection."""
+    with monkeypatch.context() as patched:
+        patched.setattr(semantic_module, "SemanticPlacementError", alias)
+        with pytest.raises(SemanticPlacementError):
+            if route == "locator":
+                _ = read_semantic_locator(object.__new__(SemanticLocator))
+            elif route == "edit":
+                _ = read_semantic_edit(object.__new__(SemanticEdit))
+            elif route == "plan":
+                _ = read_semantic_plan(object.__new__(SemanticAuthoringPlan))
+            else:
+                _ = SemanticLocator((), (), ())
