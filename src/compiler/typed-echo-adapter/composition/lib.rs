@@ -96,6 +96,7 @@ enum ByteTraceMode {
     AdjacentEcho,
     DistinctLiteralPair,
     DistinctLiteralTriple,
+    DistinctLiteralQuad,
     EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
@@ -334,7 +335,7 @@ fn project_literal_pair_effects(
                 zero.little_endian() == [0]
                     && matches!(literal.little_endian(), [b'Z' | b'P' | b'T' | b'S'])
             }
-            ByteTraceMode::DistinctLiteralTriple => false,
+            ByteTraceMode::DistinctLiteralTriple | ByteTraceMode::DistinctLiteralQuad => false,
             ByteTraceMode::DistinctLiteralPair => matches!(
                 (zero.little_endian(), literal.little_endian()),
                 ([b'Y'], [b'/' | b'$']) | ([b'Q'], [b'.'])
@@ -444,6 +445,71 @@ fn project_literal_triple_effects(
         [b'Z', b'%', b'H'] | [b'Q', b'.', b'O'] | [b'Y', b'-', b'P'] | [b'T', b'"', b'O' | b'Q']
     ) {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    Ok(result)
+}
+
+// Four exact source constants must preserve distinct output SSA identities.
+fn project_literal_quad_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    let [
+        first,
+        first_out,
+        second,
+        second_out,
+        third,
+        third_out,
+        fourth,
+        fourth_out,
+    ] = original
+    else {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    };
+    let pairs = [
+        (first, first_out),
+        (second, second_out),
+        (third, third_out),
+        (fourth, fourth_out),
+    ];
+    let mut result = Vec::with_capacity(8);
+    let mut ids = BTreeSet::new();
+    for (index, (constant, output)) in pairs.into_iter().enumerate() {
+        let (
+            Instruction::ConstantInteger {
+                constant: literal,
+                result: id,
+                type_id,
+            },
+            Instruction::ByteOutput { value },
+        ) = (constant.instruction(), output.instruction())
+        else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        };
+        if !is_byte_type(module, *type_id)
+            || literal.bit_width() != 8
+            || id != value
+            || !ids.insert(*id)
+            || literal.little_endian()
+                != [b'T', b'=', b'4', b'>']
+                    .get(index)
+                    .map(std::slice::from_ref)
+                    .unwrap_or(&[])
+        {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+        result.push(InputInstruction::ConstantInteger {
+            bit_width: 8,
+            little_endian: literal.little_endian().to_vec(),
+            result: id.value(),
+            span: project_span(constant.span()),
+            type_kind: InputScalarType::U8,
+        });
+        result.push(InputInstruction::ByteOutput {
+            span: project_span(output.span()),
+            value: id.value(),
+        });
     }
     Ok(result)
 }
@@ -658,6 +724,9 @@ fn project_byte_trace(
         ByteTraceMode::DistinctLiteralTriple => {
             project_literal_triple_effects(module, block.instructions())?
         }
+        ByteTraceMode::DistinctLiteralQuad => {
+            project_literal_quad_effects(module, block.instructions())?
+        }
     };
     Ok(TypedIrInput {
         abi_id: module.abi_id().to_owned(),
@@ -742,6 +811,9 @@ fn compile_byte_trace(
         }
         ByteTraceMode::DistinctLiteralTriple => {
             bridge::encode_distinct_literal_triple(&independently_admitted, profile)
+        }
+        ByteTraceMode::DistinctLiteralQuad => {
+            bridge::encode_distinct_literal_quad(&independently_admitted, profile)
         }
     }
     .map_err(TypedEchoAdapterError::Layout)?;
@@ -918,4 +990,16 @@ pub fn compile_canonical_typed_distinct_literal_triple(
     profile: &'static ProfileDescriptor,
 ) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
     compile_byte_trace(canonical, profile, ByteTraceMode::DistinctLiteralTriple)
+}
+
+/// Compile exactly four distinct source-proven guest bytes `T=4>`.
+///
+/// # Errors
+///
+/// Rejects any other effects, stale SSA, profile drift or VM disagreement.
+pub fn compile_canonical_typed_distinct_literal_quad(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(canonical, profile, ByteTraceMode::DistinctLiteralQuad)
 }

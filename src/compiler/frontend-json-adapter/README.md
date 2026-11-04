@@ -177,3 +177,14 @@ the layout publisher and the normative guest VM. A two-call prefix such as
 unsupported transitions or any fourth call are also rejected before publish.
 The native source-to-guest proof is
 `tests/test_c2malbolge_distinct_literal_triplet.py`.
+
+### Four-distinct-byte current-profile witness
+
+The separately selected `T=4>` literal-output mode preserves four distinct
+source-bound `u8` constant definitions and four exact SSA byte outputs. Its
+independently verified positional target uses eleven no-ops, one data-pointer
+relocation and four separate guest `CrazyData`/output pairs before halt. The
+normative current-profile VM emits `T=4>` in exactly 21 steps with no input
+consumption. Partial prefixes, other four-byte values, stale SSA identities,
+foreign profiles and unproved arithmetic remain unsupported; this is not a
+general C string-output implementation.

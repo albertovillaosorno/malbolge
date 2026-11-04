@@ -71,6 +71,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralPair,
     /// Exactly three independently VM-witnessed different bytes.
     DistinctLiteralTriple,
+    /// Exactly four independently VM-witnessed printable bytes.
+    DistinctLiteralQuad,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -172,6 +174,7 @@ struct LiteralOutputNodes<'node> {
     function: &'node Node,
     mixed_byte: Option<u8>,
     third_byte: Option<u8>,
+    fourth_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -895,6 +898,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut selected_byte = None;
     let mut mixed_byte = None;
     let mut third_byte = None;
+    let mut fourth_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1026,7 +1030,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     (Some(b'Z'), b'%')
                         | (Some(b'Q'), b'.')
                         | (Some(b'Y'), b'-')
-                        | (Some(b'T'), b'"')
+                        | (Some(b'T'), b'"' | b'=')
                 );
                 if !(is_zero_then_literal || is_distinct_nonzero || is_triple_prefix) {
                     return Err(FrontendJsonError::Unsupported);
@@ -1039,10 +1043,18 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                         | (Some(b'Q'), Some(b'.'), b'O')
                         | (Some(b'Y'), Some(b'-'), b'P')
                         | (Some(b'T'), Some(b'"'), b'O' | b'Q')
+                        | (Some(b'T'), Some(b'='), b'4')
                 ) {
                     return Err(FrontendJsonError::Unsupported);
                 }
                 third_byte = Some(byte);
+            } else if calls.len() == 3 && fourth_byte.is_none() {
+                if (selected_byte, mixed_byte, third_byte, byte)
+                    != (Some(b'T'), Some(b'='), Some(b'4'), b'>')
+                {
+                    return Err(FrontendJsonError::Unsupported);
+                }
+                fourth_byte = Some(byte);
             } else {
                 return Err(FrontendJsonError::Unsupported);
             }
@@ -1079,12 +1091,18 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     if third_byte.is_none()
         && matches!(
             (selected_byte, mixed_byte),
-            (Some(b'Z'), Some(b'%')) | (Some(b'Y'), Some(b'-')) | (Some(b'T'), Some(b'"'))
+            (Some(b'Z'), Some(b'%')) | (Some(b'Y'), Some(b'-')) | (Some(b'T'), Some(b'"' | b'='))
         )
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    if fourth_byte.is_none()
+        && (selected_byte, mixed_byte, third_byte) == (Some(b'T'), Some(b'='), Some(b'4'))
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
     Ok(LiteralOutputNodes {
+        fourth_byte,
         third_byte,
         body,
         byte: selected_byte.ok_or(FrontendJsonError::Unsupported)?,
@@ -1126,6 +1144,7 @@ fn canonical_literal_output_typed_ir(
         byte,
         mixed_byte,
         third_byte,
+        fourth_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -1217,9 +1236,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 3
+            && let Some(fourth) = fourth_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![fourth]),
+                    result: ValueId::new(3),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 2 && third_byte.is_some() {
+                value: ValueId::new(if index == 3 && fourth_byte.is_some() {
+                    3
+                } else if index == 2 && third_byte.is_some() {
                     2
                 } else {
                     u32::from(index == 1 && mixed_byte.is_some())
@@ -1259,7 +1292,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if third_byte.is_some() {
+    let mode = if fourth_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralQuad
+    } else if third_byte.is_some() {
         FrontendGuestMode::DistinctLiteralTriple
     } else if mixed_byte.is_some() && byte == 0 {
         FrontendGuestMode::ZeroThenLiteral

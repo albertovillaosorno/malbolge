@@ -283,3 +283,14 @@ preserving three different
 canonical MCTI/MCTR round trip feeds the separate triple bridge; the
 real VM independently verifies all three writes and exact termination.
 All other triples, stale SSA, foreign profiles and extra effects reject.
+
+### Four-distinct-byte current-profile witness
+
+The separately selected `T=4>` literal-output mode preserves four distinct
+source-bound `u8` constant definitions and four exact SSA byte outputs. Its
+independently verified positional target uses eleven no-ops, one data-pointer
+relocation and four separate guest `CrazyData`/output pairs before halt. The
+normative current-profile VM emits `T=4>` in exactly 21 steps with no input
+consumption. Partial prefixes, other four-byte values, stale SSA identities,
+foreign profiles and unproved arithmetic remain unsupported; this is not a
+general C string-output implementation.

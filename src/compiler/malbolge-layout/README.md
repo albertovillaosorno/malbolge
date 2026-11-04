@@ -564,3 +564,14 @@ separate `p` writes. The publisher independently decodes MCTR, proves
 profile/SSA and exact 8/9/10/12/14 source-step geometry, and reruns the
 current-profile VM before raw/capsule publication. Unproved output traces
 never publish; no general C code generation is claimed.
+
+### Four-distinct-byte current-profile witness
+
+The separately selected `T=4>` literal-output mode preserves four distinct
+source-bound `u8` constant definitions and four exact SSA byte outputs. Its
+independently verified positional target uses eleven no-ops, one data-pointer
+relocation and four separate guest `CrazyData`/output pairs before halt. The
+normative current-profile VM emits `T=4>` in exactly 21 steps with no input
+consumption. Partial prefixes, other four-byte values, stale SSA identities,
+foreign profiles and unproved arithmetic remain unsupported; this is not a
+general C string-output implementation.
