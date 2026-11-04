@@ -73,6 +73,27 @@ fn run_cli(arguments: &[&str]) -> Result<std::process::Output, String> {
         .map_err(|error| format!("start public CLI: {error}"))
 }
 
+#[cfg(unix)]
+#[test]
+fn installed_unix_shim_forwards_public_compile_argument_contract() -> Result<(), String> {
+    let shim = Path::new(ROOT).join("src/interface/command-line/composition/scripts/malbolge");
+    let rejected = Command::new(shim)
+        .arg("--repository-tools")
+        .arg("compile")
+        .output()
+        .map_err(|error| format!("start installed repository-tools shim: {error}"))?;
+    if rejected.status.success()
+        || !rejected.stdout.is_empty()
+        || !String::from_utf8_lossy(&rejected.stderr)
+            .contains("compile requires input.c -o output.malbolge")
+    {
+        return Err(format!(
+            "installed shim did not delegate compile: {rejected:?}"
+        ));
+    }
+    Ok(())
+}
+
 #[test]
 fn compiler_arguments_reject_ambiguous_or_unsupported_public_forms() -> Result<(), String> {
     let help = run_cli(&["--help"])?;
