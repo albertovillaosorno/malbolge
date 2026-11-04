@@ -70,3 +70,22 @@ def test_public_budget_size_limit_cannot_admit_oversized_source(
     monkeypatch.setattr(budget_links, "MAX_RUN_MANIFEST_BYTES", len(oversized) + 1)
     with pytest.raises(budget_links.BudgetLinkError, match="byte limit"):
         budget_links.parse_run_budgets(oversized)
+
+
+@pytest.mark.parametrize("forged_field", ["time_ns", "memory_bytes"])
+def test_source_budgets_ignore_substituted_result_constructor(
+    monkeypatch: pytest.MonkeyPatch, forged_field: str
+) -> None:
+    """A replacement result factory cannot alter checked source budgets."""
+    original = budget_links.RunBudgets
+
+    def forged_constructor(
+        *, time_ns: int, memory_bytes: int
+    ) -> budget_links.RunBudgets:
+        result = {"time_ns": time_ns, "memory_bytes": memory_bytes}
+        result[forged_field] += 1
+        return original(**result)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(budget_links, "RunBudgets", forged_constructor)
+        assert budget_links.parse_run_budgets(MANIFEST) == EXPECTED

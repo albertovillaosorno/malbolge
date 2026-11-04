@@ -63,6 +63,10 @@ class RunBudgets:
     memory_bytes: int
 
 
+# Keep admitted budget values independent of a substituted public factory.
+_SOURCE_RUN_BUDGETS = RunBudgets
+
+
 def _fail(message: str) -> Never:
     raise BudgetLinkError(message)
 
@@ -134,7 +138,7 @@ def parse_run_budgets(text: str) -> RunBudgets:
         or source_budget["memory_mib"] != memory_mib
     ):
         _fail("experiment run budget differs from source TOML")
-    return RunBudgets(
+    return _SOURCE_RUN_BUDGETS(
         time_ns=seconds * _SOURCE_NANOSECONDS_PER_SECOND,
         memory_bytes=memory_mib * _SOURCE_BYTES_PER_MIB,
     )
