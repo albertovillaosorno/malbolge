@@ -1831,11 +1831,11 @@ The original study records remain the result authority.
   forged booleans, foreign buffers, byte-limit and path bypasses, and copied
   tool receipts while retaining valid native values. All 370 then-collected
   tests passed before the final six class-identity cases were added; those
-  six and the other seven new cases passed again after commit. The complete
-  376-case run exceeded its 120-second bound, and one expensive real-study
-  fixture exceeded a separate 65-second bound; neither was counted as a
-  passing full-suite verdict. The bounded runs and zero BasedPyright/Ruff
-  findings support this local admission hardening only. `jig doctor`
+  six and the other seven new cases passed again after commit. Initial
+  full and isolated real-study runs hit 120-second and 65-second timeouts;
+  all 376 cases later passed in bounded batches, and an uninterrupted
+  post-commit retry passed all 376 in 73.80 seconds. Zero BasedPyright and
+  Ruff findings support this local admission hardening. `jig doctor`
   reported a degraded state with no compiled graph; `jig check` exceeded
   85 seconds without a repository-wide acceptance verdict. No OS child
   attestation, source authenticity, or new Malbolge performance proof follows.
