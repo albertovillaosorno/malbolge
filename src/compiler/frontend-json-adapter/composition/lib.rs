@@ -483,12 +483,18 @@ fn admitted_output_byte(
         _ => return None,
     };
     let digits = literal.literal.as_deref()?;
-    // Clang reports a canonical decimal evaluated i32 value for either source
-    // spelling. The compiler never infers this value by scanning C text.
-    let byte = digits.parse::<u8>().ok()?;
-    if digits != byte.to_string() || literal.constant_integer.as_deref() != Some(digits) {
+    // Clang reports the full canonical decimal evaluated i32 argument, not
+    // the putchar byte. The guest libc contract emits its low eight bits.
+    // Require a nonnegative, representable i32 literal; signed negation and
+    // implementation-defined unsigned-to-signed conversions stay unsupported.
+    let evaluated = digits.parse::<i32>().ok()?;
+    if evaluated.is_negative()
+        || digits != evaluated.to_string()
+        || literal.constant_integer.as_deref() != Some(digits)
+    {
         return None;
     }
+    let [byte, ..] = evaluated.to_le_bytes();
     let call_span = &call.span;
     let cast_span = &cast.span;
     let callee_span = &callee.span;

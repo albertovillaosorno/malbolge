@@ -359,6 +359,41 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
                         executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
                     )
 
+    def test_real_clang_putchar_integer_argument_is_reduced_to_guest_byte(self) -> None:
+        tools = self._tools()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
+            # Real Clang preserves evaluated i32 values above 255. The guest
+            # implements the C byte conversion, not a host stdout callback.
+            cases = (
+                (b"putchar(321); putchar(65);", b"AA", 27),
+                (b"putchar(0x141); putchar(321u);", b"AA", 27),
+                (b"putchar(279);", b"\x17", None),
+                (b"putchar(0x100);", b"\x00", 2),
+            )
+            for index, (calls, expected, steps) in enumerate(cases):
+                with self.subTest(calls=calls):
+                    source = Path(temporary) / f"low-byte-{index}.c"
+                    target = Path(temporary) / f"low-byte-{index}.malbolge"
+                    _ = source.write_bytes(
+                        b"#include <stdio.h>\nvoid emit(void) { "
+                        + calls
+                        + b" return; }\n"
+                    )
+                    compiled = self._compile(tools, source, target, capsule=True)
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    executed = subprocess.run(
+                        [str(tools[4]), str(target), "--report-steps"],
+                        capture_output=True,
+                        check=False,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    if steps is not None:
+                        self.assertEqual(
+                            executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
+                        )
+
     def test_real_clang_nested_or_arithmetic_arguments_do_not_publish(self) -> None:
         tools = self._tools()
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temporary:
@@ -384,7 +419,9 @@ class CToMalbolgeNativePipelineTests(unittest.TestCase):
             cases = (
                 b"putchar(0x41); putchar(0x42);",
                 b"putchar(0x41 + 0);",
-                b"putchar(0x100);",
+                b"putchar(-1);",
+                b"putchar(2147483648);",
+                b"putchar(4294967295u);",
             )
             for index, calls in enumerate(cases):
                 with self.subTest(calls=calls):

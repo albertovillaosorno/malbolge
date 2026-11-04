@@ -412,6 +412,77 @@ fn pinned_clang_single_argument_wrappers_emit_real_guest_zero() -> Result<(), St
     Ok(())
 }
 
+// Pinned Clang retains the full evaluated i32 argument even though C putchar
+// emits its low unsigned byte. The fixture spans retain the source token width.
+#[expect(
+    clippy::indexing_slicing,
+    clippy::arithmetic_side_effects,
+    reason = "bounded real Clang literals with explicit evaluated values"
+)]
+fn evaluated_integer_input(value: u32, outputs: u32) -> Value {
+    let byte = u8::try_from(value & 255).unwrap_or_default();
+    let literal = value.to_string();
+    let width = u32::try_from(literal.len()).unwrap_or_default();
+    let mut source = repeated_output_input(byte, outputs, "integer-literal", width);
+    for index in 0..outputs {
+        let literal_node = 5 + usize::try_from(index).unwrap_or_default() * 4;
+        source["nodes"][literal_node]["literal"] = json!(literal);
+        source["nodes"][literal_node]["constant_integer"] = json!(literal);
+    }
+    source
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "C int-to-unsigned-byte conversion is verified in actual guest VM"
+)]
+fn pinned_clang_integer_arguments_reduce_to_guest_low_byte() -> Result<(), String> {
+    let profile = target_profile("malbolge-2026").ok_or("missing current profile")?;
+    for (integer, byte, outputs) in [(321, 65u8, 2u32), (279, 23, 1), (256, 0, 2)] {
+        let source = evaluated_integer_input(integer, outputs);
+        let (wire, mode) = canonical_guest_typed_ir(&bytes(&source))
+            .map_err(|error| format!("C putchar({integer}) admission: {error:?}"))?;
+        let expected_mode = if byte == 0 {
+            FrontendGuestMode::InitialZeroOutput
+        } else {
+            FrontendGuestMode::SeededByteLiteral
+        };
+        assert_eq!(mode, expected_mode);
+        let compiled = if byte == 0 {
+            compile_canonical_typed_initial_zero_outputs(&wire, profile)
+        } else {
+            adapter::compile_canonical_typed_rotated_byte_literal(&wire, profile)
+        }
+        .map_err(|error| format!("compile {integer} guest: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(profile, compiled.layout().source(), Vec::new())
+            .map_err(|error| format!("load {integer} guest: {error:?}"))?;
+        let steps = compiled.layout().executed_code_positions().len();
+        assert!(matches!(vm.run(steps), Ok(RunOutcome::Terminated { .. })));
+        assert_eq!(
+            vm.output(),
+            vec![byte; usize::try_from(outputs).unwrap_or_default()]
+        );
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "out-of-range evaluated Clang values must never wrap as i32"
+)]
+fn invalid_i32_argument_does_not_wrap_to_guest_byte() {
+    // Retain matching 10-byte source spans: rejection must be by the i32
+    // range check, not an unrelated malformed span.
+    let mut source = repeated_output_input(65, 2, "integer-literal", 10);
+    for index in [5, 9] {
+        source["nodes"][index]["literal"] = json!("4294967617");
+        source["nodes"][index]["constant_integer"] = json!("4294967617");
+    }
+    assert!(canonical_guest_typed_ir(&bytes(&source)).is_err());
+}
+
 #[test]
 #[expect(
     clippy::indexing_slicing,
@@ -610,9 +681,11 @@ fn unsupported_or_inconsistent_nonzero_calls_fail_closed() -> Result<(), String>
     let mut drifted_constant = repeated_literal_input(23, 1);
     drifted_constant["nodes"][5]["constant_integer"] = json!("22");
     mutations.push(drifted_constant);
-    let mut range = repeated_literal_input(23, 1);
-    range["nodes"][5]["literal"] = json!("256");
-    range["nodes"][5]["constant_integer"] = json!("256");
+    // 256 now legitimately emits NUL. Only an overflowing C i32 literal
+    // must fail source admission, not an in-range non-byte integer.
+    let mut range = repeated_output_input(23, 1, "integer-literal", 10);
+    range["nodes"][5]["literal"] = json!("2147483648");
+    range["nodes"][5]["constant_integer"] = json!("2147483648");
     mutations.push(range);
     let mut forged_span = repeated_literal_input(65, 2);
     forged_span["nodes"][9]["span"]["end"]["byte"] = json!(59);

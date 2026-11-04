@@ -39,15 +39,19 @@ void emit(void) { putchar(0); return; }
 ```
 
 The exact pinned-Clang shape admits one through 32 **consecutive** calls to
-`putchar(N);` with optional final `return;`, where every `N` evaluates to the same
-byte in `0..255` and is either a bounded single-line C integer token
+`putchar(N);` with optional final `return;`, where every `N` emits the same
+low-eight-bit byte. The evaluated C integer is a nonnegative `i32` value
+(including `256..2147483647`) and must be a bounded single-line integer token
 (decimal, octal, hexadecimal or C23 binary) or a single C character literal
 (including bounded escape spellings). One optional exact single pair of
 parentheses or an unsigned `u32` integer token converted to `i32` is also
 admitted per call. For example, `putchar((65)); putchar(65u);`,
-`putchar(0x41); putchar(0101);`, and `putchar('\0');` retain Clang's
-source spans and evaluated integer values. Each call proves its direct
-`putchar` reference, one exact literal argument and function-to-pointer decay;
+`putchar(0x41); putchar(0101);`, `putchar(321); putchar(65);`, and
+`putchar('\0');` retain Clang's source spans and evaluated integer values.
+The C `putchar` low-byte conversion is applied only after checked `i32`
+admission, never by truncating a malformed or overflowing JSON integer.
+Each call proves its direct `putchar` reference, one exact literal argument
+and function-to-pointer decay;
 the complete normalized preorder contains four or five nodes per call, plus
 two structural nodes and optional explicit `return;`, preserving exact source
 ancestry and ordered nonoverlapping spans. The adapter emits one
@@ -60,8 +64,8 @@ witness. For example, one `putchar(23)`, two `putchar(65)` calls and three
 `putchar(146)` calls compile and execute with exact byte output. The backend's
 currently witnessed subset is enumerated in
 `src/compiler/byte-echo-bridge/README.md`; **not** every value or count is
-realizable. Integer tokens over 32 source bytes, out-of-byte evaluated values,
-and more than 32 calls refuse source admission. An unwitnessed combination fails
+realizable. Integer tokens over 32 source bytes, negative or unrepresentable
+`i32` values, and more than 32 calls refuse source admission. An unwitnessed combination fails
 layout admission without publishing a `.malbolge` artifact.
 
 An omitted final `return;` uses the original function body span to model
@@ -69,8 +73,9 @@ C's defined implicit void return; no synthetic source statement is added.
 Nested parentheses, nonliteral arithmetic, call-result handling, arbitrary
 output streams, interleaved statements,
 `getchar`, EOF, I/O errors, general guest libc and C entry ABI remain
-unsupported. Mixing distinct evaluated literal values in one source refuses
-admission.
+unsupported. Mixing distinct **output bytes** in one source refuses
+admission; distinct `i32` literals with the same low byte preserve their own
+source spans.
 The pinned Clang frontend must supply the source-bound integer or character
 token, its canonical evaluated `i32` value and a bounded single-line span;
 the adapter never decodes C integer or escape syntax or accepts fabricated
