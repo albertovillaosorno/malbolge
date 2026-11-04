@@ -1145,6 +1145,12 @@ that changing any one token could admit a three-column row under a two-column
 limit; all now reject. The 558-case combined CSV/raw/analyzer integration
 passes with zero arena type diagnostics. This bounds parser allocation, not
 the authenticity or semantic correctness of CSV measurements.
+Signed `48fc82389` now also binds the native length before scanning the
+source and quoted-field lookahead. Three red-first substituted-length cases
+previously skipped extra CSV columns or raised on valid input. All three and
+1,254 downstream CSV, raw, historical, analyzer and evidence tests passed,
+with arena BasedPyright and scoped Ruff lint/format clean. This is only
+field-count preflight, not full CSV grammar or measurement authentication.
 The historical-pairs operator now also converts unexpected ordinary importer
 and JSON-publisher failures to exit status two, without printing a partial
 report or formatting foreign exception hooks. Four red-first CLI regressions
