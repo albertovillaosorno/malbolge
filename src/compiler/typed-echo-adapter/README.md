@@ -483,3 +483,7 @@ bytes outside the 57-cell source, with a reached no-op before halt. The real
 VM independently verifies all 22 output bytes, zero consumed input and exact
 57-step termination before raw or capsule publication. Arbitrary
 twenty-two-byte source sequences remain unsupported.
+
+The canonical typed-IR `--distinct-literal-twenty-three` mode preserves
+23 source-bound `u8` constants and 23 matching `ByteOutput` SSA uses, then
+requires an independent real-VM layout proof before publication.

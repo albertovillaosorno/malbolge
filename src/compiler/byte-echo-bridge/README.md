@@ -647,3 +647,11 @@ bytes outside the 57-cell source, with a reached no-op before halt. The real
 VM independently verifies all 22 output bytes, zero consumed input and exact
 57-step termination before raw or capsule publication. Arbitrary
 twenty-two-byte source sequences remain unsupported.
+
+The `--distinct-literal-twenty-three` C path admits the exact source-ordered
+bytes `42 0e 2f 17 39 04 8e 24 9f 1b a0 23 97 15 28 27 29 14 32 1e
+8b 26 92` (hex). Eight reached no-ops precede relocation, followed by twenty
+`CrazyData` and three `RotateData` writes (positions 7, 14 and 21), then one
+reached no-op and halt. The real VM verifies all 23 bytes in 57 steps with
+zero consumed input before artifact publication. Arbitrary byte strings
+remain unsupported.

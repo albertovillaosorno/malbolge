@@ -764,3 +764,7 @@ bytes outside the 57-cell source, with a reached no-op before halt. The real
 VM independently verifies all 22 output bytes, zero consumed input and exact
 57-step termination before raw or capsule publication. Arbitrary
 twenty-two-byte source sequences remain unsupported.
+
+The `--distinct-literal-twenty-three` source mode independently replays
+23 guest-computed output bytes in 57 normative VM steps before raw or capsule
+publication; it does not imply arbitrary C output support.

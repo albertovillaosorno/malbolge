@@ -377,3 +377,8 @@ bytes outside the 57-cell source, with a reached no-op before halt. The real
 VM independently verifies all 22 output bytes, zero consumed input and exact
 57-step termination before raw or capsule publication. Arbitrary
 twenty-two-byte source sequences remain unsupported.
+
+The exact 23-byte guest witness is also admitted as
+`--distinct-literal-twenty-three` after pinned C AST effects are checked in
+source order; no shorter prefix or reordered literal is admitted as the
+23-byte recipe.
