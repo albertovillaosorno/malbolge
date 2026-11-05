@@ -61,3 +61,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   ten printable, eight controls and four high-bit in 57 real VM steps.
 - `corpus/emit-twenty-three.md`: twenty-three distinct guest bytes,
   ten printable, seven controls and six high-bit in 57 real VM steps.
+- `corpus/emit-twenty-four.md`: twenty-four distinct guest bytes,
+  eight printable, eight control and eight high-bit in 72 real VM steps.
