@@ -782,3 +782,13 @@ The 40-byte independent ternary bridge admits only the exact proven binary
 materializations and SSA outputs. Fourteen initial no-ops, one internal no-op
 and six rotations give 40 disjoint guest writes in 97 real VM steps.
 This does not enable 40-byte C source compilation.
+
+### Source-independent forty-one-byte literal proof
+
+`encode_distinct_literal_forty_one` accepts exactly forty-one distinct
+source-ordered `u8` constant/output SSA pairs and a void return, under
+the current-profile canonical ternary wire contract. An independent real
+VM witness proves forty-one guest-computed bytes in ninety-seven steps
+with disjoint data writes, zero input consumption and exact output.
+All other values, output counts, SSA effects and profiles reject. This
+does not enable C source admission or arbitrary byte materialization.
