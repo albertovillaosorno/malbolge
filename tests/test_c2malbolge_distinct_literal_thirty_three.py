@@ -171,7 +171,7 @@ class ThirtyThreeDistinctGuestLiteralTests(unittest.TestCase):
             invalid.extend(
                 [
                     (
-                        "wrong-thirty-second",
+                        "wrong-last-byte",
                         SOURCE.replace("putchar(213);", "putchar(215);"),
                     ),
                     ("wrong-second", SOURCE.replace("putchar(25);", "putchar(26);")),
@@ -182,7 +182,7 @@ class ThirtyThreeDistinctGuestLiteralTests(unittest.TestCase):
                     (
                         "reordered-third",
                         SOURCE.replace(
-                            "putchar(50); putchar(24);",
+                            "putchar(52); putchar(8);",
                             "putchar(8); putchar(52);",
                         ),
                     ),
