@@ -36,6 +36,14 @@ labels belong here.
 
 ## P0 — Authority and governance
 
+### TODO - Generalize guest byte-stream emission instead of emit-N fixtures
+
+Attempt one complete C program, repair the first compiler defect, and then
+verify the admitted behavior with a parameterized, independent VM oracle.
+
+<!-- MarkdownLint-disable-next-line MD013 MD044 -->
+[docs/todo/open/compiler/parametric-guest-byte-stream-emission.mdc](docs/todo/open/compiler/parametric-guest-byte-stream-emission.mdc)
+
 ## P1 — Semantic and language foundations
 
 ## P2 — Compiler, runtime, and accelerator core
@@ -106,8 +114,6 @@ code-size explosion or compilation cost.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc](docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc)
-
-
 
 ## P3 — Optimization, proof, and reusable scale
 
@@ -434,7 +440,6 @@ claiming paper-grade validation; keep core safety checks throughout.
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/prepublication-hardening.mdc](docs/todo/open/research/prepublication-hardening.mdc)
 
-
 ### TODO - Historical capability demonstration
 
 Produce a reproducible demonstration from the 1998 interpreter through modern
@@ -464,7 +469,6 @@ engineering work.
 
 <!-- MarkdownLint-disable-next-line MD013 MD044 -->
 [docs/todo/open/research/publication-grade-paper-pipeline.mdc](docs/todo/open/research/publication-grade-paper-pipeline.mdc)
-
 
 ### TODO - Malbolge machine-model and C compilation paper
 

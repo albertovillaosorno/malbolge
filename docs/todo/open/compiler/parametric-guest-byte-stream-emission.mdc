@@ -1,0 +1,68 @@
+---
+id: "parametric-guest-byte-stream-emission"
+status: "pending"
+lane: "10"
+priority: "p0"
+area: "compiler"
+task: "Generalize guest byte-stream emission instead of emit-N fixtures"
+contract: "docs/technical/compiler/parametric-guest-byte-stream-emission.md"
+depends_on:
+adr_paths:
+  - "docs/technical/adr/compiler-pipeline-and-guest-runtime.md"
+  - "docs/technical/adr/verification-trust-boundary.md"
+scope:
+  - "docs/technical/compiler/parametric-guest-byte-stream-emission.md"
+  - "docs/technical/examples/"
+  - "src/compiler/"
+  - "tests/test_versioned_example_corpus.py"
+  - "tests/compiler/"
+validation:
+  - "jig check --root ."
+  - "python3.14 -B -m unittest tests.test_versioned_example_corpus -v"
+---
+
+# Generalize guest byte-stream emission instead of emit-N fixtures
+
+## Objective
+
+**First experiment, then verify.** Attempt one compact, demanding C program
+through the real compiler and guest VM before extending literal byte-count
+fixtures or a generated verification matrix. Treat the first real failure as
+a compiler capability gap, not a reason to return to N+1.
+
+## Acceptance
+
+- Choose a realistic, compact C program combining local state, a loop,
+  branch, arithmetic, and guest I/O, with an independently computed oracle.
+- Attempt the whole program through the pinned Clang frontend, JSON adapter,
+  typed lowering, layout emitter, and normative VM. Never substitute host
+  execution for actual emitted guest behavior.
+- Reproduce the earliest failed stage with typed diagnostics and identify
+  the concrete owning P2 compiler capability before any workaround.
+- Repair the missing compiler behavior, add a red-first regression, and
+  rerun the original complete C program after each relevant correction.
+- Once end-to-end guest behavior matches exactly, automate a seeded matrix
+  of boundary cases, input/output parity, mutations, and negative cases.
+  Use independent oracles, bounded resources, and reproducible seeds.
+- Preserve historical SHA-pinned teaching examples, but do not extend the
+  `emit-49`, `emit-50`, ... ladder without a new semantic boundary.
+- The acceptance result names separately any unimplemented C construct.
+  It does not claim arbitrary C support or complete P3 translation proof.
+- Retire the P0 only when one compound C program reaches guest-output
+  parity after fixing its actual semantic gaps. Defer broad generated
+  matrices to downstream P2/P3 compiler and verification contracts.
+
+## Evidence
+
+- The owner directed agents on 2026-11-05 to attempt ambitious programs
+  first, repair actual failures, and then run detailed automated tests.
+- The C48 teaching capsule executes 121 graphical instructions and emits
+  48 bytes; this is a bounded witness, not general compiler coverage.
+- One complete 16-line Fibonacci C program with a loop, branch, and state
+  was attempted through the pinned C-to-Malbolge pipeline. The adapter
+  failed with `normalized frontend rejected: Malformed` and produced no
+  guest artifact.
+- The independent 12-byte expected output for that experiment is
+  `02 59 5f 08 57 4f 22 6d 03 90 b3 23`.
+- The corpus agent separately reproduced an analogous conditional-loop
+  failure and identified local state and variable-derived output as real gaps.
