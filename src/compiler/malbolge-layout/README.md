@@ -801,3 +801,14 @@ The `--distinct-literal-thirty` publisher replays all 30 guest-computed
 bytes in exactly 97 current-profile VM steps, with no input consumed,
 before raw or capsule no-clobber publication. Other 30-byte effect traces
 reject; this finite mode is not general C byte-stream lowering.
+
+A separate source-independent 31-byte witness now proves 31 distinct guest
+arithmetic outputs in 73 actual current-profile VM steps. Eight leading
+no-ops and one data relocation precede 31 output pairs; an additional
+reached no-op before pair nine shifts the loader recurrence, and rotations
+at zero-based pair indices 2, 7, 15, 22 and 26 avoid repeated values.
+`tests/guest_thirty_one_distinct_literal_witness.rs` independently checks the
+exact 31-byte result under two input streams, zero input consumption, and
+31 distinct data writes at addresses 127..188 beyond all 73 source cells.
+This physical witness does not yet admit a 31-byte C source or establish
+general guest byte-stream lowering.
