@@ -849,3 +849,6 @@ raw/capsule output. Unsupported effects and altered bytes fail closed.
 
 The `--distinct-literal-thirty-seven` publisher accepts only the exact 37
 source-bound bytes and verifies 97 guest steps before raw/capsule publication.
+
+The `--distinct-literal-thirty-eight` publisher binds only the proven 38-byte
+source trace and checks exact 97-step VM output before raw/capsule release.

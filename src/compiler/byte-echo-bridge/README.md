@@ -770,3 +770,6 @@ confirm zero consumed input and exact byte output.
 
 The 37-byte witness realizes 32 crazy and five rotate operations in 97
 real-VM steps. Its 37 data writes lie outside the 97-cell guest source.
+
+The 38-byte witness executes 33 `CrazyData` and five `RotateData` writes in
+97 real VM steps, with 38 disjoint data addresses outside source memory.

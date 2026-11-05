@@ -446,3 +446,6 @@ incomplete source effects and unsupported C before publication.
 
 The `--distinct-literal-thirty-seven` C mode accepts only the exact 37-byte
 source-proven guest arithmetic trace; malformed C, values and prefixes reject.
+
+The `--distinct-literal-thirty-eight` C mode recognizes the exact 38-byte
+source-proven trace and rejects incomplete or altered literal calls.

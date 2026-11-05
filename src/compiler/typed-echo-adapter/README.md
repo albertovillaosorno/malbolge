@@ -544,3 +544,6 @@ The `--distinct-literal-thirty-six` typed mode independently re-admits
 
 The `--distinct-literal-thirty-seven` typed mode revalidates 37 independent
 `u8` constant/byte-output SSA pairs against the exact normative VM witness.
+
+The 38-byte typed witness independently admits 38 unique `u8` SSA pairs and
+requires the 97-step guest arithmetic proof before publication.
