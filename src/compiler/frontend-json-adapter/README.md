@@ -465,3 +465,9 @@ The bounded frontend recognizes the precise 42-byte source `putchar`
 sequence independently proven in the real guest VM. The 40-byte prefix
 retains its distinct witness, but the 41-byte prefix and altered outputs
 reject; this does not generalize byte-stream compilation.
+
+### Verified forty-three-byte source bridge
+
+The frontend accepts only the exact independently verified 43-byte
+`putchar` literal sequence and rejects its unproved proper prefixes. The
+two-byte `Q.` prefix retains its earlier guest witness.

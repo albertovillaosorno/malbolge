@@ -562,3 +562,9 @@ bridge. No general byte stream or guest ABI is implied.
 The exact 42-byte source effect sequence projects typed IR into canonical
 MCTR and the independently verified guest arithmetic bridge. All SSA
 identities and source-order byte values remain strictly checked.
+
+### Verified forty-three-byte source bridge
+
+The finite C43 typed adapter projects 43 distinct constant/output SSA pairs
+through canonical ternary wire and a VM-verified 100-step guest layout. Other
+43-byte sequences and forged SSA effects remain unsupported.

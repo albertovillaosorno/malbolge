@@ -868,3 +868,9 @@ steps and zero consumed input before no-clobber raw/capsule publication.
 The finite `--distinct-literal-forty-two` mode checks exact canonical
 MCTI/MCTR effects, 42 distinct real VM bytes and 97 guest steps, with
 zero consumed input before atomic raw/capsule publication.
+
+### Verified forty-three-byte source bridge
+
+The bounded `--distinct-literal-forty-three` mode independently admits
+exact typed/ternary effects and replays 43 guest-computed bytes in 100 VM
+steps with zero input consumption before raw or capsule publication.
