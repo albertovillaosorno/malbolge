@@ -735,3 +735,10 @@ writes, 30 distinct guest outputs, 97 steps and zero consumed input.
 `tests/test_c2malbolge_distinct_literal_thirty.py` confirms raw/capsule
 execution, invalid-prefix refusal, unchanged prior Q. output and no-clobber
 publication. Other 30-byte streams remain unsupported.
+
+The independent 31-byte source-bound bridge now encodes one exact
+31-materialization/31-output ternary trace with a void return. Its 73-cell
+current-profile guest computes all 31 bytes through 26 crazy and five rotate
+writes, with a reached no-op shifting the loader phase. Profiles, effects and
+SSA are verified before the real VM checks the exact output and zero input
+consumption. No general arbitrary-byte C lowering is implied.

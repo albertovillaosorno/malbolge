@@ -517,3 +517,8 @@ The `--distinct-literal-thirty` typed bridge preserves 30 source-bound
 `u8` materializations with matching byte-output SSA uses and void return.
 It independently re-admits canonical ternary IR and verifies all 30 bytes
 against the 97-step real VM. Foreign profiles and altered effects reject.
+
+The separate `--distinct-literal-thirty-one` typed mode binds 31 distinct
+`u8` constants and their exact SSA uses to independently checked ternary
+effects. Only the finite VM-proven sequence is admitted; wrong profiles,
+lengths, SSA and values reject before guest publication.

@@ -812,3 +812,9 @@ exact 31-byte result under two input streams, zero input consumption, and
 31 distinct data writes at addresses 127..188 beyond all 73 source cells.
 This physical witness does not yet admit a 31-byte C source or establish
 general guest byte-stream lowering.
+
+The `--distinct-literal-thirty-one` typed/ternary publisher binds those
+31 source-proven effects to the separate 73-step machine witness, independently
+replays the normative current-profile VM with zero consumed input, and
+publishes only on complete agreement. Reordered or altered bytes reject,
+without weakening existing no-clobber raw and capsule output requirements.

@@ -415,3 +415,9 @@ The `--distinct-literal-thirty` C path requires the complete source-ordered
 30-byte `putchar` sequence proven by the independent 97-step guest witness.
 Pinned Clang AST constants, source spans and output order must match; partial
 sequences, modified expressions and reordered effects fail before typed IR.
+
+The exact 31-byte `--distinct-literal-thirty-one` source mode additionally
+admits only the independently VM-witnessed, source-ordered constant `putchar`
+trace, with each byte materialized at a separate typed SSA ID. Its incomplete
+prefixes and all other 31-byte values remain unsupported; successful sources
+are still validated by downstream guest execution before publication.
