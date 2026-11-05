@@ -727,3 +727,11 @@ outside the 97-cell source. The normative current-profile VM runs exactly
 0b d6 9c e3 a0 d2 ad 93 e0 9f e4 aa d5` (hex), and consumes zero input.
 This source-independent arithmetic proof does not yet admit any 30-byte
 C program through the compiler or establish general byte-stream lowering.
+
+The exact 30-byte guest witness is now also compiled from pinned C
+`putchar` literals through canonical typed IR and independently re-admitted
+ternary IR. The source-bound bridge verifies four rotations, 26 crazy
+writes, 30 distinct guest outputs, 97 steps and zero consumed input.
+`tests/test_c2malbolge_distinct_literal_thirty.py` confirms raw/capsule
+execution, invalid-prefix refusal, unchanged prior Q. output and no-clobber
+publication. Other 30-byte streams remain unsupported.

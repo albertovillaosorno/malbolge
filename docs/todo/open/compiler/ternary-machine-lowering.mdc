@@ -882,6 +882,16 @@ instruction.
   SSA and profile refusal; incomplete prefixes, swapped/altered calls and
   attempted output overwrites fail before publication. This finite trace does
   not prove arbitrary 29-byte streams, general C lowering or runtime helpers.
+- A separately proven exact 30-byte C `putchar` trace now passes the pinned
+  Clang frontend, canonical typed IR and ternary IR, positional guest layout
+  and normative current-profile VM. The real guest emits 30 source-ordered
+  distinct binary bytes in 97 steps, using four rotates, 26 crazy writes and
+  30 disjoint data cells outside the 97-cell source. Both raw and capsule
+  compilation pass; `tests/test_c2malbolge_distinct_literal_thirty.py`
+  rejects altered, reordered and incomplete source traces and protects
+  existing artifacts. The independent ternary regression rejects wrong
+  values, forged SSA and foreign profiles. This is not arbitrary 30-byte
+  stream support or general C execution.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

@@ -410,3 +410,8 @@ The `--distinct-literal-twenty-nine` source mode requires the complete
 29-byte independently proven C `putchar` sequence. Pinned Clang AST literal
 values and source order are checked before canonical typed-IR projection; no
 proper prefix, swapped call or altered expression is admitted.
+
+The `--distinct-literal-thirty` C path requires the complete source-ordered
+30-byte `putchar` sequence proven by the independent 97-step guest witness.
+Pinned Clang AST constants, source spans and output order must match; partial
+sequences, modified expressions and reordered effects fail before typed IR.

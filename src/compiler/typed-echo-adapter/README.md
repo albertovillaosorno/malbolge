@@ -512,3 +512,8 @@ The `--distinct-literal-twenty-nine` typed bridge admits exactly 29 source-
 bound `u8` constants and matching `ByteOutput` SSA uses. Canonical ternary
 re-admission and real-VM execution prove the resulting guest output; altered
 values, SSA identity or target profile refuse before publication.
+
+The `--distinct-literal-thirty` typed bridge preserves 30 source-bound
+`u8` materializations with matching byte-output SSA uses and void return.
+It independently re-admits canonical ternary IR and verifies all 30 bytes
+against the 97-step real VM. Foreign profiles and altered effects reject.

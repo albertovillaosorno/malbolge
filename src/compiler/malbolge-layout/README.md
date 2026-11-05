@@ -796,3 +796,8 @@ The `--distinct-literal-twenty-nine` publisher independently verifies all
 29 guest-computed bytes and exactly 105 normative VM steps, consuming no
 input, before no-clobber raw or capsule publication. This is a finite
 source-proven guest trace, not general byte-stream compilation.
+
+The `--distinct-literal-thirty` publisher replays all 30 guest-computed
+bytes in exactly 97 current-profile VM steps, with no input consumed,
+before raw or capsule no-clobber publication. Other 30-byte effect traces
+reject; this finite mode is not general C byte-stream lowering.
