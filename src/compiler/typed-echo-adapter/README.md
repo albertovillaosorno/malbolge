@@ -535,3 +535,6 @@ SSA uses, values and lengths reject before the 97-step real-VM preflight.
 
 The `--distinct-literal-thirty-four` typed mode re-admits exactly 34
 independent constant/output SSA pairs before real guest execution.
+
+The `--distinct-literal-thirty-five` typed mode re-admits exactly 35
+independent constant/output SSA pairs before real guest execution.

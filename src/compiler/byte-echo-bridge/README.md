@@ -760,3 +760,6 @@ profile, SSA and normative VM output must agree before any publication.
 
 A separately VM-proven 34-byte output trace uses 30 crazy writes and four
 rotations in a 97-step layout; no general C output is implied.
+
+A separately VM-proven 35-byte output trace uses 30 crazy writes and five
+rotations in a 97-step layout; no general C output is implied.

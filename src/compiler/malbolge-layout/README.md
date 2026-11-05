@@ -838,3 +838,7 @@ capsule publication. General C byte streams remain unsupported.
 The source-bound `--distinct-literal-thirty-four` publisher requires the
 exact 34 guest-computed bytes, 97 steps and disjoint data writes; malformed
 source effects refuse artifact publication.
+
+The source-bound `--distinct-literal-thirty-five` publisher requires the
+exact 35 guest-computed bytes, 97 steps and disjoint data writes; malformed
+source effects refuse artifact publication.

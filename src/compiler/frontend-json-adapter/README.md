@@ -436,3 +436,6 @@ arithmetic and unrelated 33-byte traces reject before source publication.
 
 The `--distinct-literal-thirty-four` C mode admits only the exact 34-byte
 current-profile guest witness; altered order, values or prefixes reject.
+
+The `--distinct-literal-thirty-five` C mode admits only the exact 35-byte
+current-profile guest witness; altered order, values or prefixes reject.
