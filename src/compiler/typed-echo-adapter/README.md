@@ -554,3 +554,7 @@ SSA pairs before releasing the normative 97-step guest execution.
 
 The 40-byte typed mode requires 40 fresh exact `u8` SSA materializations
 and outputs; independently validated ternary and real VM evidence must agree.
+
+The exact 41-byte C output witness now projects source-bound canonical
+typed IR into MCTR and the separately verified real-guest arithmetic
+bridge. No general byte stream or guest ABI is implied.

@@ -456,3 +456,7 @@ source-proven byte constants, rejecting partial or altered C traces.
 The `--distinct-literal-forty` C mode admits only the exact forty-byte
 source order proven by the independent real VM; incomplete, altered and
 nonliteral programs fail without publication.
+
+The bounded C frontend now recognizes the exact independently guest-proven
+forty-one-byte `putchar` source sequence with fresh SSA byte identities.
+Incomplete, reordered, altered and other C effects still fail closed.
