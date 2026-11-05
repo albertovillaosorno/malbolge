@@ -491,3 +491,7 @@ requires an independent real-VM layout proof before publication.
 The canonical typed-IR `--distinct-literal-twenty-four` path preserves
 24 exact `u8` definitions and their matching `ByteOutput` SSA uses; its
 physical guest layout must pass independent real-VM verification.
+
+The canonical typed-IR `--distinct-literal-twenty-five` path preserves
+25 exact `u8` definitions and the matching 25 `ByteOutput` SSA uses.
+Only the independently proved 25-byte source trace reaches the real VM.

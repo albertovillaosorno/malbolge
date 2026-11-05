@@ -663,3 +663,12 @@ relocation; twenty-one `CrazyData` writes and three `RotateData` writes
 (positions 8, 15, 22) produce 24 distinct output bytes. The normative
 VM verifies 72 steps and zero input consumption before raw/capsule emission.
 Arbitrary 24-byte output remains unsupported.
+
+The `--distinct-literal-twenty-five` C path admits exactly the 25
+source-ordered bytes `51 3e 35 38 54 1f 4e 33 3d 39 05 53 23 1b b5 2c
+cb 12 c6 2e af b4 f8 ca 0e` (hex). Twenty-six reached no-ops precede
+relocation; 22 `CrazyData` and three `RotateData` guest writes compute 25
+distinct output bytes. Twenty-seven trailing no-ops preserve the proven
+105-step source recurrence. The real VM verifies exact byte output, zero
+input consumption, and nonoverlapping source/data before publication.
+Arbitrary 25-byte output remains unsupported.

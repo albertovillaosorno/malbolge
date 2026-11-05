@@ -386,3 +386,8 @@ source order; no shorter prefix or reordered literal is admitted as the
 The exact source-ordered 24-byte witness is now admitted as
 `--distinct-literal-twenty-four`; pinned C AST effects must contain every
 literal in order and cannot use an unproven shorter prefix.
+
+The `--distinct-literal-twenty-five` C mode admits exactly 25
+source-ordered `putchar` integer literals matching the proven 25-byte
+guest witness. Pinned AST effects, source span identity, and complete
+sequence are required; shorter prefixes or reordered literals reject.

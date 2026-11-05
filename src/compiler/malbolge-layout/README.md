@@ -772,3 +772,8 @@ publication; it does not imply arbitrary C output support.
 The `--distinct-literal-twenty-four` source publisher verifies the exact
 24 guest-computed bytes under the normative VM in 72 steps. Unsupported
 source traces still fail without publishing raw or capsule output.
+
+The `--distinct-literal-twenty-five` source publisher requires exact
+source-bound effects and independently replays all 25 guest-computed bytes
+in 105 normative VM steps, with no consumed input, before publication.
+Other 25-byte sequences fail without publishing an artifact.
