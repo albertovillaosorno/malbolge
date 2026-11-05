@@ -813,3 +813,13 @@ writes, current-profile identity, exact output and zero input consumption
 are independently verified before layout admission. Changed bytes,
 forged effects or a different target profile fail closed. This does not
 yet admit source C or arbitrary 43-byte output streams.
+
+### Source-independent forty-four-byte literal bridge
+
+`encode_distinct_literal_forty_four` accepts exactly 44 ordered ternary
+constant/output pairs and a void return. Eleven leading no-ops place data
+beyond the 103-cell source; two internal no-ops and six rotations yield
+44 distinct guest-computed bytes from disjoint real VM writes. Canonical
+current-profile identity, SSA wiring, exact byte order, zero input and
+normative termination must all agree. Other outputs and forged effects
+fail closed; source-C compilation is a separate admission boundary.
