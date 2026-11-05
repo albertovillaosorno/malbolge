@@ -405,3 +405,8 @@ The `--distinct-literal-twenty-eight` mode requires all 28 ordered
 source C `putchar` literals, verified by pinned Clang AST and source spans.
 Existing 25-, 26- and 27-byte modes remain separately proven; shorter
 unproved prefixes, reordered calls and changed expressions still reject.
+
+The `--distinct-literal-twenty-nine` source mode requires the complete
+29-byte independently proven C `putchar` sequence. Pinned Clang AST literal
+values and source order are checked before canonical typed-IR projection; no
+proper prefix, swapped call or altered expression is admitted.

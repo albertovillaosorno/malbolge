@@ -874,6 +874,14 @@ instruction.
   bounded guest phases (excluding five through seven), retaining 19
   shortest distinct bytes; typed/runner confirms 12 and 25. Thirty or
   more outputs reject.
+- A separate exact 29-byte C literal trace now completes the pinned Clang
+  frontend to canonical typed IR, MCTR, positional guest layout and general VM
+  route. `tests/test_c2malbolge_distinct_literal_twenty_nine.py` verifies both
+  raw and capsule artifacts emit all 29 source-ordered binary bytes in 105
+  current-profile steps. Its independent guest-MCTR regression checks value,
+  SSA and profile refusal; incomplete prefixes, swapped/altered calls and
+  attempted output overwrites fail before publication. This finite trace does
+  not prove arbitrary 29-byte streams, general C lowering or runtime helpers.
 - Remaining work includes the rest of the typed-IR operation vocabulary,
   global heap placement and executable bind-call realization, global target
   layout/source sequencing, typed-IR external-call binding, wrapper

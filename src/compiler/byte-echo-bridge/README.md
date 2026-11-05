@@ -706,10 +706,12 @@ pair produce 29 distinct bytes using four guest rotates (indices zero, eight,
 fifteen, and twenty-two) and 25 guest crazy writes. The 105-step normative VM
 executes all 29 writes at addresses 126, 129, 131–183 outside the 105-cell
 source, emits `87 b7 bc b1 8a ce 9f 9c b5 2c cb 12 c6 2e af b4 f8 ca
-0e 95 2d ab 33 3d 39 05 53 23 1b` (hex), and consumes no input. This
-is **not** a C-to-Malbolge twenty-nine-byte compiler path: the exact
-`MaterializeU8`/`ByteOutput` ternary witness is now admitted by
-`encode_distinct_literal_twenty_nine`, with canonical typed-projection, MCTR
-round-trip, profile/SSA/value rejection and normative VM checks in
-`tests/guest_twenty_nine_ternary_bridge.rs`. C frontend admission, typed
-adapter/CLI wiring, and published `.malbolge` examples remain pending.
+0e 95 2d ab 33 3d 39 05 53 23 1b` (hex), and consumes no input. The exact trace
+now also has a **bounded C-to-Malbolge compiler path**. Pinned Clang AST
+admission accepts the exact 29 source-ordered `putchar` constants only. The
+typed adapter projects 29 separate `u8` SSA values through canonical MCTR and
+`encode_distinct_literal_twenty_nine`; independent 105-step VM preflight checks
+exact output and zero consumed input before raw/capsule publication. Positive
+and rejection tests are in the C29 integration regression
+`tests/test_c2malbolge_distinct_literal_twenty_nine.py` and the ternary
+regression `tests/guest_twenty_nine_ternary_bridge.rs`. This does not provide general C byte-stream compilation or a retained 29-byte example corpus yet.

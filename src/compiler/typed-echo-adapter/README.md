@@ -507,3 +507,8 @@ return. Independent ternary admission and real-VM verification remain required.
 The `--distinct-literal-twenty-eight` typed bridge now admits the exact
 28 verified byte-constant/output SSA pairs, projects through canonical
 ternary IR and rejects altered values, SSA identity and profile drift.
+
+The `--distinct-literal-twenty-nine` typed bridge admits exactly 29 source-
+bound `u8` constants and matching `ByteOutput` SSA uses. Canonical ternary
+re-admission and real-VM execution prove the resulting guest output; altered
+values, SSA identity or target profile refuse before publication.

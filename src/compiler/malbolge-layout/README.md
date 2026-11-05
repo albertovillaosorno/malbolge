@@ -791,3 +791,8 @@ The `--distinct-literal-twenty-eight` publisher checks all 28 source-bound
 byte effects against exact 105-step real VM execution, with disjoint guest
 arithmetic writes, before raw or capsule no-clobber publication. Unsupported
 byte streams fail closed without publishing an output artifact.
+
+The `--distinct-literal-twenty-nine` publisher independently verifies all
+29 guest-computed bytes and exactly 105 normative VM steps, consuming no
+input, before no-clobber raw or capsule publication. This is a finite
+source-proven guest trace, not general byte-stream compilation.
