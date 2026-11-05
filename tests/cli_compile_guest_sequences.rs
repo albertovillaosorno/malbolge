@@ -164,6 +164,12 @@ fn public_compile_preserves_witnessed_output_sequences() -> Result<(), String> {
             b"P\x1d\x1a6\x05\xb4\xba\xb3\x84\xcf\x9e",
             24,
         ),
+        (
+            "twelve-distinct-binary",
+            "putchar(81); putchar(55); putchar(52); putchar(56); putchar(251); putchar(206); putchar(159); putchar(152); putchar(184); putchar(180); putchar(131); putchar(205);",
+            b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd",
+            27,
+        ),
         ("void-a", "(void) putchar ( 65 );", b"A", 31),
     ];
     for (name, statements, expected, steps) in cases {

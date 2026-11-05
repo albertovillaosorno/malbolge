@@ -65,6 +65,7 @@ EXAMPLE_EIGHT = ROOT / "docs/technical/examples/corpus/emit-eight.c"
 EXAMPLE_NINE = ROOT / "docs/technical/examples/corpus/emit-nine.c"
 EXAMPLE_TEN = ROOT / "docs/technical/examples/corpus/emit-ten.c"
 EXAMPLE_ELEVEN = ROOT / "docs/technical/examples/corpus/emit-eleven.c"
+EXAMPLE_TWELVE = ROOT / "docs/technical/examples/corpus/emit-twelve.c"
 
 
 @final
@@ -272,6 +273,16 @@ class RawProfileNativePipelineTests(unittest.TestCase):
                 EXAMPLE_ELEVEN,
                 b"P\x1d\x1a6\x05\xb4\xba\xb3\x84\xcf\x9e",
                 24,
+            )
+
+    def test_twelve_distinct_guest_bytes_raw_match_capsule(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as directory_name:
+            self.assert_raw_and_capsule_case(
+                Path(directory_name),
+                "twelve-distinct",
+                EXAMPLE_TWELVE,
+                b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd",
+                27,
             )
 
 
