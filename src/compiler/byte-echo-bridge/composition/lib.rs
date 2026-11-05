@@ -5544,3 +5544,105 @@ pub fn encode_distinct_literal_triple(
     }
     Ok(layout)
 }
+
+const FORTY_SEVEN_LITERAL_OUTPUT: [u8; 47] = [
+    5, 252, 205, 167, 216, 194, 187, 195, 215, 64, 65, 89, 36, 90, 28, 27, 46,
+    79, 47, 26, 72, 185, 253, 211, 23, 157, 51, 183, 176, 59, 175, 55, 81, 29,
+    80, 56, 54, 74, 53, 20, 44, 63, 45, 10, 70, 38, 17,
+];
+
+/// Bind the exact forty-seven source-independent binary bytes to guest
+/// arithmetic.
+///
+/// # Errors
+///
+/// Rejects other effects, profile drift, SSA aliases and VM disagreements.
+pub fn encode_distinct_literal_forty_seven(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let (pairs, remainder) = function.operations.as_chunks::<2>();
+    let [TernaryOperation::ReturnVoid { .. }] = remainder else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if pairs.len() != 47 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut ids = BTreeSet::new();
+    for (index, [constant, output]) in pairs.iter().enumerate() {
+        let (
+            TernaryOperation::MaterializeU8 { result, scalar, .. },
+            TernaryOperation::ByteOutput { value, .. },
+        ) = (constant, output)
+        else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        };
+        if result != value
+            || !ids.insert(*result)
+            || Some(scalar.bits())
+                != FORTY_SEVEN_LITERAL_OUTPUT.get(index).copied()
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    let mut operations = vec![LinearOpcode::NoOperation; 16];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0usize..47 {
+        if matches!(index, 3 | 14 | 16 | 31 | 37 | 40) {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if matches!(index, 0 | 1 | 9 | 21 | 28) {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() != 47
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != 47
+        || writes.iter().any(|address| {
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
+        })
+    {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let expected_steps = operations.len();
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
+        if !matches!(vm.run(expected_steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == expected_steps)
+            || vm.input_consumed() != 0
+            || vm.output() != FORTY_SEVEN_LITERAL_OUTPUT
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    Ok(layout)
+}

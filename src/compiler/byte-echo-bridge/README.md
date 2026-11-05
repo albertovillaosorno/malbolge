@@ -846,3 +846,15 @@ source. Current-profile identity, exact SSA order, zero input consumption and
 real VM termination must agree before the layout is returned. Foreign
 profiles, altered constants and forged effects reject; this is not generic
 byte-string lowering or C source admission.
+
+### Source-independent forty-seven-byte literal bridge
+
+`encode_distinct_literal_forty_seven` admits only the exact 47 source-ordered
+ternary constant/output SSA pairs whose guest bytes are independently proven
+by `guest_forty_seven_distinct_literal_witness`. Sixteen leading no-ops,
+six interleaved no-ops and five rotations compute 47 distinct bytes through
+47 disjoint data writes outside the 118-cell source. Canonical current-profile
+identity, SSA binding, exact guest output, zero input consumption and VM
+termination are required. Changed constants, forged effects and foreign
+profiles reject; this is neither arbitrary byte-string lowering nor C source
+admission.
