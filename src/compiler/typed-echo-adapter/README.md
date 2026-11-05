@@ -580,3 +580,9 @@ constant/output SSA pairs to the verified ternary bridge. No other
 The typed adapter projects exactly 45 independent `u8` constant/output
 SSA pairs to canonical ternary IR and the source-independent guest bridge.
 Other traces and profiles reject before final emission.
+
+### Verified forty-six-byte source bridge
+
+The finite C46 typed adapter projects exactly 46 source-ordered byte
+constant/output SSA pairs to the verified ternary bridge. No other
+46-byte source sequences or forged SSA effects are accepted.

@@ -887,3 +887,10 @@ or capsule output. It is not general binary-stream compilation.
 The `--distinct-literal-forty-five` publisher independently re-decodes
 canonical MCTR, checks all 45 guest-computed bytes and the 105-step VM
 trace, then publishes raw or capsule output without clobbering files.
+
+### Verified forty-six-byte source bridge
+
+The bounded `--distinct-literal-forty-six` CLI mode independently
+revalidates exact typed and ternary effects and executes all 46
+guest-computed bytes in 106 normative VM steps before publishing raw
+or capsule output. It is not general binary-stream compilation.

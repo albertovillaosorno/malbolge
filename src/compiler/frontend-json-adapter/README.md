@@ -483,3 +483,9 @@ outputs fail closed; the legacy 43-byte and Q. routes are unchanged.
 The pinned C frontend admits only the exact 45 distinct source-ordered
 `putchar` literals witnessed by the normative VM. Other values, incomplete
 prefixes, reordered calls, and unsupported expressions fail closed.
+
+### Verified forty-six-byte source bridge
+
+The frontend admits only the exact independently VM-proven 46-byte
+`putchar` literal trace. Proper prefixes, changed constants and further
+outputs fail closed; the legacy 45-byte and Q. routes are unchanged.
