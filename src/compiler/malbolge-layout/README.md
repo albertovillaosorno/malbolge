@@ -894,3 +894,10 @@ The bounded `--distinct-literal-forty-six` CLI mode independently
 revalidates exact typed and ternary effects and executes all 46
 guest-computed bytes in 106 normative VM steps before publishing raw
 or capsule output. It is not general binary-stream compilation.
+
+### Verified forty-seven-byte source bridge
+
+The `--distinct-literal-forty-seven` mode verifies exact 47 typed/MCTR
+constant/output effects, replays guest arithmetic in the normative VM, and
+publishes raw or capsule output only after 118-step termination and exact
+47-byte output. Unsupported traces and occupied paths refuse.

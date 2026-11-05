@@ -586,3 +586,9 @@ Other traces and profiles reject before final emission.
 The finite C46 typed adapter projects exactly 46 source-ordered byte
 constant/output SSA pairs to the verified ternary bridge. No other
 46-byte source sequences or forged SSA effects are accepted.
+
+### Verified forty-seven-byte source bridge
+
+The canonical typed adapter independently rechecks 47 `u8` constant/output
+SSA pairs and lowers them through the exact current-profile 118-step
+ternary-to-layout guest witness. Foreign profiles and changes reject.

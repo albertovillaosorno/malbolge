@@ -489,3 +489,9 @@ prefixes, reordered calls, and unsupported expressions fail closed.
 The frontend admits only the exact independently VM-proven 46-byte
 `putchar` literal trace. Proper prefixes, changed constants and further
 outputs fail closed; the legacy 45-byte and Q. routes are unchanged.
+
+### Verified forty-seven-byte source bridge
+
+The Clang JSON adapter admits only the exact separately VM-proven 47-byte
+`putchar` sequence, preserving literal SSA provenance and rejecting any
+strict proper prefix or altered value. No arbitrary byte stream is admitted.
