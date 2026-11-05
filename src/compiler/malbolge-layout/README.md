@@ -712,3 +712,14 @@ The normative current-profile VM replays seventeen binary bytes in
 37 steps with no consumed input before raw or capsule publication.
 Incomplete, reordered or forged effect traces reject; this finite
 witness is not general C byte-stream lowering.
+
+The `--distinct-literal-eighteen` C path admits only the exact eighteen
+source-ordered bytes
+`54 22 19 3e 38 03 09 dd 87 d1 a5 99 bf 08 c7 c6 c2 91` (hex).
+One reached no-op and a data-pointer relocation precede fifteen disjoint
+guest `CrazyData` writes and three `RotateData` writes (the seventh, ninth
+and fourteenth arithmetic positions), each followed by guest output.
+The normative current-profile VM replays eighteen binary bytes in
+39 steps with no consumed input before raw or capsule publication.
+Incomplete, reordered or forged effect traces reject; this finite
+witness is not general C byte-stream lowering.
