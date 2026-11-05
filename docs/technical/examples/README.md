@@ -55,3 +55,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   twelve printable and seven control, SHA-pinned and VM-verified in 40 steps.
 - `corpus/emit-twenty.md`: twenty distinct guest-computed binary bytes,
   three printable, five control and twelve high-bit, 54-step VM verified.
+- `corpus/emit-twenty-one.md`: twenty-one distinct guest bytes,
+  ten printable, six controls and five high-bit in 60 real VM steps.
