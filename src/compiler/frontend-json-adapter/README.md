@@ -400,3 +400,8 @@ The `--distinct-literal-twenty-seven` mode requires all 27 literal calls in
 source order. The pinned Clang AST and source spans must agree with the
 independently proved guest output. Exact 25- and 26-byte recipes remain
 separately admitted; other prefixes and altered expressions reject.
+
+The `--distinct-literal-twenty-eight` mode requires all 28 ordered
+source C `putchar` literals, verified by pinned Clang AST and source spans.
+Existing 25-, 26- and 27-byte modes remain separately proven; shorter
+unproved prefixes, reordered calls and changed expressions still reject.

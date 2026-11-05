@@ -503,3 +503,7 @@ Independent guest verification remains mandatory before publication.
 The `--distinct-literal-twenty-seven` typed-IR route preserves 27 separate
 source-bound `u8` constants, matching `ByteOutput` SSA values and a void
 return. Independent ternary admission and real-VM verification remain required.
+
+The `--distinct-literal-twenty-eight` typed bridge now admits the exact
+28 verified byte-constant/output SSA pairs, projects through canonical
+ternary IR and rejects altered values, SSA identity and profile drift.

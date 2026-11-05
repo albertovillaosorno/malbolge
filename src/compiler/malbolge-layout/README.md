@@ -786,3 +786,8 @@ The `--distinct-literal-twenty-seven` source publisher proves the exact
 27 source-bound effects against 105-step normative VM execution before
 publishing any raw or capsule bytes. Unsupported sequences fail closed;
 existing output files are never overwritten.
+
+The `--distinct-literal-twenty-eight` publisher checks all 28 source-bound
+byte effects against exact 105-step real VM execution, with disjoint guest
+arithmetic writes, before raw or capsule no-clobber publication. Unsupported
+byte streams fail closed without publishing an output artifact.

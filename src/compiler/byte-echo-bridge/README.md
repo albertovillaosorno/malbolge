@@ -690,3 +690,11 @@ pointer; 24 `CrazyData` and three `RotateData` writes compute 27 distinct
 binary outputs. Twenty-three trailing no-ops preserve the 105-step source
 recurrence, and independent real-VM replay rejects any unsupported source.
 Arbitrary 27-byte output remains unavailable.
+
+The `--distinct-literal-twenty-eight` compiler path admits exactly the
+28-byte source prefix of the independently verified arithmetic witness:
+`51 3e 35 38 54 1f 4e 33 3d 39 05 53 23 1b b5 2c cb 12 c6 2e af b4
+f8 ca 0e 95 2d ab` (hex). Twenty-six reached no-ops precede relocation;
+25 guest `CrazyData` and three `RotateData` writes compute distinct outputs.
+Twenty-one trailing no-ops retain the 105-step recurrence, and a normative
+VM replay rejects unproved effects. Other 28-byte traces remain unsupported.
