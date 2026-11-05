@@ -443,3 +443,6 @@ current-profile guest witness; altered order, values or prefixes reject.
 The `--distinct-literal-thirty-six` C mode accepts the exact 36-byte
 current-profile guest arithmetic witness, rejecting changed values, order,
 incomplete source effects and unsupported C before publication.
+
+The `--distinct-literal-thirty-seven` C mode accepts only the exact 37-byte
+source-proven guest arithmetic trace; malformed C, values and prefixes reject.

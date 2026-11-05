@@ -846,3 +846,6 @@ source effects refuse artifact publication.
 The `--distinct-literal-thirty-six` publisher accepts only the 36-byte
 source-bound trace and independently replays 97 guest VM steps before atomic
 raw/capsule output. Unsupported effects and altered bytes fail closed.
+
+The `--distinct-literal-thirty-seven` publisher accepts only the exact 37
+source-bound bytes and verifies 97 guest steps before raw/capsule publication.

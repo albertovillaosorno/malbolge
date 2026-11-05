@@ -767,3 +767,6 @@ rotations in a 97-step layout; no general C output is implied.
 The 36-byte witness computes 31 crazy and five rotate writes in 97 steps.
 All 36 guest data writes stay outside encoded source, and two input patterns
 confirm zero consumed input and exact byte output.
+
+The 37-byte witness realizes 32 crazy and five rotate operations in 97
+real-VM steps. Its 37 data writes lie outside the 97-cell guest source.
