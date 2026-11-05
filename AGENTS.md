@@ -1,5 +1,38 @@
 # AGENTS.md
 
+## Mandatory compiler strategy: experiment first, verify afterward
+
+**Aim for complete C programs, not the next output-byte count.** Select an
+ambitious, compact C program with real behavior, such as expressions,
+variables, branching, loops, and bounded I/O. Try to compile the entire
+program to actual Malbolge, run the normative guest VM, and compare its
+observable behavior with a separately justified oracle.
+
+1. Attempt the larger end-to-end behavior first. A failing experiment is
+   useful evidence, not a reason to retreat to an easier `emit-N` fixture.
+2. When compilation fails, identify and repair the missing real compiler
+   capability. When the VM output differs, localize and repair the semantic
+   mismatch. Preserve a minimal reproducible failing test for each defect.
+3. Only after the general behavior works, automate a seeded matrix of
+   boundaries, metamorphic relations, parity cases, negative inputs, and
+   regressions. Use finite resource and time budgets with reproducible seeds.
+4. Demonstrate meaningful semantic coverage and a documented stop condition;
+   do not report `emit-49`, `emit-50`, or ever-increasing literal byte counts
+   as product completion. Existing SHA-pinned teaching artifacts may stay.
+
+**First experiment, then verify. First attempt complete, demanding programs;
+then discover exactly why they pass or fail.** Verification and regression
+tests are mandatory, but should test an implemented general capability, not
+replace implementation progress with unbounded micro-fixture authoring.
+Never fake guest behavior using host stdout or claim general C support from
+one successful finite program. Unsupported C behavior must fail explicitly.
+
+The current priority work is the P0 generalized compiler contract under
+`docs/todo/open/compiler/parametric-guest-byte-stream-emission.mdc`; the
+older versioned example corpus is supporting evidence, not a roadmap for
+incrementing N forever. Escalate unclear priorities to the owner before
+starting another homogeneous byte-count example.
+
 ## Mandatory Jig-governed Rust formatting
 
 **Prohibited:** bare `rustfmt`, `cargo fmt`, `cargo +nightly fmt`, or
