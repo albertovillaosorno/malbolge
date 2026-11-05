@@ -29,8 +29,14 @@ target = "rust_nightly_cargo_clippy"
 template = "{version}"
 
 [authority.git]
-current = "2.55.0"
-stable = "2.55.0"
+current = "2.56.0"
+stable = "2.56.0"
+
+[authority.git.freshness]
+integrity_kind = "provider-response-sha256"
+maximum_age_days = 1
+provider = "kernel-git-index"
+source = "https://www.kernel.org/pub/software/scm/git/"
 
 [authority.git.projection.tool]
 kind = "tool"

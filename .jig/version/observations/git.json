@@ -1,0 +1,10 @@
+{
+  "authority": "git",
+  "integrity_kind": "provider-response-sha256",
+  "integrity_sha256": "ac04d155c3271db21652586c1abe28b680268b025f72d2473bd21ecc049427c4",
+  "observed_on": "2026-11-05",
+  "provider": "kernel-git-index",
+  "schema_version": 1,
+  "source": "https://www.kernel.org/pub/software/scm/git/",
+  "stable": "2.56.0"
+}
