@@ -56,10 +56,32 @@ An independently derived reference returns these twelve bytes:
 before publication of a guest program. This is a real failed
 experiment, not proof that the compiler supports general C.
 
-The next task is to identify the exact failing construct in the normalized
-frontend and adapter, implement the missing semantic behavior, and rerun
-the **same** complete program until VM output matches the reference. The
-unsupported feature must get an actionable diagnostic and red-first test.
+The first adapter defect was confirmed and fixed in DCO commit
+`e5773e312`: the Clang schema already defined `storage_duration`, but the
+closed JSON adapter had omitted it. The adapter now admits the specified
+`automatic`, `static`, and `thread` values as metadata while still rejecting
+unknown fields and values. Its supported effect-free and literal-output
+paths reject that extra metadata instead of silently discarding state.
+
+With the same program and updated adapter, the real pinned pipeline now
+reports `Unsupported; unlowered C declaration-statement` at the first local
+variable, with the C source line and column, and publishes no guest. The
+tracked experiment is
+`tests/compiler/c-frontend/accepted/conditional_fibonacci.c`, replayed by
+`tests/test_compound_c_pipeline.py`; its oracle is independently calculated.
+That test requires explicit failure while state semantics are unsupported
+and will require actual normative guest-VM parity if compilation succeeds.
+This is a repaired **schema/diagnostic** gap, not completed C lowering.
+
+The remaining first semantic gap is local-variable declaration, initialization,
+read/write and provenance through typed IR and ternary lowering. The same
+program additionally needs arithmetic, bounded loops, conditional branches,
+and value-dependent `putchar`; the active
+`docs/todo/open/compiler/ternary-machine-lowering.mdc` and
+`docs/todo/open/compiler/malbolge-layout-and-encoding-backend.mdc` own the
+subsequent executable target and control-flow realization. Re-run the **same**
+complete program after each meaningful capability correction; retire this P0
+only when its actual guest VM output matches the independent reference.
 
 Do not substitute a host output transcript for guest execution or retreat
 to another 49-byte literal-output demonstration to avoid this failure.

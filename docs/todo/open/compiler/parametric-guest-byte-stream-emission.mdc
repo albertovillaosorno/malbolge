@@ -66,3 +66,13 @@ a compiler capability gap, not a reason to return to N+1.
   `02 59 5f 08 57 4f 22 6d 03 90 b3 23`.
 - The corpus agent separately reproduced an analogous conditional-loop
   failure and identified local state and variable-derived output as real gaps.
+- DCO `e5773e312` corrected the first adapter schema rejection without
+  lowering any extra C behavior. The tracked complete program now fails
+  explicitly at the first `declaration-statement` with source location and
+  `Unsupported` rather than `Malformed`, with no guest artifact. The original
+  twelve-byte reference remains the future normative VM acceptance oracle.
+- New source-backed regression `tests/test_compound_c_pipeline.py` verifies
+  the current typed refusal and switches to actual guest-output parity if
+  the complete program ever compiles. Rust schema tests retain strict unknown
+  metadata rejection, and the first stateful semantics remain pending in the
+  active ternary lowering and layout/backend P2 work.

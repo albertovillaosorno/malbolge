@@ -47,6 +47,7 @@ FRONTEND = (
 )
 ADAPTER = ROOT / ".cache/rust/target/debug/c2malbolge_json"
 LAYOUT = ROOT / ".cache/rust/target/debug/malbolge_layout"
+VM = ROOT / ".cache/rust/target/debug/malbolge"
 RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 GUEST_INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
 EXPECTED = bytes.fromhex("02595f08574f226d0390b323")
@@ -68,8 +69,8 @@ class CompoundCPipelineTests(unittest.TestCase):
         self.assertEqual(reference_bytes(), EXPECTED)
         self.assertEqual(len(EXPECTED), 12)
 
-    def test_valid_clang_local_state_reports_unlowered_construct(self) -> None:
-        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+    def test_whole_program_rejection_or_guest_parity(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         if not RESOURCE.is_dir() or not GUEST_INCLUDE.is_dir():
             self.skipTest("pinned Clang resources or includes are absent")
@@ -92,6 +93,7 @@ class CompoundCPipelineTests(unittest.TestCase):
                     str(RESOURCE),
                     "--source-id",
                     "tests/conditional-fibonacci-v1",
+                    "--capsule",
                     "--output",
                     str(guest),
                     str(SOURCE),
@@ -100,9 +102,25 @@ class CompoundCPipelineTests(unittest.TestCase):
                 capture_output=True,
                 timeout=20,
             )
-            # When C-state lowering is implemented, replace this unsupported
-            # checkpoint with normative guest parity against reference_bytes.
-            self.assertNotEqual(process.returncode, 0, process.stderr)
+            if process.returncode == 0:
+                # Future implementation must pass an actual normative VM
+                # replay. The host oracle never substitutes for guest output.
+                self.assertTrue(guest.is_file())
+                execution = subprocess.run(
+                    [str(VM), str(guest), "--report-steps"],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(execution.returncode, 0, execution.stderr)
+                self.assertEqual(execution.stdout, reference_bytes())
+                self.assertRegex(
+                    execution.stderr,
+                    rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                )
+                return
+            # Until C-state lowering exists, require a typed refusal and
+            # no output artifact rather than a host-side fake guest trace.
             declaration_line = next(
                 number
                 for number, line in enumerate(
