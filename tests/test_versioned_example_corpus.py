@@ -921,6 +921,21 @@ CASES = (
         118,
         1991,
     ),
+    Case(
+        "emit-forty-eight",
+        "216401da8db1a4f275c6584f94d207a611be93028fb12682c0f2c1352a729e60",
+        "5c5892d0f601e8cd44ad7ffe152d91bc48b3a53d5ec71d08c8de0502313c6bdc",
+        bytes((
+            0x51, 0x37, 0x34, 0x38, 0xFB, 0xCE, 0x9F, 0x98,
+            0xB8, 0xB4, 0x83, 0xCD, 0x04, 0xCA, 0x1C, 0x1B,
+            0x2E, 0x4F, 0x8B, 0xCF, 0xA7, 0xA2, 0x95, 0xD6,
+            0x96, 0xA1, 0xAF, 0xC5, 0xBA, 0xE0, 0x9D, 0xE1,
+            0xB9, 0x41, 0x47, 0x5C, 0x2A, 0x44, 0x29, 0x0E,
+            0x32, 0x4E, 0x31, 0x18, 0x1F, 0x4C, 0x20, 0x17,
+        )),
+        121,
+        2015,
+    ),
 )
 
 
@@ -952,6 +967,24 @@ class VersionedExampleCorpusTests(unittest.TestCase):
             with self.subTest(example=case.stem):
                 result = subprocess.run(
                     [str(VM), str(case.capsule), "--report-steps"],
+                    check=False,
+                    capture_output=True,
+                    timeout=60,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, case.stdout)
+                self.assertEqual(
+                    result.stderr, f"malbolge-steps-v1:{case.steps}\n".encode()
+                )
+
+    def test_retained_guest_output_ignores_unused_binary_stdin(self) -> None:
+        if not has_executables(VM):
+            self.skipTest("repository VM binary is not built")
+        for case in CASES:
+            with self.subTest(example=case.stem):
+                result = subprocess.run(
+                    [str(VM), str(case.capsule), "--input-stdin", "--report-steps"],
+                    input=bytes((0x00, 0x80, 0xFF)),
                     check=False,
                     capture_output=True,
                     timeout=60,
