@@ -45,3 +45,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   including ETB and EM controls, SHA-pinned capsule and 31-step VM.
 - `corpus/emit-fifteen.md`: fifteen distinct guest-computed bytes,
   including EM, BS and high-bit values, SHA-pinned capsule and 33-step VM.
+- `corpus/emit-sixteen.md`: sixteen distinct guest-computed bytes,
+  including DC3, LF, SOH, BEL and eight high-bit values in 35 steps.
