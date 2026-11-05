@@ -51,3 +51,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   including five control bytes, SHA-pinned capsule and 37-step VM.
 - `corpus/emit-eighteen.md`: eighteen distinct guest-computed bytes,
   including four controls and ten high-bit bytes in 39 steps.
+- `corpus/emit-nineteen.md`: nineteen distinct guest-computed bytes,
+  twelve printable and seven control, SHA-pinned and VM-verified in 40 steps.
