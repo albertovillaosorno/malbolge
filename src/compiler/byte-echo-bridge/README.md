@@ -777,3 +777,8 @@ The 38-byte witness executes 33 `CrazyData` and five `RotateData` writes in
 
 The 39-byte guest arithmetic witness uses 33 crazy and six rotate writes
 in 97 steps; two inert internal no-ops preserve source/data separation.
+
+The 40-byte independent ternary bridge admits only the exact proven binary
+materializations and SSA outputs. Fourteen initial no-ops, one internal no-op
+and six rotations give 40 disjoint guest writes in 97 real VM steps.
+This does not enable 40-byte C source compilation.
