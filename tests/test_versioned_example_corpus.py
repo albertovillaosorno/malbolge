@@ -449,6 +449,40 @@ CASES = (
         57,
         1503,
     ),
+    Case(
+        "emit-twenty-three",
+        "6df4c2a4e60d238b7dc6bb3201a9ec739fc1e0b5a08d751b5c8916062ee3b662",
+        "6a4351b4fb7afc894fca6ac00790b97de44db6150ffd955c13a5462ba08b8f66",
+        bytes(
+            (
+                0x42,
+                0x0E,
+                0x2F,
+                0x17,
+                0x39,
+                0x04,
+                0x8E,
+                0x24,
+                0x9F,
+                0x1B,
+                0xA0,
+                0x23,
+                0x97,
+                0x15,
+                0x28,
+                0x27,
+                0x29,
+                0x14,
+                0x32,
+                0x1E,
+                0x8B,
+                0x26,
+                0x92,
+            )
+        ),
+        57,
+        1503,
+    ),
 )
 
 
