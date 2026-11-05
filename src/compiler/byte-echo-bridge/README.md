@@ -858,3 +858,14 @@ identity, SSA binding, exact guest output, zero input consumption and VM
 termination are required. Changed constants, forged effects and foreign
 profiles reject; this is neither arbitrary byte-string lowering nor C source
 admission.
+
+### Source-independent forty-eight-byte literal bridge
+
+`encode_distinct_literal_forty_eight` admits exactly 48 source-ordered
+ternary `u8` constant/output SSA pairs whose values match the independently
+verified `guest_forty_eight_distinct_literal_witness`. Thirteen leading
+no-ops, ten interleaved no-ops and four rotations produce 48 distinct bytes
+from disjoint guest data writes beyond 121 source cells. The exact current
+profile, SSA binding, input independence and 121-step normative VM execution
+must agree. Changed bytes, forged effects, short prefixes and foreign profiles
+reject. This is a finite proof, not C-source admission or arbitrary output.
