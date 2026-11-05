@@ -395,3 +395,8 @@ sequence are required; shorter prefixes or reordered literals reject.
 The exact 26-byte source witness is admitted as
 `--distinct-literal-twenty-six` with pinned source-ordered C literal
 effects. Shorter prefixes, reordered bytes and unproved expressions reject.
+
+The `--distinct-literal-twenty-seven` mode requires all 27 literal calls in
+source order. The pinned Clang AST and source spans must agree with the
+independently proved guest output. Exact 25- and 26-byte recipes remain
+separately admitted; other prefixes and altered expressions reject.

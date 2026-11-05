@@ -681,3 +681,12 @@ af b4 f8 ca 0e 95` (hex). Twenty-six reached no-ops precede relocation;
 no-op tail preserves the 105-cell source recurrence, with all writes beyond
 the source, zero stdin consumed and exact 105-step normative termination.
 Arbitrary 26-byte source strings remain unsupported.
+
+The `--distinct-literal-twenty-seven` C source path admits precisely the
+27-byte prefix of the independently checked 28-byte guest arithmetic witness:
+`51 3e 35 38 54 1f 4e 33 3d 39 05 53 23 1b b5 2c cb 12 c6 2e af b4
+f8 ca 0e 95 2d` (hex). Twenty-six reached no-ops relocate the guest data
+pointer; 24 `CrazyData` and three `RotateData` writes compute 27 distinct
+binary outputs. Twenty-three trailing no-ops preserve the 105-step source
+recurrence, and independent real-VM replay rejects any unsupported source.
+Arbitrary 27-byte output remains unavailable.

@@ -499,3 +499,7 @@ Only the independently proved 25-byte source trace reaches the real VM.
 The `--distinct-literal-twenty-six` typed-IR mode admits precisely 26
 source-bound `u8` constant definitions and matching `ByteOutput` SSA uses.
 Independent guest verification remains mandatory before publication.
+
+The `--distinct-literal-twenty-seven` typed-IR route preserves 27 separate
+source-bound `u8` constants, matching `ByteOutput` SSA values and a void
+return. Independent ternary admission and real-VM verification remain required.

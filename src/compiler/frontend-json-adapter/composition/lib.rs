@@ -80,6 +80,8 @@ const DISTINCT_TWENTY_FIVE_BYTES: &[u8; 25] =
     b"\x51\x3e\x35\x38\x54\x1f\x4e\x33\x3d\x39\x05\x53\x23\x1b\xb5\x2c\xcb\x12\xc6\x2e\xaf\xb4\xf8\xca\x0e";
 const DISTINCT_TWENTY_SIX_BYTES: &[u8; 26] =
     b"\x51\x3e\x35\x38\x54\x1f\x4e\x33\x3d\x39\x05\x53\x23\x1b\xb5\x2c\xcb\x12\xc6\x2e\xaf\xb4\xf8\xca\x0e\x95";
+const DISTINCT_TWENTY_SEVEN_BYTES: &[u8; 27] =
+    b"\x51\x3e\x35\x38\x54\x1f\x4e\x33\x3d\x39\x05\x53\x23\x1b\xb5\x2c\xcb\x12\xc6\x2e\xaf\xb4\xf8\xca\x0e\x95\x2d";
 const MAX_LITERAL_OUTPUT_CALLS: usize = 33;
 const MAX_OUTPUT_PARENTHESES: usize = 3;
 const MAX_OUTPUT_ARGUMENT_WRAPPERS: usize = MAX_OUTPUT_PARENTHESES + 1;
@@ -141,6 +143,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralTwentyFive,
     /// Twenty-six independently guest-computed bytes.
     DistinctLiteralTwentySix,
+    /// Twenty-seven independently guest-computed bytes.
+    DistinctLiteralTwentySeven,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -265,6 +269,7 @@ struct LiteralOutputNodes<'node> {
     twenty_fourth_byte: Option<u8>,
     twenty_fifth_byte: Option<u8>,
     twenty_sixth_byte: Option<u8>,
+    twenty_seventh_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -1011,6 +1016,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut twenty_fourth_byte = None;
     let mut twenty_fifth_byte = None;
     let mut twenty_sixth_byte = None;
+    let mut twenty_seventh_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1159,6 +1165,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 twenty_fourth_byte,
                 twenty_fifth_byte,
                 twenty_sixth_byte,
+                twenty_seventh_byte,
             ]
             .into_iter()
             .flatten()
@@ -1259,6 +1266,12 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     .get(..witnessed.len())
                     .is_some_and(|prefix| witnessed == prefix)
                 && DISTINCT_TWENTY_SIX_BYTES.get(witnessed.len()) == Some(&byte);
+            let next_twenty_seven = witnessed.len() == calls.len()
+                && witnessed.len() < DISTINCT_TWENTY_SEVEN_BYTES.len()
+                && DISTINCT_TWENTY_SEVEN_BYTES
+                    .get(..witnessed.len())
+                    .is_some_and(|prefix| witnessed == prefix)
+                && DISTINCT_TWENTY_SEVEN_BYTES.get(witnessed.len()) == Some(&byte);
             if next_eleven
                 || next_twelve
                 || next_thirteen
@@ -1275,6 +1288,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 || next_twenty_four
                 || next_twenty_five
                 || next_twenty_six
+                || next_twenty_seven
             {
                 match calls.len() {
                     1 => mixed_byte = Some(byte),
@@ -1302,6 +1316,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     23 => twenty_fourth_byte = Some(byte),
                     24 => twenty_fifth_byte = Some(byte),
                     25 => twenty_sixth_byte = Some(byte),
+                    26 => twenty_seventh_byte = Some(byte),
                     _ => return Err(FrontendJsonError::Unsupported),
                 }
             } else if calls.len() == 1 && mixed_byte.is_none() {
@@ -1747,6 +1762,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         twenty_fourth_byte,
         twenty_fifth_byte,
         twenty_sixth_byte,
+        twenty_seventh_byte,
     ]
     .into_iter()
     .flatten()
@@ -1879,9 +1895,19 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     {
         return Err(FrontendJsonError::Unsupported);
     }
-    // The twenty-six-byte recipe has no separately proven proper source prefix.
+    // The independently proved 25-byte prefix remains admitted; others refuse.
     if (2..26).contains(&observed.len())
+        && observed.len() != 25
         && DISTINCT_TWENTY_SIX_BYTES
+            .get(..observed.len())
+            .is_some_and(|prefix| observed == prefix)
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    // The twenty-seven-byte recipe only admits proven proper source prefixes.
+    if (2..27).contains(&observed.len())
+        && !matches!(observed.len(), 25 | 26)
+        && DISTINCT_TWENTY_SEVEN_BYTES
             .get(..observed.len())
             .is_some_and(|prefix| observed == prefix)
     {
@@ -1925,6 +1951,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         twenty_fourth_byte,
         twenty_fifth_byte,
         twenty_sixth_byte,
+        twenty_seventh_byte,
         returned,
     })
 }
@@ -1983,6 +2010,7 @@ fn canonical_literal_output_typed_ir(
         twenty_fourth_byte,
         twenty_fifth_byte,
         twenty_sixth_byte,
+        twenty_seventh_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -2350,9 +2378,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 26
+            && let Some(twenty_seventh) = twenty_seventh_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![twenty_seventh]),
+                    result: ValueId::new(26),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 25 && twenty_sixth_byte.is_some() {
+                value: ValueId::new(if index == 26 && twenty_seventh_byte.is_some() {
+                    26
+                } else if index == 25 && twenty_sixth_byte.is_some() {
                     25
                 } else if index == 24 && twenty_fifth_byte.is_some() {
                     24
@@ -2438,7 +2480,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if twenty_sixth_byte.is_some() {
+    let mode = if twenty_seventh_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralTwentySeven
+    } else if twenty_sixth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralTwentySix
     } else if twenty_fifth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralTwentyFive

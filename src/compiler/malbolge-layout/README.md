@@ -781,3 +781,8 @@ Other 25-byte sequences fail without publishing an artifact.
 The `--distinct-literal-twenty-six` source publisher independently
 replays all 26 guest-computed bytes in 105 exact normative VM steps before
 no-clobber raw or capsule publication. Other 26-byte traces refuse.
+
+The `--distinct-literal-twenty-seven` source publisher proves the exact
+27 source-bound effects against 105-step normative VM execution before
+publishing any raw or capsule bytes. Unsupported sequences fail closed;
+existing output files are never overwritten.
