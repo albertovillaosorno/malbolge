@@ -66,6 +66,8 @@ const DISTINCT_SEVENTEEN_BYTES: &[u8; 17] = b"Y?,HP\x1b\x182\x15MK;B\x0fD0\x17";
 const DISTINCT_EIGHTEEN_BYTES: &[u8; 18] =
     b"\x54\x22\x19\x3e\x38\x03\x09\xdd\x87\xd1\xa5\x99\xbf\x08\xc7\xc6\xc2\x91";
 const DISTINCT_NINETEEN_BYTES: &[u8; 19] = b"S!\x1a<8\x03\x17U\x0eI+\x10F\x16@L:\x19X";
+const DISTINCT_TWENTY_BYTES: &[u8; 20] =
+    b"\x3e\x14\x35\x12\x3f\x0a\xa4\x9c\xad\xa3\x1a\xa8\xa2\x95\xab\x9f\x98\x1d\xac\xae";
 const MAX_LITERAL_OUTPUT_CALLS: usize = 33;
 const MAX_OUTPUT_PARENTHESES: usize = 3;
 const MAX_OUTPUT_ARGUMENT_WRAPPERS: usize = MAX_OUTPUT_PARENTHESES + 1;
@@ -113,6 +115,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralEighteen,
     /// Nineteen independent guest-computed binary bytes.
     DistinctLiteralNineteen,
+    /// Twenty independent guest-computed binary bytes.
+    DistinctLiteralTwenty,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -230,6 +234,7 @@ struct LiteralOutputNodes<'node> {
     seventeenth_byte: Option<u8>,
     eighteenth_byte: Option<u8>,
     nineteenth_byte: Option<u8>,
+    twentieth_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -969,6 +974,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut seventeenth_byte = None;
     let mut eighteenth_byte = None;
     let mut nineteenth_byte = None;
+    let mut twentieth_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1110,6 +1116,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 seventeenth_byte,
                 eighteenth_byte,
                 nineteenth_byte,
+                twentieth_byte,
             ]
             .into_iter()
             .flatten()
@@ -1168,6 +1175,12 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     .get(..witnessed.len())
                     .is_some_and(|prefix| witnessed == prefix)
                 && DISTINCT_NINETEEN_BYTES.get(witnessed.len()) == Some(&byte);
+            let next_twenty = witnessed.len() == calls.len()
+                && witnessed.len() < DISTINCT_TWENTY_BYTES.len()
+                && DISTINCT_TWENTY_BYTES
+                    .get(..witnessed.len())
+                    .is_some_and(|prefix| witnessed == prefix)
+                && DISTINCT_TWENTY_BYTES.get(witnessed.len()) == Some(&byte);
             if next_eleven
                 || next_twelve
                 || next_thirteen
@@ -1177,6 +1190,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 || next_seventeen
                 || next_eighteen
                 || next_nineteen
+                || next_twenty
             {
                 match calls.len() {
                     1 => mixed_byte = Some(byte),
@@ -1197,6 +1211,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     16 => seventeenth_byte = Some(byte),
                     17 => eighteenth_byte = Some(byte),
                     18 => nineteenth_byte = Some(byte),
+                    19 => twentieth_byte = Some(byte),
                     _ => return Err(FrontendJsonError::Unsupported),
                 }
             } else if calls.len() == 1 && mixed_byte.is_none() {
@@ -1635,6 +1650,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         seventeenth_byte,
         eighteenth_byte,
         nineteenth_byte,
+        twentieth_byte,
     ]
     .into_iter()
     .flatten()
@@ -1719,6 +1735,14 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    // The twenty-byte recipe has no separately proven proper source prefix.
+    if (2..20).contains(&observed.len())
+        && DISTINCT_TWENTY_BYTES
+            .get(..observed.len())
+            .is_some_and(|prefix| observed == prefix)
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
     // All twelve byte effects must be present before selecting this layout.
     if (2..12).contains(&observed.len())
         && DISTINCT_TWELVE_BYTES
@@ -1750,6 +1774,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         seventeenth_byte,
         eighteenth_byte,
         nineteenth_byte,
+        twentieth_byte,
         returned,
     })
 }
@@ -1801,6 +1826,7 @@ fn canonical_literal_output_typed_ir(
         seventeenth_byte,
         eighteenth_byte,
         nineteenth_byte,
+        twentieth_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -2084,9 +2110,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 19
+            && let Some(twentieth) = twentieth_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![twentieth]),
+                    result: ValueId::new(19),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 18 && nineteenth_byte.is_some() {
+                value: ValueId::new(if index == 19 && twentieth_byte.is_some() {
+                    19
+                } else if index == 18 && nineteenth_byte.is_some() {
                     18
                 } else if index == 17 && eighteenth_byte.is_some() {
                     17
@@ -2158,7 +2198,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if nineteenth_byte.is_some() {
+    let mode = if twentieth_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralTwenty
+    } else if nineteenth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralNineteen
     } else if eighteenth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralEighteen
