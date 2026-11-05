@@ -757,3 +757,6 @@ precede data relocation, with one reached no-op before byte index six. Thirty
 crazy writes and three rotations at indices 13, 20 and 27 compute all distinct
 bytes. The 33 data writes at 107..172 are disjoint from the 97-cell source;
 profile, SSA and normative VM output must agree before any publication.
+
+A separately VM-proven 34-byte output trace uses 30 crazy writes and four
+rotations in a 97-step layout; no general C output is implied.

@@ -433,3 +433,6 @@ The `--distinct-literal-thirty-three` C mode admits exactly the 33 ordered
 source spans and a distinct SSA result for every constant bind the pinned Clang
 frontend to typed effects. Incomplete prefixes, changed calls, nonliteral
 arithmetic and unrelated 33-byte traces reject before source publication.
+
+The `--distinct-literal-thirty-four` C mode admits only the exact 34-byte
+current-profile guest witness; altered order, values or prefixes reject.

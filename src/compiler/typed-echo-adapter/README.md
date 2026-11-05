@@ -532,3 +532,6 @@ The `--distinct-literal-thirty-three` typed mode binds 33 independent `u8`
 constant/byte-output SSA pairs and a void return to the source-proven witness.
 Canonical typed IR and ternary IR retain their provenance; wrong profiles,
 SSA uses, values and lengths reject before the 97-step real-VM preflight.
+
+The `--distinct-literal-thirty-four` typed mode re-admits exactly 34
+independent constant/output SSA pairs before real guest execution.

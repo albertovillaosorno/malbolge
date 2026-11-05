@@ -834,3 +834,7 @@ All 33 guest arithmetic writes are outside source, at 107..117 and 120..172,
 with no input consumed. `--distinct-literal-thirty-three` binds only that exact
 source-proven typed/ternary trace and replays the normative VM before raw or
 capsule publication. General C byte streams remain unsupported.
+
+The source-bound `--distinct-literal-thirty-four` publisher requires the
+exact 34 guest-computed bytes, 97 steps and disjoint data writes; malformed
+source effects refuse artifact publication.
