@@ -715,3 +715,15 @@ exact output and zero consumed input before raw/capsule publication. Positive
 and rejection tests are in the C29 integration regression
 `tests/test_c2malbolge_distinct_literal_twenty_nine.py` and the ternary
 regression `tests/guest_twenty_nine_ternary_bridge.rs`. This does not provide general C byte-stream compilation or a retained 29-byte example corpus yet.
+
+An independent **thirty-byte physical guest witness** is now verified by
+`tests/guest_thirty_distinct_literal_witness.rs`. Thirty-four reached no-ops
+precede a `j` data relocation at source position 34; one reached no-op
+precedes arithmetic pair four. Four `RotateData` operations (zero-based
+indices 1, 10, 17 and 24) and 26 `CrazyData` operations modify 30 distinct
+data cells at addresses 101, 103, 105, 108–160 (every second address), all
+outside the 97-cell source. The normative current-profile VM runs exactly
+97 steps, emits `39 a8 07 da 99 dd a3 cf a7 d9 09 d4 ac e1 9e e2 ab
+0b d6 9c e3 a0 d2 ad 93 e0 9f e4 aa d5` (hex), and consumes zero input.
+This source-independent arithmetic proof does not yet admit any 30-byte
+C program through the compiler or establish general byte-stream lowering.
