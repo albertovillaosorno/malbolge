@@ -574,3 +574,9 @@ through canonical ternary wire and a VM-verified 100-step guest layout. Other
 The finite C44 typed adapter projects exactly 44 source-ordered byte
 constant/output SSA pairs to the verified ternary bridge. No other
 44-byte source sequences or forged SSA effects are accepted.
+
+### Verified forty-five-byte source bridge
+
+The typed adapter projects exactly 45 independent `u8` constant/output
+SSA pairs to canonical ternary IR and the source-independent guest bridge.
+Other traces and profiles reject before final emission.

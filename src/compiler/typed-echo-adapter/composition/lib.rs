@@ -137,6 +137,7 @@ enum ByteTraceMode {
     DistinctLiteralFortyTwo,
     DistinctLiteralFortyThree,
     DistinctLiteralFortyFour,
+    DistinctLiteralFortyFive,
     EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
@@ -417,6 +418,7 @@ fn project_literal_pair_effects(
             | ByteTraceMode::DistinctLiteralFortyTwo
             | ByteTraceMode::DistinctLiteralFortyThree
             | ByteTraceMode::DistinctLiteralFortyFour => false,
+            | ByteTraceMode::DistinctLiteralFortyFive => false,
             ByteTraceMode::DistinctLiteralPair => matches!(
                 (zero.little_endian(), literal.little_endian()),
                 ([b'Y'], [b'/' | b'$']) | ([b'Q'], [b'.'])
@@ -2562,6 +2564,54 @@ fn project_literal_forty_four_effects(
     }
     Ok(instructions)
 }
+fn project_literal_forty_five_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    let (pairs, remainder) = original.as_chunks::<2>();
+    if pairs.len() != 45 || !remainder.is_empty() {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    let mut instructions = Vec::with_capacity(90);
+    let mut ids = BTreeSet::new();
+    for (index, [constant, output]) in pairs.iter().enumerate() {
+        let (
+            Instruction::ConstantInteger {
+                constant: literal,
+                result: id,
+                type_id,
+            },
+            Instruction::ByteOutput { value },
+        ) = (constant.instruction(), output.instruction())
+        else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        };
+        if !is_byte_type(module, *type_id)
+            || literal.bit_width() != 8
+            || id != value
+            || !ids.insert(*id)
+            || literal.little_endian()
+                != b"\x51\x3e\x35\x38\x54\x1f\x4e\x87\xd1\xa5\x99\x09\x08\xc7\xc6\xc2\x91\xe1\xa7\xac\x98\xdb\x9b\xa0\xb7\xbf\x7c\xb5\x2c\xcb\x12\xb4\xf8\xca\x0e\x95\x2d\xab\x33\x3d\x39\x05\x53\x23\x1b"
+                    .get(index)
+                    .map(std::slice::from_ref)
+                    .unwrap_or(&[])
+        {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+        instructions.push(InputInstruction::ConstantInteger {
+            bit_width: 8,
+            little_endian: literal.little_endian().to_vec(),
+            result: id.value(),
+            span: project_span(constant.span()),
+            type_kind: InputScalarType::U8,
+        });
+        instructions.push(InputInstruction::ByteOutput {
+            span: project_span(output.span()),
+            value: value.value(),
+        });
+    }
+    Ok(instructions)
+}
 
 // A source zero SSA can be emitted until the first input overwrites VM A.
 // Thereafter only outputs naming the latest successful input are executable.
@@ -2896,6 +2946,9 @@ fn project_byte_trace(
         ByteTraceMode::DistinctLiteralFortyFour => {
             project_literal_forty_four_effects(module, block.instructions())?
         }
+        ByteTraceMode::DistinctLiteralFortyFive => {
+            project_literal_forty_five_effects(module, block.instructions())?
+        }
     };
     Ok(TypedIrInput {
         abi_id: module.abi_id().to_owned(),
@@ -3103,6 +3156,9 @@ fn compile_byte_trace(
         }
         ByteTraceMode::DistinctLiteralFortyFour => {
             bridge::encode_distinct_literal_forty_four(&independently_admitted, profile)
+        }
+        ByteTraceMode::DistinctLiteralFortyFive => {
+            bridge::encode_distinct_literal_forty_five(&independently_admitted, profile)
         }
     }
     .map_err(TypedEchoAdapterError::Layout)?;
@@ -3832,6 +3888,21 @@ pub fn compile_canonical_typed_distinct_literal_forty_four(
         canonical,
         profile,
         ByteTraceMode::DistinctLiteralFortyFour,
+    )
+}
+/// Compile the independently verified forty-five-byte typed trace.
+///
+/// # Errors
+///
+/// Rejects unrelated effects, profiles, and unauthenticated output.
+pub fn compile_canonical_typed_distinct_literal_forty_five(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(
+        canonical,
+        profile,
+        ByteTraceMode::DistinctLiteralFortyFive,
     )
 }
 
