@@ -460,3 +460,8 @@ nonliteral programs fail without publication.
 The bounded C frontend now recognizes the exact independently guest-proven
 forty-one-byte `putchar` source sequence with fresh SSA byte identities.
 Incomplete, reordered, altered and other C effects still fail closed.
+
+The bounded frontend recognizes the precise 42-byte source `putchar`
+sequence independently proven in the real guest VM. The 40-byte prefix
+retains its distinct witness, but the 41-byte prefix and altered outputs
+reject; this does not generalize byte-stream compilation.

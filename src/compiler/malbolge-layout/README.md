@@ -864,3 +864,7 @@ publication; unrelated guest effects remain unsupported.
 The explicit `--distinct-literal-forty-one` mode independently admits
 the proven 41-output MCTR or typed projection, verifies 97 real guest VM
 steps and zero consumed input before no-clobber raw/capsule publication.
+
+The finite `--distinct-literal-forty-two` mode checks exact canonical
+MCTI/MCTR effects, 42 distinct real VM bytes and 97 guest steps, with
+zero consumed input before atomic raw/capsule publication.

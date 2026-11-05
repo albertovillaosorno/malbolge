@@ -99,7 +99,8 @@ const DISTINCT_THIRTY_EIGHT_BYTES: &[u8; 38] = b"\x41\x17\x32\x30\x0d\x3c\x11\x2
 const DISTINCT_THIRTY_NINE_BYTES: &[u8; 39] = b"\x5c\x32\x26\xa8\x07\xbb\x02\xb6\x0c\xb1\x30\x0d\x3c\x11\x2c\x14\x39\xa6\x46\x42\x44\x2f\x50\x36\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93";
 const DISTINCT_FORTY_BYTES: &[u8; 40] = b"\xa8\x07\xbb\x02\xb6\x0c\xb1\x30\x0d\x3c\x11\x2c\x14\x39\xa6\x46\x42\x44\x2f\x50\x36\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93\xe0\x9f\xe4\xaa";
 const DISTINCT_FORTY_ONE_BYTES: &[u8; 41] = b"\x5a\xa8\x07\xbb\x02\xb6\x0c\xb1\x30\x0d\x3c\x11\x2c\x14\x39\xa6\x46\x42\x44\x2f\x50\x36\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93\xe0\x9f\xe4\xaa";
-const MAX_LITERAL_OUTPUT_CALLS: usize = 41;
+const DISTINCT_FORTY_TWO_BYTES: &[u8; 42] = b"\xa8\x07\xbb\x02\xb6\x0c\xb1\x30\x0d\x3c\x11\x2c\x14\x39\xa6\x46\x42\x44\x2f\x50\x36\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93\xe0\x9f\xe4\xaa\xd5\xae";
+const MAX_LITERAL_OUTPUT_CALLS: usize = 42;
 const MAX_OUTPUT_PARENTHESES: usize = 3;
 const MAX_OUTPUT_ARGUMENT_WRAPPERS: usize = MAX_OUTPUT_PARENTHESES + 1;
 // Bound extra same-line source bytes between AST-delimited C tokens.
@@ -190,6 +191,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralForty,
     /// Forty-one independently guest-computed bytes.
     DistinctLiteralFortyOne,
+    /// Forty-two independently guest-computed bytes.
+    DistinctLiteralFortyTwo,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -329,6 +332,7 @@ struct LiteralOutputNodes<'node> {
     thirty_ninth_byte: Option<u8>,
     fortieth_byte: Option<u8>,
     forty_first_byte: Option<u8>,
+    forty_second_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -1090,6 +1094,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut thirty_ninth_byte = None;
     let mut fortieth_byte = None;
     let mut forty_first_byte = None;
+    let mut forty_second_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1253,6 +1258,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         thirty_ninth_byte,
                 fortieth_byte,
                 forty_first_byte,
+                forty_second_byte,
             ]
             .into_iter()
             .flatten()
@@ -1443,6 +1449,12 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     .get(..witnessed.len())
                     .is_some_and(|prefix| witnessed == prefix)
                 && DISTINCT_FORTY_ONE_BYTES.get(witnessed.len()) == Some(&byte);
+            let next_forty_two = witnessed.len() == calls.len()
+                && witnessed.len() < DISTINCT_FORTY_TWO_BYTES.len()
+                && DISTINCT_FORTY_TWO_BYTES
+                    .get(..witnessed.len())
+                    .is_some_and(|prefix| witnessed == prefix)
+                && DISTINCT_FORTY_TWO_BYTES.get(witnessed.len()) == Some(&byte);
             if next_eleven
                 || next_twelve
                 || next_thirteen
@@ -1474,6 +1486,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 || next_thirty_nine
                 || next_forty
                 || next_forty_one
+                || next_forty_two
             {
                 match calls.len() {
                     1 => mixed_byte = Some(byte),
@@ -1516,6 +1529,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     38 => thirty_ninth_byte = Some(byte),
                     39 => fortieth_byte = Some(byte),
                     40 => forty_first_byte = Some(byte),
+                    41 => forty_second_byte = Some(byte),
                     _ => return Err(FrontendJsonError::Unsupported),
                 }
             } else if calls.len() == 1 && mixed_byte.is_none() {
@@ -1976,6 +1990,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         thirty_ninth_byte,
         fortieth_byte,
         forty_first_byte,
+        forty_second_byte,
     ]
     .into_iter()
     .flatten()
@@ -2239,6 +2254,11 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    // The 40-byte prefix has its own independent witness; the 41-byte
+    // proper prefix does not match either complete 41- or 42-byte witness.
+    if observed.len() == 41 && observed == DISTINCT_FORTY_TWO_BYTES[..41] {
+        return Err(FrontendJsonError::Unsupported);
+    }
     // All twelve byte effects must be present before selecting this layout.
     if (2..12).contains(&observed.len())
         && DISTINCT_TWELVE_BYTES
@@ -2292,6 +2312,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         thirty_ninth_byte,
         fortieth_byte,
         forty_first_byte,
+        forty_second_byte,
         returned,
     })
 }
@@ -2365,6 +2386,7 @@ fn canonical_literal_output_typed_ir(
         thirty_ninth_byte,
         fortieth_byte,
         forty_first_byte,
+        forty_second_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -2912,9 +2934,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 41
+            && let Some(forty_second) = forty_second_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![forty_second]),
+                    result: ValueId::new(41),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 40 && forty_first_byte.is_some() {
+                value: ValueId::new(if index == 41 && forty_second_byte.is_some() {
+                    41
+                } else if index == 40 && forty_first_byte.is_some() {
                     40
                 } else if index == 39 && fortieth_byte.is_some() {
                     39
@@ -3030,7 +3066,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if forty_first_byte.is_some() {
+    let mode = if forty_second_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralFortyTwo
+    } else if forty_first_byte.is_some() {
         FrontendGuestMode::DistinctLiteralFortyOne
     } else if fortieth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralForty

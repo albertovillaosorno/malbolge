@@ -558,3 +558,7 @@ and outputs; independently validated ternary and real VM evidence must agree.
 The exact 41-byte C output witness now projects source-bound canonical
 typed IR into MCTR and the separately verified real-guest arithmetic
 bridge. No general byte stream or guest ABI is implied.
+
+The exact 42-byte source effect sequence projects typed IR into canonical
+MCTR and the independently verified guest arithmetic bridge. All SSA
+identities and source-order byte values remain strictly checked.
