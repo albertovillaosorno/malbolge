@@ -698,3 +698,14 @@ f8 ca 0e 95 2d ab` (hex). Twenty-six reached no-ops precede relocation;
 25 guest `CrazyData` and three `RotateData` writes compute distinct outputs.
 Twenty-one trailing no-ops retain the 105-step recurrence, and a normative
 VM replay rejects unproved effects. Other 28-byte traces remain unsupported.
+
+An independent **twenty-nine-byte physical guest witness** is verified by
+`tests/guest_twenty_nine_distinct_literal_witness.rs`. Nine initial no-ops,
+a data relocation, and one interleaved no-op before the second arithmetic
+pair produce 29 distinct bytes using four guest rotates (indices zero, eight,
+fifteen, and twenty-two) and 25 guest crazy writes. The 105-step normative VM
+executes all 29 writes at addresses 126, 129, 131–183 outside the 105-cell
+source, emits `87 b7 bc b1 8a ce 9f 9c b5 2c cb 12 c6 2e af b4 f8 ca
+0e 95 2d ab 33 3d 39 05 53 23 1b` (hex), and consumes no input. This
+is **not** a C-to-Malbolge twenty-nine-byte compiler path: independent source
+admission, typed/ternary lowering and artifact publication are still pending.
