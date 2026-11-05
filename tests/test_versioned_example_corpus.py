@@ -213,6 +213,32 @@ CASES = (
         31,
         1295,
     ),
+    Case(
+        "emit-fifteen",
+        "a82eecdcfc33fafa28e365d3d8a9792c649f2edd65d23d90d33ea8ecf04e801c",
+        "c69df83c4073806ef27c976de1a029a9f550ad7937e3432a7bda0908a8b58d9b",
+        bytes(
+            (
+                0x51,
+                0x2E,
+                0x19,
+                0x38,
+                0x3E,
+                0x89,
+                0xD2,
+                0xAD,
+                0xA3,
+                0xB7,
+                0xC8,
+                0x88,
+                0x08,
+                0xD5,
+                0xC6,
+            )
+        ),
+        33,
+        1311,
+    ),
 )
 
 
