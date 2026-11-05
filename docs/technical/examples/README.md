@@ -97,3 +97,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   SHA-pinned source/capsule and 97-step VM replay.
 - `corpus/emit-forty-three.md`: forty-three distinct guest-computed bytes,
   SHA-pinned C/capsule artifact and 100-step normative VM contract.
+- `corpus/emit-forty-four.md`: forty-four distinct guest-computed bytes,
+  SHA-pinned C/capsule artifact and 103-step normative VM contract.
