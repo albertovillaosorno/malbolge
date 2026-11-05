@@ -37,7 +37,10 @@ use std::ffi::{OsStr, OsString};
 use std::io::{self, Read as _, Write as _};
 use std::process::{Command, ExitCode, Stdio};
 
-use malbolge_c_frontend_json_adapter::{FrontendGuestMode, canonical_guest_typed_ir};
+use malbolge_c_frontend_json_adapter::{
+    FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir,
+    first_unlowered_c_node,
+};
 use serde as _;
 use serde_json as _;
 
@@ -89,8 +92,20 @@ fn execute() -> Result<(), String> {
         .take(MAX_JSON_BYTES + 1)
         .read_to_end(&mut input)
         .map_err(|error| format!("cannot read normalized JSON stdin: {error}"))?;
-    let (typed, mode) = canonical_guest_typed_ir(&input)
-        .map_err(|error| format!("normalized frontend rejected: {error:?}"))?;
+    let (typed, mode) = canonical_guest_typed_ir(&input).map_err(|error| {
+        if error == FrontendJsonError::Unsupported
+            && let Some(node) = first_unlowered_c_node(&input)
+        {
+            return format!(
+                concat!(
+                    "normalized frontend rejected: {:?}; ",
+                    "unlowered C {} at {}:{} (node {})"
+                ),
+                error, node.kind, node.line, node.column, node.id
+            );
+        }
+        format!("normalized frontend rejected: {error:?}")
+    })?;
     let mut command = Command::new(backend);
     let _arguments = command.args([
         OsStr::new("--profile"),

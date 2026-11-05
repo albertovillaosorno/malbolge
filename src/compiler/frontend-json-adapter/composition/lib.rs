@@ -251,6 +251,60 @@ pub enum FrontendJsonError {
     Unsupported,
 }
 
+/// First source-located C construct that the bounded guest adapter cannot
+/// lower.
+/// This is diagnostic context, not evidence that other nodes are executable.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnloweredCNode {
+    /// Exact kind published by the pinned normalized Clang frontend.
+    pub kind: String,
+    /// One-based preorder node ID.
+    pub id: u32,
+    /// One-based C source line.
+    pub line: u32,
+    /// One-based C source column.
+    pub column: u32,
+}
+
+/// Report the earliest *known* unimplemented C construct from valid JSON.
+///
+/// Call only after `canonical_guest_typed_ir` returns `Unsupported`; this
+/// never accepts a source or proves its semantic correctness.
+#[must_use]
+pub fn first_unlowered_c_node(bytes: &[u8]) -> Option<UnloweredCNode> {
+    if bytes.is_empty() || bytes.len() > MAX_FRONTEND_JSON_BYTES {
+        return None;
+    }
+    let artifact: Artifact = serde_json::from_slice(bytes).ok()?;
+    let node = artifact.nodes.into_iter().find(|node| {
+        matches!(
+            node.kind.as_str(),
+            "array-subscript-expression"
+                | "binary-expression"
+                | "break-statement"
+                | "compound-assignment-expression"
+                | "conditional-expression"
+                | "continue-statement"
+                | "declaration-statement"
+                | "do-statement"
+                | "for-statement"
+                | "goto-statement"
+                | "if-statement"
+                | "member-expression"
+                | "parameter-declaration"
+                | "switch-statement"
+                | "variable-declaration"
+                | "while-statement"
+        )
+    })?;
+    Some(UnloweredCNode {
+        kind: node.kind,
+        id: node.id,
+        line: node.span.begin.line,
+        column: node.span.begin.column,
+    })
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Clang {
@@ -289,6 +343,14 @@ struct Span {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum StorageDuration {
+    Automatic,
+    Static,
+    Thread,
+}
+
+#[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Node {
     constant_integer: Option<String>,
@@ -304,6 +366,7 @@ struct Node {
     reference: Option<String>,
     span: Span,
     storage_class: Option<String>,
+    storage_duration: Option<StorageDuration>,
     #[serde(rename = "type")]
     type_name: Option<String>,
 }
@@ -586,6 +649,7 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
         || function.inline_specified != Some(false)
         || function.linkage.as_deref() != Some("external")
         || function.storage_class.as_deref() != Some("none")
+        || function.storage_duration.is_some()
         || function.constant_integer.is_some()
         || function.literal.is_some()
         || function.operation.is_some()
@@ -605,6 +669,7 @@ pub fn decode_void_frontend_json(bytes: &[u8]) -> Result<FrontendArtifact, Front
                 || node.inline_specified.is_some()
                 || node.linkage.is_some()
                 || node.storage_class.is_some()
+                || node.storage_duration.is_some()
         })
     {
         return Err(FrontendJsonError::Unsupported);
@@ -745,6 +810,7 @@ fn admitted_output_byte(
             && outer.inline_specified.is_none()
             && outer.linkage.is_none()
             && outer.storage_class.is_none()
+            && outer.storage_duration.is_none()
             && outer.constant_integer.is_none()
             && outer.literal.is_none()
             && bounded_inline_gap(&outer.span.begin, &call.span.begin, 6)
@@ -844,6 +910,7 @@ fn admitted_output_byte(
             || node.inline_specified.is_some()
             || node.linkage.is_some()
             || node.storage_class.is_some()
+            || node.storage_duration.is_some()
             || node.literal.is_some()
             || node.constant_integer.as_deref()
                 != Some(
@@ -921,6 +988,7 @@ fn admitted_output_byte(
                 && node.inline_specified.is_none()
                 && node.linkage.is_none()
                 && node.storage_class.is_none()
+                && node.storage_duration.is_none()
         })
         && [call, cast, callee]
             .iter()
@@ -978,6 +1046,7 @@ fn inert_output_statement(
             && node.inline_specified.is_none()
             && node.linkage.is_none()
             && node.storage_class.is_none()
+            && node.storage_duration.is_none()
     };
     if node.id != expected_id
         || node.parent != body.id
@@ -1051,6 +1120,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         || function.inline_specified != Some(false)
         || function.linkage.as_deref() != Some("external")
         || function.storage_class.as_deref() != Some("none")
+        || function.storage_duration.is_some()
         || function.constant_integer.is_some()
         || function.literal.is_some()
         || function.operation.is_some()
@@ -1070,6 +1140,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 || node.inline_specified.is_some()
                 || node.linkage.is_some()
                 || node.storage_class.is_some()
+                || node.storage_duration.is_some()
                 || node.type_name.is_some()
                 || node.reference.is_some()
                 || node.operation.is_some()
@@ -1176,6 +1247,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 || node.inline_specified.is_some()
                 || node.linkage.is_some()
                 || node.storage_class.is_some()
+                || node.storage_duration.is_some()
                 || node.type_name.is_some()
                 || node.operation.is_some()
                 || node.constant_integer.is_some()
