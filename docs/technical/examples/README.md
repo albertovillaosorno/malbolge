@@ -41,3 +41,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   eight high-bit values, byte-exact regeneration and 27-step VM receipt.
 - `corpus/emit-thirteen.md`: thirteen distinct guest-computed bytes across
   printable, control and high-bit values, SHA-pinned capsule and 29-step VM.
+- `corpus/emit-fourteen.md`: fourteen distinct guest-computed bytes,
+  including ETB and EM controls, SHA-pinned capsule and 31-step VM.

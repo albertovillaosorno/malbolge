@@ -168,9 +168,50 @@ CASES = (
         "emit-thirteen",
         "59a96352ab35a582e2424d15818ce59c105fc8222cd3b07394c1486e3ed32e0e",
         "10b08a4c61f6e5a28f9ef1e01809cdc455178b0523328205bb101325c7a78bc5",
-        bytes((0x42, 0x43, 0x30, 0x16, 0x54, 0x09, 0xBF, 0xC6, 0xC8, 0x87, 0xE3, 0xAB, 0xA4)),
+        bytes(
+            (
+                0x42,
+                0x43,
+                0x30,
+                0x16,
+                0x54,
+                0x09,
+                0xBF,
+                0xC6,
+                0xC8,
+                0x87,
+                0xE3,
+                0xAB,
+                0xA4,
+            )
+        ),
         29,
         1279,
+    ),
+    Case(
+        "emit-fourteen",
+        "923b7245d13803ffbb1615b4f9684fd076a618f4e25d80861ab1e0fe2a807c14",
+        "e3ea5ad67954382872f2f2a6dbd03dfb497a91a52a1fbe04d2aa92afd9e7b438",
+        bytes(
+            (
+                0x59,
+                0x45,
+                0x2C,
+                0x48,
+                0x53,
+                0x17,
+                0x4C,
+                0x4F,
+                0x3D,
+                0x40,
+                0x5B,
+                0x31,
+                0x19,
+                0x34,
+            )
+        ),
+        31,
+        1295,
     ),
 )
 
