@@ -495,3 +495,8 @@ outputs fail closed; the legacy 45-byte and Q. routes are unchanged.
 The Clang JSON adapter admits only the exact separately VM-proven 47-byte
 `putchar` sequence, preserving literal SSA provenance and rejecting any
 strict proper prefix or altered value. No arbitrary byte stream is admitted.
+
+The exact 48-byte `putchar` literal sequence is admitted only under the
+`--distinct-literal-forty-eight` mode, with all 48 constants and source
+order checked against the independent 121-step guest witness. No strict
+proper prefix or altered constant is promoted to source compilation.

@@ -901,3 +901,7 @@ The `--distinct-literal-forty-seven` mode verifies exact 47 typed/MCTR
 constant/output effects, replays guest arithmetic in the normative VM, and
 publishes raw or capsule output only after 118-step termination and exact
 47-byte output. Unsupported traces and occupied paths refuse.
+
+`--distinct-literal-forty-eight` publishes only the independently admitted
+48-byte C trace after exact typed SSA, MCTR, source/data separation and
+normative 121-step VM verification. Other bytes/profiles fail closed.

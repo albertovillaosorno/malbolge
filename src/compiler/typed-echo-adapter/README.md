@@ -592,3 +592,7 @@ constant/output SSA pairs to the verified ternary bridge. No other
 The canonical typed adapter independently rechecks 47 `u8` constant/output
 SSA pairs and lowers them through the exact current-profile 118-step
 ternary-to-layout guest witness. Foreign profiles and changes reject.
+
+The finite 48-byte typed trace projects 48 independently source-bound
+`u8` constant/output SSA pairs and then re-admits the canonical MCTR
+through the exact guest bridge; arbitrary constant streams still reject.
