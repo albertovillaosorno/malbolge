@@ -452,3 +452,7 @@ source-proven trace and rejects incomplete or altered literal calls.
 
 The `--distinct-literal-thirty-nine` C mode requires precisely 39 ordered
 source-proven byte constants, rejecting partial or altered C traces.
+
+The `--distinct-literal-forty` C mode admits only the exact forty-byte
+source order proven by the independent real VM; incomplete, altered and
+nonliteral programs fail without publication.

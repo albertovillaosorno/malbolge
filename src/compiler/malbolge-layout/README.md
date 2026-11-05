@@ -856,3 +856,7 @@ source trace and checks exact 97-step VM output before raw/capsule release.
 
 The `--distinct-literal-thirty-nine` publisher binds the exact 39-byte
 source-proven trace and verifies real 97-step VM output before publication.
+
+The `--distinct-literal-forty` publisher checks 40 exact source-bound
+bytes and normative 97-step guest execution before no-clobber raw/capsule
+publication; unrelated guest effects remain unsupported.

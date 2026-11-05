@@ -551,3 +551,6 @@ requires the 97-step guest arithmetic proof before publication.
 
 The 39-byte typed mode separately validates 39 fresh `u8` constant/output
 SSA pairs before releasing the normative 97-step guest execution.
+
+The 40-byte typed mode requires 40 fresh exact `u8` SSA materializations
+and outputs; independently validated ternary and real VM evidence must agree.
