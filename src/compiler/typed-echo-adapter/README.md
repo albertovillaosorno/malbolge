@@ -487,3 +487,7 @@ twenty-two-byte source sequences remain unsupported.
 The canonical typed-IR `--distinct-literal-twenty-three` mode preserves
 23 source-bound `u8` constants and 23 matching `ByteOutput` SSA uses, then
 requires an independent real-VM layout proof before publication.
+
+The canonical typed-IR `--distinct-literal-twenty-four` path preserves
+24 exact `u8` definitions and their matching `ByteOutput` SSA uses; its
+physical guest layout must pass independent real-VM verification.

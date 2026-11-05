@@ -655,3 +655,11 @@ bytes `42 0e 2f 17 39 04 8e 24 9f 1b a0 23 97 15 28 27 29 14 32 1e
 reached no-op and halt. The real VM verifies all 23 bytes in 57 steps with
 zero consumed input before artifact publication. Arbitrary byte strings
 remain unsupported.
+
+The `--distinct-literal-twenty-four` C path admits exactly the source-ordered
+bytes `3e 0b 2c 12 36 01 3d 95 0f 9d 17 8b 21 93 92 20 94 0e 9b 18
+8a 1c 2f 23` (hex). Twenty-one reached no-ops precede data-pointer
+relocation; twenty-one `CrazyData` writes and three `RotateData` writes
+(positions 8, 15, 22) produce 24 distinct output bytes. The normative
+VM verifies 72 steps and zero input consumption before raw/capsule emission.
+Arbitrary 24-byte output remains unsupported.

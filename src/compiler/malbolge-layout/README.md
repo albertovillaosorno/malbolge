@@ -768,3 +768,7 @@ twenty-two-byte source sequences remain unsupported.
 The `--distinct-literal-twenty-three` source mode independently replays
 23 guest-computed output bytes in 57 normative VM steps before raw or capsule
 publication; it does not imply arbitrary C output support.
+
+The `--distinct-literal-twenty-four` source publisher verifies the exact
+24 guest-computed bytes under the normative VM in 72 steps. Unsupported
+source traces still fail without publishing raw or capsule output.

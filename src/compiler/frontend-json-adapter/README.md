@@ -382,3 +382,7 @@ The exact 23-byte guest witness is also admitted as
 `--distinct-literal-twenty-three` after pinned C AST effects are checked in
 source order; no shorter prefix or reordered literal is admitted as the
 23-byte recipe.
+
+The exact source-ordered 24-byte witness is now admitted as
+`--distinct-literal-twenty-four`; pinned C AST effects must contain every
+literal in order and cannot use an unproven shorter prefix.
