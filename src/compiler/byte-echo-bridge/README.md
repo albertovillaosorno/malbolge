@@ -628,3 +628,13 @@ positions) compute distinct bytes on disjoint guest cells, followed by output.
 The normative current-profile VM replays all twenty bytes in 54 steps with
 no input consumed before raw or capsule publication. Incomplete, reordered
 or forged effects reject; this remains a bounded C lowering witness.
+
+The `--distinct-literal-twenty-one` C mode admits only the exact
+twenty-one source bytes
+`41 0e 3b 0f 3f 0a 40 8e 26 92 27 96 22 97 8d 15 31 18 35 1a 2f` (hex).
+Fifteen no-ops relocate the data pointer at position 15. Eighteen
+`CrazyData` and three `RotateData` writes (the eighth, fifteenth and
+sixteenth arithmetic positions), plus one reached trailing no-op,
+produce twenty-one distinct guest bytes in 60 real VM steps.
+The exact C effects are verified without host-side output replacement;
+unproved prefixes, reordered literals and forged artifacts reject.

@@ -125,6 +125,7 @@ fn execute() -> Result<(), String> {
         FrontendGuestMode::DistinctLiteralEighteen => "--distinct-literal-eighteen",
         FrontendGuestMode::DistinctLiteralNineteen => "--distinct-literal-nineteen",
         FrontendGuestMode::DistinctLiteralTwenty => "--distinct-literal-twenty",
+        FrontendGuestMode::DistinctLiteralTwentyOne => "--distinct-literal-twenty-one",
     };
     let mut child = command
         .args(["--", mode_arg, "--typed-stdin"])
