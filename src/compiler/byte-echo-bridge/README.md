@@ -742,3 +742,11 @@ current-profile guest computes all 31 bytes through 26 crazy and five rotate
 writes, with a reached no-op shifting the loader phase. Profiles, effects and
 SSA are verified before the real VM checks the exact output and zero input
 consumption. No general arbitrary-byte C lowering is implied.
+
+The independent 32-byte source-bound bridge requires 32 distinct
+constant/output SSA pairs and a void return. The 97-cell guest layout uses
+30 leading no-ops, a relocated data pointer, and one internal no-op before
+its fifth byte pair; 29 crazy writes and three rotates at byte indices
+11, 18 and 25 compute all 32 bytes with zero guest input consumed. The
+exactly matched source and normative VM output are required for admission.
+Other 32-byte traces remain unsupported.

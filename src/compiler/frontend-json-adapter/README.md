@@ -421,3 +421,9 @@ admits only the independently VM-witnessed, source-ordered constant `putchar`
 trace, with each byte materialized at a separate typed SSA ID. Its incomplete
 prefixes and all other 31-byte values remain unsupported; successful sources
 are still validated by downstream guest execution before publication.
+
+The `--distinct-literal-thirty-two` C mode admits exactly one independently
+proven 32-byte ordered `putchar` trace. Pinned Clang AST, source spans and
+separate typed SSA effects must agree before the 97-step guest layout is
+constructed; no unproved prefix, swapped effect or arithmetic expression is
+accepted. Raw and capsule output remain subject to real-VM verification.

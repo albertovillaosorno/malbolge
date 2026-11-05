@@ -4054,6 +4054,99 @@ pub fn encode_distinct_literal_thirty_one(
     Ok(layout)
 }
 
+/// Admit the exact thirty-two-byte ternary literal trace to a verified guest.
+///
+/// Twenty-nine relocated crazy writes and three rotates compute distinct
+/// guest output.
+///
+/// # Errors
+///
+/// Rejects unproved effects, wrong profiles, altered SSA or VM disagreement.
+pub fn encode_distinct_literal_thirty_two(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let (pairs, remainder) = function.operations.as_chunks::<2>();
+    let [TernaryOperation::ReturnVoid { .. }] = remainder else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if pairs.len() != 32 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut ids = BTreeSet::new();
+    for (index, [constant, output]) in pairs.iter().enumerate() {
+        let (
+            TernaryOperation::MaterializeU8 { result, scalar, .. },
+            TernaryOperation::ByteOutput { value, .. },
+        ) = (constant, output)
+        else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        };
+        if result != value
+            || !ids.insert(*result)
+            || Some(scalar.bits())
+                != b"\x41\x17\x32\x18\x50\x23\x5c\x27\x4b\x34\x4f\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93\xe0\x9f\xe4\xaa\xd5\xae"
+                    .get(index)
+                    .copied()
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    let mut operations = vec![LinearOpcode::NoOperation; 30];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0usize..32 {
+        if index == 4 {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if matches!(index, 11 | 18 | 25) {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() != 32
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != 32
+        || writes.iter().any(|address| {
+            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+        })
+    {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
+            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+            || vm.output() != b"\x41\x17\x32\x18\x50\x23\x5c\x27\x4b\x34\x4f\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93\xe0\x9f\xe4\xaa\xd5\xae"
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    Ok(layout)
+}
+
 /// Emit three different bytes from independent guest CrazyData operations.
 ///
 /// Exactly three separate `MaterializeU8`/`ByteOutput` SSA pairs and a void

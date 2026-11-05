@@ -810,11 +810,20 @@ at zero-based pair indices 2, 7, 15, 22 and 26 avoid repeated values.
 `tests/guest_thirty_one_distinct_literal_witness.rs` independently checks the
 exact 31-byte result under two input streams, zero input consumption, and
 31 distinct data writes at addresses 127..188 beyond all 73 source cells.
-This physical witness does not yet admit a 31-byte C source or establish
-general guest byte-stream lowering.
+The physical witness alone does not admit a C source; the separately
+validated 31-byte compiler path now binds this exact source-to-guest trace.
 
 The `--distinct-literal-thirty-one` typed/ternary publisher binds those
 31 source-proven effects to the separate 73-step machine witness, independently
 replays the normative current-profile VM with zero consumed input, and
 publishes only on complete agreement. Reordered or altered bytes reject,
 without weakening existing no-clobber raw and capsule output requirements.
+
+The independent `tests/guest_thirty_two_distinct_literal_witness.rs`
+proves another physical guest trace: 32 distinct binary bytes from 29 crazy
+writes and three rotations in 97 current-profile VM steps. All 32 writes
+are disjoint from the 97-cell source, at positions 105..168, with no input
+consumed. The separate `--distinct-literal-thirty-two` publisher binds the
+exact source-proven typed and ternary effects to that trace and independently
+checks raw/capsule publication against the real VM. This is finite witness
+admission, not arbitrary byte-stream lowering.

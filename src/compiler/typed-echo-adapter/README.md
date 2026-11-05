@@ -522,3 +522,8 @@ The separate `--distinct-literal-thirty-one` typed mode binds 31 distinct
 `u8` constants and their exact SSA uses to independently checked ternary
 effects. Only the finite VM-proven sequence is admitted; wrong profiles,
 lengths, SSA and values reject before guest publication.
+
+The `--distinct-literal-thirty-two` typed bridge independently admits the
+32 exact `u8` constants, matching byte-output SSA uses and void return. It
+round-trips canonical ternary IR and requires the independently witnessed
+97-step guest output; other values, profiles or effects reject.
