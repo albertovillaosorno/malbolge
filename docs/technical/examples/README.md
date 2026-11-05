@@ -101,3 +101,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   SHA-pinned C/capsule artifact and 103-step normative VM contract.
 - `corpus/emit-forty-six.md`: forty-six distinct guest-computed bytes,
   SHA-pinned C/capsule artifact and 106-step normative VM contract.
+- `corpus/emit-forty-seven.md`: forty-seven distinct guest-computed bytes,
+  SHA-pinned C/capsule artifact and 118-step normative VM contract.
