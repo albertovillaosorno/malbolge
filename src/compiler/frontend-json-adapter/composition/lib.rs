@@ -96,7 +96,8 @@ const DISTINCT_THIRTY_FIVE_BYTES: &[u8; 35] = b"\x30\x0d\x3c\x11\x2c\x14\x39\xa6
 const DISTINCT_THIRTY_SIX_BYTES: &[u8; 36] = b"\x39\xa8\x07\xbb\x02\xb6\x0c\xb1\x30\x0d\x4b\x34\x4f\x23\x5c\x93\xe0\x9f\xe4\xaa\xd5\xae\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad";
 const DISTINCT_THIRTY_SEVEN_BYTES: &[u8; 37] = b"\x3f\x11\x2c\xa8\x07\xbb\x02\xb6\x0c\xb1\x30\x0d\x4b\x34\x4f\x23\x5c\x93\xe0\x9f\xe4\xaa\xd5\xae\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2";
 const DISTINCT_THIRTY_EIGHT_BYTES: &[u8; 38] = b"\x41\x17\x32\x30\x0d\x3c\x11\x2c\x14\x39\xa6\x46\x42\x44\x2f\x50\x36\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93\xe0\x9f\xe4\xaa\xd5\xae";
-const MAX_LITERAL_OUTPUT_CALLS: usize = 38;
+const DISTINCT_THIRTY_NINE_BYTES: &[u8; 39] = b"\x5c\x32\x26\xa8\x07\xbb\x02\xb6\x0c\xb1\x30\x0d\x3c\x11\x2c\x14\x39\xa6\x46\x42\x44\x2f\x50\x36\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93";
+const MAX_LITERAL_OUTPUT_CALLS: usize = 39;
 const MAX_OUTPUT_PARENTHESES: usize = 3;
 const MAX_OUTPUT_ARGUMENT_WRAPPERS: usize = MAX_OUTPUT_PARENTHESES + 1;
 // Bound extra same-line source bytes between AST-delimited C tokens.
@@ -181,6 +182,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralThirtySeven,
     /// Thirty-eight independently guest-computed bytes.
     DistinctLiteralThirtyEight,
+    /// Thirty-nine independently guest-computed bytes.
+    DistinctLiteralThirtyNine,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -317,6 +320,7 @@ struct LiteralOutputNodes<'node> {
     thirty_sixth_byte: Option<u8>,
     thirty_seventh_byte: Option<u8>,
     thirty_eighth_byte: Option<u8>,
+    thirty_ninth_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -1075,6 +1079,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut thirty_sixth_byte = None;
     let mut thirty_seventh_byte = None;
     let mut thirty_eighth_byte = None;
+    let mut thirty_ninth_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1235,6 +1240,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 thirty_sixth_byte,
                 thirty_seventh_byte,
                 thirty_eighth_byte,
+        thirty_ninth_byte,
             ]
             .into_iter()
             .flatten()
@@ -1407,6 +1413,12 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     .get(..witnessed.len())
                     .is_some_and(|prefix| witnessed == prefix)
                 && DISTINCT_THIRTY_EIGHT_BYTES.get(witnessed.len()) == Some(&byte);
+            let next_thirty_nine = witnessed.len() == calls.len()
+                && witnessed.len() < DISTINCT_THIRTY_NINE_BYTES.len()
+                && DISTINCT_THIRTY_NINE_BYTES
+                    .get(..witnessed.len())
+                    .is_some_and(|prefix| witnessed == prefix)
+                && DISTINCT_THIRTY_NINE_BYTES.get(witnessed.len()) == Some(&byte);
             if next_eleven
                 || next_twelve
                 || next_thirteen
@@ -1435,6 +1447,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 || next_thirty_six
                 || next_thirty_seven
                 || next_thirty_eight
+                || next_thirty_nine
             {
                 match calls.len() {
                     1 => mixed_byte = Some(byte),
@@ -1474,6 +1487,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     35 => thirty_sixth_byte = Some(byte),
                     36 => thirty_seventh_byte = Some(byte),
                     37 => thirty_eighth_byte = Some(byte),
+                    38 => thirty_ninth_byte = Some(byte),
                     _ => return Err(FrontendJsonError::Unsupported),
                 }
             } else if calls.len() == 1 && mixed_byte.is_none() {
@@ -1931,6 +1945,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         thirty_sixth_byte,
         thirty_seventh_byte,
         thirty_eighth_byte,
+        thirty_ninth_byte,
     ]
     .into_iter()
     .flatten()
@@ -2170,6 +2185,14 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    // No proper prefix of this independent thirty-nine-byte trace is proved.
+    if (2..39).contains(&observed.len())
+        && DISTINCT_THIRTY_NINE_BYTES
+            .get(..observed.len())
+            .is_some_and(|prefix| observed == prefix)
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
     // All twelve byte effects must be present before selecting this layout.
     if (2..12).contains(&observed.len())
         && DISTINCT_TWELVE_BYTES
@@ -2220,6 +2243,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         thirty_sixth_byte,
         thirty_seventh_byte,
         thirty_eighth_byte,
+        thirty_ninth_byte,
         returned,
     })
 }
@@ -2290,6 +2314,7 @@ fn canonical_literal_output_typed_ir(
         thirty_sixth_byte,
         thirty_seventh_byte,
         thirty_eighth_byte,
+        thirty_ninth_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -2801,9 +2826,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 38
+            && let Some(thirty_ninth) = thirty_ninth_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![thirty_ninth]),
+                    result: ValueId::new(38),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 37 && thirty_eighth_byte.is_some() {
+                value: ValueId::new(if index == 38 && thirty_ninth_byte.is_some() {
+                    38
+                } else if index == 37 && thirty_eighth_byte.is_some() {
                     37
                 } else if index == 36 && thirty_seventh_byte.is_some() {
                     36
@@ -2913,7 +2952,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if thirty_eighth_byte.is_some() {
+    let mode = if thirty_ninth_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralThirtyNine
+    } else if thirty_eighth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralThirtyEight
     } else if thirty_seventh_byte.is_some() {
         FrontendGuestMode::DistinctLiteralThirtySeven

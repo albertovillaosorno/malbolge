@@ -449,3 +449,6 @@ source-proven guest arithmetic trace; malformed C, values and prefixes reject.
 
 The `--distinct-literal-thirty-eight` C mode recognizes the exact 38-byte
 source-proven trace and rejects incomplete or altered literal calls.
+
+The `--distinct-literal-thirty-nine` C mode requires precisely 39 ordered
+source-proven byte constants, rejecting partial or altered C traces.

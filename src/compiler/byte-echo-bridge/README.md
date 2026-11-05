@@ -773,3 +773,7 @@ real-VM steps. Its 37 data writes lie outside the 97-cell guest source.
 
 The 38-byte witness executes 33 `CrazyData` and five `RotateData` writes in
 97 real VM steps, with 38 disjoint data addresses outside source memory.
+
+
+The 39-byte guest arithmetic witness uses 33 crazy and six rotate writes
+in 97 steps; two inert internal no-ops preserve source/data separation.
