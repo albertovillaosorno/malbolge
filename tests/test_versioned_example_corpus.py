@@ -846,6 +846,20 @@ CASES = (
         97,
         1823,
     ),
+    Case(
+        "emit-forty",
+        "20fe0bd02f9d640daf57156d4734aaa9544204418c99eaa0e473929735993360",
+        "0e990005bbdc9b2b3b1a956df09a68582e4fb6ab3c529fb1a52b492ad59c34e6",
+        bytes((
+            0xA8, 0x07, 0xBB, 0x02, 0xB6, 0x0C, 0xB1, 0x30,
+            0x0D, 0x3C, 0x11, 0x2C, 0x14, 0x39, 0xA6, 0x46,
+            0x42, 0x44, 0x2F, 0x50, 0x36, 0x09, 0xD4, 0xAC,
+            0xE1, 0x9E, 0xE2, 0xAB, 0x0B, 0xD6, 0x9C, 0xE3,
+            0xA0, 0xD2, 0xAD, 0x93, 0xE0, 0x9F, 0xE4, 0xAA,
+        )),
+        97,
+        1823,
+    ),
 )
 
 
@@ -928,3 +942,70 @@ class VersionedExampleCorpusTests(unittest.TestCase):
                     )
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(output.read_bytes(), case.capsule.read_bytes())
+
+    def test_forty_retained_source_and_artifact_digests(self) -> None:
+        case = next(case for case in CASES if case.stem == "emit-forty")
+        self.assertEqual(
+            hashlib.sha256(case.source.read_bytes()).hexdigest(),
+            case.source_sha256,
+        )
+        self.assertEqual(
+            hashlib.sha256(case.capsule.read_bytes()).hexdigest(),
+            case.capsule_sha256,
+        )
+        self.assertEqual(case.capsule.stat().st_size, 1823)
+
+    def test_forty_retained_guest_runs_under_normative_vm(self) -> None:
+        if not has_executables(VM):
+            self.skipTest("repository VM binary is not built")
+        case = next(case for case in CASES if case.stem == "emit-forty")
+        result = subprocess.run(
+            [str(VM), str(case.capsule), "--report-steps"],
+            check=False,
+            capture_output=True,
+            timeout=60,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, case.stdout)
+        self.assertEqual(result.stderr, b"malbolge-steps-v1:97\n")
+
+    def test_forty_retained_pinned_recompile_is_byte_identical(self) -> None:
+        if (
+            not has_executables(FRONTEND, ADAPTER, LAYOUT)
+            or not GUEST_INCLUDE.is_dir()
+            or not RESOURCE.is_dir()
+        ):
+            if "MALBOLGE_CORPUS_BIN_ROOT" in os.environ:
+                self.fail("explicit compiler binaries are missing")
+            self.skipTest("pinned native compiler stages are not built")
+        case = next(case for case in CASES if case.stem == "emit-forty")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp_dir:
+            output = Path(temp_dir) / "emit-forty.malbolge"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--frontend",
+                    str(FRONTEND),
+                    "--json-adapter",
+                    str(ADAPTER),
+                    "--layout-backend",
+                    str(LAYOUT),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "corpus/emit-forty-v1",
+                    "--capsule",
+                    "--output",
+                    str(output),
+                    str(case.source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=150,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(output.read_bytes(), case.capsule.read_bytes())
