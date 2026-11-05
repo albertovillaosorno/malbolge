@@ -294,3 +294,14 @@ arithmetic positions), each followed by guest output. The normative current-prof
 replays the fourteen binary bytes in 31 steps with no consumed input before
 raw or capsule publication. Any incomplete, reordered or forged effect trace
 rejects; this finite witness does not provide general C byte-stream lowering.
+
+
+The `--distinct-literal-fifteen` C path admits only the exact fifteen
+source-ordered bytes `51 2e 19 38 3e 89 d2 ad a3 b7 c8 88 08 d5 c6` (hex).
+One reached no-op and a data-pointer relocation precede thirteen disjoint
+guest `CrazyData` writes and two `RotateData` writes (the sixth and thirteenth
+arithmetic positions), each followed by guest output. The normative
+current-profile VM replays fifteen binary bytes in 33 steps with no consumed
+input before
+raw or capsule publication. Any incomplete, reordered or forged effect trace
+rejects; this finite witness does not provide general C byte-stream lowering.
