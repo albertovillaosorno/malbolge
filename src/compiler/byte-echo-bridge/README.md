@@ -801,3 +801,15 @@ The normative current-profile VM confirms 42 guest-computed bytes, 42
 disjoint source-external memory writes and exactly 97 steps without input.
 Forged effects, changed bytes, prior prefixes, and foreign profiles refuse.
 This is a finite bridge, not arbitrary byte-stream compilation.
+
+### Source-independent forty-three-byte literal bridge
+
+`encode_distinct_literal_forty_three` accepts only the exact 43 guest-
+computed output bytes from the independently replayed 100-step
+`ProfileMachine` witness. Ten reached no-ops place the relocation;
+two internal no-ops adjust the data-read addresses, and four rotations
+combine with 39 crazy writes. Ternary SSA effects, distinct data
+writes, current-profile identity, exact output and zero input consumption
+are independently verified before layout admission. Changed bytes,
+forged effects or a different target profile fail closed. This does not
+yet admit source C or arbitrary 43-byte output streams.
