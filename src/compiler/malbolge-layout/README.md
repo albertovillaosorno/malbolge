@@ -662,3 +662,12 @@ bytes in 27 VM steps. The normative VM independently verifies both
 source-bound outputs and input independence before publication. Other
 byte sequences, incomplete prefixes, and forged SSA are not admitted;
 this is not general binary-stream lowering.
+
+The `--distinct-literal-thirteen` C path admits only the exact thirteen
+source-ordered bytes `42 43 30 16 54 09 bf c6 c8 87 e3 ab a4` (hex).
+One reached no-op and a data-pointer relocation precede twelve disjoint
+guest `CrazyData` writes and one `RotateData` write (the sixth arithmetic
+position), each followed by guest output. The normative current-profile VM
+replays the thirteen binary bytes in 29 steps with no consumed input before
+raw or capsule publication. Any incomplete, reordered or forged effect trace
+rejects; this finite witness does not provide general C byte-stream lowering.

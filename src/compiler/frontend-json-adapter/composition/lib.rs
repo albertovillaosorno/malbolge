@@ -58,6 +58,7 @@ const MAX_EFFECT_FREE_BODY_NODES: usize = 4_094;
 const MAX_COMPOUND_DEPTH: usize = 64;
 const DISTINCT_ELEVEN_BYTES: &[u8; 11] = b"P\x1d\x1a6\x05\xb4\xba\xb3\x84\xcf\x9e";
 const DISTINCT_TWELVE_BYTES: &[u8; 12] = b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd";
+const DISTINCT_THIRTEEN_BYTES: &[u8; 13] = b"BC0\x16T\x09\xbf\xc6\xc8\x87\xe3\xab\xa4";
 const MAX_LITERAL_OUTPUT_CALLS: usize = 33;
 const MAX_OUTPUT_PARENTHESES: usize = 3;
 const MAX_OUTPUT_ARGUMENT_WRAPPERS: usize = MAX_OUTPUT_PARENTHESES + 1;
@@ -91,6 +92,8 @@ pub enum FrontendGuestMode {
     DistinctLiteralEleven,
     /// Twelve independent guest-computed binary bytes.
     DistinctLiteralTwelve,
+    /// Thirteen independent guest-computed binary bytes.
+    DistinctLiteralThirteen,
     /// No byte effects, then a guest halt.
     EmptyVoid,
     /// Emit a literal zero byte, then a guest halt.
@@ -201,6 +204,7 @@ struct LiteralOutputNodes<'node> {
     tenth_byte: Option<u8>,
     eleventh_byte: Option<u8>,
     twelfth_byte: Option<u8>,
+    thirteenth_byte: Option<u8>,
     returned: Option<&'node Node>,
 }
 
@@ -933,6 +937,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     let mut tenth_byte = None;
     let mut eleventh_byte = None;
     let mut twelfth_byte = None;
+    let mut thirteenth_byte = None;
     let mut scopes = vec![OutputScope {
         node: body,
         previous_end: body.span.begin.byte,
@@ -1052,7 +1057,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         )
         .ok_or(FrontendJsonError::Unsupported)?;
         if selected_byte.is_some_and(|previous| previous != byte) {
-            // Exact source-ordered eleven/twelve-byte VM witnesses cannot
+            // Exact source-ordered eleven/twelve/thirteen-byte witnesses cannot
             // weaken any prior complete finite recipe.
             let witnessed: Vec<_> = [
                 selected_byte,
@@ -1067,6 +1072,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 tenth_byte,
                 eleventh_byte,
                 twelfth_byte,
+                thirteenth_byte,
             ]
             .into_iter()
             .flatten()
@@ -1083,7 +1089,13 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     .get(..witnessed.len())
                     .is_some_and(|prefix| witnessed == prefix)
                 && DISTINCT_TWELVE_BYTES.get(witnessed.len()) == Some(&byte);
-            if next_eleven || next_twelve {
+            let next_thirteen = witnessed.len() == calls.len()
+                && witnessed.len() < DISTINCT_THIRTEEN_BYTES.len()
+                && DISTINCT_THIRTEEN_BYTES
+                    .get(..witnessed.len())
+                    .is_some_and(|prefix| witnessed == prefix)
+                && DISTINCT_THIRTEEN_BYTES.get(witnessed.len()) == Some(&byte);
+            if next_eleven || next_twelve || next_thirteen {
                 match calls.len() {
                     1 => mixed_byte = Some(byte),
                     2 => third_byte = Some(byte),
@@ -1096,6 +1108,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     9 => tenth_byte = Some(byte),
                     10 => eleventh_byte = Some(byte),
                     11 => twelfth_byte = Some(byte),
+                    12 => thirteenth_byte = Some(byte),
                     _ => return Err(FrontendJsonError::Unsupported),
                 }
             } else if calls.len() == 1 && mixed_byte.is_none() {
@@ -1527,6 +1540,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         tenth_byte,
         eleventh_byte,
         twelfth_byte,
+        thirteenth_byte,
     ]
     .into_iter()
     .flatten()
@@ -1549,6 +1563,14 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     // No proper eleven-byte prefix is an independently proven guest mode.
     if (2..11).contains(&observed.len())
         && DISTINCT_ELEVEN_BYTES
+            .get(..observed.len())
+            .is_some_and(|prefix| observed == prefix)
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
+    // Only the full thirteen-byte sequence has an independently verified layout.
+    if (2..13).contains(&observed.len())
+        && DISTINCT_THIRTEEN_BYTES
             .get(..observed.len())
             .is_some_and(|prefix| observed == prefix)
     {
@@ -1578,6 +1600,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
         tenth_byte,
         eleventh_byte,
         twelfth_byte,
+        thirteenth_byte,
         returned,
     })
 }
@@ -1622,6 +1645,7 @@ fn canonical_literal_output_typed_ir(
         tenth_byte,
         eleventh_byte,
         twelfth_byte,
+        thirteenth_byte,
         calls,
         returned,
     } = admit_literal_output_nodes(&input.nodes)?;
@@ -1821,9 +1845,23 @@ fn canonical_literal_output_typed_ir(
                 typed_span(&argument.span),
             ));
         }
+        if index == 12
+            && let Some(thirteenth) = thirteenth_byte
+        {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![thirteenth]),
+                    result: ValueId::new(12),
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&argument.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput {
-                value: ValueId::new(if index == 11 && twelfth_byte.is_some() {
+                value: ValueId::new(if index == 12 && thirteenth_byte.is_some() {
+                    12
+                } else if index == 11 && twelfth_byte.is_some() {
                     11
                 } else if index == 10 && eleventh_byte.is_some() {
                     10
@@ -1881,7 +1919,9 @@ fn canonical_literal_output_typed_ir(
     if canonical_module(&encoded).map_err(|_error| FrontendJsonError::InvalidTypedIr)? != module {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if twelfth_byte.is_some() {
+    let mode = if thirteenth_byte.is_some() {
+        FrontendGuestMode::DistinctLiteralThirteen
+    } else if twelfth_byte.is_some() {
         FrontendGuestMode::DistinctLiteralTwelve
     } else if eleventh_byte.is_some() {
         FrontendGuestMode::DistinctLiteralEleven
