@@ -474,3 +474,12 @@ sixteenth arithmetic positions), plus one reached trailing no-op,
 produce twenty-one distinct guest bytes in 60 real VM steps.
 The exact C effects are verified without host-side output replacement;
 unproved prefixes, reordered literals and forged artifacts reject.
+
+The `--distinct-literal-twenty-two` C path admits exactly the twenty-two
+source-ordered bytes `39 16 37 05 41 0c 30 8e 24 9f 1b a0 23 97 15 28
+27 29 14 32 1e 1f` (hex). Ten no-ops move the relocating `j` to source
+position ten; twenty `CrazyData` and two `RotateData` writes compute the
+bytes outside the 57-cell source, with a reached no-op before halt. The real
+VM independently verifies all 22 output bytes, zero consumed input and exact
+57-step termination before raw or capsule publication. Arbitrary
+twenty-two-byte source sequences remain unsupported.
