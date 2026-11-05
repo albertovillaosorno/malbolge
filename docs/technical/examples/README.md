@@ -77,3 +77,5 @@ External source authority, research conclusions, legal analysis, or TODO state.
   one printable, three controls and twenty-six high-bit, in 97 real VM steps.
 - `corpus/emit-thirty-two.md`: thirty-two distinct binary guest-computed
   bytes, SHA-pinned source and capsule, and 97-step normative VM execution.
+- `corpus/emit-thirty-four.md`: thirty-four distinct guest-computed bytes,
+  SHA-pinned capsule and source, and 97-step normative VM replay.
