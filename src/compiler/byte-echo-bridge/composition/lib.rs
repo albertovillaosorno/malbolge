@@ -5354,6 +5354,108 @@ pub fn encode_distinct_literal_forty_five(
     Ok(layout)
 }
 
+const FORTY_SIX_LITERAL_OUTPUT: [u8; 46] = [
+    84, 34, 79, 35, 83, 30, 9, 8, 226, 171, 221, 126, 192, 125, 186, 129, 188,
+    123, 42, 16, 48, 14, 47, 17, 45, 163, 255, 167, 0, 162, 1, 166, 252, 207,
+    165, 206, 159, 210, 161, 204, 144, 227, 174, 225, 173, 228,
+];
+
+/// Bind the exact forty-six source-independent binary bytes to guest
+/// arithmetic.
+///
+/// # Errors
+///
+/// Rejects other effects, profile drift, SSA aliases and VM disagreements.
+pub fn encode_distinct_literal_forty_six(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let (pairs, remainder) = function.operations.as_chunks::<2>();
+    let [TernaryOperation::ReturnVoid { .. }] = remainder else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if pairs.len() != 46 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut ids = BTreeSet::new();
+    for (index, [constant, output]) in pairs.iter().enumerate() {
+        let (
+            TernaryOperation::MaterializeU8 { result, scalar, .. },
+            TernaryOperation::ByteOutput { value, .. },
+        ) = (constant, output)
+        else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        };
+        if result != value
+            || !ids.insert(*result)
+            || Some(scalar.bits())
+                != FORTY_SIX_LITERAL_OUTPUT.get(index).copied()
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    let mut operations = vec![LinearOpcode::NoOperation; 10];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0usize..46 {
+        if index == 11 || index == 33 {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if matches!(index, 6 | 7 | 18 | 25 | 29 | 40) {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() != 46
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != 46
+        || writes.iter().any(|address| {
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
+        })
+    {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let expected_steps = operations.len();
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
+        if !matches!(vm.run(expected_steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == expected_steps)
+            || vm.input_consumed() != 0
+            || vm.output() != FORTY_SIX_LITERAL_OUTPUT
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    Ok(layout)
+}
+
 /// Emit three different bytes from independent guest CrazyData operations.
 ///
 /// Exactly three separate `MaterializeU8`/`ByteOutput` SSA pairs and a void

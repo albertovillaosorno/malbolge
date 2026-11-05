@@ -834,3 +834,15 @@ source. Canonical current-profile identity, pairwise SSA wiring, exact output,
 zero input consumption, and real VM termination must all agree. Other byte
 orders, changed values, SSA aliases, and foreign profiles reject; this does
 not admit general C source compilation.
+
+### Source-independent forty-six-byte literal bridge
+
+`encode_distinct_literal_forty_six` admits exactly 46 ordered ternary
+constant/output SSA pairs matching the 46 distinct binary bytes independently
+computed by `guest_forty_six_distinct_literal_witness`, including `0x00` and
+`0xff`. Ten leading no-ops, two internal pads before output indices 11 and
+33, and six rotations relocate disjoint data writes beyond the 106-cell
+source. Current-profile identity, exact SSA order, zero input consumption and
+real VM termination must agree before the layout is returned. Foreign
+profiles, altered constants and forged effects reject; this is not generic
+byte-string lowering or C source admission.
