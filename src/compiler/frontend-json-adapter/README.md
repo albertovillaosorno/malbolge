@@ -427,3 +427,9 @@ proven 32-byte ordered `putchar` trace. Pinned Clang AST, source spans and
 separate typed SSA effects must agree before the 97-step guest layout is
 constructed; no unproved prefix, swapped effect or arithmetic expression is
 accepted. Raw and capsule output remain subject to real-VM verification.
+
+The `--distinct-literal-thirty-three` C mode admits exactly the 33 ordered
+`putchar` constants proven by the independent 97-step VM witness. Canonical
+source spans and a distinct SSA result for every constant bind the pinned Clang
+frontend to typed effects. Incomplete prefixes, changed calls, nonliteral
+arithmetic and unrelated 33-byte traces reject before source publication.

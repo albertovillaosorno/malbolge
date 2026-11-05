@@ -54,6 +54,7 @@ use crate::bridge::{
     encode_distinct_literal_twenty_nine,
     encode_distinct_literal_thirty, encode_distinct_literal_thirty_one,
     encode_distinct_literal_thirty_two,
+    encode_distinct_literal_thirty_three,
     encode_distinct_literal_twenty_four, encode_distinct_literal_twenty_one,
     encode_distinct_literal_twenty_seven, encode_distinct_literal_twenty_six,
     encode_distinct_literal_twenty_three, encode_distinct_literal_twenty_two,
@@ -88,6 +89,7 @@ use crate::typed_adapter::{
     compile_canonical_typed_distinct_literal_thirty,
     compile_canonical_typed_distinct_literal_thirty_one,
     compile_canonical_typed_distinct_literal_thirty_two,
+    compile_canonical_typed_distinct_literal_thirty_three,
     compile_canonical_typed_distinct_literal_twenty_five,
     compile_canonical_typed_distinct_literal_twenty_four,
     compile_canonical_typed_distinct_literal_twenty_one,
@@ -146,6 +148,7 @@ const DISTINCT_LITERAL_TWENTY_NINE_ARG: &str = "--distinct-literal-twenty-nine";
 const DISTINCT_LITERAL_THIRTY_ARG: &str = "--distinct-literal-thirty";
 const DISTINCT_LITERAL_THIRTY_ONE_ARG: &str = "--distinct-literal-thirty-one";
 const DISTINCT_LITERAL_THIRTY_TWO_ARG: &str = "--distinct-literal-thirty-two";
+const DISTINCT_LITERAL_THIRTY_THREE_ARG: &str = "--distinct-literal-thirty-three";
 const EMPTY_VOID_ARG: &str = "--empty-void";
 const TYPED_FILE_ARG: &str = "--typed-file";
 const TYPED_STDIN_ARG: &str = "--typed-stdin";
@@ -211,6 +214,7 @@ enum ByteTraceMode {
     DistinctLiteralThirty,
     DistinctLiteralThirtyOne,
     DistinctLiteralThirtyTwo,
+    DistinctLiteralThirtyThree,
     EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
@@ -259,6 +263,7 @@ enum SourceEffectWitness {
     DistinctLiteralThirty { bytes: [u8; 30] },
     DistinctLiteralThirtyOne { bytes: [u8; 31] },
     DistinctLiteralThirtyTwo { bytes: [u8; 32] },
+    DistinctLiteralThirtyThree { bytes: [u8; 33] },
     EmptyVoid,
     InitialZero { outputs: usize },
     RotatedLiteral { byte: u8, outputs: usize },
@@ -379,6 +384,7 @@ fn parse_canonical_source(
         || first == OsStr::new(DISTINCT_LITERAL_THIRTY_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_THIRTY_ONE_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_THIRTY_TWO_ARG)
+        || first == OsStr::new(DISTINCT_LITERAL_THIRTY_THREE_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
     {
         let mode = if first == OsStr::new(EMPTY_VOID_ARG) {
@@ -419,6 +425,8 @@ fn parse_canonical_source(
             ByteTraceMode::DistinctLiteralThirtyOne
         } else if first == OsStr::new(DISTINCT_LITERAL_THIRTY_TWO_ARG) {
             ByteTraceMode::DistinctLiteralThirtyTwo
+        } else if first == OsStr::new(DISTINCT_LITERAL_THIRTY_THREE_ARG) {
+            ByteTraceMode::DistinctLiteralThirtyThree
         } else if first == OsStr::new(DISTINCT_LITERAL_TWENTY_FIVE_ARG) {
             ByteTraceMode::DistinctLiteralTwentyFive
         } else if first == OsStr::new(DISTINCT_LITERAL_TWENTY_FOUR_ARG) {
@@ -546,6 +554,7 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
         || first == OsStr::new(DISTINCT_LITERAL_THIRTY_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_THIRTY_ONE_ARG)
         || first == OsStr::new(DISTINCT_LITERAL_THIRTY_TWO_ARG)
+        || first == OsStr::new(DISTINCT_LITERAL_THIRTY_THREE_ARG)
         || first == OsStr::new(EMPTY_VOID_ARG)
     {
         return parse_canonical_source(first, arguments);
@@ -1260,6 +1269,9 @@ fn verified_ternary_bytes(
         }
         ByteTraceMode::DistinctLiteralThirtyTwo => {
             encode_distinct_literal_thirty_two(&program, profile)
+        }
+        ByteTraceMode::DistinctLiteralThirtyThree => {
+            encode_distinct_literal_thirty_three(&program, profile)
         }
     }
     .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
@@ -2022,6 +2034,33 @@ fn verified_ternary_bytes(
             bytes[index] = scalar.bits();
         }
         Some(SourceEffectWitness::DistinctLiteralThirtyTwo { bytes })
+    } else if matches!(mode, ByteTraceMode::DistinctLiteralThirtyThree) {
+        let (pairs, remainder) = operations.as_chunks::<2>();
+        let [TernaryOperation::ReturnVoid { .. }] = remainder else {
+            return Err(String::from("missing distinct-literal-thirty-three return"));
+        };
+        if pairs.len() != 33 {
+            return Err(String::from(
+                "missing distinct-literal-thirty-three effects",
+            ));
+        }
+        let mut bytes = [0; 33];
+        for (index, [constant, output]) in pairs.iter().enumerate() {
+            let (
+                TernaryOperation::MaterializeU8 { result, scalar, .. },
+                TernaryOperation::ByteOutput { value, .. },
+            ) = (constant, output)
+            else {
+                return Err(String::from(
+                    "missing distinct-literal-thirty-three effects",
+                ));
+            };
+            if result != value {
+                return Err(String::from("distinct-literal-thirty-three SSA mismatch"));
+            }
+            bytes[index] = scalar.bits();
+        }
+        Some(SourceEffectWitness::DistinctLiteralThirtyThree { bytes })
     } else if matches!(mode, ByteTraceMode::InitialZero) {
         Some(SourceEffectWitness::InitialZero {
             outputs: operations
@@ -2176,6 +2215,9 @@ fn verified_typed_bytes(
         }
         ByteTraceMode::DistinctLiteralThirtyTwo => {
             compile_canonical_typed_distinct_literal_thirty_two(typed_bytes, profile)
+        }
+        ByteTraceMode::DistinctLiteralThirtyThree => {
+            compile_canonical_typed_distinct_literal_thirty_three(typed_bytes, profile)
         }
     }
     .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
@@ -3186,6 +3228,35 @@ fn verify_distinct_literal_thirty_two(
     Ok(())
 }
 
+fn verify_distinct_literal_thirty_three(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    bytes: [u8; 33],
+) -> Result<(), String> {
+    if bytes
+        != *b"\x39\x19\x34\x08\x41\x0c\x5c\x32\x4d\x33\x5a\x25\x5b\x09\xd4\xac\xe1\x9e\xe2\xab\x0b\xd6\x9c\xe3\xa0\xd2\xad\x93\xe0\x9f\xe4\xaa\xd5"
+        || artifact.steps != 97
+    {
+        return Err(String::from(
+            "distinct-literal thirty-three has no guest witness",
+        ));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
+            .map_err(|error| format!("distinct-literal thirty-three load: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output() != bytes
+        {
+            return Err(String::from(
+                "distinct-literal thirty-three output disagrees",
+            ));
+        }
+    }
+    Ok(())
+}
+
 // Independently re-execute the four-source-byte candidate before publication.
 fn verify_distinct_literal_quad(
     profile: &'static malbolge::ProfileDescriptor,
@@ -3328,6 +3399,9 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
         }
         Some(SourceEffectWitness::DistinctLiteralThirtyTwo { bytes }) => {
             verify_distinct_literal_thirty_two(profile, &artifact, *bytes)?;
+        }
+        Some(SourceEffectWitness::DistinctLiteralThirtyThree { bytes }) => {
+            verify_distinct_literal_thirty_three(profile, &artifact, *bytes)?;
         }
         None => {}
     }

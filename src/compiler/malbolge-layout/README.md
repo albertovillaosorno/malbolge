@@ -827,3 +827,10 @@ consumed. The separate `--distinct-literal-thirty-two` publisher binds the
 exact source-proven typed and ternary effects to that trace and independently
 checks raw/capsule publication against the real VM. This is finite witness
 admission, not arbitrary byte-stream lowering.
+
+The independent `tests/guest_thirty_three_distinct_literal_witness.rs`
+proves a 97-step current-profile VM trace computing 33 different binary bytes.
+All 33 guest arithmetic writes are outside source, at 107..117 and 120..172,
+with no input consumed. `--distinct-literal-thirty-three` binds only that exact
+source-proven typed/ternary trace and replays the normative VM before raw or
+capsule publication. General C byte streams remain unsupported.

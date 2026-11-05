@@ -750,3 +750,10 @@ its fifth byte pair; 29 crazy writes and three rotates at byte indices
 11, 18 and 25 compute all 32 bytes with zero guest input consumed. The
 exactly matched source and normative VM output are required for admission.
 Other 32-byte traces remain unsupported.
+
+The independent 33-byte source-bound bridge admits only the exact
+33-materialization/33-output ternary trace. Twenty-eight leading no-ops
+precede data relocation, with one reached no-op before byte index six. Thirty
+crazy writes and three rotations at indices 13, 20 and 27 compute all distinct
+bytes. The 33 data writes at 107..172 are disjoint from the 97-cell source;
+profile, SSA and normative VM output must agree before any publication.

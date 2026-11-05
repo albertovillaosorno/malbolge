@@ -527,3 +527,8 @@ The `--distinct-literal-thirty-two` typed bridge independently admits the
 32 exact `u8` constants, matching byte-output SSA uses and void return. It
 round-trips canonical ternary IR and requires the independently witnessed
 97-step guest output; other values, profiles or effects reject.
+
+The `--distinct-literal-thirty-three` typed mode binds 33 independent `u8`
+constant/byte-output SSA pairs and a void return to the source-proven witness.
+Canonical typed IR and ternary IR retain their provenance; wrong profiles,
+SSA uses, values and lengths reject before the 97-step real-VM preflight.
