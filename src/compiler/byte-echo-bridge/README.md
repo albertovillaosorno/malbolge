@@ -792,3 +792,12 @@ VM witness proves forty-one guest-computed bytes in ninety-seven steps
 with disjoint data writes, zero input consumption and exact output.
 All other values, output counts, SSA effects and profiles reject. This
 does not enable C source admission or arbitrary byte materialization.
+
+### Source-independent forty-two-byte literal proof
+
+`encode_distinct_literal_forty_two` accepts exactly forty-two independently
+materialized, distinct byte SSA values and output effects in the proven order.
+The normative current-profile VM confirms 42 guest-computed bytes, 42
+disjoint source-external memory writes and exactly 97 steps without input.
+Forged effects, changed bytes, prior prefixes, and foreign profiles refuse.
+This is a finite bridge, not arbitrary byte-stream compilation.
