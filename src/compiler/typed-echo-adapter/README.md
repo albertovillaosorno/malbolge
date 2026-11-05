@@ -495,3 +495,7 @@ physical guest layout must pass independent real-VM verification.
 The canonical typed-IR `--distinct-literal-twenty-five` path preserves
 25 exact `u8` definitions and the matching 25 `ByteOutput` SSA uses.
 Only the independently proved 25-byte source trace reaches the real VM.
+
+The `--distinct-literal-twenty-six` typed-IR mode admits precisely 26
+source-bound `u8` constant definitions and matching `ByteOutput` SSA uses.
+Independent guest verification remains mandatory before publication.

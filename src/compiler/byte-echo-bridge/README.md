@@ -672,3 +672,12 @@ distinct output bytes. Twenty-seven trailing no-ops preserve the proven
 105-step source recurrence. The real VM verifies exact byte output, zero
 input consumption, and nonoverlapping source/data before publication.
 Arbitrary 25-byte output remains unsupported.
+
+The `--distinct-literal-twenty-six` source mode admits the exact 26-byte
+prefix of the independently proven 28-byte guest arithmetic trace:
+`51 3e 35 38 54 1f 4e 33 3d 39 05 53 23 1b b5 2c cb 12 c6 2e
+af b4 f8 ca 0e 95` (hex). Twenty-six reached no-ops precede relocation;
+23 `CrazyData` and three `RotateData` writes emit distinct bytes. A 25-
+no-op tail preserves the 105-cell source recurrence, with all writes beyond
+the source, zero stdin consumed and exact 105-step normative termination.
+Arbitrary 26-byte source strings remain unsupported.

@@ -777,3 +777,7 @@ The `--distinct-literal-twenty-five` source publisher requires exact
 source-bound effects and independently replays all 25 guest-computed bytes
 in 105 normative VM steps, with no consumed input, before publication.
 Other 25-byte sequences fail without publishing an artifact.
+
+The `--distinct-literal-twenty-six` source publisher independently
+replays all 26 guest-computed bytes in 105 exact normative VM steps before
+no-clobber raw or capsule publication. Other 26-byte traces refuse.

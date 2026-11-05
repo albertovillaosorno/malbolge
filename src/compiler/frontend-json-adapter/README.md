@@ -391,3 +391,7 @@ The `--distinct-literal-twenty-five` C mode admits exactly 25
 source-ordered `putchar` integer literals matching the proven 25-byte
 guest witness. Pinned AST effects, source span identity, and complete
 sequence are required; shorter prefixes or reordered literals reject.
+
+The exact 26-byte source witness is admitted as
+`--distinct-literal-twenty-six` with pinned source-ordered C literal
+effects. Shorter prefixes, reordered bytes and unproved expressions reject.
