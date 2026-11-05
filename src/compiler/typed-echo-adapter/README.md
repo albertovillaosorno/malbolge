@@ -538,3 +538,6 @@ independent constant/output SSA pairs before real guest execution.
 
 The `--distinct-literal-thirty-five` typed mode re-admits exactly 35
 independent constant/output SSA pairs before real guest execution.
+
+The `--distinct-literal-thirty-six` typed mode independently re-admits
+36 exact `u8` SSA materializations and outputs, then requires real-VM proof.

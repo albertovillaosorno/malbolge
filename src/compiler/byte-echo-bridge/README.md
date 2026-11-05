@@ -763,3 +763,7 @@ rotations in a 97-step layout; no general C output is implied.
 
 A separately VM-proven 35-byte output trace uses 30 crazy writes and five
 rotations in a 97-step layout; no general C output is implied.
+
+The 36-byte witness computes 31 crazy and five rotate writes in 97 steps.
+All 36 guest data writes stay outside encoded source, and two input patterns
+confirm zero consumed input and exact byte output.

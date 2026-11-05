@@ -842,3 +842,7 @@ source effects refuse artifact publication.
 The source-bound `--distinct-literal-thirty-five` publisher requires the
 exact 35 guest-computed bytes, 97 steps and disjoint data writes; malformed
 source effects refuse artifact publication.
+
+The `--distinct-literal-thirty-six` publisher accepts only the 36-byte
+source-bound trace and independently replays 97 guest VM steps before atomic
+raw/capsule output. Unsupported effects and altered bytes fail closed.
