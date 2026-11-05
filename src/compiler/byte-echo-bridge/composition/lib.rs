@@ -5252,6 +5252,108 @@ pub fn encode_distinct_literal_forty_four(
     Ok(layout)
 }
 
+const FORTY_FIVE_LITERAL_OUTPUT: [u8; 45] = [
+    81, 62, 53, 56, 84, 31, 78, 135, 209, 165, 153, 9, 8, 199, 198, 194,
+    145, 225, 167, 172, 152, 219, 155, 160, 183, 191, 124, 181, 44, 203, 18, 180,
+    248, 202, 14, 149, 45, 171, 51, 61, 57, 5, 83, 35, 27,
+];
+
+/// Bind the exact forty-five source-independent binary bytes to guest
+/// arithmetic.
+///
+/// # Errors
+///
+/// Rejects other effects, profile drift, SSA aliases and VM disagreements.
+pub fn encode_distinct_literal_forty_five(
+    program: &TernaryProgram,
+    profile: &'static ProfileDescriptor,
+) -> Result<LinearLayout, ByteEchoBridgeError> {
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
+    if program.target_profile != profile.id()
+        || profile.id() != current_profile().id()
+        || profile.fingerprint() != current_profile().fingerprint()
+    {
+        return Err(ByteEchoBridgeError::ProfileMismatch);
+    }
+    let [function] = program.functions.as_slice() else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    let (pairs, remainder) = function.operations.as_chunks::<2>();
+    let [TernaryOperation::ReturnVoid { .. }] = remainder else {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    };
+    if pairs.len() != 45 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let mut ids = BTreeSet::new();
+    for (index, [constant, output]) in pairs.iter().enumerate() {
+        let (
+            TernaryOperation::MaterializeU8 { result, scalar, .. },
+            TernaryOperation::ByteOutput { value, .. },
+        ) = (constant, output)
+        else {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        };
+        if result != value
+            || !ids.insert(*result)
+            || Some(scalar.bits())
+                != FORTY_FIVE_LITERAL_OUTPUT.get(index).copied()
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    let mut operations = vec![LinearOpcode::NoOperation; 11];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0usize..45 {
+        if index == 20 {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if matches!(index, 7 | 11 | 12 | 27 | 31 | 38) {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::NoOperation);
+    operations.push(LinearOpcode::Halt);
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() != 45
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != 45
+        || writes.iter().any(|address| {
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
+        })
+    {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+            || vm.output() != FORTY_FIVE_LITERAL_OUTPUT
+        {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+    }
+    Ok(layout)
+}
+
 /// Emit three different bytes from independent guest CrazyData operations.
 ///
 /// Exactly three separate `MaterializeU8`/`ByteOutput` SSA pairs and a void

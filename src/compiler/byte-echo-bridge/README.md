@@ -823,3 +823,14 @@ beyond the 103-cell source; two internal no-ops and six rotations yield
 current-profile identity, SSA wiring, exact byte order, zero input and
 normative termination must all agree. Other outputs and forged effects
 fail closed; source-C compilation is a separate admission boundary.
+
+### Source-independent forty-five-byte literal bridge
+
+`encode_distinct_literal_forty_five` admits the exact 45 distinct binary
+bytes already proven by `guest_forty_five_distinct_literal_witness`. Eleven
+leading no-ops, one internal no-op before byte 21, one trailing no-op, and
+six data rotations produce 45 distinct guest writes outside the 105-cell
+source. Canonical current-profile identity, pairwise SSA wiring, exact output,
+zero input consumption, and real VM termination must all agree. Other byte
+orders, changed values, SSA aliases, and foreign profiles reject; this does
+not admit general C source compilation.
