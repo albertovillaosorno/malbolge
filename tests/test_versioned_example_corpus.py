@@ -995,6 +995,60 @@ class VersionedExampleCorpusTests(unittest.TestCase):
                     result.stderr, f"malbolge-steps-v1:{case.steps}\n".encode()
                 )
 
+    def test_semantics_preserving_c_comments_preserve_guest_capsule(self) -> None:
+        if (
+            not has_executables(FRONTEND, ADAPTER, LAYOUT)
+            or not GUEST_INCLUDE.is_dir()
+            or not RESOURCE.is_dir()
+        ):
+            if "MALBOLGE_CORPUS_BIN_ROOT" in os.environ:
+                self.fail("explicitly selected compiler binaries are missing")
+            self.skipTest("pinned native compiler stages are not built")
+
+        # Span and spelling changes must not become guest output effects.
+        # Exercise the smallest and largest retained output-only C traces.
+        selected = {case.stem: case for case in (CASES[0], CASES[-1])}
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp_dir:
+            for case in selected.values():
+                with self.subTest(example=case.stem):
+                    source = case.source.read_text(encoding="utf-8")
+                    self.assertIn("putchar(", source)
+                    transformed = source.replace(
+                        "putchar(", "/* equivalent tokens */ putchar ("
+                    )
+                    self.assertNotEqual(source, transformed)
+                    variant = Path(temp_dir) / f"{case.stem}-relayout.c"
+                    _ = variant.write_text(transformed, encoding="utf-8")
+                    output = Path(temp_dir) / f"{case.stem}-relayout.malbolge"
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--frontend",
+                            str(FRONTEND),
+                            "--json-adapter",
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--guest-include",
+                            str(GUEST_INCLUDE),
+                            "--resource-dir",
+                            str(RESOURCE),
+                            "--source-id",
+                            f"corpus/{case.stem}-v1",
+                            "--capsule",
+                            "--output",
+                            str(output),
+                            str(variant),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=150,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(output.read_bytes(), case.capsule.read_bytes())
+
     def test_pinned_c_frontend_reproduces_the_retained_capsules(self) -> None:
         if (
             not has_executables(FRONTEND, ADAPTER, LAYOUT)
