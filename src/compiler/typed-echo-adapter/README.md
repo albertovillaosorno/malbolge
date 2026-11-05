@@ -568,3 +568,9 @@ identities and source-order byte values remain strictly checked.
 The finite C43 typed adapter projects 43 distinct constant/output SSA pairs
 through canonical ternary wire and a VM-verified 100-step guest layout. Other
 43-byte sequences and forged SSA effects remain unsupported.
+
+### Verified forty-four-byte source bridge
+
+The finite C44 typed adapter projects exactly 44 source-ordered byte
+constant/output SSA pairs to the verified ternary bridge. No other
+44-byte source sequences or forged SSA effects are accepted.

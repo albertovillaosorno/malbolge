@@ -471,3 +471,9 @@ reject; this does not generalize byte-stream compilation.
 The frontend accepts only the exact independently verified 43-byte
 `putchar` literal sequence and rejects its unproved proper prefixes. The
 two-byte `Q.` prefix retains its earlier guest witness.
+
+### Verified forty-four-byte source bridge
+
+The frontend admits only the exact independently VM-proven 44-byte
+`putchar` literal trace. Proper prefixes, changed constants and further
+outputs fail closed; the legacy 43-byte and Q. routes are unchanged.

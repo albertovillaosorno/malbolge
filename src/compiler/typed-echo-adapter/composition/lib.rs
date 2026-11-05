@@ -136,6 +136,7 @@ enum ByteTraceMode {
     DistinctLiteralFortyOne,
     DistinctLiteralFortyTwo,
     DistinctLiteralFortyThree,
+    DistinctLiteralFortyFour,
     EmptyVoid,
     IdentityByteBitcast,
     InitialZero,
@@ -414,7 +415,8 @@ fn project_literal_pair_effects(
             | ByteTraceMode::DistinctLiteralForty
             | ByteTraceMode::DistinctLiteralFortyOne
             | ByteTraceMode::DistinctLiteralFortyTwo
-            | ByteTraceMode::DistinctLiteralFortyThree => false,
+            | ByteTraceMode::DistinctLiteralFortyThree
+            | ByteTraceMode::DistinctLiteralFortyFour => false,
             ByteTraceMode::DistinctLiteralPair => matches!(
                 (zero.little_endian(), literal.little_endian()),
                 ([b'Y'], [b'/' | b'$']) | ([b'Q'], [b'.'])
@@ -2512,6 +2514,55 @@ fn project_literal_forty_three_effects(
     Ok(instructions)
 }
 
+fn project_literal_forty_four_effects(
+    module: &Module,
+    original: &[typed::LocatedInstruction],
+) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
+    let (pairs, remainder) = original.as_chunks::<2>();
+    if pairs.len() != 44 || !remainder.is_empty() {
+        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+    }
+    let mut instructions = Vec::with_capacity(88);
+    let mut ids = BTreeSet::new();
+    for (index, [constant, output]) in pairs.iter().enumerate() {
+        let (
+            Instruction::ConstantInteger {
+                constant: literal,
+                result: id,
+                type_id,
+            },
+            Instruction::ByteOutput { value },
+        ) = (constant.instruction(), output.instruction())
+        else {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        };
+        if !is_byte_type(module, *type_id)
+            || literal.bit_width() != 8
+            || id != value
+            || !ids.insert(*id)
+            || literal.little_endian()
+                != b"\x5a\x26\x47\x0b\x3e\x09\x2d\x13\x34\xa5\x06\xaf\xf3\xa8\x2f\x11\x41\x0f\x30\x19\x37\x08\x4d\x32\x4e\x1f\x57\x29\x44\x0a\xd4\x99\xdd\xa0\xcc\xaa\xd3\x07\xd5\x91\xde\xa1\xdc\xab"
+                    .get(index)
+                    .map(std::slice::from_ref)
+                    .unwrap_or(&[])
+        {
+            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
+        }
+        instructions.push(InputInstruction::ConstantInteger {
+            bit_width: 8,
+            little_endian: literal.little_endian().to_vec(),
+            result: id.value(),
+            span: project_span(constant.span()),
+            type_kind: InputScalarType::U8,
+        });
+        instructions.push(InputInstruction::ByteOutput {
+            span: project_span(output.span()),
+            value: value.value(),
+        });
+    }
+    Ok(instructions)
+}
+
 // A source zero SSA can be emitted until the first input overwrites VM A.
 // Thereafter only outputs naming the latest successful input are executable.
 #[expect(
@@ -2842,6 +2893,9 @@ fn project_byte_trace(
         ByteTraceMode::DistinctLiteralFortyThree => {
             project_literal_forty_three_effects(module, block.instructions())?
         }
+        ByteTraceMode::DistinctLiteralFortyFour => {
+            project_literal_forty_four_effects(module, block.instructions())?
+        }
     };
     Ok(TypedIrInput {
         abi_id: module.abi_id().to_owned(),
@@ -3046,6 +3100,9 @@ fn compile_byte_trace(
         }
         ByteTraceMode::DistinctLiteralFortyThree => {
             bridge::encode_distinct_literal_forty_three(&independently_admitted, profile)
+        }
+        ByteTraceMode::DistinctLiteralFortyFour => {
+            bridge::encode_distinct_literal_forty_four(&independently_admitted, profile)
         }
     }
     .map_err(TypedEchoAdapterError::Layout)?;
@@ -3759,6 +3816,22 @@ pub fn compile_canonical_typed_distinct_literal_forty_three(
         canonical,
         profile,
         ByteTraceMode::DistinctLiteralFortyThree,
+    )
+}
+
+/// Compile the independently verified forty-four-byte typed trace.
+///
+/// # Errors
+///
+/// Rejects unrelated effects, profiles, and unauthenticated output.
+pub fn compile_canonical_typed_distinct_literal_forty_four(
+    canonical: &[u8],
+    profile: &'static ProfileDescriptor,
+) -> Result<CompiledTypedEcho, TypedEchoAdapterError> {
+    compile_byte_trace(
+        canonical,
+        profile,
+        ByteTraceMode::DistinctLiteralFortyFour,
     )
 }
 

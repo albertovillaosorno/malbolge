@@ -874,3 +874,10 @@ zero consumed input before atomic raw/capsule publication.
 The bounded `--distinct-literal-forty-three` mode independently admits
 exact typed/ternary effects and replays 43 guest-computed bytes in 100 VM
 steps with zero input consumption before raw or capsule publication.
+
+### Verified forty-four-byte source bridge
+
+The bounded `--distinct-literal-forty-four` CLI mode independently
+revalidates exact typed and ternary effects and executes all 44
+guest-computed bytes in 103 normative VM steps before publishing raw
+or capsule output. It is not general binary-stream compilation.
