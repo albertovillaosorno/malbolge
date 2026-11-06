@@ -852,10 +852,12 @@ private:
       if (!name.empty()) {
         node.name = name;
       }
-      // A single expansion may declare equally named values in distinct
-      // scopes. Publish the same canonical anchor on the declaration and use.
-      if (llvm::isa<clang::ValueDecl>(named) &&
-          named->getLocation().isMacroID()) {
+      // Every variable/parameter declaration must carry the same canonical
+      // identity as its uses. Textual names alone cannot resolve shadowing.
+      // Preserve the expansion ordinal for other macro-written value kinds.
+      if (llvm::isa<clang::VarDecl>(named) ||
+          (llvm::isa<clang::ValueDecl>(named) &&
+           named->getLocation().isMacroID())) {
         node.reference = declaration_reference(*named);
       }
     }

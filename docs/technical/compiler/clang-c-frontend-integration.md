@@ -161,6 +161,13 @@ Implicit expression nodes with source locations are retained because conversions
 such as array-to-pointer decay, lvalue-to-rvalue conversion, and integral casts
 matter to later typed lowering.
 
+Local variable and parameter declarations carry the same canonical `reference`
+identity as their use sites. This binds shadowed names and assignments without
+reconstructing a declaration's name-token position from its source span.
+Source-written identities use the canonical declaration's byte offset;
+macro-expanded declarations preserve their per-expansion ordinal. This
+provides symbol identity for future state lowering, not executable guest state.
+
 Version one explicitly maps its supported declaration, statement/expression,
 and cast classes to repository names. An unrecognized source node is not emitted
 under a raw Clang class name; normalization stops with

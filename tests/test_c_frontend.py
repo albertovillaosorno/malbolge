@@ -515,6 +515,85 @@ def test_macro_local_references_match_distinct_declarations(
     assert [node["reference"] for node in references] == targets
 
 
+def test_ordinary_local_declarations_bind_shadowed_reads(
+    tmp_path: Path,
+) -> None:
+    """Regular locals need the same scope-stable anchor as macro locals."""
+    source = tmp_path / "scoped-locals.c"
+    _ = source.write_text(
+        "unsigned emit(void) {\n"
+        "  unsigned a = 1U;\n"
+        "  { unsigned a = 2U; unsigned b = a + 3U; }\n"
+        "  return a;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    first = _run_frontend(source, "fixtures/scoped-locals.c")
+    artifact = _artifact(first)
+    assert (
+        _run_frontend(source, "fixtures/scoped-locals.c").stdout
+        == first.stdout
+    )
+    relocated = tmp_path / "relocated.c"
+    _ = relocated.write_bytes(source.read_bytes())
+    assert (
+        _run_frontend(relocated, "fixtures/scoped-locals.c").stdout
+        == first.stdout
+    )
+    nodes = cast("list[dict[str, object]]", artifact["nodes"])
+    declarations = [
+        node for node in nodes if node["kind"] == "variable-declaration"
+    ]
+    assert [node["name"] for node in declarations] == ["a", "a", "b"]
+    anchors = [node.get("reference") for node in declarations]
+    assert all(
+        isinstance(anchor, str) and "@" in anchor for anchor in anchors
+    )
+    assert len(set(anchors)) == len(anchors)
+    reads = [
+        node.get("reference")
+        for node in nodes
+        if node["kind"] == "declaration-reference-expression"
+    ]
+    assert reads == [anchors[1], anchors[0]]
+
+
+def test_parameters_and_redeclarations_share_canonical_value_identities(
+    tmp_path: Path,
+) -> None:
+    """C redeclarations and parameter uses share exact semantic anchors."""
+    source = tmp_path / "variable-redeclarations.c"
+    _ = source.write_text(
+        "extern unsigned shared;\n"
+        "unsigned shared = 7U;\n"
+        "unsigned emit(unsigned input) { return shared + input; }\n",
+        encoding="utf-8",
+    )
+    artifact = _artifact(
+        _run_frontend(source, "fixtures/variable-redeclarations.c")
+    )
+    nodes = cast("list[dict[str, object]]", artifact["nodes"])
+    declarations = [
+        node
+        for node in nodes
+        if node["kind"] in ("variable-declaration", "parameter-declaration")
+    ]
+    assert [node["name"] for node in declarations] == [
+        "shared", "shared", "input"
+    ]
+    anchors = [node.get("reference") for node in declarations]
+    assert isinstance(anchors[0], str) and anchors[0].startswith("shared@")
+    assert anchors[1] == anchors[0]
+    assert isinstance(anchors[2], str) and anchors[2].startswith("input@")
+    assert anchors[2] != anchors[0]
+    reads = [
+        node.get("reference")
+        for node in nodes
+        if node["kind"] == "declaration-reference-expression"
+    ]
+    assert reads == [anchors[0], anchors[2]]
+
+
 def test_header_anonymous_tags_retain_distinct_path_free_types(
     tmp_path: Path,
 ) -> None:
