@@ -1470,14 +1470,13 @@ pub fn encode_zero_then_literal(
     Ok(layout)
 }
 
-/// Cache graphical source encodings for each phase of the bounded pair grammar.
+/// Cache graphical source encodings for bounded pair and triple proposals.
 ///
 /// This is a proposal accelerator only: final source admission independently
-/// decodes every byte and checks guest execution. The longest legacy layout
-/// has 93 prefix cells followed by six executable instructions.
+/// decodes every byte and checks actual guest execution.
 fn pair_source_cells(profile: &ProfileDescriptor) -> Option<Vec<[u8; 6]>> {
     let opcodes = [b'o', b'j', b'p', b'*', profile.output_instruction(), b'v'];
-    (0..DISTINCT_PAIR_PREFIX_PHASES + 6)
+    (0..DISTINCT_PAIR_PREFIX_PHASES + 48)
         .map(|position| {
             let mut encoded = [0u8; 6];
             let position = u32::try_from(position).ok()?;
@@ -1506,15 +1505,15 @@ const fn pair_opcode_slot(operation: LinearOpcode) -> Option<usize> {
     }
 }
 
-/// Predict two guest bytes without building the full independent layout.
+/// Predict a bounded guest byte stream without full independent layout.
 ///
 /// A disposable model filters candidates; it cannot authorize publication.
 /// Both arithmetic operations and no-op data strides advance the guest data
 /// pointer, while only guest arithmetic changes the accumulator.
-fn proposed_distinct_pair(
+fn proposed_output_stream<const N: usize>(
     operations: &[LinearOpcode],
     source_cells: &[[u8; 6]],
-) -> Option<[u8; 2]> {
+) -> Option<[u8; N]> {
     let source = operations
         .iter()
         .enumerate()
@@ -1541,7 +1540,7 @@ fn proposed_distinct_pair(
     }
     let mut accumulator = 0u32;
     let mut address = relocated + 1;
-    let mut output = Vec::with_capacity(2);
+    let mut output = Vec::with_capacity(N);
     for operation in operations.iter().skip(relocation + 1) {
         match operation {
             LinearOpcode::CrazyData => {
@@ -1566,14 +1565,14 @@ fn proposed_distinct_pair(
     output.try_into().ok()
 }
 
-/// Independently admit and VM-replay one proposed two-output guest.
-fn verified_distinct_pair_layout(
+/// Independently admit and VM-replay one proposed guest output stream.
+fn verified_output_stream_layout<const N: usize>(
     profile: &'static ProfileDescriptor,
     operations: &[LinearOpcode],
-    expected: [u8; 2],
+    expected: [u8; N],
     source_cells: &[[u8; 6]],
 ) -> Option<LinearLayout> {
-    if proposed_distinct_pair(operations, source_cells) != Some(expected) {
+    if proposed_output_stream(operations, source_cells) != Some(expected) {
         return None;
     }
     let layout = encode_linear_layout(profile, operations).ok()?;
@@ -1689,7 +1688,7 @@ pub fn encode_distinct_literal_pair(
                     LinearOpcode::OutputByte,
                     LinearOpcode::Halt,
                 ]);
-                if let Some(layout) = verified_distinct_pair_layout(
+                if let Some(layout) = verified_output_stream_layout(
                     profile,
                     &operations,
                     expected,
@@ -1742,7 +1741,7 @@ pub fn encode_distinct_literal_pair(
                                     LinearOpcode::Halt,
                                 ]);
                                 if let Some(layout) =
-                                    verified_distinct_pair_layout(
+                                    verified_output_stream_layout(
                                         profile,
                                         &operations,
                                         expected,
@@ -5966,10 +5965,11 @@ pub fn encode_distinct_literal_forty_six(
     Ok(layout)
 }
 
-/// Emit three different bytes from independent guest CrazyData operations.
+/// Emit three different source-proven bytes with guest arithmetic writes.
 ///
-/// Exactly three separate `MaterializeU8`/`ByteOutput` SSA pairs and a void
-/// return must match one of the finite, independently replayed source phases.
+/// Three distinct `MaterializeU8`/`ByteOutput` SSA pairs and a void return
+/// select a bounded positional `p`/`*` layout with independently replayed
+/// guest output. Search failure does not prove the bytes unrealizable.
 ///
 /// # Errors
 ///
@@ -6022,42 +6022,105 @@ pub fn encode_distinct_literal_triple(
         }
         bytes.push(scalar.bits());
     }
-    let Some((_, padding)) = DISTINCT_LITERAL_TRIPLE_CRAZY_WITNESSES
-        .iter()
-        .find(|(candidate, _)| candidate.as_slice() == bytes.as_slice())
-    else {
+    let expected: [u8; 3] = bytes
+        .try_into()
+        .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    if expected[0] == expected[1]
+        || expected[1] == expected[2]
+        || expected[0] == expected[2]
+    {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
-    };
-    let mut operations = vec![LinearOpcode::NoOperation; *padding];
-    operations.extend([
-        LinearOpcode::RelocateDataPointer,
-        LinearOpcode::CrazyData,
-        LinearOpcode::OutputByte,
-        LinearOpcode::CrazyData,
-        LinearOpcode::OutputByte,
-        LinearOpcode::CrazyData,
-        LinearOpcode::OutputByte,
-        LinearOpcode::Halt,
-    ]);
-    let layout = encode_linear_layout(profile, &operations)
-        .map_err(ByteEchoBridgeError::Layout)?;
-    // The layout verifier independently proves all three data writes are
-    // disjoint from the complete emitted source before the VM is consulted.
-    for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm =
-            ProfileMachine::from_source(profile, layout.source(), input)
-                .map_err(|_error| {
-                    ByteEchoBridgeError::UnsupportedEffectTrace
-                })?;
-        if !matches!(vm.run(operations.len()),
-            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
-            || vm.input_consumed() != 0
-            || vm.output() != bytes
-        {
-            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    // Retain the exact, published legacy source phases before broadening
+    // the independently verified layout grammar.
+    if let Some((_, padding)) = DISTINCT_LITERAL_TRIPLE_CRAZY_WITNESSES
+        .iter()
+        .find(|(candidate, _)| *candidate == expected)
+    {
+        let mut operations = vec![LinearOpcode::NoOperation; *padding];
+        operations.extend([
+            LinearOpcode::RelocateDataPointer,
+            LinearOpcode::CrazyData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::CrazyData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::CrazyData,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        return encode_linear_layout(profile, &operations)
+            .map_err(ByteEchoBridgeError::Layout);
+    }
+    let source_cells = pair_source_cells(profile)
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    let arithmetic = [LinearOpcode::CrazyData, LinearOpcode::RotateData];
+    // First search all 94 graphical phases with three independent writes.
+    // The fast accumulator model is only a proposal filter; a matched
+    // source is re-admitted and replayed on two normative VM inputs.
+    for padding in 0..DISTINCT_PAIR_PREFIX_PHASES {
+        for &first in &arithmetic {
+            for &second in &arithmetic {
+                for &third in &arithmetic {
+                    let mut operations = vec![LinearOpcode::NoOperation; padding];
+                    operations.extend([
+                        LinearOpcode::RelocateDataPointer,
+                        first,
+                        LinearOpcode::OutputByte,
+                        second,
+                        LinearOpcode::OutputByte,
+                        third,
+                        LinearOpcode::OutputByte,
+                        LinearOpcode::Halt,
+                    ]);
+                    if let Some(layout) = verified_output_stream_layout(
+                        profile, &operations, expected, &source_cells,
+                    ) {
+                        return Ok(layout);
+                    }
+                }
+            }
         }
     }
-    Ok(layout)
+    // A finite stride grammar changes the three genuine loader-resident
+    // operands without inserting new host-computed output effects. The
+    // explicit bounds make unsuccessful searches deterministic and finite.
+    for padding in 0..12 {
+        for before in 0..=8 {
+            for between_first in 0..=8 {
+                for between_second in 0..=8 {
+                    for &first in &arithmetic {
+                        for &second in &arithmetic {
+                            for &third in &arithmetic {
+                                let mut operations =
+                                    vec![LinearOpcode::NoOperation; padding];
+                                operations.push(LinearOpcode::RelocateDataPointer);
+                                operations.extend(repeat_n(
+                                    LinearOpcode::NoOperation, before,
+                                ));
+                                operations.extend([first, LinearOpcode::OutputByte]);
+                                operations.extend(repeat_n(
+                                    LinearOpcode::NoOperation, between_first,
+                                ));
+                                operations.extend([second, LinearOpcode::OutputByte]);
+                                operations.extend(repeat_n(
+                                    LinearOpcode::NoOperation, between_second,
+                                ));
+                                operations.extend([
+                                    third, LinearOpcode::OutputByte, LinearOpcode::Halt,
+                                ]);
+                                if let Some(layout) = verified_output_stream_layout(
+                                    profile, &operations, expected, &source_cells,
+                                ) {
+                                    return Ok(layout);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Err(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 
 const FORTY_SEVEN_LITERAL_OUTPUT: [u8; 47] = [

@@ -380,6 +380,31 @@ independent publisher. This is a bounded guest layout, **not** general
 runtime arithmetic, looping or twelve-byte Fibonacci acceptance. P0 remains
 open.
 
+### Source-proven triple output through bounded mixed guest arithmetic
+
+The full twelve-iteration Fibonacci compiler experiment still fails closed at
+its twelve-output layout boundary. Its independently computed first three
+bytes, `02 59 5f`, likewise have no witness under the newly expanded bounded
+three-output grammar. Neither failure publishes a guest artifact.
+
+The three-output compiler backend now proposes an independently checked
+combination of `p` and `*` at each of three output positions, across all 94
+canonical graphical prefix phases. A finite additional search admits up to
+eight no-op data strides before and between writes within twelve short prefix
+phases. Cached graphical decoding and a disposable accumulator model accelerate
+only candidate selection. The layout encoder must still prove three distinct
+out-of-source data writes; the publisher separately re-decodes and admits the
+actual staged guest and replays it under the normative VM with empty and
+nonempty input. C source and typed adapters preserve three distinct output
+SSA identities and delegate candidate-byte acceptance to this boundary.
+
+Two native C-to-capsule-to-normative-VM probes establish new exact outputs:
+`5a 0a de` in eight steps using three guest arithmetic writes and `51 2e 5a`
+in 33 steps with nonzero data-pointer strides. Both have source-backed typed
+outputs and full guest stdout parity; neither claims runtime C state or
+arbitrary bytes. Previously admitted positional triple witnesses remain
+byte-identical. This is a partial capability, not P0 completion.
+
 ### Later verification matrix
 
 Only after the complete experiment succeeds, use a deterministic corpus

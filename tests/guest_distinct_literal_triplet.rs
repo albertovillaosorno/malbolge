@@ -158,17 +158,71 @@ fn three_distinct_bytes_are_written_by_guest_arithmetic() -> Result<(), String> 
 }
 
 #[test]
+fn bounded_triple_search_keeps_fibonacci_prefix_explicitly_unsupported()
+-> Result<(), String> {
+    // First three conditional_fibonacci.c bytes, computed independently
+    // from the state updates and the odd-arm XOR 0x5a.
+    let prefix = [0x02, 0x59, 0x5f];
+    let source = source_triplet(prefix, false)?;
+    assert!(matches!(
+        encode_distinct_literal_triple(&source, current_profile()),
+        Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+    ));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "assert actual guest arithmetic and independent SSA proof"
+)]
+fn expanded_triple_grammar_realizes_mixed_and_strided_bytes()
+-> Result<(), String> {
+    for (expected, minimum_writes) in [
+        ([b'Z', 0x0a, 0xde], 3usize),
+        ([b'Q', b'.', b'Z'], 3),
+    ] {
+        let program = source_triplet(expected, false)?;
+        let layout = encode_distinct_literal_triple(&program, current_profile())
+            .map_err(|error| format!("triple {expected:?}: {error:?}"))?;
+        let writes: Vec<_> = layout
+            .data_write_positions()
+            .iter()
+            .flatten()
+            .copied()
+            .collect();
+        assert_eq!(writes.len(), minimum_writes);
+        assert_eq!(
+            writes.iter().copied().collect::<std::collections::BTreeSet<_>>().len(),
+            3
+        );
+        assert!(writes.iter().all(|&address| {
+            address >= layout.source().len() as u32
+        }));
+        for input in [Vec::new(), vec![0, 255, 128]] {
+            let mut vm = ProfileMachine::from_source(
+                current_profile(), layout.source(), input,
+            ).map_err(|error| format!("triple load: {error:?}"))?;
+            assert!(matches!(
+                vm.run(layout.source().len()),
+                Ok(RunOutcome::Terminated { .. })
+            ));
+            assert_eq!(vm.input_consumed(), 0);
+            assert_eq!(vm.output(), expected);
+        }
+    }
+    Ok(())
+}
+
+#[test]
 #[expect(
     clippy::panic_in_result_fn,
     reason = "assertions verify fail-closed triples"
 )]
 fn unproved_or_stale_triples_refuse() -> Result<(), String> {
     for (bytes, stale) in [
-        (*b"Q.Z", false),
         (*b"Z%Z", false),
         (*b"Q.O", true),
-        (*b"Y/P", false),
-        (*b"T\"X", false),
         (*b"T\"O", true),
     ] {
         let source = source_triplet(bytes, stale)?;

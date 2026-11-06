@@ -167,14 +167,16 @@ three-call sequences require their own separately proved guest witnesses.
 
 ### Exact three-`putchar` source output traces
 
-Pinned Clang 22.1.8 source evidence now admits three successive constant
-`putchar` outputs only for `Z%H`, `Q.O`, `Y-P`, `T"O`, or `T"Q`
-(including their equivalent integer literals). Each source call retains its own argument span, canonical
-`u8` definition and matching output identity. The selected
+Pinned Clang 22.1.8 source evidence admits three successive constant
+`putchar` outputs with three distinct source-proven byte values, including the
+legacy `Z%H`, `Q.O`, `Y-P`, `T"O`, and `T"Q` witnesses. Each source call
+retains its argument span, canonical `u8` definition and output identity.
+Candidate values are independently admitted by the guest layout backend.
+The selected
 `--distinct-literal-triple --typed-stdin` mode is independently checked by
 the layout publisher and the normative guest VM. A two-call prefix such as
-`Z%` does not have an independent two-byte guest witness and is rejected;
-unsupported transitions or any fourth call are also rejected before publish.
+`Z%` has no independent two-byte guest witness and is rejected at layout;
+unsupported three-byte traces and unsupported subsequent calls also reject.
 The native source-to-guest proof is
 `tests/test_c2malbolge_distinct_literal_triplet.py`.
 

@@ -530,10 +530,9 @@ fn project_literal_triple_effects(
             value: id.value(),
         });
     }
-    if !matches!(
-        values.as_slice(),
-        [b'Z', b'%', b'H'] | [b'Q', b'.', b'O'] | [b'Y', b'-', b'P'] | [b'T', b'"', b'O' | b'Q']
-    ) {
+    // The guest bridge, not this source/SSA projector, decides which
+    // distinct byte combinations have an independently verified layout.
+    if values.iter().copied().collect::<BTreeSet<_>>().len() != 3 {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
     }
     Ok(result)

@@ -1716,37 +1716,16 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     _ => return Err(FrontendJsonError::Unsupported),
                 }
             } else if calls.len() == 1 && mixed_byte.is_none() {
-                let is_zero_then_literal =
-                    selected_byte == Some(0) && matches!(byte, b'Z' | b'P' | b'T' | b'S');
-                let is_distinct_nonzero = matches!(
-                    (selected_byte, byte),
-                    (Some(b'Y'), b'/' | b'$') | (Some(b'Q'), b'.')
-                );
-                let is_triple_prefix = matches!(
-                    (selected_byte, byte),
-                    (Some(b'Z'), b'%')
-                        | (Some(b'Q'), b'.' | b'"' | 28)
-                        | (Some(b'Y'), b'-')
-                        | (Some(b'T'), b'"' | b'=')
-                        | (Some(b'6'), b'>')
-                        | (Some(b'S'), 32)
-                );
-                if !(is_zero_then_literal || is_distinct_nonzero || is_triple_prefix) {
-                    return Err(FrontendJsonError::Unsupported);
-                }
+                // Prefixes are provisional: a subsequent source-backed
+                // output may select a verified guest layout unavailable to
+                // this prefix alone. The independent backend still refuses
+                // any final unsupported two- or three-byte trace.
                 mixed_byte = Some(byte);
             } else if calls.len() == 2 && third_byte.is_none() {
-                if !matches!(
-                    (selected_byte, mixed_byte, byte),
-                    (Some(b'Z'), Some(b'%'), b'H')
-                        | (Some(b'Q'), Some(b'.' | 28), b'O')
-                        | (Some(b'Q'), Some(b'"'), 27 | 253)
-                        | (Some(b'Y'), Some(b'-'), b'P')
-                        | (Some(b'T'), Some(b'"'), b'O' | b'Q')
-                        | (Some(b'T'), Some(b'='), b'4' | 141)
-                        | (Some(b'6'), Some(b'>'), b'5')
-                        | (Some(b'S'), Some(32), 23)
-                ) {
+                // Retain the three separate, source-anchored SSA identities.
+                // Candidate byte values are admitted only by the independently
+                // decoded layout grammar and its actual guest VM replay.
+                if selected_byte == Some(byte) || mixed_byte == Some(byte) {
                     return Err(FrontendJsonError::Unsupported);
                 }
                 third_byte = Some(byte);

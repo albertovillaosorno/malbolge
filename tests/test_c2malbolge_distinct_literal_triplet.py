@@ -114,6 +114,8 @@ class DistinctLiteralTripleSourceTests(unittest.TestCase):
                 ("y-hyphen-p", "putchar('Y'); putchar('-'); putchar('P');", b"Y-P", 10),
                 ("t-quote-o", "putchar('T'); putchar('\"'); putchar('O');", b'T"O', 12),
                 ("t-quote-q", "putchar(84); putchar(34); putchar(81);", b'T"Q', 14),
+                ("q-period-z", "putchar('Q'); putchar('.'); putchar('Z');", b"Q.Z", 33),
+                ("mixed-binary", "putchar(90); putchar(10); putchar(222);", b"Z\x0a\xde", 8),
             ):
                 with self.subTest(name=stem):
                     compiled, artifact = self.compile(directory, stem, statements)
@@ -136,9 +138,7 @@ class DistinctLiteralTripleSourceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as name:
             directory = Path(name)
             for stem, statements in (
-                ("wrong-third", "putchar('Q'); putchar('.'); putchar('Z');"),
-                ("wrong-middle", "putchar('Y'); putchar('/'); putchar('P');"),
-                ("wrong-quote-third", "putchar('T'); putchar(34); putchar('X');"),
+                ("duplicate-values", "putchar('Z'); putchar('%'); putchar('Z');"),
                 ("not-quote-triple", "putchar('T'); putchar(34);"),
                 ("not-triple", "putchar('Z'); putchar('%');"),
                 ("extra", "putchar('Q'); putchar('.'); putchar('O'); putchar('!');"),
