@@ -249,6 +249,76 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", refused.stderr)
             self.assertFalse(rejected.exists())
 
+    def test_nonadjacent_equal_loop_bytes_reach_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_nonadjacent_output.c"
+        )
+        previous, current = 1, 1
+        expected = bytearray()
+        for index in range(3):
+            following = (previous + current) & 255
+            expected.append((following - following) + (90 if index % 2 == 0 else 37))
+            previous, current = current, following
+        self.assertEqual(bytes(expected), b"Z%Z")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "nonadjacent-loop.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/loop-nonadjacent-output-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            execution = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(execution.returncode, 0, execution.stderr)
+            self.assertEqual(execution.stdout, bytes(expected))
+            self.assertRegex(
+                execution.stderr,
+                rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+            )
+            # An unsupported effect must not inherit the verified guest.
+            mutated = Path(scratch) / "nonadjacent-mutation.c"
+            mutated.write_text(source.read_text().replace("next - next", "next * next"))
+            rejected = Path(scratch) / "nonadjacent-mutation.malbolge"
+            refused = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/loop-nonadjacent-mutation-v1",
+                    "--capsule",
+                    "--output",
+                    str(rejected),
+                    str(mutated),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(rejected.exists())
+
     def test_separate_branch_effects_with_equal_bytes_reach_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

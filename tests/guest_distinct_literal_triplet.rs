@@ -221,7 +221,7 @@ fn expanded_triple_grammar_realizes_mixed_and_strided_bytes()
 )]
 fn unproved_or_stale_triples_refuse() -> Result<(), String> {
     for (bytes, stale) in [
-        (*b"Z%Z", false),
+        (*b"Z%Z", true),
         (*b"Q.O", true),
         (*b"T\"O", true),
     ] {
@@ -238,6 +238,53 @@ fn unproved_or_stale_triples_refuse() -> Result<(), String> {
         ),
         Err(ByteEchoBridgeError::ProfileMismatch)
     ));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "verify nonadjacent repetition under the normative guest VM"
+)]
+fn nonadjacent_equal_bytes_require_three_guest_writes() -> Result<(), String> {
+    let expected = *b"Z%Z";
+    let program = source_triplet(expected, false)?;
+    let layout = encode_distinct_literal_triple(&program, current_profile())
+        .map_err(|error| format!("nonadjacent triple: {error:?}"))?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    assert_eq!(writes.len(), 3);
+    assert_eq!(
+        writes
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3
+    );
+    assert!(
+        writes
+            .iter()
+            .all(|&position| { position >= layout.source().len() as u32 })
+    );
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            layout.source(),
+            input,
+        )
+        .map_err(|error| format!("nonadjacent guest load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.source().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.output(), expected);
+    }
     Ok(())
 }
 

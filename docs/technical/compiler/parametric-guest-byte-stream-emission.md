@@ -529,3 +529,24 @@ and refusal of an unsupported multiplication mutation with no guest artifact.
 The original twelve-byte Fibonacci program still has no generalized guest
 byte-stream witness. Compile-time C loop folding is not a claim of runtime
 Malbolge branching or a complete C compiler; P0 remains pending.
+
+### Nonadjacent equal source-derived outputs
+
+A complete three-iteration, index-branching Fibonacci C program now projects
+three distinct output effects `5a 25 5a` (`Z%Z`), using masked recurrence
+state and a source-backed `next - next` expression. Its first and third
+outputs match although the middle output differs. The pinned C frontend,
+JSON/typed adapters and bounded triple bridge already synthesized a guest
+candidate; the independent publisher refused it solely for nonadjacent
+repeated values (`distinct-literal triple has nonadjacent repeats`). The
+red-first end-to-end test reproduced this refusal with no published artifact.
+
+The publisher now admits this pattern only through the existing three-write
+relocated grammar, with three distinct out-of-source arithmetic data writes,
+re-decoded staged instruction bytes, canonical layout admission, and exact
+normative VM output under both empty and nonempty input. The complete C
+pipeline emits `Z%Z` from actual guest instructions; a multiplication
+mutation is rejected before publication. No host output substitution,
+dynamic guest C state, general loop execution or arbitrary byte-stream
+synthesis is claimed. The original twelve-byte Fibonacci target still fails
+closed at layout, so the P0 acceptance remains pending.

@@ -3927,9 +3927,9 @@ fn verify_distinct_literal_triple(
     if bytes[0] == bytes[1] || bytes[1] == bytes[2] {
         return verify_repeated_literal_triple(profile, artifact, bytes);
     }
-    if bytes[0] == bytes[2] {
-        return Err(String::from("distinct-literal triple has nonadjacent repeats"));
-    }
+    // A nonadjacent repeat is not an adjacent accumulator reuse. All three
+    // output positions still need independent guest arithmetic writes, even
+    // if the first and third observed low bytes happen to agree.
     // Decode the actual staged source, not the bridge's proposed plan.
     // Both the legacy three-crazy grammar and its bounded p/* stride
     // generalization require three separate out-of-source memory writes.

@@ -443,7 +443,7 @@ source-bound SSA outputs become two guest output instructions after one
 verified relocated arithmetic write. Equal values do not imply shared SSA
 provenance, nor does this authorize arbitrary repeated nonzero byte streams.
 
-### Three different source-proven guest byte outputs
+### Three source-proven guest byte outputs
 
 The separate `encode_distinct_literal_triple` bridge accepts the exact
 current-profile triples `Z%H`, `Q.O`, `Y-P`, `T"O`, and `T"Q`. A single
@@ -456,6 +456,14 @@ layout verifier checks each data-write address and the independent VM
 replays with empty and nonempty input. No arbitrary three-byte sequences,
 EOF, guest ABI, or host-side output substitution are implied.
 `tests/guest_distinct_literal_triplet.rs` exercises the actual guest VM.
+
+The same bounded three-write grammar now admits nonadjacent equal outputs
+such as `Z%Z` when the guest independently computes the first and third
+bytes. An adjacent repeat may reuse a live accumulator, but a nonadjacent
+repeat may not: all three arithmetic writes must be disjoint and outside
+the source. The independent publisher re-decodes the staged bytes, checks
+the layout and VM output on two inputs, and rejects an altered effect trace.
+This does not imply arbitrary three-byte strings or runtime C loop execution.
 
 ### Four-distinct-byte current-profile witness
 

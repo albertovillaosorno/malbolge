@@ -198,3 +198,14 @@ a compiler capability gap, not a reason to return to N+1.
   still use the existing shared-SSA route. This broadens source identity
   preservation but does not enable arbitrary guest streams or the original
   twelve-byte Fibonacci acceptance. P0 remains pending.
+
+- A subsequent source-backed three-iteration Fibonacci-style loop exercises
+  **nonadjacent** repeated output, `5a 25 5a` (`Z%Z`). The frontends and
+  guest composer proposed three independent arithmetic writes, but the
+  publisher refused repeated first/third bytes despite its separate exact
+  guest-VM proof. A red-first end-to-end regression caught the mismatch; the
+  repaired publisher independently re-decodes and admits the three disjoint
+  out-of-source writes, then verifies actual guest output under both input
+  streams. Unsupported multiplication still refuses. This adds a new output
+  identity pattern without implementing runtime C state or general streams;
+  the original twelve-byte Fibonacci remains unsupported and P0 stays open.
