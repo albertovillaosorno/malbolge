@@ -13,7 +13,7 @@
 // - Must-Not:
 //   - Emulate dynamic guest state or discard unrecognized C side effects.
 // - Allows:
-//   - Inputs: straight-line byte-range unsigned definitions and assignments.
+//   - Inputs: byte-range unsigned writes and closed source-proven branches.
 //   - Outputs: one source-derived typed byte and a normative guest output.
 //   - Side effects: none during compilation.
 // - Split-When:
@@ -23,13 +23,13 @@
 // - Summary:
 //   - Reconcile distinct canonical Clang symbols before folding arithmetic.
 // - Description:
-//   - Reject aliases, unknown expressions, control flow and excess statements.
+//   - Reject aliases, unknown expressions, loops and excess statements.
 // - Usage:
 //   - Invoked after the original single-local proof fails.
 // - Defaults:
 //   - At least two independently declared locals are required.
 
-//! Straight-line source-backed constant propagation for multiple C locals.
+//! Source-backed constant propagation with bounded conditional selection.
 
 use super::local_initialized_output::{
     assigned_local_reference, clean, correct_node, emit_verified_local_byte,
@@ -41,6 +41,7 @@ const MAX_LOCALS: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_EXPRESSION_DEPTH: usize = 8;
 
+#[derive(Clone)]
 struct Local<'node> {
     byte: u8,
     declaration: &'node Node,
@@ -98,6 +99,79 @@ impl<'node> Flow<'node> {
         local.byte = byte;
         local.source = value_source;
         Some((assignment.span.end.byte, value_source))
+    }
+
+    /// Prove the complete `if ((byte & mask) == literal)` condition.
+    fn condition(&mut self, statement: &Node) -> Option<(bool, &'node Node)> {
+        let comparison = self.take(statement.id, "binary-expression")?;
+        let parentheses =
+            self.take(comparison.id, "parenthesized-expression")?;
+        let (left, expression) = self.expression(parentheses.id, 0)?;
+        let right = self.take(comparison.id, "integer-literal")?;
+        let right_value = literal_byte(right)?;
+        let separated = parentheses.span.end.byte < right.span.begin.byte;
+        if !typed_equality(comparison)
+            || parentheses.type_name.as_deref() != Some("u32")
+            || !bare_typed_node(parentheses)
+            || !span_within(&statement.span, &comparison.span)
+            || !span_within(&comparison.span, &parentheses.span)
+            || !span_within(&parentheses.span, &expression.span)
+            || expression.operation.as_deref() != Some("&")
+            || !span_within(&comparison.span, &right.span)
+            || comparison.span.begin.byte != parentheses.span.begin.byte
+            || parentheses.span.begin.byte >= expression.span.begin.byte
+            || expression.span.end.byte >= parentheses.span.end.byte
+            || !separated
+            || right.span.end.byte != comparison.span.end.byte
+        {
+            return None;
+        }
+        Some((left == right_value, comparison))
+    }
+
+    /// Parse both arms completely, but retain only the proven selected state.
+    /// No output, declarations or nested control flow are discarded.
+    fn conditional(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
+        let statement = self.take(body.id, "if-statement")?;
+        if !clean(statement)
+            || !span_within(&body.span, &statement.span)
+            || previous_end > statement.span.begin.byte
+        {
+            return None;
+        }
+        let (take_then, condition) = self.condition(statement)?;
+        let then_body = self.take(statement.id, "compound-statement")?;
+        if !clean(then_body)
+            || !span_within(&statement.span, &then_body.span)
+            || condition.span.end.byte >= then_body.span.begin.byte
+        {
+            return None;
+        }
+        let starting = self.locals.clone();
+        let (then_end, _) =
+            self.assignment(then_body, then_body.span.begin.byte)?;
+        if then_end >= then_body.span.end.byte {
+            return None;
+        }
+        let then_state = self.locals.clone();
+        self.locals = starting;
+        let else_body = self.take(statement.id, "compound-statement")?;
+        if !clean(else_body)
+            || !span_within(&statement.span, &else_body.span)
+            || then_body.span.end.byte > else_body.span.begin.byte
+            || else_body.span.end.byte != statement.span.end.byte
+        {
+            return None;
+        }
+        let (else_end, _) =
+            self.assignment(else_body, else_body.span.begin.byte)?;
+        if else_end >= else_body.span.end.byte {
+            return None;
+        }
+        if take_then {
+            self.locals = then_state;
+        }
+        Some(statement.span.end.byte)
     }
 
     fn declaration(
@@ -187,7 +261,7 @@ impl<'node> Flow<'node> {
             "binary-expression" => {
                 let expression = self.take(parent, "binary-expression")?;
                 let operation = expression.operation.as_deref()?;
-                if !matches!(operation, "+" | "-" | "^")
+                if !matches!(operation, "+" | "-" | "^" | "&")
                     || !typed_operator(expression, operation)
                 {
                     return None;
@@ -208,6 +282,7 @@ impl<'node> Flow<'node> {
                     "+" => left_value.checked_add(right_value)?,
                     "-" => left_value.checked_sub(right_value)?,
                     "^" => left_value ^ right_value,
+                    "&" => left_value & right_value,
                     _ => return None,
                 };
                 Some((value, expression))
@@ -241,6 +316,34 @@ impl<'node> Flow<'node> {
         self.position = self.position.checked_add(1)?;
         Some(node)
     }
+}
+
+/// No expression metadata beyond a single exact integer result category.
+const fn bare_typed_node(node: &Node) -> bool {
+    node.name.is_none()
+        && node.reference.is_none()
+        && node.operation.is_none()
+        && node.constant_integer.is_none()
+        && node.literal.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+}
+
+fn typed_equality(node: &Node) -> bool {
+    node.type_name.as_deref() == Some("i32")
+        && node.operation.as_deref() == Some("==")
+        && node.name.is_none()
+        && node.reference.is_none()
+        && node.constant_integer.is_none()
+        && node.literal.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
 }
 
 fn symbol_location(declaration: &Node, name: &str, symbol: &str) -> bool {
@@ -392,7 +495,8 @@ pub(super) fn canonical_multi_local_output(
         position: 2,
     };
     let mut last_end = body.span.begin.byte;
-    for _ in 0..MAX_WRITES {
+    let mut remaining_writes = MAX_WRITES;
+    while remaining_writes > 0 {
         let Some(node) = flow.peek() else {
             break;
         };
@@ -409,8 +513,19 @@ pub(super) fn canonical_multi_local_output(
                     .ok_or(FrontendJsonError::Unsupported)?;
                 last_end = end;
             },
+            "if-statement" if remaining_writes >= 2 => {
+                last_end = flow
+                    .conditional(body, last_end)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+                remaining_writes = remaining_writes
+                    .checked_sub(1)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+            },
             _ => break,
         }
+        remaining_writes = remaining_writes
+            .checked_sub(1)
+            .ok_or(FrontendJsonError::Unsupported)?;
     }
     if flow.locals.len() < 2 {
         return Err(FrontendJsonError::Unsupported);

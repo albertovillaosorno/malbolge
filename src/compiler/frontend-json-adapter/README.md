@@ -536,6 +536,18 @@ ancestry, types, source order, and spans; the final typed `u8` constant
 retains its last defining expression's provenance. Exactly one source-backed
 `putchar` reads a proven local. The tracked three-local program computes
 `(60 + 8) ^ 3 - 6` and emits `0x41` in 31 normative VM steps. Unknown reads,
-new effects, wrapping arithmetic, branches, loops and general runtime state
+new effects, wrapping arithmetic, loops and general runtime state
 remain unsupported. The adapter never computes these arithmetic operations
 inside Malbolge; only its output effect executes in the guest VM.
+
+The multi-local route also accepts a tightly closed, source-constant C
+`if ((value & mask) == literal)` with both brace-delimited arms containing
+one ordered assignment to a known local. It proves the exact pinned-Clang
+comparison, parentheses, `u32` read and bitwise AND, both source-bound arm
+assignments, and the chosen successor state. Only one final `putchar` runs
+in the guest. In the paired true/false fixtures, `60 + 6` selects XOR `3`
+and `60 + 7` selects XOR `2`; both emit `0x41` in 31 normative VM steps,
+with distinct selected expression source spans. Unsupported conditions,
+missing arms, extra effects, foreign symbols, nested control flow, loops,
+and general runtime branching refuse source admission. This is compiler
+constant-flow evaluation, not guest execution of the C comparison or branch.

@@ -409,3 +409,77 @@ fn multi_local_foreign_symbols_and_extra_effects_fail_closed() {
         Err(FrontendJsonError::Unsupported),
     );
 }
+
+const CONDITIONAL: &[u8] = include_bytes!(
+    "../../../../tests/compiler/c-frontend/golden/local_conditional_output.json"
+);
+const CONDITIONAL_ELSE: &[u8] = include_bytes!(concat!(
+    "../../../../tests/compiler/c-frontend/golden/",
+    "local_conditional_else_output.json"
+));
+
+#[test]
+fn exact_conditional_branches_select_source_bound_ssa_values() {
+    for (source, id, definition_line) in [
+        (CONDITIONAL, "tests/local-conditional-output-v1", 39),
+        (
+            CONDITIONAL_ELSE,
+            "tests/local-conditional-else-output-v1",
+            41,
+        ),
+    ] {
+        let (wire, mode) = canonical_guest_typed_ir(source).unwrap();
+        assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+        let module = typed::canonical_module(&wire).unwrap();
+        assert_eq!(module.source_id(), id);
+        let [constant, output] =
+            module.functions()[0].blocks()[0].instructions()
+        else {
+            panic!("expected one selected byte and its output");
+        };
+        assert!(matches!(
+            constant.instruction(),
+            typed::Instruction::ConstantInteger { constant, .. }
+                if constant.bit_width() == 8 && constant.little_endian() == [65]
+        ));
+        assert!(matches!(
+            output.instruction(),
+            typed::Instruction::ByteOutput { value } if value.value() == 0
+        ));
+        assert_eq!(constant.span().begin().line(), definition_line);
+        assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+    }
+}
+
+#[test]
+fn conditional_foreign_reads_metadata_and_unproven_branches_reject() {
+    let original: Value = serde_json::from_slice(CONDITIONAL).unwrap();
+    for (index, key, value) in [
+        (15, "kind", json!("for-statement")),
+        (16, "operation", json!("!=")),
+        (17, "type", json!("i32")),
+        (18, "operation", json!("|")),
+        (20, "reference", json!("a@999")),
+        (22, "type", json!("i32")),
+        (23, "reference", json!("result@1194")),
+        (24, "parent", json!(2)),
+        (26, "operation", json!("*")),
+        (30, "kind", json!("call-expression")),
+        (33, "operation", json!("*")),
+        (36, "reference", json!("result@999")),
+    ] {
+        let mut altered = original.clone();
+        altered["nodes"][index][key] = value;
+        assert_eq!(
+            canonical_guest_typed_ir(&serialize(&altered)),
+            Err(FrontendJsonError::Unsupported),
+            "admitted condition mutation at node {index} / {key}",
+        );
+    }
+    let mut changed = original;
+    let _removed = changed["nodes"].as_array_mut().unwrap().remove(30);
+    assert_eq!(
+        canonical_guest_typed_ir(&serialize(&changed)),
+        Err(FrontendJsonError::Unsupported)
+    );
+}

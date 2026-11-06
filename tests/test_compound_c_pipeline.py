@@ -170,6 +170,51 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", compiled.stderr)
             self.assertFalse(guest.exists())
 
+    def _assert_constant_branch_guest(self, stem: str, second: int) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ROOT / f"tests/compiler/c-frontend/accepted/{stem}.c"
+        value = 60 + second
+        expected = value ^ (3 if (value & 1) == 0 else 2)
+        self.assertEqual(expected, 65)
+        source_id = "tests/" + stem.replace("_", "-") + "-v1"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "conditional.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    source_id,
+                    "--output",
+                    str(guest),
+                    "--capsule",
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            executed = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, bytes([expected]))
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+
+    def test_source_proven_if_then_reaches_real_guest_output(self) -> None:
+        self._assert_constant_branch_guest("local_conditional_output", 6)
+
+    def test_source_proven_if_else_reaches_real_guest_output(self) -> None:
+        self._assert_constant_branch_guest("local_conditional_else_output", 7)
+
     def test_multi_local_constant_flow_reaches_real_guest_output(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

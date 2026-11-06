@@ -104,3 +104,11 @@ a compiler capability gap, not a reason to return to N+1.
   This is compile-time constant propagation, not guest runtime arithmetic.
   The full 12-byte loop-and-branch Fibonacci program still refuses with
   `Unsupported`; P0 remains open for runtime state and control flow.
+- A new source-backed conditional experiment uses three automatic unsigned
+  locals and a proven `if ((result & 1U) == 0U)` with source-checked true
+  and false assignments. Both native C variants compile to real Malbolge
+  capsules and emit `0x41` in 31 normative VM steps; typed SSA retains the
+  selected arm's actual C span. Metadata, alias and unsupported-control
+  mutations reject. This is closed compile-time branch selection, not
+  runtime guest branching. The original 12-byte Fibonacci loop remains
+  explicitly unsupported and P0 is pending.

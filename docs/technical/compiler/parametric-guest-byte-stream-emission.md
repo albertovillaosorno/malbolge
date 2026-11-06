@@ -156,6 +156,30 @@ compile-time constant propagation; the guest performs only the witnessed byte
 output. General locals, runtime arithmetic and loops are **not** implemented.
 The original Fibonacci target continues to reject at its first declaration.
 
+### Bounded source-proven conditional selection
+
+A new demanding C branch experiment uses three initialized unsigned locals,
+computes a cross-local sum, and selects one of two updates under
+`if ((result & 1U) == 0U)`. The pinned frontend first rejected this whole
+source at its first declaration without publishing any guest program. The
+repaired multi-local projection checks the `i32` equality, nested unsigned
+AND, all symbol references, exact source ancestry and spans, and one
+side-effect-closed assignment in **each** brace-delimited arm. It evaluates
+both arm shapes against the same proven incoming constants and retains
+only the selected successor state before the final `putchar`.
+
+Two source-backed variants exercise opposite outcomes: `60 + 6` selects
+`result ^ 3U`, while `60 + 7` selects `result ^ 2U`. Typed-IR assertions
+confirm that the live definition comes from the correct C line in each
+variant. Both actual capsules output `41` (hex) in 31 normative VM steps.
+Foreign reads, wrong operators, missing or nested arms, extra effects and
+malformed metadata reject. At most 16 bounded writes are admitted,
+counting both branch arms, and every intermediate arithmetic value must
+fit `u8`. This is compile-time constant propagation, not an executable
+guest branch or generalized mutable state. The original twelve-output
+Fibonacci program still refuses at its first declaration; runtime loops,
+variable-dependent output, and guest control flow remain pending.
+
 The remaining first semantic gap for the original complete program is the
 **general runtime** local-variable declaration, initialization, read/write
 and provenance needed through typed IR and ternary lowering. The same
