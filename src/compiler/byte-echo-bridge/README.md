@@ -438,6 +438,10 @@ new binary witness `02 cf` uses 26 reached no-ops, `j`, `*`, `<`, `p`, `<`,
 `v`; a source-proven two-iteration conditional C loop emits the same bytes
 through the complete compiler. Other byte pairs can still fail closed: this
 is a bounded synthesis grammar, not general guest byte-stream lowering.
+The adjacent equal-value pair `38 38` is a separately admitted case: two
+source-bound SSA outputs become two guest output instructions after one
+verified relocated arithmetic write. Equal values do not imply shared SSA
+provenance, nor does this authorize arbitrary repeated nonzero byte streams.
 
 ### Three different source-proven guest byte outputs
 

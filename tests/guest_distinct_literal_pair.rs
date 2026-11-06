@@ -313,12 +313,60 @@ fn source_bound_pair_accepts_composed_arithmetic() -> Result<(), String> {
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "verify distinct source SSA identities can emit equal guest bytes"
+)]
+fn independently_sourced_equal_bytes_reuse_guest_accumulator()
+-> Result<(), String> {
+    let expected = [0x38, 0x38];
+    let program = source_pair(expected[0], expected[1], false)?;
+    let layout = encode_distinct_literal_pair(&program, current_profile())
+        .map_err(|error| format!("repeated source pair: {error:?}"))?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    assert_eq!(writes.len(), 1, "both outputs reuse one guest write");
+    assert_eq!(
+        writes
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        writes.len()
+    );
+    assert!(
+        writes
+            .iter()
+            .all(|&address| { address >= layout.source().len() as u32 })
+    );
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            layout.source(),
+            input,
+        )
+        .map_err(|error| format!("load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.source().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.output(), expected);
+    }
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "test assertions are intentional after fallible setup"
 )]
 fn source_bound_pair_bridge_refuses_unproved_or_stale_effects()
 -> Result<(), String> {
     for (first, second, stale) in
-        [(0xff, b'Z', false), (b'Q', b'.', true), (b'Q', b'Q', false)]
+        [(0xff, b'Z', false), (b'Q', b'.', true), (b'8', b'8', true)]
     {
         let program = source_pair(first, second, stale)?;
         assert!(

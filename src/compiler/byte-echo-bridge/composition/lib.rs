@@ -1614,6 +1614,78 @@ fn verified_output_stream_layout<const N: usize>(
     Some(layout)
 }
 
+/// Reuse an unchanged guest accumulator for two independently sourced bytes.
+///
+/// The repeated value does not permit SSA aliasing: it eliminates a second
+/// guest arithmetic *effect*, not either of the two guest output effects.
+/// A second arithmetic write may be needed to compute the initial value.
+fn verified_repeated_pair_layout(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; 2],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    let arithmetic = [LinearOpcode::CrazyData, LinearOpcode::RotateData];
+    for padding in 0..DISTINCT_PAIR_PREFIX_PHASES {
+        for &operation in &arithmetic {
+            let mut operations = vec![LinearOpcode::NoOperation; padding];
+            operations.extend([
+                LinearOpcode::RelocateDataPointer,
+                operation,
+                LinearOpcode::OutputByte,
+                LinearOpcode::OutputByte,
+                LinearOpcode::Halt,
+            ]);
+            if let Some(layout) = verified_output_stream_layout(
+                profile,
+                &operations,
+                expected,
+                source_cells,
+            ) {
+                return Some(layout);
+            }
+        }
+    }
+    // A second write before the first output reaches values that a single
+    // positional p/* operation cannot compute within the first 94 phases.
+    for padding in 0..12 {
+        for before in 0..=8 {
+            for between in 0..=20 {
+                for &first in &arithmetic {
+                    for &second in &arithmetic {
+                        let mut operations =
+                            vec![LinearOpcode::NoOperation; padding];
+                        operations.push(LinearOpcode::RelocateDataPointer);
+                        operations.extend(repeat_n(
+                            LinearOpcode::NoOperation,
+                            before,
+                        ));
+                        operations.push(first);
+                        operations.extend(repeat_n(
+                            LinearOpcode::NoOperation,
+                            between,
+                        ));
+                        operations.extend([
+                            second,
+                            LinearOpcode::OutputByte,
+                            LinearOpcode::OutputByte,
+                            LinearOpcode::Halt,
+                        ]);
+                        if let Some(layout) = verified_output_stream_layout(
+                            profile,
+                            &operations,
+                            expected,
+                            source_cells,
+                        ) {
+                            return Some(layout);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Compose two distinct source-proven bytes using real guest arithmetic.
 ///
 /// A bounded search tries all 94 graphical prefix phases, two arithmetic
@@ -1665,13 +1737,16 @@ pub fn encode_distinct_literal_pair(
     if first_id != emitted_first
         || second_id != emitted_second
         || first_id == second_id
-        || first.bits() == second.bits()
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let expected = [first.bits(), second.bits()];
     let source_cells = pair_source_cells(profile)
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    if expected[0] == expected[1] {
+        return verified_repeated_pair_layout(profile, expected, &source_cells)
+            .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
     // Preserve already-published positional witnesses before broadening the
     // grammar. Every candidate still needs independent layout and VM proof.
     for padding in 0..DISTINCT_PAIR_PREFIX_PHASES {

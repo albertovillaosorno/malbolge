@@ -3616,21 +3616,17 @@ fn verify_zero_then_literal(
     Ok(())
 }
 
-// Independent publisher proof: both source bytes require fresh guest writes.
+// Independent publisher proof: outputs are real guest instructions, while
+// repeated values may reuse a live accumulator without a second data write.
 fn verify_distinct_literal_pair(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
     first: u8,
     second: u8,
 ) -> Result<(), String> {
-    if first == second {
-        return Err(String::from(
-            "distinct-literal pair has identical output bytes",
-        ));
-    }
     // Decode the published bytes, never the bridge's untrusted candidate.
-    // Legacy layouts use two writes with no strides; the compound grammar
-    // permits precisely one additional write before either output.
+    // Unequal pairs require distinct guest writes. Equal pairs allow one or
+    // two writes before adjacent output instructions with no host copying.
     if artifact.source.len() != artifact.steps {
         return Err(String::from("distinct-literal guest geometry disagrees"));
     }
@@ -3663,6 +3659,26 @@ fn verify_distinct_literal_pair(
         .take_while(|&&op| op == b'p' || op == b'*')
         .count();
     cursor += first_writes;
+    // An equal-valued pair may use one extra data write before the first
+    // output, with a bounded stride between the two arithmetic operations.
+    let internal_stride = if first == second {
+        decoded[cursor..]
+            .iter()
+            .take_while(|&&op| op == b'o')
+            .count()
+    } else {
+        0
+    };
+    cursor += internal_stride;
+    let extra_writes = if first == second {
+        decoded[cursor..]
+            .iter()
+            .take_while(|&&op| op == b'p' || op == b'*')
+            .count()
+    } else {
+        0
+    };
+    cursor += extra_writes;
     if decoded.get(cursor) != Some(&profile.output_instruction()) {
         return Err(String::from(
             "distinct-literal first guest output disagrees",
@@ -3687,13 +3703,32 @@ fn verify_distinct_literal_pair(
             "distinct-literal final guest output disagrees",
         ));
     }
-    let legacy =
-        first_writes == 1 && second_writes == 1 && before == 0 && between == 0;
-    let compound = prefix < 12
+    let legacy = first != second
+        && first_writes == 1
+        && second_writes == 1
+        && before == 0
+        && between == 0;
+    let compound = first != second
+        && prefix < 12
         && before <= 8
         && between <= 20
         && matches!((first_writes, second_writes), (2, 1) | (1, 2));
-    if !legacy && !compound {
+    let repeated_single = first == second
+        && first_writes == 1
+        && extra_writes == 0
+        && internal_stride == 0
+        && second_writes == 0
+        && before == 0
+        && between == 0;
+    let repeated_compound = first == second
+        && prefix < 12
+        && before <= 8
+        && internal_stride <= 20
+        && between == 0
+        && second_writes == 0
+        && (first_writes == 2 && extra_writes == 0 && internal_stride == 0
+            || first_writes == 1 && extra_writes == 1);
+    if !legacy && !compound && !repeated_single && !repeated_compound {
         return Err(String::from("distinct-literal guest grammar disagrees"));
     }
     let operations = decoded
@@ -3727,7 +3762,7 @@ fn verify_distinct_literal_pair(
         .flatten()
         .copied()
         .collect();
-    if writes.len() != first_writes + second_writes
+    if writes.len() != first_writes + extra_writes + second_writes
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
         || writes
             .iter()

@@ -112,6 +112,45 @@ fn different_source_derived_loop_outputs_keep_distinct_ssa_and_spans() {
 }
 
 #[test]
+fn equal_branch_values_still_keep_two_source_bound_ssa_effects() {
+    // Two same-width C literal substitutions retain pinned Clang ancestry.
+    // The independent C pipeline also rechecks actual source SHA and VM parity.
+    let mut modified: Value = serde_json::from_slice(LOOP_DISTINCT).unwrap();
+    for (id, value) in [(47usize, "58"), (57, "59")] {
+        let node = &mut modified["nodes"][id - 1];
+        node["literal"] = json!(value);
+        node["constant_integer"] = json!(value);
+    }
+    let (wire, mode) =
+        canonical_guest_typed_ir(&serde_json::to_vec(&modified).unwrap())
+            .unwrap();
+    assert_eq!(mode, FrontendGuestMode::DistinctLiteralPair);
+    let module = typed::canonical_module(&wire).unwrap();
+    let instructions = module.functions()[0].blocks()[0].instructions();
+    assert_eq!(instructions.len(), 4);
+    for (index, pair) in instructions.chunks_exact(2).enumerate() {
+        let [constant, output] = pair else {
+            panic!("expected one independent SSA per branch-selected output");
+        };
+        assert!(matches!(
+            constant.instruction(),
+            typed::Instruction::ConstantInteger { constant, result, .. }
+                if constant.bit_width() == 8
+                    && constant.little_endian() == [0x38]
+                    && usize::try_from(result.value()) == Ok(index)
+        ));
+        assert!(matches!(
+            output.instruction(),
+            typed::Instruction::ByteOutput { value }
+                if usize::try_from(value.value()) == Ok(index)
+        ));
+        assert_eq!(constant.span().begin().line(), [40, 42][index]);
+        assert_eq!(output.span().begin().line(), [40, 42][index]);
+    }
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
 fn distinct_loop_output_must_prove_both_branches_and_all_symbols() {
     let original: Value = serde_json::from_slice(LOOP_DISTINCT).unwrap();
     for (id, key, replacement) in [

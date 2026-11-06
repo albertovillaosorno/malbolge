@@ -375,10 +375,11 @@ acceptance authority: the layout is independently decoded, checked for
 self-modification geometry and replayed on empty and nonempty input before
 publication. An expanded negative regression now treats `QZ` as an admitted
 VM-replayed pair rather than incorrectly expecting its refusal. Equal
-output bytes are explicitly rejected by the distinct-pair bridge and the
-independent publisher. This is a bounded guest layout, **not** general
-runtime arithmetic, looping or twelve-byte Fibonacci acceptance. P0 remains
-open.
+output bytes were historically rejected by the distinct-pair bridge and the
+independent publisher; the source-bound repeated-pair extension below now
+admits witnessed equal pairs with distinct SSA identities and genuine guest
+outputs. This is a bounded guest layout, **not** general runtime arithmetic,
+looping or twelve-byte Fibonacci acceptance. P0 remains open.
 
 ### Source-proven triple output through bounded mixed guest arithmetic
 
@@ -502,3 +503,29 @@ A mutation that introduces unsupported C multiplication must still refuse
 without publishing. The original twelve-byte Fibonacci acceptance target
 remains unsupported at layout: C state and branches here are statically
 projected, not executed dynamically by the guest.
+
+### Source-distinct C branch effects with equal observed bytes
+
+On 2026-11-06, a two-iteration `for` loop with the same masked Fibonacci
+state updates as `local_loop_distinct_output.c` selected opposite conditional
+`putchar` arms: `2 ^ 58 = 56` and `3 ^ 59 = 56`. The original C-to-guest
+pipeline refused `Layout(UnsupportedEffectTrace)` because the bounded Clang
+projection coalesced all same-valued outputs into one SSA constant, then
+selected a seeded single-byte layout with no matching witness.
+
+The repaired source-aware frontend retains two independent `u8` SSA values
+when the two nonzero equal-valued outputs originate from different C call
+spans. Same-call repeated loop effects still use the existing shared-SSA
+projection. The exact typed pair lowering preserves both SSA identities;
+a bounded positional guest search uses one relocated `p`/`*` write followed
+by two genuine `<` output instructions that reuse the unchanged accumulator.
+The independent publisher re-decodes the emitted graphical source, verifies
+out-of-source guest writes, re-admits the layout, and executes the normative
+VM on empty and nonempty input before artifact publication.
+
+Red-first regressions verify the exact selected source spans and distinct SSA
+IDs, the one-write/two-output guest trace, actual C-to-VM `38 38` parity,
+and refusal of an unsupported multiplication mutation with no guest artifact.
+The original twelve-byte Fibonacci program still has no generalized guest
+byte-stream witness. Compile-time C loop folding is not a claim of runtime
+Malbolge branching or a complete C compiler; P0 remains pending.

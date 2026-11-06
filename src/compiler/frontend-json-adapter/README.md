@@ -160,10 +160,14 @@ does not claim an automated turnkey install or broader C language coverage.
 The explicit executable path is a caller-trusted capability, not discovered via
 `PATH` implicitly.
 
-Two different nonzero constant `putchar` calls now admit only the independently
-witnessed `Y/`, `Y$`, and `Q.` pairs. The Clang JSON adapter preserves exact
-source spans and distinct SSA definitions. Other differing pairs refuse;
-three-call sequences require their own separately proved guest witnesses.
+Two nonzero source-distinct `putchar` calls preserve separate source spans
+and SSA definitions, even when their observed bytes are equal. A bounded
+pair composer searches actual guest arithmetic and independently replays the
+emitted source. A two-iteration conditional C loop with different XOR arms
+now emits `38 38` from one relocated guest write and two output instructions.
+Repeated observations from the *same* C call retain the existing shared-SSA
+path. Other unproved pairs refuse; three-call sequences use their own
+separately verified guest grammar.
 
 ### Exact three-`putchar` source output traces
 

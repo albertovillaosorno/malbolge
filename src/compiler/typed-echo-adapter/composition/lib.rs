@@ -338,7 +338,8 @@ fn project_rotated_literal_effects(
 }
 
 // Source-proven two constants: zero then a witnessed printable byte, or
-// two distinct nonzero bytes whose realizability belongs to guest layout.
+// two independently sourced nonzero bytes whose realizability belongs to
+// guest layout, including equal observed values.
 // Both modes retain exact source spans and separate SSA definitions.
 fn project_literal_pair_effects(
     module: &Module,
@@ -377,8 +378,11 @@ fn project_literal_pair_effects(
         || !match mode {
             ByteTraceMode::ZeroThenLiteral => {
                 zero.little_endian() == [0]
-                    && matches!(literal.little_endian(), [b'Z' | b'P' | b'T' | b'S'])
-            }
+                    && matches!(literal.little_endian(), [b'Z'
+                        | b'P'
+                        | b'T'
+                        | b'S'])
+            },
             ByteTraceMode::DistinctLiteralTriple
             | ByteTraceMode::DistinctLiteralQuad
             | ByteTraceMode::DistinctLiteralQuint
@@ -408,8 +412,8 @@ fn project_literal_pair_effects(
             | ByteTraceMode::DistinctLiteralTwentyNine
             | ByteTraceMode::DistinctLiteralThirty
             | ByteTraceMode::DistinctLiteralThirtyOne => false,
-            | ByteTraceMode::DistinctLiteralThirtyTwo => false,
-            | ByteTraceMode::DistinctLiteralThirtyThree
+            ByteTraceMode::DistinctLiteralThirtyTwo => false,
+            ByteTraceMode::DistinctLiteralThirtyThree
             | ByteTraceMode::DistinctLiteralThirtyFour
             | ByteTraceMode::DistinctLiteralThirtyFive
             | ByteTraceMode::DistinctLiteralThirtySix
@@ -421,15 +425,13 @@ fn project_literal_pair_effects(
             | ByteTraceMode::DistinctLiteralFortyTwo
             | ByteTraceMode::DistinctLiteralFortyThree
             | ByteTraceMode::DistinctLiteralFortyFour => false,
-            | ByteTraceMode::DistinctLiteralFortyFive
+            ByteTraceMode::DistinctLiteralFortyFive
             | ByteTraceMode::DistinctLiteralFortySix
             | ByteTraceMode::DistinctLiteralFortySeven => false,
-            | ByteTraceMode::DistinctLiteralFortyEight => false,
+            ByteTraceMode::DistinctLiteralFortyEight => false,
             ByteTraceMode::DistinctLiteralPair => {
-                zero.little_endian() != [0]
-                    && literal.little_endian() != [0]
-                    && zero.little_endian() != literal.little_endian()
-            }
+                zero.little_endian() != [0] && literal.little_endian() != [0]
+            },
             ByteTraceMode::AdjacentEcho
             | ByteTraceMode::EmptyVoid
             | ByteTraceMode::IdentityByteBitcast

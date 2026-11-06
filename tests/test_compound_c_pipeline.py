@@ -229,10 +229,96 @@ class CompoundCPipelineTests(unittest.TestCase):
             mutated.write_text(source.read_text().replace("next ^ 58U", "next * 58U"))
             rejected = Path(scratch) / "repeated-mutation.malbolge"
             refused = subprocess.run(
-                [sys.executable, "-B", str(DRIVER), "--repository-tools",
-                 "--source-id", "tests/loop-repeated-mutation-v1", "--capsule",
-                 "--output", str(rejected), str(mutated)],
-                check=False, capture_output=True, timeout=90,
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/loop-repeated-mutation-v1",
+                    "--capsule",
+                    "--output",
+                    str(rejected),
+                    str(mutated),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(rejected.exists())
+
+    def test_separate_branch_effects_with_equal_bytes_reach_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        ).read_text()
+        self.assertIn("next ^ 83U", original)
+        self.assertIn("next ^ 45U", original)
+        # Two different C branches and source SSA values converge on 0x38.
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(2):
+            following = (previous + current) & 255
+            expected.append(following ^ (58 if following % 2 == 0 else 59))
+            previous, current = current, following
+        self.assertEqual(bytes(expected), b"88")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "equal-branch-loop.c"
+            source.write_text(
+                original.replace("next ^ 83U", "next ^ 58U").replace(
+                    "next ^ 45U", "next ^ 59U"
+                )
+            )
+            guest = Path(scratch) / "equal-branch-loop.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/equal-branch-loop-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            execution = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(execution.returncode, 0, execution.stderr)
+            self.assertEqual(execution.stdout, bytes(expected))
+            self.assertRegex(execution.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            mutation = Path(scratch) / "unsupported-equal-branch.c"
+            mutation.write_text(source.read_text().replace("next ^ 59U", "next * 59U"))
+            rejected = Path(scratch) / "unsupported-equal-branch.malbolge"
+            refused = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/equal-branch-mutation-v1",
+                    "--capsule",
+                    "--output",
+                    str(rejected),
+                    str(mutation),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
             )
             self.assertNotEqual(refused.returncode, 0)
             self.assertIn(b"Unsupported", refused.stderr)
@@ -241,7 +327,9 @@ class CompoundCPipelineTests(unittest.TestCase):
     def test_distinct_conditional_loop_outputs_reach_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
-        source = ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        )
         previous, current = 1, 1
         expected = bytearray()
         for _ in range(2):
@@ -292,8 +380,9 @@ class CompoundCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             changed = Path(scratch) / "other-loop-pair.c"
             _written = changed.write_text(
-                original.replace("next ^ 83U", "next ^ 0U")
-                .replace("next ^ 45U", "next ^ 204U")
+                original.replace("next ^ 83U", "next ^ 0U").replace(
+                    "next ^ 45U", "next ^ 204U"
+                )
             )
             guest = Path(scratch) / "other-loop-pair.malbolge"
             compiled = subprocess.run(
@@ -335,8 +424,9 @@ class CompoundCPipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             changed = Path(scratch) / "fib-composed-pair.c"
             _written = changed.write_text(
-                original.replace("i < 12U", "i < 2U")
-                .replace("next ^ 0x5AU", "next ^ 54U")
+                original.replace("i < 12U", "i < 2U").replace(
+                    "next ^ 0x5AU", "next ^ 54U"
+                )
             )
             guest = Path(scratch) / "fib-composed-pair.malbolge"
             compiled = subprocess.run(
@@ -376,9 +466,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         self.assertIn("next ^ 83U", original)
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             changed = Path(scratch) / "unwitnessed-loop.c"
-            _written = changed.write_text(
-                original.replace("next ^ 83U", "next ^ 82U")
-            )
+            _written = changed.write_text(original.replace("next ^ 83U", "next ^ 82U"))
             guest = Path(scratch) / "unwitnessed-loop.malbolge"
             compiled = subprocess.run(
                 [

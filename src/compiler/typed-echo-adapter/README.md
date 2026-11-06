@@ -269,10 +269,12 @@ checking repeated output and unused consumed input. The strict default still
 rejects this nonadjacent trace. Neither path realizes EOF, failed I/O, guest
 byte storage, arbitrary C operations, source authentication or guest ABI.
 
-The distinct-nonzero-literal-pair mode preserves two separate source-bound
-`u8` SSA constants and their output references. All different nonzero pairs
-pass structural typed admission; only `Y/`, `Y$`, and `Q.` have verified
-guest layouts. Other pairs fail there as `Layout(UnsupportedEffectTrace)`
+The nonzero-literal-pair mode preserves two separate source-bound `u8` SSA
+constants and their output references, including equal observed values.
+Structural typed admission does not imply realizability: a bounded guest
+layout search independently verifies arithmetic writes and both real output
+instructions. An equal `38 38` pair reuses one guest accumulator value, never
+an SSA identity. Unproved pairs fail as `Layout(UnsupportedEffectTrace)`
 without publication; unsupported typed effects still reject earlier.
 
 ### Three independently verified literal outputs

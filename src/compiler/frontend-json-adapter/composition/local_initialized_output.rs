@@ -554,7 +554,15 @@ pub(super) fn emit_verified_local_bytes(
         ..
     } = *first;
     let repeated = outputs.iter().all(|item| item.byte == byte);
-    let mode = if repeated {
+    // Identical observations from different C calls must not erase their
+    // source provenance. The verified pair bridge can independently emit
+    // both effects without duplicating an arithmetic guest write.
+    let distinct_equal_pair = repeated
+        && byte != 0
+        && outputs.len() == 2
+        && outputs[0].call.span != outputs[1].call.span;
+    let share_ssa = repeated && !distinct_equal_pair;
+    let mode = if share_ssa {
         if outputs.len() > 33 {
             return Err(FrontendJsonError::Unsupported);
         }
@@ -644,7 +652,7 @@ pub(super) fn emit_verified_local_bytes(
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
     let mut instructions = Vec::new();
     for (index, output) in outputs.iter().enumerate() {
-        let id = if repeated {
+        let id = if share_ssa {
             ValueId::new(0)
         } else {
             ValueId::new(
@@ -652,7 +660,7 @@ pub(super) fn emit_verified_local_bytes(
                     .map_err(|_error| FrontendJsonError::Unsupported)?,
             )
         };
-        if !repeated || index == 0 {
+        if !share_ssa || index == 0 {
             instructions.push(LocatedInstruction::new(
                 Instruction::ConstantInteger {
                     constant: IntegerConstant::new(8, vec![output.byte]),
