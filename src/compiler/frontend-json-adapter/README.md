@@ -514,6 +514,15 @@ zero/seeded-byte guest publisher still executes the real output instruction.
 
 `tests/compiler/c-frontend/accepted/local_reassigned_output.c` writes `0`,
 then `66`, then `65` and emits `0x41` in 31 normative guest VM steps. Tampered
-symbols, skipped or reordered writes, expression-valued assignment, aliasing,
-and other effects reject. This is a source-bound constant-write subset, **not**
-general mutable storage, dynamic values, arithmetic, branches, or loops.
+symbols, skipped or reordered writes, aliasing, and other effects reject.
+
+A second bounded source-bound route accepts ordered `= value + N`,
+`= value - N`, or `= value ^ N` writes with a matched read of the same
+unsigned local, a literal `u32` operand, and every intermediate result in
+`0..255`. The expression tree, source ancestry, operation, types, and
+read/write identity must agree with pinned Clang before promotion to one
+final byte SSA value. The real guest VM emits `0x41` for the tracked
+`60 + 8`, XOR `3`, minus `6` C fixture. Multiplication, overflowing or
+underflowing byte arithmetic, aliases, branches, loops, and general runtime
+state reject. This is bounded source-constant propagation, **not** guest
+runtime arithmetic or general mutable storage.

@@ -88,3 +88,10 @@ a compiler capability gap, not a reason to return to N+1.
   normative VM steps, with an independently checked source mutation refusal.
   This does not enable the original multi-variable Fibonacci loop, and P0
   remains pending until that program reaches guest-output parity.
+- A bounded next-step arithmetic experiment now admits a single unsigned
+  local with ordered additions, subtractions and XOR against literal bytes.
+  Exact prior-value reads, AST ancestry, symbol identity and byte-range
+  results are checked before typed SSA promotion. The real guest emitted
+  `0x41` for `(60 + 8) ^ 3 - 6` in 31 VM steps; arithmetic is evaluated
+  at compile time, not inside Malbolge. The original Fibonacci acceptance
+  remains pending on general state, branch and loop lowering.

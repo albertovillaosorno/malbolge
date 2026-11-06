@@ -45,6 +45,9 @@ const PINNED: &[u8] = include_bytes!(
 const REASSIGNED: &[u8] = include_bytes!(
     "../../../../tests/compiler/c-frontend/golden/local_reassigned_output.json"
 );
+const ARITHMETIC: &[u8] = include_bytes!(
+    "../../../../tests/compiler/c-frontend/golden/local_arithmetic_output.json"
+);
 
 #[expect(clippy::expect_used, reason = "fixed Clang JSON fixture")]
 fn source() -> Value {
@@ -130,6 +133,98 @@ fn ordered_dead_stores_leave_the_last_clang_definition() -> Result<(), String> {
     assert_eq!(output.span().begin().line(), 38);
     assert_eq!(typed::canonical_bytes(&module), Ok(wire));
     Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-bound arithmetic proof"
+)]
+fn prior_local_value_drives_checked_arithmetic() -> Result<(), String> {
+    let (wire, mode) = canonical_guest_typed_ir(ARITHMETIC)
+        .map_err(|error| format!("arithmetic lowering: {error:?}"))?;
+    assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+    let module = typed::canonical_module(&wire)
+        .map_err(|error| format!("typed admission: {error:?}"))?;
+    assert_eq!(module.source_id(), "tests/local-arithmetic-output-v1");
+    let [constant, output] = module.functions()[0].blocks()[0].instructions()
+    else {
+        return Err(String::from(
+            "expected source-derived SSA byte and output",
+        ));
+    };
+    assert!(matches!(
+        constant.instruction(),
+        typed::Instruction::ConstantInteger { constant, .. }
+            if constant.bit_width() == 8 && constant.little_endian() == [65]
+    ));
+    assert!(matches!(
+        output.instruction(),
+        typed::Instruction::ByteOutput { value } if value.value() == 0
+    ));
+    assert_eq!(constant.span().begin().line(), 38);
+    assert_eq!(output.span().begin().line(), 39);
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "pinned arithmetic AST indices"
+)]
+fn arithmetic_mutations_reject_foreign_reads_and_unsupported_effects() {
+    let original: Value = serde_json::from_slice(ARITHMETIC).unwrap();
+    for (index, key, value) in [
+        (7, "operation", json!("*")),
+        (7, "type", json!("i32")),
+        (8, "operation", json!("integral-cast")),
+        (8, "parent", json!(6)),
+        (9, "reference", json!("other@1175")),
+        (9, "type", json!("i32")),
+        (10, "constant_integer", json!("256")),
+        (10, "literal", json!("7")),
+        (13, "operation", json!("&")),
+        (15, "reference", json!("other@1175")),
+        (19, "operation", json!("*")),
+        (21, "reference", json!("other@1175")),
+        (22, "constant_integer", json!("-6")),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][index][key] = value;
+        assert_eq!(
+            canonical_guest_typed_ir(&serialize(&changed)),
+            Err(FrontendJsonError::Unsupported),
+            "arithmetic node {index} / {key} must not be silently ignored"
+        );
+    }
+    // The admitted machine-byte domain excludes C arithmetic that grows
+    // beyond 255 or would wrap an unsigned subtraction.
+    let mut overflow = original.clone();
+    overflow["nodes"][4]["constant_integer"] = json!("250");
+    overflow["nodes"][4]["literal"] = json!("250");
+    assert_eq!(
+        canonical_guest_typed_ir(&serialize(&overflow)),
+        Err(FrontendJsonError::Unsupported)
+    );
+    let mut underflow = original.clone();
+    underflow["nodes"][22]["constant_integer"] = json!("72");
+    underflow["nodes"][22]["literal"] = json!("72");
+    assert_eq!(
+        canonical_guest_typed_ir(&serialize(&underflow)),
+        Err(FrontendJsonError::Unsupported)
+    );
+    // A valid arithmetic operand changes the computed SSA value.
+    let mut changed = original;
+    changed["nodes"][10]["constant_integer"] = json!("9");
+    changed["nodes"][10]["literal"] = json!("9");
+    let (wire, _) = canonical_guest_typed_ir(&serialize(&changed)).unwrap();
+    let module = typed::canonical_module(&wire).unwrap();
+    assert!(matches!(
+        module.functions()[0].blocks()[0].instructions()[0].instruction(),
+        typed::Instruction::ConstantInteger { constant, .. }
+            if constant.little_endian() == [64]
+    ));
 }
 
 #[test]

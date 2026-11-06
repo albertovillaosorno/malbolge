@@ -42,9 +42,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "tests/compiler/c-frontend/accepted/conditional_fibonacci.c"
 DRIVER = ROOT / "src/interface/command-line/composition/scripts/c2malbolge.py"
-FRONTEND = (
-    ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin/malbolge-c-frontend"
-)
+FRONTEND = ROOT / ".dependencies/compiler-c-frontend/22.1.8/bin/malbolge-c-frontend"
 ADAPTER = ROOT / ".cache/rust/target/debug/c2malbolge_json"
 LAYOUT = ROOT / ".cache/rust/target/debug/malbolge_layout"
 VM = ROOT / ".cache/rust/target/debug/malbolge"
@@ -123,9 +121,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             # no output artifact rather than a host-side fake guest trace.
             declaration_line = next(
                 number
-                for number, line in enumerate(
-                    SOURCE.read_text().splitlines(), 1
-                )
+                for number, line in enumerate(SOURCE.read_text().splitlines(), 1)
                 if "unsigned a = 1U;" in line
             )
             self.assertIn(
@@ -139,12 +135,10 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertNotIn(b"Malformed", process.stderr)
             self.assertFalse(guest.exists(), "unsupported C published a guest")
 
-    def test_dynamic_reassignment_is_rejected_without_guest_artifact(self) -> None:
+    def test_unsupported_multiplication_rejects_guest_artifact(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
-        source = (
-            ROOT / "tests/compiler/c-frontend/accepted/local_initialized_output.c"
-        )
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_initialized_output.c"
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             altered = Path(scratch) / "changed.c"
             text = source.read_text()
@@ -152,7 +146,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             _written = altered.write_text(
                 text.replace(
                     "    putchar(value);",
-                    "    value = value + 1U;\n    putchar(value);",
+                    "    value = value * 2U;\n    putchar(value);",
                 )
             )
             guest = Path(scratch) / "invalid.malbolge"
@@ -176,12 +170,46 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", compiled.stderr)
             self.assertFalse(guest.exists())
 
+    def test_ordered_arithmetic_reaches_real_guest_output(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_arithmetic_output.c"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "local-arithmetic.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/local-arithmetic-output-v1",
+                    "--output",
+                    str(guest),
+                    "--capsule",
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            executed = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            # (60 + 8) ^ 3 - 6 = 65, not a copied source literal.
+            self.assertEqual(executed.stdout, b"A")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+
     def test_ordered_literal_reassignment_reaches_guest_output(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
-        source = (
-            ROOT / "tests/compiler/c-frontend/accepted/local_reassigned_output.c"
-        )
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_reassigned_output.c"
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             guest = Path(scratch) / "local-reassignment.malbolge"
             compiled = subprocess.run(
@@ -217,9 +245,7 @@ class CompoundCPipelineTests(unittest.TestCase):
     def test_automatic_unsigned_local_reaches_guest_output(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
-        source = (
-            ROOT / "tests/compiler/c-frontend/accepted/local_initialized_output.c"
-        )
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_initialized_output.c"
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             guest = Path(scratch) / "local-output.malbolge"
             compiled = subprocess.run(
@@ -249,9 +275,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             )
             self.assertEqual(executed.returncode, 0, executed.stderr)
             self.assertEqual(executed.stdout, b"A")
-            self.assertRegex(
-                executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
-            )
+            self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
 
 
 if __name__ == "__main__":

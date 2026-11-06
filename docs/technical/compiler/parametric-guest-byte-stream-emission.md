@@ -105,14 +105,34 @@ consecutive `=` assignments of source-backed `u32` literals in `0..255`.
 It checks their exact AST ancestry, spans, order, and matching symbol before
 eliminating the unobservable dead stores. Only the final literal is emitted as
 a source-attributed typed byte SSA value, with one real guest output effect.
-The actual current-profile VM emits `41` (hex) in 31 steps. A nonliteral
-`value = value + 1U` remains unsupported and publishes no guest artifact.
+The actual current-profile VM emits `41` (hex) in 31 steps. Arithmetic
+involving the prior local value was unsupported at this stage.
 
 This is bounded dead-store elimination, not a guest implementation of general
 mutable storage. Neither runtime arithmetic nor aliases, multiple variables,
 conditional execution, or loops are supported by this projection. The original
 Fibonacci program still refuses at its first declaration and remains the P0
 end-to-end acceptance target.
+
+### Bounded prior-value arithmetic writes
+
+The pinned C fixture `local_arithmetic_output.c` contains one automatic
+unsigned local initialized with `60U`. It then computes `value + 8U`,
+`value ^ 3U`, and `value - 6U` through three source-bound assignments.
+The initial value and three operators are checked against the complete
+Clang AST, including exact symbol references, types, node ancestry and
+nonoverlapping source spans. The adapter reads the previous proven value
+for each operation and admits only results in `0..255`; it rejects
+multiplication, unbounded or wrapping intermediate arithmetic, aliases,
+foreign reads and extra effects. The live typed SSA constant receives the
+last arithmetic expression's source span rather than an invented literal.
+
+The independently verified guest output is `41` (hex), produced by the
+existing Malbolge byte-output witness in 31 normative VM steps. The guest
+performs **output**, not the arithmetic: this route is source-constant
+propagation and dead-store elimination, not a runtime arithmetic backend.
+General state, multiple locals, branches and loops still need actual
+ternary and layout lowering. The original Fibonacci target remains blocked.
 
 The remaining first semantic gap for the original complete program is the
 **general** local-variable declaration, initialization, read/write and

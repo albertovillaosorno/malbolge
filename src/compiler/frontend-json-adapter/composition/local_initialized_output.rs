@@ -9,11 +9,11 @@
 //
 // Boundary-Contract:
 // - Owns:
-//   - Source-bound automatic unsigned local SSA promotion for byte output.
+//   - Source-bound constant propagation of one automatic unsigned local.
 // - Must-Not:
-//   - Drop mutation, aliasing, control flow, or variable-derived guest effects.
+//   - Drop runtime state, aliasing, control flow, or opaque guest effects.
 // - Allows:
-//   - Inputs: one initialized u32 automatic local, read once by putchar.
+//   - Inputs: one initialized u32 local with bounded ordered writes.
 //   - Outputs: re-admitted typed byte SSA with a verified guest output mode.
 //   - Side effects: none.
 // - Split-When:
@@ -21,15 +21,15 @@
 // - Merge-When:
 //   - A general frontend semantic projection subsumes this closed slice.
 // - Summary:
-//   - Promote one unmodified local to SSA, preserving its source dependencies.
+//   - Promote source-proven constant and arithmetic writes to byte SSA.
 // - Description:
-//   - A constant initializer is converted only within the defined byte range.
+//   - Arithmetic reads the prior local value; every result stays byte-sized.
 // - Usage:
 //   - Called after the effect-free frontend projection is ruled out.
 // - Defaults:
 //   - Anything beyond the admitted Clang topology remains unsupported.
 
-//! Closed dead-store elimination of literal writes to one automatic local.
+//! Closed source-bound propagation of byte-sized automatic-local writes.
 
 use typed::{
     BasicBlock, BasicBlockSpec, FrontendArtifact, FrontendArtifactSpec,
@@ -136,12 +136,77 @@ fn assigned_local_reference(node: &Node, symbol: &str) -> bool {
         && node.storage_duration.is_none()
 }
 
+/// The type and operator are the only metadata permitted on an expression.
+fn typed_operator(node: &Node, operation: &str) -> bool {
+    node.type_name.as_deref() == Some("u32")
+        && node.operation.as_deref() == Some(operation)
+        && node.name.is_none()
+        && node.reference.is_none()
+        && node.constant_integer.is_none()
+        && node.literal.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+}
+
+/// Evaluate a proven read of the previous local value and a u32 byte operand.
+/// Each operation remains inside 0..255; wider or wrapping state is not yet
+/// representable by the selected typed byte-output backend.
+fn source_derived_byte(
+    expression: &Node,
+    tail: &[Node],
+    symbol: &str,
+    previous: u8,
+) -> Option<u8> {
+    let [load, read, operand, ..] = tail else {
+        return None;
+    };
+    let load_id = expression.id.checked_add(1)?;
+    let read_id = expression.id.checked_add(2)?;
+    let operand_id = expression.id.checked_add(3)?;
+    if expression.kind != "binary-expression"
+        || !matches!(expression.operation.as_deref(), Some("+" | "-" | "^"))
+        || !typed_operator(expression, expression.operation.as_deref()?)
+        || !correct_node(load, load_id, expression.id, "cast-expression")
+        || !typed_operator(load, "lvalue-to-rvalue")
+        || !correct_node(
+            read,
+            read_id,
+            load_id,
+            "declaration-reference-expression",
+        )
+        || !assigned_local_reference(read, symbol)
+        || !correct_node(operand, operand_id, expression.id, "integer-literal")
+        || !span_within(&expression.span, &load.span)
+        || !span_within(&load.span, &read.span)
+        || !span_within(&expression.span, &operand.span)
+        || load.span.begin.byte != expression.span.begin.byte
+        || load.span.begin.byte != read.span.begin.byte
+        || load.span.end.byte != read.span.end.byte
+        || load.span.end.byte >= operand.span.begin.byte
+        || operand.span.end.byte != expression.span.end.byte
+    {
+        return None;
+    }
+    let immediate = literal_byte(operand)?;
+    let value = match expression.operation.as_deref()? {
+        "+" => previous.checked_add(immediate)?,
+        "-" => previous.checked_sub(immediate)?,
+        "^" => previous ^ immediate,
+        _ => return None,
+    };
+    Some(value)
+}
+
 /// Returns a verified typed SSA byte effect for a source-bound automatic local.
 ///
-/// Clang has normalized the initializer, consecutive literal assignments,
-/// and final read. With no aliases or intervening effects, these ordered
-/// definitions can be reduced to their final SSA value. The `0..255`
-/// domain preserves the implicit `u32`-to-`i32` call conversion.
+/// Clang has normalized the initializer, consecutive assignments and final
+/// read. Verified assignments may use a literal or a read of the previous
+/// value with bounded unsigned arithmetic. With no aliases or intervening
+/// effects, these ordered definitions reduce to their final SSA value. The
+/// `0..255` domain preserves the implicit `u32`-to-`i32` call conversion.
 ///
 /// # Errors
 ///
@@ -195,7 +260,6 @@ pub(super) fn canonical_local_initialized_output(
         if definitions.len() >= 9 {
             return Err(FrontendJsonError::Unsupported);
         }
-        let byte = literal_byte(right).ok_or(FrontendJsonError::Unsupported)?;
         let symbol = variable.reference.as_deref().unwrap_or_default();
         let left_id = next_id
             .checked_add(1)
@@ -203,6 +267,23 @@ pub(super) fn canonical_local_initialized_output(
         let right_id = next_id
             .checked_add(2)
             .ok_or(FrontendJsonError::Unsupported)?;
+        let (live_source, byte, consumed) = match right.kind.as_str() {
+            "integer-literal" => (
+                right,
+                literal_byte(right).ok_or(FrontendJsonError::Unsupported)?,
+                3usize,
+            ),
+            "binary-expression" => {
+                let previous = definitions
+                    .last()
+                    .map(|(_source, value)| *value)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+                let value = source_derived_byte(right, rest, symbol, previous)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+                (right, value, 6usize)
+            },
+            _ => return Err(FrontendJsonError::Unsupported),
+        };
         if !correct_node(assignment, next_id, 2, "binary-expression")
             || assignment.type_name.as_deref() != Some("u32")
             || assignment.operation.as_deref() != Some("=")
@@ -222,7 +303,7 @@ pub(super) fn canonical_local_initialized_output(
                 "declaration-reference-expression",
             )
             || !assigned_local_reference(left, symbol)
-            || !correct_node(right, right_id, next_id, "integer-literal")
+            || !correct_node(right, right_id, next_id, &right.kind)
             || !span_within(&body.span, &assignment.span)
             || !span_within(&assignment.span, &left.span)
             || !span_within(&assignment.span, &right.span)
@@ -234,10 +315,15 @@ pub(super) fn canonical_local_initialized_output(
             return Err(FrontendJsonError::Unsupported);
         }
         last_end = assignment.span.end.byte;
-        definitions.push((right, byte));
-        remainder = rest;
+        definitions.push((live_source, byte));
+        remainder = remainder
+            .get(consumed..)
+            .ok_or(FrontendJsonError::Unsupported)?;
         next_id = next_id
-            .checked_add(3)
+            .checked_add(
+                u32::try_from(consumed)
+                    .map_err(|_error| FrontendJsonError::Unsupported)?,
+            )
             .ok_or(FrontendJsonError::Unsupported)?;
     }
     let cast_id = next_id
