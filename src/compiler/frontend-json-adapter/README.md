@@ -526,3 +526,16 @@ final byte SSA value. The real guest VM emits `0x41` for the tracked
 underflowing byte arithmetic, aliases, branches, loops, and general runtime
 state reject. This is bounded source-constant propagation, **not** guest
 runtime arithmetic or general mutable storage.
+
+A separate straight-line multi-local route admits two through eight distinct
+source-bound automatic `u32` locals initialized from byte constants or
+previously defined locals, with checked `+`, `-`, and XOR expressions and
+up to 16 ordered definitions/writes. All intermediate values must fit a byte.
+Every read is resolved to the exact declared Clang symbol, with checked
+ancestry, types, source order, and spans; the final typed `u8` constant
+retains its last defining expression's provenance. Exactly one source-backed
+`putchar` reads a proven local. The tracked three-local program computes
+`(60 + 8) ^ 3 - 6` and emits `0x41` in 31 normative VM steps. Unknown reads,
+new effects, wrapping arithmetic, branches, loops and general runtime state
+remain unsupported. The adapter never computes these arithmetic operations
+inside Malbolge; only its output effect executes in the guest VM.

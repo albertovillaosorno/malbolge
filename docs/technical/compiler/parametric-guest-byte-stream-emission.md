@@ -134,9 +134,31 @@ propagation and dead-store elimination, not a runtime arithmetic backend.
 General state, multiple locals, branches and loops still need actual
 ternary and layout lowering. The original Fibonacci target remains blocked.
 
+### Cross-local, source-proven constant flow
+
+A new whole-source experiment `local_multi_output.c` declares three separate
+`unsigned` locals, initializes `a` and `b` to `60U` and `8U`, initializes
+`result` from their sum, then applies XOR `3U` and subtraction `6U` before
+`putchar(result)`. The original pinned Clang-to-guest pipeline refused its
+first declaration and published no guest artifact. The repaired JSON adapter
+proves ordered, symbol-matched reads across distinct locals, exact AST
+ancestry and spans, and every intermediate result within `0..255`. It accepts
+up to eight distinct automatic unsigned locals, 16 straight-line writes and
+bounded expression depth, with one final output call. Undeclared reads,
+aliases, unchecked overflow, extra effects, control flow and other calls fail
+closed. The live source expression anchors the final typed byte definition.
+
+The actual emitted `.malbolge` capsule outputs `0x41` in 31 normative VM
+steps. `tests/test_compound_c_pipeline.py` compares the real guest output
+against `(60 + 8) ^ 3 - 6`, and the pinned JSON mutation regression proves
+foreign symbols and unsupported effects refuse admission. Arithmetic remains
+compile-time constant propagation; the guest performs only the witnessed byte
+output. General locals, runtime arithmetic and loops are **not** implemented.
+The original Fibonacci target continues to reject at its first declaration.
+
 The remaining first semantic gap for the original complete program is the
-**general** local-variable declaration, initialization, read/write and
-provenance needed through typed IR and ternary lowering. The same
+**general runtime** local-variable declaration, initialization, read/write
+and provenance needed through typed IR and ternary lowering. The same
 program additionally needs arithmetic, bounded loops, conditional branches,
 and value-dependent `putchar`; the active
 `docs/todo/open/compiler/ternary-machine-lowering.mdc` and

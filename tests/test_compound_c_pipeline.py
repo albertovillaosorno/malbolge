@@ -170,6 +170,42 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", compiled.stderr)
             self.assertFalse(guest.exists())
 
+    def test_multi_local_constant_flow_reaches_real_guest_output(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_multi_output.c"
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "multi-local.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/local-multi-output-v1",
+                    "--output",
+                    str(guest),
+                    "--capsule",
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            executed = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            # (60 + 8) ^ 3 - 6 comes from distinct source-bound locals.
+            self.assertEqual(executed.stdout, b"A")
+            self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+
     def test_ordered_arithmetic_reaches_real_guest_output(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

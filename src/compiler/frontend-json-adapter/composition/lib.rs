@@ -40,6 +40,9 @@ pub mod typed;
 #[path = "local_initialized_output.rs"]
 mod local_initialized_output;
 
+#[path = "local_constant_flow.rs"]
+mod local_constant_flow;
+
 #[cfg(test)]
 use malbolge as _;
 use serde::Deserialize;
@@ -330,7 +333,7 @@ struct Source {
     sha256: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct Position {
     byte: u32,
@@ -338,7 +341,7 @@ struct Position {
     line: u32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Eq, PartialEq)]
 #[serde(deny_unknown_fields)]
 struct Span {
     begin: Position,
@@ -3513,6 +3516,9 @@ pub fn canonical_guest_typed_ir(
         return Ok((wire, FrontendGuestMode::EmptyVoid));
     }
     if let Ok(projection) = local_initialized_output::canonical_local_initialized_output(bytes) {
+        return Ok(projection);
+    }
+    if let Ok(projection) = local_constant_flow::canonical_multi_local_output(bytes) {
         return Ok(projection);
     }
     canonical_literal_output_typed_ir(bytes)

@@ -95,3 +95,12 @@ a compiler capability gap, not a reason to return to N+1.
   `0x41` for `(60 + 8) ^ 3 - 6` in 31 VM steps; arithmetic is evaluated
   at compile time, not inside Malbolge. The original Fibonacci acceptance
   remains pending on general state, branch and loop lowering.
+- A multi-local C experiment now proves source-backed reads across three
+  distinct automatic unsigned locals, plus ordered arithmetic writes, before
+  independently witnessed guest byte output. The original full pipeline
+  refused its first declaration; the repaired bounded adapter emits `0x41`
+  in 31 normative VM steps for `(60 + 8) ^ 3 - 6`. Exact symbol and AST
+  mutation regressions reject foreign reads, extra effects, and drift.
+  This is compile-time constant propagation, not guest runtime arithmetic.
+  The full 12-byte loop-and-branch Fibonacci program still refuses with
+  `Unsupported`; P0 remains open for runtime state and control flow.

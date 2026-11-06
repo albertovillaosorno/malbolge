@@ -354,3 +354,58 @@ fn changed_local_or_undeclared_effects_fail_closed() {
         Err(FrontendJsonError::Unsupported)
     );
 }
+
+const MULTI_LOCAL: &[u8] = include_bytes!(
+    "../../../../tests/compiler/c-frontend/golden/local_multi_output.json"
+);
+
+#[test]
+fn multiple_local_definitions_drive_guest_byte() {
+    let (wire, mode) = canonical_guest_typed_ir(MULTI_LOCAL).unwrap();
+    assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+    let module = typed::canonical_module(&wire).unwrap();
+    assert_eq!(module.source_id(), "tests/local-multi-output-v1");
+    let [constant, output] = module.functions()[0].blocks()[0].instructions()
+    else {
+        panic!("expected one folded byte and guest output");
+    };
+    assert!(matches!(
+        constant.instruction(),
+        typed::Instruction::ConstantInteger { constant, .. }
+            if constant.bit_width() == 8 && constant.little_endian() == [65]
+    ));
+    assert!(matches!(
+        output.instruction(),
+        typed::Instruction::ByteOutput { value } if value.value() == 0
+    ));
+    assert_eq!(constant.span().begin().line(), 39);
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
+fn multi_local_foreign_symbols_and_extra_effects_fail_closed() {
+    let original: Value = serde_json::from_slice(MULTI_LOCAL).unwrap();
+    for (index, key, value) in [
+        (12, "reference", json!("b@999")),
+        (14, "reference", json!("a@999")),
+        (13, "operation", json!("integral-cast")),
+        (10, "operation", json!("*")),
+        (9, "storage_duration", json!("static")),
+        (22, "reference", json!("a@999")),
+        (27, "reference", json!("external:puts")),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][index][key] = value;
+        assert_eq!(
+            canonical_guest_typed_ir(&serialize(&changed)),
+            Err(FrontendJsonError::Unsupported),
+            "admitted mutation of node {index} field {key}",
+        );
+    }
+    let mut changed = original;
+    changed["nodes"][15]["kind"] = json!("if-statement");
+    assert_eq!(
+        canonical_guest_typed_ir(&serialize(&changed)),
+        Err(FrontendJsonError::Unsupported),
+    );
+}

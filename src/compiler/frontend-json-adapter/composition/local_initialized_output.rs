@@ -44,7 +44,26 @@ use super::{
     lower_frontend_artifact, source_digest, typed, typed_span,
 };
 
-const fn clean(node: &Node) -> bool {
+/// Proof supplied by an exact, side-effect-closed local-flow projection.
+#[derive(Clone, Copy)]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "private local-flow evidence"
+)]
+pub(super) struct ProvenLocalOutput<'node> {
+    pub(super) body: &'node Node,
+    pub(super) byte: u8,
+    pub(super) call: &'node Node,
+    pub(super) function: &'node Node,
+    pub(super) returned: Option<&'node Node>,
+    pub(super) source: &'node Node,
+}
+
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) const fn clean(node: &Node) -> bool {
     node.name.is_none()
         && node.type_name.is_none()
         && node.reference.is_none()
@@ -58,7 +77,11 @@ const fn clean(node: &Node) -> bool {
         && node.storage_duration.is_none()
 }
 
-const fn span_within(parent: &Span, child: &Span) -> bool {
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) const fn span_within(parent: &Span, child: &Span) -> bool {
     let begin = &child.begin;
     let end = &child.end;
     begin.byte >= parent.begin.byte
@@ -71,7 +94,16 @@ const fn span_within(parent: &Span, child: &Span) -> bool {
         && (end.line > begin.line || end.column > begin.column)
 }
 
-fn correct_node(node: &Node, id: u32, parent: u32, kind: &str) -> bool {
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) fn correct_node(
+    node: &Node,
+    id: u32,
+    parent: u32,
+    kind: &str,
+) -> bool {
     node.id == id && node.parent == parent && node.kind == kind
 }
 
@@ -103,7 +135,11 @@ fn named_local_reference(
 }
 
 /// Admit only the exact source-backed Clang `u32` integer leaf.
-fn literal_byte(node: &Node) -> Option<u8> {
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) fn literal_byte(node: &Node) -> Option<u8> {
     if node.kind != "integer-literal"
         || node.type_name.as_deref() != Some("u32")
         || node.literal.as_deref() != node.constant_integer.as_deref()
@@ -121,7 +157,11 @@ fn literal_byte(node: &Node) -> Option<u8> {
     node.constant_integer.as_deref()?.parse::<u8>().ok()
 }
 
-fn assigned_local_reference(node: &Node, symbol: &str) -> bool {
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) fn assigned_local_reference(node: &Node, symbol: &str) -> bool {
     node.kind == "declaration-reference-expression"
         && node.type_name.as_deref() == Some("u32")
         && node.reference.as_deref() == Some(symbol)
@@ -137,7 +177,11 @@ fn assigned_local_reference(node: &Node, symbol: &str) -> bool {
 }
 
 /// The type and operator are the only metadata permitted on an expression.
-fn typed_operator(node: &Node, operation: &str) -> bool {
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) fn typed_operator(node: &Node, operation: &str) -> bool {
     node.type_name.as_deref() == Some("u32")
         && node.operation.as_deref() == Some(operation)
         && node.name.is_none()
@@ -459,6 +503,42 @@ pub(super) fn canonical_local_initialized_output(
     {
         return Err(FrontendJsonError::Unsupported);
     }
+    let live_source = definitions
+        .last()
+        .map(|(source, _value)| *source)
+        .ok_or(FrontendJsonError::InvalidTypedIr)?;
+    emit_verified_local_byte(&input, ProvenLocalOutput {
+        body,
+        byte,
+        call,
+        function,
+        returned,
+        source: live_source,
+    })
+}
+
+/// Publish a single source-proven byte after the caller proves every C effect.
+/// Shared by the original single-local and straight-line multi-local proofs.
+#[expect(
+    clippy::too_many_lines,
+    reason = "canonical typed byte publisher"
+)]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) fn emit_verified_local_byte(
+    input: &Artifact,
+    proven: ProvenLocalOutput<'_>,
+) -> Result<super::CanonicalGuestProjection, FrontendJsonError> {
+    let ProvenLocalOutput {
+        body,
+        byte,
+        call,
+        function,
+        returned,
+        source,
+    } = proven;
     let name = function
         .name
         .clone()
@@ -491,16 +571,16 @@ pub(super) fn canonical_local_initialized_output(
     };
     let projection = FrontendArtifact::new_void(
         FrontendArtifactSpec {
-            abi_id: input.profile.abi_id,
-            artifact_id: input.identity,
-            clang_target: input.clang.target,
-            clang_version: input.clang.version,
+            abi_id: input.profile.abi_id.clone(),
+            artifact_id: input.identity.clone(),
+            clang_target: input.clang.target.clone(),
+            clang_version: input.clang.version.clone(),
             functions: Vec::new(),
-            language: input.clang.language,
+            language: input.clang.language.clone(),
             schema_version: input.schema_version,
-            source_id: input.source.id,
+            source_id: input.source.id.clone(),
             source_sha256: source_digest(&input.source.sha256)?,
-            target_profile: input.profile.target_profile,
+            target_profile: input.profile.target_profile.clone(),
         },
         void_function,
     );
@@ -514,10 +594,6 @@ pub(super) fn canonical_local_initialized_output(
         .blocks()
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
-    let live_source = definitions
-        .last()
-        .map(|(source, _value)| *source)
-        .ok_or(FrontendJsonError::InvalidTypedIr)?;
     let instructions = vec![
         LocatedInstruction::new(
             Instruction::ConstantInteger {
@@ -525,7 +601,7 @@ pub(super) fn canonical_local_initialized_output(
                 result: ValueId::new(0),
                 type_id: TypeId::new(0),
             },
-            typed_span(&live_source.span),
+            typed_span(&source.span),
         ),
         LocatedInstruction::new(
             Instruction::ByteOutput { value: ValueId::new(0) },
