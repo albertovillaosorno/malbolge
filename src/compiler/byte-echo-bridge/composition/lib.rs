@@ -2008,6 +2008,175 @@ fn verified_four_write_triple_layout(
     None
 }
 
+/// The disposable four-write proposal has no authority to publish source.
+#[derive(Clone, Copy)]
+struct FourWriteQuadProposal {
+    geometry: [usize; 5],
+    writes: [LinearOpcode; 4],
+    expected: [u8; 4],
+}
+
+/// Preview four real byte effects using four disjoint guest arithmetic writes.
+///
+/// The last source cells encode output and halt. Loader memory beyond the
+/// source therefore depends only on total length; every candidate is still
+/// independently re-admitted and executed before it can be published.
+fn preview_four_write_quad(
+    source_cells: &[[u8; 6]],
+    memory_by_length: &mut BTreeMap<usize, Vec<u32>>,
+    proposal: FourWriteQuadProposal,
+) -> Option<[u8; 4]> {
+    let FourWriteQuadProposal {
+        geometry,
+        writes,
+        expected,
+    } = proposal;
+    let [
+        padding,
+        before,
+        between_first,
+        between_second,
+        between_third,
+    ] = geometry;
+    let strides = [before, between_first, between_second, between_third];
+    let source_length = strides
+        .iter()
+        .copied()
+        .fold(padding.saturating_add(10), usize::saturating_add);
+    let relocated = usize::from(*source_cells.get(padding)?.get(1)?);
+    if relocated < source_length
+        || relocated.saturating_add(source_length) >= 4096
+    {
+        return None;
+    }
+    let memory = cached_output_tail(
+        source_cells,
+        memory_by_length,
+        source_length,
+        relocated.saturating_add(source_length),
+    )?;
+    let mut accumulator = 0u32;
+    let mut address = relocated.saturating_add(1);
+    let mut observed = [0; 4];
+    for (((operation, stride), slot), expected_byte) in writes
+        .into_iter()
+        .zip(strides)
+        .zip(&mut observed)
+        .zip(expected)
+    {
+        address = address.saturating_add(stride);
+        let word = *memory.get(address)?;
+        accumulator = match operation {
+            LinearOpcode::CrazyData => {
+                malbolge::profile_crazy(word, accumulator, 15)
+            },
+            LinearOpcode::RotateData => word.div_euclid(3).saturating_add(
+                word.rem_euclid(3).saturating_mul(HIGH_TRIT_WEIGHT),
+            ),
+            LinearOpcode::Halt
+            | LinearOpcode::InputWord
+            | LinearOpcode::JumpForward { .. }
+            | LinearOpcode::NoOperation
+            | LinearOpcode::OutputByte
+            | LinearOpcode::RelocateDataPointer => return None,
+        };
+        *slot = u8::try_from(accumulator & 255).ok()?;
+        if *slot != expected_byte {
+            return None;
+        }
+        // Every real output is an instruction, advancing the data pointer.
+        address = address.saturating_add(2);
+    }
+    Some(observed)
+}
+
+fn four_write_quad_operations(
+    geometry: [usize; 5],
+    writes: [LinearOpcode; 4],
+) -> Vec<LinearOpcode> {
+    let [
+        padding,
+        before,
+        between_first,
+        between_second,
+        between_third,
+    ] = geometry;
+    let mut operations = vec![LinearOpcode::NoOperation; padding];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for (write, stride) in writes.into_iter().zip([
+        before,
+        between_first,
+        between_second,
+        between_third,
+    ]) {
+        operations.extend(repeat_n(LinearOpcode::NoOperation, stride));
+        operations.extend([write, LinearOpcode::OutputByte]);
+    }
+    operations.push(LinearOpcode::Halt);
+    operations
+}
+
+/// Search a bounded four-output grammar, not a hard-coded teaching stream.
+///
+/// A preview is only a filter. The chosen source must independently pass
+/// layout admission, distinct out-of-source writes and normative VM replay.
+fn verified_four_write_quad_layout(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; 4],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    const PATTERNS: usize = 12 * 9 * 9 * 9 * 9 * 16;
+    let mut memory_by_length = BTreeMap::<usize, Vec<u32>>::new();
+    for candidate in 0..PATTERNS {
+        let mut index = candidate;
+        let bits = index.rem_euclid(16);
+        index = index.div_euclid(16);
+        let between_third = index.rem_euclid(9);
+        index = index.div_euclid(9);
+        let between_second = index.rem_euclid(9);
+        index = index.div_euclid(9);
+        let between_first = index.rem_euclid(9);
+        index = index.div_euclid(9);
+        let before = index.rem_euclid(9);
+        let padding = index.div_euclid(9);
+        let geometry = [
+            padding,
+            before,
+            between_first,
+            between_second,
+            between_third,
+        ];
+        let mut writes = [LinearOpcode::CrazyData; 4];
+        for (bit, operation) in writes.iter_mut().enumerate() {
+            if bits & (1 << bit) != 0 {
+                *operation = LinearOpcode::RotateData;
+            }
+        }
+        if preview_four_write_quad(
+            source_cells,
+            &mut memory_by_length,
+            FourWriteQuadProposal {
+                geometry,
+                writes,
+                expected,
+            },
+        ) != Some(expected)
+        {
+            continue;
+        }
+        let operations = four_write_quad_operations(geometry, writes);
+        if let Some(layout) = verified_output_stream_layout(
+            profile,
+            &operations,
+            expected,
+            source_cells,
+        ) {
+            return Some(layout);
+        }
+    }
+    None
+}
+
 /// Compose two distinct source-proven bytes using real guest arithmetic.
 ///
 /// A bounded search tries all 94 graphical prefix phases, two arithmetic
@@ -2239,14 +2408,16 @@ pub fn encode_rotated_byte_literal(
     Ok(layout)
 }
 
-/// Emit four distinct bytes from four independent guest CrazyData operations.
+/// Emit four source-distinct bytes from four real guest arithmetic writes.
 ///
-/// The source-independent eleven-cell padding phase was VM-replayed before
-/// admitting this one exact four-byte output sequence.
+/// The historical `T=4>` witness is retained. Other streams use a bounded
+/// positional `p`/`*` grammar, independently validated and guest-VM replayed.
+/// The finite search does not establish arbitrary byte-stream support.
 ///
 /// # Errors
 ///
-/// Rejects unproved constants, stale SSA, profile drift or VM disagreement.
+/// Rejects unproved constants, stale SSA, profile drift, unsafe layout or
+/// byte streams that lack a verified real-VM guest within the search bounds.
 pub fn encode_distinct_literal_quad(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
@@ -2262,28 +2433,16 @@ pub fn encode_distinct_literal_quad(
     let [function] = program.functions.as_slice() else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    let [
-        first,
-        first_output,
-        second,
-        second_output,
-        third,
-        third_output,
-        fourth,
-        fourth_output,
-        TernaryOperation::ReturnVoid { .. },
-    ] = function.operations.as_slice()
-    else {
+    let (pairs, remainder) = function.operations.as_chunks::<2>();
+    let [TernaryOperation::ReturnVoid { .. }] = remainder else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    let pairs = [
-        (first, first_output),
-        (second, second_output),
-        (third, third_output),
-        (fourth, fourth_output),
-    ];
+    if pairs.len() != 4 {
+        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
     let mut ids = BTreeSet::new();
-    for (index, (constant, output)) in pairs.into_iter().enumerate() {
+    let mut expected = [0u8; 4];
+    for (slot, [constant, output]) in expected.iter_mut().zip(pairs) {
         let (
             TernaryOperation::MaterializeU8 { result, scalar, .. },
             TernaryOperation::ByteOutput { value, .. },
@@ -2291,51 +2450,32 @@ pub fn encode_distinct_literal_quad(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value
-            || !ids.insert(*result)
-            || scalar.bits() != b"T=4>"[index]
-        {
+        if result != value || !ids.insert(*result) {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
+        *slot = scalar.bits();
     }
-    let mut operations = vec![LinearOpcode::NoOperation; 11];
-    operations.push(LinearOpcode::RelocateDataPointer);
-    for _ in 0..4 {
-        operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
-    }
-    operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations)
-        .map_err(ByteEchoBridgeError::Layout)?;
-    let writes: Vec<_> = layout
-        .data_write_positions()
-        .iter()
-        .flatten()
-        .copied()
-        .collect();
-    if writes.len() != 4
-        || writes.iter().copied().collect::<BTreeSet<_>>().len() != 4
-        || writes.iter().any(|address| {
-            usize::try_from(*address)
-                .is_ok_and(|value| value < layout.source().len())
-        })
-    {
-        return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
-    }
-    for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm =
-            ProfileMachine::from_source(profile, layout.source(), input)
-                .map_err(|_error| {
-                    ByteEchoBridgeError::UnsupportedEffectTrace
-                })?;
-        if !matches!(vm.run(operations.len()),
-            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
-            || vm.input_consumed() != 0
-            || vm.output() != b"T=4>"
-        {
-            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    if expected == *b"T=4>" {
+        let mut operations = vec![LinearOpcode::NoOperation; 11];
+        operations.push(LinearOpcode::RelocateDataPointer);
+        for _ in 0..4_usize {
+            operations
+                .extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
         }
+        operations.push(LinearOpcode::Halt);
+        return verified_output_stream_layout(
+            profile,
+            &operations,
+            expected,
+            &pair_source_cells(profile)
+                .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?,
+        )
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    Ok(layout)
+    let source_cells = pair_source_cells(profile)
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    verified_four_write_quad_layout(profile, expected, &source_cells)
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 
 /// Emit one independently VM-witnessed five-distinct-byte C trace.

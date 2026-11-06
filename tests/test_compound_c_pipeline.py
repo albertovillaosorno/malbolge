@@ -199,6 +199,69 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", refused.stderr)
             self.assertFalse(refused_guest.exists())
 
+    def test_four_iteration_masked_fibonacci_emits_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = SOURCE.read_text()
+        self.assertIn("i < 12U", original)
+        self.assertIn("putchar((int)next);", original)
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(4):
+            following = (previous + current) & 255
+            expected.append(following ^ (26 if following % 2 == 0 else 61))
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes((24, 62, 56, 18)))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-four-masked.c"
+            source.write_text(
+                original.replace("i < 12U", "i < 4U")
+                .replace("putchar((int)next);", "putchar((int)(next ^ 26U));")
+                .replace("next ^ 0x5AU", "next ^ 61U")
+            )
+            guest = Path(scratch) / "fibonacci-four-masked.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/conditional-fibonacci-four-masked-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for guest_input in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=guest_input,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(expected))
+                self.assertRegex(
+                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )
+            # An unsupported C effect may not inherit the source witness.
+            altered = Path(scratch) / "fibonacci-four-unsupported.c"
+            altered.write_text(source.read_text().replace("next ^ 61U", "next / 0U"))
+            refused_guest = Path(scratch) / "fibonacci-four-unsupported.malbolge"
+            refused = subprocess.run(
+                [*command[:-2], str(refused_guest), str(altered)],
+                check=False, capture_output=True, timeout=180,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(refused_guest.exists())
+
     def test_branch_selected_output_inside_bounded_loop_reaches_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

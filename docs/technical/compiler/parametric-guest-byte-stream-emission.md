@@ -700,3 +700,31 @@ and will require actual empty/nonempty-input normative guest parity if layout
 support is later added. This is an intermediate compiler-boundary repair, not
 four-output guest synthesis, dynamic guest C state, or P0 acceptance. The
 original twelve-output Fibonacci experiment still lacks a guest witness.
+
+### Four real guest outputs from source-distinct conditional loop effects
+
+The complete four-iteration Fibonacci C probe with odd XOR `0x3d` still
+fails closed for `02 3e 38 08`. A separate full four-iteration C experiment
+changes the even arm to `putchar((int)(next ^ 26U))` and keeps the odd arm
+at `next ^ 61U`. Its independently calculated values of `next` are
+`2, 3, 5, 8`, giving four distinct output bytes `18 3e 38 12` (hex).
+Before this repair the pinned compiler rejected the complete source at
+`Layout(UnsupportedEffectTrace)` and published no guest artifact.
+
+The bridge now searches four independent `p`/`*` arithmetic writes, each
+followed by a real guest output instruction, with up to eleven prefix
+no-ops and at most eight no-ops before each write. The disposable search
+reuses the immutable loader-expanded memory suffix by source length;
+it does not authorize a result. The independent publisher re-decodes the
+staged source, verifies four distinct out-of-source writes, admits exact
+instruction geometry and replays the normative VM with empty and nonempty
+input. The complete masked C loop now emits exactly `18 3e 38 12` on both
+inputs. A division-by-zero source mutation refuses without publication,
+and proposal-preview parity tests compare the cached model with full
+source expansion. The historical `T=4>` witness remains admitted.
+
+This realizes a new four-effect semantic boundary, not arbitrary streams.
+The original twelve-byte Fibonacci target and dynamic guest-side C state
+remain unimplemented. P0 stays open until the original compound C program
+(or another accepted complete compound program with comparable runtime
+semantics) meets the contract's full guest-parity acceptance criteria.

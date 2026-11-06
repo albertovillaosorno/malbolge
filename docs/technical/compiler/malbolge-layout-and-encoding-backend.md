@@ -593,6 +593,21 @@ binary-stdin runner. A physical source-capacity regression publishes an
 exactly 4096-cell MCTI trace and verifies all 4094 identical byte outputs;
 adding a single output cell fails without a final file.
 
+### Independently verified bounded four-output guest arithmetic
+
+Four source-distinct C output effects can now select a bounded four-write
+Malbolge grammar, with each relocated `p`/`*` effect followed by a real
+`<` instruction. The bridge searches prefix phases below twelve and
+no-op strides of at most eight per write, using a loader-memory tail cache
+only to reject impossible proposals. Exact positional decoding, four
+out-of-source and distinct writes, and two normative VM input replays
+remain mandatory before the artifact is accepted. The independent file
+publisher re-decodes the complete source and enforces the same structural
+bounds without trusting the proposer. The source-derived four-iteration
+Fibonacci probe emits `18 3e 38 12` under both input streams; the older
+exact `T=4>` capsule is preserved. Other streams may still be unsupported;
+this is not general Malbolge runtime arithmetic or a complete guest linker.
+
 ### Remaining implementation
 
 Map admitted typed ternary operations and runtime/heap helpers onto real target

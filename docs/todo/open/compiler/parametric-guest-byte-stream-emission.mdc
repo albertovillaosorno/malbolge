@@ -307,3 +307,14 @@ a compiler capability gap, not a reason to return to N+1.
   The guest still fails closed with `Layout(UnsupportedEffectTrace)` and no
   artifact. This does not add a four-byte guest synthesizer or complete the
   original twelve-byte P0 acceptance target.
+
+- A whole four-iteration conditional Fibonacci C experiment with both arms
+  performing source-derived XOR now emits four distinct bytes `18 3e 38 12`.
+  The original `02 3e 38 08` attempt first failed at guest layout. A bounded
+  four-write/four-output `p`/`*` grammar, independently re-decoded publisher,
+  distinct out-of-source data-write proof, and normative VM parity on empty
+  and nonempty input now admit the masked variant. A source division-by-zero
+  mutation refuses publication, and cached-preview/full-model comparisons
+  guard the proposal filter. The original twelve-byte reference, unrestricted
+  four-byte streams, and guest runtime C control flow remain unsupported;
+  P0 is still pending.
