@@ -240,6 +240,16 @@ a compiler capability gap, not a reason to return to N+1.
   remainder, state transfers and final `putchar` yield the independently
   calculated intermediates `15, 210, 190` and byte `0x41`. The normative
   Malbolge VM emits that byte in 31 steps with empty and nonempty stdin;
-  division and zero-remainder-divisor mutations refuse publication. This
+  division and zero-remainder-divisor mutations refused at that point. This
   only projects closed C state at compile time. The original twelve-byte
   Fibonacci trace remains unwitnessed at layout, and P0 stays open.
+
+- A later complete three-iteration C recurrence now also proves unsigned
+  `next / 17U` under exact Clang operand and source ancestry, after the
+  original attempt failed closed at the declaration. The independently
+  computed products `15, 210, 170` lead to `a = 11` and output byte
+  `11 ^ 74 = 65`. Checked quotient projection emits a real `0x41` guest
+  byte in 31 normative VM steps with empty and nonempty input. Division
+  by zero and unsupported shift mutations fail without publication. This
+  is source-constant folding rather than Malbolge runtime division, and
+  the original twelve-byte Fibonacci still fails at guest layout.

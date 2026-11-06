@@ -37,6 +37,8 @@ use std::ffi::{OsStr, OsString};
 use std::io::{self, Read as _, Write as _};
 use std::process::{Command, ExitCode, Stdio};
 
+#[cfg(test)]
+use malbolge as _;
 use malbolge_c_frontend_json_adapter::{
     FrontendGuestMode, FrontendJsonError, canonical_guest_typed_ir,
     first_unlowered_c_node,
@@ -64,7 +66,7 @@ fn parse_args() -> Result<Arguments, &'static str> {
                 capsule: false,
                 output: output.clone(),
             })
-        }
+        },
         [backend_arg, backend, output_arg, output, capsule]
             if backend_arg == OsStr::new("--layout-backend")
                 && output_arg == OsStr::new("--output")
@@ -75,23 +77,22 @@ fn parse_args() -> Result<Arguments, &'static str> {
                 capsule: true,
                 output: output.clone(),
             })
-        }
+        },
         _ => Err("expected --layout-backend BIN --output FILE [--capsule]"),
     }
 }
 
 fn execute() -> Result<(), String> {
-    let Arguments {
-        backend,
-        capsule,
-        output,
-    } = parse_args().map_err(str::to_owned)?;
+    let Arguments { backend, capsule, output } =
+        parse_args().map_err(str::to_owned)?;
     let mut input = Vec::new();
     let _read = io::stdin()
         .lock()
         .take(MAX_JSON_BYTES + 1)
         .read_to_end(&mut input)
-        .map_err(|error| format!("cannot read normalized JSON stdin: {error}"))?;
+        .map_err(|error| {
+            format!("cannot read normalized JSON stdin: {error}")
+        })?;
     let (typed, mode) = canonical_guest_typed_ir(&input).map_err(|error| {
         if error == FrontendJsonError::Unsupported
             && let Some(node) = first_unlowered_c_node(&input)
@@ -132,39 +133,99 @@ fn execute() -> Result<(), String> {
         FrontendGuestMode::DistinctLiteralTen => "--distinct-literal-ten",
         FrontendGuestMode::DistinctLiteralEleven => "--distinct-literal-eleven",
         FrontendGuestMode::DistinctLiteralTwelve => "--distinct-literal-twelve",
-        FrontendGuestMode::DistinctLiteralThirteen => "--distinct-literal-thirteen",
-        FrontendGuestMode::DistinctLiteralFourteen => "--distinct-literal-fourteen",
-        FrontendGuestMode::DistinctLiteralFifteen => "--distinct-literal-fifteen",
-        FrontendGuestMode::DistinctLiteralSixteen => "--distinct-literal-sixteen",
-        FrontendGuestMode::DistinctLiteralSeventeen => "--distinct-literal-seventeen",
-        FrontendGuestMode::DistinctLiteralEighteen => "--distinct-literal-eighteen",
-        FrontendGuestMode::DistinctLiteralNineteen => "--distinct-literal-nineteen",
+        FrontendGuestMode::DistinctLiteralThirteen => {
+            "--distinct-literal-thirteen"
+        },
+        FrontendGuestMode::DistinctLiteralFourteen => {
+            "--distinct-literal-fourteen"
+        },
+        FrontendGuestMode::DistinctLiteralFifteen => {
+            "--distinct-literal-fifteen"
+        },
+        FrontendGuestMode::DistinctLiteralSixteen => {
+            "--distinct-literal-sixteen"
+        },
+        FrontendGuestMode::DistinctLiteralSeventeen => {
+            "--distinct-literal-seventeen"
+        },
+        FrontendGuestMode::DistinctLiteralEighteen => {
+            "--distinct-literal-eighteen"
+        },
+        FrontendGuestMode::DistinctLiteralNineteen => {
+            "--distinct-literal-nineteen"
+        },
         FrontendGuestMode::DistinctLiteralTwenty => "--distinct-literal-twenty",
-        FrontendGuestMode::DistinctLiteralTwentyOne => "--distinct-literal-twenty-one",
-        FrontendGuestMode::DistinctLiteralTwentyTwo => "--distinct-literal-twenty-two",
-        FrontendGuestMode::DistinctLiteralTwentyThree => "--distinct-literal-twenty-three",
-        FrontendGuestMode::DistinctLiteralTwentyFour => "--distinct-literal-twenty-four",
-        FrontendGuestMode::DistinctLiteralTwentyFive => "--distinct-literal-twenty-five",
-        FrontendGuestMode::DistinctLiteralTwentySix => "--distinct-literal-twenty-six",
-        FrontendGuestMode::DistinctLiteralTwentySeven => "--distinct-literal-twenty-seven",
-        FrontendGuestMode::DistinctLiteralTwentyEight => "--distinct-literal-twenty-eight",
-        FrontendGuestMode::DistinctLiteralTwentyNine => "--distinct-literal-twenty-nine",
+        FrontendGuestMode::DistinctLiteralTwentyOne => {
+            "--distinct-literal-twenty-one"
+        },
+        FrontendGuestMode::DistinctLiteralTwentyTwo => {
+            "--distinct-literal-twenty-two"
+        },
+        FrontendGuestMode::DistinctLiteralTwentyThree => {
+            "--distinct-literal-twenty-three"
+        },
+        FrontendGuestMode::DistinctLiteralTwentyFour => {
+            "--distinct-literal-twenty-four"
+        },
+        FrontendGuestMode::DistinctLiteralTwentyFive => {
+            "--distinct-literal-twenty-five"
+        },
+        FrontendGuestMode::DistinctLiteralTwentySix => {
+            "--distinct-literal-twenty-six"
+        },
+        FrontendGuestMode::DistinctLiteralTwentySeven => {
+            "--distinct-literal-twenty-seven"
+        },
+        FrontendGuestMode::DistinctLiteralTwentyEight => {
+            "--distinct-literal-twenty-eight"
+        },
+        FrontendGuestMode::DistinctLiteralTwentyNine => {
+            "--distinct-literal-twenty-nine"
+        },
         FrontendGuestMode::DistinctLiteralThirty => "--distinct-literal-thirty",
-        FrontendGuestMode::DistinctLiteralThirtyOne => "--distinct-literal-thirty-one",
-        FrontendGuestMode::DistinctLiteralThirtyTwo => "--distinct-literal-thirty-two",
-        FrontendGuestMode::DistinctLiteralThirtyThree => "--distinct-literal-thirty-three",
-        FrontendGuestMode::DistinctLiteralThirtyFour => "--distinct-literal-thirty-four",
-        FrontendGuestMode::DistinctLiteralThirtyFive => "--distinct-literal-thirty-five",
-        FrontendGuestMode::DistinctLiteralThirtySix => "--distinct-literal-thirty-six",
-        FrontendGuestMode::DistinctLiteralThirtySeven => "--distinct-literal-thirty-seven",
-        FrontendGuestMode::DistinctLiteralThirtyEight => "--distinct-literal-thirty-eight",
-        FrontendGuestMode::DistinctLiteralThirtyNine => "--distinct-literal-thirty-nine",
+        FrontendGuestMode::DistinctLiteralThirtyOne => {
+            "--distinct-literal-thirty-one"
+        },
+        FrontendGuestMode::DistinctLiteralThirtyTwo => {
+            "--distinct-literal-thirty-two"
+        },
+        FrontendGuestMode::DistinctLiteralThirtyThree => {
+            "--distinct-literal-thirty-three"
+        },
+        FrontendGuestMode::DistinctLiteralThirtyFour => {
+            "--distinct-literal-thirty-four"
+        },
+        FrontendGuestMode::DistinctLiteralThirtyFive => {
+            "--distinct-literal-thirty-five"
+        },
+        FrontendGuestMode::DistinctLiteralThirtySix => {
+            "--distinct-literal-thirty-six"
+        },
+        FrontendGuestMode::DistinctLiteralThirtySeven => {
+            "--distinct-literal-thirty-seven"
+        },
+        FrontendGuestMode::DistinctLiteralThirtyEight => {
+            "--distinct-literal-thirty-eight"
+        },
+        FrontendGuestMode::DistinctLiteralThirtyNine => {
+            "--distinct-literal-thirty-nine"
+        },
         FrontendGuestMode::DistinctLiteralForty => "--distinct-literal-forty",
-        FrontendGuestMode::DistinctLiteralFortyOne => "--distinct-literal-forty-one",
-        FrontendGuestMode::DistinctLiteralFortyTwo => "--distinct-literal-forty-two",
-        FrontendGuestMode::DistinctLiteralFortyThree => "--distinct-literal-forty-three",
-        FrontendGuestMode::DistinctLiteralFortyFour => "--distinct-literal-forty-four",
-        FrontendGuestMode::DistinctLiteralFortyFive => "--distinct-literal-forty-five",
+        FrontendGuestMode::DistinctLiteralFortyOne => {
+            "--distinct-literal-forty-one"
+        },
+        FrontendGuestMode::DistinctLiteralFortyTwo => {
+            "--distinct-literal-forty-two"
+        },
+        FrontendGuestMode::DistinctLiteralFortyThree => {
+            "--distinct-literal-forty-three"
+        },
+        FrontendGuestMode::DistinctLiteralFortyFour => {
+            "--distinct-literal-forty-four"
+        },
+        FrontendGuestMode::DistinctLiteralFortyFive => {
+            "--distinct-literal-forty-five"
+        },
         FrontendGuestMode::DistinctLiteralFortySix => {
             "--distinct-literal-forty-six"
         },
@@ -181,14 +242,17 @@ fn execute() -> Result<(), String> {
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .map_err(|error| format!("cannot launch selected layout backend: {error}"))?;
+        .map_err(|error| {
+            format!("cannot launch selected layout backend: {error}")
+        })?;
     let write_result = child
         .stdin
         .take()
         .ok_or("cannot open layout backend stdin")
         .and_then(|mut pipe| {
-            pipe.write_all(&typed)
-                .map_err(|_error| "layout backend rejected canonical typed input")
+            pipe.write_all(&typed).map_err(
+                |_error| "layout backend rejected canonical typed input",
+            )
         });
     let status = child
         .wait()
@@ -204,8 +268,9 @@ fn main() -> ExitCode {
     match execute() {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            let _reported = writeln!(io::stderr().lock(), "c2malbolge_json: {error}");
+            let _reported =
+                writeln!(io::stderr().lock(), "c2malbolge_json: {error}");
             ExitCode::FAILURE
-        }
+        },
     }
 }

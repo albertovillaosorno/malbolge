@@ -644,7 +644,7 @@ The closed expression walker now admits `u32` multiplication only when
 and narrows only at a local store or output. The independent recurrence
 visits `15, 210, 22`, finishes with `a = 23`, and emits `23 ^ 86 = 65`.
 The normative VM outputs `0x41` in 31 steps, including with nonempty input.
-Division, unchecked overflow, and extra effects still reject without a guest.
+Unchecked overflow and extra effects still reject without a guest.
 This is **compile-time evaluation**, not Malbolge multiplication or C runtime
 state. The full twelve-byte Fibonacci target still fails at guest layout.
 
@@ -655,10 +655,27 @@ stateful probe with `next % 17U` in the even branch after a checked masked
 product. The source-proven `u32` walker accepts `%` only for a nonzero
 divisor. Its independent intermediate stream is `15, 210, 190`; the final
 state is `a = 2`, and `2 ^ 67 = 65`. The real guest outputs `0x41` in 31
-normative VM steps under both empty and nonempty input. Division, a zero
-remainder divisor and unwitnessed effects refuse without publication.
+normative VM steps under both empty and nonempty input. A zero remainder
+divisor and unwitnessed effects refuse without publication.
 This evaluates C local state at compile time, not at guest runtime. The
 original twelve-byte Fibonacci output still has no general layout witness.
+
+### Checked unsigned division in a bounded recurrence
+
+`local_division_recurrence_output.c` compiles a complete three-iteration
+unsigned C program with masked multiplication, conditional state writes,
+`next / 17U` in the even arm, and one final expression-derived `putchar`.
+The closed Clang expression proof now admits `/` through `u32::checked_div`,
+refusing a zero divisor and preserving integer truncation toward zero.
+The independently calculated products are `15, 210, 170`; the final
+state is `a = 11`, so `11 ^ 74 = 65`. The normative Malbolge VM emits
+`0x41` in 31 steps with empty or nonempty input. A zero divisor and a
+source mutation to unsupported `>>` fail without publishing an artifact.
+The prior first-declaration rejection was reproduced before this repair.
+
+Division and C loop/branch state still execute **during compilation** in
+this constant-propagation path, not in Malbolge. The full twelve-byte
+Fibonacci program still needs generalized guest byte-stream synthesis.
 
 ### Branch-selected `putchar` effects inside a bounded `for`
 

@@ -157,11 +157,11 @@ fn distinct_loop_output_must_prove_both_branches_and_all_symbols() {
         (16, "constant_integer", json!("13")),
         (31, "operation", json!("!=")),
         (39, "reference", json!("external:puts")),
-        (44, "operation", json!("/")),
+        (44, "operation", json!(">>")),
         (46, "reference", json!("b@1161")),
         (47, "literal", json!("84")),
         (49, "reference", json!("external:puts")),
-        (54, "operation", json!("/")),
+        (54, "operation", json!(">>")),
         (56, "reference", json!("foreign@0")),
         (57, "literal", json!("46")),
     ] {
@@ -181,7 +181,7 @@ fn unsafe_or_nonzero_loop_effects_refuse_promotion() {
     for (id, key, value) in [
         (31, "operation", json!("!=")),
         (39, "reference", json!("external:puts")),
-        (44, "operation", json!("/")),
+        (44, "operation", json!(">>")),
         (50, "reference", json!("external:puts")),
         (55, "operation", json!("+")),
         (16, "constant_integer", json!("13")),
@@ -244,7 +244,7 @@ fn changed_loop_counter_control_and_effects_reject() {
         (20, "reference", json!("a@51")),
         (30, "operation", json!("!=")),
         (51, "operation", json!("+=")),
-        (55, "operation", json!("/")),
+        (55, "operation", json!(">>")),
     ] {
         let mut changed = original.clone();
         changed["nodes"][index][key] = value;

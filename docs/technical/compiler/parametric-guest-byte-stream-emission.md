@@ -609,10 +609,31 @@ No guest artifact was published. The adapter now consumes the exact Clang
 `u32` operator and checks nonzero-divisor `checked_rem` before narrowing.
 The separately computed recurrence is `15, 210, 190`, finishing at `a = 2`
 and output `2 ^ 67 = 65`. The emitted Malbolge produces `0x41` in 31
-normative VM steps under empty and nonempty stdin. Division and zero-divisor
-mutations do not publish a guest program.
+normative VM steps under empty and nonempty stdin. At the time, division
+and zero-divisor mutations did not publish a guest program.
 
 This is finite source-backed compile-time evaluation, **not** Malbolge
 remainder arithmetic, dynamic C state or general stream realization. The
 original twelve-byte Fibonacci program still fails closed at the independent
 guest-layout boundary; the P0 remains pending.
+
+### Source-proven unsigned quotient in a complete recurrence
+
+A three-iteration whole-C program, `local_division_recurrence_output.c`,
+combines two automatic `unsigned` locals, a masked product, conditional
+assignments, `next / 17U` in the even arm, state transfers and one final
+`putchar`. It initially refused at the first declaration because the
+full expression walk could not establish `/`; it emitted no guest artifact.
+The checked source-bound `u32` evaluator now uses `checked_div` after
+validating exact Clang ancestry, operator and operand types. It refuses a
+zero divisor rather than folding undefined C behavior.
+
+The independent unsigned oracle visits product values `15, 210, 170`,
+finishes with `a = 11`, and derives output `11 ^ 74 = 65`. The complete
+pinned Clang-to-typed-to-ternary-to-layout pipeline publishes a real
+Malbolge capsule. The normative VM emits exactly `0x41` after 31 steps
+under both empty and nonempty input. Source mutations to division by zero
+or an unsupported shift refuse without publishing a guest artifact.
+This is closed compile-time state projection; guest division, dynamic C
+state, and generalized twelve-byte synthesis remain unimplemented. P0 is
+still open because the original Fibonacci trace remains unwitnessed.
