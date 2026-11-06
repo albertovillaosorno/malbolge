@@ -215,6 +215,95 @@ class CompoundCPipelineTests(unittest.TestCase):
     def test_source_proven_if_else_reaches_real_guest_output(self) -> None:
         self._assert_constant_branch_guest("local_conditional_else_output", 7)
 
+    def test_masked_wide_sum_branch_reaches_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_masked_sum_output.c"
+        original = source.read_text()
+        self.assertIn("unsigned a = 233U;", original)
+        self.assertIn("next = next ^ 3U;", original)
+        # 377 and 376 exceed a byte before C's unsigned AND mask.
+        cases = (
+            (original, ((233 + 144) & 255) ^ 56, 31),
+            (
+                original.replace("unsigned a = 233U;", "unsigned a = 232U;").replace(
+                    "next = next ^ 3U;", "next = next ^ 58U;"
+                ),
+                ((232 + 144) & 255) ^ 58,
+                69,
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for index, (text, expected, steps) in enumerate(cases):
+                altered = Path(scratch) / f"masked-{index}.c"
+                _written = altered.write_text(text)
+                guest = Path(scratch) / f"masked-{index}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/masked-sum-{index}-v1",
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                        str(altered),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                self.assertTrue(guest.is_file())
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--report-steps"],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes([expected]))
+                self.assertEqual(
+                    executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
+                )
+
+    def test_unmasked_wide_sum_and_multiplication_refuse_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_masked_sum_output.c"
+        original = source.read_text()
+        pattern = "unsigned next = (a + b) & 255U;"
+        self.assertIn(pattern, original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for index, changed in enumerate(
+                ("unsigned next = (a + b);", "unsigned next = (a * b) & 255U;")
+            ):
+                altered = Path(scratch) / f"unsupported-{index}.c"
+                _written = altered.write_text(original.replace(pattern, changed))
+                guest = Path(scratch) / f"unsupported-{index}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/unsupported-masked-{index}-v1",
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                        str(altered),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(compiled.returncode, 0)
+                self.assertIn(b"Unsupported", compiled.stderr)
+                self.assertFalse(guest.exists())
+
     def test_expression_argument_branches_reach_real_guest_output(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

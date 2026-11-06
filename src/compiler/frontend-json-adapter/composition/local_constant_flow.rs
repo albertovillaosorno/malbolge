@@ -40,6 +40,8 @@ use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 const MAX_LOCALS: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_EXPRESSION_DEPTH: usize = 8;
+// Bound the lexical prefix on an explicit source-proven `(int)` cast.
+const MAX_EXPLICIT_CAST_PREFIX_BYTES: u32 = 16;
 
 #[derive(Clone)]
 struct Local<'node> {
@@ -88,7 +90,8 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let (byte, value_source) = self.expression(assignment.id, 0)?;
+        let (value, value_source) = self.expression(assignment.id, 0)?;
+        let byte = u8::try_from(value).ok()?;
         if !span_within(&assignment.span, &value_source.span)
             || left.span.end.byte >= value_source.span.begin.byte
             || value_source.span.end.byte != assignment.span.end.byte
@@ -126,7 +129,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        Some((left == right_value, comparison))
+        Some((left == u32::from(right_value), comparison))
     }
 
     /// Parse both arms completely, but retain only the proven selected state.
@@ -208,7 +211,8 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let (byte, initializer) = self.expression(variable.id, 0)?;
+        let (value, initializer) = self.expression(variable.id, 0)?;
+        let byte = u8::try_from(value).ok()?;
         if !span_within(&variable.span, &initializer.span)
             || initializer.span.end.byte != variable.span.end.byte
             || initializer.span.begin.byte <= variable.span.begin.byte
@@ -225,6 +229,7 @@ impl<'node> Flow<'node> {
         Some((statement.span.end.byte, initializer))
     }
 
+    /// Evaluate checked `u32` temporaries; narrow only at local stores/output.
     /// Consume the complete exact Clang expression subtree, never a prefix.
     #[expect(
         clippy::cognitive_complexity,
@@ -234,7 +239,7 @@ impl<'node> Flow<'node> {
         &mut self,
         parent: u32,
         depth: usize,
-    ) -> Option<(u8, &'node Node)> {
+    ) -> Option<(u32, &'node Node)> {
         if depth > MAX_EXPRESSION_DEPTH {
             return None;
         }
@@ -242,7 +247,21 @@ impl<'node> Flow<'node> {
         match node.kind.as_str() {
             "integer-literal" => {
                 let leaf = self.take(parent, "integer-literal")?;
-                Some((literal_byte(leaf)?, leaf))
+                Some((u32::from(literal_byte(leaf)?), leaf))
+            },
+            "parenthesized-expression" => {
+                let grouped = self.take(parent, "parenthesized-expression")?;
+                let (value, expression) =
+                    self.expression(grouped.id, depth.checked_add(1)?)?;
+                if !bare_typed_node(grouped)
+                    || grouped.type_name.as_deref() != Some("u32")
+                    || !span_within(&grouped.span, &expression.span)
+                    || grouped.span.begin.byte >= expression.span.begin.byte
+                    || expression.span.end.byte >= grouped.span.end.byte
+                {
+                    return None;
+                }
+                Some((value, grouped))
             },
             "cast-expression" => {
                 let load = self.take(parent, "cast-expression")?;
@@ -256,7 +275,7 @@ impl<'node> Flow<'node> {
                 {
                     return None;
                 }
-                Some((self.referenced(read)?.0, load))
+                Some((u32::from(self.referenced(read)?.0), load))
             },
             "binary-expression" => {
                 let expression = self.take(parent, "binary-expression")?;
@@ -376,8 +395,11 @@ fn checked_argument<'node>(
             if !typed_operator(load, "lvalue-to-rvalue")
                 || !span_within(&conversion.span, &load.span)
                 || !span_within(&load.span, &read.span)
-                || conversion.span != load.span
                 || load.span != read.span
+                || conversion.span.end.byte != load.span.end.byte
+                || load.span.begin.byte < conversion.span.begin.byte
+                || load.span.begin.byte - conversion.span.begin.byte
+                    > MAX_EXPLICIT_CAST_PREFIX_BYTES
             {
                 return None;
             }
@@ -398,7 +420,7 @@ fn checked_argument<'node>(
             {
                 return None;
             }
-            Some((byte, expression))
+            Some((u8::try_from(byte).ok()?, expression))
         },
         _ => None,
     }

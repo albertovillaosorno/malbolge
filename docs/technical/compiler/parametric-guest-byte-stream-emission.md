@@ -203,6 +203,29 @@ All arithmetic and control flow in the admitted case is still evaluated at
 compile time; guest runtime computation, general loops and multi-byte dynamic
 output remain unimplemented. The original Fibonacci acceptance is pending.
 
+### Nonbyte unsigned intermediates with source-proven masking
+
+The original Fibonacci loop computes `next = (a + b) & 255U`, which may
+have a nonbyte sum even when the stored result is a byte. A pinned Clang
+probe with `a = 233U` and `b = 144U` initially refused in the multi-local
+adapter because the expression walker did not admit its nested parentheses.
+The revised bounded evaluator retains the **checked `u32`** value 377 through
+the inner addition, applies `& 255U`, and only then proves the byte 121
+assigned to `next`. Source-proven Clang parentheses and an explicit
+`putchar((int)next)` cast are now admitted while unknown operations, symbols,
+AST mutations and extra effects still refuse. The leaf literals and each
+materialized local remain byte-bounded; this is neither arbitrary 32-bit
+C lowering nor guest runtime computation.
+
+In a complete loop-free branch probe, the odd condition selects XOR 56,
+producing `0x41` in 31 normative VM steps. An independent second C variant
+uses `232 + 144`, selects the even condition with XOR 58, and produces
+`0x42` in 69 normative VM steps. Both real guest capsules were compared
+against independent C arithmetic and a pinned JSON regression verifies the
+actual typed source span. The original twelve-byte Fibonacci experiment
+still refuses its first declaration: its stateful `for`, repeated output,
+and guest control flow remain missing and P0 stays open.
+
 The remaining first semantic gap for the original complete program is the
 **general runtime** local-variable declaration, initialization, read/write
 and provenance needed through typed IR and ternary lowering. The same

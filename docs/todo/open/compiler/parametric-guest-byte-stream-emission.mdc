@@ -120,3 +120,10 @@ a compiler capability gap, not a reason to return to N+1.
   A separate byte `0x40` attempt reached the backend and refused its missing
   positional witness. The original Fibonacci loop, dynamic guest arithmetic
   and full P0 acceptance are still pending.
+- The source-proven masked-sum probe reproduces the original loop's
+  `(a + b) & 255U` arithmetic with a `u32` intermediate 377 before
+  truncation by `& 255U`. Its pinned JSON adapter proof now supports
+  nested parentheses and explicit `putchar((int)next)` casts. Opposite
+  constant branches compile to actual guest bytes `0x41`/`0x42` in
+  31/69 normative VM steps; altered ancestry and unsupported effects reject.
+  Guest arithmetic, the full Fibonacci loop and P0 completion remain pending.

@@ -545,3 +545,53 @@ fn expression_argument_mutations_fail_closed() {
         Err(FrontendJsonError::Unsupported)
     );
 }
+
+const MASKED_SUM: &[u8] = include_bytes!(
+    "../../../../tests/compiler/c-frontend/golden/local_masked_sum_output.json"
+);
+
+#[test]
+fn masked_wide_unsigned_sum_preserves_source_and_guest_byte() {
+    let (wire, mode) = canonical_guest_typed_ir(MASKED_SUM).unwrap();
+    assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+    let module = typed::canonical_module(&wire).unwrap();
+    assert_eq!(module.source_id(), "tests/local-masked-sum-output-v1");
+    let [constant, output] = module.functions()[0].blocks()[0].instructions()
+    else {
+        panic!("expected masked sum result and guest output");
+    };
+    assert!(matches!(
+        constant.instruction(),
+        typed::Instruction::ConstantInteger { constant, .. }
+            if constant.bit_width() == 8 && constant.little_endian() == [65]
+    ));
+    assert_eq!(constant.span().begin().line(), 41);
+    assert!(matches!(
+        output.instruction(),
+        typed::Instruction::ByteOutput { value } if value.value() == 0
+    ));
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
+fn masked_sum_operator_and_parenthesis_mutations_reject() {
+    let original: Value = serde_json::from_slice(MASKED_SUM).unwrap();
+    for (index, key, value) in [
+        (10, "operation", json!("+")),
+        (11, "parent", json!(10)),
+        (11, "type", json!("i32")),
+        (12, "operation", json!("*")),
+        (12, "parent", json!(10)),
+        (17, "constant_integer", json!("256")),
+        (19, "operation", json!("!=")),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][index][key] = value;
+        assert_eq!(
+            canonical_guest_typed_ir(&serialize(&changed)),
+            Err(FrontendJsonError::Unsupported),
+            "changed node {} field {key}",
+            index + 1,
+        );
+    }
+}

@@ -530,9 +530,10 @@ runtime arithmetic or general mutable storage.
 A separate straight-line multi-local route admits two through eight distinct
 source-bound automatic `u32` locals initialized from byte constants or
 previously defined locals, with checked `+`, `-`, and XOR expressions and
-up to 16 ordered definitions/writes. All intermediate values must fit a byte.
-Every read is resolved to the exact declared Clang symbol, with checked
-ancestry, types, source order, and spans; the final typed `u8` constant
+up to 16 ordered definitions/writes. Materialized locals must fit a byte;
+source-proven, nonwrapping `u32` intermediate additions can temporarily exceed
+255 if an enclosing expression reduces them to a byte. Every read is resolved
+to the exact declared Clang symbol, with checked ancestry, types, source order, and spans; the final typed `u8` constant
 retains its last defining expression's provenance. Exactly one source-backed
 `putchar` reads a proven local or evaluates a fully checked argument.
 The tracked three-local program computes
@@ -560,9 +561,9 @@ The bounded multi-local route now also proves a complete Clang
 `putchar((int)(result ^ 3U))` argument after an ordered, source-proven
 `if/else`. The explicit `i32` conversion contains one parenthesized `u32`
 expression; only the existing checked `+`, `-`, XOR and AND tree can be
-folded. Every read must refer to a declared automatic local, all intermediate
-results must fit `0..255`, and call/conversion/parenthesis spans and parent
-identities must match the pinned AST. The emitted typed `u8` constant is
+folded. Every read must refer to a declared automatic local, final stored and
+emitted values must fit `0..255`, and call/conversion/parenthesis spans and
+parent identities must match the pinned AST. The emitted typed `u8` constant is
 attributed to the argument expression, not to a stale prior local assignment.
 
 `local_expression_output.c` emits `0x41` in 31 normative VM steps. A second
@@ -574,3 +575,25 @@ Changed AST operators, aliases, source ancestry, extra effects and unsupported
 multiplication all reject. This extends bounded compile-time constant-flow
 analysis and **does not** implement runtime guest arithmetic, general
 `putchar` expressions, loops or mutable guest storage.
+
+
+### Fibonacci masked-sum arithmetic boundary
+
+The source-bound `local_masked_sum_output.c` now evaluates
+`next = (a + b) & 255U` with exact nested `u32` parentheses and a
+**nonwrapping** intermediate sum wider than a byte. It does not truncate
+`a + b` before applying the mask: `233 + 144 = 377`, then `377 & 255 = 121`.
+All leaf literals and materialized local values are still byte-bounded;
+checked `u32` addition/subtraction, source spans, AST operators, declared
+symbols and parentheses must agree before a byte-sized assignment commits.
+The direct `putchar((int)next)` cast also admits a source-proven explicit
+`i32` conversion enclosing the local read. Unproven or excessive cast spans
+reject, and wider unmasked results cannot silently become byte locals.
+
+The real guest VM emits `0x41` in 31 steps after the odd branch XORs 56;
+a source variant with `232 + 144` selects the even branch and emits `0x42`
+in 69 steps after XOR 58. Unsupported operators and forged Clang ancestry
+reject before guest publication. All computation and branch selection here
+remain compiler-time constant propagation. This does not add runtime C
+arithmetic, dynamic state, loops or arbitrary guest byte streams. The
+original complete twelve-byte Fibonacci program remains unsupported.
