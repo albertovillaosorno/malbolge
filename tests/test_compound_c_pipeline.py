@@ -215,6 +215,89 @@ class CompoundCPipelineTests(unittest.TestCase):
     def test_source_proven_if_else_reaches_real_guest_output(self) -> None:
         self._assert_constant_branch_guest("local_conditional_else_output", 7)
 
+    def test_expression_argument_branches_reach_real_guest_output(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_expression_output.c"
+        original = source.read_text()
+        self.assertIn("unsigned b = 6U;", original)
+        self.assertIn("result = result ^ 1U;", original)
+        # Independent arithmetic: true (66 ^ 0) ^ 3 => 65;
+        # false (67 ^ 0) ^ 1 => 66. Both paths must perform C arithmetic.
+        cases = (
+            (original, (60 + 6) ^ 0 ^ 3),
+            (
+                original.replace("unsigned b = 6U;", "unsigned b = 7U;")
+                .replace("result = result ^ 1U;", "result = result ^ 0U;")
+                .replace(
+                    "putchar((int)(result ^ 3U));", "putchar((int)(result ^ 1U));"
+                ),
+                (60 + 7) ^ 0 ^ 1,
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for index, (text, expected) in enumerate(cases):
+                altered = Path(scratch) / f"expression-{index}.c"
+                _written = altered.write_text(text)
+                guest = Path(scratch) / f"expression-{index}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/checked-expression-{index}-v1",
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                        str(altered),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--report-steps"],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes([expected]))
+                self.assertEqual(
+                    executed.stderr,
+                    f"malbolge-steps-v1:{31 if index == 0 else 69}\n".encode(),
+                )
+
+            unsupported = original.replace(
+                "putchar((int)(result ^ 3U));",
+                "putchar((int)(result * 3U));",
+            )
+            altered = Path(scratch) / "unsupported-expression.c"
+            _written = altered.write_text(unsupported)
+            guest = Path(scratch) / "unsupported-expression.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/unsupported-expression-v1",
+                    "--output",
+                    str(guest),
+                    str(altered),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"Unsupported", compiled.stderr)
+            self.assertFalse(guest.exists())
+
     def test_multi_local_constant_flow_reaches_real_guest_output(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

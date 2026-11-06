@@ -112,3 +112,11 @@ a compiler capability gap, not a reason to return to N+1.
   mutations reject. This is closed compile-time branch selection, not
   runtime guest branching. The original 12-byte Fibonacci loop remains
   explicitly unsupported and P0 is pending.
+- A pinned three-local source now emits a conditional value derived inside
+  `putchar((int)(result ^ 3U))`. The adapter proves the entire argument AST,
+  including exact `u32` expression and explicit `i32` conversion. Real guest
+  executions for true/false source variants produce `0x41`/`0x42` in 31/69
+  normative VM steps; hostile argument mutations and multiplication reject.
+  A separate byte `0x40` attempt reached the backend and refused its missing
+  positional witness. The original Fibonacci loop, dynamic guest arithmetic
+  and full P0 acceptance are still pending.

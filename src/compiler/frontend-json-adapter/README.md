@@ -534,7 +534,8 @@ up to 16 ordered definitions/writes. All intermediate values must fit a byte.
 Every read is resolved to the exact declared Clang symbol, with checked
 ancestry, types, source order, and spans; the final typed `u8` constant
 retains its last defining expression's provenance. Exactly one source-backed
-`putchar` reads a proven local. The tracked three-local program computes
+`putchar` reads a proven local or evaluates a fully checked argument.
+The tracked three-local program computes
 `(60 + 8) ^ 3 - 6` and emits `0x41` in 31 normative VM steps. Unknown reads,
 new effects, wrapping arithmetic, loops and general runtime state
 remain unsupported. The adapter never computes these arithmetic operations
@@ -551,3 +552,25 @@ with distinct selected expression source spans. Unsupported conditions,
 missing arms, extra effects, foreign symbols, nested control flow, loops,
 and general runtime branching refuse source admission. This is compiler
 constant-flow evaluation, not guest execution of the C comparison or branch.
+
+
+### Source-proven `putchar` expression argument
+
+The bounded multi-local route now also proves a complete Clang
+`putchar((int)(result ^ 3U))` argument after an ordered, source-proven
+`if/else`. The explicit `i32` conversion contains one parenthesized `u32`
+expression; only the existing checked `+`, `-`, XOR and AND tree can be
+folded. Every read must refer to a declared automatic local, all intermediate
+results must fit `0..255`, and call/conversion/parenthesis spans and parent
+identities must match the pinned AST. The emitted typed `u8` constant is
+attributed to the argument expression, not to a stale prior local assignment.
+
+`local_expression_output.c` emits `0x41` in 31 normative VM steps. A second
+source variant selects the opposite branch and emits `0x42` in 69 steps.
+The real layout backend rejects bytes without a verified positional witness;
+for example the attempted `0x40` variant refused
+`Layout(UnsupportedEffectTrace)` rather than publishing a guest program.
+Changed AST operators, aliases, source ancestry, extra effects and unsupported
+multiplication all reject. This extends bounded compile-time constant-flow
+analysis and **does not** implement runtime guest arithmetic, general
+`putchar` expressions, loops or mutable guest storage.

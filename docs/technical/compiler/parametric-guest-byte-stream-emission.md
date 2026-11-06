@@ -180,6 +180,29 @@ guest branch or generalized mutable state. The original twelve-output
 Fibonacci program still refuses at its first declaration; runtime loops,
 variable-dependent output, and guest control flow remain pending.
 
+### Conditional expression-derived output
+
+The tracked pinned Clang source `local_expression_output.c` now selects a
+proven branch update across three `unsigned` locals, then outputs the
+**expression** `(int)(result ^ 3U)` instead of outputting a bare local. A
+closed argument walker checks the explicit conversion, C parentheses, nested
+unsigned arithmetic and source-bound local reference; any unconsumed effect
+or mismatched Clang ancestry refuses publication. A red-first Rust regression
+and mutated-node tests establish that the byte's SSA origin is the actual
+call argument rather than an earlier variable write.
+
+Two real native C-to-Malbolge compiler runs select different branch outcomes:
+the first produces guest byte `0x41` in 31 VM steps; the second changes the
+branch and argument constant and produces `0x42` in 69 VM steps. Independent
+C arithmetic gives those values, and `tests/test_compound_c_pipeline.py`
+checks actual guest output and rejects multiplication without an artifact.
+A distinct `0x40` experiment reached the layout backend but was refused as
+`UnsupportedEffectTrace`: the current positional single-byte guest witness
+table does not contain that byte. The compiler did not fabricate guest output.
+All arithmetic and control flow in the admitted case is still evaluated at
+compile time; guest runtime computation, general loops and multi-byte dynamic
+output remain unimplemented. The original Fibonacci acceptance is pending.
+
 The remaining first semantic gap for the original complete program is the
 **general runtime** local-variable declaration, initialization, read/write
 and provenance needed through typed IR and ternary lowering. The same

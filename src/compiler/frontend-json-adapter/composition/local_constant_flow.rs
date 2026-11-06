@@ -361,10 +361,50 @@ fn symbol_location(declaration: &Node, name: &str, symbol: &str) -> bool {
             .is_some_and(|end| end <= declaration.span.end.byte)
 }
 
-#[expect(
-    clippy::too_many_lines,
-    reason = "exact Clang output-call admission"
-)]
+/// Re-admit the two exact pinned-Clang `putchar` argument shapes.
+/// A parenthesized unsigned expression is folded only after every operand,
+/// symbol reference and operator is accounted for in the same source tree.
+fn checked_argument<'node>(
+    flow: &mut Flow<'node>,
+    conversion: &Node,
+) -> Option<(u8, &'node Node)> {
+    match flow.peek()?.kind.as_str() {
+        "cast-expression" => {
+            let load = flow.take(conversion.id, "cast-expression")?;
+            let read =
+                flow.take(load.id, "declaration-reference-expression")?;
+            if !typed_operator(load, "lvalue-to-rvalue")
+                || !span_within(&conversion.span, &load.span)
+                || !span_within(&load.span, &read.span)
+                || conversion.span != load.span
+                || load.span != read.span
+            {
+                return None;
+            }
+            flow.referenced(read)
+        },
+        "parenthesized-expression" => {
+            let grouped =
+                flow.take(conversion.id, "parenthesized-expression")?;
+            let (byte, expression) = flow.expression(grouped.id, 0)?;
+            if !bare_typed_node(grouped)
+                || grouped.type_name.as_deref() != Some("u32")
+                || !span_within(&conversion.span, &grouped.span)
+                || !span_within(&grouped.span, &expression.span)
+                || conversion.span.begin.byte >= grouped.span.begin.byte
+                || grouped.span.begin.byte >= expression.span.begin.byte
+                || expression.span.end.byte >= grouped.span.end.byte
+                || grouped.span.end.byte != conversion.span.end.byte
+            {
+                return None;
+            }
+            Some((byte, expression))
+        },
+        _ => None,
+    }
+}
+
+/// Admit exactly one source-proven output effect after the local writes.
 fn checked_call<'node>(
     flow: &mut Flow<'node>,
     body: &Node,
@@ -374,9 +414,6 @@ fn checked_call<'node>(
     let cast = flow.take(call.id, "cast-expression")?;
     let callee = flow.take(cast.id, "declaration-reference-expression")?;
     let conversion = flow.take(call.id, "cast-expression")?;
-    let load = flow.take(conversion.id, "cast-expression")?;
-    let reference = flow.take(load.id, "declaration-reference-expression")?;
-    let (byte, live_source) = flow.referenced(reference)?;
     if call.type_name.as_deref() != Some("i32")
         || call.reference.as_deref() != Some("external:putchar")
         || call.name.is_some()
@@ -387,21 +424,15 @@ fn checked_call<'node>(
         || conversion.type_name.as_deref() != Some("i32")
         || cast.operation.as_deref() != Some("function-to-pointer")
         || conversion.operation.as_deref() != Some("integral-cast")
-        || load.operation.as_deref() != Some("lvalue-to-rvalue")
-        || load.type_name.as_deref() != Some("u32")
-        || !assigned_local_reference(reference, reference.reference.as_deref()?)
         || !span_within(&body.span, &call.span)
         || !span_within(&call.span, &cast.span)
         || !span_within(&cast.span, &callee.span)
         || !span_within(&call.span, &conversion.span)
-        || !span_within(&conversion.span, &load.span)
-        || !span_within(&load.span, &reference.span)
-        || load.span != reference.span
         || last_end > call.span.begin.byte
     {
         return None;
     }
-    for node in [call, cast, callee, conversion, load, reference] {
+    for node in [call, cast, callee, conversion] {
         if node.constant_integer.is_some()
             || node.literal.is_some()
             || node.definition.is_some()
@@ -416,23 +447,16 @@ fn checked_call<'node>(
     }
     if cast.reference.is_some()
         || conversion.reference.is_some()
-        || load.reference.is_some()
         || callee.operation.is_some()
-        || reference.operation.is_some()
         || cast.span != callee.span
-        || conversion.span != load.span
-        || conversion.span != reference.span
         || call.span.begin.byte != cast.span.begin.byte
         || conversion.span.begin.byte <= callee.span.end.byte
         || conversion.span.end.byte >= call.span.end.byte
     {
         return None;
     }
-    Some(OutputCall {
-        byte,
-        call,
-        source: live_source,
-    })
+    let (byte, source) = checked_argument(flow, conversion)?;
+    Some(OutputCall { byte, call, source })
 }
 
 /// Project multiple automatic locals only when every source effect is proven.

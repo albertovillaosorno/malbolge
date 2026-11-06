@@ -483,3 +483,65 @@ fn conditional_foreign_reads_metadata_and_unproven_branches_reject() {
         Err(FrontendJsonError::Unsupported)
     );
 }
+
+const EXPRESSION_OUTPUT: &[u8] = include_bytes!(
+    "../../../../tests/compiler/c-frontend/golden/local_expression_output.json"
+);
+
+#[test]
+fn conditional_expression_argument_preserves_live_source_and_byte() {
+    let (wire, mode) = canonical_guest_typed_ir(EXPRESSION_OUTPUT).unwrap();
+    assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+    let module = typed::canonical_module(&wire).unwrap();
+    assert_eq!(module.source_id(), "tests/local-expression-output-v1");
+    let [constant, output] = module.functions()[0].blocks()[0].instructions()
+    else {
+        panic!("expected one expression result and guest output");
+    };
+    assert!(matches!(
+        constant.instruction(),
+        typed::Instruction::ConstantInteger { constant, .. }
+            if constant.bit_width() == 8 && constant.little_endian() == [65]
+    ));
+    assert_eq!(constant.span().begin().line(), 43);
+    assert!(matches!(
+        output.instruction(),
+        typed::Instruction::ByteOutput { value } if value.value() == 0
+    ));
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
+fn expression_argument_mutations_fail_closed() {
+    let original: Value = serde_json::from_slice(EXPRESSION_OUTPUT).unwrap();
+    for (index, key, value) in [
+        (40, "operation", json!("lvalue-to-rvalue")),
+        (41, "parent", json!(38)),
+        (41, "type", json!("i32")),
+        (42, "operation", json!("+=")),
+        (42, "type", json!("i32")),
+        (43, "operation", json!("integral-cast")),
+        (44, "reference", json!("other@1208")),
+        (45, "constant_integer", json!("256")),
+        (45, "literal", json!("77")),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][index][key] = value;
+        assert_eq!(
+            canonical_guest_typed_ir(&serialize(&changed)),
+            Err(FrontendJsonError::Unsupported),
+            "expression argument node {index} / {key} was unchecked"
+        );
+    }
+    let mut extra = original;
+    let call_span = extra["nodes"][37]["span"].clone();
+    extra["nodes"].as_array_mut().unwrap().push(json!({
+        "id":47,"parent":2,"kind":"call-expression",
+        "span":call_span,
+        "reference":"external:putchar","type":"i32"
+    }));
+    assert_eq!(
+        canonical_guest_typed_ir(&serialize(&extra)),
+        Err(FrontendJsonError::Unsupported)
+    );
+}
