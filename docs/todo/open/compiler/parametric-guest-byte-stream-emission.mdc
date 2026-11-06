@@ -318,3 +318,16 @@ a compiler capability gap, not a reason to return to N+1.
   guard the proposal filter. The original twelve-byte reference, unrestricted
   four-byte streams, and guest runtime C control flow remain unsupported;
   P0 is still pending.
+
+- Another complete four-iteration source-backed Fibonacci recurrence combines
+  loop state, conditional output, checked multiplication, division and byte
+  masking. The initial real compiler reached the independent quad publisher
+  but refused a guest needing an extra arithmetic write. A deterministic
+  bounded accumulator-state search now proposes five relocated guest writes
+  for four source-derived bytes `35 c0 09 e3`, and the independent publisher
+  re-decodes, proves disjoint out-of-source writes and replays the normative
+  VM on empty and nonempty input before admitting the capsule. The earlier
+  four-write grammar cannot realize this test's guest stream, and a
+  division-by-zero source mutation refuses without publication. The original
+  four-byte prefix `02 59 5f 08` and twelve-byte P0 oracle remain uncompiled;
+  this is compiler-time C state folding, not runtime guest C arithmetic.

@@ -50,6 +50,9 @@ RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 GUEST_INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
 EXPECTED = bytes.fromhex("02595f08574f226d0390b323")
 LOOP_OUTPUT = ROOT / "tests/compiler/c-frontend/accepted/local_loop_branch_output.c"
+WIDE_STREAM = (
+    ROOT / "tests/compiler/c-frontend/accepted/local_loop_wide_branch_stream.c"
+)
 
 
 def reference_bytes() -> bytes:
@@ -174,9 +177,7 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
             # An unsupported source operation must not inherit the witness.
             altered = Path(scratch) / "fibonacci-three-unsupported.c"
-            altered.write_text(
-                source.read_text().replace("next ^ 0x3DU", "next / 0U")
-            )
+            altered.write_text(source.read_text().replace("next ^ 0x3DU", "next / 0U"))
             refused_guest = Path(scratch) / "fibonacci-three-unsupported.malbolge"
             refused = subprocess.run(
                 [
@@ -247,16 +248,107 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertEqual(executed.returncode, 0, executed.stderr)
                 self.assertEqual(executed.stdout, bytes(expected))
-                self.assertRegex(
-                    executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
-                )
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
             # An unsupported C effect may not inherit the source witness.
             altered = Path(scratch) / "fibonacci-four-unsupported.c"
             altered.write_text(source.read_text().replace("next ^ 61U", "next / 0U"))
             refused_guest = Path(scratch) / "fibonacci-four-unsupported.malbolge"
             refused = subprocess.run(
                 [*command[:-2], str(refused_guest), str(altered)],
-                check=False, capture_output=True, timeout=180,
+                check=False,
+                capture_output=True,
+                timeout=180,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(refused_guest.exists())
+
+    def test_unmodified_fibonacci_four_byte_prefix_still_refuses(self) -> None:
+        """The P0 original output prefix still lacks a verified guest."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = SOURCE.read_text()
+        self.assertIn("i < 12U", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "original-fibonacci-prefix.c"
+            source.write_text(original.replace("i < 12U", "i < 4U"))
+            guest = Path(scratch) / "original-fibonacci-prefix.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/original-fibonacci-prefix-four-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=180,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"Layout(UnsupportedEffectTrace)", compiled.stderr)
+            self.assertFalse(guest.exists(), "unwitnessed program published a guest")
+
+    def test_wide_conditional_loop_four_outputs_reach_guest(self) -> None:
+        """Divide/multiply/mask in C, then prove four real guest bytes."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(4):
+            following = (previous + current) & 255
+            expected.append(
+                ((following * 29 + 251) & 255)
+                if following % 2 == 0
+                else (((following // 2) * 73 + 119) & 255)
+            )
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("35c009e3"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "wide-loop.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/wide-fibonacci-guest-four-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(WIDE_STREAM),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for guest_input in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=guest_input,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            unsupported = Path(scratch) / "wide-loop-divide-zero.c"
+            unsupported.write_text(
+                WIDE_STREAM.read_text().replace("next / 2U", "next / 0U")
+            )
+            refused_guest = Path(scratch) / "wide-loop-divide-zero.malbolge"
+            refused = subprocess.run(
+                [*command[:-2], str(refused_guest), str(unsupported)],
+                check=False,
+                capture_output=True,
+                timeout=180,
             )
             self.assertNotEqual(refused.returncode, 0)
             self.assertIn(b"Unsupported", refused.stderr)
@@ -361,9 +453,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             # Shifts lie outside the source-proven arithmetic slice;
             # a modified program must not inherit the valid guest witness.
             mutated = Path(scratch) / "repeated-mutation.c"
-            mutated.write_text(
-                source.read_text().replace("next ^ 58U", "next >> 1U")
-            )
+            mutated.write_text(source.read_text().replace("next ^ 58U", "next >> 1U"))
             rejected = Path(scratch) / "repeated-mutation.malbolge"
             refused = subprocess.run(
                 [
@@ -577,9 +667,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertEqual(execution.stdout, bytes(expected))
             self.assertRegex(execution.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
             mutation = Path(scratch) / "unsupported-equal-branch.c"
-            mutation.write_text(
-                source.read_text().replace("next ^ 59U", "next >> 1U")
-            )
+            mutation.write_text(source.read_text().replace("next ^ 59U", "next >> 1U"))
             rejected = Path(scratch) / "unsupported-equal-branch.malbolge"
             refused = subprocess.run(
                 [
@@ -1251,8 +1339,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         source = (
-            ROOT
-            / "tests/compiler/c-frontend/accepted/"
+            ROOT / "tests/compiler/c-frontend/accepted/"
             "local_remainder_recurrence_output.c"
         )
         a, b = 3, 5
@@ -1260,11 +1347,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         for _ in range(3):
             next_value = (a * b) & 255
             observed.append(next_value)
-            a = (
-                (next_value % 17) ^ 1
-                if next_value % 2 == 0
-                else next_value - 1
-            )
+            a = (next_value % 17) ^ 1 if next_value % 2 == 0 else next_value - 1
             b = next_value
         self.assertEqual(observed, [15, 210, 190])
         self.assertEqual(a, 2)
@@ -1321,9 +1404,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         source = (
-            ROOT
-            / "tests/compiler/c-frontend/accepted/"
-            "local_shift_recurrence_output.c"
+            ROOT / "tests/compiler/c-frontend/accepted/local_shift_recurrence_output.c"
         )
         original = source.read_text()
         self.assertIn("((a * b) << 2U) & 255U", original)
@@ -1427,8 +1508,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         source = (
-            ROOT
-            / "tests/compiler/c-frontend/accepted/"
+            ROOT / "tests/compiler/c-frontend/accepted/"
             "local_division_recurrence_output.c"
         )
         a, b = 3, 5
@@ -1436,11 +1516,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         for _ in range(3):
             next_value = (a * b) & 255
             visited.append(next_value)
-            a = (
-                (next_value // 17) ^ 1
-                if next_value % 2 == 0
-                else next_value - 1
-            )
+            a = (next_value // 17) ^ 1 if next_value % 2 == 0 else next_value - 1
             b = next_value
         self.assertEqual(visited, [15, 210, 170])
         self.assertEqual(a, 11)
@@ -1499,8 +1575,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         source = (
-            ROOT
-            / "tests/compiler/c-frontend/accepted/"
+            ROOT / "tests/compiler/c-frontend/accepted/"
             "local_multiplicative_recurrence_output.c"
         )
         a, b = 3, 5

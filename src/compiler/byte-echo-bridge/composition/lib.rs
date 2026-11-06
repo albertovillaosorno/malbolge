@@ -43,6 +43,9 @@ pub mod layout;
 #[path = "../../ternary-lowering/composition/lib.rs"]
 pub mod ternary;
 
+#[path = "search_output_stream.rs"]
+mod search_output_stream;
+
 #[cfg(test)]
 #[path = "../../../../tests/compiler/bridge/three_write_preview.rs"]
 mod three_write_preview_tests;
@@ -2474,8 +2477,13 @@ pub fn encode_distinct_literal_quad(
     }
     let source_cells = pair_source_cells(profile)
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
-    verified_four_write_quad_layout(profile, expected, &source_cells)
-        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
+    search_output_stream::verified_state_space_output_layout(
+        profile, expected, &source_cells,
+    )
+    .or_else(|| {
+        verified_four_write_quad_layout(profile, expected, &source_cells)
+    })
+    .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 
 /// Emit one independently VM-witnessed five-distinct-byte C trace.

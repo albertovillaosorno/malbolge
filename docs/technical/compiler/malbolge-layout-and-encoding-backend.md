@@ -651,3 +651,17 @@ profile requirements fail closed before emitting accepted target code.
 - `docs/technical/adr/compiler-pipeline-and-guest-runtime.md`
 - `docs/technical/adr/deterministic-c-surface-and-clang-tooling.md`
 - `docs/technical/adr/verification-trust-boundary.md`
+
+### Quad publisher with bounded extra-write effects
+
+For source-proven four-byte streams, the independent publisher now admits a
+closed 94-cell linear grammar with one relocation, up to 30 prefix no-ops,
+four real guest outputs, and four to 32 distinct guest arithmetic writes.
+The final code cells remain output and halt; no input, jumps, another
+relocation or unsupported opcode is admitted. The verifier re-decodes the
+actual staged source, re-admits address-sensitive layout and proves every
+write lies outside source and has a distinct address. Both empty and
+nonempty guest input must terminate with exactly the source-proven bytes.
+The five-write `35 c0 09 e3` guest proves the added interleaving grammar;
+older four-write witnesses remain supported. Search proposals never publish
+without this separate normative VM check.

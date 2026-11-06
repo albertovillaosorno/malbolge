@@ -728,3 +728,32 @@ The original twelve-byte Fibonacci target and dynamic guest-side C state
 remain unimplemented. P0 stays open until the original compound C program
 (or another accepted complete compound program with comparable runtime
 semantics) meets the contract's full guest-parity acceptance criteria.
+
+### Bounded state-space guest output proposals
+
+A complete four-iteration C recurrence with local state, conditional byte
+output, multiplication, division and masking now emits `35 c0 09 e3` through
+the current-profile normative guest VM. The source is
+`tests/compiler/c-frontend/accepted/local_loop_wide_branch_stream.c`.
+The independently calculated unsigned-C values are `2, 3, 5, 8` before the
+branch-derived output expressions. Both empty input and `ff 00 80` input
+produce identical verified guest output. A division-by-zero mutation refuses
+before artifact publication.
+
+The first compiler attempt reached the quad publisher and refused its exact
+four-write/output-pair grammar. A new deterministic, capped state-space
+proposal searches exact 15-trit accumulator states and source-ordered byte
+effects with guest `p`, `*`, `<` and no-op instructions. The loader-memory
+suffix cache remains advisory: the independent publisher re-decodes every
+instruction, requires four outputs and four to 32 disjoint out-of-source
+data writes, re-admits the complete linear source and executes the normative
+VM twice before publication. A five-write/four-output regression is outside
+the older four-write grammar but passes all checks. The historical `T=4>`
+source remains admitted.
+
+The new search is bounded to 94 source cells, a 30-cell prefix and explicit
+state/node limits. Exhaustion does not establish target-language
+impossibility. The original unmodified four-output Fibonacci prefix
+`02 59 5f 08` and the complete twelve-output Fibonacci program still refuse
+at layout without publication. C state and arithmetic here execute during
+compilation, not as runtime guest C operations. P0 remains pending.

@@ -5581,8 +5581,9 @@ fn verify_distinct_literal_forty_eight(
     Ok(())
 }
 
-// Decode the staged source independently of the untrusted quad proposer.
-// Exactly four write/output pairs may follow one relocation and bounded gaps.
+// Independently decode the complete staged guest without trusting the
+// four-byte proposer. Arbitrary bounded interleavings of disjoint arithmetic
+// writes and outputs replace the earlier exact write/output-pair grammar.
 fn decode_distinct_quad_operations(
     profile: &malbolge::ProfileDescriptor,
     source: &[u8],
@@ -5599,55 +5600,49 @@ fn decode_distinct_quad_operations(
         .collect::<Option<Vec<_>>>()
         .ok_or("distinct-literal quad decode disagrees")?;
     let prefix = decoded.iter().take_while(|&&op| op == b'o').count();
-    if prefix >= 94 || decoded.get(prefix) != Some(&b'j') {
-        return Err(String::from("distinct-literal quad relocation disagrees"));
-    }
-    let mut cursor = prefix.saturating_add(1);
-    let mut strides = [0usize; 4];
-    for stride in &mut strides {
-        *stride = decoded
-            .get(cursor..)
-            .ok_or("distinct-literal quad is truncated")?
-            .iter()
-            .take_while(|&&op| op == b'o')
-            .count();
-        cursor = cursor.saturating_add(*stride);
-        if !matches!(decoded.get(cursor), Some(b'p' | b'*'))
-            || decoded.get(cursor.saturating_add(1))
-                != Some(&profile.output_instruction())
-        {
-            return Err(String::from("distinct-literal quad effect disagrees"));
-        }
-        cursor = cursor.saturating_add(2);
-    }
-    let legacy = prefix == 11 && strides == [0; 4];
-    let bounded = prefix < 12 && strides.iter().all(|&stride| stride <= 8);
-    if decoded.get(cursor) != Some(&b'v')
-        || cursor.saturating_add(1) != decoded.len()
-        || !(legacy || bounded)
+    if prefix > 30
+        || source.len() > 94
+        || decoded.get(prefix) != Some(&b'j')
+        || decoded.last() != Some(&b'v')
+        || decoded.get(decoded.len().saturating_sub(2))
+            != Some(&profile.output_instruction())
     {
-        return Err(String::from("distinct-literal quad grammar disagrees"));
+        return Err(String::from("distinct-literal quad geometry disagrees"));
     }
-    decoded
-        .iter()
-        .map(|&op| match op {
-            b'o' => Some(LinearOpcode::NoOperation),
-            b'j' => Some(LinearOpcode::RelocateDataPointer),
-            b'p' => Some(LinearOpcode::CrazyData),
-            b'*' => Some(LinearOpcode::RotateData),
-            b'v' => Some(LinearOpcode::Halt),
-            code if code == profile.output_instruction() => {
-                Some(LinearOpcode::OutputByte)
+    let mut writes = 0usize;
+    let mut outputs = 0usize;
+    let mut operations = Vec::with_capacity(decoded.len());
+    for (index, &op) in decoded.iter().enumerate() {
+        let operation = match op {
+            b'o' => LinearOpcode::NoOperation,
+            b'j' if index == prefix => LinearOpcode::RelocateDataPointer,
+            b'p' => {
+                writes += 1;
+                LinearOpcode::CrazyData
             },
-            _ => None,
-        })
-        .collect::<Option<Vec<_>>>()
-        .ok_or_else(|| {
-            String::from("distinct-literal quad instruction disagrees")
-        })
+            b'*' => {
+                writes += 1;
+                LinearOpcode::RotateData
+            },
+            b'v' if index + 1 == decoded.len() => LinearOpcode::Halt,
+            code if code == profile.output_instruction() => {
+                outputs += 1;
+                LinearOpcode::OutputByte
+            },
+            _ => {
+                return Err(String::from(
+                    "distinct-literal quad instruction disagrees",
+                ));
+            },
+        };
+        operations.push(operation);
+    }
+    if outputs != 4 || !(4..=32).contains(&writes) {
+        return Err(String::from("distinct-literal quad effect disagrees"));
+    }
+    Ok(operations)
 }
 
-// Four output effects require four real, distinct, out-of-source data writes.
 fn verify_distinct_literal_quad(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
@@ -5676,8 +5671,8 @@ fn verify_distinct_literal_quad(
         .collect();
     let source_limit = u32::try_from(artifact.source.len())
         .map_err(|error| format!("quad source geometry: {error:?}"))?;
-    if writes.len() != 4
-        || writes.iter().copied().collect::<BTreeSet<_>>().len() != 4
+    if !(4..=32).contains(&writes.len())
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
         || writes.iter().any(|&position| position < source_limit)
         || layout.executed_code_positions().len() != artifact.steps
     {
