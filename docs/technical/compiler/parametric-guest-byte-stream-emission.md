@@ -95,6 +95,25 @@ computation. An out-of-range or nonliteral initializer, additional effect,
 branch, loop, or unsupported symbol relationship must reject without
 publishing an artifact.
 
+### Ordered literal writes to an automatic local
+
+The pinned Clang experiment `local_reassigned_output.c` initializes one
+`unsigned` local with `0U`, then writes `66U` and `65U`, and outputs the local.
+Before the repair, the adapter refused the whole source at the first local
+statement and published nothing. The repaired adapter admits at most eight
+consecutive `=` assignments of source-backed `u32` literals in `0..255`.
+It checks their exact AST ancestry, spans, order, and matching symbol before
+eliminating the unobservable dead stores. Only the final literal is emitted as
+a source-attributed typed byte SSA value, with one real guest output effect.
+The actual current-profile VM emits `41` (hex) in 31 steps. A nonliteral
+`value = value + 1U` remains unsupported and publishes no guest artifact.
+
+This is bounded dead-store elimination, not a guest implementation of general
+mutable storage. Neither runtime arithmetic nor aliases, multiple variables,
+conditional execution, or loops are supported by this projection. The original
+Fibonacci program still refuses at its first declaration and remains the P0
+end-to-end acceptance target.
+
 The remaining first semantic gap for the original complete program is the
 **general** local-variable declaration, initialization, read/write and
 provenance needed through typed IR and ternary lowering. The same

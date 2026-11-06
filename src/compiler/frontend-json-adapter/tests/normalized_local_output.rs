@@ -30,7 +30,7 @@
 // - Defaults:
 //   - Extra source effects and unsupported state cannot publish MCTI.
 
-//! Independently re-admit the exact pinned Clang automatic-local AST shape.
+//! Re-admit pinned Clang local initialization and ordered assignment ASTs.
 
 use malbolge as _;
 use malbolge_c_frontend_json_adapter::{
@@ -41,6 +41,9 @@ use serde_json::{Value, json};
 
 const PINNED: &[u8] = include_bytes!(
     "../../../../tests/compiler/c-frontend/golden/local_initialized_output.json"
+);
+const REASSIGNED: &[u8] = include_bytes!(
+    "../../../../tests/compiler/c-frontend/golden/local_reassigned_output.json"
 );
 
 #[expect(clippy::expect_used, reason = "fixed Clang JSON fixture")]
@@ -90,6 +93,96 @@ fn automatic_local_is_source_bound_and_typed() -> Result<(), String> {
     ));
     assert_eq!(typed::canonical_bytes(&module), Ok(wire));
     Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "source-bound assignment proof"
+)]
+fn ordered_dead_stores_leave_the_last_clang_definition() -> Result<(), String> {
+    let (wire, mode) = canonical_guest_typed_ir(REASSIGNED)
+        .map_err(|error| format!("assignment lowering: {error:?}"))?;
+    assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+    let module = typed::canonical_module(&wire)
+        .map_err(|error| format!("typed admission: {error:?}"))?;
+    assert_eq!(module.source_id(), "tests/local-reassigned-output-v1");
+    let [constant, output] = module.functions()[0].blocks()[0].instructions()
+    else {
+        return Err(String::from("expected live SSA value and guest output"));
+    };
+    assert!(matches!(
+        constant.instruction(),
+        typed::Instruction::ConstantInteger {
+            constant,
+            result,
+            type_id,
+        } if constant.bit_width() == 8
+            && constant.little_endian() == [65]
+            && result.value() == 0
+            && type_id.value() == 0
+    ));
+    assert!(matches!(
+        output.instruction(),
+        typed::Instruction::ByteOutput { value } if value.value() == 0
+    ));
+    assert_eq!(constant.span().begin().line(), 37);
+    assert_eq!(output.span().begin().line(), 38);
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "exact source-backed node identities"
+)]
+fn reassignment_mutations_are_not_discarded_or_forged() {
+    let original: Value = serde_json::from_slice(REASSIGNED).unwrap();
+    for (index, key, value) in [
+        (5, "operation", json!("+=")),
+        (5, "type", json!("i32")),
+        (5, "reference", json!("value@1184")),
+        (5, "parent", json!(4)),
+        (6, "reference", json!("other@1152")),
+        (6, "type", json!("i32")),
+        (7, "constant_integer", json!("256")),
+        (7, "literal", json!("77")),
+        (8, "operation", json!("-")),
+        (9, "reference", json!("other@1152")),
+        (10, "constant_integer", json!("-1")),
+        (10, "name", json!("unexpected")),
+        (16, "reference", json!("wrong@1152")),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][index][key] = value;
+        assert_eq!(
+            canonical_guest_typed_ir(&serialize(&changed)),
+            Err(FrontendJsonError::Unsupported),
+            "assignment node {index} / {key} silently lost its effect"
+        );
+    }
+    let mut extra = original.clone();
+    extra["nodes"].as_array_mut().unwrap().push(json!({
+        "id":18,"parent":2,"kind":"if-statement",
+        "span":original["nodes"][11]["span"]
+    }));
+    assert_eq!(
+        canonical_guest_typed_ir(&serialize(&extra)),
+        Err(FrontendJsonError::Unsupported)
+    );
+    // Replacing the final write changes the live value, not the initializer.
+    let mut changed = original;
+    changed["nodes"][10]["constant_integer"] = json!("0");
+    changed["nodes"][10]["literal"] = json!("0");
+    let (wire, mode) = canonical_guest_typed_ir(&serialize(&changed)).unwrap();
+    assert_eq!(mode, FrontendGuestMode::InitialZeroOutput);
+    let module = typed::canonical_module(&wire).unwrap();
+    assert!(matches!(
+        module.functions()[0].blocks()[0].instructions()[0].instruction(),
+        typed::Instruction::ConstantInteger { constant, .. }
+            if constant.little_endian() == [0]
+    ));
 }
 
 #[test]

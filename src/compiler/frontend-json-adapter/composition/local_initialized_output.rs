@@ -29,7 +29,7 @@
 // - Defaults:
 //   - Anything beyond the admitted Clang topology remains unsupported.
 
-//! Closed, source-bound mem2reg of one automatic unsigned local used by output.
+//! Closed dead-store elimination of literal writes to one automatic local.
 
 use typed::{
     BasicBlock, BasicBlockSpec, FrontendArtifact, FrontendArtifactSpec,
@@ -102,12 +102,46 @@ fn named_local_reference(
             .is_some_and(|end| end <= literal.span.begin.byte)
 }
 
-/// Returns a verified typed SSA byte effect only for one unmodified local.
+/// Admit only the exact source-backed Clang `u32` integer leaf.
+fn literal_byte(node: &Node) -> Option<u8> {
+    if node.kind != "integer-literal"
+        || node.type_name.as_deref() != Some("u32")
+        || node.literal.as_deref() != node.constant_integer.as_deref()
+        || node.name.is_some()
+        || node.reference.is_some()
+        || node.operation.is_some()
+        || node.definition.is_some()
+        || node.inline_specified.is_some()
+        || node.linkage.is_some()
+        || node.storage_class.is_some()
+        || node.storage_duration.is_some()
+    {
+        return None;
+    }
+    node.constant_integer.as_deref()?.parse::<u8>().ok()
+}
+
+fn assigned_local_reference(node: &Node, symbol: &str) -> bool {
+    node.kind == "declaration-reference-expression"
+        && node.type_name.as_deref() == Some("u32")
+        && node.reference.as_deref() == Some(symbol)
+        && node.name.is_none()
+        && node.operation.is_none()
+        && node.constant_integer.is_none()
+        && node.literal.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+}
+
+/// Returns a verified typed SSA byte effect for a source-bound automatic local.
 ///
-/// Clang has already normalized the initializer and use to an unsigned 32-bit
-/// value. A source-bound single-definition/single-use local can be promoted
-/// to SSA without guest storage; the narrowed `0..255` domain makes the
-/// implicit `u32`-to-`i32` call conversion and byte output unambiguous.
+/// Clang has normalized the initializer, consecutive literal assignments,
+/// and final read. With no aliases or intervening effects, these ordered
+/// definitions can be reduced to their final SSA value. The `0..255`
+/// domain preserves the implicit `u32`-to-`i32` call conversion.
 ///
 /// # Errors
 ///
@@ -137,36 +171,111 @@ pub(super) fn canonical_local_initialized_output(
     {
         return Err(FrontendJsonError::Unsupported);
     }
-    let [
-        function,
-        body,
-        statement,
-        variable,
-        literal,
-        call,
-        cast,
-        callee,
-        conversion,
-        load,
-        reference,
-        rest @ ..,
-    ] = input.nodes.as_slice()
+    let [function, body, statement, variable, literal, tail @ ..] =
+        input.nodes.as_slice()
+    else {
+        return Err(FrontendJsonError::Unsupported);
+    };
+    let initial_byte =
+        literal_byte(literal).ok_or(FrontendJsonError::Unsupported)?;
+    // Each assignment is an ordered C side effect. Eliminate dead writes
+    // only because the complete AST excludes aliases and earlier reads.
+    // Attribute the live SSA value to its actual final source definition.
+    let mut definitions = vec![(literal, initial_byte)];
+    let mut remainder = tail;
+    let mut next_id: u32 = 6;
+    let mut last_end = statement.span.end.byte;
+    while remainder
+        .first()
+        .is_some_and(|node| node.kind == "binary-expression")
+    {
+        let [assignment, left, right, rest @ ..] = remainder else {
+            return Err(FrontendJsonError::Unsupported);
+        };
+        if definitions.len() >= 9 {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        let byte = literal_byte(right).ok_or(FrontendJsonError::Unsupported)?;
+        let symbol = variable.reference.as_deref().unwrap_or_default();
+        let left_id = next_id
+            .checked_add(1)
+            .ok_or(FrontendJsonError::Unsupported)?;
+        let right_id = next_id
+            .checked_add(2)
+            .ok_or(FrontendJsonError::Unsupported)?;
+        if !correct_node(assignment, next_id, 2, "binary-expression")
+            || assignment.type_name.as_deref() != Some("u32")
+            || assignment.operation.as_deref() != Some("=")
+            || assignment.name.is_some()
+            || assignment.reference.is_some()
+            || assignment.constant_integer.is_some()
+            || assignment.literal.is_some()
+            || assignment.definition.is_some()
+            || assignment.inline_specified.is_some()
+            || assignment.linkage.is_some()
+            || assignment.storage_class.is_some()
+            || assignment.storage_duration.is_some()
+            || !correct_node(
+                left,
+                left_id,
+                next_id,
+                "declaration-reference-expression",
+            )
+            || !assigned_local_reference(left, symbol)
+            || !correct_node(right, right_id, next_id, "integer-literal")
+            || !span_within(&body.span, &assignment.span)
+            || !span_within(&assignment.span, &left.span)
+            || !span_within(&assignment.span, &right.span)
+            || last_end > assignment.span.begin.byte
+            || left.span.begin.byte != assignment.span.begin.byte
+            || left.span.end.byte >= right.span.begin.byte
+            || right.span.end.byte != assignment.span.end.byte
+        {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        last_end = assignment.span.end.byte;
+        definitions.push((right, byte));
+        remainder = rest;
+        next_id = next_id
+            .checked_add(3)
+            .ok_or(FrontendJsonError::Unsupported)?;
+    }
+    let cast_id = next_id
+        .checked_add(1)
+        .ok_or(FrontendJsonError::Unsupported)?;
+    let callee_id = next_id
+        .checked_add(2)
+        .ok_or(FrontendJsonError::Unsupported)?;
+    let conversion_id = next_id
+        .checked_add(3)
+        .ok_or(FrontendJsonError::Unsupported)?;
+    let load_id = next_id
+        .checked_add(4)
+        .ok_or(FrontendJsonError::Unsupported)?;
+    let reference_id = next_id
+        .checked_add(5)
+        .ok_or(FrontendJsonError::Unsupported)?;
+    let return_id = next_id
+        .checked_add(6)
+        .ok_or(FrontendJsonError::Unsupported)?;
+    let [call, cast, callee, conversion, load, reference, rest @ ..] =
+        remainder
     else {
         return Err(FrontendJsonError::Unsupported);
     };
     let returned = match rest {
         [] => None,
         [last]
-            if correct_node(last, 12, 2, "return-statement") && clean(last) =>
+            if correct_node(last, return_id, 2, "return-statement")
+                && clean(last) =>
         {
             Some(last)
         },
         _ => return Err(FrontendJsonError::Unsupported),
     };
-    let byte = literal
-        .constant_integer
-        .as_deref()
-        .and_then(|value| value.parse::<u8>().ok())
+    let byte = definitions
+        .last()
+        .map(|(_node, value)| *value)
         .ok_or(FrontendJsonError::Unsupported)?;
     if !correct_node(function, 1, 0, "function-declaration")
         || function.name.as_deref().is_none_or(str::is_empty)
@@ -198,32 +307,32 @@ pub(super) fn canonical_local_initialized_output(
         || variable.literal.is_some()
         || variable.constant_integer.is_some()
         || !correct_node(literal, 5, 4, "integer-literal")
-        || literal.type_name.as_deref() != Some("u32")
-        || literal.literal.as_deref() != literal.constant_integer.as_deref()
-        || literal.name.is_some()
-        || literal.reference.is_some()
-        || literal.operation.is_some()
-        || literal.definition.is_some()
-        || literal.inline_specified.is_some()
-        || literal.linkage.is_some()
-        || literal.storage_class.is_some()
-        || literal.storage_duration.is_some()
-        || !correct_node(call, 6, 2, "call-expression")
+        || !correct_node(call, next_id, 2, "call-expression")
         || call.type_name.as_deref() != Some("i32")
         || call.reference.as_deref() != Some("external:putchar")
-        || !correct_node(cast, 7, 6, "cast-expression")
+        || !correct_node(cast, cast_id, next_id, "cast-expression")
         || cast.type_name.as_deref() != Some("ptr(fn(i32)->i32)")
         || cast.operation.as_deref() != Some("function-to-pointer")
-        || !correct_node(callee, 8, 7, "declaration-reference-expression")
+        || !correct_node(
+            callee,
+            callee_id,
+            cast_id,
+            "declaration-reference-expression",
+        )
         || callee.type_name.as_deref() != Some("fn(i32)->i32")
         || callee.reference.as_deref() != Some("external:putchar")
-        || !correct_node(conversion, 9, 6, "cast-expression")
+        || !correct_node(conversion, conversion_id, next_id, "cast-expression")
         || conversion.type_name.as_deref() != Some("i32")
         || conversion.operation.as_deref() != Some("integral-cast")
-        || !correct_node(load, 10, 9, "cast-expression")
+        || !correct_node(load, load_id, conversion_id, "cast-expression")
         || load.type_name.as_deref() != Some("u32")
         || load.operation.as_deref() != Some("lvalue-to-rvalue")
-        || !correct_node(reference, 11, 10, "declaration-reference-expression")
+        || !correct_node(
+            reference,
+            reference_id,
+            load_id,
+            "declaration-reference-expression",
+        )
         || reference.type_name.as_deref() != Some("u32")
         || ![call, cast, callee, conversion, load, reference]
             .iter()
@@ -236,13 +345,13 @@ pub(super) fn canonical_local_initialized_output(
                     && node.linkage.is_none()
                     && node.storage_class.is_none()
                     && node.storage_duration.is_none()
-                    && (node.id == 6
-                        || node.id == 8
-                        || node.id == 11
+                    && (node.id == next_id
+                        || node.id == callee_id
+                        || node.id == reference_id
                         || node.reference.is_none())
-                    && (node.id == 7
-                        || node.id == 9
-                        || node.id == 10
+                    && (node.id == cast_id
+                        || node.id == conversion_id
+                        || node.id == load_id
                         || node.operation.is_none())
             })
         || !named_local_reference(variable, reference, literal)
@@ -256,7 +365,7 @@ pub(super) fn canonical_local_initialized_output(
         || !span_within(&call.span, &conversion.span)
         || !span_within(&conversion.span, &load.span)
         || !span_within(&load.span, &reference.span)
-        || statement.span.end.byte > call.span.begin.byte
+        || last_end > call.span.begin.byte
         || returned.is_some_and(|node| {
             !span_within(&body.span, &node.span)
                 || call.span.end.byte > node.span.begin.byte
@@ -319,6 +428,10 @@ pub(super) fn canonical_local_initialized_output(
         .blocks()
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
+    let live_source = definitions
+        .last()
+        .map(|(source, _value)| *source)
+        .ok_or(FrontendJsonError::InvalidTypedIr)?;
     let instructions = vec![
         LocatedInstruction::new(
             Instruction::ConstantInteger {
@@ -326,7 +439,7 @@ pub(super) fn canonical_local_initialized_output(
                 result: ValueId::new(0),
                 type_id: TypeId::new(0),
             },
-            typed_span(&literal.span),
+            typed_span(&live_source.span),
         ),
         LocatedInstruction::new(
             Instruction::ByteOutput { value: ValueId::new(0) },

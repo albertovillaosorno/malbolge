@@ -503,10 +503,17 @@ proper prefix or altered constant is promoted to source compilation.
 
 ### Source-bound automatic-local byte output
 
-One additional closed Clang JSON shape accepts a single initialized automatic
-`u32` local read once as the argument to `putchar`. An exact declaration/use
-anchor and complete node preorder establish source identity. The initializer
-must be in `0..255` and the local must have no intervening mutation or alias.
-The adapter promotes this stable value to canonical `u8` SSA and delegates to
-the previously verified zero/seeded-byte guest publisher. All other local
-state remains unsupported, including updates, branches, and loops.
+An additional closed Clang JSON shape accepts one automatic `u32` local
+initialized by an integer literal, optionally followed by up to eight ordered
+assignments of integer literals, then read exactly once by `putchar`. All
+values must be in `0..255`. The adapter validates the complete Clang preorder,
+source spans, symbol identity and every write before eliminating dead stores:
+the live canonical `u8` SSA constant is attributed to the **last** assignment
+(or the initializer if there is no assignment). The independently verified
+zero/seeded-byte guest publisher still executes the real output instruction.
+
+`tests/compiler/c-frontend/accepted/local_reassigned_output.c` writes `0`,
+then `66`, then `65` and emits `0x41` in 31 normative guest VM steps. Tampered
+symbols, skipped or reordered writes, expression-valued assignment, aliasing,
+and other effects reject. This is a source-bound constant-write subset, **not**
+general mutable storage, dynamic values, arithmetic, branches, or loops.

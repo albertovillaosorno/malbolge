@@ -76,6 +76,12 @@ a compiler capability gap, not a reason to return to N+1.
   the complete program ever compiles. Rust schema tests retain strict unknown
   metadata rejection, and the first stateful semantics remain pending in the
   active ternary lowering and layout/backend P2 work.
+- A later source-backed compiler experiment exercised an initialized
+  automatic `unsigned` local followed by two literal reassignments. The
+  adapter now proves the complete ordered writes, eliminates only dead stores,
+  and executes the final `putchar` as `0x41` in 31 normative VM steps. It
+  refuses a variable-derived right-hand side. This is not general mutable
+  storage, and the original Fibonacci program remains uncompiled.
 - DCO work on 2026-11-05 also added one narrowly admitted real C
   automatic `unsigned` local initialized once and read by `putchar`.
   Source-anchored local-to-SSA promotion emitted guest byte `0x41` in 31

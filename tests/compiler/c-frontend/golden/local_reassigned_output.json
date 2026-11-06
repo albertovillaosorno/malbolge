@@ -1,0 +1,350 @@
+{
+  "schema_version": 1,
+  "artifact_id": "malbolge-c-frontend-v1",
+  "clang": {
+    "version": "22.1.8",
+    "target": "wasm32-unknown-unknown",
+    "language": "c23"
+  },
+  "profile": {
+    "abi_id": "malbolge-c32-v1",
+    "target_profile": "malbolge-2026"
+  },
+  "source": {
+    "id": "tests/local-reassigned-output-v1",
+    "sha256": "9306a445608c9e30ac93d11830544d27d355c9a800ff9ca913d3fbdd79caa1a9"
+  },
+  "nodes": [
+    {
+      "id": 1,
+      "parent": 0,
+      "kind": "function-declaration",
+      "span": {
+        "begin": {
+          "byte": 1113,
+          "line": 34,
+          "column": 1
+        },
+        "end": {
+          "byte": 1211,
+          "line": 39,
+          "column": 2
+        }
+      },
+      "name": "emit",
+      "type": "fn()->void",
+      "definition": "definition",
+      "inline_specified": false,
+      "linkage": "external",
+      "storage_class": "none"
+    },
+    {
+      "id": 2,
+      "parent": 1,
+      "kind": "compound-statement",
+      "span": {
+        "begin": {
+          "byte": 1129,
+          "line": 34,
+          "column": 17
+        },
+        "end": {
+          "byte": 1211,
+          "line": 39,
+          "column": 2
+        }
+      }
+    },
+    {
+      "id": 3,
+      "parent": 2,
+      "kind": "declaration-statement",
+      "span": {
+        "begin": {
+          "byte": 1135,
+          "line": 35,
+          "column": 5
+        },
+        "end": {
+          "byte": 1155,
+          "line": 35,
+          "column": 25
+        }
+      }
+    },
+    {
+      "id": 4,
+      "parent": 3,
+      "kind": "variable-declaration",
+      "span": {
+        "begin": {
+          "byte": 1135,
+          "line": 35,
+          "column": 5
+        },
+        "end": {
+          "byte": 1154,
+          "line": 35,
+          "column": 24
+        }
+      },
+      "name": "value",
+      "type": "u32",
+      "reference": "value@1144",
+      "definition": "definition",
+      "linkage": "none",
+      "storage_class": "none",
+      "storage_duration": "automatic"
+    },
+    {
+      "id": 5,
+      "parent": 4,
+      "kind": "integer-literal",
+      "span": {
+        "begin": {
+          "byte": 1152,
+          "line": 35,
+          "column": 22
+        },
+        "end": {
+          "byte": 1154,
+          "line": 35,
+          "column": 24
+        }
+      },
+      "type": "u32",
+      "constant_integer": "0",
+      "literal": "0"
+    },
+    {
+      "id": 6,
+      "parent": 2,
+      "kind": "binary-expression",
+      "span": {
+        "begin": {
+          "byte": 1160,
+          "line": 36,
+          "column": 5
+        },
+        "end": {
+          "byte": 1171,
+          "line": 36,
+          "column": 16
+        }
+      },
+      "type": "u32",
+      "operation": "="
+    },
+    {
+      "id": 7,
+      "parent": 6,
+      "kind": "declaration-reference-expression",
+      "span": {
+        "begin": {
+          "byte": 1160,
+          "line": 36,
+          "column": 5
+        },
+        "end": {
+          "byte": 1165,
+          "line": 36,
+          "column": 10
+        }
+      },
+      "type": "u32",
+      "reference": "value@1144"
+    },
+    {
+      "id": 8,
+      "parent": 6,
+      "kind": "integer-literal",
+      "span": {
+        "begin": {
+          "byte": 1168,
+          "line": 36,
+          "column": 13
+        },
+        "end": {
+          "byte": 1171,
+          "line": 36,
+          "column": 16
+        }
+      },
+      "type": "u32",
+      "constant_integer": "66",
+      "literal": "66"
+    },
+    {
+      "id": 9,
+      "parent": 2,
+      "kind": "binary-expression",
+      "span": {
+        "begin": {
+          "byte": 1177,
+          "line": 37,
+          "column": 5
+        },
+        "end": {
+          "byte": 1188,
+          "line": 37,
+          "column": 16
+        }
+      },
+      "type": "u32",
+      "operation": "="
+    },
+    {
+      "id": 10,
+      "parent": 9,
+      "kind": "declaration-reference-expression",
+      "span": {
+        "begin": {
+          "byte": 1177,
+          "line": 37,
+          "column": 5
+        },
+        "end": {
+          "byte": 1182,
+          "line": 37,
+          "column": 10
+        }
+      },
+      "type": "u32",
+      "reference": "value@1144"
+    },
+    {
+      "id": 11,
+      "parent": 9,
+      "kind": "integer-literal",
+      "span": {
+        "begin": {
+          "byte": 1185,
+          "line": 37,
+          "column": 13
+        },
+        "end": {
+          "byte": 1188,
+          "line": 37,
+          "column": 16
+        }
+      },
+      "type": "u32",
+      "constant_integer": "65",
+      "literal": "65"
+    },
+    {
+      "id": 12,
+      "parent": 2,
+      "kind": "call-expression",
+      "span": {
+        "begin": {
+          "byte": 1194,
+          "line": 38,
+          "column": 5
+        },
+        "end": {
+          "byte": 1208,
+          "line": 38,
+          "column": 19
+        }
+      },
+      "type": "i32",
+      "reference": "external:putchar"
+    },
+    {
+      "id": 13,
+      "parent": 12,
+      "kind": "cast-expression",
+      "span": {
+        "begin": {
+          "byte": 1194,
+          "line": 38,
+          "column": 5
+        },
+        "end": {
+          "byte": 1201,
+          "line": 38,
+          "column": 12
+        }
+      },
+      "type": "ptr(fn(i32)->i32)",
+      "operation": "function-to-pointer"
+    },
+    {
+      "id": 14,
+      "parent": 13,
+      "kind": "declaration-reference-expression",
+      "span": {
+        "begin": {
+          "byte": 1194,
+          "line": 38,
+          "column": 5
+        },
+        "end": {
+          "byte": 1201,
+          "line": 38,
+          "column": 12
+        }
+      },
+      "type": "fn(i32)->i32",
+      "reference": "external:putchar"
+    },
+    {
+      "id": 15,
+      "parent": 12,
+      "kind": "cast-expression",
+      "span": {
+        "begin": {
+          "byte": 1202,
+          "line": 38,
+          "column": 13
+        },
+        "end": {
+          "byte": 1207,
+          "line": 38,
+          "column": 18
+        }
+      },
+      "type": "i32",
+      "operation": "integral-cast"
+    },
+    {
+      "id": 16,
+      "parent": 15,
+      "kind": "cast-expression",
+      "span": {
+        "begin": {
+          "byte": 1202,
+          "line": 38,
+          "column": 13
+        },
+        "end": {
+          "byte": 1207,
+          "line": 38,
+          "column": 18
+        }
+      },
+      "type": "u32",
+      "operation": "lvalue-to-rvalue"
+    },
+    {
+      "id": 17,
+      "parent": 16,
+      "kind": "declaration-reference-expression",
+      "span": {
+        "begin": {
+          "byte": 1202,
+          "line": 38,
+          "column": 13
+        },
+        "end": {
+          "byte": 1207,
+          "line": 38,
+          "column": 18
+        }
+      },
+      "type": "u32",
+      "reference": "value@1144"
+    }
+  ]
+}
