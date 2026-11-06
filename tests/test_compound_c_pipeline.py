@@ -118,23 +118,14 @@ class CompoundCPipelineTests(unittest.TestCase):
                     rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
                 )
                 return
-            # Until C-state lowering exists, require a typed refusal and
-            # no output artifact rather than a host-side fake guest trace.
-            declaration_line = next(
-                number
-                for number, line in enumerate(SOURCE.read_text().splitlines(), 1)
-                if "unsigned a = 1U;" in line
-            )
+            # The source-backed loop now projects all twelve effects. The
+            # fixed-tuple guest witness does not realize this binary stream.
             self.assertIn(
-                (
-                    "normalized frontend rejected: Unsupported; "
-                    "unlowered C declaration-statement "
-                    f"at {declaration_line}:5 "
-                ).encode(),
+                b"canonical typed byte bridge rejected: UnsupportedTypedIr",
                 process.stderr,
             )
-            self.assertNotIn(b"Malformed", process.stderr)
-            self.assertFalse(guest.exists(), "unsupported C published a guest")
+            self.assertNotIn(b"normalized frontend rejected", process.stderr)
+            self.assertFalse(guest.exists(), "unwitnessed C published a guest")
 
     def test_branch_selected_output_inside_bounded_loop_reaches_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
@@ -189,6 +180,85 @@ class CompoundCPipelineTests(unittest.TestCase):
                     executed.stderr,
                     f"malbolge-steps-v1:{bound + 1}\n".encode(),
                 )
+
+    def test_distinct_conditional_loop_outputs_reach_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(2):
+            following = (previous + current) & 255
+            expected.append(following ^ (83 if following % 2 == 0 else 45))
+            previous, current = current, following
+        self.assertEqual(bytes(expected), b"Q.")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "branch-stream.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/loop-distinct-output-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, bytes(expected))
+            self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+
+    def test_unwitnessed_distinct_loop_stream_does_not_publish_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        ).read_text()
+        self.assertIn("next ^ 83U", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            changed = Path(scratch) / "unwitnessed-loop.c"
+            _written = changed.write_text(
+                original.replace("next ^ 83U", "next ^ 82U")
+            )
+            guest = Path(scratch) / "unwitnessed-loop.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/unwitnessed-loop-distinct-output-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(changed),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(
+                b"canonical typed byte bridge rejected: UnsupportedTypedIr",
+                compiled.stderr,
+            )
+            self.assertNotIn(b"normalized frontend rejected", compiled.stderr)
+            self.assertFalse(guest.exists())
 
     def test_nonzero_conditional_loop_stream_does_not_publish_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

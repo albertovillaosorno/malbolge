@@ -634,7 +634,17 @@ must succeed even when one arm is not selected.
 A twelve-iteration source compiles to one zero SSA and twelve separate
 `ByteOutput` instructions, then executes as twelve guest zero bytes in
 13 normative VM steps. A seven-iteration variant reaches seven bytes in
-eight steps. The backend supports this repeated-zero case, not arbitrary
-source-derived byte streams: nonzero multi-byte output rejects without an
-artifact. All C loop state and predicates remain compiler-time constants,
+eight steps. All C loop state and predicates remain compiler-time constants,
 not guest runtime arithmetic or control flow.
+
+When selected loop outputs differ, the projection now retains each source
+byte in its own typed `u8` SSA definition and matches that definition to
+its exact `ByteOutput` call span. It selects the existing independent guest
+trace mode for up to twelve source-proven selected effects; the backend
+must still verify the exact ordered values. The full branch-and-loop probe
+`local_loop_distinct_output.c` emits `Q.` from separate even/odd outputs
+in the normative VM. Changing its source output byte refuses publication.
+The original twelve-byte Fibonacci experiment passes this C projection but
+is rejected by the closed `--distinct-literal-twelve` backend as
+`UnsupportedTypedIr`: its exact nonzero sequence is not witnessed. This
+change is neither a general nonzero stream backend nor runtime C state.

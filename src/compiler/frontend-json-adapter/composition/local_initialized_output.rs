@@ -531,7 +531,8 @@ pub(super) fn emit_verified_local_byte(
 }
 
 /// Preserve every checked `putchar` effect, including selected loop arms.
-/// The guest backend currently admits repeated zero output or one seeded byte.
+/// Distinct outputs use separate typed SSA values and the backend's exact,
+/// independently VM-witnessed trace modes; never synthesize guest constants.
 #[expect(
     clippy::too_many_lines,
     reason = "canonical typed byte publisher"
@@ -550,19 +551,40 @@ pub(super) fn emit_verified_local_bytes(
         byte,
         function,
         returned,
-        source,
         ..
     } = *first;
-    if outputs.len() > 33
-        || (outputs.len() > 1 && byte != 0)
-        || outputs.iter().any(|item| {
-            item.body.id != body.id
-                || item.function.id != function.id
-                || item.returned.map(|node| node.id)
-                    != returned.map(|node| node.id)
-                || item.byte != byte
-        })
-    {
+    let repeated = outputs.iter().all(|item| item.byte == byte);
+    let mode = if repeated {
+        if outputs.len() > 33 {
+            return Err(FrontendJsonError::Unsupported);
+        }
+        if byte == 0 {
+            FrontendGuestMode::InitialZeroOutput
+        } else {
+            FrontendGuestMode::SeededByteLiteral
+        }
+    } else {
+        match outputs.len() {
+            2 if byte == 0 => FrontendGuestMode::ZeroThenLiteral,
+            2 => FrontendGuestMode::DistinctLiteralPair,
+            3 => FrontendGuestMode::DistinctLiteralTriple,
+            4 => FrontendGuestMode::DistinctLiteralQuad,
+            5 => FrontendGuestMode::DistinctLiteralQuint,
+            6 => FrontendGuestMode::DistinctLiteralSix,
+            7 => FrontendGuestMode::DistinctLiteralSeven,
+            8 => FrontendGuestMode::DistinctLiteralEight,
+            9 => FrontendGuestMode::DistinctLiteralNine,
+            10 => FrontendGuestMode::DistinctLiteralTen,
+            11 => FrontendGuestMode::DistinctLiteralEleven,
+            12 => FrontendGuestMode::DistinctLiteralTwelve,
+            _ => return Err(FrontendJsonError::Unsupported),
+        }
+    };
+    if outputs.iter().any(|item| {
+        item.body.id != body.id
+            || item.function.id != function.id
+            || item.returned.map(|node| node.id) != returned.map(|node| node.id)
+    }) {
         return Err(FrontendJsonError::Unsupported);
     }
     let name = function
@@ -620,17 +642,28 @@ pub(super) fn emit_verified_local_bytes(
         .blocks()
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
-    let mut instructions = vec![LocatedInstruction::new(
-        Instruction::ConstantInteger {
-            constant: IntegerConstant::new(8, vec![byte]),
-            result: ValueId::new(0),
-            type_id: TypeId::new(0),
-        },
-        typed_span(&source.span),
-    )];
-    for output in outputs {
+    let mut instructions = Vec::new();
+    for (index, output) in outputs.iter().enumerate() {
+        let id = if repeated {
+            ValueId::new(0)
+        } else {
+            ValueId::new(
+                u32::try_from(index)
+                    .map_err(|_error| FrontendJsonError::Unsupported)?,
+            )
+        };
+        if !repeated || index == 0 {
+            instructions.push(LocatedInstruction::new(
+                Instruction::ConstantInteger {
+                    constant: IntegerConstant::new(8, vec![output.byte]),
+                    result: id,
+                    type_id: TypeId::new(0),
+                },
+                typed_span(&output.source.span),
+            ));
+        }
         instructions.push(LocatedInstruction::new(
-            Instruction::ByteOutput { value: ValueId::new(0) },
+            Instruction::ByteOutput { value: id },
             typed_span(&output.call.span),
         ));
     }
@@ -669,10 +702,5 @@ pub(super) fn emit_verified_local_bytes(
     {
         return Err(FrontendJsonError::InvalidTypedIr);
     }
-    let mode = if byte == 0 {
-        FrontendGuestMode::InitialZeroOutput
-    } else {
-        FrontendGuestMode::SeededByteLiteral
-    };
     Ok((wire, mode))
 }

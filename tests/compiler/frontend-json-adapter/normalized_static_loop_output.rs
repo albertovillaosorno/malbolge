@@ -43,6 +43,8 @@ const LOOP: &[u8] =
     include_bytes!("../c-frontend/golden/local_static_loop_output.json");
 const LOOP_OUTPUT: &[u8] =
     include_bytes!("../c-frontend/golden/local_loop_branch_output.json");
+const LOOP_DISTINCT: &[u8] =
+    include_bytes!("../c-frontend/golden/local_loop_distinct_output.json");
 
 #[test]
 fn selected_loop_output_calls_preserve_twelve_real_effects() {
@@ -71,6 +73,67 @@ fn selected_loop_output_calls_preserve_twelve_real_effects() {
         .collect();
     assert_eq!(lines, [40, 42, 42, 40, 42, 42, 40, 42, 42, 40, 42, 42]);
     assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
+fn different_source_derived_loop_outputs_keep_distinct_ssa_and_spans() {
+    let (wire, mode) = canonical_guest_typed_ir(LOOP_DISTINCT).unwrap();
+    assert_eq!(mode, FrontendGuestMode::DistinctLiteralPair);
+    let module = typed::canonical_module(&wire).unwrap();
+    assert_eq!(module.source_id(), "tests/local-loop-distinct-output-v1");
+    let instructions = module.functions()[0].blocks()[0].instructions();
+    assert_eq!(instructions.len(), 4);
+    for (index, (pair, (expected_byte, expected_line))) in instructions
+        .chunks_exact(2)
+        .zip([(81, 40), (46, 42)])
+        .enumerate()
+    {
+        let [constant, output] = pair else {
+            panic!(
+                "expected one independent constant and putchar per iteration"
+            );
+        };
+        assert!(matches!(
+            constant.instruction(),
+            typed::Instruction::ConstantInteger { constant, result, .. }
+                if constant.bit_width() == 8
+                    && constant.little_endian() == [expected_byte]
+                    && usize::try_from(result.value()) == Ok(index)
+        ));
+        assert!(matches!(
+            output.instruction(),
+            typed::Instruction::ByteOutput { value }
+                if usize::try_from(value.value()) == Ok(index)
+        ));
+        assert_eq!(constant.span().begin().line(), expected_line);
+        assert_eq!(output.span().begin().line(), expected_line);
+    }
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
+fn distinct_loop_output_must_prove_both_branches_and_all_symbols() {
+    let original: Value = serde_json::from_slice(LOOP_DISTINCT).unwrap();
+    for (id, key, replacement) in [
+        (16, "constant_integer", json!("13")),
+        (31, "operation", json!("!=")),
+        (39, "reference", json!("external:puts")),
+        (44, "operation", json!("*")),
+        (46, "reference", json!("b@1161")),
+        (47, "literal", json!("84")),
+        (49, "reference", json!("external:puts")),
+        (54, "operation", json!("*")),
+        (56, "reference", json!("foreign@0")),
+        (57, "literal", json!("46")),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][id - 1][key] = replacement;
+        assert_eq!(
+            canonical_guest_typed_ir(&serde_json::to_vec(&changed).unwrap()),
+            Err(FrontendJsonError::Unsupported),
+            "mutated loop node {id} field {key} was admitted"
+        );
+    }
 }
 
 #[test]

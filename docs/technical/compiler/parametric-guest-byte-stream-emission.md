@@ -301,6 +301,35 @@ The finite witnessed backend cannot yet realize that ordered sequence,
 and the adapter explicitly rejects the unverified trace. General guest
 state, dynamic loop execution and P0 completion remain pending.
 
+### Source-proven, heterogeneous output from a bounded C loop
+
+The original twelve-iteration Fibonacci C program was retried after the
+selected-output loop proof. The next failure was the projection's assumption
+that all selected output effects shared one byte. The generalized projection
+now materializes a **distinct typed `u8` SSA constant for every selected
+nonidentical output**, retaining the actual source expression and call spans
+for each iteration. It selects an existing backend mode by the trace length
+(up to twelve folded iterations) and leaves every byte value for the
+independent typed/ternary/VM verifier to admit or reject. Uniform zero or
+nonzero streams still use the existing one-SSA paths.
+
+A complete source-backed two-iteration branch-and-loop experiment,
+`local_loop_distinct_output.c`, evaluates the same Fibonacci-like state
+transfers. Its even arm emits `2 ^ 83 = 81` (`Q`), and its odd arm emits
+`3 ^ 45 = 46` (`.`). This is the independently witnessed guest pair `Q.`:
+the real Clang-to-Malbolge capsule runs under the normative VM and emits
+those two bytes. The pinned JSON regression checks distinct SSA IDs, exact
+C call spans, both branch proofs, and foreign-symbol/operator rejection.
+A C mutation changing `83U` to `82U` yields an unwitnessed pair and refuses
+at the backend without publishing a guest artifact.
+
+The **original full twelve-byte** C program now passes this bounded C
+projection, but `--distinct-literal-twelve` rejects its actual stream with
+`UnsupportedTypedIr`: its independent guest witness is for a *different*
+fixed twelve-byte sequence. The public driver publishes no artifact. This
+is not runtime C execution, arbitrary byte synthesis or P0 completion;
+verified general guest byte-stream lowering remains the concrete blocker.
+
 ### Later verification matrix
 
 Only after the complete experiment succeeds, use a deterministic corpus

@@ -147,3 +147,13 @@ a compiler capability gap, not a reason to return to N+1.
   Fibonacci outputs are still unsupported by the finite byte-stream
   backend. This folds C state at compile time; it is not guest runtime
   control flow, and P0 remains pending.
+- The subsequent two-iteration branch-and-loop experiment produces
+  distinct `Q.` bytes using source-derived XOR expressions in opposing C
+  conditional arms. The pinned Clang AST now projects independent typed SSA
+  constants and ordered output effects; the real normative guest VM emits
+  both bytes. Mutated C and pinned JSON AST regressions refuse invalid or
+  unwitnessed traces without publication. Retrying the original twelve-byte
+  Fibonacci program now reaches the independent typed byte backend and
+  refuses its unmatched `--distinct-literal-twelve` witness with
+  `UnsupportedTypedIr`; the earlier first-declaration refusal is historical.
+  P0 remains pending on generalized guest byte-stream realization.
