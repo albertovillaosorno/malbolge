@@ -480,3 +480,25 @@ the product claim incomplete rather than extending examples forever.
 - `docs/todo/open/compiler/ternary-machine-lowering.mdc`
 - `docs/todo/open/compiler/compact-guest-bytecode-strategy.mdc`
 - `tests/test_versioned_example_corpus.py`
+
+### Repeated byte values from distinct source-bound loop effects
+
+A three-iteration, conditional Fibonacci-style C program now verifies that
+**equal observed byte values need not share a source SSA identity**. The
+source-backed recurrence evaluates `(a + b) & 255U` at compile time, selects
+`next ^ 58U` or `next ^ 59U`, and produces the independent oracle `38 38 3e`
+(`88>`). Before repair the typed bridge refused the full program as
+`UnsupportedTypedIr`; the layout publisher also rejected its duplicate bytes.
+
+The repaired three-output bridge retains separate source SSA definitions while
+allowing a repeated adjacent output of the *live guest accumulator*. A bounded
+positional search proposes two arithmetic data writes and three output
+instructions, never copies a host-calculated output stream into the guest.
+The independent publisher decodes the complete target from actual source
+bytes, validates the repeated-output grammar and distinct out-of-source data
+writes, then checks exact termination and output under the normative VM with
+empty and nonempty input. The real C-to-guest capsule emits `38 38 3e`.
+A mutation that introduces unsupported C multiplication must still refuse
+without publishing. The original twelve-byte Fibonacci acceptance target
+remains unsupported at layout: C state and branches here are statically
+projected, not executed dynamically by the guest.

@@ -176,3 +176,13 @@ a compiler capability gap, not a reason to return to N+1.
   Independent source admission and empty/nonempty-input VM replay remain
   mandatory. The full twelve-byte reference and runtime state are not yet
   compiled, so P0 remains pending.
+
+- On 2026-11-06, a full source-backed three-iteration conditional Fibonacci
+  probe exposed an adjacent equal-output gap. Although three distinct C call
+  effects produce `38 38 3e`, the typed triple projector and independent
+  layout publisher rejected duplicates. A bounded guest composer now retains
+  three distinct SSA definitions and executes only two data writes plus three
+  real output instructions. The independent publisher re-decodes and replays
+  the output with empty/nonempty input; negative source mutation fails closed.
+  This is still compile-time C state projection, not guest runtime state, and
+  the original twelve-byte Fibonacci program remains unsupported.

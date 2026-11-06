@@ -5965,9 +5965,9 @@ pub fn encode_distinct_literal_forty_six(
     Ok(layout)
 }
 
-/// Emit three different source-proven bytes with guest arithmetic writes.
+/// Emit three source-proven bytes with guest arithmetic and output effects.
 ///
-/// Three distinct `MaterializeU8`/`ByteOutput` SSA pairs and a void return
+/// Three separate `MaterializeU8`/`ByteOutput` SSA pairs and a void return
 /// select a bounded positional `p`/`*` layout with independently replayed
 /// guest output. Search failure does not prove the bytes unrealizable.
 ///
@@ -6025,10 +6025,60 @@ pub fn encode_distinct_literal_triple(
     let expected: [u8; 3] = bytes
         .try_into()
         .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
-    if expected[0] == expected[1]
-        || expected[1] == expected[2]
-        || expected[0] == expected[2]
-    {
+    // An unchanged accumulator can be output twice without a second data
+    // write, while source SSA definitions stay distinct. This is a genuine
+    // guest output effect, not a host-side stream duplication.
+    if expected[0] == expected[1] || expected[1] == expected[2] {
+        let repeat_first = expected[0] == expected[1];
+        if expected[0] == expected[2] {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+        let source_cells = pair_source_cells(profile)
+            .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        for padding in 0..12 {
+            for before in 0..=12 {
+                for between in 0..=12 {
+                    for first in
+                        [LinearOpcode::CrazyData, LinearOpcode::RotateData]
+                    {
+                        for second in
+                            [LinearOpcode::CrazyData, LinearOpcode::RotateData]
+                        {
+                            let mut operations =
+                                vec![LinearOpcode::NoOperation; padding];
+                            operations.push(LinearOpcode::RelocateDataPointer);
+                            operations.extend(repeat_n(
+                                LinearOpcode::NoOperation,
+                                before,
+                            ));
+                            operations
+                                .extend([first, LinearOpcode::OutputByte]);
+                            if repeat_first {
+                                operations.push(LinearOpcode::OutputByte);
+                            }
+                            operations.extend(repeat_n(
+                                LinearOpcode::NoOperation,
+                                between,
+                            ));
+                            operations
+                                .extend([second, LinearOpcode::OutputByte]);
+                            if !repeat_first {
+                                operations.push(LinearOpcode::OutputByte);
+                            }
+                            operations.push(LinearOpcode::Halt);
+                            if let Some(layout) = verified_output_stream_layout(
+                                profile,
+                                &operations,
+                                expected,
+                                &source_cells,
+                            ) {
+                                return Ok(layout);
+                            }
+                        }
+                    }
+                }
+            }
+        }
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     // Retain the exact, published legacy source phases before broadening
@@ -6061,7 +6111,8 @@ pub fn encode_distinct_literal_triple(
         for &first in &arithmetic {
             for &second in &arithmetic {
                 for &third in &arithmetic {
-                    let mut operations = vec![LinearOpcode::NoOperation; padding];
+                    let mut operations =
+                        vec![LinearOpcode::NoOperation; padding];
                     operations.extend([
                         LinearOpcode::RelocateDataPointer,
                         first,
@@ -6073,7 +6124,10 @@ pub fn encode_distinct_literal_triple(
                         LinearOpcode::Halt,
                     ]);
                     if let Some(layout) = verified_output_stream_layout(
-                        profile, &operations, expected, &source_cells,
+                        profile,
+                        &operations,
+                        expected,
+                        &source_cells,
                     ) {
                         return Ok(layout);
                     }
@@ -6093,24 +6147,37 @@ pub fn encode_distinct_literal_triple(
                             for &third in &arithmetic {
                                 let mut operations =
                                     vec![LinearOpcode::NoOperation; padding];
-                                operations.push(LinearOpcode::RelocateDataPointer);
+                                operations
+                                    .push(LinearOpcode::RelocateDataPointer);
                                 operations.extend(repeat_n(
-                                    LinearOpcode::NoOperation, before,
+                                    LinearOpcode::NoOperation,
+                                    before,
                                 ));
-                                operations.extend([first, LinearOpcode::OutputByte]);
+                                operations
+                                    .extend([first, LinearOpcode::OutputByte]);
                                 operations.extend(repeat_n(
-                                    LinearOpcode::NoOperation, between_first,
+                                    LinearOpcode::NoOperation,
+                                    between_first,
                                 ));
-                                operations.extend([second, LinearOpcode::OutputByte]);
+                                operations
+                                    .extend([second, LinearOpcode::OutputByte]);
                                 operations.extend(repeat_n(
-                                    LinearOpcode::NoOperation, between_second,
+                                    LinearOpcode::NoOperation,
+                                    between_second,
                                 ));
                                 operations.extend([
-                                    third, LinearOpcode::OutputByte, LinearOpcode::Halt,
+                                    third,
+                                    LinearOpcode::OutputByte,
+                                    LinearOpcode::Halt,
                                 ]);
-                                if let Some(layout) = verified_output_stream_layout(
-                                    profile, &operations, expected, &source_cells,
-                                ) {
+                                if let Some(layout) =
+                                    verified_output_stream_layout(
+                                        profile,
+                                        &operations,
+                                        expected,
+                                        &source_cells,
+                                    )
+                                {
                                     return Ok(layout);
                                 }
                             }

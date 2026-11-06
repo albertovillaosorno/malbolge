@@ -470,8 +470,8 @@ fn project_literal_pair_effects(
     ])
 }
 
-// Three independently witnessed guest arithmetic outputs preserve three
-// different source-bound constant definitions and their exact SSA uses.
+// Three source-bound byte outputs preserve independent SSA definitions even
+// when adjacent values happen to be equal. The guest checks actual effects.
 fn project_literal_triple_effects(
     module: &Module,
     original: &[typed::LocatedInstruction],
@@ -492,7 +492,6 @@ fn project_literal_triple_effects(
         (second, second_output),
         (third, third_output),
     ];
-    let mut values = Vec::with_capacity(3);
     let mut result = Vec::with_capacity(6);
     let mut ids = BTreeSet::new();
     for (constant, output) in triples {
@@ -514,10 +513,9 @@ fn project_literal_triple_effects(
         {
             return Err(TypedEchoAdapterError::UnsupportedTypedIr);
         }
-        let [byte] = literal.little_endian() else {
+        let [_byte] = literal.little_endian() else {
             return Err(TypedEchoAdapterError::UnsupportedTypedIr);
         };
-        values.push(*byte);
         result.push(InputInstruction::ConstantInteger {
             bit_width: 8,
             little_endian: literal.little_endian().to_vec(),
@@ -530,11 +528,8 @@ fn project_literal_triple_effects(
             value: id.value(),
         });
     }
-    // The guest bridge, not this source/SSA projector, decides which
-    // distinct byte combinations have an independently verified layout.
-    if values.iter().copied().collect::<BTreeSet<_>>().len() != 3 {
-        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-    }
+    // Equal values do not alias SSA identities. The guest bridge decides
+    // which source-ordered combinations have an independently verified layout.
     Ok(result)
 }
 
@@ -3520,7 +3515,7 @@ pub fn compile_canonical_typed_distinct_literal_pair(
     compile_byte_trace(canonical, profile, ByteTraceMode::DistinctLiteralPair)
 }
 
-/// Compile one of three independently verified distinct three-byte C traces.
+/// Compile three source-distinct byte outputs under independent guest proof.
 ///
 /// # Errors
 ///

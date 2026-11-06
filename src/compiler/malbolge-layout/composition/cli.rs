@@ -3757,17 +3757,143 @@ fn verify_distinct_literal_pair(
     Ok(())
 }
 
+// Re-admit a repeated guest output from the staged bytes, never from the
+// proposal's operations. Two writes must explain three independent outputs.
+fn verify_repeated_literal_triple(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    bytes: [u8; 3],
+) -> Result<(), String> {
+    let repeated_first = bytes[0] == bytes[1];
+    if bytes[0] == bytes[2]
+        || !(repeated_first || bytes[1] == bytes[2])
+        || artifact.source.len() != artifact.steps
+    {
+        return Err(String::from("repeated triple effect geometry disagrees"));
+    }
+    let decoded = artifact
+        .source
+        .iter()
+        .enumerate()
+        .map(|(position, &byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(byte),
+                u32::try_from(position).ok()?,
+            )
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("repeated triple decode disagrees")?;
+    let prefix = decoded.iter().take_while(|&&code| code == b'o').count();
+    if prefix >= 12 || decoded.get(prefix) != Some(&b'j') {
+        return Err(String::from("repeated triple relocation disagrees"));
+    }
+    let mut cursor = prefix + 1;
+    let before = decoded[cursor..]
+        .iter()
+        .take_while(|&&code| code == b'o')
+        .count();
+    cursor += before;
+    let output = profile.output_instruction();
+    if before > 12
+        || !matches!(decoded.get(cursor), Some(b'p' | b'*'))
+        || decoded.get(cursor + 1) != Some(&output)
+    {
+        return Err(String::from("repeated triple first write disagrees"));
+    }
+    cursor += 2;
+    if repeated_first {
+        if decoded.get(cursor) != Some(&output) {
+            return Err(String::from("repeated triple first repeat disagrees"));
+        }
+        cursor += 1;
+    }
+    let between = decoded[cursor..]
+        .iter()
+        .take_while(|&&code| code == b'o')
+        .count();
+    cursor += between;
+    if between > 12
+        || !matches!(decoded.get(cursor), Some(b'p' | b'*'))
+        || decoded.get(cursor + 1) != Some(&output)
+    {
+        return Err(String::from("repeated triple second write disagrees"));
+    }
+    cursor += 2;
+    if !repeated_first {
+        if decoded.get(cursor) != Some(&output) {
+            return Err(String::from("repeated triple last repeat disagrees"));
+        }
+        cursor += 1;
+    }
+    if decoded.get(cursor) != Some(&b'v') || cursor + 1 != decoded.len() {
+        return Err(String::from("repeated triple termination disagrees"));
+    }
+    let operations = decoded
+        .iter()
+        .map(|&code| match code {
+            b'o' => Some(LinearOpcode::NoOperation),
+            b'j' => Some(LinearOpcode::RelocateDataPointer),
+            b'p' => Some(LinearOpcode::CrazyData),
+            b'*' => Some(LinearOpcode::RotateData),
+            b'v' => Some(LinearOpcode::Halt),
+            code if code == output => Some(LinearOpcode::OutputByte),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("repeated triple instructions disagree")?;
+    let layout = admit_linear_layout(
+        profile,
+        &operations,
+        &artifact.source,
+        LinearProfileIdentity {
+            fingerprint: profile.fingerprint(),
+            id: profile.id(),
+        },
+    )
+    .map_err(|error| format!("repeated triple source admission: {error:?}"))?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() != 2
+        || writes[0] == writes[1]
+        || writes
+            .iter()
+            .any(|&address| address < layout.source().len() as u32)
+        || layout.executed_code_positions().len() != artifact.steps
+    {
+        return Err(String::from("repeated triple data writes disagree"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("repeated triple guest load: {error:?}")
+                })?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output() != bytes
+        {
+            return Err(String::from("repeated triple guest output disagrees"));
+        }
+    }
+    Ok(())
+}
+
 // Independent file-publisher proof that every byte was guest-computed.
 fn verify_distinct_literal_triple(
     profile: &'static malbolge::ProfileDescriptor,
     artifact: &VerifiedSource,
     bytes: [u8; 3],
 ) -> Result<(), String> {
-    if bytes[0] == bytes[1]
-        || bytes[1] == bytes[2]
-        || bytes[0] == bytes[2]
-    {
-        return Err(String::from("distinct-literal triple has duplicate bytes"));
+    if bytes[0] == bytes[1] || bytes[1] == bytes[2] {
+        return verify_repeated_literal_triple(profile, artifact, bytes);
+    }
+    if bytes[0] == bytes[2] {
+        return Err(String::from("distinct-literal triple has nonadjacent repeats"));
     }
     // Decode the actual staged source, not the bridge's proposed plan.
     // Both the legacy three-crazy grammar and its bounded p/* stride

@@ -181,6 +181,63 @@ class CompoundCPipelineTests(unittest.TestCase):
                     f"malbolge-steps-v1:{bound + 1}\n".encode(),
                 )
 
+    def test_repeated_conditional_loop_output_reaches_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_repeated_output.c"
+        )
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(3):
+            following = (previous + current) & 255
+            expected.append(following ^ (58 if following % 2 == 0 else 59))
+            previous, current = current, following
+        self.assertEqual(bytes(expected), b"88>")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "repeated-loop.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/loop-repeated-output-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            execution = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(execution.returncode, 0, execution.stderr)
+            self.assertEqual(execution.stdout, bytes(expected))
+            self.assertRegex(execution.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            # Multiplication lies outside the source-proven arithmetic slice;
+            # a modified program must not inherit the valid guest witness.
+            mutated = Path(scratch) / "repeated-mutation.c"
+            mutated.write_text(source.read_text().replace("next ^ 58U", "next * 58U"))
+            rejected = Path(scratch) / "repeated-mutation.malbolge"
+            refused = subprocess.run(
+                [sys.executable, "-B", str(DRIVER), "--repository-tools",
+                 "--source-id", "tests/loop-repeated-mutation-v1", "--capsule",
+                 "--output", str(rejected), str(mutated)],
+                check=False, capture_output=True, timeout=90,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(rejected.exists())
+
     def test_distinct_conditional_loop_outputs_reach_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
