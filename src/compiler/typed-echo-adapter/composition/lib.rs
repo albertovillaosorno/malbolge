@@ -337,8 +337,8 @@ fn project_rotated_literal_effects(
     Ok(instructions)
 }
 
-// Source-proven two distinct constants: zero then one of four witnessed
-// printable bytes, or one of three independently witnessed nonzero pairs.
+// Source-proven two constants: zero then a witnessed printable byte, or
+// two distinct nonzero bytes whose realizability belongs to guest layout.
 // Both modes retain exact source spans and separate SSA definitions.
 fn project_literal_pair_effects(
     module: &Module,
@@ -425,10 +425,11 @@ fn project_literal_pair_effects(
             | ByteTraceMode::DistinctLiteralFortySix
             | ByteTraceMode::DistinctLiteralFortySeven => false,
             | ByteTraceMode::DistinctLiteralFortyEight => false,
-            ByteTraceMode::DistinctLiteralPair => matches!(
-                (zero.little_endian(), literal.little_endian()),
-                ([b'Y'], [b'/' | b'$']) | ([b'Q'], [b'.'])
-            ),
+            ByteTraceMode::DistinctLiteralPair => {
+                zero.little_endian() != [0]
+                    && literal.little_endian() != [0]
+                    && zero.little_endian() != literal.little_endian()
+            }
             ByteTraceMode::AdjacentEcho
             | ByteTraceMode::EmptyVoid
             | ByteTraceMode::IdentityByteBitcast
@@ -953,7 +954,7 @@ fn project_literal_eleven_effects(
     Ok(instructions)
 }
 
-// Twelve exact byte constants, each with its own source-derived SSA value.
+// Twelve independent source-bound byte definitions; layout owns actual values.
 fn project_literal_twelve_effects(
     module: &Module,
     original: &[typed::LocatedInstruction],
@@ -964,7 +965,7 @@ fn project_literal_twelve_effects(
     }
     let mut instructions = Vec::with_capacity(24);
     let mut ids = BTreeSet::new();
-    for (index, [constant, output]) in pairs.iter().enumerate() {
+    for [constant, output] in pairs {
         let (
             Instruction::ConstantInteger {
                 constant: literal,
@@ -980,11 +981,6 @@ fn project_literal_twelve_effects(
             || literal.bit_width() != 8
             || id != value
             || !ids.insert(*id)
-            || literal.little_endian()
-                != b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd"
-                    .get(index)
-                    .map(std::slice::from_ref)
-                    .unwrap_or(&[])
         {
             return Err(TypedEchoAdapterError::UnsupportedTypedIr);
         }

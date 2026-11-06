@@ -153,7 +153,9 @@ a compiler capability gap, not a reason to return to N+1.
   constants and ordered output effects; the real normative guest VM emits
   both bytes. Mutated C and pinned JSON AST regressions refuse invalid or
   unwitnessed traces without publication. Retrying the original twelve-byte
-  Fibonacci program now reaches the independent typed byte backend and
-  refuses its unmatched `--distinct-literal-twelve` witness with
-  `UnsupportedTypedIr`; the earlier first-declaration refusal is historical.
-  P0 remains pending on generalized guest byte-stream realization.
+  Fibonacci program now passes structural typed/ternary byte admission and
+  refuses the unmatched `--distinct-literal-twelve` guest witness with
+  `Layout(UnsupportedEffectTrace)` and no published artifact. Unwitnessed
+  two-byte pairs also fail at layout, preserving their checked SSA values.
+  The earlier first-declaration refusal is historical; P0 remains pending
+  on generalized guest byte-stream realization.

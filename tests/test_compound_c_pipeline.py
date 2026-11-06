@@ -118,10 +118,10 @@ class CompoundCPipelineTests(unittest.TestCase):
                     rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
                 )
                 return
-            # The source-backed loop now projects all twelve effects. The
-            # fixed-tuple guest witness does not realize this binary stream.
+            # Typed constant/SSA admission succeeds for the full C loop;
+            # only the positional guest byte-stream layout lacks a witness.
             self.assertIn(
-                b"canonical typed byte bridge rejected: UnsupportedTypedIr",
+                b"canonical typed byte bridge rejected: Layout(UnsupportedEffectTrace)",
                 process.stderr,
             )
             self.assertNotIn(b"normalized frontend rejected", process.stderr)
@@ -254,7 +254,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             )
             self.assertNotEqual(compiled.returncode, 0)
             self.assertIn(
-                b"canonical typed byte bridge rejected: UnsupportedTypedIr",
+                b"canonical typed byte bridge rejected: Layout(UnsupportedEffectTrace)",
                 compiled.stderr,
             )
             self.assertNotIn(b"normalized frontend rejected", compiled.stderr)

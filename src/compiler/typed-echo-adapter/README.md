@@ -270,9 +270,10 @@ rejects this nonadjacent trace. Neither path realizes EOF, failed I/O, guest
 byte storage, arbitrary C operations, source authentication or guest ABI.
 
 The distinct-nonzero-literal-pair mode preserves two separate source-bound
-`u8` SSA constants and their output references. Only `Y/`, `Y$`, and `Q.`
-produce a fully independently decoded and guest-verified artifact. Other
-constant pairs and additional effects remain unsupported.
+`u8` SSA constants and their output references. All different nonzero pairs
+pass structural typed admission; only `Y/`, `Y$`, and `Q.` have verified
+guest layouts. Other pairs fail there as `Layout(UnsupportedEffectTrace)`
+without publication; unsupported typed effects still reject earlier.
 
 ### Three independently verified literal outputs
 
@@ -373,14 +374,16 @@ produce 11 distinct bytes in 24 VM steps; the normative VM verifies
 raw and capsule outputs without host computation substitution. This
 finite trace is not general C byte-stream lowering.
 
-The `--distinct-literal-twelve` C path admits the exact twelve-byte
-`51 37 34 38 fb ce 9f 98 b8 b4 83 cd` witness. One reached no-op,
-explicit relocation, eleven disjoint `CrazyData` writes and one
+The `--distinct-literal-twelve` C path accepts twelve structural
+source-proven byte SSA/output pairs, but only the exact twelve-byte
+`51 37 34 38 fb ce 9f 98 b8 b4 83 cd` trace has a guest witness.
+One reached no-op, explicit relocation, eleven disjoint `CrazyData` writes and one
 `RotateData` write at the fifth arithmetic position emit twelve guest
 bytes in 27 VM steps. The normative VM independently verifies both
 source-bound outputs and input independence before publication. Other
-byte sequences, incomplete prefixes, and forged SSA are not admitted;
-this is not general binary-stream lowering.
+byte sequences fail at layout with `Layout(UnsupportedEffectTrace)`;
+incomplete prefixes and forged SSA fail during typed admission. This is
+not general binary-stream lowering.
 
 The `--distinct-literal-thirteen` C path admits only the exact thirteen
 source-ordered bytes `42 43 30 16 54 09 bf c6 c8 87 e3 ab a4` (hex).

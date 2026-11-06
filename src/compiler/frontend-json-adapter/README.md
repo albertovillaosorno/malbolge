@@ -644,7 +644,8 @@ trace mode for up to twelve source-proven selected effects; the backend
 must still verify the exact ordered values. The full branch-and-loop probe
 `local_loop_distinct_output.c` emits `Q.` from separate even/odd outputs
 in the normative VM. Changing its source output byte refuses publication.
-The original twelve-byte Fibonacci experiment passes this C projection but
-is rejected by the closed `--distinct-literal-twelve` backend as
-`UnsupportedTypedIr`: its exact nonzero sequence is not witnessed. This
-change is neither a general nonzero stream backend nor runtime C state.
+The original twelve-byte Fibonacci experiment passes this C projection
+and structural typed/ternary admission but is rejected by the closed
+`--distinct-literal-twelve` guest layout as
+`Layout(UnsupportedEffectTrace)`: its exact nonzero sequence is not
+witnessed. This is neither a general stream backend nor runtime C state.

@@ -324,11 +324,16 @@ A C mutation changing `83U` to `82U` yields an unwitnessed pair and refuses
 at the backend without publishing a guest artifact.
 
 The **original full twelve-byte** C program now passes this bounded C
-projection, but `--distinct-literal-twelve` rejects its actual stream with
-`UnsupportedTypedIr`: its independent guest witness is for a *different*
-fixed twelve-byte sequence. The public driver publishes no artifact. This
-is not runtime C execution, arbitrary byte synthesis or P0 completion;
-verified general guest byte-stream lowering remains the concrete blocker.
+projection and the structural typed-byte adapter, which checks all twelve
+source-backed `u8` definitions and SSA uses without choosing output values.
+The canonical ternary bridge then reaches `--distinct-literal-twelve`, whose
+independently witnessed guest layout is for a *different* fixed sequence.
+It rejects with `Layout(UnsupportedEffectTrace)` and publishes no artifact.
+The two-byte adapter similarly retains distinct nonzero SSA and delegates
+which pairs are executable to the verified guest layout. An unwitnessed pair
+now fails at that boundary, not while decoding the typed source. Neither
+change synthesizes arbitrary bytes, adds runtime C state, or completes P0;
+verified general guest byte-stream lowering remains the blocker.
 
 ### Later verification matrix
 

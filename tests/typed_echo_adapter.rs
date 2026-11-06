@@ -3594,6 +3594,96 @@ fn canonical_identity_byte_trace_exact_4096_cell_boundary() -> Result<(), String
     Ok(())
 }
 
+// The typed stage preserves complete value/SSA evidence even for output
+// sequences that the independently witnessed guest layout cannot realize.
+fn source_bound_literal_trace(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let mut instructions = Vec::with_capacity(bytes.len().saturating_mul(2));
+    for (index, byte) in bytes.iter().copied().enumerate() {
+        let id = u32::try_from(index).map_err(|error| error.to_string())?;
+        let at = id.saturating_mul(2);
+        instructions.push(LocatedInstruction::new(
+            Instruction::ConstantInteger {
+                constant: adapter::typed::IntegerConstant::new(8, vec![byte]),
+                result: ValueId::new(id),
+                type_id: TypeId::new(0),
+            },
+            span(at, at.saturating_add(1)),
+        ));
+        instructions.push(LocatedInstruction::new(
+            Instruction::ByteOutput {
+                value: ValueId::new(id),
+            },
+            span(at.saturating_add(1), at.saturating_add(2)),
+        ));
+    }
+    wire(&fixture_with_instructions(
+        instructions,
+        "fixtures/typed-distinct-literal-trace.c",
+    )?)
+}
+
+#[test]
+fn literal_witness_selection_stays_in_guest_layout() -> Result<(), String> {
+    const TWELVE_GUEST: &[u8] =
+        b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd";
+    const FIBONACCI: &[u8] =
+        &[2, 89, 95, 8, 87, 79, 34, 109, 3, 144, 179, 35];
+    for (bytes, twelve) in [
+        (b"Q.".as_slice(), false),
+        (TWELVE_GUEST, true),
+    ] {
+        let canonical = source_bound_literal_trace(bytes)?;
+        let compiled = if twelve {
+            adapter::compile_canonical_typed_distinct_literal_twelve(
+                &canonical, current_profile(),
+            )
+        } else {
+            adapter::compile_canonical_typed_distinct_literal_pair(
+                &canonical, current_profile(),
+            )
+        }
+        .map_err(|error| format!("witnessed typed trace: {error:?}"))?;
+        let ternary = canonical_ternary_program(compiled.ternary_bytes())
+            .map_err(|error| format!("ternary canonical trace: {error:?}"))?;
+        if ternary.source_id != "fixtures/typed-distinct-literal-trace.c" {
+            return Err(String::from("literal witness lost source identity"));
+        }
+        let mut vm = ProfileMachine::from_source(
+            current_profile(), compiled.layout().source(), vec![255, 128, 0],
+        )
+        .map_err(|error| format!("typed literal VM load: {error:?}"))?;
+        if !matches!(vm.run(4096), Ok(RunOutcome::Terminated { .. }))
+            || vm.output() != bytes
+            || vm.input_consumed() != 0
+        {
+            return Err(String::from("literal VM effect witness drift"));
+        }
+    }
+    for (bytes, twelve) in [
+        (b"Q/".as_slice(), false),
+        (FIBONACCI, true),
+    ] {
+        let canonical = source_bound_literal_trace(bytes)?;
+        let rejected = if twelve {
+            adapter::compile_canonical_typed_distinct_literal_twelve(
+                &canonical, current_profile(),
+            )
+        } else {
+            adapter::compile_canonical_typed_distinct_literal_pair(
+                &canonical, current_profile(),
+            )
+        };
+        if rejected != Err(TypedEchoAdapterError::Layout(
+            adapter::bridge::ByteEchoBridgeError::UnsupportedEffectTrace,
+        )) {
+            return Err(format!(
+                "unwitnessed trace rejection drift: {rejected:?}"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn typed_rotated_literal_module_with_outputs(byte: u8, outputs: usize) -> Result<Module, String> {
     let mut effects = vec![IdentityEffect::Literal { result: 0, byte }];
     effects.extend(repeat_n(IdentityEffect::Output(0), outputs));
