@@ -136,3 +136,14 @@ a compiler capability gap, not a reason to return to N+1.
   inside the loop refuse without guest publication. This is compiler-time
   loop evaluation with one final guest output, not runtime guest loops.
   The original twelve-output Fibonacci loop remains unsupported.
+- A complete twelve-iteration stateful C probe now evaluates both
+  source-checked conditional `putchar` arms on each loop iteration and
+  retains only selected output effects. The pinned AST proves twelve
+  zero-valued calls using `next ^ next` or `next - next` after a masked
+  Fibonacci sum; canonical typed IR retains twelve guest output effects.
+  The normative VM emits twelve zero bytes in 13 steps, and a seven-step
+  variant emits seven in eight VM steps. Both-arm mutation and nonzero
+  output-stream refusal tests fail closed. The original twelve *nonzero*
+  Fibonacci outputs are still unsupported by the finite byte-stream
+  backend. This folds C state at compile time; it is not guest runtime
+  control flow, and P0 remains pending.

@@ -273,6 +273,34 @@ only when its actual guest VM output matches the independent reference.
 Do not substitute a host output transcript for guest execution or retreat
 to another 49-byte literal-output demonstration to avoid this failure.
 
+### Bounded branch-selected output inside a source-proven loop
+
+The full twelve-iteration, branch-selected-output Fibonacci program was
+retried. Before this change it still failed at the first local declaration.
+A source-close variant, `local_loop_branch_output.c`, retains the same
+three-state updates, masked sum, conditional and `putchar` inside the loop,
+but proves zero using `next ^ next` in the even arm and `next - next` in
+the odd arm. The pinned Clang AST is consumed completely for both arms on
+every iteration; only the selected call is added to the ordered typed
+output effects. Its `u32` state and loop counter are still **evaluated by
+the compiler**, not by Malbolge.
+
+The selected calls produce twelve verified zero bytes, with four even and
+eight odd arms. The canonical typed IR contains one zero-valued SSA
+constant and twelve distinct `ByteOutput` effects. The existing
+zero-output backend generates a real guest capsule, and the normative VM
+emits `00` twelve times in thirteen steps; a seven-iteration variant
+emits seven zero bytes in eight steps. Tests refuse an unknown callee,
+altered predicate, extra effects and a nonzero stream without publishing
+a guest artifact. This is a new observable control-flow effect boundary,
+not a fixed literal-count fixture.
+
+The original compound program still requires **arbitrary nonzero output
+sequences**: its reference is `02 59 5f 08 57 4f 22 6d 03 90 b3 23`.
+The finite witnessed backend cannot yet realize that ordered sequence,
+and the adapter explicitly rejects the unverified trace. General guest
+state, dynamic loop execution and P0 completion remain pending.
+
 ### Later verification matrix
 
 Only after the complete experiment succeeds, use a deterministic corpus

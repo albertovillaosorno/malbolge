@@ -617,5 +617,24 @@ loop. Independent C arithmetic gives `b = 42` and `42 ^ 107 = 65`; the
 normative guest emits `0x41` in 31 VM steps. A seven-iteration variant also
 reaches independent VM parity, while altered control and output effects
 reject. The Malbolge guest executes only the **final output**; this is not
-runtime loop execution. The complete Fibonacci program's twelve outputs
-inside the loop still require guest control-flow and state lowering.
+runtime loop execution. The complete Fibonacci program's twelve nonzero outputs
+inside the loop still require a verified general byte-stream backend.
+
+### Branch-selected `putchar` effects inside a bounded `for`
+
+The source-proven loop evaluator now accepts one `putchar` in each arm of
+an `if ((next & 1U) == 0U)` inside its brace-delimited loop. It validates
+both Clang call subtrees and their evaluated arguments on every iteration,
+keeps only the selected effect in source execution order, and rejects
+unknown calls, extra effects or unchecked arithmetic. The tracked
+`local_loop_branch_output.c` retains Fibonacci state and emits zero by
+`next ^ next` or `next - next`, according to the branch. Both arm proofs
+must succeed even when one arm is not selected.
+
+A twelve-iteration source compiles to one zero SSA and twelve separate
+`ByteOutput` instructions, then executes as twelve guest zero bytes in
+13 normative VM steps. A seven-iteration variant reaches seven bytes in
+eight steps. The backend supports this repeated-zero case, not arbitrary
+source-derived byte streams: nonzero multi-byte output rejects without an
+artifact. All C loop state and predicates remain compiler-time constants,
+not guest runtime arithmetic or control flow.

@@ -520,10 +520,6 @@ pub(super) fn canonical_local_initialized_output(
 /// Publish a single source-proven byte after the caller proves every C effect.
 /// Shared by the original single-local and straight-line multi-local proofs.
 #[expect(
-    clippy::too_many_lines,
-    reason = "canonical typed byte publisher"
-)]
-#[expect(
     clippy::redundant_pub_crate,
     reason = "shared closed local projection"
 )]
@@ -531,14 +527,44 @@ pub(super) fn emit_verified_local_byte(
     input: &Artifact,
     proven: ProvenLocalOutput<'_>,
 ) -> Result<super::CanonicalGuestProjection, FrontendJsonError> {
+    emit_verified_local_bytes(input, &[proven])
+}
+
+/// Preserve every checked `putchar` effect, including selected loop arms.
+/// The guest backend currently admits repeated zero output or one seeded byte.
+#[expect(
+    clippy::too_many_lines,
+    reason = "canonical typed byte publisher"
+)]
+#[expect(
+    clippy::redundant_pub_crate,
+    reason = "shared closed local projection"
+)]
+pub(super) fn emit_verified_local_bytes(
+    input: &Artifact,
+    outputs: &[ProvenLocalOutput<'_>],
+) -> Result<super::CanonicalGuestProjection, FrontendJsonError> {
+    let first = outputs.first().ok_or(FrontendJsonError::Unsupported)?;
     let ProvenLocalOutput {
         body,
         byte,
-        call,
         function,
         returned,
         source,
-    } = proven;
+        ..
+    } = *first;
+    if outputs.len() > 33
+        || (outputs.len() > 1 && byte != 0)
+        || outputs.iter().any(|item| {
+            item.body.id != body.id
+                || item.function.id != function.id
+                || item.returned.map(|node| node.id)
+                    != returned.map(|node| node.id)
+                || item.byte != byte
+        })
+    {
+        return Err(FrontendJsonError::Unsupported);
+    }
     let name = function
         .name
         .clone()
@@ -594,20 +620,20 @@ pub(super) fn emit_verified_local_byte(
         .blocks()
         .first()
         .ok_or(FrontendJsonError::InvalidTypedIr)?;
-    let instructions = vec![
-        LocatedInstruction::new(
-            Instruction::ConstantInteger {
-                constant: IntegerConstant::new(8, vec![byte]),
-                result: ValueId::new(0),
-                type_id: TypeId::new(0),
-            },
-            typed_span(&source.span),
-        ),
-        LocatedInstruction::new(
+    let mut instructions = vec![LocatedInstruction::new(
+        Instruction::ConstantInteger {
+            constant: IntegerConstant::new(8, vec![byte]),
+            result: ValueId::new(0),
+            type_id: TypeId::new(0),
+        },
+        typed_span(&source.span),
+    )];
+    for output in outputs {
+        instructions.push(LocatedInstruction::new(
             Instruction::ByteOutput { value: ValueId::new(0) },
-            typed_span(&call.span),
-        ),
-    ];
+            typed_span(&output.call.span),
+        ));
+    }
     let compiled_function = Function::new(FunctionSpec {
         blocks: vec![BasicBlock::new(BasicBlockSpec {
             id: block.id(),

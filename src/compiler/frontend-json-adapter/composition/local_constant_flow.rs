@@ -32,7 +32,7 @@
 //! Source-backed constant propagation with bounded conditional selection.
 
 use super::local_initialized_output::{
-    assigned_local_reference, clean, correct_node, emit_verified_local_byte,
+    assigned_local_reference, clean, correct_node, emit_verified_local_bytes,
     literal_byte, span_within, typed_operator,
 };
 use super::{Artifact, FrontendJsonError, Node, StorageDuration};
@@ -57,9 +57,11 @@ struct Flow<'node> {
     locals: Vec<Local<'node>>,
     loop_counter: Option<&'node str>,
     nodes: &'node [Node],
+    outputs: Vec<OutputCall<'node>>,
     position: usize,
 }
 
+#[derive(Clone, Copy)]
 struct OutputCall<'node> {
     byte: u8,
     call: &'node Node,
@@ -178,6 +180,56 @@ impl<'node> Flow<'node> {
             self.locals = then_state;
         }
         Some(statement.span.end.byte)
+    }
+
+    /// Check both branches of a source-constant conditional output, retaining
+    /// exactly the selected `putchar` effect for each loop iteration.
+    fn conditional_output(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+    ) -> Option<(u32, OutputCall<'node>)> {
+        let statement = self.take(body.id, "if-statement")?;
+        if !clean(statement)
+            || !span_within(&body.span, &statement.span)
+            || previous_end > statement.span.begin.byte
+        {
+            return None;
+        }
+        let (take_then, condition) = self.condition(statement)?;
+        let then_body = self.take(statement.id, "compound-statement")?;
+        if !clean(then_body)
+            || !span_within(&statement.span, &then_body.span)
+            || condition.span.end.byte >= then_body.span.begin.byte
+        {
+            return None;
+        }
+        let then_call =
+            checked_call(self, then_body, then_body.span.begin.byte)?;
+        if then_call.call.span.end.byte >= then_body.span.end.byte {
+            return None;
+        }
+        let else_body = self.take(statement.id, "compound-statement")?;
+        if !clean(else_body)
+            || !span_within(&statement.span, &else_body.span)
+            || then_body.span.end.byte > else_body.span.begin.byte
+            || else_body.span.end.byte != statement.span.end.byte
+        {
+            return None;
+        }
+        let else_call =
+            checked_call(self, else_body, else_body.span.begin.byte)?;
+        if else_call.call.span.end.byte >= else_body.span.end.byte {
+            return None;
+        }
+        Some((
+            statement.span.end.byte,
+            if take_then {
+                then_call
+            } else {
+                else_call
+            },
+        ))
     }
 
     fn declaration(
@@ -313,7 +365,7 @@ impl<'node> Flow<'node> {
         }
     }
 
-    /// Replay a closed, effect-free loop body against bounded proven locals.
+    /// Replay a closed loop body with checked state and selected outputs.
     /// Each lexical inner declaration dies at the end of its iteration.
     fn loop_body(&mut self, body: &Node) -> Option<()> {
         let mut last_end = body.span.begin.byte;
@@ -329,12 +381,31 @@ impl<'node> Flow<'node> {
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" => self.assignment(body, last_end)?.0,
-                "if-statement" => self.conditional(body, last_end)?,
+                "if-statement" => self.loop_conditional(body, last_end)?,
+                "call-expression" => {
+                    let output = checked_call(self, body, last_end)?;
+                    let end = output.call.span.end.byte;
+                    self.outputs.push(output);
+                    end
+                },
                 _ => return None,
             };
             writes = writes.checked_add(1)?;
         }
         (writes > 0 && last_end < body.span.end.byte).then_some(())
+    }
+
+    fn loop_conditional(&mut self, body: &Node, last_end: u32) -> Option<u32> {
+        let position = self.position;
+        let locals = self.locals.clone();
+        if let Some(end) = self.conditional(body, last_end) {
+            return Some(end);
+        }
+        self.position = position;
+        self.locals = locals;
+        let (end, output) = self.conditional_output(body, last_end)?;
+        self.outputs.push(output);
+        Some(end)
     }
 
     fn peek(&self) -> Option<&'node Node> {
@@ -354,7 +425,7 @@ impl<'node> Flow<'node> {
     }
 
     /// Prove one `for (unsigned i = 0U; i < N; ++i)` and replay its
-    /// source-checked, output-free body, never synthesizing guest control flow.
+    /// source-checked body, never synthesizing guest control flow.
     /// Neither the loop counter nor any other local may escape its C scope.
     #[expect(
         clippy::cognitive_complexity,
@@ -564,7 +635,7 @@ fn checked_argument<'node>(
     }
 }
 
-/// Admit exactly one source-proven output effect after the local writes.
+/// Admit one source-proven call, including its replay in a bounded loop.
 fn checked_call<'node>(
     flow: &mut Flow<'node>,
     body: &Node,
@@ -677,6 +748,7 @@ pub(super) fn canonical_multi_local_output(
         locals: Vec::new(),
         loop_counter: None,
         nodes: &input.nodes,
+        outputs: Vec::new(),
         position: 2,
     };
     let mut last_end = body.span.begin.byte;
@@ -720,16 +792,23 @@ pub(super) fn canonical_multi_local_output(
     if flow.locals.len() < 2 {
         return Err(FrontendJsonError::Unsupported);
     }
-    let OutputCall { byte, call, source } =
-        checked_call(&mut flow, body, last_end)
+    if flow.outputs.is_empty()
+        || flow
+            .peek()
+            .is_some_and(|node| node.kind == "call-expression")
+    {
+        let output = checked_call(&mut flow, body, last_end)
             .ok_or(FrontendJsonError::Unsupported)?;
+        last_end = output.call.span.end.byte;
+        flow.outputs.push(output);
+    }
     let returned = if flow.peek().is_some() {
         let node = flow
             .take(body.id, "return-statement")
             .ok_or(FrontendJsonError::Unsupported)?;
         if !clean(node)
             || !span_within(&body.span, &node.span)
-            || call.span.end.byte > node.span.begin.byte
+            || last_end > node.span.begin.byte
         {
             return Err(FrontendJsonError::Unsupported);
         }
@@ -740,15 +819,19 @@ pub(super) fn canonical_multi_local_output(
     if flow.peek().is_some() {
         return Err(FrontendJsonError::Unsupported);
     }
-    emit_verified_local_byte(
-        &input,
-        super::local_initialized_output::ProvenLocalOutput {
-            body,
-            byte,
-            call,
-            function,
-            returned,
-            source,
-        },
-    )
+    let proven: Vec<_> = flow
+        .outputs
+        .iter()
+        .map(
+            |output| super::local_initialized_output::ProvenLocalOutput {
+                body,
+                byte: output.byte,
+                call: output.call,
+                function,
+                returned,
+                source: output.source,
+            },
+        )
+        .collect();
+    emit_verified_local_bytes(&input, &proven)
 }

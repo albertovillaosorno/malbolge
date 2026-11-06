@@ -41,6 +41,65 @@ use serde_json::{Value, json};
 
 const LOOP: &[u8] =
     include_bytes!("../c-frontend/golden/local_static_loop_output.json");
+const LOOP_OUTPUT: &[u8] =
+    include_bytes!("../c-frontend/golden/local_loop_branch_output.json");
+
+#[test]
+fn selected_loop_output_calls_preserve_twelve_real_effects() {
+    let (wire, mode) = canonical_guest_typed_ir(LOOP_OUTPUT).unwrap();
+    assert_eq!(mode, FrontendGuestMode::InitialZeroOutput);
+    let module = typed::canonical_module(&wire).unwrap();
+    assert_eq!(module.source_id(), "tests/local-loop-branch-output-v1");
+    let instructions = module.functions()[0].blocks()[0].instructions();
+    assert_eq!(instructions.len(), 13);
+    assert!(matches!(
+        instructions[0].instruction(),
+        typed::Instruction::ConstantInteger { constant, .. }
+            if constant.bit_width() == 8 && constant.little_endian() == [0]
+    ));
+    // Independently computed next values: 2, 3, 5, 8, 13, 21,
+    // 34, 55, 89, 144, 233, 121. Only four select the even arm.
+    let lines: Vec<_> = instructions[1..]
+        .iter()
+        .map(|instruction| {
+            assert!(matches!(
+                instruction.instruction(),
+                typed::Instruction::ByteOutput { value } if value.value() == 0
+            ));
+            instruction.span().begin().line()
+        })
+        .collect();
+    assert_eq!(lines, [40, 42, 42, 40, 42, 42, 40, 42, 42, 40, 42, 42]);
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
+fn unsafe_or_nonzero_loop_effects_refuse_promotion() {
+    let original: Value = serde_json::from_slice(LOOP_OUTPUT).unwrap();
+    for (id, key, value) in [
+        (31, "operation", json!("!=")),
+        (39, "reference", json!("external:puts")),
+        (44, "operation", json!("*")),
+        (50, "reference", json!("external:puts")),
+        (55, "operation", json!("+")),
+        (16, "constant_integer", json!("13")),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][id - 1][key] = value;
+        assert_eq!(
+            canonical_guest_typed_ir(&serde_json::to_vec(&changed).unwrap()),
+            Err(FrontendJsonError::Unsupported),
+            "unexpected admission for mutation at node {id}"
+        );
+    }
+    let mut extra = original;
+    // Both selected and unselected arms must be checked in full.
+    extra["nodes"][49]["reference"] = json!("external:puts");
+    assert_eq!(
+        canonical_guest_typed_ir(&serde_json::to_vec(&extra).unwrap()),
+        Err(FrontendJsonError::Unsupported)
+    );
+}
 
 #[test]
 fn bounded_loop_yields_one_source_proven_guest_byte() {

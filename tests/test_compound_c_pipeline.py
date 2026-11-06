@@ -49,6 +49,7 @@ VM = ROOT / ".cache/rust/target/debug/malbolge"
 RESOURCE = ROOT / ".dependencies/llvm/22.1.8/lib/clang/22"
 GUEST_INCLUDE = ROOT / "src/runtime/guest-c-library/contract/include"
 EXPECTED = bytes.fromhex("02595f08574f226d0390b323")
+LOOP_OUTPUT = ROOT / "tests/compiler/c-frontend/accepted/local_loop_branch_output.c"
 
 
 def reference_bytes() -> bytes:
@@ -134,6 +135,90 @@ class CompoundCPipelineTests(unittest.TestCase):
             )
             self.assertNotIn(b"Malformed", process.stderr)
             self.assertFalse(guest.exists(), "unsupported C published a guest")
+
+    def test_branch_selected_output_inside_bounded_loop_reaches_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = LOOP_OUTPUT.read_text()
+        self.assertIn("i < 12U", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for bound in (12, 7):
+                # Independent unsigned C state, predicate and call sequence.
+                previous, current = 1, 1
+                expected = bytearray()
+                for _ in range(bound):
+                    following = (previous + current) & 255
+                    expected.append(
+                        (following ^ following)
+                        if following & 1 == 0
+                        else (following - following)
+                    )
+                    previous, current = current, following
+                source = Path(scratch) / f"loop-{bound}.c"
+                _written = source.write_text(
+                    original.replace("i < 12U", f"i < {bound}U")
+                )
+                guest = Path(scratch) / f"loop-{bound}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/loop-branch-{bound}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(source),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--report-steps"],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, bytes(expected))
+                self.assertEqual(
+                    executed.stderr,
+                    f"malbolge-steps-v1:{bound + 1}\n".encode(),
+                )
+
+    def test_nonzero_conditional_loop_stream_does_not_publish_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = LOOP_OUTPUT.read_text()
+        self.assertIn("next - next", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "nonzero-loop.c"
+            _written = source.write_text(original.replace("next - next", "next ^ 1U"))
+            guest = Path(scratch) / "nonzero.malbolge"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/unsupported-loop-stream-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(b"Unsupported", result.stderr)
+            self.assertFalse(guest.exists())
 
     def test_unsupported_multiplication_rejects_guest_artifact(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
@@ -324,8 +409,12 @@ class CompoundCPipelineTests(unittest.TestCase):
                 (
                     original.replace("i < 8U", "i < 13U"),
                     original.replace("++i", "--i"),
-                    original.replace("        a = b;", "        i = i + 1U;\n        a = b;"),
-                    original.replace("        a = b;", "        putchar(65);\n        a = b;"),
+                    original.replace(
+                        "        a = b;", "        i = i + 1U;\n        a = b;"
+                    ),
+                    original.replace(
+                        "        a = b;", "        putchar(65);\n        a = b;"
+                    ),
                 )
             ):
                 altered = Path(scratch) / f"unsupported-loop-{index}.c"
