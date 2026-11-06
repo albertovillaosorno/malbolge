@@ -3843,10 +3843,8 @@ fn verify_uniform_literal_triple(
             return Err(String::from("uniform triple first write disagrees"));
         }
         cursor += 1;
-        let between = body[cursor..]
-            .iter()
-            .take_while(|&&op| op == b'o')
-            .count();
+        let between =
+            body[cursor..].iter().take_while(|&&op| op == b'o').count();
         cursor += between;
         if between > 20
             || !matches!(body.get(cursor), Some(b'p' | b'*'))
@@ -3887,14 +3885,17 @@ fn verify_uniform_literal_triple(
         .collect();
     if writes.len() != expected_writes
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
-        || writes.iter().any(|&address| address < artifact.source.len() as u32)
+        || writes
+            .iter()
+            .any(|&address| address < artifact.source.len() as u32)
         || layout.executed_code_positions().len() != artifact.steps
     {
         return Err(String::from("uniform triple data writes disagree"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("uniform triple load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| format!("uniform triple load: {error:?}"))?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4035,6 +4036,75 @@ fn verify_repeated_literal_triple(
     Ok(())
 }
 
+/// Independently parse the admitted three-output guest layout grammar.
+///
+/// The four-write variant has exactly one additional arithmetic instruction
+/// before one of the first three output sites. No output is elided, and all
+/// arithmetic writes remain subject to independent layout re-admission.
+fn verify_distinct_triple_grammar(
+    decoded: &[u8],
+    output_instruction: u8,
+) -> Result<usize, String> {
+    let prefix = decoded.iter().take_while(|&&op| op == b'o').count();
+    if prefix >= 94 || decoded.get(prefix) != Some(&b'j') {
+        return Err(String::from(
+            "distinct-literal triple relocation disagrees",
+        ));
+    }
+    let mut cursor = prefix + 1;
+    let mut gaps = Vec::with_capacity(4);
+    let mut after_write = Vec::with_capacity(4);
+    while decoded.get(cursor) != Some(&b'v') {
+        if gaps.len() == 4 {
+            return Err(String::from(
+                "distinct-literal triple exceeds write budget",
+            ));
+        }
+        let rest = decoded
+            .get(cursor..)
+            .ok_or("distinct-literal triple is truncated")?;
+        let gap = rest.iter().take_while(|&&op| op == b'o').count();
+        cursor += gap;
+        if !matches!(decoded.get(cursor), Some(b'p' | b'*')) {
+            return Err(String::from(
+                "distinct-literal triple effect disagrees",
+            ));
+        }
+        cursor += 1;
+        let has_output = decoded.get(cursor) == Some(&output_instruction);
+        if has_output {
+            cursor += 1;
+        }
+        gaps.push(gap);
+        after_write.push(has_output);
+    }
+    if cursor + 1 != decoded.len() {
+        return Err(String::from(
+            "distinct-literal triple termination disagrees",
+        ));
+    }
+    match (gaps.as_slice(), after_write.as_slice()) {
+        ([a, b, c], [true, true, true])
+            if (*a == 0 && *b == 0 && *c == 0)
+                || (prefix < 12 && [a, b, c].iter().all(|&gap| *gap <= 8)) =>
+        {
+            Ok(3)
+        },
+        ([a, b, c, d], pattern)
+            if prefix < 2
+                && *a <= 1
+                && *b <= 2
+                && *c <= 8
+                && *d <= 12
+                && pattern.get(3) == Some(&true)
+                && pattern.iter().filter(|&&output| output).count() == 3 =>
+        {
+            Ok(4)
+        },
+        _ => Err(String::from("distinct-literal triple grammar disagrees")),
+    }
+}
+
 // Independent file-publisher proof that every byte was guest-computed.
 fn verify_distinct_literal_triple(
     profile: &'static malbolge::ProfileDescriptor,
@@ -4048,8 +4118,8 @@ fn verify_distinct_literal_triple(
     // output positions still need independent guest arithmetic writes, even
     // if the first and third observed low bytes happen to agree.
     // Decode the actual staged source, not the bridge's proposed plan.
-    // Both the legacy three-crazy grammar and its bounded p/* stride
-    // generalization require three separate out-of-source memory writes.
+    // The grammar independently distinguishes three-write and four-write
+    // layouts; every guest arithmetic write must be disjoint from source.
     if artifact.source.len() != artifact.steps {
         return Err(String::from("distinct-literal triple geometry disagrees"));
     }
@@ -4059,38 +4129,14 @@ fn verify_distinct_literal_triple(
         .enumerate()
         .map(|(position, &byte)| {
             malbolge::decode_profile_instruction(
-                u32::from(byte), u32::try_from(position).ok()?,
+                u32::from(byte),
+                u32::try_from(position).ok()?,
             )
         })
         .collect::<Option<Vec<_>>>()
         .ok_or("distinct-literal triple decode disagrees")?;
-    let prefix = decoded.iter().take_while(|&&op| op == b'o').count();
-    if prefix >= 94 || decoded.get(prefix) != Some(&b'j') {
-        return Err(String::from("distinct-literal triple relocation disagrees"));
-    }
-    let mut cursor = prefix + 1;
-    let mut gaps = [0usize; 3];
-    for gap in &mut gaps {
-        let rest = decoded
-            .get(cursor..)
-            .ok_or("distinct-literal triple is truncated")?;
-        *gap = rest.iter().take_while(|&&op| op == b'o').count();
-        cursor += *gap;
-        if !matches!(decoded.get(cursor), Some(b'p' | b'*'))
-            || decoded.get(cursor + 1) != Some(&profile.output_instruction())
-        {
-            return Err(String::from("distinct-literal triple effect disagrees"));
-        }
-        cursor += 2;
-    }
-    if decoded.get(cursor) != Some(&b'v') || cursor + 1 != decoded.len() {
-        return Err(String::from("distinct-literal triple termination disagrees"));
-    }
-    let direct = gaps == [0; 3];
-    let strided = prefix < 12 && gaps.iter().all(|&gap| gap <= 8);
-    if !direct && !strided {
-        return Err(String::from("distinct-literal triple grammar disagrees"));
-    }
+    let expected_writes =
+        verify_distinct_triple_grammar(&decoded, profile.output_instruction())?;
     let operations = decoded
         .iter()
         .map(|&code| match code {
@@ -4122,9 +4168,12 @@ fn verify_distinct_literal_triple(
         .flatten()
         .copied()
         .collect();
-    if writes.len() != 3
-        || writes.iter().copied().collect::<BTreeSet<_>>().len() != 3
-        || writes.iter().any(|&address| address < artifact.source.len() as u32)
+    if writes.len() != expected_writes
+        || writes.iter().copied().collect::<BTreeSet<_>>().len()
+            != expected_writes
+        || writes
+            .iter()
+            .any(|&address| address < artifact.source.len() as u32)
         || layout.executed_code_positions().len() != artifact.steps
     {
         return Err(String::from("distinct-literal triple writes disagree"));

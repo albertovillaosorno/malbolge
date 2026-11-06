@@ -654,3 +654,25 @@ byte's actual typed SSA definition and refuse altered operators, forged
 symbols, operand types, ancestry and shift counts. This bounded constant
 projection does not execute C shifts or branches in the guest and cannot
 synthesize the original twelve-byte Fibonacci stream. Its P0 remains open.
+
+### Additional guest write for source-proven three-byte Fibonacci loops
+
+A new full three-iteration source experiment uses the original Fibonacci
+local-state transfer, bounded loop and conditional output, changing only the
+odd-arm XOR constant to `0x3d`. Its independently evaluated byte trace is
+`02 3e 38`. The canonical C frontend and typed/ternary bridge admit its
+ordered source effects, while the guest executes four separate relocated
+`p`/`*` arithmetic writes and three actual output instructions. This
+expands the earlier three-write guest grammar by allowing a fourth write
+before one of the output sites, without inventing a host output callback.
+
+The proposal filter caches position-encoded source-length-dependent memory
+suffixes and checks predicted byte values before asking the independent
+layout encoder to admit a candidate. The separate file publisher parses
+its exact decoded instruction grammar, requires every guest data write to
+be disjoint and out-of-source, and runs the normative VM on empty and
+nonempty input. Independent proposal-model comparisons, source-backed
+regressions and VM parity are required; cached previews have no authority.
+The earlier original three-byte prefix `02 59 5f` still has no admitted
+witness in the bounded grammar; the full twelve-byte Fibonacci target and
+runtime guest-side C control flow remain pending.

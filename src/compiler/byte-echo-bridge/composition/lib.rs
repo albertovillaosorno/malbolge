@@ -46,6 +46,9 @@ pub mod ternary;
 #[cfg(test)]
 #[path = "../../../../tests/compiler/bridge/three_write_preview.rs"]
 mod three_write_preview_tests;
+#[cfg(test)]
+#[path = "../../../../tests/compiler/bridge/four_write_preview.rs"]
+mod four_write_preview_tests;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::iter::repeat_n;
@@ -1821,6 +1824,185 @@ fn verified_three_write_single_output_layout(
             source_cells,
         ) {
             return Some(layout);
+        }
+    }
+    None
+}
+
+/// Cache only the immutable loader-expanded data suffix of each source length.
+///
+/// Every admitted candidate ends with the same position-encoded output/halt
+/// cells at a given length. The Malbolge crazy expansion depends only on the
+/// two previous cells; the earlier code is never read through relocated data
+/// addresses and is not part of this disposable proposal cache.
+fn cached_output_tail<'a>(
+    source_cells: &[[u8; 6]],
+    memory_by_length: &'a mut BTreeMap<usize, Vec<u32>>,
+    source_length: usize,
+    last_address: usize,
+) -> Option<&'a [u32]> {
+    let output_cell = *source_cells
+        .get(source_length.checked_sub(2)?)?
+        .get(4)?;
+    let halt_cell = *source_cells
+        .get(source_length.checked_sub(1)?)?
+        .get(5)?;
+    let memory = memory_by_length.entry(source_length).or_insert_with(|| {
+        let mut expanded = vec![0u32; source_length.saturating_sub(2)];
+        expanded.extend([u32::from(output_cell), u32::from(halt_cell)]);
+        expanded
+    });
+    while memory.len() <= last_address {
+        let mut tail = memory.iter().rev();
+        let latest = *tail.next()?;
+        let previous = *tail.next()?;
+        memory.push(malbolge::profile_crazy(previous, latest, 15));
+    }
+    Some(memory)
+}
+
+/// Preview three real outputs from four disjoint arithmetic writes.
+///
+/// One write precedes an output without emitting a byte. The deferred output
+/// can follow the first, second or third write. Identical source lengths have
+/// identical loader-expanded tails: the final two source cells encode `<` and
+/// `v`, and all arithmetic writes are beyond the complete source. This is a
+/// proposal filter, never a publishing authority.
+fn preview_four_write_triple(
+    source_cells: &[[u8; 6]],
+    memory_by_length: &mut BTreeMap<usize, Vec<u32>>,
+    geometry: [usize; 5],
+    writes: [LinearOpcode; 4],
+    deferred_output: usize,
+    expected: [u8; 3],
+) -> Option<[u8; 3]> {
+    let [padding, before, between_first, between_second, between_third] =
+        geometry;
+    let strides = [before, between_first, between_second, between_third];
+    let source_length = strides.iter().copied().fold(
+        padding.saturating_add(9),
+        usize::saturating_add,
+    );
+    let relocated = usize::from(*source_cells.get(padding)?.get(1)?);
+    if relocated < source_length
+        || relocated.saturating_add(source_length) >= 4096
+        || deferred_output >= 3
+    {
+        return None;
+    }
+    let memory = cached_output_tail(
+        source_cells,
+        memory_by_length,
+        source_length,
+        relocated.saturating_add(source_length),
+    )?;
+    let mut accumulator = 0u32;
+    let mut address = relocated.saturating_add(1);
+    let mut observed = [0; 3];
+    let mut output_index = 0;
+    for (index, (operation, stride)) in
+        writes.into_iter().zip(strides).enumerate()
+    {
+        address = address.saturating_add(stride);
+        let word = *memory.get(address)?;
+        accumulator = match operation {
+            LinearOpcode::CrazyData => {
+                malbolge::profile_crazy(word, accumulator, 15)
+            },
+            LinearOpcode::RotateData => {
+                word / 3 + (word % 3) * HIGH_TRIT_WEIGHT
+            },
+            _ => return None,
+        };
+        address = address.saturating_add(1);
+        if index != deferred_output {
+            observed[output_index] = accumulator as u8;
+            if observed[output_index] != expected[output_index] {
+                return None;
+            }
+            output_index += 1;
+            address = address.saturating_add(1);
+        }
+    }
+    Some(observed)
+}
+
+fn four_write_triple_operations(
+    geometry: [usize; 5],
+    writes: [LinearOpcode; 4],
+    deferred_output: usize,
+) -> Vec<LinearOpcode> {
+    let [padding, before, between_first, between_second, between_third] =
+        geometry;
+    let mut operations = vec![LinearOpcode::NoOperation; padding];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for (index, (write, stride)) in writes
+        .into_iter()
+        .zip([before, between_first, between_second, between_third])
+        .enumerate()
+    {
+        operations.extend(repeat_n(LinearOpcode::NoOperation, stride));
+        operations.push(write);
+        if index != deferred_output {
+            operations.push(LinearOpcode::OutputByte);
+        }
+    }
+    operations.push(LinearOpcode::Halt);
+    operations
+}
+
+/// Search one additional real write at any of the first three output sites.
+///
+/// Candidates must still pass independent layout, out-of-source write
+/// admission and normative guest VM replay on two different input streams.
+fn verified_four_write_triple_layout(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; 3],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    let mut memory_by_length = BTreeMap::<usize, Vec<u32>>::new();
+    for padding in 0..2 {
+        for before in 0..=1 {
+            for between_first in 0..=2 {
+                for between_second in 0..=8 {
+                    for between_third in 0..=12 {
+                        let geometry = [
+                            padding, before, between_first, between_second,
+                            between_third,
+                        ];
+                        for bits in 0usize..16 {
+                            let mut writes = [LinearOpcode::CrazyData; 4];
+                            for (bit, operation) in writes.iter_mut().enumerate() {
+                                if bits & (1 << bit) != 0 {
+                                    *operation = LinearOpcode::RotateData;
+                                }
+                            }
+                            for deferred_output in 0..3 {
+                                if preview_four_write_triple(
+                                    source_cells,
+                                    &mut memory_by_length,
+                                    geometry,
+                                    writes,
+                                    deferred_output,
+                                    expected,
+                                ) != Some(expected) {
+                                    continue;
+                                }
+                                let operations = four_write_triple_operations(
+                                    geometry,
+                                    writes,
+                                    deferred_output,
+                                );
+                                if let Some(layout) = verified_output_stream_layout(
+                                    profile, &operations, expected, source_cells,
+                                ) {
+                                    return Some(layout);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     None
@@ -6427,7 +6609,8 @@ pub fn encode_distinct_literal_triple(
             }
         }
     }
-    Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+    verified_four_write_triple_layout(profile, expected, &source_cells)
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 
 const FORTY_SEVEN_LITERAL_OUTPUT: [u8; 47] = [

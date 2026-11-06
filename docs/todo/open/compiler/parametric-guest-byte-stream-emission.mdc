@@ -282,3 +282,18 @@ a compiler capability gap, not a reason to return to N+1.
   publication. The complete source-proven `0x7f` recurrence passes guest
   parity on empty and nonempty input, while its unsupported C mutation
   refuses without publication. The twelve-byte Fibonacci P0 remains open.
+
+- A full three-iteration Fibonacci-style C loop initially reached typed and
+  ternary lowering but refused the original `02 59 5f` guest stream at layout;
+  a four-iteration run also exposed a separate hard-coded typed-IR quad gate.
+  A source-derived odd-arm XOR-`0x3d` variant now executes its entire loop,
+  conditional and arithmetic at compile time and emits three actual Malbolge
+  bytes `02 3e 38` through **four disjoint guest arithmetic writes** and three
+  guest outputs. The bridge searches a finite additional-write grammar,
+  filters candidates with a cached loader-memory suffix, and independently
+  re-admits code and replays the normative VM on empty and nonempty input.
+  The publisher separately parses three- versus four-write grammars, checks
+  all out-of-source write addresses and replays the guest before publication.
+  Cache agreement and a complete pinned-C-to-guest regression preserve the
+  semantic trust boundary. The original twelve-byte Fibonacci acceptance and
+  generalized guest arithmetic/control flow remain unimplemented.

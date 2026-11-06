@@ -127,6 +127,78 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertNotIn(b"normalized frontend rejected", process.stderr)
             self.assertFalse(guest.exists(), "unwitnessed C published a guest")
 
+    def test_original_fibonacci_three_output_prefix_on_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = SOURCE.read_text()
+        self.assertIn("i < 12U", original)
+        # The even arm emits 2; the odd arm uses source-derived XOR 0x3d.
+        expected = bytes((2, 3 ^ 0x3D, 5 ^ 0x3D))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "fibonacci-three.c"
+            _written = source.write_text(
+                original.replace("i < 12U", "i < 3U").replace(
+                    "next ^ 0x5AU", "next ^ 0x3DU"
+                )
+            )
+            guest = Path(scratch) / "fibonacci-three.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/conditional-fibonacci-three-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=180,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for guest_input in (b"", bytes((0xFF, 0x00, 0x80))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=guest_input,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            # An unsupported source operation must not inherit the witness.
+            altered = Path(scratch) / "fibonacci-three-unsupported.c"
+            altered.write_text(
+                source.read_text().replace("next ^ 0x3DU", "next / 0U")
+            )
+            refused_guest = Path(scratch) / "fibonacci-three-unsupported.malbolge"
+            refused = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/conditional-fibonacci-three-unsupported-v1",
+                    "--capsule",
+                    "--output",
+                    str(refused_guest),
+                    str(altered),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=180,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(refused_guest.exists())
+
     def test_branch_selected_output_inside_bounded_loop_reaches_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
