@@ -553,6 +553,18 @@ use the profile-aware interpreter. The initial publisher is a machine-subset
 emitter only; even with a capsule it does **not** claim C/ternary lowering,
 source maps, guest-runtime linkage or support for general control flow.
 
+### Verified bounded two-distinct-byte producer
+
+The current-profile `--distinct-literal-pair` producer accepts a canonical
+two-constant/two-output typed or ternary trace. It searches a finite
+94-phase layout with one relocation and two real `p`/`*` data writes rather
+than admitting only three hard-coded pairs. The publisher independently
+re-admits the emitted graphical code against this precise grammar, checks
+two disjoint out-of-source writes, and runs the normative VM with two input
+cases. The real C conditional-loop experiment now emits binary `02 cf`.
+Unsupported sequences, source drift and unsafe layouts refuse publication.
+This is not general byte-stream compilation or dynamic C state execution.
+
 ### Verified three-distinct-byte producer
 
 An opt-in canonical `--distinct-literal-triple --typed-stdin` or

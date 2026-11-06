@@ -427,12 +427,17 @@ newer input, unsupported scalar/return, changed profile, malformed program
 and one cell beyond the maximum. The new API is a bounded integration witness,
 not a general C-to-Malbolge backend or raw-file publisher.
 
-An independent two-nonzero-byte route admits only `Y/`, `Y$`, and `Q.` under
-the current profile. A relocated data pointer feeds two separate guest `p`
-operations on separate guest data words, recomputing the accumulator before
-each `<` output. The position-dependent source lengths are 6, 7, and 8
-cells. These are independently VM-replayed witnesses, not arbitrary byte-pair
-support.
+The current-profile distinct two-byte route now searches a bounded 94-phase
+linear grammar instead of selecting just `Y/`, `Y$`, and `Q.` from a fixed
+witness table. Each output follows a guest `p` (crazy) or `*` (rotate)
+operation after one safe `j` relocation; the two data writes are disjoint
+and out of source. An untrusted decoder/loader preview filters candidates,
+but independent layout admission and two normative VM replays authorize each
+emitted source. The three original pairs retain byte-exact layouts. The
+new binary witness `02 cf` uses 26 reached no-ops, `j`, `*`, `<`, `p`, `<`,
+`v`; a source-proven two-iteration conditional C loop emits the same bytes
+through the complete compiler. Other byte pairs can still fail closed: this
+is a bounded synthesis grammar, not general guest byte-stream lowering.
 
 ### Three different source-proven guest byte outputs
 

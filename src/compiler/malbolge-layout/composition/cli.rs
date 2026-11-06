@@ -3140,14 +3140,55 @@ fn verify_distinct_literal_pair(
     first: u8,
     second: u8,
 ) -> Result<(), String> {
-    let expected_steps = match (first, second) {
-        (b'Y', b'/') => 6,
-        (b'Y', b'$') => 7,
-        (b'Q', b'.') => 8,
-        _ => return Err(String::from("distinct-literal pair has no guest witness")),
-    };
-    if artifact.steps != expected_steps {
+    // Reconstruct the closed two-write grammar from the *published source*,
+    // rather than trusting the bridge's candidate or a fixed literal table.
+    let prefix = artifact.steps.checked_sub(6).ok_or(
+        "distinct-literal guest geometry disagrees",
+    )?;
+    if prefix >= 94 || artifact.source.len() != artifact.steps {
         return Err(String::from("distinct-literal guest geometry disagrees"));
+    }
+    let source_operation = |position: usize| {
+        malbolge::decode_profile_instruction(
+            u32::from(*artifact.source.get(position)?),
+            u32::try_from(position).ok()?,
+        )
+    };
+    let arithmetic = |position| match source_operation(position) {
+        Some(b'p') => Some(LinearOpcode::CrazyData),
+        Some(b'*') => Some(LinearOpcode::RotateData),
+        _ => None,
+    };
+    let (Some(first_write), Some(second_write)) = (
+        arithmetic(prefix + 1),
+        arithmetic(prefix + 3),
+    ) else {
+        return Err(String::from("distinct-literal guest arithmetic disagrees"));
+    };
+    let mut operations = vec![LinearOpcode::NoOperation; prefix];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        first_write,
+        LinearOpcode::OutputByte,
+        second_write,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let layout = admit_linear_layout(
+        profile,
+        &operations,
+        &artifact.source,
+        LinearProfileIdentity {
+            fingerprint: profile.fingerprint(),
+            id: profile.id(),
+        },
+    )
+    .map_err(|error| format!("distinct-literal source admission: {error:?}"))?;
+    let writes: Vec<_> = layout.data_write_positions().iter().flatten().collect();
+    if !matches!(writes.as_slice(), [a, b] if a != b)
+        || layout.executed_code_positions().len() != artifact.steps
+    {
+        return Err(String::from("distinct-literal data-write geometry disagrees"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
         let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)

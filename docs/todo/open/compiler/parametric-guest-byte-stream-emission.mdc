@@ -159,3 +159,10 @@ a compiler capability gap, not a reason to return to N+1.
   two-byte pairs also fail at layout, preserving their checked SSA values.
   The earlier first-declaration refusal is historical; P0 remains pending
   on generalized guest byte-stream realization.
+
+- On 2026-11-06, a red-first two-byte guest-layout search replaced the
+  hard-coded pair selector. The independently re-admitted `02 cf` guest is
+  emitted from a source-proven two-iteration conditional Fibonacci-style C
+  loop, with exact normative VM output. The original twelve-iteration
+  Fibonacci still fails at the finite layout boundary; this is a partial
+  step toward arbitrary byte-stream synthesis, not P0 completion.

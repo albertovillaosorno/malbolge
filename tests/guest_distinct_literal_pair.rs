@@ -205,6 +205,36 @@ fn source_bound_pair_bridge_matches_guest_witness() -> Result<(), String> {
 }
 
 #[test]
+fn previously_unwitnessed_binary_pair_uses_verified_guest_arithmetic()
+-> Result<(), String> {
+    let expected = [0x02, 0xcf];
+    let program = source_pair(expected[0], expected[1], false)?;
+    let layout = encode_distinct_literal_pair(&program, current_profile())
+        .map_err(|error| format!("binary pair: {error:?}"))?;
+    let writes: Vec<_> =
+        layout.data_write_positions().iter().flatten().collect();
+    assert_eq!(writes.len(), 2);
+    assert_ne!(writes[0], writes[1]);
+    assert!(
+        writes
+            .iter()
+            .all(|address| **address >= layout.source().len() as u32)
+    );
+    for input in [Vec::new(), vec![0, 128, 255]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            layout.source(),
+            input,
+        )
+        .map_err(|error| format!("binary guest load: {error:?}"))?;
+        assert!(matches!(vm.run(100), Ok(RunOutcome::Terminated { .. })));
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.output(), expected);
+    }
+    Ok(())
+}
+
+#[test]
 #[expect(
     clippy::panic_in_result_fn,
     reason = "test assertions are intentional after fallible setup"

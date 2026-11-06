@@ -916,14 +916,11 @@ const ROTATED_THIRTY_BYTE_SEEDS: &[(u8, usize)] = &[
     (197, 2),
 ];
 
-// These exactly witnessed two-nonzero-output guests have two *different*
-// accumulator values, both computed by separate relocated CrazyData steps.
-#[expect(
-    clippy::type_complexity,
-    reason = "bounded profile-specific two-byte witness tuples"
-)]
-const DISTINCT_LITERAL_CRAZY_WITNESSES: &[(u8, u8, usize)] =
-    &[(b'Y', b'/', 0), (b'Y', b'$', 1), (b'Q', b'.', 2)];
+// The distinct-pair composer searches the canonical graphical decoder phases
+// and two genuine data-operation choices per output. A cheap proposal model
+// never authorizes publication; only the independent normative VM does.
+const DISTINCT_PAIR_PREFIX_PHASES: usize = 94;
+const HIGH_TRIT_WEIGHT: u32 = 4_782_969; // 3^14 for 15-trit words.
 
 // Each pair is an exact one-zero-output-then-one-nonzero-output guest
 // witness: `<`, padding `o`, `j`, `p`, `<`, `v` under malbolge-2026.
@@ -1439,21 +1436,94 @@ pub fn encode_zero_then_literal(
     Ok(layout)
 }
 
-/// Emit two distinct nonzero source-proven bytes with real guest arithmetic.
+/// Predict two guest bytes without building the full independent layout.
 ///
-/// Two independent constant SSA definitions and output uses are mandatory.
-/// A first relocated `p` computes the initial accumulator and a later `p`
-/// computes the second, without a host-side write or a retained copy.
+/// This is only a fast search filter: no result can be published without the
+/// separate source-layout checker and full normative VM replay. It models just
+/// one relocation, two disjoint data writes and 15-trit loader expansion.
+fn proposed_distinct_pair(
+    profile: &ProfileDescriptor,
+    padding: usize,
+    first: LinearOpcode,
+    second: LinearOpcode,
+) -> Option<[u8; 2]> {
+    let mut operations = vec![LinearOpcode::NoOperation; padding];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        first,
+        LinearOpcode::OutputByte,
+        second,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let mut source = Vec::with_capacity(operations.len());
+    for (position, operation) in operations.iter().enumerate() {
+        let decoded = match operation {
+            LinearOpcode::NoOperation => b'o',
+            LinearOpcode::RelocateDataPointer => b'j',
+            LinearOpcode::CrazyData => b'p',
+            LinearOpcode::RotateData => b'*',
+            LinearOpcode::OutputByte => profile.output_instruction(),
+            LinearOpcode::Halt => b'v',
+            _ => return None,
+        };
+        let position = u32::try_from(position).ok()?;
+        let byte = (33u8..=126).find(|&byte| {
+            malbolge::decode_profile_instruction(u32::from(byte), position)
+                == Some(decoded)
+        })?;
+        source.push(byte);
+    }
+    let relocated = usize::from(*source.get(padding)?);
+    if relocated < source.len() || relocated + 4 >= 4096 {
+        return None;
+    }
+    let mut memory: Vec<u32> = source.into_iter().map(u32::from).collect();
+    while memory.len() <= relocated + 3 {
+        let index = memory.len();
+        memory.push(malbolge::profile_crazy(
+            memory[index - 2],
+            memory[index - 1],
+            15,
+        ));
+    }
+    let mut accumulator = 0u32;
+    let mut output = [0u8; 2];
+    for (index, operation) in [first, second].iter().enumerate() {
+        let address = relocated + 1 + 2 * index;
+        accumulator = match operation {
+            LinearOpcode::CrazyData => {
+                malbolge::profile_crazy(*memory.get(address)?, accumulator, 15)
+            }
+            LinearOpcode::RotateData => {
+                let word = *memory.get(address)?;
+                word / 3 + (word % 3) * HIGH_TRIT_WEIGHT
+            }
+            _ => return None,
+        };
+        output[index] = accumulator as u8;
+    }
+    Some(output)
+}
+
+/// Compose two distinct source-proven bytes using real guest arithmetic.
+///
+/// A bounded search tries all 94 graphical prefix phases and two arithmetic
+/// choices per output. Candidate loader expansion is only a proposal; both
+/// empty and nonempty input are independently replayed in the normative VM.
+/// Search failure does not mean the requested byte pair is impossible in
+/// Malbolge, only that this bounded linear grammar did not realize it.
 ///
 /// # Errors
 ///
-/// Refuses unsupported pairs, SSA reuse, additional effects, profile drift,
-/// unsafe data layout or output not reproduced by the normative VM.
+/// Refuses invalid source/SSA, mismatched profile, unsafe guest memory,
+/// unachievable pairs in this grammar or any VM disagreement.
 pub fn encode_distinct_literal_pair(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -1469,56 +1539,83 @@ pub fn encode_distinct_literal_pair(
             scalar: first,
             ..
         },
-        TernaryOperation::ByteOutput {
-            value: emitted_first,
-            ..
-        },
+        TernaryOperation::ByteOutput { value: emitted_first, .. },
         TernaryOperation::MaterializeU8 {
             result: second_id,
             scalar: second,
             ..
         },
         TernaryOperation::ByteOutput {
-            value: emitted_second,
-            ..
+            value: emitted_second, ..
         },
         TernaryOperation::ReturnVoid { .. },
     ] = function.operations.as_slice()
     else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    if first_id != emitted_first || second_id != emitted_second || first_id == second_id {
+    if first_id != emitted_first
+        || second_id != emitted_second
+        || first_id == second_id
+    {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    let padding = DISTINCT_LITERAL_CRAZY_WITNESSES
-        .iter()
-        .find(|(first_byte, second_byte, _)| {
-            *first_byte == first.bits() && *second_byte == second.bits()
-        })
-        .map(|(_, _, padding)| *padding)
-        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
-    let mut operations = vec![LinearOpcode::NoOperation; padding];
-    operations.extend([
-        LinearOpcode::RelocateDataPointer,
-        LinearOpcode::CrazyData,
-        LinearOpcode::OutputByte,
-        LinearOpcode::CrazyData,
-        LinearOpcode::OutputByte,
-        LinearOpcode::Halt,
-    ]);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
-    for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
-        if !matches!(vm.run(operations.len()),
-            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
-            || vm.input_consumed() != 0
-            || vm.output() != [first.bits(), second.bits()]
-        {
-            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+    let expected = [first.bits(), second.bits()];
+    for padding in 0..DISTINCT_PAIR_PREFIX_PHASES {
+        for initial in [LinearOpcode::CrazyData, LinearOpcode::RotateData] {
+            for subsequent in
+                [LinearOpcode::CrazyData, LinearOpcode::RotateData]
+            {
+                let mut operations = vec![LinearOpcode::NoOperation; padding];
+                operations.extend([
+                    LinearOpcode::RelocateDataPointer,
+                    initial,
+                    LinearOpcode::OutputByte,
+                    subsequent,
+                    LinearOpcode::OutputByte,
+                    LinearOpcode::Halt,
+                ]);
+                if proposed_distinct_pair(profile, padding, initial, subsequent)
+                    != Some(expected)
+                {
+                    continue;
+                }
+                let Ok(layout) = encode_linear_layout(profile, &operations)
+                else {
+                    continue;
+                };
+                let writes: Vec<_> =
+                    layout.data_write_positions().iter().flatten().collect();
+                if !matches!(writes.as_slice(), [first_write, second_write]
+                    if first_write != second_write)
+                {
+                    continue;
+                }
+                let mut verified = true;
+                for input in [Vec::new(), vec![255, 0, 128]] {
+                    let Ok(mut vm) = ProfileMachine::from_source(
+                        profile,
+                        layout.source(),
+                        input,
+                    ) else {
+                        verified = false;
+                        break;
+                    };
+                    if !matches!(vm.run(operations.len()),
+                        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+                        || vm.input_consumed() != 0
+                        || vm.output() != expected
+                    {
+                        verified = false;
+                        break;
+                    }
+                }
+                if verified {
+                    return Ok(layout);
+                }
+            }
         }
     }
-    Ok(layout)
+    Err(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 
 /// Emits a nonzero `u8` one to thirty-three times using guest data operations.

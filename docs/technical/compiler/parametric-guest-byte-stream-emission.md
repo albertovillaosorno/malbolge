@@ -335,6 +335,28 @@ now fails at that boundary, not while decoding the typed source. Neither
 change synthesizes arbitrary bytes, adds runtime C state, or completes P0;
 verified general guest byte-stream lowering remains the blocker.
 
+### Bounded verified two-byte layout search
+
+The distinct-pair guest bridge no longer chooses only three hard-coded byte
+pairs. For the canonical current profile, it enumerates 94 graphical prefix
+phases and both `p`/`*` arithmetic choices at each of two output positions.
+A disposable loader/accumulator preview discards nonmatches before invoking
+independent positional layout admission. Two external guest writes must be
+distinct, and empty-input and nonempty-input normative VM runs must agree
+with the source-proven bytes. The artifact publisher separately decodes and
+admits the actual graphical source against exactly this two-write grammar
+before its own VM replay; it does not trust the bridge's preview or a fixed
+pair table.
+
+The tracked two-iteration Fibonacci-style conditional C program, changed to
+select `2 ^ 0 = 0x02` and `3 ^ 204 = 0xcf`, now produces `02 cf` from a
+published capsule executed by the normative guest VM. This is a new binary
+pair with mixed `*` and `p`, not an extra emit-N source fixture. The old
+`Y/`, `Y$` and `Q.` guests remain exact. Unwitnessed streams still refuse
+without a published file. The original twelve-iteration Fibonacci oracle
+`02 59 5f 08 57 4f 22 6d 03 90 b3 23` remains unsupported by the
+finite twelve-byte layout; P0 and dynamic guest state remain pending.
+
 ### Later verification matrix
 
 Only after the complete experiment succeeds, use a deterministic corpus
