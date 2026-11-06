@@ -597,3 +597,22 @@ This covers an additional output-identity shape, not arbitrary byte streams,
 execution of C loops in the guest, or the full twelve-byte Fibonacci target.
 The latter continues to refuse `Layout(UnsupportedEffectTrace)` and this
 P0 remains pending.
+
+### Source-proven unsigned remainder in a complete loop
+
+A new red-first whole-source probe, `local_remainder_recurrence_output.c`,
+uses two automatic unsigned locals, three stateful `for` iterations, a masked
+`u32` product, odd/even conditional assignments, `next % 17U`, and a final
+expression-derived `putchar`. It originally refused at the first declaration
+because the unsupported remainder prevented the complete constant projection.
+No guest artifact was published. The adapter now consumes the exact Clang
+`u32` operator and checks nonzero-divisor `checked_rem` before narrowing.
+The separately computed recurrence is `15, 210, 190`, finishing at `a = 2`
+and output `2 ^ 67 = 65`. The emitted Malbolge produces `0x41` in 31
+normative VM steps under empty and nonempty stdin. Division and zero-divisor
+mutations do not publish a guest program.
+
+This is finite source-backed compile-time evaluation, **not** Malbolge
+remainder arithmetic, dynamic C state or general stream realization. The
+original twelve-byte Fibonacci program still fails closed at the independent
+guest-layout boundary; the P0 remains pending.

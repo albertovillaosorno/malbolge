@@ -648,6 +648,18 @@ Division, unchecked overflow, and extra effects still reject without a guest.
 This is **compile-time evaluation**, not Malbolge multiplication or C runtime
 state. The full twelve-byte Fibonacci target still fails at guest layout.
 
+### Checked unsigned remainder in a bounded recurrence
+
+`local_remainder_recurrence_output.c` extends the complete three-iteration C
+stateful probe with `next % 17U` in the even branch after a checked masked
+product. The source-proven `u32` walker accepts `%` only for a nonzero
+divisor. Its independent intermediate stream is `15, 210, 190`; the final
+state is `a = 2`, and `2 ^ 67 = 65`. The real guest outputs `0x41` in 31
+normative VM steps under both empty and nonempty input. Division, a zero
+remainder divisor and unwitnessed effects refuse without publication.
+This evaluates C local state at compile time, not at guest runtime. The
+original twelve-byte Fibonacci output still has no general layout witness.
+
 ### Branch-selected `putchar` effects inside a bounded `for`
 
 The source-proven loop evaluator now accepts one `putchar` in each arm of

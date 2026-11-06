@@ -234,3 +234,12 @@ a compiler capability gap, not a reason to return to N+1.
   multiplication execute during compilation, not in the guest. The original
   twelve-byte Fibonacci program was retried and still fails closed at layout;
   no general guest byte-stream synthesizer or runtime C arithmetic is claimed.
+- A further full three-iteration C experiment was first rejected at the
+  declaration, then compiled after the closed `u32` expression checker gained
+  nonzero-divisor `%`. Its source-proven masked product, odd/even branch,
+  remainder, state transfers and final `putchar` yield the independently
+  calculated intermediates `15, 210, 190` and byte `0x41`. The normative
+  Malbolge VM emits that byte in 31 steps with empty and nonempty stdin;
+  division and zero-remainder-divisor mutations refuse publication. This
+  only projects closed C state at compile time. The original twelve-byte
+  Fibonacci trace remains unwitnessed at layout, and P0 stays open.

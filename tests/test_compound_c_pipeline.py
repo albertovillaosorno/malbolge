@@ -223,7 +223,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertEqual(execution.returncode, 0, execution.stderr)
             self.assertEqual(execution.stdout, bytes(expected))
             self.assertRegex(execution.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
-            # Multiplication lies outside the source-proven arithmetic slice;
+            # Division lies outside the source-proven arithmetic slice;
             # a modified program must not inherit the valid guest witness.
             mutated = Path(scratch) / "repeated-mutation.c"
             mutated.write_text(source.read_text().replace("next ^ 58U", "next / 58U"))
@@ -658,7 +658,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", result.stderr)
             self.assertFalse(guest.exists())
 
-    def test_unsupported_multiplication_rejects_guest_artifact(self) -> None:
+    def test_unsupported_division_rejects_guest_artifact(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         source = ROOT / "tests/compiler/c-frontend/accepted/local_initialized_output.c"
@@ -669,7 +669,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             _written = altered.write_text(
                 text.replace(
                     "    putchar(value);",
-                    "    value = value * 2U;\n    putchar(value);",
+                    "    value = value / 2U;\n    putchar(value);",
                 )
             )
             guest = Path(scratch) / "invalid.malbolge"
@@ -971,7 +971,7 @@ class CompoundCPipelineTests(unittest.TestCase):
 
             unsupported = original.replace(
                 "putchar((int)(result ^ 3U));",
-                "putchar((int)(result * 3U));",
+                "putchar((int)(result / 3U));",
             )
             altered = Path(scratch) / "unsupported-expression.c"
             _written = altered.write_text(unsupported)
@@ -1103,6 +1103,76 @@ class CompoundCPipelineTests(unittest.TestCase):
             # Neither 0 from the initializer nor 66 from the first write.
             self.assertEqual(executed.stdout, b"A")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+
+    def test_checked_remainder_recurrence_reaches_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/"
+            "local_remainder_recurrence_output.c"
+        )
+        a, b = 3, 5
+        observed = []
+        for _ in range(3):
+            next_value = (a * b) & 255
+            observed.append(next_value)
+            a = (
+                (next_value % 17) ^ 1
+                if next_value % 2 == 0
+                else next_value - 1
+            )
+            b = next_value
+        self.assertEqual(observed, [15, 210, 190])
+        self.assertEqual(a, 2)
+        self.assertEqual(a ^ 67, 65)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "remainder-recurrence.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/local-remainder-recurrence-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=90
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, b"A")
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+            original = source.read_text()
+            invalid = {
+                "zero-divisor": original.replace("next % 17U", "next % 0U"),
+                "division": original.replace("next % 17U", "next / 17U"),
+            }
+            for label, changed in invalid.items():
+                altered = Path(scratch) / f"{label}-remainder.c"
+                altered.write_text(changed)
+                rejected = Path(scratch) / f"{label}-remainder.malbolge"
+                refused = subprocess.run(
+                    [*command[:-2], str(rejected), str(altered)],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertFalse(rejected.exists())
 
     def test_checked_multiplicative_recurrence_reaches_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
