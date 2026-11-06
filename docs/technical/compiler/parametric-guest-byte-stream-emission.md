@@ -73,8 +73,31 @@ That test requires explicit failure while state semantics are unsupported
 and will require actual normative guest-VM parity if compilation succeeds.
 This is a repaired **schema/diagnostic** gap, not completed C lowering.
 
-The remaining first semantic gap is local-variable declaration, initialization,
-read/write and provenance through typed IR and ternary lowering. The same
+### First source-bound automatic-local output
+
+A separate pinned-Clang source now exercises a real automatic `unsigned`
+local initialized to `65U`, then read by `putchar(value)`. The closed JSON
+adapter admits the exact single-definition/single-use AST, connects the
+source-bound declaration to its read, and promotes this unmodified constant
+local to a typed byte SSA value. Its `0..255` admission range preserves the
+unsigned-to-signed call conversion and low-byte output for this slice.
+
+The existing byte backend independently checks its selected guest witness.
+The compiled capsule emitted `0x41` under the normative profile VM in
+31 steps on 2026-11-05. The tracked regression is
+`tests/compiler/c-frontend/accepted/local_initialized_output.c`, with native
+process/VM acceptance and tampered-node rejection tests. The declaration
+and its use must carry the same canonical Clang symbol reference.
+
+This is source-bound constant propagation for one immutable local, **not**
+general automatic storage, mutable variable assignment, or guest integer
+computation. An out-of-range or nonliteral initializer, additional effect,
+branch, loop, or unsupported symbol relationship must reject without
+publishing an artifact.
+
+The remaining first semantic gap for the original complete program is the
+**general** local-variable declaration, initialization, read/write and
+provenance needed through typed IR and ternary lowering. The same
 program additionally needs arithmetic, bounded loops, conditional branches,
 and value-dependent `putchar`; the active
 `docs/todo/open/compiler/ternary-machine-lowering.mdc` and

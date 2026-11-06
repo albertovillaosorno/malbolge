@@ -500,3 +500,13 @@ The exact 48-byte `putchar` literal sequence is admitted only under the
 `--distinct-literal-forty-eight` mode, with all 48 constants and source
 order checked against the independent 121-step guest witness. No strict
 proper prefix or altered constant is promoted to source compilation.
+
+### Source-bound automatic-local byte output
+
+One additional closed Clang JSON shape accepts a single initialized automatic
+`u32` local read once as the argument to `putchar`. An exact declaration/use
+anchor and complete node preorder establish source identity. The initializer
+must be in `0..255` and the local must have no intervening mutation or alias.
+The adapter promotes this stable value to canonical `u8` SSA and delegates to
+the previously verified zero/seeded-byte guest publisher. All other local
+state remains unsupported, including updates, branches, and loops.

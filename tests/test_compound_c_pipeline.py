@@ -29,7 +29,7 @@
 # - Defaults:
 #   - No fake output on host, no guest artifact on compiler refusal.
 
-"""Whole-program C compiler blocker: valid Clang state, unsupported lowering."""
+"""Complete Fibonacci blocker and source-bound initialized local VM parity."""
 
 from __future__ import annotations
 
@@ -138,6 +138,82 @@ class CompoundCPipelineTests(unittest.TestCase):
             )
             self.assertNotIn(b"Malformed", process.stderr)
             self.assertFalse(guest.exists(), "unsupported C published a guest")
+
+    def test_local_reassignment_is_rejected_without_guest_artifact(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_initialized_output.c"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            altered = Path(scratch) / "changed.c"
+            text = source.read_text()
+            self.assertIn("    putchar(value);", text)
+            _written = altered.write_text(
+                text.replace(
+                    "    putchar(value);",
+                    "    value = 0U;\n    putchar(value);",
+                )
+            )
+            guest = Path(scratch) / "invalid.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/mutated-local-output-v1",
+                    "--output",
+                    str(guest),
+                    str(altered),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=20,
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertIn(b"Unsupported", compiled.stderr)
+            self.assertFalse(guest.exists())
+
+    def test_automatic_unsigned_local_reaches_guest_output(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_initialized_output.c"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "local-output.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/local-initialized-output-v1",
+                    "--output",
+                    str(guest),
+                    "--capsule",
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            executed = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, b"A")
+            self.assertRegex(
+                executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+            )
 
 
 if __name__ == "__main__":

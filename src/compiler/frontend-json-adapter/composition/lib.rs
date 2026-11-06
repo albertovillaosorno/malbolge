@@ -37,6 +37,9 @@
 #[path = "../../typed-ir/composition/lib.rs"]
 pub mod typed;
 
+#[path = "local_initialized_output.rs"]
+mod local_initialized_output;
+
 #[cfg(test)]
 use malbolge as _;
 use serde::Deserialize;
@@ -3508,6 +3511,9 @@ pub fn canonical_guest_typed_ir(
 ) -> Result<CanonicalGuestProjection, FrontendJsonError> {
     if let Ok(wire) = canonical_void_typed_ir(bytes) {
         return Ok((wire, FrontendGuestMode::EmptyVoid));
+    }
+    if let Ok(projection) = local_initialized_output::canonical_local_initialized_output(bytes) {
+        return Ok(projection);
     }
     canonical_literal_output_typed_ir(bytes)
 }
