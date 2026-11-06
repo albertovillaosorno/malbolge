@@ -677,6 +677,21 @@ Division and C loop/branch state still execute **during compilation** in
 this constant-propagation path, not in Malbolge. The full twelve-byte
 Fibonacci program still needs generalized guest byte-stream synthesis.
 
+### Checked unsigned shifts in a bounded C recurrence
+
+`local_shift_recurrence_output.c` tests a complete source-proven three-step
+recurrence with automatic locals, a masked product, `<< 2U`, a branch with
+`>> 3U`, state transfers and an expression-derived `putchar`. The Clang AST
+adapter now admits both shifts only for exact unsigned `u32` operators and
+checked counts from 0 through 31. Left shifts use C unsigned modulo-2^32
+semantics; right shifts are logical. Unknown types, operand ancestry, bad
+counts and extra effects still refuse at the source projection. The source
+oracle visits `60, 80, 192` and finishes with `25 ^ 88 = 65`.
+The golden normalized Clang AST is checked by independent typed-SSA and
+mutation regressions. This is compile-time constant propagation, not C shift
+instructions or loop execution in the Malbolge guest. The original twelve-byte
+Fibonacci program remains blocked at guest layout.
+
 ### Branch-selected `putchar` effects inside a bounded `for`
 
 The source-proven loop evaluator now accepts one `putchar` in each arm of

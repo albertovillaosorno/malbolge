@@ -1182,6 +1182,112 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertNotEqual(refused.returncode, 0)
                 self.assertFalse(rejected.exists())
 
+    def test_unsigned_shift_recurrence_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/"
+            "local_shift_recurrence_output.c"
+        )
+        original = source.read_text()
+        self.assertIn("((a * b) << 2U) & 255U", original)
+        self.assertIn("(next >> 3U) ^ 1U", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for left_shift, right_shift, xor_key, visited, final in (
+                (2, 3, 88, [60, 80, 192], 25),
+                (0, 0, 86, [15, 210, 22], 23),
+                (31, 3, 64, [0, 0, 0], 1),
+            ):
+                a, b = 3, 5
+                actual_visited = []
+                for _ in range(3):
+                    # C unsigned left shift reduces modulo 2**32, then masks.
+                    next_value = ((a * b) << left_shift) & 0xFFFFFFFF & 255
+                    actual_visited.append(next_value)
+                    a = (
+                        ((next_value >> right_shift) ^ 1)
+                        if (next_value & 8) == 0
+                        else next_value - 1
+                    )
+                    b = next_value
+                self.assertEqual(actual_visited, visited)
+                self.assertEqual(a, final)
+                self.assertEqual(a ^ xor_key, 65)
+                changed = (
+                    original.replace("<< 2U", f"<< {left_shift}U")
+                    .replace(">> 3U", f">> {right_shift}U")
+                    .replace("a ^ 88U", f"a ^ {xor_key}U")
+                    # An unreachable unsigned subtraction underflow is outside
+                    # the current checked-subtraction projection.
+                    .replace(
+                        "next - 1U",
+                        "next + 1U" if left_shift == 31 else "next - 1U",
+                    )
+                )
+                candidate = Path(scratch) / f"shift-{left_shift}-{right_shift}.c"
+                candidate.write_text(changed)
+                guest = Path(scratch) / f"shift-{left_shift}-{right_shift}.malbolge"
+                command = [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    f"tests/local-shift-recurrence-{left_shift}-{right_shift}-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(candidate),
+                ]
+                compiled = subprocess.run(
+                    command, check=False, capture_output=True, timeout=90
+                )
+                self.assertEqual(
+                    compiled.returncode,
+                    0,
+                    (left_shift, right_shift, compiled.stderr),
+                )
+                self.assertTrue(guest.is_file())
+                for data in (b"", bytes((255, 0, 128))):
+                    execution = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=data,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(execution.returncode, 0, execution.stderr)
+                    self.assertEqual(execution.stdout, b"A")
+                    self.assertEqual(execution.stderr, b"malbolge-steps-v1:31\n")
+            for label, changed in {
+                "left-count-32": original.replace("<< 2U", "<< 32U"),
+                "right-count-32": original.replace(">> 3U", ">> 32U"),
+                "unsupported-or": original.replace("next - 1U", "next | 1U"),
+            }.items():
+                invalid = Path(scratch) / f"{label}.c"
+                invalid.write_text(changed)
+                guest = Path(scratch) / f"{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/local-shift-{label}-invalid-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(invalid),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertFalse(guest.exists(), label)
+
     def test_checked_division_recurrence_reaches_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

@@ -253,3 +253,12 @@ a compiler capability gap, not a reason to return to N+1.
   by zero and unsupported shift mutations fail without publication. This
   is source-constant folding rather than Malbolge runtime division, and
   the original twelve-byte Fibonacci still fails at guest layout.
+
+- A full three-iteration source-backed unsigned C recurrence exposed missing
+  `<<`/`>>` support and initially refused its first declaration. The bounded
+  checker now admits exact Clang `u32` shifts with counts below 32 and
+  unsigned modulo-width left-shift semantics. The independent recurrence
+  visits `60, 80, 192` and derives `25 ^ 88 = 65`; pinned AST/typed-SSA
+  regressions prove the resulting byte and reject forged operands, operator
+  types and invalid counts. This is compile-time evaluation, not guest C
+  arithmetic; the original twelve-byte Fibonacci output remains unwitnessed.

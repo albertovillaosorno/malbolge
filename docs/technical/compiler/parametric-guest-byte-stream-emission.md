@@ -637,3 +637,20 @@ or an unsupported shift refuse without publishing a guest artifact.
 This is closed compile-time state projection; guest division, dynamic C
 state, and generalized twelve-byte synthesis remain unimplemented. P0 is
 still open because the original Fibonacci trace remains unwitnessed.
+
+### Bounded unsigned-shift C recurrence
+
+A complete source-backed three-iteration C experiment now tests masked
+multiplication shifted left by two, branch-selected logical right shifts,
+state transfers and an expression-derived output. Before the addition,
+`c2malbolge_json` refused the first declaration with `Unsupported`; it
+published no artifact. The adapter now checks both shift operators against
+exact pinned Clang `u32` AST ancestry and operand ranges. Shift counts
+outside 0 through 31 reject rather than evaluating undefined C behavior.
+
+The independent C recurrence visits `next = 60, 80, 192`, finishes at
+`a = 25`, and expects `25 ^ 88 = 65`. Golden normalized AST tests check the
+byte's actual typed SSA definition and refuse altered operators, forged
+symbols, operand types, ancestry and shift counts. This bounded constant
+projection does not execute C shifts or branches in the guest and cannot
+synthesize the original twelve-byte Fibonacci stream. Its P0 remains open.

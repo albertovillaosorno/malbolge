@@ -45,6 +45,8 @@ const LOOP_OUTPUT: &[u8] =
     include_bytes!("../c-frontend/golden/local_loop_branch_output.json");
 const LOOP_DISTINCT: &[u8] =
     include_bytes!("../c-frontend/golden/local_loop_distinct_output.json");
+const SHIFT_RECURRENCE: &[u8] =
+    include_bytes!("../c-frontend/golden/local_shift_recurrence_output.json");
 
 #[test]
 fn selected_loop_output_calls_preserve_twelve_real_effects() {
@@ -270,4 +272,60 @@ fn changed_loop_counter_control_and_effects_reject() {
         canonical_guest_typed_ir(&serde_json::to_vec(&extra).unwrap()),
         Err(FrontendJsonError::Unsupported)
     ));
+}
+
+#[test]
+fn unsigned_shift_recurrence_projects_checked_source_byte() {
+    let (wire, mode) = canonical_guest_typed_ir(SHIFT_RECURRENCE).unwrap();
+    assert_eq!(mode, FrontendGuestMode::SeededByteLiteral);
+    let module = typed::canonical_module(&wire).unwrap();
+    assert_eq!(module.source_id(), "tests/local-shift-recurrence-v1");
+    let [constant, output] = module.functions()[0].blocks()[0].instructions()
+    else {
+        panic!("expected exactly one proven output after the recurrence");
+    };
+    assert!(matches!(
+        constant.instruction(),
+        typed::Instruction::ConstantInteger { constant, .. }
+            if constant.bit_width() == 8 && constant.little_endian() == [65]
+    ));
+    assert_eq!(constant.span().begin().line(), 46);
+    assert!(matches!(
+        output.instruction(),
+        typed::Instruction::ByteOutput { value } if value.value() == 0
+    ));
+    assert_eq!(typed::canonical_bytes(&module), Ok(wire));
+}
+
+#[test]
+fn unsigned_shift_counts_and_ast_metadata_fail_closed() {
+    let original: Value = serde_json::from_slice(SHIFT_RECURRENCE).unwrap();
+    for (id, key, replacement) in [
+        (24, "operation", json!("<<<")),
+        (46, "operation", json!(">>>")),
+        (24, "type", json!("i32")),
+        (46, "type", json!("i32")),
+        (31, "constant_integer", json!("32")),
+        (49, "constant_integer", json!("32")),
+        (28, "reference", json!("foreign@0")),
+        (48, "parent", json!(44)),
+    ] {
+        let mut changed = original.clone();
+        changed["nodes"][id - 1][key] = replacement;
+        assert_eq!(
+            canonical_guest_typed_ir(&serde_json::to_vec(&changed).unwrap()),
+            Err(FrontendJsonError::Unsupported),
+            "mutated shift node {id} field {key} was admitted"
+        );
+    }
+    for id in [31usize, 49] {
+        let mut changed = original.clone();
+        changed["nodes"][id - 1]["constant_integer"] = json!("32");
+        changed["nodes"][id - 1]["literal"] = json!("32");
+        assert_eq!(
+            canonical_guest_typed_ir(&serde_json::to_vec(&changed).unwrap()),
+            Err(FrontendJsonError::Unsupported),
+            "out-of-width unsigned shift count at node {id} was admitted"
+        );
+    }
 }

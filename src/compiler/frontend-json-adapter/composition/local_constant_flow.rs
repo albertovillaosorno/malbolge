@@ -335,8 +335,10 @@ impl<'node> Flow<'node> {
             "binary-expression" => {
                 let expression = self.take(parent, "binary-expression")?;
                 let operation = expression.operation.as_deref()?;
-                if !matches!(operation, "+" | "-" | "*" | "/" | "%" | "^" | "&")
-                    || !typed_operator(expression, operation)
+                if !matches!(
+                    operation,
+                    "+" | "-" | "*" | "/" | "%" | "^" | "&" | "<<" | ">>"
+                ) || !typed_operator(expression, operation)
                 {
                     return None;
                 }
@@ -358,6 +360,10 @@ impl<'node> Flow<'node> {
                     "*" => left_value.checked_mul(right_value)?,
                     "/" => left_value.checked_div(right_value)?,
                     "%" => left_value.checked_rem(right_value)?,
+                    // C unsigned shifts discard high bits at the u32 width;
+                    // only counts less than 32 are defined by the language.
+                    "<<" => left_value.checked_shl(right_value)?,
+                    ">>" => left_value.checked_shr(right_value)?,
                     "^" => left_value ^ right_value,
                     "&" => left_value & right_value,
                     _ => return None,
