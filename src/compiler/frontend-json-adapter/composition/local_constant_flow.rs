@@ -335,7 +335,7 @@ impl<'node> Flow<'node> {
             "binary-expression" => {
                 let expression = self.take(parent, "binary-expression")?;
                 let operation = expression.operation.as_deref()?;
-                if !matches!(operation, "+" | "-" | "^" | "&")
+                if !matches!(operation, "+" | "-" | "*" | "^" | "&")
                     || !typed_operator(expression, operation)
                 {
                     return None;
@@ -355,6 +355,7 @@ impl<'node> Flow<'node> {
                 let value = match operation {
                     "+" => left_value.checked_add(right_value)?,
                     "-" => left_value.checked_sub(right_value)?,
+                    "*" => left_value.checked_mul(right_value)?,
                     "^" => left_value ^ right_value,
                     "&" => left_value & right_value,
                     _ => return None,

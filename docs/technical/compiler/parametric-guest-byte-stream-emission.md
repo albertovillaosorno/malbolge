@@ -406,6 +406,26 @@ outputs and full guest stdout parity; neither claims runtime C state or
 arbitrary bytes. Previously admitted positional triple witnesses remain
 byte-identical. This is a partial capability, not P0 completion.
 
+### Checked product in a source-proven C recurrence
+
+A complete three-iteration C recurrence now checks a distinct arithmetic
+construct: `unsigned next = (a * b) & 255U`. Starting from `a=3`, `b=5`,
+the product and parity-selected assignment update the local state through
+`next = 15, 210, 22`; the final `putchar((int)(a ^ 86U))` emits `0x41`.
+The original pinned pipeline refused this source at its first declaration.
+The repaired bounded constant evaluator admits `*` only for `u32` operands
+with `checked_mul` and stores only byte-range results. An unmasked product
+outside the byte domain, unsigned overflow, division, unrecognized effects,
+and forged AST structure remain rejected rather than being silently folded.
+
+The end-to-end regression replays the **actual** Malbolge guest under the
+normative VM with empty and nonempty stdin: `0x41` in 31 steps, equal to an
+independently computed C oracle. This admits a new C arithmetic construct,
+not multiplication, branches, or loops at guest runtime. The original
+Fibonacci program is retried separately and remains rejected at
+`Layout(UnsupportedEffectTrace)` for its unwitnessed twelve-byte sequence.
+P0 is therefore still open; the earlier guest layout synthesis gap remains.
+
 ### Later verification matrix
 
 Only after the complete experiment succeeds, use a deterministic corpus

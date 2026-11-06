@@ -168,7 +168,8 @@ now emits `38 38` from one relocated guest write and two output instructions.
 Three loop observations from two source-distinct conditional call sites now
 also preserve three separate typed SSA definitions when every emitted byte
 agrees. The source-proven three-iteration C recurrence produces `38 38 38`
-in the real normative guest VM; unsupported multiplication still refuses.
+in the real normative guest VM; an unwitnessed multiplication-derived trace
+still refuses.
 The layout uses one or two relocated guest writes and three real output
 instructions, independently re-admitted by the publisher. This is not
 general C runtime state or arbitrary byte emission.
@@ -632,6 +633,20 @@ reaches independent VM parity, while altered control and output effects
 reject. The Malbolge guest executes only the **final output**; this is not
 runtime loop execution. The complete Fibonacci program's twelve nonzero outputs
 inside the loop still require a verified general byte-stream backend.
+
+### Checked unsigned multiplication in a bounded recurrence
+
+`local_multiplicative_recurrence_output.c` exercises three source-proven
+iterations with two unsigned locals, multiplication, masking, an odd/even
+conditional assignment, and a final expression-derived `putchar`.
+The closed expression walker now admits `u32` multiplication only when
+`checked_mul` succeeds. It retains a product larger than 255 through `& 255U`
+and narrows only at a local store or output. The independent recurrence
+visits `15, 210, 22`, finishes with `a = 23`, and emits `23 ^ 86 = 65`.
+The normative VM outputs `0x41` in 31 steps, including with nonempty input.
+Division, unchecked overflow, and extra effects still reject without a guest.
+This is **compile-time evaluation**, not Malbolge multiplication or C runtime
+state. The full twelve-byte Fibonacci target still fails at guest layout.
 
 ### Branch-selected `putchar` effects inside a bounded `for`
 

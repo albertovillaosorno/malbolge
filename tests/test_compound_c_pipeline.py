@@ -226,7 +226,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             # Multiplication lies outside the source-proven arithmetic slice;
             # a modified program must not inherit the valid guest witness.
             mutated = Path(scratch) / "repeated-mutation.c"
-            mutated.write_text(source.read_text().replace("next ^ 58U", "next * 58U"))
+            mutated.write_text(source.read_text().replace("next ^ 58U", "next / 58U"))
             rejected = Path(scratch) / "repeated-mutation.malbolge"
             refused = subprocess.run(
                 [
@@ -296,7 +296,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             )
             # An unsupported effect must not inherit the verified guest.
             mutated = Path(scratch) / "nonadjacent-mutation.c"
-            mutated.write_text(source.read_text().replace("next - next", "next * next"))
+            mutated.write_text(source.read_text().replace("next - next", "next / next"))
             rejected = Path(scratch) / "nonadjacent-mutation.malbolge"
             refused = subprocess.run(
                 [
@@ -372,7 +372,7 @@ class CompoundCPipelineTests(unittest.TestCase):
                     execution.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
                 )
             mutated = Path(scratch) / "three-equal-mutation.c"
-            mutated.write_text(source.read_text().replace("next - next", "next * next"))
+            mutated.write_text(source.read_text().replace("next - next", "next / next"))
             rejected = Path(scratch) / "three-equal-mutation.malbolge"
             refused = subprocess.run(
                 [*command[:-2], str(rejected), str(mutated)],
@@ -436,7 +436,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertEqual(execution.stdout, bytes(expected))
             self.assertRegex(execution.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
             mutation = Path(scratch) / "unsupported-equal-branch.c"
-            mutation.write_text(source.read_text().replace("next ^ 59U", "next * 59U"))
+            mutation.write_text(source.read_text().replace("next ^ 59U", "next / 59U"))
             rejected = Path(scratch) / "unsupported-equal-branch.malbolge"
             refused = subprocess.run(
                 [
@@ -878,7 +878,7 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", compiled.stderr)
                 self.assertFalse(guest.exists())
 
-    def test_unmasked_wide_sum_and_multiplication_refuse_guest(self) -> None:
+    def test_unmasked_wide_sum_and_division_refuse_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         source = ROOT / "tests/compiler/c-frontend/accepted/local_masked_sum_output.c"
@@ -887,7 +887,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         self.assertIn(pattern, original)
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             for index, changed in enumerate(
-                ("unsigned next = (a + b);", "unsigned next = (a * b) & 255U;")
+                ("unsigned next = (a + b);", "unsigned next = (a / b) & 255U;")
             ):
                 altered = Path(scratch) / f"unsupported-{index}.c"
                 _written = altered.write_text(original.replace(pattern, changed))
@@ -1103,6 +1103,77 @@ class CompoundCPipelineTests(unittest.TestCase):
             # Neither 0 from the initializer nor 66 from the first write.
             self.assertEqual(executed.stdout, b"A")
             self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+
+    def test_checked_multiplicative_recurrence_reaches_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/"
+            "local_multiplicative_recurrence_output.c"
+        )
+        a, b = 3, 5
+        visited = []
+        for _ in range(3):
+            next_value = (a * b) & 255
+            visited.append(next_value)
+            a = (next_value ^ 1) if next_value % 2 == 0 else next_value - 1
+            b = next_value
+        self.assertEqual(visited, [15, 210, 22])
+        self.assertEqual(a ^ 86, 65)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "multiply-recurrence.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/local-multiplicative-recurrence-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=90
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, b"A")
+                self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+            original = source.read_text()
+            # Division is outside the closed evaluator. An unsigned overflow
+            # would be defined by C, but is deliberately outside this checked
+            # (nonwrapping) constant-propagation slice.
+            invalid = {
+                "division": original.replace("a * b", "a / b"),
+                "overflow": original.replace("a = 3U", "a = 255U")
+                .replace("b = 5U", "b = 255U")
+                .replace("(a * b) & 255U", "(((a * b) * (a * b)) * a) & 255U"),
+            }
+            for label, changed in invalid.items():
+                altered = Path(scratch) / f"{label}-recurrence.c"
+                altered.write_text(changed)
+                rejected = Path(scratch) / f"{label}-recurrence.malbolge"
+                refused = subprocess.run(
+                    [*command[:-2], str(rejected), str(altered)],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(rejected.exists())
 
     def test_automatic_unsigned_local_reaches_guest_output(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

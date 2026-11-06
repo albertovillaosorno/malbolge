@@ -221,3 +221,16 @@ a compiler capability gap, not a reason to return to N+1.
   and nonempty input. Unsupported multiplication refuses publication.
   Same-call loop repetitions keep the original shared-SSA behavior, and
   the twelve-byte Fibonacci program still refuses at layout. P0 is open.
+
+- A separate complete three-iteration source-backed C recurrence now proves
+  checked unsigned multiplication with a product wider than one byte before
+  masking, local state transfers, odd/even branch selection, and a final
+  expression-derived `putchar`. The previous adapter refused its first local
+  declaration. The repaired `u32` evaluator admits only nonoverflowing `*`
+  with exact Clang ancestry, retaining `15, 210, 22` as the independent
+  recurrence values and final output `0x41`. The emitted Malbolge runs in
+  31 normative VM steps on empty and nonempty input. Division, overflow and
+  unrecognized effects refuse without publication. The source loop and
+  multiplication execute during compilation, not in the guest. The original
+  twelve-byte Fibonacci program was retried and still fails closed at layout;
+  no general guest byte-stream synthesizer or runtime C arithmetic is claimed.
