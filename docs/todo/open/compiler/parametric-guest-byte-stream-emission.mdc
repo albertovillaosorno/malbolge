@@ -297,3 +297,13 @@ a compiler capability gap, not a reason to return to N+1.
   Cache agreement and a complete pinned-C-to-guest regression preserve the
   semantic trust boundary. The original twelve-byte Fibonacci acceptance and
   generalized guest arithmetic/control flow remain unimplemented.
+
+- The complete four-iteration conditional Fibonacci probe with odd-arm XOR
+  `0x3d` computes the independently checked `02 3e 38 08` trace. It previously
+  failed `UnsupportedTypedIr` solely because the four-output typed projector
+  compared bytes against the teaching witness `T=4>`. A shared source-distinct
+  three/four-output projector now retains each typed SSA and output identity,
+  advancing the full C program to the independently verified layout boundary.
+  The guest still fails closed with `Layout(UnsupportedEffectTrace)` and no
+  artifact. This does not add a four-byte guest synthesizer or complete the
+  original twelve-byte P0 acceptance target.

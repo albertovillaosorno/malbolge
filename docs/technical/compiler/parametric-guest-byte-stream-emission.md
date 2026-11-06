@@ -676,3 +676,27 @@ regressions and VM parity are required; cached previews have no authority.
 The earlier original three-byte prefix `02 59 5f` still has no admitted
 witness in the bounded grammar; the full twelve-byte Fibonacci target and
 runtime guest-side C control flow remain pending.
+
+### Source-distinct four-output projection without a guest witness
+
+A complete four-iteration version of the original conditional Fibonacci C
+program, using odd-arm XOR `0x3d`, independently computes the ordered bytes
+`02 3e 38 08`. The pinned frontend and JSON adapter admit its locals,
+loop, branch, arithmetic, and four separately source-anchored `putchar`
+effects. The typed stage previously rejected the fourth byte because its
+four-output projector required the unrelated hard-coded teaching sequence
+`T=4>`, despite the ternary and guest stages being responsible for positional
+layout admission.
+
+The three- and four-output typed projections now share an exact ordered
+constant/output validator. It preserves every original SSA ID and call span,
+requires an eight-bit scalar with a matching output use, and rejects duplicate
+IDs, extra effects, foreign types, and malformed instruction order. The same
+full C program now reaches `Layout(UnsupportedEffectTrace)` without publishing
+an artifact.
+
+The regression uses an independently computed unsigned-C oracle
+and will require actual empty/nonempty-input normative guest parity if layout
+support is later added. This is an intermediate compiler-boundary repair, not
+four-output guest synthesis, dynamic guest C state, or P0 acceptance. The
+original twelve-output Fibonacci experiment still lacks a guest witness.

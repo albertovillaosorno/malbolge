@@ -472,31 +472,21 @@ fn project_literal_pair_effects(
     ])
 }
 
-// Three source-bound byte outputs preserve independent SSA definitions even
-// when adjacent values happen to be equal. The guest checks actual effects.
-fn project_literal_triple_effects(
+// Source-distinct effects retain separate SSA definitions even if equal byte
+// values appear nonadjacently or across separate C conditional call sites.
+// Only independent guest layout admission can accept an output trace.
+fn project_source_distinct_literal_effects(
     module: &Module,
     original: &[typed::LocatedInstruction],
+    outputs: usize,
 ) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
-    let [
-        first,
-        first_output,
-        second,
-        second_output,
-        third,
-        third_output,
-    ] = original
-    else {
+    let (pairs, remainder) = original.as_chunks::<2>();
+    if pairs.len() != outputs || !remainder.is_empty() {
         return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-    };
-    let triples = [
-        (first, first_output),
-        (second, second_output),
-        (third, third_output),
-    ];
-    let mut result = Vec::with_capacity(6);
+    }
+    let mut result = Vec::with_capacity(outputs * 2);
     let mut ids = BTreeSet::new();
-    for (constant, output) in triples {
+    for [constant, output] in pairs {
         let (
             Instruction::ConstantInteger {
                 constant: literal,
@@ -518,73 +508,6 @@ fn project_literal_triple_effects(
         let [_byte] = literal.little_endian() else {
             return Err(TypedEchoAdapterError::UnsupportedTypedIr);
         };
-        result.push(InputInstruction::ConstantInteger {
-            bit_width: 8,
-            little_endian: literal.little_endian().to_vec(),
-            result: id.value(),
-            span: project_span(constant.span()),
-            type_kind: InputScalarType::U8,
-        });
-        result.push(InputInstruction::ByteOutput {
-            span: project_span(output.span()),
-            value: id.value(),
-        });
-    }
-    // Equal values do not alias SSA identities. The guest bridge decides
-    // which source-ordered combinations have an independently verified layout.
-    Ok(result)
-}
-
-// Four exact source constants must preserve distinct output SSA identities.
-fn project_literal_quad_effects(
-    module: &Module,
-    original: &[typed::LocatedInstruction],
-) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
-    let [
-        first,
-        first_out,
-        second,
-        second_out,
-        third,
-        third_out,
-        fourth,
-        fourth_out,
-    ] = original
-    else {
-        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-    };
-    let pairs = [
-        (first, first_out),
-        (second, second_out),
-        (third, third_out),
-        (fourth, fourth_out),
-    ];
-    let mut result = Vec::with_capacity(8);
-    let mut ids = BTreeSet::new();
-    for (index, (constant, output)) in pairs.into_iter().enumerate() {
-        let (
-            Instruction::ConstantInteger {
-                constant: literal,
-                result: id,
-                type_id,
-            },
-            Instruction::ByteOutput { value },
-        ) = (constant.instruction(), output.instruction())
-        else {
-            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-        };
-        if !is_byte_type(module, *type_id)
-            || literal.bit_width() != 8
-            || id != value
-            || !ids.insert(*id)
-            || literal.little_endian()
-                != [b'T', b'=', b'4', b'>']
-                    .get(index)
-                    .map(std::slice::from_ref)
-                    .unwrap_or(&[])
-        {
-            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-        }
         result.push(InputInstruction::ConstantInteger {
             bit_width: 8,
             little_endian: literal.little_endian().to_vec(),
@@ -2987,10 +2910,18 @@ fn project_byte_trace(
             project_literal_pair_effects(module, block.instructions(), mode)?
         }
         ByteTraceMode::DistinctLiteralTriple => {
-            project_literal_triple_effects(module, block.instructions())?
+            project_source_distinct_literal_effects(
+                module,
+                block.instructions(),
+                3,
+            )?
         }
         ByteTraceMode::DistinctLiteralQuad => {
-            project_literal_quad_effects(module, block.instructions())?
+            project_source_distinct_literal_effects(
+                module,
+                block.instructions(),
+                4,
+            )?
         }
         ByteTraceMode::DistinctLiteralQuint => {
             project_literal_quint_effects(module, block.instructions())?
@@ -4147,7 +4078,7 @@ pub fn compile_canonical_typed_distinct_literal_forty_eight(
     )
 }
 
-/// Compile exactly four distinct source-proven guest bytes `T=4>`.
+/// Compile four source-proven output effects through independent guest layout.
 ///
 /// # Errors
 ///
