@@ -127,3 +127,12 @@ a compiler capability gap, not a reason to return to N+1.
   constant branches compile to actual guest bytes `0x41`/`0x42` in
   31/69 normative VM steps; altered ancestry and unsupported effects reject.
   Guest arithmetic, the full Fibonacci loop and P0 completion remain pending.
+- A source-proven zero-based `for` loop with up to twelve iterations now
+  folds closed, output-free C state updates including an iteration-local
+  declaration, source-checked conditional and Fibonacci-style transfers.
+  An eight-iteration variant independently computes `b=42`, then emits
+  `0x41` after XOR 107 in 31 normative VM steps; a seven-iteration variant
+  also reaches guest parity. Counter changes, 13 iterations and output
+  inside the loop refuse without guest publication. This is compiler-time
+  loop evaluation with one final guest output, not runtime guest loops.
+  The original twelve-output Fibonacci loop remains unsupported.

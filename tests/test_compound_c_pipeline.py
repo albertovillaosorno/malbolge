@@ -269,6 +269,88 @@ class CompoundCPipelineTests(unittest.TestCase):
                     executed.stderr, f"malbolge-steps-v1:{steps}\n".encode()
                 )
 
+    def test_source_proven_static_loop_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = ROOT / "tests/compiler/c-frontend/accepted/local_static_loop_output.c"
+        original = source.read_text()
+        self.assertIn("for (unsigned i = 0U; i < 8U; ++i)", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for iterations, mask in ((8, 107), (7, 91)):
+                altered = Path(scratch) / f"loop-{iterations}.c"
+                text = original.replace("i < 8U", f"i < {iterations}U").replace(
+                    "b ^ 107U", f"b ^ {mask}U"
+                )
+                _written = altered.write_text(text)
+                # Independent, finite unsigned-C oracle, not a compiler trace.
+                a, b = 1, 1
+                for _ in range(iterations):
+                    next_value = (a + b) & 255
+                    next_value ^= 0 if next_value % 2 == 0 else 1
+                    a, b = b, next_value
+                expected = b ^ mask
+                self.assertEqual(expected, 65)
+                guest = Path(scratch) / f"loop-{iterations}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/static-loop-{iterations}-v1",
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                        str(altered),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                self.assertTrue(guest.is_file())
+                execution = subprocess.run(
+                    [str(VM), str(guest), "--report-steps"],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(execution.returncode, 0, execution.stderr)
+                self.assertEqual(execution.stdout, bytes([expected]))
+                self.assertEqual(execution.stderr, b"malbolge-steps-v1:31\n")
+
+            for index, changed in enumerate(
+                (
+                    original.replace("i < 8U", "i < 13U"),
+                    original.replace("++i", "--i"),
+                    original.replace("        a = b;", "        i = i + 1U;\n        a = b;"),
+                    original.replace("        a = b;", "        putchar(65);\n        a = b;"),
+                )
+            ):
+                altered = Path(scratch) / f"unsupported-loop-{index}.c"
+                _written = altered.write_text(changed)
+                guest = Path(scratch) / f"unsupported-loop-{index}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/unsupported-static-loop-{index}-v1",
+                        "--output",
+                        str(guest),
+                        str(altered),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=60,
+                )
+                self.assertNotEqual(compiled.returncode, 0)
+                self.assertIn(b"Unsupported", compiled.stderr)
+                self.assertFalse(guest.exists())
+
     def test_unmasked_wide_sum_and_multiplication_refuse_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

@@ -226,6 +226,39 @@ actual typed source span. The original twelve-byte Fibonacci experiment
 still refuses its first declaration: its stateful `for`, repeated output,
 and guest control flow remain missing and P0 stays open.
 
+### Closed, statically evaluated C for-loop state
+
+A new pinned Clang experiment
+`tests/compiler/c-frontend/accepted/local_static_loop_output.c` reuses
+Fibonacci-like unsigned locals in `for (unsigned i = 0U; i < 8U; ++i)`.
+Its body declares an iteration-local `next`, computes a masked sum, selects
+one of two source-proven assignments with `if/else`, and transfers the state
+into `a` and `b`. A single `putchar` after the loop reads the final state.
+The original full source was attempted first and still rejects because it
+emits *inside* its loop.
+
+The bounded adapter now proves an exact Clang `for-statement` declaration,
+`u32` counter read, `i32` less-than comparison against a byte literal,
+`++` increment, brace-delimited body and matching symbol/span ancestry.
+It accepts only a zero-initialized, private `unsigned` counter with a bound
+from 1 through 12. Each iteration replays the **same checked AST** against
+proven local values, disposes of loop-body locals on scope exit and advances
+the counter. Assignments to the counter, nested loops, effects inside the
+loop, unsupported operations, and out-of-budget iteration bounds reject.
+The body may contain bounded local declarations, assignments, and the
+previously proven closed conditional assignments. All materialized locals
+stay byte-sized; wider checked unsigned intermediates require masking.
+The result is one constant-SSA byte with a real guest output, **not** a
+Malbolge loop or guest runtime arithmetic.
+
+Independent unsigned-C arithmetic yields `a=26`, `b=42` after eight
+iterations and `42 ^ 107 = 65`. The real source-to-Malbolge pipeline emits
+`0x41` in 31 normative VM steps, with a source variant at seven iterations
+also producing `0x41` after independent oracle adjustment. Tests assert
+changed counter identities, loop controls, branches and added effects refuse
+publication. The complete twelve-byte Fibonacci program remains blocked by
+loop-body output and dynamic guest control-flow realization.
+
 The remaining first semantic gap for the original complete program is the
 **general runtime** local-variable declaration, initialization, read/write
 and provenance needed through typed IR and ternary lowering. The same

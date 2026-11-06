@@ -597,3 +597,25 @@ reject before guest publication. All computation and branch selection here
 remain compiler-time constant propagation. This does not add runtime C
 arithmetic, dynamic state, loops or arbitrary guest byte streams. The
 original complete twelve-byte Fibonacci program remains unsupported.
+
+
+### Bounded output-free `for` evaluation
+
+A closed Clang `for (unsigned i = 0U; i < N; ++i)` with `1 <= N <= 12`
+can now be evaluated during compilation, provided its brace-delimited body
+contains only proven `u32` local declarations, assignments, and the admitted
+`if/else` assignment selection. The private loop counter starts at zero,
+advances exactly once per iteration and cannot be assigned inside the body.
+The adapter replays the identical checked AST with bounded lexical state,
+removing iteration-local declarations at each scope exit and retaining outer
+local writes. Unsupported effects, nested loops, dynamic conditions, aliases,
+unknown AST nodes and extra output calls refuse before publication.
+
+`local_static_loop_output.c` exercises eight Fibonacci-like updates with a
+masked sum, conditional and state transfer, then emits one byte after the
+loop. Independent C arithmetic gives `b = 42` and `42 ^ 107 = 65`; the
+normative guest emits `0x41` in 31 VM steps. A seven-iteration variant also
+reaches independent VM parity, while altered control and output effects
+reject. The Malbolge guest executes only the **final output**; this is not
+runtime loop execution. The complete Fibonacci program's twelve outputs
+inside the loop still require guest control-flow and state lowering.

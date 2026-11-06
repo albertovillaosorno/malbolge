@@ -23,7 +23,7 @@
 // - Summary:
 //   - Reconcile distinct canonical Clang symbols before folding arithmetic.
 // - Description:
-//   - Reject aliases, unknown expressions, loops and excess statements.
+//   - Reject aliases, unknown effects, dynamic loops and excess statements.
 // - Usage:
 //   - Invoked after the original single-local proof fails.
 // - Defaults:
@@ -39,6 +39,7 @@ use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 
 const MAX_LOCALS: usize = 8;
 const MAX_WRITES: usize = 16;
+const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
 const MAX_EXPRESSION_DEPTH: usize = 8;
 // Bound the lexical prefix on an explicit source-proven `(int)` cast.
 const MAX_EXPLICIT_CAST_PREFIX_BYTES: u32 = 16;
@@ -54,6 +55,7 @@ struct Local<'node> {
 
 struct Flow<'node> {
     locals: Vec<Local<'node>>,
+    loop_counter: Option<&'node str>,
     nodes: &'node [Node],
     position: usize,
 }
@@ -84,7 +86,8 @@ impl<'node> Flow<'node> {
             .locals
             .iter()
             .position(|local| local.symbol == symbol)?;
-        if !assigned_local_reference(left, symbol)
+        if self.loop_counter == Some(symbol)
+            || !assigned_local_reference(left, symbol)
             || !span_within(&assignment.span, &left.span)
             || assignment.span.begin.byte != left.span.begin.byte
         {
@@ -310,6 +313,30 @@ impl<'node> Flow<'node> {
         }
     }
 
+    /// Replay a closed, effect-free loop body against bounded proven locals.
+    /// Each lexical inner declaration dies at the end of its iteration.
+    fn loop_body(&mut self, body: &Node) -> Option<()> {
+        let mut last_end = body.span.begin.byte;
+        let mut writes = 0;
+        while let Some(node) = self.peek() {
+            if node.span.begin.byte >= body.span.end.byte {
+                break;
+            }
+            let expected_parent = body.id;
+            if node.parent != expected_parent || writes >= MAX_WRITES {
+                return None;
+            }
+            last_end = match node.kind.as_str() {
+                "declaration-statement" => self.declaration(body, last_end)?.0,
+                "binary-expression" => self.assignment(body, last_end)?.0,
+                "if-statement" => self.conditional(body, last_end)?,
+                _ => return None,
+            };
+            writes = writes.checked_add(1)?;
+        }
+        (writes > 0 && last_end < body.span.end.byte).then_some(())
+    }
+
     fn peek(&self) -> Option<&'node Node> {
         self.nodes.get(self.position)
     }
@@ -324,6 +351,103 @@ impl<'node> Flow<'node> {
             return None;
         }
         Some((local.byte, local.source))
+    }
+
+    /// Prove one `for (unsigned i = 0U; i < N; ++i)` and replay its
+    /// source-checked, output-free body, never synthesizing guest control flow.
+    /// Neither the loop counter nor any other local may escape its C scope.
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "bounded exact Clang loop proof"
+    )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "closed Clang for-loop proof"
+    )]
+    fn static_for(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
+        let statement = self.take(body.id, "for-statement")?;
+        if !clean(statement)
+            || !span_within(&body.span, &statement.span)
+            || previous_end > statement.span.begin.byte
+            || self.loop_counter.is_some()
+        {
+            return None;
+        }
+        let outer_len = self.locals.len();
+        let (declaration_end, _) =
+            self.declaration(statement, statement.span.begin.byte)?;
+        let counter = self.locals.get(outer_len)?;
+        if counter.byte != 0 {
+            return None;
+        }
+        let symbol = counter.symbol;
+        let comparison = self.take(statement.id, "binary-expression")?;
+        let load = self.take(comparison.id, "cast-expression")?;
+        let read = self.take(load.id, "declaration-reference-expression")?;
+        let bound_node = self.take(comparison.id, "integer-literal")?;
+        let bound = literal_byte(bound_node)?;
+        if !typed_less_than(comparison)
+            || !typed_operator(load, "lvalue-to-rvalue")
+            || !assigned_local_reference(read, symbol)
+            || !span_within(&statement.span, &comparison.span)
+            || !span_within(&comparison.span, &load.span)
+            || !span_within(&comparison.span, &bound_node.span)
+            || load.span != read.span
+            || comparison.span.begin.byte != load.span.begin.byte
+            || load.span.end.byte >= bound_node.span.begin.byte
+            || comparison.span.end.byte != bound_node.span.end.byte
+            || declaration_end >= comparison.span.begin.byte
+            || !(1..=MAX_STATIC_LOOP_ITERATIONS).contains(&bound)
+        {
+            return None;
+        }
+        let separated = comparison.span.end.byte < self.peek()?.span.begin.byte;
+        let increment = self.take(statement.id, "unary-expression")?;
+        let increment_read =
+            self.take(increment.id, "declaration-reference-expression")?;
+        if !typed_operator(increment, "++")
+            || !assigned_local_reference(increment_read, symbol)
+            || !span_within(&statement.span, &increment.span)
+            || !span_within(&increment.span, &increment_read.span)
+            || !separated
+            || increment.span.end.byte != increment_read.span.end.byte
+            || increment.span.begin.byte >= increment_read.span.begin.byte
+        {
+            return None;
+        }
+        let loop_body = self.take(statement.id, "compound-statement")?;
+        if !clean(loop_body)
+            || !span_within(&statement.span, &loop_body.span)
+            || increment.span.end.byte >= loop_body.span.begin.byte
+            || loop_body.span.end.byte != statement.span.end.byte
+        {
+            return None;
+        }
+        let body_start = self.position;
+        self.loop_counter = Some(symbol);
+        let mut body_end = None;
+        for iteration in 0..bound {
+            self.position = body_start;
+            self.loop_body(loop_body)?;
+            if body_end
+                .is_some_and(|expected_end| self.position != expected_end)
+            {
+                return None;
+            }
+            body_end = Some(self.position);
+            // Inner automatic locals must not remain visible after the brace.
+            self.locals.truncate(outer_len.checked_add(1)?);
+            let current_counter = self.locals.get_mut(outer_len)?;
+            if current_counter.byte != iteration {
+                return None;
+            }
+            current_counter.byte = current_counter.byte.checked_add(1)?;
+            current_counter.source = increment;
+        }
+        self.position = body_end?;
+        self.locals.truncate(outer_len);
+        self.loop_counter = None;
+        Some(statement.span.end.byte)
     }
 
     fn take(&mut self, parent: u32, kind: &str) -> Option<&'node Node> {
@@ -342,6 +466,20 @@ const fn bare_typed_node(node: &Node) -> bool {
     node.name.is_none()
         && node.reference.is_none()
         && node.operation.is_none()
+        && node.constant_integer.is_none()
+        && node.literal.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+}
+
+fn typed_less_than(node: &Node) -> bool {
+    node.operation.as_deref() == Some("<")
+        && node.type_name.as_deref() == Some("i32")
+        && node.name.is_none()
+        && node.reference.is_none()
         && node.constant_integer.is_none()
         && node.literal.is_none()
         && node.definition.is_none()
@@ -537,6 +675,7 @@ pub(super) fn canonical_multi_local_output(
     }
     let mut flow = Flow {
         locals: Vec::new(),
+        loop_counter: None,
         nodes: &input.nodes,
         position: 2,
     };
@@ -558,6 +697,11 @@ pub(super) fn canonical_multi_local_output(
                     .assignment(body, last_end)
                     .ok_or(FrontendJsonError::Unsupported)?;
                 last_end = end;
+            },
+            "for-statement" => {
+                last_end = flow
+                    .static_for(body, last_end)
+                    .ok_or(FrontendJsonError::Unsupported)?;
             },
             "if-statement" if remaining_writes >= 2 => {
                 last_end = flow
