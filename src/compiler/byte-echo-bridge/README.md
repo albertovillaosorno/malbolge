@@ -886,3 +886,20 @@ from disjoint guest data writes beyond 121 source cells. The exact current
 profile, SSA binding, input independence and 121-step normative VM execution
 must agree. Changed bytes, forged effects, short prefixes and foreign profiles
 reject. This is a finite proof, not C-source admission or arbitrary output.
+
+### Bounded search beyond the one-byte witness tables
+
+When the existing positional one-byte witness selector has no entry, the
+current-profile single-output bridge may instead search a bounded grammar of
+source-encoded no-ops, one data relocation, and one or two genuine `p`/`*`
+writes before `<` and halt. Candidate byte previews are not authority: the
+independent layout checker must re-decode the complete graphical source,
+prove data-write placement, and the normative VM must emit the requested
+byte under empty and nonempty input.
+
+A source-C `putchar(64)` previously refused at layout, and now emits `0x40`
+in seven VM steps. The same search has independently realized `0xff` in 41
+steps. This is a finite candidate grammar, not arbitrary byte synthesis;
+`0x7f` still refused in the checked experiment, and the twelve-byte
+Fibonacci trace remains unsupported. Existing seed-selected witnesses are
+unchanged.

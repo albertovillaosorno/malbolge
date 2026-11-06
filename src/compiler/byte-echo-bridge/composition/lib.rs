@@ -1874,9 +1874,21 @@ pub fn encode_rotated_byte_literal(
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    let (padding, arithmetic) =
-        literal_output_witness(scalar.bits(), outputs.len())
+    let selected = literal_output_witness(scalar.bits(), outputs.len());
+    if selected.is_none() && outputs.len() == 1 {
+        // The finite historical table is not an exhaustive byte language.
+        // Search actual guest arithmetic before rejecting a source constant.
+        let source_cells = pair_source_cells(profile)
             .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        return verified_repeated_output_layout(
+            profile,
+            [scalar.bits()],
+            &source_cells,
+        )
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
+    let (padding, arithmetic) =
+        selected.ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
     let mut operations = vec![LinearOpcode::NoOperation; padding];
     operations.push(LinearOpcode::RelocateDataPointer);
     operations.extend_from_slice(arithmetic);
