@@ -43,7 +43,11 @@ pub mod layout;
 #[path = "../../ternary-lowering/composition/lib.rs"]
 pub mod ternary;
 
-use std::collections::BTreeSet;
+#[cfg(test)]
+#[path = "../../../../tests/compiler/bridge/three_write_preview.rs"]
+mod three_write_preview_tests;
+
+use std::collections::{BTreeMap, BTreeSet};
 use std::iter::repeat_n;
 
 use layout::{
@@ -1689,6 +1693,68 @@ fn verified_repeated_output_layout<const N: usize>(
     )
 }
 
+/// Preview a three-write suffix from its immutable expanded memory tail.
+///
+/// All candidates with the same length end in the same encoded `OutputByte`
+/// and `Halt`. The Malbolge memory recurrence depends only on those two cells,
+/// and every arithmetic write advances to a fresh out-of-source address.
+/// The independent layout and VM check still owns candidate acceptance.
+fn preview_three_write_suffix(
+    source_cells: &[[u8; 6]],
+    memory_by_length: &mut BTreeMap<usize, Vec<u32>>,
+    padding_and_strides: [usize; 4],
+    operations: [LinearOpcode; 3],
+) -> Option<u8> {
+    let [padding, before, between_first, between_second] = padding_and_strides;
+    let strides = [before, between_first, between_second];
+    let source_length = strides.iter().copied().fold(
+        padding.saturating_add(6),
+        usize::saturating_add,
+    );
+    let output_cell = *source_cells
+        .get(source_length.checked_sub(2)?)?
+        .get(4)?;
+    let halt_cell = *source_cells
+        .get(source_length.checked_sub(1)?)?
+        .get(5)?;
+    let relocated = usize::from(*source_cells.get(padding)?.get(1)?);
+    if relocated < source_length
+        || relocated.saturating_add(source_length) >= 4096
+    {
+        return None;
+    }
+    let last_write = strides.iter().copied().fold(
+        relocated.saturating_add(3),
+        usize::saturating_add,
+    );
+    let memory = memory_by_length.entry(source_length).or_insert_with(|| {
+        let mut expanded = vec![0u32; source_length.saturating_sub(2)];
+        expanded.extend([u32::from(output_cell), u32::from(halt_cell)]);
+        expanded
+    });
+    while memory.len() <= last_write {
+        let mut tail = memory.iter().rev();
+        let latest = *tail.next()?;
+        let previous = *tail.next()?;
+        memory.push(malbolge::profile_crazy(previous, latest, 15));
+    }
+    let mut accumulator = 0u32;
+    let mut address = relocated.saturating_add(1);
+    for (operation, stride) in operations.into_iter().zip(strides) {
+        address = address.saturating_add(stride);
+        let word = *memory.get(address)?;
+        accumulator = if operation == LinearOpcode::CrazyData {
+            malbolge::profile_crazy(word, accumulator, 15)
+        } else {
+            word.div_euclid(3).saturating_add(
+                word.rem_euclid(3).saturating_mul(HIGH_TRIT_WEIGHT),
+            )
+        };
+        address = address.saturating_add(1);
+    }
+    u8::try_from(accumulator & 255).ok()
+}
+
 /// Enumerate a finite three-write guest grammar in stable lexicographic order.
 /// Each proposal still requires independent layout and normative VM proof.
 fn verified_three_write_single_output_layout(
@@ -1697,6 +1763,12 @@ fn verified_three_write_single_output_layout(
     source_cells: &[[u8; 6]],
 ) -> Option<LinearLayout> {
     const PATTERNS: usize = 12 * 9 * 21 * 21 * 8;
+    // Every candidate ends in OutputByte/Halt. Guest memory expansion
+    // past the source uses only those two encoded source cells, so it is
+    // identical for candidate programs with the same source length.
+    // This is only a disposable proposal filter: the selected candidate
+    // still passes full independent layout and normative VM admission.
+    let mut memory_by_source_length = BTreeMap::<usize, Vec<u32>>::new();
     for candidate in 0..PATTERNS {
         let mut index = candidate;
         let third = if index % 2 == 0 {
@@ -1723,6 +1795,15 @@ fn verified_three_write_single_output_layout(
         index /= 21;
         let before = index % 9;
         let padding = index / 9;
+        if preview_three_write_suffix(
+            source_cells,
+            &mut memory_by_source_length,
+            [padding, before, between_first, between_second],
+            [first, second, third],
+        ) != Some(expected)
+        {
+            continue;
+        }
         let mut operations = vec![LinearOpcode::NoOperation; padding];
         operations.push(LinearOpcode::RelocateDataPointer);
         operations.extend(repeat_n(LinearOpcode::NoOperation, before));
@@ -1730,11 +1811,9 @@ fn verified_three_write_single_output_layout(
         operations.extend(repeat_n(LinearOpcode::NoOperation, between_first));
         operations.push(second);
         operations.extend(repeat_n(LinearOpcode::NoOperation, between_second));
-        operations.extend([
-            third,
-            LinearOpcode::OutputByte,
-            LinearOpcode::Halt,
-        ]);
+        operations.push(third);
+        operations.push(LinearOpcode::OutputByte);
+        operations.push(LinearOpcode::Halt);
         if let Some(layout) = verified_output_stream_layout(
             profile,
             &operations,

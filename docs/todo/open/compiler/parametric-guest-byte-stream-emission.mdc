@@ -272,3 +272,13 @@ a compiler capability gap, not a reason to return to N+1.
   placement proof and normative VM output under empty and nonempty input.
   The C arithmetic and branch still fold during compilation; the original
   twelve-byte Fibonacci stream and runtime C control flow remain pending.
+
+- The three-write single-output proposal now caches loader-expanded memory
+  tails by emitted source length. All candidates of a given length share
+  the same final encoded output and halt cells, and their disjoint guest
+  arithmetic writes cannot alter an address read later. A deterministic
+  384-case matrix compares the cached preview with the complete proposal
+  model; independent layout admission and actual VM replay still decide
+  publication. The complete source-proven `0x7f` recurrence passes guest
+  parity on empty and nonempty input, while its unsupported C mutation
+  refuses without publication. The twelve-byte Fibonacci P0 remains open.
