@@ -209,3 +209,15 @@ a compiler capability gap, not a reason to return to N+1.
   streams. Unsupported multiplication still refuses. This adds a new output
   identity pattern without implementing runtime C state or general streams;
   the original twelve-byte Fibonacci remains unsupported and P0 stays open.
+
+- A three-iteration index-branching Fibonacci C loop now emits three
+  source-distinct but equal bytes `38 38 38` (`888`). A red-first complete
+  C-to-guest test caught uniform-output SSA coalescing and a missing triple
+  layout witness. The frontend now retains separate SSA constants for
+  distinct C call spans; the bridge proposes one or two actual relocated
+  arithmetic writes followed by three output instructions. The publisher
+  independently decodes the staged code, checks disjoint out-of-source
+  writes, admits its grammar and replays the normative VM with both empty
+  and nonempty input. Unsupported multiplication refuses publication.
+  Same-call loop repetitions keep the original shared-SSA behavior, and
+  the twelve-byte Fibonacci program still refuses at layout. P0 is open.

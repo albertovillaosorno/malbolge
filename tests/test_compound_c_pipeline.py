@@ -319,6 +319,71 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", refused.stderr)
             self.assertFalse(rejected.exists())
 
+    def test_three_source_effects_with_identical_bytes_reach_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_nonadjacent_output.c"
+        ).read_text()
+        self.assertIn("+ 90U", original)
+        self.assertIn("+ 37U", original)
+        # Three source-evaluated loop outputs, from both branches, converge.
+        a, b = 1, 1
+        expected = bytearray()
+        for _ in range(3):
+            next_value = (a + b) & 255
+            expected.append((next_value - next_value) + 56)
+            a, b = b, next_value
+        self.assertEqual(bytes(expected), b"888")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            source = Path(scratch) / "three-equal-loop.c"
+            source.write_text(
+                original.replace("+ 90U", "+ 56U").replace("+ 37U", "+ 56U")
+            )
+            guest = Path(scratch) / "three-equal-loop.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/three-equal-loop-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for input_bytes in (b"", bytes((255, 0, 128))):
+                execution = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=input_bytes,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(execution.returncode, 0, execution.stderr)
+                self.assertEqual(execution.stdout, expected)
+                self.assertRegex(
+                    execution.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                )
+            mutated = Path(scratch) / "three-equal-mutation.c"
+            mutated.write_text(source.read_text().replace("next - next", "next * next"))
+            rejected = Path(scratch) / "three-equal-mutation.malbolge"
+            refused = subprocess.run(
+                [*command[:-2], str(rejected), str(mutated)],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(rejected.exists())
+
     def test_separate_branch_effects_with_equal_bytes_reach_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

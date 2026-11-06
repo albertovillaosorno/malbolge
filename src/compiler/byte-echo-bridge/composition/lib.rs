@@ -1614,27 +1614,23 @@ fn verified_output_stream_layout<const N: usize>(
     Some(layout)
 }
 
-/// Reuse an unchanged guest accumulator for two independently sourced bytes.
+/// Reuse an unchanged guest accumulator for distinct source output effects.
 ///
 /// The repeated value does not permit SSA aliasing: it eliminates a second
 /// guest arithmetic *effect*, not either of the two guest output effects.
 /// A second arithmetic write may be needed to compute the initial value.
-fn verified_repeated_pair_layout(
+fn verified_repeated_output_layout<const N: usize>(
     profile: &'static ProfileDescriptor,
-    expected: [u8; 2],
+    expected: [u8; N],
     source_cells: &[[u8; 6]],
 ) -> Option<LinearLayout> {
     let arithmetic = [LinearOpcode::CrazyData, LinearOpcode::RotateData];
     for padding in 0..DISTINCT_PAIR_PREFIX_PHASES {
         for &operation in &arithmetic {
             let mut operations = vec![LinearOpcode::NoOperation; padding];
-            operations.extend([
-                LinearOpcode::RelocateDataPointer,
-                operation,
-                LinearOpcode::OutputByte,
-                LinearOpcode::OutputByte,
-                LinearOpcode::Halt,
-            ]);
+            operations.extend([LinearOpcode::RelocateDataPointer, operation]);
+            operations.extend(repeat_n(LinearOpcode::OutputByte, N));
+            operations.push(LinearOpcode::Halt);
             if let Some(layout) = verified_output_stream_layout(
                 profile,
                 &operations,
@@ -1664,12 +1660,9 @@ fn verified_repeated_pair_layout(
                             LinearOpcode::NoOperation,
                             between,
                         ));
-                        operations.extend([
-                            second,
-                            LinearOpcode::OutputByte,
-                            LinearOpcode::OutputByte,
-                            LinearOpcode::Halt,
-                        ]);
+                        operations.push(second);
+                        operations.extend(repeat_n(LinearOpcode::OutputByte, N));
+                        operations.push(LinearOpcode::Halt);
                         if let Some(layout) = verified_output_stream_layout(
                             profile,
                             &operations,
@@ -1744,7 +1737,7 @@ pub fn encode_distinct_literal_pair(
     let source_cells = pair_source_cells(profile)
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
     if expected[0] == expected[1] {
-        return verified_repeated_pair_layout(profile, expected, &source_cells)
+        return verified_repeated_output_layout(profile, expected, &source_cells)
             .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     // Preserve already-published positional witnesses before broadening the
@@ -6100,6 +6093,19 @@ pub fn encode_distinct_literal_triple(
     let expected: [u8; 3] = bytes
         .try_into()
         .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    // Three source-distinct effects with the same value can observe one
+    // unchanged guest accumulator. Only the source SSA identities are
+    // independent; repeating the output instruction is not a second write.
+    if expected[0] == expected[1] && expected[1] == expected[2] {
+        let source_cells = pair_source_cells(profile)
+            .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        return verified_repeated_output_layout(
+            profile,
+            expected,
+            &source_cells,
+        )
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
+    }
     // An unchanged accumulator can be output twice without a second data
     // write, while source SSA definitions stay distinct. This is a genuine
     // guest output effect, not a host-side stream duplication.

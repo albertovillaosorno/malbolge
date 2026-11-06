@@ -3792,6 +3792,120 @@ fn verify_distinct_literal_pair(
     Ok(())
 }
 
+// Three independent source effects may share one live guest accumulator.
+// Inspect the staged instruction bytes rather than trusting bridge geometry.
+fn verify_uniform_literal_triple(
+    profile: &'static malbolge::ProfileDescriptor,
+    artifact: &VerifiedSource,
+    bytes: [u8; 3],
+) -> Result<(), String> {
+    if bytes[0] != bytes[1]
+        || bytes[1] != bytes[2]
+        || artifact.source.len() != artifact.steps
+    {
+        return Err(String::from("uniform triple geometry disagrees"));
+    }
+    let decoded = artifact
+        .source
+        .iter()
+        .enumerate()
+        .map(|(position, &byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(byte),
+                u32::try_from(position).ok()?,
+            )
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("uniform triple decode disagrees")?;
+    let prefix = decoded.iter().take_while(|&&code| code == b'o').count();
+    let output = profile.output_instruction();
+    let suffix = decoded
+        .len()
+        .checked_sub(4)
+        .ok_or("uniform triple source is truncated")?;
+    if prefix >= 94
+        || decoded.get(prefix) != Some(&b'j')
+        || decoded.get(suffix..) != Some(&[output, output, output, b'v'][..])
+    {
+        return Err(String::from("uniform triple control flow disagrees"));
+    }
+    let body = decoded
+        .get(prefix + 1..suffix)
+        .ok_or("uniform triple arithmetic is truncated")?;
+    let expected_writes = if matches!(body, [b'p' | b'*']) {
+        1
+    } else {
+        if prefix >= 12 {
+            return Err(String::from("uniform triple prefix exceeds grammar"));
+        }
+        let mut cursor = body.iter().take_while(|&&op| op == b'o').count();
+        if cursor > 8 || !matches!(body.get(cursor), Some(b'p' | b'*')) {
+            return Err(String::from("uniform triple first write disagrees"));
+        }
+        cursor += 1;
+        let between = body[cursor..]
+            .iter()
+            .take_while(|&&op| op == b'o')
+            .count();
+        cursor += between;
+        if between > 20
+            || !matches!(body.get(cursor), Some(b'p' | b'*'))
+            || cursor + 1 != body.len()
+        {
+            return Err(String::from("uniform triple second write disagrees"));
+        }
+        2
+    };
+    let operations = decoded
+        .iter()
+        .map(|&code| match code {
+            b'o' => Some(LinearOpcode::NoOperation),
+            b'j' => Some(LinearOpcode::RelocateDataPointer),
+            b'p' => Some(LinearOpcode::CrazyData),
+            b'*' => Some(LinearOpcode::RotateData),
+            b'v' => Some(LinearOpcode::Halt),
+            code if code == output => Some(LinearOpcode::OutputByte),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("uniform triple instruction decode disagrees")?;
+    let layout = admit_linear_layout(
+        profile,
+        &operations,
+        &artifact.source,
+        LinearProfileIdentity {
+            fingerprint: profile.fingerprint(),
+            id: profile.id(),
+        },
+    )
+    .map_err(|error| format!("uniform triple admission: {error:?}"))?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() != expected_writes
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
+        || writes.iter().any(|&address| address < artifact.source.len() as u32)
+        || layout.executed_code_positions().len() != artifact.steps
+    {
+        return Err(String::from("uniform triple data writes disagree"));
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
+            .map_err(|error| format!("uniform triple load: {error:?}"))?;
+        if !matches!(vm.run(artifact.steps),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
+            || vm.input_consumed() != 0
+            || vm.output() != bytes
+        {
+            return Err(String::from("uniform triple output disagrees"));
+        }
+    }
+    Ok(())
+}
+
 // Re-admit a repeated guest output from the staged bytes, never from the
 // proposal's operations. Two writes must explain three independent outputs.
 fn verify_repeated_literal_triple(
@@ -3799,6 +3913,9 @@ fn verify_repeated_literal_triple(
     artifact: &VerifiedSource,
     bytes: [u8; 3],
 ) -> Result<(), String> {
+    if bytes[0] == bytes[1] && bytes[1] == bytes[2] {
+        return verify_uniform_literal_triple(profile, artifact, bytes);
+    }
     let repeated_first = bytes[0] == bytes[1];
     if bytes[0] == bytes[2]
         || !(repeated_first || bytes[1] == bytes[2])

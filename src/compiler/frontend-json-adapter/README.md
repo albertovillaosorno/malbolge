@@ -165,6 +165,13 @@ and SSA definitions, even when their observed bytes are equal. A bounded
 pair composer searches actual guest arithmetic and independently replays the
 emitted source. A two-iteration conditional C loop with different XOR arms
 now emits `38 38` from one relocated guest write and two output instructions.
+Three loop observations from two source-distinct conditional call sites now
+also preserve three separate typed SSA definitions when every emitted byte
+agrees. The source-proven three-iteration C recurrence produces `38 38 38`
+in the real normative guest VM; unsupported multiplication still refuses.
+The layout uses one or two relocated guest writes and three real output
+instructions, independently re-admitted by the publisher. This is not
+general C runtime state or arbitrary byte emission.
 Repeated observations from the *same* C call retain the existing shared-SSA
 path. Other unproved pairs refuse; three-call sequences use their own
 separately verified guest grammar.

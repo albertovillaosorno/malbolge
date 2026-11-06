@@ -550,3 +550,30 @@ mutation is rejected before publication. No host output substitution,
 dynamic guest C state, general loop execution or arbitrary byte-stream
 synthesis is claimed. The original twelve-byte Fibonacci target still fails
 closed at layout, so the P0 acceptance remains pending.
+
+### Three identical outputs from source-distinct conditional calls
+
+The three-iteration Fibonacci-like C loop from the nonadjacent-repeat probe
+was compiled again with both branch expressions changed to
+`(next - next) + 56U`. All three loop iterations still prove the C local
+state, chosen branch, and actual `putchar` call effect. The independent arithmetic oracle
+is `38 38 38`. Before the repair, the frontend merged all observations into
+one SSA constant; the finite single-constant backend refused the trace.
+A red-first complete pipeline regression reproduced the missing artifact.
+
+When two or three nonzero equal-valued effects use different C call spans,
+the frontend now preserves separate typed `u8` SSA definitions and their
+source spans. The three-effect bridge may compute one accumulator through
+one or two relocated `p`/`*` data writes, then execute three distinct `<`
+output instructions without changing the accumulator. The independent
+publisher re-decodes the actual graphical source, proves the bounded
+arithmetic/three-output geometry and nonaliasing data writes, then runs the
+normative VM with empty and nonempty input. `888` reaches exact real guest
+parity; an unsupported multiplication mutation still refuses without a
+published capsule. Same-call uniform loop effects retain the shared-SSA
+path, not an invented new source identity.
+
+This covers an additional output-identity shape, not arbitrary byte streams,
+execution of C loops in the guest, or the full twelve-byte Fibonacci target.
+The latter continues to refuse `Layout(UnsupportedEffectTrace)` and this
+P0 remains pending.

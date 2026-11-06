@@ -554,14 +554,18 @@ pub(super) fn emit_verified_local_bytes(
         ..
     } = *first;
     let repeated = outputs.iter().all(|item| item.byte == byte);
-    // Identical observations from different C calls must not erase their
-    // source provenance. The verified pair bridge can independently emit
-    // both effects without duplicating an arithmetic guest write.
-    let distinct_equal_pair = repeated
+    // Distinct source call sites retain independent SSA effect origins even
+    // when every observed byte agrees. Three loop iterations may select two
+    // different branches; the repeated call site is still a new effect.
+    // The longer uniform-output path retains one shared SSA definition.
+    let distinct_equal_effects = repeated
         && byte != 0
-        && outputs.len() == 2
-        && outputs[0].call.span != outputs[1].call.span;
-    let share_ssa = repeated && !distinct_equal_pair;
+        && matches!(outputs.len(), 2 | 3)
+        && outputs
+            .iter()
+            .skip(1)
+            .any(|item| item.call.span != outputs[0].call.span);
+    let share_ssa = repeated && !distinct_equal_effects;
     let mode = if share_ssa {
         if outputs.len() > 33 {
             return Err(FrontendJsonError::Unsupported);

@@ -337,3 +337,53 @@ fn adjacent_equal_bytes_reuse_a_real_guest_accumulator() -> Result<(), String> {
     ));
     Ok(())
 }
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "independent SSA and actual uniform guest output are asserted"
+)]
+fn uniform_source_distinct_triple_reuses_one_guest_write()
+-> Result<(), String> {
+    let expected = *b"ZZZ";
+    let program = source_triplet(expected, false)?;
+    let layout = encode_distinct_literal_triple(&program, current_profile())
+        .map_err(|error| format!("uniform triple: {error:?}"))?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    assert_eq!(writes.len(), 1);
+    assert!(writes[0] >= layout.source().len() as u32);
+    let outputs = layout
+        .source()
+        .iter()
+        .enumerate()
+        .filter(|entry| {
+            let (position, cell) = *entry;
+            malbolge::decode_profile_instruction(
+                u32::from(*cell), position as u32,
+            ) == Some(current_profile().output_instruction())
+        })
+        .count();
+    assert_eq!(outputs, 3);
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(), layout.source(), input,
+        ).map_err(|error| format!("uniform triple load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(layout.source().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.output(), expected);
+    }
+    let stale = source_triplet(expected, true)?;
+    assert!(matches!(
+        encode_distinct_literal_triple(&stale, current_profile()),
+        Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+    ));
+    Ok(())
+}
