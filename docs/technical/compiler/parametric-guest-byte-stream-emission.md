@@ -357,6 +357,29 @@ without a published file. The original twelve-iteration Fibonacci oracle
 `02 59 5f 08 57 4f 22 6d 03 90 b3 23` remains unsupported by the
 finite twelve-byte layout; P0 and dynamic guest state remain pending.
 
+### Composed two-byte arithmetic from the original C experiment
+
+The original conditional Fibonacci C program was reduced to two iterations
+with the odd-arm XOR changed to `54U`, preserving its local state, bounded
+loop, masked unsigned addition, conditional and source-proven output effects.
+Its independent result is `02 35` in hexadecimal: the first value is 2 and
+the second is `3 ^ 54 = 53`. The pinned Clang frontend, typed adapter,
+ternary lowering and Malbolge layout now produce a real guest capsule that
+the normative VM replays to exactly those bytes. This expands the earlier
+two-write pair grammar to one extra arithmetic write, with bounded no-op
+strides and three distinct out-of-source guest memory writes.
+
+The candidate preview caches positional graphical encodings instead of
+rescanning all printable characters for each candidate. The cache has no
+acceptance authority: the layout is independently decoded, checked for
+self-modification geometry and replayed on empty and nonempty input before
+publication. An expanded negative regression now treats `QZ` as an admitted
+VM-replayed pair rather than incorrectly expecting its refusal. Equal
+output bytes are explicitly rejected by the distinct-pair bridge and the
+independent publisher. This is a bounded guest layout, **not** general
+runtime arithmetic, looping or twelve-byte Fibonacci acceptance. P0 remains
+open.
+
 ### Later verification matrix
 
 Only after the complete experiment succeeds, use a deterministic corpus

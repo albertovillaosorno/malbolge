@@ -13,7 +13,8 @@
 // - Must-Not:
 //   - Infer guest semantics from host arguments or publish unverified source.
 // - Allows:
-//   - Inputs: exact profile, bounded MCTI/MCTR file or stdin, or machine tokens.
+//   - Inputs: exact profile, bounded MCTI/MCTR file or stdin, or machine
+//     tokens.
 //   - Outputs: one complete raw graphical `.malbolge` file.
 //   - Side effects: same-directory staging and atomic no-clobber hard link.
 // - Split-When:
@@ -32,6 +33,7 @@
 
 //! Closed bounded machine-subset CLI with independently checked target source.
 
+use std::collections::BTreeSet;
 use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, OpenOptions};
@@ -39,95 +41,98 @@ use std::io::{self, Read as _, Seek as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::process::{ExitCode, id};
 
-use malbolge::{ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile};
+use malbolge::{
+    ProfileMachine, RunOutcome, build_capsule, parse_capsule, target_profile,
+};
 
+use crate::bridge::ternary::{TernaryOperation, canonical_ternary_program};
 use crate::bridge::{
     encode_distinct_literal_eight, encode_distinct_literal_eighteen,
     encode_distinct_literal_eleven, encode_distinct_literal_fifteen,
-    encode_distinct_literal_fourteen, encode_distinct_literal_nine,
-    encode_distinct_literal_nineteen, encode_distinct_literal_pair, encode_distinct_literal_quad,
+    encode_distinct_literal_forty, encode_distinct_literal_forty_eight,
+    encode_distinct_literal_forty_five, encode_distinct_literal_forty_four,
+    encode_distinct_literal_forty_one, encode_distinct_literal_forty_seven,
+    encode_distinct_literal_forty_six, encode_distinct_literal_forty_three,
+    encode_distinct_literal_forty_two, encode_distinct_literal_fourteen,
+    encode_distinct_literal_nine, encode_distinct_literal_nineteen,
+    encode_distinct_literal_pair, encode_distinct_literal_quad,
     encode_distinct_literal_quint, encode_distinct_literal_seven,
     encode_distinct_literal_seventeen, encode_distinct_literal_six,
-    encode_distinct_literal_sixteen, encode_distinct_literal_ten, encode_distinct_literal_thirteen,
-    encode_distinct_literal_triple, encode_distinct_literal_twelve, encode_distinct_literal_twenty,
+    encode_distinct_literal_sixteen, encode_distinct_literal_ten,
+    encode_distinct_literal_thirteen, encode_distinct_literal_thirty,
+    encode_distinct_literal_thirty_eight, encode_distinct_literal_thirty_five,
+    encode_distinct_literal_thirty_four, encode_distinct_literal_thirty_nine,
+    encode_distinct_literal_thirty_one, encode_distinct_literal_thirty_seven,
+    encode_distinct_literal_thirty_six, encode_distinct_literal_thirty_three,
+    encode_distinct_literal_thirty_two, encode_distinct_literal_triple,
+    encode_distinct_literal_twelve, encode_distinct_literal_twenty,
     encode_distinct_literal_twenty_eight, encode_distinct_literal_twenty_five,
-    encode_distinct_literal_twenty_nine,
-    encode_distinct_literal_thirty, encode_distinct_literal_thirty_one,
-    encode_distinct_literal_thirty_two,
-    encode_distinct_literal_thirty_three,
-    encode_distinct_literal_thirty_four,
-    encode_distinct_literal_thirty_five,
-    encode_distinct_literal_thirty_six,
-    encode_distinct_literal_thirty_seven,
-    encode_distinct_literal_thirty_eight,
-    encode_distinct_literal_thirty_nine, encode_distinct_literal_forty,
-    encode_distinct_literal_forty_one,
-    encode_distinct_literal_forty_two,
-    encode_distinct_literal_forty_three,
-    encode_distinct_literal_forty_four,
-    encode_distinct_literal_forty_five,
-    encode_distinct_literal_forty_six,
-    encode_distinct_literal_forty_seven,
-    encode_distinct_literal_forty_eight,
-    encode_distinct_literal_twenty_four, encode_distinct_literal_twenty_one,
-    encode_distinct_literal_twenty_seven, encode_distinct_literal_twenty_six,
-    encode_distinct_literal_twenty_three, encode_distinct_literal_twenty_two,
-    encode_empty_void_function, encode_initial_zero_outputs, encode_latest_byte_identity_trace,
-    encode_rotated_byte_literal, encode_successful_byte_echo, encode_successful_latest_byte_trace,
+    encode_distinct_literal_twenty_four, encode_distinct_literal_twenty_nine,
+    encode_distinct_literal_twenty_one, encode_distinct_literal_twenty_seven,
+    encode_distinct_literal_twenty_six, encode_distinct_literal_twenty_three,
+    encode_distinct_literal_twenty_two, encode_empty_void_function,
+    encode_initial_zero_outputs, encode_latest_byte_identity_trace,
+    encode_rotated_byte_literal, encode_successful_byte_echo,
+    encode_successful_latest_byte_trace,
     encode_zero_prefixed_latest_byte_trace, encode_zero_then_literal,
-    ternary::{TernaryOperation, canonical_ternary_program},
 };
 use crate::layout::{
-    LinearOpcode, LinearProfileIdentity, PaddedForwardStep, admit_linear_layout,
-    encode_auto_padded_forward_layout, encode_linear_layout,
+    LinearOpcode, LinearProfileIdentity, PaddedForwardStep,
+    admit_linear_layout, encode_auto_padded_forward_layout,
+    encode_linear_layout,
 };
 use crate::typed_adapter::{
     compile_canonical_typed_distinct_literal_eight,
     compile_canonical_typed_distinct_literal_eighteen,
     compile_canonical_typed_distinct_literal_eleven,
     compile_canonical_typed_distinct_literal_fifteen,
+    compile_canonical_typed_distinct_literal_forty,
+    compile_canonical_typed_distinct_literal_forty_eight,
+    compile_canonical_typed_distinct_literal_forty_five,
+    compile_canonical_typed_distinct_literal_forty_four,
+    compile_canonical_typed_distinct_literal_forty_one,
+    compile_canonical_typed_distinct_literal_forty_seven,
+    compile_canonical_typed_distinct_literal_forty_six,
+    compile_canonical_typed_distinct_literal_forty_three,
+    compile_canonical_typed_distinct_literal_forty_two,
     compile_canonical_typed_distinct_literal_fourteen,
     compile_canonical_typed_distinct_literal_nine,
     compile_canonical_typed_distinct_literal_nineteen,
-    compile_canonical_typed_distinct_literal_pair, compile_canonical_typed_distinct_literal_quad,
-    compile_canonical_typed_distinct_literal_quint, compile_canonical_typed_distinct_literal_seven,
+    compile_canonical_typed_distinct_literal_pair,
+    compile_canonical_typed_distinct_literal_quad,
+    compile_canonical_typed_distinct_literal_quint,
+    compile_canonical_typed_distinct_literal_seven,
     compile_canonical_typed_distinct_literal_seventeen,
-    compile_canonical_typed_distinct_literal_six, compile_canonical_typed_distinct_literal_sixteen,
+    compile_canonical_typed_distinct_literal_six,
+    compile_canonical_typed_distinct_literal_sixteen,
     compile_canonical_typed_distinct_literal_ten,
     compile_canonical_typed_distinct_literal_thirteen,
+    compile_canonical_typed_distinct_literal_thirty,
+    compile_canonical_typed_distinct_literal_thirty_eight,
+    compile_canonical_typed_distinct_literal_thirty_five,
+    compile_canonical_typed_distinct_literal_thirty_four,
+    compile_canonical_typed_distinct_literal_thirty_nine,
+    compile_canonical_typed_distinct_literal_thirty_one,
+    compile_canonical_typed_distinct_literal_thirty_seven,
+    compile_canonical_typed_distinct_literal_thirty_six,
+    compile_canonical_typed_distinct_literal_thirty_three,
+    compile_canonical_typed_distinct_literal_thirty_two,
     compile_canonical_typed_distinct_literal_triple,
     compile_canonical_typed_distinct_literal_twelve,
     compile_canonical_typed_distinct_literal_twenty,
     compile_canonical_typed_distinct_literal_twenty_eight,
-    compile_canonical_typed_distinct_literal_twenty_nine,
-    compile_canonical_typed_distinct_literal_thirty,
-    compile_canonical_typed_distinct_literal_thirty_one,
-    compile_canonical_typed_distinct_literal_thirty_two,
-    compile_canonical_typed_distinct_literal_thirty_three,
-    compile_canonical_typed_distinct_literal_thirty_four,
-    compile_canonical_typed_distinct_literal_thirty_five,
-    compile_canonical_typed_distinct_literal_thirty_six,
-    compile_canonical_typed_distinct_literal_thirty_seven,
-    compile_canonical_typed_distinct_literal_thirty_eight,
-    compile_canonical_typed_distinct_literal_thirty_nine,
-    compile_canonical_typed_distinct_literal_forty,
-    compile_canonical_typed_distinct_literal_forty_one,
-    compile_canonical_typed_distinct_literal_forty_two,
-    compile_canonical_typed_distinct_literal_forty_three,
-    compile_canonical_typed_distinct_literal_forty_four,
-    compile_canonical_typed_distinct_literal_forty_five,
-    compile_canonical_typed_distinct_literal_forty_six,
-    compile_canonical_typed_distinct_literal_forty_seven,
-    compile_canonical_typed_distinct_literal_forty_eight,
     compile_canonical_typed_distinct_literal_twenty_five,
     compile_canonical_typed_distinct_literal_twenty_four,
+    compile_canonical_typed_distinct_literal_twenty_nine,
     compile_canonical_typed_distinct_literal_twenty_one,
     compile_canonical_typed_distinct_literal_twenty_seven,
     compile_canonical_typed_distinct_literal_twenty_six,
     compile_canonical_typed_distinct_literal_twenty_three,
-    compile_canonical_typed_distinct_literal_twenty_two, compile_canonical_typed_echo,
-    compile_canonical_typed_empty_void, compile_canonical_typed_identity_byte_trace,
-    compile_canonical_typed_initial_zero_outputs, compile_canonical_typed_latest_byte_trace,
+    compile_canonical_typed_distinct_literal_twenty_two,
+    compile_canonical_typed_echo, compile_canonical_typed_empty_void,
+    compile_canonical_typed_identity_byte_trace,
+    compile_canonical_typed_initial_zero_outputs,
+    compile_canonical_typed_latest_byte_trace,
     compile_canonical_typed_rotated_byte_literal,
     compile_canonical_typed_zero_prefixed_latest_byte_trace,
     compile_canonical_typed_zero_then_literal,
@@ -167,22 +172,28 @@ const DISTINCT_LITERAL_NINETEEN_ARG: &str = "--distinct-literal-nineteen";
 const DISTINCT_LITERAL_TWENTY_ARG: &str = "--distinct-literal-twenty";
 const DISTINCT_LITERAL_TWENTY_ONE_ARG: &str = "--distinct-literal-twenty-one";
 const DISTINCT_LITERAL_TWENTY_TWO_ARG: &str = "--distinct-literal-twenty-two";
-const DISTINCT_LITERAL_TWENTY_THREE_ARG: &str = "--distinct-literal-twenty-three";
+const DISTINCT_LITERAL_TWENTY_THREE_ARG: &str =
+    "--distinct-literal-twenty-three";
 const DISTINCT_LITERAL_TWENTY_FOUR_ARG: &str = "--distinct-literal-twenty-four";
 const DISTINCT_LITERAL_TWENTY_FIVE_ARG: &str = "--distinct-literal-twenty-five";
 const DISTINCT_LITERAL_TWENTY_SIX_ARG: &str = "--distinct-literal-twenty-six";
-const DISTINCT_LITERAL_TWENTY_SEVEN_ARG: &str = "--distinct-literal-twenty-seven";
-const DISTINCT_LITERAL_TWENTY_EIGHT_ARG: &str = "--distinct-literal-twenty-eight";
+const DISTINCT_LITERAL_TWENTY_SEVEN_ARG: &str =
+    "--distinct-literal-twenty-seven";
+const DISTINCT_LITERAL_TWENTY_EIGHT_ARG: &str =
+    "--distinct-literal-twenty-eight";
 const DISTINCT_LITERAL_TWENTY_NINE_ARG: &str = "--distinct-literal-twenty-nine";
 const DISTINCT_LITERAL_THIRTY_ARG: &str = "--distinct-literal-thirty";
 const DISTINCT_LITERAL_THIRTY_ONE_ARG: &str = "--distinct-literal-thirty-one";
 const DISTINCT_LITERAL_THIRTY_TWO_ARG: &str = "--distinct-literal-thirty-two";
-const DISTINCT_LITERAL_THIRTY_THREE_ARG: &str = "--distinct-literal-thirty-three";
+const DISTINCT_LITERAL_THIRTY_THREE_ARG: &str =
+    "--distinct-literal-thirty-three";
 const DISTINCT_LITERAL_THIRTY_FOUR_ARG: &str = "--distinct-literal-thirty-four";
 const DISTINCT_LITERAL_THIRTY_FIVE_ARG: &str = "--distinct-literal-thirty-five";
 const DISTINCT_LITERAL_THIRTY_SIX_ARG: &str = "--distinct-literal-thirty-six";
-const DISTINCT_LITERAL_THIRTY_SEVEN_ARG: &str = "--distinct-literal-thirty-seven";
-const DISTINCT_LITERAL_THIRTY_EIGHT_ARG: &str = "--distinct-literal-thirty-eight";
+const DISTINCT_LITERAL_THIRTY_SEVEN_ARG: &str =
+    "--distinct-literal-thirty-seven";
+const DISTINCT_LITERAL_THIRTY_EIGHT_ARG: &str =
+    "--distinct-literal-thirty-eight";
 const DISTINCT_LITERAL_THIRTY_NINE_ARG: &str = "--distinct-literal-thirty-nine";
 const DISTINCT_LITERAL_FORTY_ARG: &str = "--distinct-literal-forty";
 const DISTINCT_LITERAL_FORTY_ONE_ARG: &str = "--distinct-literal-forty-one";
@@ -366,20 +377,23 @@ fn parse_operation(token: &str) -> Result<LinearOpcode, String> {
             let Some(raw) = token.strip_prefix("jump:") else {
                 return Err(format!("unsupported machine opcode: {token}"));
             };
-            if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit()) {
+            if raw.is_empty() || !raw.bytes().all(|byte| byte.is_ascii_digit())
+            {
                 return Err(String::from(
                     "jump target must be an unsigned decimal address",
                 ));
             }
-            let target = raw
-                .parse::<u32>()
-                .map_err(|error| format!("jump target exceeds supported code address: {error}"))?;
+            let target = raw.parse::<u32>().map_err(|error| {
+                format!("jump target exceeds supported code address: {error}")
+            })?;
             Ok(LinearOpcode::JumpForward { target })
-        }
+        },
     }
 }
 
-fn parse_auto_layout_operation(token: &str) -> Result<PaddedForwardStep, String> {
+fn parse_auto_layout_operation(
+    token: &str,
+) -> Result<PaddedForwardStep, String> {
     match token {
         "jump" => Ok(PaddedForwardStep::Jump),
         "auto-relocate" => Ok(PaddedForwardStep::AutoRelocate),
@@ -392,19 +406,21 @@ fn parse_auto_layout_operation(token: &str) -> Result<PaddedForwardStep, String>
             } else {
                 Ok(PaddedForwardStep::Instruction(operation))
             }
-        }
+        },
     }
 }
 
-fn parse_auto_layout(arguments: &mut impl Iterator<Item = OsString>) -> Result<SourceSpec, String> {
+fn parse_auto_layout(
+    arguments: &mut impl Iterator<Item = OsString>,
+) -> Result<SourceSpec, String> {
     let mut operations = Vec::new();
     for raw in arguments {
         if operations.len() >= MAX_OPERATIONS {
             return Err(String::from("too many auto-layout operation tokens"));
         }
-        let token = raw
-            .into_string()
-            .map_err(|_error| String::from("auto-layout token must be UTF-8"))?;
+        let token = raw.into_string().map_err(|_error| {
+            String::from("auto-layout token must be UTF-8")
+        })?;
         operations.push(parse_auto_layout_operation(&token)?);
     }
     if operations.is_empty() {
@@ -594,8 +610,10 @@ fn parse_canonical_source(
     } else {
         (first, ByteTraceMode::AdjacentEcho)
     };
-    let uses_file = kind == OsStr::new(TERNARY_FILE_ARG) || kind == OsStr::new(TYPED_FILE_ARG);
-    let uses_stdin = kind == OsStr::new(TERNARY_STDIN_ARG) || kind == OsStr::new(TYPED_STDIN_ARG);
+    let uses_file = kind == OsStr::new(TERNARY_FILE_ARG)
+        || kind == OsStr::new(TYPED_FILE_ARG);
+    let uses_stdin = kind == OsStr::new(TERNARY_STDIN_ARG)
+        || kind == OsStr::new(TYPED_STDIN_ARG);
     if !uses_file && !uses_stdin {
         return Err(String::from(
             "effect mode requires --ternary-file, --typed-file, --ternary-stdin or --typed-stdin",
@@ -603,7 +621,9 @@ fn parse_canonical_source(
     }
     let source = if uses_stdin {
         if arguments.next().is_some() {
-            return Err(String::from("canonical stdin mode accepts no input path"));
+            return Err(String::from(
+                "canonical stdin mode accepts no input path",
+            ));
         }
         if kind == OsStr::new(TERNARY_STDIN_ARG) {
             SourceSpec::CanonicalTernaryStdin { mode }
@@ -611,7 +631,9 @@ fn parse_canonical_source(
             SourceSpec::CanonicalTypedStdin { mode }
         }
     } else {
-        let path = PathBuf::from(arguments.next().ok_or("missing canonical wire path")?);
+        let path = PathBuf::from(
+            arguments.next().ok_or("missing canonical wire path")?,
+        );
         if arguments.next().is_some() {
             return Err(String::from(
                 "canonical wire mode accepts exactly one input path",
@@ -626,7 +648,9 @@ fn parse_canonical_source(
     Ok(source)
 }
 
-fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<SourceSpec, String> {
+fn parse_source(
+    arguments: &mut impl Iterator<Item = OsString>,
+) -> Result<SourceSpec, String> {
     let first = arguments
         .next()
         .ok_or("missing machine operations or canonical wire argument")?;
@@ -711,7 +735,9 @@ fn parse_source(arguments: &mut impl Iterator<Item = OsString>) -> Result<Source
     Ok(source)
 }
 
-fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<CommandSpec, String> {
+fn parse_arguments(
+    mut arguments: impl Iterator<Item = OsString>,
+) -> Result<CommandSpec, String> {
     if arguments.next().as_deref() != Some(OsStr::new(PROFILE_ARG)) {
         return Err(String::from("expected --profile <canonical-id>"));
     }
@@ -726,7 +752,8 @@ fn parse_arguments(mut arguments: impl Iterator<Item = OsString>) -> Result<Comm
     let output = PathBuf::from(arguments.next().ok_or("missing output path")?);
     let next = arguments.next();
     let capsule = next.as_deref() == Some(OsStr::new(CAPSULE_ARG));
-    if (capsule && arguments.next().as_deref() != Some(OsStr::new(DELIMITER_ARG)))
+    if (capsule
+        && arguments.next().as_deref() != Some(OsStr::new(DELIMITER_ARG)))
         || (!capsule && next.as_deref() != Some(OsStr::new(DELIMITER_ARG)))
     {
         return Err(String::from(
@@ -750,12 +777,12 @@ fn fresh_stage_basename(name: &str) -> String {
     // This noncryptographic digest is only a deterministic *name hint*, not
     // an integrity authority. All candidates still require create_new(true), so
     // even a forced digest collision cannot overwrite a prior stage.
-    let digest = name
-        .as_bytes()
-        .iter()
-        .fold(STAGE_NAME_FNV_OFFSET, |hash, byte| {
-            (hash ^ u64::from(*byte)).wrapping_mul(STAGE_NAME_FNV_PRIME)
-        });
+    let digest =
+        name.as_bytes()
+            .iter()
+            .fold(STAGE_NAME_FNV_OFFSET, |hash, byte| {
+                (hash ^ u64::from(*byte)).wrapping_mul(STAGE_NAME_FNV_PRIME)
+            });
     format!(".layout-{digest:016x}.stage-{}", id())
 }
 
@@ -774,8 +801,10 @@ fn open_fresh_stage(path: &Path, name: &str) -> Result<StageFile, String> {
             .open(&staged)
         {
             Ok(file) => return Ok((staged, file)),
-            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(error) => return Err(format!("cannot open fresh stage: {error}")),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {},
+            Err(error) => {
+                return Err(format!("cannot open fresh stage: {error}"));
+            },
         }
     }
     Err(String::from(
@@ -817,22 +846,28 @@ fn verify_fsynced_stage(
     // after publication hooks, so redirected ancestors cannot reset identity.
     let (initial, expected_links, resolved_path) = admission;
     let check_identity = |opened: &fs::File| {
-        let descriptor = opened
-            .metadata()
-            .map_err(|error| format!("cannot inspect staged descriptor: {error}"))?;
-        let named = fs::symlink_metadata(staged)
-            .map_err(|error| format!("cannot inspect staged pathname: {error}"))?;
+        let descriptor = opened.metadata().map_err(|error| {
+            format!("cannot inspect staged descriptor: {error}")
+        })?;
+        let named = fs::symlink_metadata(staged).map_err(|error| {
+            format!("cannot inspect staged pathname: {error}")
+        })?;
         if !has_exact_link_count(&descriptor, expected_links)
             || !has_exact_link_count(&named, expected_links)
         {
-            return Err(String::from("staged output has an external hard link"));
+            return Err(String::from(
+                "staged output has an external hard link",
+            ));
         }
         // Inode checks alone cannot detect renaming the parent directory
         // and installing a symlink back to that same regular inode.
-        let observed_path = fs::canonicalize(staged)
-            .map_err(|error| format!("cannot resolve staged pathname: {error}"))?;
+        let observed_path = fs::canonicalize(staged).map_err(|error| {
+            format!("cannot resolve staged pathname: {error}")
+        })?;
         if observed_path != resolved_path {
-            return Err(String::from("staged output resolved pathname changed"));
+            return Err(String::from(
+                "staged output resolved pathname changed",
+            ));
         }
         if !canonical_wire_metadata_matches(initial, &descriptor)
             || !canonical_wire_metadata_matches(initial, &named)
@@ -843,8 +878,9 @@ fn verify_fsynced_stage(
         }
         Ok(())
     };
-    let expected_len = u64::try_from(expected.len())
-        .map_err(|_error| String::from("staged output length exceeds host range"))?;
+    let expected_len = u64::try_from(expected.len()).map_err(|_error| {
+        String::from("staged output length exceeds host range")
+    })?;
     if !initial.is_file() || initial.len() != expected_len {
         return Err(String::from(
             "staged output size disagrees with verified source",
@@ -901,17 +937,20 @@ fn sync_published_directory(directory: &Path) -> Result<(), String> {
     {
         // Use the nonblocking Linux descriptor opener so a pathname raced
         // from a directory to a FIFO cannot stall the durability barrier.
-        let opened = open_canonical_file(directory)
-            .map_err(|error| format!("cannot open publication directory: {error}"))?;
-        let metadata = opened
-            .metadata()
-            .map_err(|error| format!("cannot inspect publication directory: {error}"))?;
+        let opened = open_canonical_file(directory).map_err(|error| {
+            format!("cannot open publication directory: {error}")
+        })?;
+        let metadata = opened.metadata().map_err(|error| {
+            format!("cannot inspect publication directory: {error}")
+        })?;
         if !metadata.is_dir() {
-            return Err(String::from("publication sync target is not a directory"));
+            return Err(String::from(
+                "publication sync target is not a directory",
+            ));
         }
-        opened
-            .sync_all()
-            .map_err(|error| format!("cannot sync publication directory: {error}"))
+        opened.sync_all().map_err(|error| {
+            format!("cannot sync publication directory: {error}")
+        })
     }
     #[cfg(not(unix))]
     {
@@ -957,7 +996,8 @@ fn verify_cleaned_publication(
     sync_directory: &mut impl FnMut(&Path) -> Result<(), String>,
 ) -> Result<(), String> {
     let (path, resolved_target) = paths;
-    let target = resolved_target.ok_or("missing original resolved output path")?;
+    let target =
+        resolved_target.ok_or("missing original resolved output path")?;
     let parent = target.parent().ok_or("cannot identify cleanup directory")?;
     // A synced final link does not persist the subsequent stage unlink.
     // Sync the same resolved directory again before reporting success.
@@ -968,23 +1008,36 @@ fn verify_cleaned_publication(
     verify_fsynced_stage(path, file, bytes, (&final_metadata, 1, target))
 }
 
-fn cleanup_original_stage(staged: &Path, opened: io::Result<fs::Metadata>) -> Result<(), String> {
+fn cleanup_original_stage(
+    staged: &Path,
+    opened: io::Result<fs::Metadata>,
+) -> Result<(), String> {
     match (opened, fs::symlink_metadata(staged)) {
-        (Ok(original), Ok(named)) if canonical_wire_metadata_matches(&original, &named) => {
-            fs::remove_file(staged)
-                .map_err(|error| format!("stage cleanup failed after publication: {error}"))
-        }
-        // A pre-unlinked stage is safe only if its inode now has the final link.
+        (Ok(original), Ok(named))
+            if canonical_wire_metadata_matches(&original, &named) =>
+        {
+            fs::remove_file(staged).map_err(|error| {
+                format!("stage cleanup failed after publication: {error}")
+            })
+        },
+        // A pre-unlinked stage is safe only if its inode now has the final
+        // link.
         (Ok(original), Err(error))
             if error.kind() == io::ErrorKind::NotFound
                 && cfg!(any(unix, windows))
                 && has_exact_link_count(&original, 1) =>
         {
             Ok(())
-        }
-        (Ok(_), Ok(_)) => Err(String::from("stage cleanup rejected substituted pathname")),
-        (Ok(_), Err(error)) => Err(format!("stage cleanup cannot inspect path: {error}")),
-        (Err(error), _) => Err(format!("stage cleanup cannot inspect inode: {error}")),
+        },
+        (Ok(_), Ok(_)) => {
+            Err(String::from("stage cleanup rejected substituted pathname"))
+        },
+        (Ok(_), Err(error)) => {
+            Err(format!("stage cleanup cannot inspect path: {error}"))
+        },
+        (Err(error), _) => {
+            Err(format!("stage cleanup cannot inspect inode: {error}"))
+        },
     }
 }
 
@@ -1009,8 +1062,9 @@ fn publish_new_with_postverify_hook(
         // Capture the originally opened stage location before any externally
         // observable write or verification hooks. Stable symlinked parents are
         // allowed; a later symlink rebound to a moved directory is not.
-        let resolved_stage = fs::canonicalize(&staged)
-            .map_err(|error| format!("cannot resolve original stage: {error}"))?;
+        let resolved_stage = fs::canonicalize(&staged).map_err(|error| {
+            format!("cannot resolve original stage: {error}")
+        })?;
         let resolved_target = resolved_stage.with_file_name(name);
         resolved_final_path = Some(resolved_target.clone());
         file.write_all(bytes)
@@ -1021,15 +1075,21 @@ fn publish_new_with_postverify_hook(
             .metadata()
             .map_err(|error| format!("cannot inspect synced stage: {error}"))?;
         after_sync(&staged)?;
-        verify_fsynced_stage(&staged, &mut file, bytes, (&initial, 1, &resolved_stage))?;
+        verify_fsynced_stage(
+            &staged,
+            &mut file,
+            bytes,
+            (&initial, 1, &resolved_stage),
+        )?;
         fs::hard_link(&staged, path)
             .map_err(|error| format!("cannot publish new target: {error}"))?;
         after_link(path)?;
-        let opened = file
-            .metadata()
-            .map_err(|error| format!("cannot inspect published stage: {error}"))?;
-        let published = fs::symlink_metadata(path)
-            .map_err(|error| format!("cannot inspect published target: {error}"))?;
+        let opened = file.metadata().map_err(|error| {
+            format!("cannot inspect published stage: {error}")
+        })?;
+        let published = fs::symlink_metadata(path).map_err(|error| {
+            format!("cannot inspect published target: {error}")
+        })?;
         if !canonical_wire_metadata_matches(&opened, &published) {
             return Err(String::from(
                 "published target inode changed after stage admission",
@@ -1038,7 +1098,12 @@ fn publish_new_with_postverify_hook(
         // The hard link exposes a writable inode. Recheck the final path and
         // exact bytes before claiming success; late mutation leaves an already
         // published target but cannot be falsely called a verified artifact.
-        verify_fsynced_stage(path, &mut file, bytes, (&opened, 2, &resolved_target))?;
+        verify_fsynced_stage(
+            path,
+            &mut file,
+            bytes,
+            (&opened, 2, &resolved_target),
+        )?;
         // The final no-clobber hard link must survive a host crash before
         // reporting success. Sync the originally resolved parent, never a
         // newly redirected symlinked parent of the requested output path.
@@ -1051,7 +1116,12 @@ fn publish_new_with_postverify_hook(
         // while that directory is being synced. Check the same original
         // descriptor, pathname, link count and exact bytes once more before
         // declaring the published artifact verified.
-        verify_fsynced_stage(path, &mut file, bytes, (&opened, 2, &resolved_target))?;
+        verify_fsynced_stage(
+            path,
+            &mut file,
+            bytes,
+            (&opened, 2, &resolved_target),
+        )?;
         after_final_verify(&staged)?;
         Ok(())
     })();
@@ -1076,7 +1146,8 @@ fn publish_new_with_postverify_hook(
     // A committed final file survives a failed cleanup, but a surviving stage
     // or external alias remains a writable hard link. Never claim success
     // without final identity, byte and link-count admission after cleanup.
-    // Never remove a foreign staging path; retain any primary publication error.
+    // Never remove a foreign staging path; retain any primary publication
+    // error.
     outcome.and(cleanup).and(post_cleanup)
 }
 
@@ -1105,7 +1176,10 @@ fn open_canonical_file(path: &Path) -> io::Result<fs::File> {
 // A bounded read is not a stable snapshot unless the opened file and its
 // source pathname still identify the same unchanged inode afterwards.
 #[cfg(unix)]
-fn canonical_wire_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+fn canonical_wire_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
     use std::os::unix::fs::MetadataExt as _;
 
     before.is_file()
@@ -1120,7 +1194,10 @@ fn canonical_wire_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) 
 }
 
 #[cfg(windows)]
-fn canonical_wire_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+fn canonical_wire_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
     use std::os::windows::fs::MetadataExt as _;
 
     before.is_file()
@@ -1135,7 +1212,10 @@ fn canonical_wire_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) 
 }
 
 #[cfg(not(any(unix, windows)))]
-fn canonical_wire_metadata_matches(before: &fs::Metadata, after: &fs::Metadata) -> bool {
+fn canonical_wire_metadata_matches(
+    before: &fs::Metadata,
+    after: &fs::Metadata,
+) -> bool {
     before.is_file()
         && after.is_file()
         && before.len() == after.len()
@@ -1150,7 +1230,11 @@ fn read_canonical_wire(path: &Path, kind: &str) -> Result<Vec<u8>, String> {
     })
 }
 
-fn admit_wire_read_receipt(kind: &str, reported: usize, collected: usize) -> Result<(), String> {
+fn admit_wire_read_receipt(
+    kind: &str,
+    reported: usize,
+    collected: usize,
+) -> Result<(), String> {
     if reported != collected {
         return Err(format!(
             "canonical {kind} wire read count disagrees with collected bytes",
@@ -1168,8 +1252,9 @@ fn read_canonical_wire_with_reader(
     // handle. Other platforms retain the bounded pre-open pathname guard.
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
-        let path_metadata = fs::metadata(path)
-            .map_err(|error| format!("cannot inspect canonical {kind} path: {error}"))?;
+        let path_metadata = fs::metadata(path).map_err(|error| {
+            format!("cannot inspect canonical {kind} path: {error}")
+        })?;
         if !path_metadata.is_file()
             || path_metadata.len() == 0
             || path_metadata.len() > MAX_CANONICAL_WIRE_BYTES
@@ -1184,28 +1269,35 @@ fn read_canonical_wire_with_reader(
     // Linux exposes the actual opened dentry through /proc/self/fd; check
     // it both before and after the caller-supplied bounded reader.
     #[cfg(target_os = "linux")]
-    let expected_opened_path = fs::canonicalize(path)
-        .map_err(|error| format!("cannot resolve canonical {kind} path: {error}"))?;
-    let mut file = open_canonical_file(path)
-        .map_err(|error| format!("cannot open canonical {kind} wire: {error}"))?;
+    let expected_opened_path = fs::canonicalize(path).map_err(|error| {
+        format!("cannot resolve canonical {kind} path: {error}")
+    })?;
+    let mut file = open_canonical_file(path).map_err(|error| {
+        format!("cannot open canonical {kind} wire: {error}")
+    })?;
     #[cfg(target_os = "linux")]
     verify_opened_canonical_path(&file, &expected_opened_path, kind)?;
-    let metadata = file
-        .metadata()
-        .map_err(|error| format!("cannot inspect canonical {kind} wire: {error}"))?;
-    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_CANONICAL_WIRE_BYTES {
+    let metadata = file.metadata().map_err(|error| {
+        format!("cannot inspect canonical {kind} wire: {error}")
+    })?;
+    if !metadata.is_file()
+        || metadata.len() == 0
+        || metadata.len() > MAX_CANONICAL_WIRE_BYTES
+    {
         return Err(String::from(
             "canonical wire must be a nonempty bounded regular file",
         ));
     }
-    let before = fs::metadata(path)
-        .map_err(|error| format!("cannot inspect canonical {kind} path: {error}"))?;
+    let before = fs::metadata(path).map_err(|error| {
+        format!("cannot inspect canonical {kind} path: {error}")
+    })?;
     if !canonical_wire_metadata_matches(&metadata, &before) {
         return Err(String::from("canonical wire changed during read"));
     }
     let mut bytes = Vec::new();
-    let bytes_read = read(&mut file, &mut bytes)
-        .map_err(|error| format!("cannot read canonical {kind} wire: {error}"))?;
+    let bytes_read = read(&mut file, &mut bytes).map_err(|error| {
+        format!("cannot read canonical {kind} wire: {error}")
+    })?;
     admit_wire_read_receipt(kind, bytes_read, bytes.len())?;
     let length = u64::try_from(bytes.len())
         .map_err(|_error| String::from("ternary wire length overflow"))?;
@@ -1216,11 +1308,12 @@ fn read_canonical_wire_with_reader(
     }
     // Reject observed source or pathname mutation before attributing any
     // mismatch to the reader's returned bytes.
-    let after = file
-        .metadata()
-        .map_err(|error| format!("cannot recheck canonical {kind} wire: {error}"))?;
-    let current = fs::metadata(path)
-        .map_err(|error| format!("cannot recheck canonical {kind} path: {error}"))?;
+    let after = file.metadata().map_err(|error| {
+        format!("cannot recheck canonical {kind} wire: {error}")
+    })?;
+    let current = fs::metadata(path).map_err(|error| {
+        format!("cannot recheck canonical {kind} path: {error}")
+    })?;
     if !canonical_wire_metadata_matches(&metadata, &after)
         || !canonical_wire_metadata_matches(&metadata, &current)
     {
@@ -1234,23 +1327,27 @@ fn read_canonical_wire_with_reader(
     // A correct byte count alone does not bind a replaceable reader's
     // returned buffer to the opened descriptor. Independently reread the
     // same bounded file before accepting compiler input bytes.
-    file.rewind()
-        .map_err(|error| format!("cannot rewind canonical {kind} wire: {error}"))?;
+    file.rewind().map_err(|error| {
+        format!("cannot rewind canonical {kind} wire: {error}")
+    })?;
     let mut source_bytes = Vec::new();
     let _count = (&mut file)
         .take(MAX_CANONICAL_WIRE_BYTES.saturating_add(1))
         .read_to_end(&mut source_bytes)
-        .map_err(|error| format!("cannot corroborate canonical {kind} wire: {error}"))?;
+        .map_err(|error| {
+            format!("cannot corroborate canonical {kind} wire: {error}")
+        })?;
     if source_bytes != bytes {
         return Err(format!(
             "canonical {kind} wire reader bytes disagree with opened source",
         ));
     }
-    let after = file
-        .metadata()
-        .map_err(|error| format!("cannot recheck canonical {kind} wire: {error}"))?;
-    let current = fs::metadata(path)
-        .map_err(|error| format!("cannot recheck canonical {kind} path: {error}"))?;
+    let after = file.metadata().map_err(|error| {
+        format!("cannot recheck canonical {kind} wire: {error}")
+    })?;
+    let current = fs::metadata(path).map_err(|error| {
+        format!("cannot recheck canonical {kind} path: {error}")
+    })?;
     if !canonical_wire_metadata_matches(&metadata, &after)
         || !canonical_wire_metadata_matches(&metadata, &current)
     {
@@ -1268,9 +1365,14 @@ fn read_canonical_wire_with_reader(
 // initially stable parent symlink is rebound to a different hard link of the
 // same inode. The caller's requested path must still resolve to that source.
 #[cfg(target_os = "linux")]
-fn verify_requested_canonical_path(path: &Path, expected: &Path, kind: &str) -> Result<(), String> {
-    let current = fs::canonicalize(path)
-        .map_err(|error| format!("cannot resolve canonical {kind} path after read: {error}"))?;
+fn verify_requested_canonical_path(
+    path: &Path,
+    expected: &Path,
+    kind: &str,
+) -> Result<(), String> {
+    let current = fs::canonicalize(path).map_err(|error| {
+        format!("cannot resolve canonical {kind} path after read: {error}")
+    })?;
     if current != expected {
         return Err(String::from(
             "canonical wire requested path changed during read",
@@ -1287,8 +1389,9 @@ fn verify_opened_canonical_path(
 ) -> Result<(), String> {
     use std::os::fd::AsRawFd as _;
     let descriptor_path = format!("/proc/self/fd/{}", file.as_raw_fd());
-    let opened_path = fs::read_link(descriptor_path)
-        .map_err(|error| format!("cannot inspect canonical {kind} opened path: {error}"))?;
+    let opened_path = fs::read_link(descriptor_path).map_err(|error| {
+        format!("cannot inspect canonical {kind} opened path: {error}")
+    })?;
     if opened_path != expected {
         return Err(String::from(
             "canonical wire opened path changed during read",
@@ -1305,9 +1408,12 @@ fn read_canonical_stdin(kind: &str) -> Result<Vec<u8>, String> {
         .lock()
         .take(MAX_CANONICAL_WIRE_BYTES.saturating_add(1))
         .read_to_end(&mut bytes)
-        .map_err(|error| format!("cannot read canonical {kind} stdin: {error}"))?;
+        .map_err(|error| {
+            format!("cannot read canonical {kind} stdin: {error}")
+        })?;
     if bytes.is_empty()
-        || u64::try_from(bytes.len()).map_err(|_error| "canonical stdin length overflow")?
+        || u64::try_from(bytes.len())
+            .map_err(|_error| "canonical stdin length overflow")?
             > MAX_CANONICAL_WIRE_BYTES
     {
         return Err(String::from(
@@ -1326,135 +1432,181 @@ fn verified_ternary_bytes(
     mode: ByteTraceMode,
     profile: &'static malbolge::ProfileDescriptor,
 ) -> Result<VerifiedSource, String> {
-    let program = canonical_ternary_program(bytes)
-        .map_err(|error| format!("canonical ternary wire rejected: {error:?}"))?;
+    let program = canonical_ternary_program(bytes).map_err(|error| {
+        format!("canonical ternary wire rejected: {error:?}")
+    })?;
     let layout = match mode {
-        ByteTraceMode::AdjacentEcho => encode_successful_byte_echo(&program, profile),
-        ByteTraceMode::EmptyVoid => encode_empty_void_function(&program, profile),
-        ByteTraceMode::InitialZero => encode_initial_zero_outputs(&program, profile),
-        ByteTraceMode::LatestRead => encode_successful_latest_byte_trace(&program, profile),
+        ByteTraceMode::AdjacentEcho => {
+            encode_successful_byte_echo(&program, profile)
+        },
+        ByteTraceMode::EmptyVoid => {
+            encode_empty_void_function(&program, profile)
+        },
+        ByteTraceMode::InitialZero => {
+            encode_initial_zero_outputs(&program, profile)
+        },
+        ByteTraceMode::LatestRead => {
+            encode_successful_latest_byte_trace(&program, profile)
+        },
         ByteTraceMode::ZeroPrefixedLatest => {
             encode_zero_prefixed_latest_byte_trace(&program, profile)
-        }
-        ByteTraceMode::IdentityByteBitcast => encode_latest_byte_identity_trace(&program, profile),
-        ByteTraceMode::RotatedLiteral => encode_rotated_byte_literal(&program, profile),
-        ByteTraceMode::ZeroThenLiteral => encode_zero_then_literal(&program, profile),
-        ByteTraceMode::DistinctLiteralPair => encode_distinct_literal_pair(&program, profile),
-        ByteTraceMode::DistinctLiteralTriple => encode_distinct_literal_triple(&program, profile),
-        ByteTraceMode::DistinctLiteralQuad => encode_distinct_literal_quad(&program, profile),
-        ByteTraceMode::DistinctLiteralQuint => encode_distinct_literal_quint(&program, profile),
-        ByteTraceMode::DistinctLiteralSix => encode_distinct_literal_six(&program, profile),
-        ByteTraceMode::DistinctLiteralSeven => encode_distinct_literal_seven(&program, profile),
-        ByteTraceMode::DistinctLiteralEight => encode_distinct_literal_eight(&program, profile),
-        ByteTraceMode::DistinctLiteralNine => encode_distinct_literal_nine(&program, profile),
-        ByteTraceMode::DistinctLiteralTen => encode_distinct_literal_ten(&program, profile),
-        ByteTraceMode::DistinctLiteralEleven => encode_distinct_literal_eleven(&program, profile),
-        ByteTraceMode::DistinctLiteralTwelve => encode_distinct_literal_twelve(&program, profile),
+        },
+        ByteTraceMode::IdentityByteBitcast => {
+            encode_latest_byte_identity_trace(&program, profile)
+        },
+        ByteTraceMode::RotatedLiteral => {
+            encode_rotated_byte_literal(&program, profile)
+        },
+        ByteTraceMode::ZeroThenLiteral => {
+            encode_zero_then_literal(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralPair => {
+            encode_distinct_literal_pair(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralTriple => {
+            encode_distinct_literal_triple(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralQuad => {
+            encode_distinct_literal_quad(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralQuint => {
+            encode_distinct_literal_quint(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralSix => {
+            encode_distinct_literal_six(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralSeven => {
+            encode_distinct_literal_seven(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralEight => {
+            encode_distinct_literal_eight(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralNine => {
+            encode_distinct_literal_nine(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralTen => {
+            encode_distinct_literal_ten(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralEleven => {
+            encode_distinct_literal_eleven(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralTwelve => {
+            encode_distinct_literal_twelve(&program, profile)
+        },
         ByteTraceMode::DistinctLiteralThirteen => {
             encode_distinct_literal_thirteen(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFourteen => {
             encode_distinct_literal_fourteen(&program, profile)
-        }
-        ByteTraceMode::DistinctLiteralFifteen => encode_distinct_literal_fifteen(&program, profile),
-        ByteTraceMode::DistinctLiteralSixteen => encode_distinct_literal_sixteen(&program, profile),
+        },
+        ByteTraceMode::DistinctLiteralFifteen => {
+            encode_distinct_literal_fifteen(&program, profile)
+        },
+        ByteTraceMode::DistinctLiteralSixteen => {
+            encode_distinct_literal_sixteen(&program, profile)
+        },
         ByteTraceMode::DistinctLiteralSeventeen => {
             encode_distinct_literal_seventeen(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralEighteen => {
             encode_distinct_literal_eighteen(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralNineteen => {
             encode_distinct_literal_nineteen(&program, profile)
-        }
-        ByteTraceMode::DistinctLiteralTwenty => encode_distinct_literal_twenty(&program, profile),
+        },
+        ByteTraceMode::DistinctLiteralTwenty => {
+            encode_distinct_literal_twenty(&program, profile)
+        },
         ByteTraceMode::DistinctLiteralTwentyOne => {
             encode_distinct_literal_twenty_one(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTwentyTwo => {
             encode_distinct_literal_twenty_two(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTwentyThree => {
             encode_distinct_literal_twenty_three(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTwentyFour => {
             encode_distinct_literal_twenty_four(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTwentyFive => {
             encode_distinct_literal_twenty_five(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTwentySix => {
             encode_distinct_literal_twenty_six(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTwentySeven => {
             encode_distinct_literal_twenty_seven(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTwentyEight => {
             encode_distinct_literal_twenty_eight(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTwentyNine => {
             encode_distinct_literal_twenty_nine(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirty => {
             encode_distinct_literal_thirty(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtyOne => {
             encode_distinct_literal_thirty_one(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtyTwo => {
             encode_distinct_literal_thirty_two(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtyThree => {
             encode_distinct_literal_thirty_three(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtyFour => {
             encode_distinct_literal_thirty_four(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtyFive => {
             encode_distinct_literal_thirty_five(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtySix => {
             encode_distinct_literal_thirty_six(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtySeven => {
             encode_distinct_literal_thirty_seven(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtyEight => {
             encode_distinct_literal_thirty_eight(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralThirtyNine => {
             encode_distinct_literal_thirty_nine(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralForty => {
             encode_distinct_literal_forty(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortyOne => {
             encode_distinct_literal_forty_one(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortyTwo => {
             encode_distinct_literal_forty_two(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortyThree => {
             encode_distinct_literal_forty_three(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortyFour => {
             encode_distinct_literal_forty_four(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortyFive => {
             encode_distinct_literal_forty_five(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortySix => {
             encode_distinct_literal_forty_six(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortySeven => {
             encode_distinct_literal_forty_seven(&program, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortyEight => {
             encode_distinct_literal_forty_eight(&program, profile)
-        }
+        },
     }
-    .map_err(|error| format!("ternary byte-trace bridge rejected: {error:?}"))?;
-    if layout.profile_id() != profile.id() || layout.profile_fingerprint() != profile.fingerprint()
+    .map_err(|error| {
+        format!("ternary byte-trace bridge rejected: {error:?}")
+    })?;
+    if layout.profile_id() != profile.id()
+        || layout.profile_fingerprint() != profile.fingerprint()
     {
         return Err(String::from(
             "ternary source profile mismatch after admission",
@@ -1468,14 +1620,18 @@ fn verified_ternary_bytes(
     let effect_witness = if matches!(mode, ByteTraceMode::EmptyVoid) {
         Some(SourceEffectWitness::EmptyVoid)
     } else if matches!(mode, ByteTraceMode::RotatedLiteral) {
-        let [TernaryOperation::MaterializeU8 { scalar, .. }, ..] = operations.as_slice() else {
+        let [TernaryOperation::MaterializeU8 { scalar, .. }, ..] =
+            operations.as_slice()
+        else {
             return Err(String::from("missing seeded byte scalar"));
         };
         Some(SourceEffectWitness::RotatedLiteral {
             byte: scalar.bits(),
             outputs: operations
                 .iter()
-                .filter(|operation| matches!(operation, TernaryOperation::ByteOutput { .. }))
+                .filter(|operation| {
+                    matches!(operation, TernaryOperation::ByteOutput { .. })
+                })
                 .count(),
         })
     } else if matches!(mode, ByteTraceMode::ZeroThenLiteral) {
@@ -1489,9 +1645,7 @@ fn verified_ternary_bytes(
         else {
             return Err(String::from("missing zero-then-literal effects"));
         };
-        Some(SourceEffectWitness::ZeroThenLiteral {
-            byte: scalar.bits(),
-        })
+        Some(SourceEffectWitness::ZeroThenLiteral { byte: scalar.bits() })
     } else if matches!(mode, ByteTraceMode::DistinctLiteralPair) {
         let [
             TernaryOperation::MaterializeU8 { scalar: first, .. },
@@ -1518,7 +1672,9 @@ fn verified_ternary_bytes(
             TernaryOperation::ReturnVoid { .. },
         ] = operations.as_slice()
         else {
-            return Err(String::from("missing distinct-literal-triple effects"));
+            return Err(String::from(
+                "missing distinct-literal-triple effects",
+            ));
         };
         Some(SourceEffectWitness::DistinctLiteralTriple {
             bytes: [first.bits(), second.bits(), third.bits()],
@@ -1556,10 +1712,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-quint effects"));
+                return Err(String::from(
+                    "missing distinct-literal-quint effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-quint SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-quint SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1579,7 +1739,9 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-six effects"));
+                return Err(String::from(
+                    "missing distinct-literal-six effects",
+                ));
             };
             if result != value {
                 return Err(String::from("distinct-literal-six SSA mismatch"));
@@ -1602,10 +1764,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-seven effects"));
+                return Err(String::from(
+                    "missing distinct-literal-seven effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-seven SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-seven SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1625,10 +1791,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-eight effects"));
+                return Err(String::from(
+                    "missing distinct-literal-eight effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-eight SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-eight SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1648,7 +1818,9 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-nine effects"));
+                return Err(String::from(
+                    "missing distinct-literal-nine effects",
+                ));
             };
             if result != value {
                 return Err(String::from("distinct-literal-nine SSA mismatch"));
@@ -1671,7 +1843,9 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-ten effects"));
+                return Err(String::from(
+                    "missing distinct-literal-ten effects",
+                ));
             };
             if result != value {
                 return Err(String::from("distinct-literal-ten SSA mismatch"));
@@ -1685,7 +1859,9 @@ fn verified_ternary_bytes(
             return Err(String::from("missing distinct-literal-eleven return"));
         };
         if pairs.len() != 11 {
-            return Err(String::from("missing distinct-literal-eleven effects"));
+            return Err(String::from(
+                "missing distinct-literal-eleven effects",
+            ));
         }
         let mut bytes = [0; 11];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1694,10 +1870,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-eleven effects"));
+                return Err(String::from(
+                    "missing distinct-literal-eleven effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-eleven SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-eleven SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1708,7 +1888,9 @@ fn verified_ternary_bytes(
             return Err(String::from("missing distinct-literal-twelve return"));
         };
         if pairs.len() != 12 {
-            return Err(String::from("missing distinct-literal-twelve effects"));
+            return Err(String::from(
+                "missing distinct-literal-twelve effects",
+            ));
         }
         let mut bytes = [0; 12];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1717,10 +1899,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-twelve effects"));
+                return Err(String::from(
+                    "missing distinct-literal-twelve effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twelve SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twelve SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1728,10 +1914,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralThirteen) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-thirteen return"));
+            return Err(String::from(
+                "missing distinct-literal-thirteen return",
+            ));
         };
         if pairs.len() != 13 {
-            return Err(String::from("missing distinct-literal-thirteen effects"));
+            return Err(String::from(
+                "missing distinct-literal-thirteen effects",
+            ));
         }
         let mut bytes = [0; 13];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1740,10 +1930,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-thirteen effects"));
+                return Err(String::from(
+                    "missing distinct-literal-thirteen effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-thirteen SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-thirteen SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1751,10 +1945,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralFourteen) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-fourteen return"));
+            return Err(String::from(
+                "missing distinct-literal-fourteen return",
+            ));
         };
         if pairs.len() != 14 {
-            return Err(String::from("missing distinct-literal-fourteen effects"));
+            return Err(String::from(
+                "missing distinct-literal-fourteen effects",
+            ));
         }
         let mut bytes = [0; 14];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1763,10 +1961,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-fourteen effects"));
+                return Err(String::from(
+                    "missing distinct-literal-fourteen effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-fourteen SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-fourteen SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1774,10 +1976,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralFifteen) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-fifteen return"));
+            return Err(String::from(
+                "missing distinct-literal-fifteen return",
+            ));
         };
         if pairs.len() != 15 {
-            return Err(String::from("missing distinct-literal-fifteen effects"));
+            return Err(String::from(
+                "missing distinct-literal-fifteen effects",
+            ));
         }
         let mut bytes = [0; 15];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1786,10 +1992,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-fifteen effects"));
+                return Err(String::from(
+                    "missing distinct-literal-fifteen effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-fifteen SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-fifteen SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1797,10 +2007,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralSixteen) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-sixteen return"));
+            return Err(String::from(
+                "missing distinct-literal-sixteen return",
+            ));
         };
         if pairs.len() != 16 {
-            return Err(String::from("missing distinct-literal-sixteen effects"));
+            return Err(String::from(
+                "missing distinct-literal-sixteen effects",
+            ));
         }
         let mut bytes = [0; 16];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1809,10 +2023,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-sixteen effects"));
+                return Err(String::from(
+                    "missing distinct-literal-sixteen effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-sixteen SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-sixteen SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1820,10 +2038,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralSeventeen) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-seventeen return"));
+            return Err(String::from(
+                "missing distinct-literal-seventeen return",
+            ));
         };
         if pairs.len() != 17 {
-            return Err(String::from("missing distinct-literal-seventeen effects"));
+            return Err(String::from(
+                "missing distinct-literal-seventeen effects",
+            ));
         }
         let mut bytes = [0; 17];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1832,10 +2054,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-seventeen effects"));
+                return Err(String::from(
+                    "missing distinct-literal-seventeen effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-seventeen SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-seventeen SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1843,10 +2069,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralEighteen) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-eighteen return"));
+            return Err(String::from(
+                "missing distinct-literal-eighteen return",
+            ));
         };
         if pairs.len() != 18 {
-            return Err(String::from("missing distinct-literal-eighteen effects"));
+            return Err(String::from(
+                "missing distinct-literal-eighteen effects",
+            ));
         }
         let mut bytes = [0; 18];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1855,10 +2085,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-eighteen effects"));
+                return Err(String::from(
+                    "missing distinct-literal-eighteen effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-eighteen SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-eighteen SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1866,10 +2100,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralNineteen) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-nineteen return"));
+            return Err(String::from(
+                "missing distinct-literal-nineteen return",
+            ));
         };
         if pairs.len() != 19 {
-            return Err(String::from("missing distinct-literal-nineteen effects"));
+            return Err(String::from(
+                "missing distinct-literal-nineteen effects",
+            ));
         }
         let mut bytes = [0; 19];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1878,10 +2116,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-nineteen effects"));
+                return Err(String::from(
+                    "missing distinct-literal-nineteen effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-nineteen SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-nineteen SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1892,7 +2134,9 @@ fn verified_ternary_bytes(
             return Err(String::from("missing distinct-literal-twenty return"));
         };
         if pairs.len() != 20 {
-            return Err(String::from("missing distinct-literal-twenty effects"));
+            return Err(String::from(
+                "missing distinct-literal-twenty effects",
+            ));
         }
         let mut bytes = [0; 20];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1901,10 +2145,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-twenty effects"));
+                return Err(String::from(
+                    "missing distinct-literal-twenty effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1912,10 +2160,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentyOne) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-one return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-one return",
+            ));
         };
         if pairs.len() != 21 {
-            return Err(String::from("missing distinct-literal-twenty-one effects"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-one effects",
+            ));
         }
         let mut bytes = [0; 21];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1924,10 +2176,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-twenty-one effects"));
+                return Err(String::from(
+                    "missing distinct-literal-twenty-one effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-one SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-one SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1935,10 +2191,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentyTwo) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-two return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-two return",
+            ));
         };
         if pairs.len() != 22 {
-            return Err(String::from("missing distinct-literal-twenty-two effects"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-two effects",
+            ));
         }
         let mut bytes = [0; 22];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1947,10 +2207,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-twenty-two effects"));
+                return Err(String::from(
+                    "missing distinct-literal-twenty-two effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-two SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-two SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1958,7 +2222,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentyThree) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-three return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-three return",
+            ));
         };
         if pairs.len() != 23 {
             return Err(String::from(
@@ -1977,7 +2243,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-three SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-three SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -1985,10 +2253,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentyFour) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-four return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-four return",
+            ));
         };
         if pairs.len() != 24 {
-            return Err(String::from("missing distinct-literal-twenty-four effects"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-four effects",
+            ));
         }
         let mut bytes = [0; 24];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -1997,10 +2269,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-twenty-four effects"));
+                return Err(String::from(
+                    "missing distinct-literal-twenty-four effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-four SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-four SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2008,10 +2284,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentyFive) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-five return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-five return",
+            ));
         };
         if pairs.len() != 25 {
-            return Err(String::from("missing distinct-literal-twenty-five effects"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-five effects",
+            ));
         }
         let mut bytes = [0; 25];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -2020,10 +2300,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-twenty-five effects"));
+                return Err(String::from(
+                    "missing distinct-literal-twenty-five effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-five SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-five SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2031,10 +2315,14 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentySix) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-six return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-six return",
+            ));
         };
         if pairs.len() != 26 {
-            return Err(String::from("missing distinct-literal-twenty-six effects"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-six effects",
+            ));
         }
         let mut bytes = [0; 26];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -2043,10 +2331,14 @@ fn verified_ternary_bytes(
                 TernaryOperation::ByteOutput { value, .. },
             ) = (constant, output)
             else {
-                return Err(String::from("missing distinct-literal-twenty-six effects"));
+                return Err(String::from(
+                    "missing distinct-literal-twenty-six effects",
+                ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-six SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-six SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2054,7 +2346,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentySeven) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-seven return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-seven return",
+            ));
         };
         if pairs.len() != 27 {
             return Err(String::from(
@@ -2073,7 +2367,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-seven SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-seven SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2081,7 +2377,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentyEight) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-eight return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-eight return",
+            ));
         };
         if pairs.len() != 28 {
             return Err(String::from(
@@ -2100,7 +2398,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-eight SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-eight SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2108,7 +2408,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralTwentyNine) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-twenty-nine return"));
+            return Err(String::from(
+                "missing distinct-literal-twenty-nine return",
+            ));
         };
         if pairs.len() != 29 {
             return Err(String::from(
@@ -2127,7 +2429,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-twenty-nine SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-twenty-nine SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2154,7 +2458,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-thirty SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-thirty SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2162,7 +2468,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralThirtyOne) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-thirty-one return"));
+            return Err(String::from(
+                "missing distinct-literal-thirty-one return",
+            ));
         };
         if pairs.len() != 31 {
             return Err(String::from(
@@ -2181,7 +2489,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-thirty-one SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-thirty-one SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2189,7 +2499,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralThirtyTwo) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-thirty-two return"));
+            return Err(String::from(
+                "missing distinct-literal-thirty-two return",
+            ));
         };
         if pairs.len() != 32 {
             return Err(String::from(
@@ -2208,7 +2520,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-thirty-two SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-thirty-two SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2216,7 +2530,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralThirtyThree) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-thirty-three return"));
+            return Err(String::from(
+                "missing distinct-literal-thirty-three return",
+            ));
         };
         if pairs.len() != 33 {
             return Err(String::from(
@@ -2235,7 +2551,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-thirty-three SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-thirty-three SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2243,7 +2561,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralThirtyFour) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-thirty-four return"));
+            return Err(String::from(
+                "missing distinct-literal-thirty-four return",
+            ));
         };
         if pairs.len() != 34 {
             return Err(String::from(
@@ -2262,7 +2582,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-thirty-four SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-thirty-four SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2270,7 +2592,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralThirtyFive) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-thirty-five return"));
+            return Err(String::from(
+                "missing distinct-literal-thirty-five return",
+            ));
         };
         if pairs.len() != 35 {
             return Err(String::from(
@@ -2289,7 +2613,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-thirty-five SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-thirty-five SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2297,7 +2623,9 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralThirtySix) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from("missing distinct-literal-thirty-six return"));
+            return Err(String::from(
+                "missing distinct-literal-thirty-six return",
+            ));
         };
         if pairs.len() != 36 {
             return Err(String::from(
@@ -2316,7 +2644,9 @@ fn verified_ternary_bytes(
                 ));
             };
             if result != value {
-                return Err(String::from("distinct-literal-thirty-six SSA mismatch"));
+                return Err(String::from(
+                    "distinct-literal-thirty-six SSA mismatch",
+                ));
             }
             bytes[index] = scalar.bits();
         }
@@ -2417,14 +2747,10 @@ fn verified_ternary_bytes(
     } else if matches!(mode, ByteTraceMode::DistinctLiteralForty) {
         let (pairs, remainder) = operations.as_chunks::<2>();
         let [TernaryOperation::ReturnVoid { .. }] = remainder else {
-            return Err(String::from(
-                "missing distinct-literal-forty return",
-            ));
+            return Err(String::from("missing distinct-literal-forty return"));
         };
         if pairs.len() != 40 {
-            return Err(String::from(
-                "missing distinct-literal-forty effects",
-            ));
+            return Err(String::from("missing distinct-literal-forty effects"));
         }
         let mut bytes = [0; 40];
         for (index, [constant, output]) in pairs.iter().enumerate() {
@@ -2697,7 +3023,9 @@ fn verified_ternary_bytes(
         Some(SourceEffectWitness::InitialZero {
             outputs: operations
                 .iter()
-                .filter(|operation| matches!(operation, TernaryOperation::ByteOutput { .. }))
+                .filter(|operation| {
+                    matches!(operation, TernaryOperation::ByteOutput { .. })
+                })
                 .count(),
         })
     } else {
@@ -2706,14 +3034,17 @@ fn verified_ternary_bytes(
             .filter(|operation| {
                 matches!(
                     operation,
-                    TernaryOperation::ByteInput { .. } | TernaryOperation::ByteOutput { .. }
+                    TernaryOperation::ByteInput { .. }
+                        | TernaryOperation::ByteOutput { .. }
                 )
             })
             .scan(false, |seen_input, operation| {
                 if matches!(operation, TernaryOperation::ByteInput { .. }) {
                     *seen_input = true;
                     Some(SuccessfulByteEffect::Input)
-                } else if matches!(mode, ByteTraceMode::ZeroPrefixedLatest) && !*seen_input {
+                } else if matches!(mode, ByteTraceMode::ZeroPrefixedLatest)
+                    && !*seen_input
+                {
                     Some(SuccessfulByteEffect::ZeroOutput)
                 } else {
                     Some(SuccessfulByteEffect::Output)
@@ -2735,182 +3066,297 @@ fn verified_typed_bytes(
     profile: &'static malbolge::ProfileDescriptor,
 ) -> Result<VerifiedSource, String> {
     let compiled = match mode {
-        ByteTraceMode::AdjacentEcho => compile_canonical_typed_echo(typed_bytes, profile),
-        ByteTraceMode::EmptyVoid => compile_canonical_typed_empty_void(typed_bytes, profile),
+        ByteTraceMode::AdjacentEcho => {
+            compile_canonical_typed_echo(typed_bytes, profile)
+        },
+        ByteTraceMode::EmptyVoid => {
+            compile_canonical_typed_empty_void(typed_bytes, profile)
+        },
         ByteTraceMode::InitialZero => {
             compile_canonical_typed_initial_zero_outputs(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::LatestRead => {
             compile_canonical_typed_latest_byte_trace(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::ZeroPrefixedLatest => {
-            compile_canonical_typed_zero_prefixed_latest_byte_trace(typed_bytes, profile)
-        }
+            compile_canonical_typed_zero_prefixed_latest_byte_trace(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::IdentityByteBitcast => {
             compile_canonical_typed_identity_byte_trace(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::RotatedLiteral => {
             compile_canonical_typed_rotated_byte_literal(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::ZeroThenLiteral => {
             compile_canonical_typed_zero_then_literal(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralPair => {
             compile_canonical_typed_distinct_literal_pair(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTriple => {
-            compile_canonical_typed_distinct_literal_triple(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_triple(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralQuad => {
             compile_canonical_typed_distinct_literal_quad(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralQuint => {
             compile_canonical_typed_distinct_literal_quint(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralSix => {
             compile_canonical_typed_distinct_literal_six(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralSeven => {
             compile_canonical_typed_distinct_literal_seven(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralEight => {
             compile_canonical_typed_distinct_literal_eight(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralNine => {
             compile_canonical_typed_distinct_literal_nine(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralTen => {
             compile_canonical_typed_distinct_literal_ten(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralEleven => {
-            compile_canonical_typed_distinct_literal_eleven(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_eleven(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwelve => {
-            compile_canonical_typed_distinct_literal_twelve(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twelve(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirteen => {
-            compile_canonical_typed_distinct_literal_thirteen(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirteen(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralFourteen => {
-            compile_canonical_typed_distinct_literal_fourteen(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_fourteen(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralFifteen => {
-            compile_canonical_typed_distinct_literal_fifteen(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_fifteen(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralSixteen => {
-            compile_canonical_typed_distinct_literal_sixteen(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_sixteen(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralSeventeen => {
-            compile_canonical_typed_distinct_literal_seventeen(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_seventeen(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralEighteen => {
-            compile_canonical_typed_distinct_literal_eighteen(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_eighteen(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralNineteen => {
-            compile_canonical_typed_distinct_literal_nineteen(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_nineteen(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwenty => {
-            compile_canonical_typed_distinct_literal_twenty(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentyOne => {
-            compile_canonical_typed_distinct_literal_twenty_one(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_one(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentyTwo => {
-            compile_canonical_typed_distinct_literal_twenty_two(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_two(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentyThree => {
-            compile_canonical_typed_distinct_literal_twenty_three(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_three(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentyFour => {
-            compile_canonical_typed_distinct_literal_twenty_four(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_four(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentyFive => {
-            compile_canonical_typed_distinct_literal_twenty_five(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_five(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentySix => {
-            compile_canonical_typed_distinct_literal_twenty_six(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_six(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentySeven => {
-            compile_canonical_typed_distinct_literal_twenty_seven(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_seven(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentyEight => {
-            compile_canonical_typed_distinct_literal_twenty_eight(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_eight(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralTwentyNine => {
-            compile_canonical_typed_distinct_literal_twenty_nine(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_twenty_nine(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirty => {
-            compile_canonical_typed_distinct_literal_thirty(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtyOne => {
-            compile_canonical_typed_distinct_literal_thirty_one(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_one(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtyTwo => {
-            compile_canonical_typed_distinct_literal_thirty_two(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_two(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtyThree => {
-            compile_canonical_typed_distinct_literal_thirty_three(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_three(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtyFour => {
-            compile_canonical_typed_distinct_literal_thirty_four(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_four(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtyFive => {
-            compile_canonical_typed_distinct_literal_thirty_five(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_five(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtySix => {
-            compile_canonical_typed_distinct_literal_thirty_six(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_six(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtySeven => {
-            compile_canonical_typed_distinct_literal_thirty_seven(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_seven(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtyEight => {
-            compile_canonical_typed_distinct_literal_thirty_eight(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_eight(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralThirtyNine => {
-            compile_canonical_typed_distinct_literal_thirty_nine(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_thirty_nine(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralForty => {
             compile_canonical_typed_distinct_literal_forty(typed_bytes, profile)
-        }
+        },
         ByteTraceMode::DistinctLiteralFortyOne => {
-            compile_canonical_typed_distinct_literal_forty_one(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_forty_one(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralFortyTwo => {
-            compile_canonical_typed_distinct_literal_forty_two(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_forty_two(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralFortyThree => {
-            compile_canonical_typed_distinct_literal_forty_three(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_forty_three(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralFortyFour => {
-            compile_canonical_typed_distinct_literal_forty_four(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_forty_four(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralFortyFive => {
-            compile_canonical_typed_distinct_literal_forty_five(typed_bytes, profile)
-        }
+            compile_canonical_typed_distinct_literal_forty_five(
+                typed_bytes,
+                profile,
+            )
+        },
         ByteTraceMode::DistinctLiteralFortySix => {
             compile_canonical_typed_distinct_literal_forty_six(
                 typed_bytes,
                 profile,
             )
-        }
+        },
         ByteTraceMode::DistinctLiteralFortySeven => {
             compile_canonical_typed_distinct_literal_forty_seven(
                 typed_bytes,
                 profile,
             )
-        }
+        },
         ByteTraceMode::DistinctLiteralFortyEight => {
             compile_canonical_typed_distinct_literal_forty_eight(
                 typed_bytes,
                 profile,
             )
-        }
+        },
     }
-    .map_err(|error| format!("canonical typed byte bridge rejected: {error:?}"))?;
+    .map_err(|error| {
+        format!("canonical typed byte bridge rejected: {error:?}")
+    })?;
     // The typed adapter proposes an MCTR wire and encoded layout. Re-decode
     // its actual MCTR bytes and re-encode target code through the independent
     // ternary bridge before any guest execution or file publication.
-    let admitted = verified_ternary_bytes(compiled.ternary_bytes(), mode, profile)?;
+    let admitted =
+        verified_ternary_bytes(compiled.ternary_bytes(), mode, profile)?;
     if admitted.source != compiled.layout().source()
         || admitted.steps != compiled.layout().executed_code_positions().len()
         || compiled.layout().profile_id() != profile.id()
@@ -2940,13 +3386,15 @@ fn verified_source(
                     id: proposed.layout().profile_id(),
                 },
             )
-            .map_err(|error| format!("auto-layout independent admission failed: {error:?}"))?;
+            .map_err(|error| {
+                format!("auto-layout independent admission failed: {error:?}")
+            })?;
             Ok(VerifiedSource {
                 effect_witness: None,
                 source: artifact.source().to_vec(),
                 steps: artifact.executed_code_positions().len(),
             })
-        }
+        },
         SourceSpec::MachineOperations(operations) => {
             let artifact = encode_linear_layout(profile, operations)
                 .map_err(|error| format!("layout rejected: {error:?}"))?;
@@ -2965,19 +3413,29 @@ fn verified_source(
                 source: admitted.source().to_vec(),
                 steps: admitted.executed_code_positions().len(),
             })
-        }
+        },
         SourceSpec::CanonicalTernaryFile { path, mode } => {
-            verified_ternary_bytes(&read_canonical_wire(path, "ternary")?, *mode, profile)
-        }
-        SourceSpec::CanonicalTypedFile { path, mode } => {
-            verified_typed_bytes(&read_canonical_wire(path, "typed")?, *mode, profile)
-        }
-        SourceSpec::CanonicalTernaryStdin { mode } => {
-            verified_ternary_bytes(&read_canonical_stdin("ternary")?, *mode, profile)
-        }
-        SourceSpec::CanonicalTypedStdin { mode } => {
-            verified_typed_bytes(&read_canonical_stdin("typed")?, *mode, profile)
-        }
+            verified_ternary_bytes(
+                &read_canonical_wire(path, "ternary")?,
+                *mode,
+                profile,
+            )
+        },
+        SourceSpec::CanonicalTypedFile { path, mode } => verified_typed_bytes(
+            &read_canonical_wire(path, "typed")?,
+            *mode,
+            profile,
+        ),
+        SourceSpec::CanonicalTernaryStdin { mode } => verified_ternary_bytes(
+            &read_canonical_stdin("ternary")?,
+            *mode,
+            profile,
+        ),
+        SourceSpec::CanonicalTypedStdin { mode } => verified_typed_bytes(
+            &read_canonical_stdin("typed")?,
+            *mode,
+            profile,
+        ),
     }
 }
 
@@ -2986,10 +3444,9 @@ fn verify_successful_byte_trace(
     artifact: &VerifiedSource,
     effects: &[SuccessfulByteEffect],
 ) -> Result<(), String> {
-    let patterns: [[u8; 8]; 2] = [
-        [0, 255, 173, 128, 1, 254, 10, 65],
-        [255, 0, 82, 127, 254, 1, 42, 13],
-    ];
+    let patterns: [[u8; 8]; 2] = [[0, 255, 173, 128, 1, 254, 10, 65], [
+        255, 0, 82, 127, 254, 1, 42, 13,
+    ]];
     let reads = effects
         .iter()
         .filter(|effect| matches!(effect, SuccessfulByteEffect::Input))
@@ -3008,25 +3465,35 @@ fn verify_successful_byte_trace(
             match effect {
                 SuccessfulByteEffect::Input => {
                     latest = input.get(consumed).copied();
-                    consumed = consumed.checked_add(1).ok_or("byte input count overflow")?;
-                }
+                    consumed = consumed
+                        .checked_add(1)
+                        .ok_or("byte input count overflow")?;
+                },
                 SuccessfulByteEffect::Output => {
-                    expected_output.push(latest.ok_or("output before successful input")?);
-                }
+                    expected_output
+                        .push(latest.ok_or("output before successful input")?);
+                },
                 SuccessfulByteEffect::ZeroOutput if latest.is_none() => {
                     expected_output.push(0);
-                }
+                },
                 SuccessfulByteEffect::ZeroOutput => {
-                    return Err(String::from("zero output after accumulator overwrite"));
-                }
+                    return Err(String::from(
+                        "zero output after accumulator overwrite",
+                    ));
+                },
             }
         }
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("successful-byte VM load failed: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("successful-byte VM load failed: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps: count, .. }) if count == artifact.steps)
         {
-            return Err(String::from("successful-byte VM trace did not terminate"));
+            return Err(String::from(
+                "successful-byte VM trace did not terminate",
+            ));
         }
         if vm.output() != expected_output || vm.input_consumed() != reads {
             return Err(String::from("successful-byte VM trace mismatch"));
@@ -3045,8 +3512,11 @@ fn verify_empty_void(
         return Err(String::from("empty-void guest halt geometry disagrees"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("empty-void guest VM load failed: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("empty-void guest VM load failed: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3066,11 +3536,16 @@ fn verify_initial_zero_outputs(
     outputs: usize,
 ) -> Result<(), String> {
     if outputs == 0 || outputs.checked_add(1) != Some(artifact.steps) {
-        return Err(String::from("initial-zero guest output geometry disagrees"));
+        return Err(String::from(
+            "initial-zero guest output geometry disagrees",
+        ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("initial-zero guest VM load failed: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("initial-zero guest VM load failed: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3096,8 +3571,11 @@ fn verify_rotated_literal(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("seeded literal guest load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("seeded literal guest load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3120,14 +3598,19 @@ fn verify_zero_then_literal(
         return Err(String::from("zero-then-literal guest geometry disagrees"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("zero-then-literal guest load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("zero-then-literal guest load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != [0, byte]
         {
-            return Err(String::from("zero-then-literal guest output disagrees"));
+            return Err(String::from(
+                "zero-then-literal guest output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3140,40 +3623,94 @@ fn verify_distinct_literal_pair(
     first: u8,
     second: u8,
 ) -> Result<(), String> {
-    // Reconstruct the closed two-write grammar from the *published source*,
-    // rather than trusting the bridge's candidate or a fixed literal table.
-    let prefix = artifact.steps.checked_sub(6).ok_or(
-        "distinct-literal guest geometry disagrees",
-    )?;
-    if prefix >= 94 || artifact.source.len() != artifact.steps {
+    if first == second {
+        return Err(String::from(
+            "distinct-literal pair has identical output bytes",
+        ));
+    }
+    // Decode the published bytes, never the bridge's untrusted candidate.
+    // Legacy layouts use two writes with no strides; the compound grammar
+    // permits precisely one additional write before either output.
+    if artifact.source.len() != artifact.steps {
         return Err(String::from("distinct-literal guest geometry disagrees"));
     }
-    let source_operation = |position: usize| {
-        malbolge::decode_profile_instruction(
-            u32::from(*artifact.source.get(position)?),
-            u32::try_from(position).ok()?,
-        )
-    };
-    let arithmetic = |position| match source_operation(position) {
-        Some(b'p') => Some(LinearOpcode::CrazyData),
-        Some(b'*') => Some(LinearOpcode::RotateData),
-        _ => None,
-    };
-    let (Some(first_write), Some(second_write)) = (
-        arithmetic(prefix + 1),
-        arithmetic(prefix + 3),
-    ) else {
-        return Err(String::from("distinct-literal guest arithmetic disagrees"));
-    };
-    let mut operations = vec![LinearOpcode::NoOperation; prefix];
-    operations.extend([
-        LinearOpcode::RelocateDataPointer,
-        first_write,
-        LinearOpcode::OutputByte,
-        second_write,
-        LinearOpcode::OutputByte,
-        LinearOpcode::Halt,
-    ]);
+    let decoded = artifact
+        .source
+        .iter()
+        .enumerate()
+        .map(|(position, &byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(byte),
+                u32::try_from(position).ok()?,
+            )
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("distinct-literal guest decode disagrees")?;
+    let prefix = decoded.iter().take_while(|&&op| op == b'o').count();
+    if prefix >= 94 || decoded.get(prefix) != Some(&b'j') {
+        return Err(String::from(
+            "distinct-literal guest relocation disagrees",
+        ));
+    }
+    let mut cursor = prefix + 1;
+    let before = decoded[cursor..]
+        .iter()
+        .take_while(|&&op| op == b'o')
+        .count();
+    cursor += before;
+    let first_writes = decoded[cursor..]
+        .iter()
+        .take_while(|&&op| op == b'p' || op == b'*')
+        .count();
+    cursor += first_writes;
+    if decoded.get(cursor) != Some(&profile.output_instruction()) {
+        return Err(String::from(
+            "distinct-literal first guest output disagrees",
+        ));
+    }
+    cursor += 1;
+    let between = decoded[cursor..]
+        .iter()
+        .take_while(|&&op| op == b'o')
+        .count();
+    cursor += between;
+    let second_writes = decoded[cursor..]
+        .iter()
+        .take_while(|&&op| op == b'p' || op == b'*')
+        .count();
+    cursor += second_writes;
+    if decoded.get(cursor) != Some(&profile.output_instruction())
+        || decoded.get(cursor + 1) != Some(&b'v')
+        || cursor + 2 != decoded.len()
+    {
+        return Err(String::from(
+            "distinct-literal final guest output disagrees",
+        ));
+    }
+    let legacy =
+        first_writes == 1 && second_writes == 1 && before == 0 && between == 0;
+    let compound = prefix < 12
+        && before <= 8
+        && between <= 20
+        && matches!((first_writes, second_writes), (2, 1) | (1, 2));
+    if !legacy && !compound {
+        return Err(String::from("distinct-literal guest grammar disagrees"));
+    }
+    let operations = decoded
+        .iter()
+        .map(|&op| match op {
+            b'o' => Some(LinearOpcode::NoOperation),
+            b'j' => Some(LinearOpcode::RelocateDataPointer),
+            b'p' => Some(LinearOpcode::CrazyData),
+            b'*' => Some(LinearOpcode::RotateData),
+            b'v' => Some(LinearOpcode::Halt),
+            code if code == profile.output_instruction() => {
+                Some(LinearOpcode::OutputByte)
+            },
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("distinct-literal guest instructions disagree")?;
     let layout = admit_linear_layout(
         profile,
         &operations,
@@ -3184,21 +3721,37 @@ fn verify_distinct_literal_pair(
         },
     )
     .map_err(|error| format!("distinct-literal source admission: {error:?}"))?;
-    let writes: Vec<_> = layout.data_write_positions().iter().flatten().collect();
-    if !matches!(writes.as_slice(), [a, b] if a != b)
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    if writes.len() != first_writes + second_writes
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
+        || writes
+            .iter()
+            .any(|&position| position < layout.source().len() as u32)
         || layout.executed_code_positions().len() != artifact.steps
     {
-        return Err(String::from("distinct-literal data-write geometry disagrees"));
+        return Err(String::from(
+            "distinct-literal data-write geometry disagrees",
+        ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal guest load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal guest load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != [first, second]
         {
-            return Err(String::from("distinct-literal guest output disagrees"));
+            return Err(String::from(
+                "distinct-literal guest output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3216,20 +3769,29 @@ fn verify_distinct_literal_triple(
         b"Y-P" => 10,
         b"T\"O" => 12,
         b"T\"Q" => 14,
-        _ => return Err(String::from("distinct-literal triple has no guest witness")),
+        _ => {
+            return Err(String::from(
+                "distinct-literal triple has no guest witness",
+            ));
+        },
     };
     if artifact.steps != expected_steps {
         return Err(String::from("distinct-literal triple geometry disagrees"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal triple load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal triple load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal triple output disagrees"));
+            return Err(String::from(
+                "distinct-literal triple output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3242,17 +3804,24 @@ fn verify_distinct_literal_quint(
     bytes: [u8; 5],
 ) -> Result<(), String> {
     if bytes != *b"Q\"\x1b79" || artifact.steps != 23 {
-        return Err(String::from("distinct-literal quint has no guest witness"));
+        return Err(String::from(
+            "distinct-literal quint has no guest witness",
+        ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal quint load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal quint load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal quint output disagrees"));
+            return Err(String::from(
+                "distinct-literal quint output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3268,8 +3837,11 @@ fn verify_distinct_literal_six(
         return Err(String::from("distinct-literal six has no guest witness"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal six load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal six load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3288,17 +3860,24 @@ fn verify_distinct_literal_seven(
     bytes: [u8; 7],
 ) -> Result<(), String> {
     if bytes != *b"6>5\x02T\x1f\x18" || artifact.steps != 21 {
-        return Err(String::from("distinct-literal seven has no guest witness"));
+        return Err(String::from(
+            "distinct-literal seven has no guest witness",
+        ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal seven load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal seven load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal seven output disagrees"));
+            return Err(String::from(
+                "distinct-literal seven output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3311,17 +3890,24 @@ fn verify_distinct_literal_eight(
     bytes: [u8; 8],
 ) -> Result<(), String> {
     if bytes != *b"S \x17<6\x01R\x06" || artifact.steps != 21 {
-        return Err(String::from("distinct-literal eight has no guest witness"));
+        return Err(String::from(
+            "distinct-literal eight has no guest witness",
+        ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal eight load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal eight load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal eight output disagrees"));
+            return Err(String::from(
+                "distinct-literal eight output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3337,8 +3923,11 @@ fn verify_distinct_literal_nine(
         return Err(String::from("distinct-literal nine has no guest witness"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal nine load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal nine load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3356,12 +3945,16 @@ fn verify_distinct_literal_ten(
     artifact: &VerifiedSource,
     bytes: [u8; 10],
 ) -> Result<(), String> {
-    if bytes != *b"Q\"\xfd\xce\xa5\x98\xba\xb6\x87\xcb" || artifact.steps != 23 {
+    if bytes != *b"Q\"\xfd\xce\xa5\x98\xba\xb6\x87\xcb" || artifact.steps != 23
+    {
         return Err(String::from("distinct-literal ten has no guest witness"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal ten load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal ten load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3379,18 +3972,27 @@ fn verify_distinct_literal_eleven(
     artifact: &VerifiedSource,
     bytes: [u8; 11],
 ) -> Result<(), String> {
-    if bytes != *b"P\x1d\x1a6\x05\xb4\xba\xb3\x84\xcf\x9e" || artifact.steps != 24 {
-        return Err(String::from("distinct-literal eleven has no guest witness"));
+    if bytes != *b"P\x1d\x1a6\x05\xb4\xba\xb3\x84\xcf\x9e"
+        || artifact.steps != 24
+    {
+        return Err(String::from(
+            "distinct-literal eleven has no guest witness",
+        ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal eleven load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal eleven load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal eleven output disagrees"));
+            return Err(String::from(
+                "distinct-literal eleven output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3402,18 +4004,26 @@ fn verify_distinct_literal_twelve(
     artifact: &VerifiedSource,
     bytes: [u8; 12],
 ) -> Result<(), String> {
-    if bytes != *b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd" || artifact.steps != 27 {
-        return Err(String::from("distinct-literal twelve has no guest witness"));
+    if bytes != *b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd" || artifact.steps != 27
+    {
+        return Err(String::from(
+            "distinct-literal twelve has no guest witness",
+        ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twelve load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twelve load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal twelve output disagrees"));
+            return Err(String::from(
+                "distinct-literal twelve output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3424,20 +4034,27 @@ fn verify_distinct_literal_thirteen(
     artifact: &VerifiedSource,
     bytes: [u8; 13],
 ) -> Result<(), String> {
-    if bytes != *b"BC0\x16T\x09\xbf\xc6\xc8\x87\xe3\xab\xa4" || artifact.steps != 29 {
+    if bytes != *b"BC0\x16T\x09\xbf\xc6\xc8\x87\xe3\xab\xa4"
+        || artifact.steps != 29
+    {
         return Err(String::from(
             "distinct-literal thirteen has no guest witness",
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirteen load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirteen load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal thirteen output disagrees"));
+            return Err(String::from(
+                "distinct-literal thirteen output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3454,14 +4071,19 @@ fn verify_distinct_literal_fourteen(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal fourteen load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal fourteen load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal fourteen output disagrees"));
+            return Err(String::from(
+                "distinct-literal fourteen output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3472,20 +4094,27 @@ fn verify_distinct_literal_fifteen(
     artifact: &VerifiedSource,
     bytes: [u8; 15],
 ) -> Result<(), String> {
-    if bytes != *b"Q.\x198>\x89\xd2\xad\xa3\xb7\xc8\x88\x08\xd5\xc6" || artifact.steps != 33 {
+    if bytes != *b"Q.\x198>\x89\xd2\xad\xa3\xb7\xc8\x88\x08\xd5\xc6"
+        || artifact.steps != 33
+    {
         return Err(String::from(
             "distinct-literal fifteen has no guest witness",
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal fifteen load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal fifteen load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal fifteen output disagrees"));
+            return Err(String::from(
+                "distinct-literal fifteen output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3496,20 +4125,27 @@ fn verify_distinct_literal_sixteen(
     artifact: &VerifiedSource,
     bytes: [u8; 16],
 ) -> Result<(), String> {
-    if bytes != *b"?I6\x13Z\x0a\xba\xb3\xc3\x86\xcc\xaa\x01\x07\xd5\xc5" || artifact.steps != 35 {
+    if bytes != *b"?I6\x13Z\x0a\xba\xb3\xc3\x86\xcc\xaa\x01\x07\xd5\xc5"
+        || artifact.steps != 35
+    {
         return Err(String::from(
             "distinct-literal sixteen has no guest witness",
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal sixteen load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal sixteen load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal sixteen output disagrees"));
+            return Err(String::from(
+                "distinct-literal sixteen output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3526,14 +4162,19 @@ fn verify_distinct_literal_seventeen(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal seventeen load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal seventeen load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal seventeen output disagrees"));
+            return Err(String::from(
+                "distinct-literal seventeen output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3552,14 +4193,19 @@ fn verify_distinct_literal_eighteen(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal eighteen load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal eighteen load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal eighteen output disagrees"));
+            return Err(String::from(
+                "distinct-literal eighteen output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3570,20 +4216,27 @@ fn verify_distinct_literal_nineteen(
     artifact: &VerifiedSource,
     bytes: [u8; 19],
 ) -> Result<(), String> {
-    if bytes != *b"S!\x1a<8\x03\x17U\x0eI+\x10F\x16@L:\x19X" || artifact.steps != 40 {
+    if bytes != *b"S!\x1a<8\x03\x17U\x0eI+\x10F\x16@L:\x19X"
+        || artifact.steps != 40
+    {
         return Err(String::from(
             "distinct-literal nineteen has no guest witness",
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal nineteen load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal nineteen load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal nineteen output disagrees"));
+            return Err(String::from(
+                "distinct-literal nineteen output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3600,14 +4253,19 @@ fn verify_distinct_literal_twenty(
         return Err(String::from("distinct-literal twenty has no guest witness"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal twenty output disagrees"));
+            return Err(String::from(
+                "distinct-literal twenty output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3627,14 +4285,19 @@ fn verify_distinct_literal_twenty_one(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-one load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-one load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal twenty-one output disagrees"));
+            return Err(String::from(
+                "distinct-literal twenty-one output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3654,14 +4317,19 @@ fn verify_distinct_literal_twenty_two(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-two load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-two load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal twenty-two output disagrees"));
+            return Err(String::from(
+                "distinct-literal twenty-two output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3681,8 +4349,11 @@ fn verify_distinct_literal_twenty_three(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-three load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-three load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3710,8 +4381,11 @@ fn verify_distinct_literal_twenty_four(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-four load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-four load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3739,8 +4413,11 @@ fn verify_distinct_literal_twenty_five(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-five load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-five load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3768,14 +4445,19 @@ fn verify_distinct_literal_twenty_six(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-six load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-six load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
             || vm.output() != bytes
         {
-            return Err(String::from("distinct-literal twenty-six output disagrees"));
+            return Err(String::from(
+                "distinct-literal twenty-six output disagrees",
+            ));
         }
     }
     Ok(())
@@ -3795,8 +4477,11 @@ fn verify_distinct_literal_twenty_seven(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-seven load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-seven load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3824,8 +4509,11 @@ fn verify_distinct_literal_twenty_eight(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-eight load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-eight load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3853,8 +4541,11 @@ fn verify_distinct_literal_twenty_nine(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal twenty-nine load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal twenty-nine load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3882,8 +4573,11 @@ fn verify_distinct_literal_thirty(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3911,8 +4605,11 @@ fn verify_distinct_literal_thirty_one(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-one load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-one load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3940,8 +4637,11 @@ fn verify_distinct_literal_thirty_two(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-two load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-two load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3969,8 +4669,11 @@ fn verify_distinct_literal_thirty_three(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-three load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-three load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -3998,8 +4701,11 @@ fn verify_distinct_literal_thirty_four(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-four load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-four load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4027,8 +4733,11 @@ fn verify_distinct_literal_thirty_five(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-five load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-five load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4056,8 +4765,11 @@ fn verify_distinct_literal_thirty_six(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-six load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-six load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4085,8 +4797,11 @@ fn verify_distinct_literal_thirty_seven(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-seven load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-seven load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4114,8 +4829,11 @@ fn verify_distinct_literal_thirty_eight(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-eight load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-eight load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4143,8 +4861,11 @@ fn verify_distinct_literal_thirty_nine(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal thirty-nine load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal thirty-nine load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4172,8 +4893,11 @@ fn verify_distinct_literal_forty(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal forty load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal forty load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4201,8 +4925,11 @@ fn verify_distinct_literal_forty_one(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal forty-one load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal forty-one load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4230,8 +4957,11 @@ fn verify_distinct_literal_forty_two(
         ));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal forty-two load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal forty-two load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4347,10 +5077,10 @@ fn verify_distinct_literal_forty_six(
 ) -> Result<(), String> {
     if bytes
         != [
-            84, 34, 79, 35, 83, 30, 9, 8, 226, 171, 221, 126,
-            192, 125, 186, 129, 188, 123, 42, 16, 48, 14, 47, 17,
-            45, 163, 255, 167, 0, 162, 1, 166, 252, 207, 165, 206,
-            159, 210, 161, 204, 144, 227, 174, 225, 173, 228,
+            84, 34, 79, 35, 83, 30, 9, 8, 226, 171, 221, 126, 192, 125, 186,
+            129, 188, 123, 42, 16, 48, 14, 47, 17, 45, 163, 255, 167, 0, 162,
+            1, 166, 252, 207, 165, 206, 159, 210, 161, 204, 144, 227, 174, 225,
+            173, 228,
         ]
         || artifact.steps != 106
     {
@@ -4384,10 +5114,10 @@ fn verify_distinct_literal_forty_seven(
 ) -> Result<(), String> {
     if bytes
         != [
-            5, 252, 205, 167, 216, 194, 187, 195, 215, 64, 65, 89,
-            36, 90, 28, 27, 46, 79, 47, 26, 72, 185, 253, 211,
-            23, 157, 51, 183, 176, 59, 175, 55, 81, 29, 80, 56,
-            54, 74, 53, 20, 44, 63, 45, 10, 70, 38, 17,
+            5, 252, 205, 167, 216, 194, 187, 195, 215, 64, 65, 89, 36, 90, 28,
+            27, 46, 79, 47, 26, 72, 185, 253, 211, 23, 157, 51, 183, 176, 59,
+            175, 55, 81, 29, 80, 56, 54, 74, 53, 20, 44, 63, 45, 10, 70, 38,
+            17,
         ]
         || artifact.steps != 118
     {
@@ -4421,10 +5151,10 @@ fn verify_distinct_literal_forty_eight(
 ) -> Result<(), String> {
     if bytes
         != [
-            81, 55, 52, 56, 251, 206, 159, 152, 184, 180, 131, 205,
-            4, 202, 28, 27, 46, 79, 139, 207, 167, 162, 149, 214,
-            150, 161, 175, 197, 186, 224, 157, 225, 185, 65, 71, 92,
-            42, 68, 41, 14, 50, 78, 49, 24, 31, 76, 32, 23,
+            81, 55, 52, 56, 251, 206, 159, 152, 184, 180, 131, 205, 4, 202, 28,
+            27, 46, 79, 139, 207, 167, 162, 149, 214, 150, 161, 175, 197, 186,
+            224, 157, 225, 185, 65, 71, 92, 42, 68, 41, 14, 50, 78, 49, 24, 31,
+            76, 32, 23,
         ]
         || artifact.steps != 121
     {
@@ -4461,8 +5191,11 @@ fn verify_distinct_literal_quad(
         return Err(String::from("distinct-literal quad has no guest witness"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, &artifact.source, input)
-            .map_err(|error| format!("distinct-literal quad load: {error:?}"))?;
+        let mut vm =
+            ProfileMachine::from_source(profile, &artifact.source, input)
+                .map_err(|error| {
+                    format!("distinct-literal quad load: {error:?}")
+                })?;
         if !matches!(vm.run(artifact.steps),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == artifact.steps)
             || vm.input_consumed() != 0
@@ -4475,10 +5208,14 @@ fn verify_distinct_literal_quad(
 }
 
 fn execute(spec: &CommandSpec) -> Result<(), String> {
-    let profile = target_profile(&spec.profile).ok_or("unknown canonical target profile")?;
+    let profile = target_profile(&spec.profile)
+        .ok_or("unknown canonical target profile")?;
     let artifact = verified_source(&spec.source, profile)?;
-    let mut vm = ProfileMachine::from_source(profile, &artifact.source, Vec::new())
-        .map_err(|error| format!("normative VM rejected source: {error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, &artifact.source, Vec::new())
+            .map_err(|error| {
+                format!("normative VM rejected source: {error:?}")
+            })?;
     if !matches!(vm.run(artifact.steps), Ok(RunOutcome::Terminated { steps: count, .. }) if count == artifact.steps)
     {
         return Err(String::from(
@@ -4488,170 +5225,174 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
     match &artifact.effect_witness {
         Some(SourceEffectWitness::SuccessfulByteTrace(effects)) => {
             verify_successful_byte_trace(profile, &artifact, effects)?;
-        }
+        },
         Some(SourceEffectWitness::EmptyVoid) => {
             verify_empty_void(profile, &artifact)?;
-        }
+        },
         Some(SourceEffectWitness::InitialZero { outputs }) => {
             verify_initial_zero_outputs(profile, &artifact, *outputs)?;
-        }
+        },
         Some(SourceEffectWitness::RotatedLiteral { byte, outputs }) => {
             verify_rotated_literal(profile, &artifact, *byte, *outputs)?;
-        }
+        },
         Some(SourceEffectWitness::ZeroThenLiteral { byte }) => {
             verify_zero_then_literal(profile, &artifact, *byte)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralPair { first, second }) => {
             verify_distinct_literal_pair(profile, &artifact, *first, *second)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTriple { bytes }) => {
             verify_distinct_literal_triple(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralQuad { bytes }) => {
             verify_distinct_literal_quad(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralQuint { bytes }) => {
             verify_distinct_literal_quint(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralSix { bytes }) => {
             verify_distinct_literal_six(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralSeven { bytes }) => {
             verify_distinct_literal_seven(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralEight { bytes }) => {
             verify_distinct_literal_eight(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralNine { bytes }) => {
             verify_distinct_literal_nine(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTen { bytes }) => {
             verify_distinct_literal_ten(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralEleven { bytes }) => {
             verify_distinct_literal_eleven(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwelve { bytes }) => {
             verify_distinct_literal_twelve(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirteen { bytes }) => {
             verify_distinct_literal_thirteen(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFourteen { bytes }) => {
             verify_distinct_literal_fourteen(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFifteen { bytes }) => {
             verify_distinct_literal_fifteen(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralSixteen { bytes }) => {
             verify_distinct_literal_sixteen(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralSeventeen { bytes }) => {
             verify_distinct_literal_seventeen(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralEighteen { bytes }) => {
             verify_distinct_literal_eighteen(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralNineteen { bytes }) => {
             verify_distinct_literal_nineteen(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwenty { bytes }) => {
             verify_distinct_literal_twenty(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentyOne { bytes }) => {
             verify_distinct_literal_twenty_one(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentyTwo { bytes }) => {
             verify_distinct_literal_twenty_two(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentyThree { bytes }) => {
             verify_distinct_literal_twenty_three(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentyFour { bytes }) => {
             verify_distinct_literal_twenty_four(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentyFive { bytes }) => {
             verify_distinct_literal_twenty_five(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentySix { bytes }) => {
             verify_distinct_literal_twenty_six(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentySeven { bytes }) => {
             verify_distinct_literal_twenty_seven(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentyEight { bytes }) => {
             verify_distinct_literal_twenty_eight(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralTwentyNine { bytes }) => {
             verify_distinct_literal_twenty_nine(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirty { bytes }) => {
             verify_distinct_literal_thirty(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtyOne { bytes }) => {
             verify_distinct_literal_thirty_one(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtyTwo { bytes }) => {
             verify_distinct_literal_thirty_two(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtyThree { bytes }) => {
             verify_distinct_literal_thirty_three(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtyFour { bytes }) => {
             verify_distinct_literal_thirty_four(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtyFive { bytes }) => {
             verify_distinct_literal_thirty_five(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtySix { bytes }) => {
             verify_distinct_literal_thirty_six(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtySeven { bytes }) => {
             verify_distinct_literal_thirty_seven(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtyEight { bytes }) => {
             verify_distinct_literal_thirty_eight(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralThirtyNine { bytes }) => {
             verify_distinct_literal_thirty_nine(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralForty { bytes }) => {
             verify_distinct_literal_forty(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFortyOne { bytes }) => {
             verify_distinct_literal_forty_one(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFortyTwo { bytes }) => {
             verify_distinct_literal_forty_two(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFortyThree { bytes }) => {
             verify_distinct_literal_forty_three(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFortyFour { bytes }) => {
             verify_distinct_literal_forty_four(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFortyFive { bytes }) => {
             verify_distinct_literal_forty_five(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFortySix { bytes }) => {
             verify_distinct_literal_forty_six(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFortySeven { bytes }) => {
             verify_distinct_literal_forty_seven(profile, &artifact, *bytes)?;
-        }
+        },
         Some(SourceEffectWitness::DistinctLiteralFortyEight { bytes }) => {
             verify_distinct_literal_forty_eight(profile, &artifact, *bytes)?;
-        }
-        None => {}
+        },
+        None => {},
     }
     let publication = if spec.capsule {
         let bytes = build_capsule(profile, &artifact.source)
             .map_err(|error| format!("capsule build rejected: {error}"))?;
         let parsed = parse_capsule(&bytes)
-            .map_err(|error| format!("capsule independent parse rejected: {error}"))?
+            .map_err(|error| {
+                format!("capsule independent parse rejected: {error}")
+            })?
             .ok_or("capsule marker missing after framing")?;
         if parsed.profile() != profile || parsed.payload() != artifact.source {
-            return Err(String::from("capsule profile or source payload disagrees"));
+            return Err(String::from(
+                "capsule profile or source payload disagrees",
+            ));
         }
         bytes
     } else {
@@ -4672,13 +5413,15 @@ fn execute(spec: &CommandSpec) -> Result<(), String> {
 /// without publishing partial target artifacts.
 #[must_use]
 pub fn run() -> ExitCode {
-    match parse_arguments(env::args_os().skip(1)).and_then(|spec| execute(&spec)) {
+    match parse_arguments(env::args_os().skip(1))
+        .and_then(|spec| execute(&spec))
+    {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             let notice = format!("malbolge_layout: {error}\n");
             drop(io::stderr().lock().write_all(notice.as_bytes()));
             ExitCode::FAILURE
-        }
+        },
     }
 }
 

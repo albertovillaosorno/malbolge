@@ -166,3 +166,13 @@ a compiler capability gap, not a reason to return to N+1.
   loop, with exact normative VM output. The original twelve-iteration
   Fibonacci still fails at the finite layout boundary; this is a partial
   step toward arbitrary byte-stream synthesis, not P0 completion.
+
+- A second source-backed experiment truncates the original Fibonacci
+  conditional loop to two iterations and changes its odd-arm XOR to `54U`.
+  The compiler and actual current-profile guest VM now agree on bytes
+  `02 35`, produced by three distinct guest arithmetic writes. A bounded
+  compound pair grammar validates one extra arithmetic write and data-pointer
+  strides; phase-encoded source bytes are cached only for candidate preview.
+  Independent source admission and empty/nonempty-input VM replay remain
+  mandatory. The full twelve-byte reference and runtime state are not yet
+  compiled, so P0 remains pending.

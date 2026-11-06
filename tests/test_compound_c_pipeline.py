@@ -267,6 +267,49 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertEqual(executed.stdout, expected)
             self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
 
+    def test_original_fibonacci_prefix_with_composed_guest_arithmetic(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = SOURCE.read_text()
+        self.assertIn("i < 12U", original)
+        self.assertIn("next ^ 0x5AU", original)
+        # The first original value is 2; the odd branch selects 3 ^ 54 = 53.
+        expected = bytes((2, 53))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            changed = Path(scratch) / "fib-composed-pair.c"
+            _written = changed.write_text(
+                original.replace("i < 12U", "i < 2U")
+                .replace("next ^ 0x5AU", "next ^ 54U")
+            )
+            guest = Path(scratch) / "fib-composed-pair.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/fib-composed-pair-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(changed),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            executed = subprocess.run(
+                [str(VM), str(guest), "--report-steps"],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(executed.returncode, 0, executed.stderr)
+            self.assertEqual(executed.stdout, expected)
+            self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+
     def test_unwitnessed_distinct_loop_stream_does_not_publish_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

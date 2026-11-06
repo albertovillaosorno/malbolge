@@ -27,7 +27,7 @@
 // - Usage:
 //   - cargo test --locked --test guest_distinct_literal_pair
 // - Defaults:
-//   - Only these three exact 2026-profile witnesses are established.
+//   - Source-bound byte pairs require independent guest VM verification.
 
 //! Independent two-different-byte witness for the actual Malbolge VM.
 
@@ -36,9 +36,10 @@ pub mod bridge;
 
 use bridge::layout::{self, LinearOpcode, encode_linear_layout};
 use bridge::ternary::{
-    InputBlock, InputFunction, InputInstruction, InputScalarType, InputSourcePosition,
-    InputSourceSpan, InputTerminator, TernaryProgram, TypedIrInput, canonical_ternary_bytes,
-    canonical_ternary_program, lower_typed_ir,
+    InputBlock, InputFunction, InputInstruction, InputScalarType,
+    InputSourcePosition, InputSourceSpan, InputTerminator, TernaryProgram,
+    TypedIrInput, canonical_ternary_bytes, canonical_ternary_program,
+    lower_typed_ir,
 };
 use bridge::{ByteEchoBridgeError, encode_distinct_literal_pair};
 use malbolge::{ProfileMachine, RunOutcome, current_profile};
@@ -54,8 +55,8 @@ fn witnessed_pair(padding: usize) -> Result<layout::LinearLayout, String> {
         LinearOpcode::OutputByte,
         LinearOpcode::Halt,
     ]);
-    let encoded =
-        encode_linear_layout(profile, &operations).map_err(|error| format!("encode: {error:?}"))?;
+    let encoded = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("encode: {error:?}"))?;
     let writes: Vec<u32> = encoded
         .data_write_positions()
         .iter()
@@ -69,7 +70,8 @@ fn witnessed_pair(padding: usize) -> Result<layout::LinearLayout, String> {
     };
     if first_write == second_write
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < encoded.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < encoded.source().len())
         })
     {
         return Err(String::from(
@@ -93,14 +95,24 @@ fn two_distinct_printables_use_actual_guest_arithmetic() -> Result<(), String> {
         let layout = witnessed_pair(padding)?;
         let step_bound = padding + 6;
         for input in [Vec::new(), vec![0, 128, 255]] {
-            let mut vm = ProfileMachine::from_source(current_profile(), layout.source(), input)
-                .map_err(|error| format!("load: {error:?}"))?;
+            let mut vm = ProfileMachine::from_source(
+                current_profile(),
+                layout.source(),
+                input,
+            )
+            .map_err(|error| format!("load: {error:?}"))?;
             let outcome = vm
                 .run(step_bound)
                 .map_err(|error| format!("run: {error:?}"))?;
-            assert!(matches!(outcome, RunOutcome::Terminated { steps, .. } if steps == step_bound));
+            assert!(
+                matches!(outcome, RunOutcome::Terminated { steps, .. } if steps == step_bound)
+            );
             assert_eq!(vm.input_consumed(), 0);
-            assert_eq!(vm.output(), expected, "source-position-specific VM output");
+            assert_eq!(
+                vm.output(),
+                expected,
+                "source-position-specific VM output"
+            );
         }
     }
     Ok(())
@@ -121,7 +133,11 @@ const fn span(begin: u32, end: u32) -> InputSourceSpan {
     }
 }
 
-fn source_pair(first: u8, second: u8, stale: bool) -> Result<TernaryProgram, String> {
+fn source_pair(
+    first: u8,
+    second: u8,
+    stale: bool,
+) -> Result<TernaryProgram, String> {
     let typed = TypedIrInput {
         abi_id: String::from("malbolge-c32-v1"),
         functions: vec![InputFunction {
@@ -171,10 +187,12 @@ fn source_pair(first: u8, second: u8, stale: bool) -> Result<TernaryProgram, Str
         source_sha256: [0x47; 32],
         target_profile: String::from("malbolge-2026"),
     };
-    let lowered = lower_typed_ir(&typed).map_err(|error| format!("lower: {error:?}"))?;
-    let wire = canonical_ternary_bytes(&lowered).map_err(|error| format!("wire: {error:?}"))?;
-    let restored =
-        canonical_ternary_program(&wire).map_err(|error| format!("re-admit: {error:?}"))?;
+    let lowered =
+        lower_typed_ir(&typed).map_err(|error| format!("lower: {error:?}"))?;
+    let wire = canonical_ternary_bytes(&lowered)
+        .map_err(|error| format!("wire: {error:?}"))?;
+    let restored = canonical_ternary_program(&wire)
+        .map_err(|error| format!("re-admit: {error:?}"))?;
     if restored != lowered {
         return Err(String::from(
             "independent MCTR round-trip changed the trace",
@@ -189,14 +207,20 @@ fn source_pair(first: u8, second: u8, stale: bool) -> Result<TernaryProgram, Str
     reason = "test assertions are intentional after fallible setup"
 )]
 fn source_bound_pair_bridge_matches_guest_witness() -> Result<(), String> {
-    for (first, second, padding) in [(b'Y', b'/', 0usize), (b'Y', b'$', 1), (b'Q', b'.', 2)] {
+    for (first, second, padding) in
+        [(b'Y', b'/', 0usize), (b'Y', b'$', 1), (b'Q', b'.', 2)]
+    {
         let program = source_pair(first, second, false)?;
         let encoded = encode_distinct_literal_pair(&program, current_profile())
             .map_err(|error| format!("pair {first}/{second}: {error:?}"))?;
         let original = witnessed_pair(padding)?;
         assert_eq!(encoded, original, "independent layout recipe differs");
-        let mut vm = ProfileMachine::from_source(current_profile(), encoded.source(), Vec::new())
-            .map_err(|error| format!("bridge guest: {error:?}"))?;
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            encoded.source(),
+            Vec::new(),
+        )
+        .map_err(|error| format!("bridge guest: {error:?}"))?;
         assert!(matches!(vm.run(padding + 6),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == padding + 6));
         assert_eq!(vm.output(), [first, second]);
@@ -235,23 +259,75 @@ fn previously_unwitnessed_binary_pair_uses_verified_guest_arithmetic()
 }
 
 #[test]
+fn newly_admitted_qz_pair_replays_in_guest_vm() -> Result<(), String> {
+    let expected = [b'Q', b'Z'];
+    let program = source_pair(expected[0], expected[1], false)?;
+    let layout = encode_distinct_literal_pair(&program, current_profile())
+        .map_err(|error| format!("QZ pair: {error:?}"))?;
+    for input in [Vec::new(), vec![0, 128, 255]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            layout.source(),
+            input,
+        )
+        .map_err(|error| format!("QZ guest load: {error:?}"))?;
+        assert!(matches!(vm.run(100), Ok(RunOutcome::Terminated { .. })));
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.output(), expected);
+    }
+    Ok(())
+}
+
+#[test]
+fn source_bound_pair_accepts_composed_arithmetic() -> Result<(), String> {
+    // A separate source-backed C loop proves 2, 3 ^ 54 = 53.
+    let expected = [2, 53];
+    let program = source_pair(expected[0], expected[1], false)?;
+    let layout = encode_distinct_literal_pair(&program, current_profile())
+        .map_err(|error| format!("composed pair: {error:?}"))?;
+    let writes: Vec<_> =
+        layout.data_write_positions().iter().flatten().collect();
+    assert_eq!(writes.len(), 3);
+    assert_eq!(
+        writes
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        3
+    );
+    for input in [Vec::new(), vec![0, 128, 255]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            layout.source(),
+            input,
+        )
+        .map_err(|error| format!("composed guest load: {error:?}"))?;
+        assert!(matches!(vm.run(100), Ok(RunOutcome::Terminated { .. })));
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.output(), expected);
+    }
+    Ok(())
+}
+
+#[test]
 #[expect(
     clippy::panic_in_result_fn,
     reason = "test assertions are intentional after fallible setup"
 )]
-fn source_bound_pair_bridge_refuses_unproved_or_stale_effects() -> Result<(), String> {
-    for (first, second, stale) in [
-        (b'Q', b'Z', false),
-        (b'Y', b'.', false),
-        (b'Q', b'.', true),
-        (0, b'Z', false),
-        (b'Q', b'Q', false),
-    ] {
+fn source_bound_pair_bridge_refuses_unproved_or_stale_effects()
+-> Result<(), String> {
+    for (first, second, stale) in
+        [(0xff, b'Z', false), (b'Q', b'.', true), (b'Q', b'Q', false)]
+    {
         let program = source_pair(first, second, stale)?;
-        assert!(matches!(
-            encode_distinct_literal_pair(&program, current_profile()),
-            Err(ByteEchoBridgeError::UnsupportedEffectTrace)
-        ));
+        assert!(
+            matches!(
+                encode_distinct_literal_pair(&program, current_profile()),
+                Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+            ),
+            "unexpected pair: {first:#04x}/{second:#04x}, stale={stale}"
+        );
     }
     let program = source_pair(b'Q', b'.', false)?;
     assert!(matches!(

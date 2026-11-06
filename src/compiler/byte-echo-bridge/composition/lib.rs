@@ -43,13 +43,18 @@ pub mod layout;
 #[path = "../../ternary-lowering/composition/lib.rs"]
 pub mod ternary;
 
-use malbolge::{ProfileDescriptor, ProfileMachine, RunOutcome, current_profile};
 use std::collections::BTreeSet;
 use std::iter::repeat_n;
 
-use layout::{LinearLayout, LinearLayoutError, LinearOpcode, encode_linear_layout};
+use layout::{
+    LinearLayout, LinearLayoutError, LinearOpcode, encode_linear_layout,
+};
+use malbolge::{
+    ProfileDescriptor, ProfileMachine, RunOutcome, current_profile,
+};
 use ternary::{
-    TernaryOperation, TernaryProgram, TernaryProgramValidationError, validate_ternary_program,
+    TernaryOperation, TernaryProgram, TernaryProgramValidationError,
+    validate_ternary_program,
 };
 
 // Each entry is an exact, current-profile, one-output guest VM witness for
@@ -73,7 +78,8 @@ const SINGLE_OUTPUT_CRAZY_WITNESSES: &[(u8, usize)] = &[
 ];
 
 // Separate exact one-output guests execute *two* rotations after relocation.
-// Their extra instruction changes code phases and loader-expanded source length.
+// Their extra instruction changes code phases and loader-expanded source
+// length.
 const SINGLE_OUTPUT_DOUBLE_ROTATION_WITNESSES: &[(u8, usize)] = &[
     (40, 51), // '('
     (41, 48), // ')'
@@ -438,7 +444,8 @@ const ROTATED_FOURTEEN_BYTE_SEEDS: &[(u8, usize)] = &[
     (49, 25),
 ];
 
-/// Fifteen-output witnesses omit the unsupported phase 20; no phase extrapolation.
+/// Fifteen-output witnesses omit the unsupported phase 20; no phase
+/// extrapolation.
 const ROTATED_FIFTEEN_BYTE_SEEDS: &[(u8, usize)] = &[
     (142, 0),
     (21, 1),
@@ -1012,21 +1019,24 @@ pub fn encode_empty_void_function(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id() {
         return Err(ByteEchoBridgeError::ProfileMismatch);
     }
     let [function] = program.functions.as_slice() else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    if !matches!(
-        function.operations.as_slice(),
-        [TernaryOperation::ReturnVoid { .. }]
-    ) {
+    if !matches!(function.operations.as_slice(), [
+        TernaryOperation::ReturnVoid { .. }
+    ]) {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    encode_linear_layout(profile, &[LinearOpcode::NoOperation, LinearOpcode::Halt])
-        .map_err(ByteEchoBridgeError::Layout)
+    encode_linear_layout(profile, &[
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ])
+    .map_err(ByteEchoBridgeError::Layout)
 }
 
 /// Emits one bounded, source-validated successful-byte-echo trace.
@@ -1045,7 +1055,8 @@ pub fn encode_successful_byte_echo(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id() {
         return Err(ByteEchoBridgeError::ProfileMismatch);
     }
@@ -1077,7 +1088,8 @@ pub fn encode_successful_byte_echo(
         operations.push(LinearOpcode::OutputByte);
     }
     operations.push(LinearOpcode::Halt);
-    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+    encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)
 }
 
 /// Emits a bounded successful-byte I/O trace using the VM accumulator itself.
@@ -1104,7 +1116,8 @@ pub fn encode_successful_latest_byte_trace(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id() {
         return Err(ByteEchoBridgeError::ProfileMismatch);
     }
@@ -1135,7 +1148,8 @@ pub fn encode_successful_latest_byte_trace(
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     operations.push(LinearOpcode::Halt);
-    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+    encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)
 }
 
 /// Emits an exact nonempty zero-byte output trace using the VM's initial A=0.
@@ -1161,7 +1175,8 @@ pub fn encode_initial_zero_outputs(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id() {
         return Err(ByteEchoBridgeError::ProfileMismatch);
     }
@@ -1192,7 +1207,8 @@ pub fn encode_initial_zero_outputs(
         operations.push(LinearOpcode::OutputByte);
     }
     operations.push(LinearOpcode::Halt);
-    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+    encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)
 }
 
 /// Emits verified guest code for zero outputs followed by latest-byte I/O.
@@ -1214,7 +1230,8 @@ pub fn encode_zero_prefixed_latest_byte_trace(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id() {
         return Err(ByteEchoBridgeError::ProfileMismatch);
     }
@@ -1243,7 +1260,8 @@ pub fn encode_zero_prefixed_latest_byte_trace(
             last_input = Some(*latest);
             operations.push(LinearOpcode::InputWord);
         } else if let TernaryOperation::ByteOutput { value, .. } = effect {
-            let valid = last_input.map_or(value == result, |latest| *value == latest);
+            let valid =
+                last_input.map_or(value == result, |latest| *value == latest);
             if !valid {
                 return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
             }
@@ -1261,7 +1279,8 @@ pub fn encode_zero_prefixed_latest_byte_trace(
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     operations.push(LinearOpcode::Halt);
-    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+    encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)
 }
 
 /// Emits guest I/O while proving exact byte-bitcast SSA aliases remain live.
@@ -1276,14 +1295,16 @@ pub fn encode_latest_byte_identity_trace(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id() {
         return Err(ByteEchoBridgeError::ProfileMismatch);
     }
     let [function] = program.functions.as_slice() else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    let Some((TernaryOperation::ReturnVoid { .. }, effects)) = function.operations.split_last()
+    let Some((TernaryOperation::ReturnVoid { .. }, effects)) =
+        function.operations.split_last()
     else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
@@ -1319,10 +1340,13 @@ pub fn encode_latest_byte_identity_trace(
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     operations.push(LinearOpcode::Halt);
-    encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)
+    encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)
 }
 
-const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32)> {
+const fn byte_bitcast_operands(
+    operation: &TernaryOperation,
+) -> Option<(u32, u32)> {
     let (TernaryOperation::BitcastI8ToI8 { result, value, .. }
     | TernaryOperation::BitcastI8ToU8 { result, value, .. }
     | TernaryOperation::BitcastU8ToI8 { result, value, .. }
@@ -1335,7 +1359,10 @@ const fn byte_bitcast_operands(operation: &TernaryOperation) -> Option<(u32, u32
 
 // A witness must be tied to the exact output count: changing the count
 // changes both positional encoding and the guest's loader-expanded data.
-fn literal_output_witness(byte: u8, count: usize) -> Option<LiteralOutputWitness> {
+fn literal_output_witness(
+    byte: u8,
+    count: usize,
+) -> Option<LiteralOutputWitness> {
     let seeds = rotated_byte_seeds(count)?;
     if let Some((_, padding)) = seeds.iter().find(|(value, _)| *value == byte) {
         return Some((*padding, &[LinearOpcode::RotateData]));
@@ -1375,7 +1402,8 @@ pub fn encode_zero_then_literal(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -1391,9 +1419,7 @@ pub fn encode_zero_then_literal(
             scalar: zero,
             ..
         },
-        TernaryOperation::ByteOutput {
-            value: first_id, ..
-        },
+        TernaryOperation::ByteOutput { value: first_id, .. },
         TernaryOperation::MaterializeU8 {
             result: second_id,
             scalar: second,
@@ -1405,7 +1431,11 @@ pub fn encode_zero_then_literal(
     else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    if zero.bits() != 0 || zero_id != first_id || second_id != last_id || zero_id == second_id {
+    if zero.bits() != 0
+        || zero_id != first_id
+        || second_id != last_id
+        || zero_id == second_id
+    {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let padding = ZERO_THEN_LITERAL_CRAZY_WITNESSES
@@ -1421,10 +1451,14 @@ pub fn encode_zero_then_literal(
         LinearOpcode::OutputByte,
         LinearOpcode::Halt,
     ]);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -1436,50 +1470,68 @@ pub fn encode_zero_then_literal(
     Ok(layout)
 }
 
+/// Cache graphical source encodings for each phase of the bounded pair grammar.
+///
+/// This is a proposal accelerator only: final source admission independently
+/// decodes every byte and checks guest execution. The longest legacy layout
+/// has 93 prefix cells followed by six executable instructions.
+fn pair_source_cells(profile: &ProfileDescriptor) -> Option<Vec<[u8; 6]>> {
+    let opcodes = [b'o', b'j', b'p', b'*', profile.output_instruction(), b'v'];
+    (0..DISTINCT_PAIR_PREFIX_PHASES + 6)
+        .map(|position| {
+            let mut encoded = [0u8; 6];
+            let position = u32::try_from(position).ok()?;
+            for (slot, &opcode) in encoded.iter_mut().zip(opcodes.iter()) {
+                *slot = (33u8..=126).find(|&byte| {
+                    malbolge::decode_profile_instruction(
+                        u32::from(byte),
+                        position,
+                    ) == Some(opcode)
+                })?;
+            }
+            Some(encoded)
+        })
+        .collect()
+}
+
+const fn pair_opcode_slot(operation: LinearOpcode) -> Option<usize> {
+    match operation {
+        LinearOpcode::NoOperation => Some(0),
+        LinearOpcode::RelocateDataPointer => Some(1),
+        LinearOpcode::CrazyData => Some(2),
+        LinearOpcode::RotateData => Some(3),
+        LinearOpcode::OutputByte => Some(4),
+        LinearOpcode::Halt => Some(5),
+        _ => None,
+    }
+}
+
 /// Predict two guest bytes without building the full independent layout.
 ///
-/// This is only a fast search filter: no result can be published without the
-/// separate source-layout checker and full normative VM replay. It models just
-/// one relocation, two disjoint data writes and 15-trit loader expansion.
+/// A disposable model filters candidates; it cannot authorize publication.
+/// Both arithmetic operations and no-op data strides advance the guest data
+/// pointer, while only guest arithmetic changes the accumulator.
 fn proposed_distinct_pair(
-    profile: &ProfileDescriptor,
-    padding: usize,
-    first: LinearOpcode,
-    second: LinearOpcode,
+    operations: &[LinearOpcode],
+    source_cells: &[[u8; 6]],
 ) -> Option<[u8; 2]> {
-    let mut operations = vec![LinearOpcode::NoOperation; padding];
-    operations.extend([
-        LinearOpcode::RelocateDataPointer,
-        first,
-        LinearOpcode::OutputByte,
-        second,
-        LinearOpcode::OutputByte,
-        LinearOpcode::Halt,
-    ]);
-    let mut source = Vec::with_capacity(operations.len());
-    for (position, operation) in operations.iter().enumerate() {
-        let decoded = match operation {
-            LinearOpcode::NoOperation => b'o',
-            LinearOpcode::RelocateDataPointer => b'j',
-            LinearOpcode::CrazyData => b'p',
-            LinearOpcode::RotateData => b'*',
-            LinearOpcode::OutputByte => profile.output_instruction(),
-            LinearOpcode::Halt => b'v',
-            _ => return None,
-        };
-        let position = u32::try_from(position).ok()?;
-        let byte = (33u8..=126).find(|&byte| {
-            malbolge::decode_profile_instruction(u32::from(byte), position)
-                == Some(decoded)
-        })?;
-        source.push(byte);
-    }
-    let relocated = usize::from(*source.get(padding)?);
-    if relocated < source.len() || relocated + 4 >= 4096 {
+    let source = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            let slot = pair_opcode_slot(operation)?;
+            source_cells.get(position).map(|cells| cells[slot])
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let relocation = operations.iter().position(|operation| {
+        *operation == LinearOpcode::RelocateDataPointer
+    })?;
+    let relocated = usize::from(*source.get(relocation)?);
+    if relocated < source.len() || relocated + operations.len() >= 4096 {
         return None;
     }
     let mut memory: Vec<u32> = source.into_iter().map(u32::from).collect();
-    while memory.len() <= relocated + 3 {
+    while memory.len() <= relocated + operations.len() {
         let index = memory.len();
         memory.push(malbolge::profile_crazy(
             memory[index - 2],
@@ -1488,28 +1540,86 @@ fn proposed_distinct_pair(
         ));
     }
     let mut accumulator = 0u32;
-    let mut output = [0u8; 2];
-    for (index, operation) in [first, second].iter().enumerate() {
-        let address = relocated + 1 + 2 * index;
-        accumulator = match operation {
+    let mut address = relocated + 1;
+    let mut output = Vec::with_capacity(2);
+    for operation in operations.iter().skip(relocation + 1) {
+        match operation {
             LinearOpcode::CrazyData => {
-                malbolge::profile_crazy(*memory.get(address)?, accumulator, 15)
-            }
+                accumulator = malbolge::profile_crazy(
+                    *memory.get(address)?,
+                    accumulator,
+                    15,
+                );
+                memory[address] = accumulator;
+            },
             LinearOpcode::RotateData => {
                 let word = *memory.get(address)?;
-                word / 3 + (word % 3) * HIGH_TRIT_WEIGHT
-            }
+                accumulator = word / 3 + (word % 3) * HIGH_TRIT_WEIGHT;
+                memory[address] = accumulator;
+            },
+            LinearOpcode::OutputByte => output.push(accumulator as u8),
+            LinearOpcode::NoOperation | LinearOpcode::Halt => {},
             _ => return None,
-        };
-        output[index] = accumulator as u8;
+        }
+        address += 1;
     }
-    Some(output)
+    output.try_into().ok()
+}
+
+/// Independently admit and VM-replay one proposed two-output guest.
+fn verified_distinct_pair_layout(
+    profile: &'static ProfileDescriptor,
+    operations: &[LinearOpcode],
+    expected: [u8; 2],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if proposed_distinct_pair(operations, source_cells) != Some(expected) {
+        return None;
+    }
+    let layout = encode_linear_layout(profile, operations).ok()?;
+    let writes: Vec<_> = layout
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    let expected_writes = operations
+        .iter()
+        .filter(|operation| {
+            matches!(
+                operation,
+                LinearOpcode::CrazyData | LinearOpcode::RotateData
+            )
+        })
+        .count();
+    if writes.len() != expected_writes
+        || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
+        || writes
+            .iter()
+            .any(|&position| position < layout.source().len() as u32)
+    {
+        return None;
+    }
+    for input in [Vec::new(), vec![255, 0, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .ok()?;
+        if !matches!(vm.run(operations.len()),
+            Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+            || vm.input_consumed() != 0
+            || vm.output() != expected
+        {
+            return None;
+        }
+    }
+    Some(layout)
 }
 
 /// Compose two distinct source-proven bytes using real guest arithmetic.
 ///
-/// A bounded search tries all 94 graphical prefix phases and two arithmetic
-/// choices per output. Candidate loader expansion is only a proposal; both
+/// A bounded search tries all 94 graphical prefix phases, two arithmetic
+/// choices per output, and an additional bounded compound-write grammar.
+/// Position-encoded source cells are cached only to accelerate proposals;
 /// empty and nonempty input are independently replayed in the normative VM.
 /// Search failure does not mean the requested byte pair is impossible in
 /// Malbolge, only that this bounded linear grammar did not realize it.
@@ -1556,10 +1666,15 @@ pub fn encode_distinct_literal_pair(
     if first_id != emitted_first
         || second_id != emitted_second
         || first_id == second_id
+        || first.bits() == second.bits()
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let expected = [first.bits(), second.bits()];
+    let source_cells = pair_source_cells(profile)
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    // Preserve already-published positional witnesses before broadening the
+    // grammar. Every candidate still needs independent layout and VM proof.
     for padding in 0..DISTINCT_PAIR_PREFIX_PHASES {
         for initial in [LinearOpcode::CrazyData, LinearOpcode::RotateData] {
             for subsequent in
@@ -1574,43 +1689,71 @@ pub fn encode_distinct_literal_pair(
                     LinearOpcode::OutputByte,
                     LinearOpcode::Halt,
                 ]);
-                if proposed_distinct_pair(profile, padding, initial, subsequent)
-                    != Some(expected)
-                {
-                    continue;
-                }
-                let Ok(layout) = encode_linear_layout(profile, &operations)
-                else {
-                    continue;
-                };
-                let writes: Vec<_> =
-                    layout.data_write_positions().iter().flatten().collect();
-                if !matches!(writes.as_slice(), [first_write, second_write]
-                    if first_write != second_write)
-                {
-                    continue;
-                }
-                let mut verified = true;
-                for input in [Vec::new(), vec![255, 0, 128]] {
-                    let Ok(mut vm) = ProfileMachine::from_source(
-                        profile,
-                        layout.source(),
-                        input,
-                    ) else {
-                        verified = false;
-                        break;
-                    };
-                    if !matches!(vm.run(operations.len()),
-                        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
-                        || vm.input_consumed() != 0
-                        || vm.output() != expected
-                    {
-                        verified = false;
-                        break;
-                    }
-                }
-                if verified {
+                if let Some(layout) = verified_distinct_pair_layout(
+                    profile,
+                    &operations,
+                    expected,
+                    &source_cells,
+                ) {
                     return Ok(layout);
+                }
+            }
+        }
+    }
+    // A bounded compound grammar admits one *additional* arithmetic write
+    // before either output, with explicit data-pointer strides. The first
+    // twelve phases and finite strides bound negative-case search cost.
+    for padding in 0..12 {
+        for before in 0..=8 {
+            for between in 0..=20 {
+                for initial in
+                    [LinearOpcode::CrazyData, LinearOpcode::RotateData]
+                {
+                    for middle in
+                        [LinearOpcode::CrazyData, LinearOpcode::RotateData]
+                    {
+                        for last in
+                            [LinearOpcode::CrazyData, LinearOpcode::RotateData]
+                        {
+                            for double_first in [true, false] {
+                                let mut operations =
+                                    vec![LinearOpcode::NoOperation; padding];
+                                operations
+                                    .push(LinearOpcode::RelocateDataPointer);
+                                operations.extend(repeat_n(
+                                    LinearOpcode::NoOperation,
+                                    before,
+                                ));
+                                operations.push(initial);
+                                if double_first {
+                                    operations.push(middle);
+                                }
+                                operations.push(LinearOpcode::OutputByte);
+                                operations.extend(repeat_n(
+                                    LinearOpcode::NoOperation,
+                                    between,
+                                ));
+                                if !double_first {
+                                    operations.push(middle);
+                                }
+                                operations.extend([
+                                    last,
+                                    LinearOpcode::OutputByte,
+                                    LinearOpcode::Halt,
+                                ]);
+                                if let Some(layout) =
+                                    verified_distinct_pair_layout(
+                                        profile,
+                                        &operations,
+                                        expected,
+                                        &source_cells,
+                                    )
+                                {
+                                    return Ok(layout);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1620,8 +1763,8 @@ pub fn encode_distinct_literal_pair(
 
 /// Emits a nonzero `u8` one to thirty-three times using guest data operations.
 ///
-/// Accepts one `MaterializeU8` with one to thirty-three same-SSA `ByteOutput`s and
-/// `ReturnVoid` for the current profile. A bounded source-address-specific
+/// Accepts one `MaterializeU8` with one to thirty-three same-SSA `ByteOutput`s
+/// and `ReturnVoid` for the current profile. A bounded source-address-specific
 /// sequence of no-ops, `j`, `*`, `<`, and `v` selects a loader-expanded
 /// word and rotates it in the guest, never on the host. Separate exact
 /// one-output witnesses use either `p` or two consecutive `*` operations;
@@ -1636,7 +1779,8 @@ pub fn encode_rotated_byte_literal(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -1646,7 +1790,8 @@ pub fn encode_rotated_byte_literal(
     let [function] = program.functions.as_slice() else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
-    let Some((TernaryOperation::ReturnVoid { .. }, effects)) = function.operations.split_last()
+    let Some((TernaryOperation::ReturnVoid { .. }, effects)) =
+        function.operations.split_last()
     else {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     };
@@ -1662,16 +1807,19 @@ pub fn encode_rotated_byte_literal(
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
-    let (padding, arithmetic) = literal_output_witness(scalar.bits(), outputs.len())
-        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    let (padding, arithmetic) =
+        literal_output_witness(scalar.bits(), outputs.len())
+            .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
     let mut operations = vec![LinearOpcode::NoOperation; padding];
     operations.push(LinearOpcode::RelocateDataPointer);
     operations.extend_from_slice(arithmetic);
     operations.extend(repeat_n(LinearOpcode::OutputByte, outputs.len()));
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
-    let mut vm = ProfileMachine::from_source(profile, layout.source(), Vec::new())
-        .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
+    let mut vm =
+        ProfileMachine::from_source(profile, layout.source(), Vec::new())
+            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
     if !matches!(vm.run(operations.len()),
         Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
         || vm.input_consumed() != 0
@@ -1695,7 +1843,8 @@ pub fn encode_distinct_literal_quad(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -1734,7 +1883,10 @@ pub fn encode_distinct_literal_quad(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value || !ids.insert(*result) || scalar.bits() != b"T=4>"[index] {
+        if result != value
+            || !ids.insert(*result)
+            || scalar.bits() != b"T=4>"[index]
+        {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
     }
@@ -1744,7 +1896,8 @@ pub fn encode_distinct_literal_quad(
         operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -1754,14 +1907,18 @@ pub fn encode_distinct_literal_quad(
     if writes.len() != 4
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 4
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -1787,7 +1944,8 @@ pub fn encode_distinct_literal_quint(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -1813,7 +1971,10 @@ pub fn encode_distinct_literal_quint(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value || !ids.insert(*result) || scalar.bits() != b"Q\"\x1b79"[index] {
+        if result != value
+            || !ids.insert(*result)
+            || scalar.bits() != b"Q\"\x1b79"[index]
+        {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
     }
@@ -1823,7 +1984,8 @@ pub fn encode_distinct_literal_quint(
         operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -1833,14 +1995,18 @@ pub fn encode_distinct_literal_quint(
     if writes.len() != 5
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 5
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -1866,7 +2032,8 @@ pub fn encode_distinct_literal_six(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -1892,7 +2059,10 @@ pub fn encode_distinct_literal_six(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value || !ids.insert(*result) || scalar.bits() != b"Q\x1cO\x1dP\x1b"[index] {
+        if result != value
+            || !ids.insert(*result)
+            || scalar.bits() != b"Q\x1cO\x1dP\x1b"[index]
+        {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
     }
@@ -1902,7 +2072,8 @@ pub fn encode_distinct_literal_six(
         operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -1912,14 +2083,18 @@ pub fn encode_distinct_literal_six(
     if writes.len() != 6
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 6
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -1945,7 +2120,8 @@ pub fn encode_distinct_literal_seven(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -1971,7 +2147,10 @@ pub fn encode_distinct_literal_seven(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value || !ids.insert(*result) || scalar.bits() != b"6>5\x02T\x1f\x18"[index] {
+        if result != value
+            || !ids.insert(*result)
+            || scalar.bits() != b"6>5\x02T\x1f\x18"[index]
+        {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
     }
@@ -1981,7 +2160,8 @@ pub fn encode_distinct_literal_seven(
         operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -1991,14 +2171,18 @@ pub fn encode_distinct_literal_seven(
     if writes.len() != 7
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 7
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2024,7 +2208,8 @@ pub fn encode_distinct_literal_eight(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2050,7 +2235,10 @@ pub fn encode_distinct_literal_eight(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value || !ids.insert(*result) || scalar.bits() != b"S \x17<6\x01R\x06"[index] {
+        if result != value
+            || !ids.insert(*result)
+            || scalar.bits() != b"S \x17<6\x01R\x06"[index]
+        {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
     }
@@ -2061,7 +2249,8 @@ pub fn encode_distinct_literal_eight(
     }
     operations.extend([LinearOpcode::RotateData, LinearOpcode::OutputByte]);
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2071,14 +2260,18 @@ pub fn encode_distinct_literal_eight(
     if writes.len() != 8
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 8
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2104,7 +2297,8 @@ pub fn encode_distinct_literal_nine(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2150,7 +2344,8 @@ pub fn encode_distinct_literal_nine(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2160,14 +2355,18 @@ pub fn encode_distinct_literal_nine(
     if writes.len() != 9
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 9
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2193,7 +2392,8 @@ pub fn encode_distinct_literal_ten(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2239,7 +2439,8 @@ pub fn encode_distinct_literal_ten(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2249,14 +2450,18 @@ pub fn encode_distinct_literal_ten(
     if writes.len() != 10
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 10
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2282,7 +2487,8 @@ pub fn encode_distinct_literal_eleven(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2328,7 +2534,8 @@ pub fn encode_distinct_literal_eleven(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2338,14 +2545,18 @@ pub fn encode_distinct_literal_eleven(
     if writes.len() != 11
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 11
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2371,7 +2582,8 @@ pub fn encode_distinct_literal_twelve(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2417,7 +2629,8 @@ pub fn encode_distinct_literal_twelve(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2427,14 +2640,18 @@ pub fn encode_distinct_literal_twelve(
     if writes.len() != 12
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 12
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2457,7 +2674,8 @@ pub fn encode_distinct_literal_thirteen(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2506,7 +2724,8 @@ pub fn encode_distinct_literal_thirteen(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2516,14 +2735,18 @@ pub fn encode_distinct_literal_thirteen(
     if writes.len() != 13
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 13
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2546,7 +2769,8 @@ pub fn encode_distinct_literal_fourteen(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2574,7 +2798,8 @@ pub fn encode_distinct_literal_fourteen(
         };
         if result != value
             || !ids.insert(*result)
-            || Some(scalar.bits()) != b"YE,HS\x17LO=@[1\x194".get(index).copied()
+            || Some(scalar.bits())
+                != b"YE,HS\x17LO=@[1\x194".get(index).copied()
         {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
@@ -2592,7 +2817,8 @@ pub fn encode_distinct_literal_fourteen(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2602,14 +2828,18 @@ pub fn encode_distinct_literal_fourteen(
     if writes.len() != 14
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 14
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2632,7 +2862,8 @@ pub fn encode_distinct_literal_fifteen(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2681,7 +2912,8 @@ pub fn encode_distinct_literal_fifteen(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2691,18 +2923,23 @@ pub fn encode_distinct_literal_fifteen(
     if writes.len() != 15
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 15
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
-            || vm.output() != b"Q.\x198>\x89\xd2\xad\xa3\xb7\xc8\x88\x08\xd5\xc6"
+            || vm.output()
+                != b"Q.\x198>\x89\xd2\xad\xa3\xb7\xc8\x88\x08\xd5\xc6"
         {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
@@ -2712,7 +2949,8 @@ pub fn encode_distinct_literal_fifteen(
 
 /// Emit the exact source-proven sixteen-distinct-byte guest trace.
 ///
-/// Thirteen relocated crazy writes and three rotates compute real binary output.
+/// Thirteen relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -2721,7 +2959,8 @@ pub fn encode_distinct_literal_sixteen(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2770,7 +3009,8 @@ pub fn encode_distinct_literal_sixteen(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2780,18 +3020,23 @@ pub fn encode_distinct_literal_sixteen(
     if writes.len() != 16
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 16
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
-            || vm.output() != b"?I6\x13Z\x0a\xba\xb3\xc3\x86\xcc\xaa\x01\x07\xd5\xc5"
+            || vm.output()
+                != b"?I6\x13Z\x0a\xba\xb3\xc3\x86\xcc\xaa\x01\x07\xd5\xc5"
         {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
@@ -2801,7 +3046,8 @@ pub fn encode_distinct_literal_sixteen(
 
 /// Emit the exact source-proven seventeen-distinct-byte guest trace.
 ///
-/// Fourteen relocated crazy writes and three rotates compute real binary output.
+/// Fourteen relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -2810,7 +3056,8 @@ pub fn encode_distinct_literal_seventeen(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2838,7 +3085,8 @@ pub fn encode_distinct_literal_seventeen(
         };
         if result != value
             || !ids.insert(*result)
-            || Some(scalar.bits()) != b"Y?,HP\x1b\x182\x15MK;B\x0fD0\x17".get(index).copied()
+            || Some(scalar.bits())
+                != b"Y?,HP\x1b\x182\x15MK;B\x0fD0\x17".get(index).copied()
         {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
@@ -2856,7 +3104,8 @@ pub fn encode_distinct_literal_seventeen(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2866,14 +3115,18 @@ pub fn encode_distinct_literal_seventeen(
     if writes.len() != 17
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 17
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2896,7 +3149,8 @@ pub fn encode_distinct_literal_eighteen(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -2945,7 +3199,8 @@ pub fn encode_distinct_literal_eighteen(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -2955,14 +3210,18 @@ pub fn encode_distinct_literal_eighteen(
     if writes.len() != 18
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 18
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -2986,7 +3245,8 @@ pub fn encode_distinct_literal_nineteen(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3034,7 +3294,8 @@ pub fn encode_distinct_literal_nineteen(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3044,14 +3305,18 @@ pub fn encode_distinct_literal_nineteen(
     if writes.len() != 19
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 19
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3065,7 +3330,8 @@ pub fn encode_distinct_literal_nineteen(
 
 /// Emit the exact source-proven twenty-distinct-byte guest trace.
 ///
-/// Seventeen relocated crazy writes and three rotates compute real binary output.
+/// Seventeen relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -3074,7 +3340,8 @@ pub fn encode_distinct_literal_twenty(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3123,7 +3390,8 @@ pub fn encode_distinct_literal_twenty(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3133,14 +3401,18 @@ pub fn encode_distinct_literal_twenty(
     if writes.len() != 20
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 20
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3154,7 +3426,8 @@ pub fn encode_distinct_literal_twenty(
 
 /// Emit the exact source-proven twenty-one-distinct-byte guest trace.
 ///
-/// Eighteen relocated crazy writes and three rotates compute real binary output.
+/// Eighteen relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -3163,7 +3436,8 @@ pub fn encode_distinct_literal_twenty_one(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3213,7 +3487,8 @@ pub fn encode_distinct_literal_twenty_one(
     }
     operations.push(LinearOpcode::NoOperation);
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3223,14 +3498,18 @@ pub fn encode_distinct_literal_twenty_one(
     if writes.len() != 21
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 21
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3253,7 +3532,8 @@ pub fn encode_distinct_literal_twenty_two(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3303,7 +3583,8 @@ pub fn encode_distinct_literal_twenty_two(
     }
     operations.push(LinearOpcode::NoOperation);
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3313,14 +3594,18 @@ pub fn encode_distinct_literal_twenty_two(
     if writes.len() != 22
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 22
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3343,7 +3628,8 @@ pub fn encode_distinct_literal_twenty_three(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3393,7 +3679,8 @@ pub fn encode_distinct_literal_twenty_three(
     }
     operations.push(LinearOpcode::NoOperation);
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3403,14 +3690,18 @@ pub fn encode_distinct_literal_twenty_three(
     if writes.len() != 23
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 23
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3424,7 +3715,8 @@ pub fn encode_distinct_literal_twenty_three(
 
 /// Emit the exact source-proven twenty-four-distinct-byte guest trace.
 ///
-/// Twenty-one relocated crazy writes and three rotates compute real binary output.
+/// Twenty-one relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -3433,7 +3725,8 @@ pub fn encode_distinct_literal_twenty_four(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3483,7 +3776,8 @@ pub fn encode_distinct_literal_twenty_four(
     }
     operations.push(LinearOpcode::NoOperation);
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3493,14 +3787,18 @@ pub fn encode_distinct_literal_twenty_four(
     if writes.len() != 24
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 24
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3514,7 +3812,8 @@ pub fn encode_distinct_literal_twenty_four(
 
 /// Emit the exact source-proven twenty-five-distinct-byte guest trace.
 ///
-/// Twenty-two relocated crazy writes and three rotates compute real binary output.
+/// Twenty-two relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -3523,7 +3822,8 @@ pub fn encode_distinct_literal_twenty_five(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3573,7 +3873,8 @@ pub fn encode_distinct_literal_twenty_five(
     }
     operations.extend(repeat_n(LinearOpcode::NoOperation, 27));
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3583,14 +3884,18 @@ pub fn encode_distinct_literal_twenty_five(
     if writes.len() != 25
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 25
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3604,7 +3909,8 @@ pub fn encode_distinct_literal_twenty_five(
 
 /// Emit the exact source-proven twenty-six-distinct-byte guest trace.
 ///
-/// Twenty-three relocated crazy writes and three rotates compute real binary output.
+/// Twenty-three relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -3613,7 +3919,8 @@ pub fn encode_distinct_literal_twenty_six(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3663,7 +3970,8 @@ pub fn encode_distinct_literal_twenty_six(
     }
     operations.extend(repeat_n(LinearOpcode::NoOperation, 25));
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3673,14 +3981,18 @@ pub fn encode_distinct_literal_twenty_six(
     if writes.len() != 26
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 26
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3694,7 +4006,8 @@ pub fn encode_distinct_literal_twenty_six(
 
 /// Emit the exact source-proven twenty-seven-distinct-byte guest trace.
 ///
-/// Twenty-four relocated crazy writes and three rotates compute real binary output.
+/// Twenty-four relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -3703,7 +4016,8 @@ pub fn encode_distinct_literal_twenty_seven(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3753,7 +4067,8 @@ pub fn encode_distinct_literal_twenty_seven(
     }
     operations.extend(repeat_n(LinearOpcode::NoOperation, 23));
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3763,14 +4078,18 @@ pub fn encode_distinct_literal_twenty_seven(
     if writes.len() != 27
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 27
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3784,7 +4103,8 @@ pub fn encode_distinct_literal_twenty_seven(
 
 /// Emit the exact source-proven twenty-eight-distinct-byte guest trace.
 ///
-/// Twenty-five relocated crazy writes and three rotates compute real binary output.
+/// Twenty-five relocated crazy writes and three rotates compute real binary
+/// output.
 ///
 /// # Errors
 ///
@@ -3793,7 +4113,8 @@ pub fn encode_distinct_literal_twenty_eight(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3843,7 +4164,8 @@ pub fn encode_distinct_literal_twenty_eight(
     }
     operations.extend(repeat_n(LinearOpcode::NoOperation, 21));
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3853,14 +4175,18 @@ pub fn encode_distinct_literal_twenty_eight(
     if writes.len() != 28
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 28
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3874,7 +4200,8 @@ pub fn encode_distinct_literal_twenty_eight(
 
 /// Admit the exact twenty-nine-byte ternary literal trace to a verified guest.
 ///
-/// Twenty-five relocated crazy writes and four rotates compute distinct VM output.
+/// Twenty-five relocated crazy writes and four rotates compute distinct VM
+/// output.
 ///
 /// # Errors
 ///
@@ -3883,7 +4210,8 @@ pub fn encode_distinct_literal_twenty_nine(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -3936,7 +4264,8 @@ pub fn encode_distinct_literal_twenty_nine(
     }
     operations.extend(repeat_n(LinearOpcode::NoOperation, 35));
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -3946,14 +4275,18 @@ pub fn encode_distinct_literal_twenty_nine(
     if writes.len() != 29
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 29
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -3977,7 +4310,8 @@ pub fn encode_distinct_literal_thirty(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4029,7 +4363,8 @@ pub fn encode_distinct_literal_thirty(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4039,14 +4374,18 @@ pub fn encode_distinct_literal_thirty(
     if writes.len() != 30
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 30
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4070,7 +4409,8 @@ pub fn encode_distinct_literal_thirty_one(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4122,7 +4462,8 @@ pub fn encode_distinct_literal_thirty_one(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4132,14 +4473,18 @@ pub fn encode_distinct_literal_thirty_one(
     if writes.len() != 31
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 31
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4163,7 +4508,8 @@ pub fn encode_distinct_literal_thirty_two(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4215,7 +4561,8 @@ pub fn encode_distinct_literal_thirty_two(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4225,14 +4572,18 @@ pub fn encode_distinct_literal_thirty_two(
     if writes.len() != 32
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 32
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4256,7 +4607,8 @@ pub fn encode_distinct_literal_thirty_three(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4308,7 +4660,8 @@ pub fn encode_distinct_literal_thirty_three(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4318,14 +4671,18 @@ pub fn encode_distinct_literal_thirty_three(
     if writes.len() != 33
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 33
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4346,7 +4703,8 @@ pub fn encode_distinct_literal_thirty_four(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4398,7 +4756,8 @@ pub fn encode_distinct_literal_thirty_four(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4408,14 +4767,18 @@ pub fn encode_distinct_literal_thirty_four(
     if writes.len() != 34
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 34
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4436,7 +4799,8 @@ pub fn encode_distinct_literal_thirty_five(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4488,7 +4852,8 @@ pub fn encode_distinct_literal_thirty_five(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4498,14 +4863,18 @@ pub fn encode_distinct_literal_thirty_five(
     if writes.len() != 35
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 35
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4526,7 +4895,8 @@ pub fn encode_distinct_literal_thirty_six(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4578,7 +4948,8 @@ pub fn encode_distinct_literal_thirty_six(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4588,14 +4959,18 @@ pub fn encode_distinct_literal_thirty_six(
     if writes.len() != 36
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 36
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4616,7 +4991,8 @@ pub fn encode_distinct_literal_thirty_seven(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4668,7 +5044,8 @@ pub fn encode_distinct_literal_thirty_seven(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4678,14 +5055,18 @@ pub fn encode_distinct_literal_thirty_seven(
     if writes.len() != 37
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 37
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4706,7 +5087,8 @@ pub fn encode_distinct_literal_thirty_eight(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4758,7 +5140,8 @@ pub fn encode_distinct_literal_thirty_eight(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4768,14 +5151,18 @@ pub fn encode_distinct_literal_thirty_eight(
     if writes.len() != 38
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 38
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4796,7 +5183,8 @@ pub fn encode_distinct_literal_thirty_nine(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4848,7 +5236,8 @@ pub fn encode_distinct_literal_thirty_nine(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4858,14 +5247,18 @@ pub fn encode_distinct_literal_thirty_nine(
     if writes.len() != 39
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 39
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4886,7 +5279,8 @@ pub fn encode_distinct_literal_forty(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -4938,7 +5332,8 @@ pub fn encode_distinct_literal_forty(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -4948,14 +5343,18 @@ pub fn encode_distinct_literal_forty(
     if writes.len() != 40
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 40
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -4967,7 +5366,8 @@ pub fn encode_distinct_literal_forty(
     Ok(layout)
 }
 
-/// Bind the exact forty-one source-independent binary bytes to guest arithmetic.
+/// Bind the exact forty-one source-independent binary bytes to guest
+/// arithmetic.
 ///
 /// # Errors
 ///
@@ -4976,7 +5376,8 @@ pub fn encode_distinct_literal_forty_one(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -5028,7 +5429,8 @@ pub fn encode_distinct_literal_forty_one(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -5038,14 +5440,18 @@ pub fn encode_distinct_literal_forty_one(
     if writes.len() != 41
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 41
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -5057,7 +5463,8 @@ pub fn encode_distinct_literal_forty_one(
     Ok(layout)
 }
 
-/// Bind the exact forty-two source-independent binary bytes to guest arithmetic.
+/// Bind the exact forty-two source-independent binary bytes to guest
+/// arithmetic.
 ///
 /// # Errors
 ///
@@ -5066,7 +5473,8 @@ pub fn encode_distinct_literal_forty_two(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -5118,7 +5526,8 @@ pub fn encode_distinct_literal_forty_two(
         ]);
     }
     operations.push(LinearOpcode::Halt);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     let writes: Vec<_> = layout
         .data_write_positions()
         .iter()
@@ -5128,14 +5537,18 @@ pub fn encode_distinct_literal_forty_two(
     if writes.len() != 42
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != 42
         || writes.iter().any(|address| {
-            usize::try_from(*address).is_ok_and(|value| value < layout.source().len())
+            usize::try_from(*address)
+                .is_ok_and(|value| value < layout.source().len())
         })
     {
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -5249,9 +5662,9 @@ pub fn encode_distinct_literal_forty_three(
 }
 
 const FORTY_FOUR_LITERAL_OUTPUT: [u8; 44] = [
-    90, 38, 71, 11, 62, 9, 45, 19, 52, 165, 6, 175, 243, 168, 47, 17,
-    65, 15, 48, 25, 55, 8, 77, 50, 78, 31, 87, 41, 68, 10, 212, 153,
-    221, 160, 204, 170, 211, 7, 213, 145, 222, 161, 220, 171,
+    90, 38, 71, 11, 62, 9, 45, 19, 52, 165, 6, 175, 243, 168, 47, 17, 65, 15,
+    48, 25, 55, 8, 77, 50, 78, 31, 87, 41, 68, 10, 212, 153, 221, 160, 204,
+    170, 211, 7, 213, 145, 222, 161, 220, 171,
 ];
 
 /// Bind the exact forty-four source-independent binary bytes to guest
@@ -5350,8 +5763,8 @@ pub fn encode_distinct_literal_forty_four(
 }
 
 const FORTY_FIVE_LITERAL_OUTPUT: [u8; 45] = [
-    81, 62, 53, 56, 84, 31, 78, 135, 209, 165, 153, 9, 8, 199, 198, 194,
-    145, 225, 167, 172, 152, 219, 155, 160, 183, 191, 124, 181, 44, 203, 18, 180,
+    81, 62, 53, 56, 84, 31, 78, 135, 209, 165, 153, 9, 8, 199, 198, 194, 145,
+    225, 167, 172, 152, 219, 155, 160, 183, 191, 124, 181, 44, 203, 18, 180,
     248, 202, 14, 149, 45, 171, 51, 61, 57, 5, 83, 35, 27,
 ];
 
@@ -5566,7 +5979,8 @@ pub fn encode_distinct_literal_triple(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
 ) -> Result<LinearLayout, ByteEchoBridgeError> {
-    validate_ternary_program(program).map_err(ByteEchoBridgeError::InvalidProgram)?;
+    validate_ternary_program(program)
+        .map_err(ByteEchoBridgeError::InvalidProgram)?;
     if program.target_profile != profile.id()
         || profile.id() != current_profile().id()
         || profile.fingerprint() != current_profile().fingerprint()
@@ -5625,12 +6039,16 @@ pub fn encode_distinct_literal_triple(
         LinearOpcode::OutputByte,
         LinearOpcode::Halt,
     ]);
-    let layout = encode_linear_layout(profile, &operations).map_err(ByteEchoBridgeError::Layout)?;
+    let layout = encode_linear_layout(profile, &operations)
+        .map_err(ByteEchoBridgeError::Layout)?;
     // The layout verifier independently proves all three data writes are
     // disjoint from the complete emitted source before the VM is consulted.
     for input in [Vec::new(), vec![255, 0, 128]] {
-        let mut vm = ProfileMachine::from_source(profile, layout.source(), input)
-            .map_err(|_error| ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        let mut vm =
+            ProfileMachine::from_source(profile, layout.source(), input)
+                .map_err(|_error| {
+                    ByteEchoBridgeError::UnsupportedEffectTrace
+                })?;
         if !matches!(vm.run(operations.len()),
             Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
             || vm.input_consumed() != 0
@@ -5746,8 +6164,8 @@ pub fn encode_distinct_literal_forty_seven(
 
 const FORTY_EIGHT_LITERAL_OUTPUT: [u8; 48] = [
     81, 55, 52, 56, 251, 206, 159, 152, 184, 180, 131, 205, 4, 202, 28, 27, 46,
-    79, 139, 207, 167, 162, 149, 214, 150, 161, 175, 197, 186, 224, 157, 225, 185, 65,
-    71, 92, 42, 68, 41, 14, 50, 78, 49, 24, 31, 76, 32, 23,
+    79, 139, 207, 167, 162, 149, 214, 150, 161, 175, 197, 186, 224, 157, 225,
+    185, 65, 71, 92, 42, 68, 41, 14, 50, 78, 49, 24, 31, 76, 32, 23,
 ];
 
 /// Bind the exact forty-eight source-independent binary bytes to guest
