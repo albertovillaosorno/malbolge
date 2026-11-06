@@ -262,3 +262,13 @@ a compiler capability gap, not a reason to return to N+1.
   regressions prove the resulting byte and reject forged operands, operator
   types and invalid counts. This is compile-time evaluation, not guest C
   arithmetic; the original twelve-byte Fibonacci output remains unwitnessed.
+
+- A later complete three-iteration C recurrence with unsigned multiplication,
+  masking, both shifts, branch-selected assignments and loop-carried state
+  first refused at the guest layout stage when its final expression was
+  changed to emit byte `0x7f`. A bounded third-write fallback now finds
+  source-independent relocated `p`/`*` instructions with disjoint guest data
+  writes, and accepts the layout only after independent decode, source
+  placement proof and normative VM output under empty and nonempty input.
+  The C arithmetic and branch still fold during compilation; the original
+  twelve-byte Fibonacci stream and runtime C control flow remain pending.

@@ -1661,7 +1661,8 @@ fn verified_repeated_output_layout<const N: usize>(
                             between,
                         ));
                         operations.push(second);
-                        operations.extend(repeat_n(LinearOpcode::OutputByte, N));
+                        operations
+                            .extend(repeat_n(LinearOpcode::OutputByte, N));
                         operations.push(LinearOpcode::Halt);
                         if let Some(layout) = verified_output_stream_layout(
                             profile,
@@ -1674,6 +1675,73 @@ fn verified_repeated_output_layout<const N: usize>(
                     }
                 }
             }
+        }
+    }
+    // The new, more expensive grammar is admitted only for one output.
+    // Existing two/three-output grammars retain their original search cost.
+    if N != 1 {
+        return None;
+    }
+    verified_three_write_single_output_layout(
+        profile,
+        expected.first().copied()?,
+        source_cells,
+    )
+}
+
+/// Enumerate a finite three-write guest grammar in stable lexicographic order.
+/// Each proposal still requires independent layout and normative VM proof.
+fn verified_three_write_single_output_layout(
+    profile: &'static ProfileDescriptor,
+    expected: u8,
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    const PATTERNS: usize = 12 * 9 * 21 * 21 * 8;
+    for candidate in 0..PATTERNS {
+        let mut index = candidate;
+        let third = if index % 2 == 0 {
+            LinearOpcode::CrazyData
+        } else {
+            LinearOpcode::RotateData
+        };
+        index /= 2;
+        let second = if index % 2 == 0 {
+            LinearOpcode::CrazyData
+        } else {
+            LinearOpcode::RotateData
+        };
+        index /= 2;
+        let first = if index % 2 == 0 {
+            LinearOpcode::CrazyData
+        } else {
+            LinearOpcode::RotateData
+        };
+        index /= 2;
+        let between_second = index % 21;
+        index /= 21;
+        let between_first = index % 21;
+        index /= 21;
+        let before = index % 9;
+        let padding = index / 9;
+        let mut operations = vec![LinearOpcode::NoOperation; padding];
+        operations.push(LinearOpcode::RelocateDataPointer);
+        operations.extend(repeat_n(LinearOpcode::NoOperation, before));
+        operations.push(first);
+        operations.extend(repeat_n(LinearOpcode::NoOperation, between_first));
+        operations.push(second);
+        operations.extend(repeat_n(LinearOpcode::NoOperation, between_second));
+        operations.extend([
+            third,
+            LinearOpcode::OutputByte,
+            LinearOpcode::Halt,
+        ]);
+        if let Some(layout) = verified_output_stream_layout(
+            profile,
+            &operations,
+            [expected],
+            source_cells,
+        ) {
+            return Some(layout);
         }
     }
     None

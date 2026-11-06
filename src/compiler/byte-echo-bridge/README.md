@@ -899,7 +899,14 @@ byte under empty and nonempty input.
 
 A source-C `putchar(64)` previously refused at layout, and now emits `0x40`
 in seven VM steps. The same search has independently realized `0xff` in 41
-steps. This is a finite candidate grammar, not arbitrary byte synthesis;
-`0x7f` still refused in the checked experiment, and the twelve-byte
-Fibonacci trace remains unsupported. Existing seed-selected witnesses are
-unchanged.
+steps. The deeper single-output fallback also searches three disjoint guest
+arithmetic writes with bounded positional strides. A complete three-iteration
+unsigned C recurrence with multiplication, shifts, a conditional, state
+transfers, and final XOR now produces byte `0x7f`, which the older one- and
+two-write search refused. Candidate previews only reject proposals;
+independent graphical-layout admission and normative VM replay on empty and
+nonempty input decide acceptance. The deeper grammar is restricted to a
+single output effect so existing repeated-output
+search costs are unchanged. This remains finite candidate search, not
+arbitrary byte synthesis; the twelve-byte Fibonacci trace is unsupported.
+Existing seed-selected witnesses are unchanged.
