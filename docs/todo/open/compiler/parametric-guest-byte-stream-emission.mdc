@@ -537,3 +537,13 @@ a compiler capability gap, not a reason to return to N+1.
   or unsupported operations in skipped code still fail conservatively; this
   is compile-time replay, not dynamic guest control flow. The original
   twelve-byte Fibonacci output still lacks a general guest-layout witness.
+
+- A complete C program with `for (unsigned j = 0U; j < 0U; ++j)` now
+  compiles after the evaluator proves its skipped state updates, branch and
+  putchar in shadow state without committing effects. It then runs three
+  source-proven `do…while` trips; the independent oracle visits
+  `60, 160, 128` and expects guest `0x41`. The normative VM produces exactly
+  that byte on empty and nonempty stdin. Four source mutations and three
+  forged AST cases reject with no output artifact. Positive-bound for loops
+  remain bounded by twelve iterations; general guest control flow and the
+  original twelve-byte Fibonacci byte-stream layout are still unimplemented.

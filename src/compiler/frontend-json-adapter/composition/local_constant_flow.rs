@@ -558,7 +558,7 @@ impl<'node> Flow<'node> {
     }
 
     /// Prove one `for (unsigned i = 0U; i < N; ++i)` and replay its
-    /// source-checked body, never synthesizing guest control flow.
+    /// source-checked body, or validate and discard a zero-trip shadow.
     /// Neither the loop counter nor any other local may escape its C scope.
     #[expect(
         clippy::cognitive_complexity,
@@ -601,7 +601,7 @@ impl<'node> Flow<'node> {
             || load.span.end.byte >= bound_node.span.begin.byte
             || comparison.span.end.byte != bound_node.span.end.byte
             || declaration_end >= comparison.span.begin.byte
-            || !(1..=MAX_STATIC_LOOP_ITERATIONS).contains(&bound)
+            || bound > MAX_STATIC_LOOP_ITERATIONS
         {
             return None;
         }
@@ -630,6 +630,16 @@ impl<'node> Flow<'node> {
         let body_start = self.position;
         self.loop_counter = Some(symbol);
         let mut body_end = None;
+        if bound == 0 {
+            // Even a nonexecuted for body must be a complete, admissible
+            // source subtree. No speculative state or output may escape.
+            let starting_locals = self.locals.clone();
+            let starting_outputs = self.outputs.len();
+            self.loop_body(loop_body)?;
+            body_end = Some(self.position);
+            self.locals = starting_locals;
+            self.outputs.truncate(starting_outputs);
+        }
         for iteration in 0..bound {
             self.position = body_start;
             self.loop_body(loop_body)?;

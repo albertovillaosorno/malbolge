@@ -1204,3 +1204,25 @@ expressions and tampered loop/body/guard/output AST reject without artifacts.
 This proves a finite source-constant C control-flow slice, not runtime guest
 state or a general guest byte-stream layout. The original twelve-byte
 Fibonacci P0 remains open.
+
+### Source-proven zero-trip `for` with discarded effects
+
+A complete C recurrence also exposed the separate zero-iteration gate for
+`for (unsigned j = 0U; j < 0U; ++j)`. Previously the bounded evaluator
+required a positive literal bound and refused before the independently
+computed final output. The source-backed proof now permits literal zero
+provided the entire body can be checked against shadow local state. Every
+speculative write and `putchar` effect is discarded, the loop-local counter
+leaves scope, and subsequent real C statements see the unchanged outer state.
+The existing positive-bound replay and twelve-iteration cap are preserved.
+
+The full input program skips a guarded state update and putchar, then executes
+three iterations of a source-proven `do…while` recurrence. The independent
+oracle visits `60, 160, 128` and emits `127 ^ 62 = 65`; the current-profile
+normative Malbolge VM emits only `0x41` for empty and nonempty input. Skipped
+unsupported increments, undefined division, nested loops, foreign counters
+and forged Clang AST nodes refuse without guest publication. As with the
+zero-trip `while`, even unreachable unsupported C is conservatively refused.
+This is compile-time bounded state projection, not dynamic guest C control
+flow or a generalized byte-stream emitter; the original twelve-byte
+Fibonacci target remains pending.
