@@ -350,3 +350,14 @@ a compiler capability gap, not a reason to return to N+1.
   forged expected output is rejected. The rebuilt layout CLI still refuses
   the unmodified four-byte Fibonacci prefix and full twelve-byte program
   without publication. P0 remains pending on generalized guest emission.
+
+- A subsequent whole-source, three-iteration C recurrence reached a new
+  first-declaration rejection on unsigned bitwise OR. A red-first regression
+  now proves exact `u32` OR with multiplication, masking, local state,
+  alternating branch outcomes and a final expression-derived guest byte.
+  Source-derived masks `16` and `8` visit `31, 248, 16` and `15, 120, 152`;
+  both independently compute `0x41`, which the compiled Malbolge guest emits
+  in 31 normative steps under empty and nonempty input. Logical OR, a removed
+  state-width mask and a side-effecting read reject without publication.
+  All C computation remains compile-time constant propagation. The original
+  twelve-byte Fibonacci stream is still blocked at layout and P0 stays open.

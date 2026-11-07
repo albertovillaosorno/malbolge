@@ -783,3 +783,25 @@ output bytes are rejected. After rebuilding the real layout executable,
 the original Fibonacci four-byte prefix and full twelve-byte trace still
 refuse without publishing an artifact. The additional search shapes are
 not a proof of unrestricted byte-stream synthesis or runtime C execution.
+
+### Source-backed unsigned bitwise OR in a complete recurrence
+
+A separate complete three-iteration C experiment uses local state, checked
+multiplication, `|`, masking, shifts, both conditional arms and an output
+expression. Its pinned Clang projection initially refused the first local
+because bitwise OR was not admitted by the bounded `u32` expression walker.
+The expression proof now checks the exact source operator and both operands,
+then folds unsigned bitwise OR before narrowing to a byte store.
+
+Independent oracles for OR masks `16` and `8` visit `31, 248, 16` and
+`15, 120, 152` respectively. Both derive a final output of `0x41`. Each
+complete C source produces a real `.malbolge` capsule that emits `0x41` in
+31 normative VM steps for both empty and nonempty input. Changing the source
+to logical OR, removing its state-width mask or adding a side-effecting
+read refuses without an artifact. The new test is
+`test_unsigned_or_recurrence_reaches_real_guest` in
+`tests/test_compound_c_pipeline.py`.
+
+This is source-proven, bounded constant evaluation, not guest runtime C OR,
+loop execution or generalized stream synthesis. The original twelve-byte
+Fibonacci program remains rejected at layout, so P0 stays pending.

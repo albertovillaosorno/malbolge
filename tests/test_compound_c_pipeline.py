@@ -1400,6 +1400,106 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertNotEqual(refused.returncode, 0)
                 self.assertFalse(rejected.exists())
 
+    def test_unsigned_or_recurrence_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_or_recurrence_output.c"
+        )
+        original = source.read_text()
+        self.assertIn("((a * b) | 16U) & 255U", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for mask, xor_key, visited, final in (
+                (16, 66, [31, 248, 16], 3),
+                (8, 83, [15, 120, 152], 18),
+            ):
+                a, b = 3, 5
+                actual = []
+                for _ in range(3):
+                    next_value = ((a * b) | mask) & 255
+                    actual.append(next_value)
+                    a = (
+                        ((next_value >> 3) ^ 1)
+                        if (next_value & 1) == 0
+                        else next_value ^ 7
+                    )
+                    b = next_value
+                self.assertEqual(actual, visited)
+                self.assertEqual(a, final)
+                self.assertEqual(a ^ xor_key, 65)
+                changed = original.replace("| 16U", f"| {mask}U").replace(
+                    "a ^ 66U", f"a ^ {xor_key}U"
+                )
+                candidate = Path(scratch) / f"or-mask-{mask}.c"
+                candidate.write_text(changed)
+                guest = Path(scratch) / f"or-mask-{mask}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/local-or-recurrence-{mask}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(
+                    compiled.returncode, 0, (mask, compiled.stderr)
+                )
+                self.assertTrue(guest.is_file())
+                for data in (b"", bytes((255, 0, 128))):
+                    executed = subprocess.run(
+                        [
+                            str(VM),
+                            str(guest),
+                            "--input-stdin",
+                            "--report-steps",
+                        ],
+                        input=data,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"A")
+                    self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+            for label, changed in {
+                "logical-or": original.replace("| 16U", "|| 16U"),
+                "unmasked-wide-state": original.replace(" & 255U", ""),
+                "side-effect-read": original.replace("a * b", "a * b++"),
+            }.items():
+                invalid = Path(scratch) / f"{label}.c"
+                invalid.write_text(changed)
+                guest = Path(scratch) / f"{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/local-or-{label}-invalid-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(invalid),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
     def test_unsigned_shift_recurrence_reaches_real_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
@@ -1479,7 +1579,9 @@ class CompoundCPipelineTests(unittest.TestCase):
             for label, changed in {
                 "left-count-32": original.replace("<< 2U", "<< 32U"),
                 "right-count-32": original.replace(">> 3U", ">> 32U"),
-                "unsupported-or": original.replace("next - 1U", "next | 1U"),
+                "unsupported-logical-and": original.replace(
+                    "next - 1U", "next && 1U"
+                ),
             }.items():
                 invalid = Path(scratch) / f"{label}.c"
                 invalid.write_text(changed)

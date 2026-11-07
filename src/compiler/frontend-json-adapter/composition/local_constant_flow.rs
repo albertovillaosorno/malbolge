@@ -335,39 +335,19 @@ impl<'node> Flow<'node> {
             "binary-expression" => {
                 let expression = self.take(parent, "binary-expression")?;
                 let operation = expression.operation.as_deref()?;
-                if !matches!(
-                    operation,
-                    "+" | "-" | "*" | "/" | "%" | "^" | "&" | "<<" | ">>"
-                ) || !typed_operator(expression, operation)
-                {
+                if !typed_operator(expression, operation) {
                     return None;
                 }
+                let child_depth = depth.checked_add(1)?;
                 let (left_value, left) =
-                    self.expression(expression.id, depth.checked_add(1)?)?;
+                    self.expression(expression.id, child_depth)?;
                 let (right_value, right) =
-                    self.expression(expression.id, depth.checked_add(1)?)?;
-                if !span_within(&expression.span, &left.span)
-                    || !span_within(&expression.span, &right.span)
-                    || expression.span.begin.byte != left.span.begin.byte
-                    || left.span.end.byte >= right.span.begin.byte
-                    || right.span.end.byte != expression.span.end.byte
-                {
+                    self.expression(expression.id, child_depth)?;
+                if !ordered_binary_spans(expression, left, right) {
                     return None;
                 }
-                let value = match operation {
-                    "+" => left_value.checked_add(right_value)?,
-                    "-" => left_value.checked_sub(right_value)?,
-                    "*" => left_value.checked_mul(right_value)?,
-                    "/" => left_value.checked_div(right_value)?,
-                    "%" => left_value.checked_rem(right_value)?,
-                    // C unsigned shifts discard high bits at the u32 width;
-                    // only counts less than 32 are defined by the language.
-                    "<<" => left_value.checked_shl(right_value)?,
-                    ">>" => left_value.checked_shr(right_value)?,
-                    "^" => left_value ^ right_value,
-                    "&" => left_value & right_value,
-                    _ => return None,
-                };
+                let value =
+                    checked_u32_binary(operation, left_value, right_value)?;
                 Some((value, expression))
             },
             _ => None,
@@ -541,6 +521,39 @@ impl<'node> Flow<'node> {
     }
 }
 
+/// Require a fully covered source-ordered binary expression, not a
+/// detached operand or an unchecked trailing effect.
+const fn ordered_binary_spans(
+    expression: &Node,
+    left: &Node,
+    right: &Node,
+) -> bool {
+    span_within(&expression.span, &left.span)
+        && span_within(&expression.span, &right.span)
+        && expression.span.begin.byte == left.span.begin.byte
+        && left.span.end.byte < right.span.begin.byte
+        && right.span.end.byte == expression.span.end.byte
+}
+
+/// Evaluate only exact unsigned-C operators after both source operands
+/// have been independently checked. State narrowing happens at stores.
+fn checked_u32_binary(operator: &str, left: u32, right: u32) -> Option<u32> {
+    match operator {
+        "+" => left.checked_add(right),
+        "-" => left.checked_sub(right),
+        "*" => left.checked_mul(right),
+        "/" => left.checked_div(right),
+        "%" => left.checked_rem(right),
+        // C unsigned shifts discard high bits; counts must be below 32.
+        "<<" => left.checked_shl(right),
+        ">>" => left.checked_shr(right),
+        "^" => Some(left ^ right),
+        "&" => Some(left & right),
+        "|" => Some(left | right),
+        _ => None,
+    }
+}
+
 /// No expression metadata beyond a single exact integer result category.
 const fn bare_typed_node(node: &Node) -> bool {
     node.name.is_none()
@@ -616,8 +629,12 @@ fn checked_argument<'node>(
                 || load.span != read.span
                 || conversion.span.end.byte != load.span.end.byte
                 || load.span.begin.byte < conversion.span.begin.byte
-                || load.span.begin.byte - conversion.span.begin.byte
-                    > MAX_EXPLICIT_CAST_PREFIX_BYTES
+                || load
+                    .span
+                    .begin
+                    .byte
+                    .checked_sub(conversion.span.begin.byte)
+                    .is_none_or(|width| width > MAX_EXPLICIT_CAST_PREFIX_BYTES)
             {
                 return None;
             }

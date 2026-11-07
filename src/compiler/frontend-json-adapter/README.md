@@ -692,6 +692,24 @@ mutation regressions. This is compile-time constant propagation, not C shift
 instructions or loop execution in the Malbolge guest. The original twelve-byte
 Fibonacci program remains blocked at guest layout.
 
+### Checked unsigned bitwise OR in a conditional recurrence
+
+`local_or_recurrence_output.c` tests an entire three-iteration source-backed C
+program with two automatic locals, multiplication, `|`, masking, shifts, both
+conditional assignment arms, state transfers and a final `putchar`. The pinned
+Clang adapter previously rejected the first local declaration. Its closed
+`u32` expression proof now admits bitwise OR only on exact typed operands,
+checking every source span and symbol before performing integer OR during
+compilation. The original recurrence visits `31, 248, 16` and ends with
+`3 ^ 66 = 65`; a changed OR mask visits `15, 120, 152` and ends with
+`18 ^ 83 = 65`. Both compiled capsules emit actual byte `0x41` in 31
+normative VM steps on empty and nonempty input. Logical OR, a widened store
+without masking, and a side-effecting read reject before guest publication.
+
+This evaluates C expressions at compile time and emits a proved constant
+byte; it does not implement runtime guest OR or arbitrary C state. The
+original twelve-byte Fibonacci program is still blocked at guest layout.
+
 ### Branch-selected `putchar` effects inside a bounded `for`
 
 The source-proven loop evaluator now accepts one `putchar` in each arm of
