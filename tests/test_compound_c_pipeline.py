@@ -3950,5 +3950,248 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertFalse(guest.exists(), label)
 
 
+    def test_multi_assignment_conditional_recurrence_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_multi_assignment_branch_recurrence.c"
+        ).read_text()
+        else_arm = (
+            "        } else {\n"
+            "            a = next - 1U;\n"
+            "            b = next;\n"
+            "        }"
+        )
+        self.assertEqual(original.count(else_arm), 1)
+        no_else = original.replace(else_arm, "        }")
+
+        def oracle(a: int, b: int, with_else: bool) -> tuple[list[int], int]:
+            visited: list[int] = []
+            for _ in range(3):
+                following = ((a * b) << 2) & 255
+                visited.append(following)
+                if following & 8:
+                    a = (following >> 3) ^ 1
+                    b = following ^ 2
+                elif with_else:
+                    a = following - 1
+                    b = following
+            return visited, a
+
+        cases = (
+            ("both-arms", original, 3, 5, True, 254, b"A", [60, 208, 192]),
+            (
+                "false-first",
+                original.replace("unsigned a = 3U;", "unsigned a = 1U;")
+                .replace("unsigned b = 5U;", "unsigned b = 1U;")
+                .replace("a ^ 254U", "a ^ 125U"),
+                1,
+                1,
+                True,
+                125,
+                b"B",
+                [4, 48, 64],
+            ),
+            (
+                "no-else-taken",
+                no_else.replace("a ^ 254U", "a ^ 71U"),
+                3,
+                5,
+                False,
+                71,
+                b"A",
+                [60, 208, 208],
+            ),
+            (
+                "no-else-skipped",
+                no_else.replace("unsigned a = 3U;", "unsigned a = 1U;")
+                .replace("unsigned b = 5U;", "unsigned b = 1U;")
+                .replace("a ^ 254U", "a ^ 64U"),
+                1,
+                1,
+                False,
+                64,
+                b"A",
+                [4, 4, 4],
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source, a, b, with_else, mask, expected, trace in cases:
+                visited, result = oracle(a, b, with_else)
+                self.assertEqual(visited, trace, label)
+                self.assertEqual(bytes([(result ^ mask) & 255]), expected)
+                candidate = Path(scratch) / f"multi-arm-{label}.c"
+                _ = candidate.write_text(source)
+                guest = Path(scratch) / f"multi-arm-{label}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/multi-arm-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=120,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                self.assertTrue(guest.is_file(), label)
+                for guest_input in (b"", b"\xff\x00\x80"):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=guest_input,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected, label)
+                    self.assertRegex(
+                        executed.stderr,
+                        rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                    )
+
+    def test_multi_assignment_conditional_rejects_unproved_effects(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_multi_assignment_branch_recurrence.c"
+        ).read_text()
+        for label, changed in {
+            "unselected-increment": original.replace("b = next ^ 2U;", "b = next++;"),
+            "unselected-undefined": original.replace(
+                "b = next ^ 2U;", "b = next / 0U;"
+            ),
+            "branch-extra-output": original.replace(
+                "b = next ^ 2U;", "b = next ^ 2U; putchar(65);"
+            ),
+            "else-compound-assignment": original.replace("b = next;", "b += next;"),
+            "nested-branch": original.replace(
+                "b = next;", "if (next & 1U) { b = next; }"
+            ),
+            "too-many-writes": original.replace("b = next;", "b = next;" * 17),
+        }.items():
+            with (
+                self.subTest(label=label),
+                tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch,
+            ):
+                candidate = Path(scratch) / f"invalid-multi-arm-{label}.c"
+                _ = candidate.write_text(changed)
+                guest = Path(scratch) / "rejected.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/invalid-multi-arm-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=40,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|FRONTEND-")
+                self.assertFalse(guest.exists(), label)
+
+    def test_multi_assignment_conditional_forged_ast_refuses(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_multi_assignment_branch_recurrence.c"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/multi-arm-ast-v1",
+                    str(original),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            conditional = next(n for n in nodes if n["kind"] == "if-statement")
+            arms = [
+                n
+                for n in nodes
+                if n["kind"] == "compound-statement"
+                and n["parent"] == conditional["id"]
+            ]
+            self.assertEqual(len(arms), 2)
+            assignments = [
+                [
+                    n
+                    for n in nodes
+                    if n["kind"] == "binary-expression"
+                    and n.get("operation") == "="
+                    and n["parent"] == arm["id"]
+                ]
+                for arm in arms
+            ]
+            self.assertEqual(list(map(len, assignments)), [2, 2])
+            then_second, else_second = assignments[0][1], assignments[1][1]
+            then_left = next(
+                n
+                for n in nodes
+                if n["parent"] == then_second["id"]
+                and n["kind"] == "declaration-reference-expression"
+            )
+            for label, node_id, field, value in (
+                ("then-second-parent", then_second["id"], "parent", conditional["id"]),
+                ("else-second-parent", else_second["id"], "parent", conditional["id"]),
+                ("then-second-operator", then_second["id"], "operation", "+="),
+                ("then-second-reference", then_left["id"], "reference", "foreign@0"),
+            ):
+                assert isinstance(node_id, int)
+                altered = cast(
+                    dict[str, list[dict[str, object]]],
+                    json.loads(frontend.stdout),
+                )
+                altered["nodes"][node_id - 1][field] = value
+                guest = Path(scratch) / f"invalid-multi-arm-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(altered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
 if __name__ == "__main__":
     _ = unittest.main()

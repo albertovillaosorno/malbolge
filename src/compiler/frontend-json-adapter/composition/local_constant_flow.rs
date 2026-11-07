@@ -206,7 +206,26 @@ impl<'node> Flow<'node> {
         self.unsigned_comparison(comparison)
     }
 
-    /// Prove a single braced arm or both arms before selecting local state.
+    /// Prove each ordered write in a braced C arm, rejecting any other
+    /// effect. Neither a trailing statement nor a nested effect can be
+    /// silently discarded after the selected branch is known.
+    fn branch_assignments(&mut self, body: &Node) -> Option<()> {
+        let mut last_end = body.span.begin.byte;
+        let mut writes = 0;
+        while let Some(node) = self.peek() {
+            if node.span.begin.byte >= body.span.end.byte {
+                break;
+            }
+            if node.parent != body.id || writes >= MAX_WRITES {
+                return None;
+            }
+            last_end = self.assignment(body, last_end)?.0;
+            writes += 1;
+        }
+        (writes > 0 && last_end < body.span.end.byte).then_some(())
+    }
+
+    /// Prove every ordered write in both braced arms before selecting state.
     /// No output, declarations or nested control flow are discarded.
     fn conditional(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
         let statement = self.take(body.id, "if-statement")?;
@@ -225,11 +244,7 @@ impl<'node> Flow<'node> {
             return None;
         }
         let starting = self.locals.clone();
-        let (then_end, _) =
-            self.assignment(then_body, then_body.span.begin.byte)?;
-        if then_end >= then_body.span.end.byte {
-            return None;
-        }
+        self.branch_assignments(then_body)?;
         let then_state = self.locals.clone();
         self.locals = starting;
         // An if without else ends at its sole braced arm. Prove no
@@ -253,11 +268,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        let (else_end, _) =
-            self.assignment(else_body, else_body.span.begin.byte)?;
-        if else_end >= else_body.span.end.byte {
-            return None;
-        }
+        self.branch_assignments(else_body)?;
         if take_then {
             self.locals = then_state;
         }

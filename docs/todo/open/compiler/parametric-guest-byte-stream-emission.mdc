@@ -547,3 +547,14 @@ a compiler capability gap, not a reason to return to N+1.
   forged AST cases reject with no output artifact. Positive-bound for loops
   remain bounded by twelve iterations; general guest control flow and the
   original twelve-byte Fibonacci byte-stream layout are still unimplemented.
+
+- A complete three-trip source-C recurrence exposed the single-assignment
+  limit on braced `if` arms. Bounded source-backed replay now proves ordered
+  multi-local writes in both arms before choosing state; a skipped `if`
+  without `else` preserves the original locals. The independent two-arm
+  oracle visits `60, 208, 192` (true/false/false), derives `191 ^ 254 = 65`
+  and the real normative Malbolge VM emits `0x41` in 31 steps. Source and
+  forged Clang AST mutations reject unsupported extra effects. Further
+  variants check false-first and skipped single-arm state; this is still
+  compile-time C replay, not dynamic guest branching. General byte-stream
+  layout and the original twelve-byte Fibonacci target remain open.

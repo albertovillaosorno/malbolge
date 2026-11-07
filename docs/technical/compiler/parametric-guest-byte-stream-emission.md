@@ -1226,3 +1226,25 @@ zero-trip `while`, even unreachable unsupported C is conservatively refused.
 This is compile-time bounded state projection, not dynamic guest C control
 flow or a generalized byte-stream emitter; the original twelve-byte
 Fibonacci target remains pending.
+
+### Ordered multi-assignment C conditional arms
+
+A complete three-iteration `do…while` C recurrence now exercises a branch that
+updates two unsigned locals per arm before the next loop trip. The pinned
+adapter previously refused the program's first declaration because its
+source-constant conditional proof accepted only one assignment in each braced
+arm. The repaired bounded proof consumes every ordered assignment from both
+Clang-backed arms, checks its parent, span, symbol and unsigned expression,
+then retains only the chosen state. An `if` without `else` keeps the original
+state when skipped. A branch cannot hide an extra output, declaration, nested
+statement or unsupported side effect, even in an unselected arm.
+
+The independent C oracle for the two-arm program visits `60, 208, 192` with
+branch choices true/false/false, finishes at `a = 191`, and derives output
+`191 ^ 254 = 65`. The first complete pinned source probe emitted the real
+normative guest byte `0x41` in 31 steps. The regression also covers the
+false-first, single-arm taken and single-arm skipped state traces against
+actual guest execution on empty and nonempty stdin; source and forged-AST
+mutations reject without publishing guest artifacts. This finite projection
+still executes C branching at compile time, not in the guest. General runtime
+state and the original twelve-byte nonzero Fibonacci layout remain open.
