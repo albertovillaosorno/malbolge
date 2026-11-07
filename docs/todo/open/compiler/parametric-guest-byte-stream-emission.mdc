@@ -341,3 +341,12 @@ a compiler capability gap, not a reason to return to N+1.
   empty and nonempty input, with negative-output mutation refusal. A pinned
   four-byte witness `5c 3f 11 42` proves the additional search shape; the
   original `02 59 5f 08` prefix remains unwitnessed. The P0 stays open.
+
+- Two additional terminal geometries now synthesize a final `p` or `*`
+  arithmetic write after the last guest byte output, before the real halt.
+  Their source-dependent loader seeds are modeled only in the disposable
+  search cache. Independent source re-encoding, five out-of-source writes,
+  and normative VM replay on empty and nonempty input admit each fixture;
+  forged expected output is rejected. The rebuilt layout CLI still refuses
+  the unmodified four-byte Fibonacci prefix and full twelve-byte program
+  without publication. P0 remains pending on generalized guest emission.

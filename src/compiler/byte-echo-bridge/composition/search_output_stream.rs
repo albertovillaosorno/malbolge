@@ -63,9 +63,29 @@ struct SearchWord {
 }
 
 #[derive(Clone, Copy)]
-enum TerminalPair {
-    NoopHalt,
-    OutputHalt,
+enum TerminalSuffix {
+    Crazy,
+    Noop,
+    Output,
+    Rotate,
+}
+
+impl TerminalSuffix {
+    const fn before_halt(self) -> (LinearOpcode, usize) {
+        match self {
+            Self::Output => (LinearOpcode::OutputByte, 4),
+            Self::Noop => (LinearOpcode::NoOperation, 0),
+            Self::Crazy => (LinearOpcode::CrazyData, 2),
+            Self::Rotate => (LinearOpcode::RotateData, 3),
+        }
+    }
+
+    const fn emitted_before_tail(self, total: usize) -> usize {
+        match self {
+            Self::Output => total.saturating_sub(1),
+            Self::Noop | Self::Crazy | Self::Rotate => total,
+        }
+    }
 }
 
 fn matches_byte(accumulator: u32, expected: u8) -> bool {
@@ -125,7 +145,7 @@ fn reconstruct_path(
     steps: &[SearchStep],
     last_index: usize,
     geometry: &SearchGeometry<'_>,
-    terminal: TerminalPair,
+    terminal: TerminalSuffix,
 ) -> Option<Vec<LinearOpcode>> {
     let mut cursor = last_index;
     let mut suffix = Vec::with_capacity(
@@ -140,14 +160,7 @@ fn reconstruct_path(
     let mut operations = vec![LinearOpcode::NoOperation; geometry.prefix];
     operations.push(LinearOpcode::RelocateDataPointer);
     operations.extend(suffix);
-    operations.extend(match terminal {
-        TerminalPair::OutputHalt => {
-            [LinearOpcode::OutputByte, LinearOpcode::Halt]
-        },
-        TerminalPair::NoopHalt => {
-            [LinearOpcode::NoOperation, LinearOpcode::Halt]
-        },
-    });
+    operations.extend([terminal.before_halt().0, LinearOpcode::Halt]);
     (operations.len() == geometry.source_length).then_some(operations)
 }
 
@@ -155,17 +168,14 @@ fn proposed_geometry<const N: usize>(
     source_cells: &[[u8; 6]],
     geometry: &SearchGeometry<'_>,
     expected: [u8; N],
-    terminal: TerminalPair,
+    terminal: TerminalSuffix,
 ) -> Option<Vec<LinearOpcode>> {
     let SearchGeometry {
         memory,
         prefix,
         source_length,
     } = *geometry;
-    let target_emitted = match terminal {
-        TerminalPair::OutputHalt => N.saturating_sub(1),
-        TerminalPair::NoopHalt => N,
-    };
+    let target_emitted = terminal.emitted_before_tail(N);
     let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
     if relocation < source_length
         || relocation.saturating_add(source_length) >= 4096
@@ -204,7 +214,7 @@ fn proposed_geometry<const N: usize>(
     let target = expected.last().copied()?;
     let (_, &last_index) = states.iter().find(|(key, _)| {
         key.0 == target_emitted
-            && (matches!(terminal, TerminalPair::NoopHalt)
+            && (!matches!(terminal, TerminalSuffix::Output)
                 || matches_byte(key.1, target))
     })?;
     reconstruct_path(&steps, last_index, geometry, terminal)
@@ -214,16 +224,18 @@ fn verified_terminal_layout<const N: usize>(
     profile: &'static ProfileDescriptor,
     expected: [u8; N],
     source_cells: &[[u8; 6]],
-    terminal: TerminalPair,
+    terminal: TerminalSuffix,
 ) -> Option<LinearLayout> {
     let mut tails = BTreeMap::new();
     // Only the last two source cells seed expansion beyond source.
-    // The alternate tail cache is a proposal only; the verifier always
-    // receives the original positional source cells.
+    // These substituted cells are proposal-only: the independent verifier
+    // re-encodes and replays the complete positional source.
     let mut preview_cells = source_cells.to_vec();
-    if matches!(terminal, TerminalPair::NoopHalt) {
+    let (_, tail_slot) = terminal.before_halt();
+    if tail_slot != 4 {
         for cell in &mut preview_cells {
-            cell[4] = cell[0];
+            let encoded = *cell.get(tail_slot)?;
+            *cell.get_mut(4)? = encoded;
         }
     }
     for length in N.saturating_add(4)..=MAX_SOURCE_LENGTH {
@@ -278,7 +290,12 @@ pub(super) fn verified_state_space_output_layout<const N: usize>(
     if N == 0 {
         return None;
     }
-    for terminal in [TerminalPair::OutputHalt, TerminalPair::NoopHalt] {
+    for terminal in [
+        TerminalSuffix::Output,
+        TerminalSuffix::Noop,
+        TerminalSuffix::Crazy,
+        TerminalSuffix::Rotate,
+    ] {
         if let Some(layout) =
             verified_terminal_layout(profile, expected, source_cells, terminal)
         {

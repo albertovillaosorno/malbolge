@@ -770,3 +770,16 @@ normative guest VM under empty and nonempty input. The verified four-byte
 `5c 3f 11 42` guest is a geometry witness, not evidence of general C state
 or unrestricted byte-stream synthesis. The original twelve-output Fibonacci
 program and its four-byte prefix still lack guest layouts.
+
+A subsequent experiment now includes two more source terminators: `p; halt`
+and `*; halt` after the final byte output. These instructions write one
+out-of-source data cell and replace the loader's final pre-halt seed, but
+do not emit another output. The bounded search uses each corresponding
+positional encoding only in its disposable tail model; the independent
+publisher still checks the complete source, every guest data write and
+both normative VM input replays. Both terminal variants reconstruct real
+four-output guests with five disjoint data writes, and forged expected
+output bytes are rejected. After rebuilding the real layout executable,
+the original Fibonacci four-byte prefix and full twelve-byte trace still
+refuse without publishing an artifact. The additional search shapes are
+not a proof of unrestricted byte-stream synthesis or runtime C execution.
