@@ -175,3 +175,106 @@ fn post_output_arithmetic_terminals_have_independent_guest_witnesses()
     }
     Ok(())
 }
+
+#[test]
+fn early_completion_can_pad_before_terminal() -> Result<(), String> {
+    let steps = [
+        SearchStep {
+            operation: LinearOpcode::NoOperation,
+            predecessor: 0,
+        },
+        SearchStep {
+            operation: LinearOpcode::OutputByte,
+            predecessor: 0,
+        },
+    ];
+    let geometry = SearchGeometry {
+        memory: &[],
+        prefix: PREFIX,
+        source_length: PREFIX + 6,
+    };
+    let operations =
+        reconstruct_path(&steps, 1, &geometry, TerminalSuffix::Noop)
+            .ok_or_else(|| {
+                String::from("completed output cannot pad to terminal")
+            })?;
+    if operations.get(PREFIX + 1..PREFIX + 4)
+        != Some(&[
+            LinearOpcode::OutputByte,
+            LinearOpcode::NoOperation,
+            LinearOpcode::NoOperation,
+        ])
+        || operations.last() != Some(&LinearOpcode::Halt)
+    {
+        return Err(String::from("early completion changed the output path"));
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "full current-profile VM replay is expensive; run explicitly"]
+fn padded_terminal_guest_replays_after_early_completion() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    let mut original = vec![LinearOpcode::NoOperation; PREFIX];
+    original.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::NoOperation,
+        LinearOpcode::NoOperation,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    let expected = proposed_output_stream::<1>(&original, &cells)
+        .ok_or_else(|| String::from("padded source has no guest trace"))?;
+    let _original =
+        verified_output_stream_layout(profile, &original, expected, &cells)
+            .ok_or_else(|| String::from("padded guest failed VM replay"))?;
+    let mut preview_cells = cells.clone();
+    for cell in &mut preview_cells {
+        cell[4] = cell[0];
+    }
+    let relocation = usize::from(cells[PREFIX][1]);
+    let mut tails = BTreeMap::new();
+    let memory = cached_output_tail(
+        &preview_cells,
+        &mut tails,
+        original.len(),
+        relocation.saturating_add(original.len()),
+    )
+    .ok_or_else(|| String::from("padded guest has no loader memory"))?;
+    let reconstructed = proposed_geometry(
+        &cells,
+        &SearchGeometry {
+            memory,
+            prefix: PREFIX,
+            source_length: original.len(),
+        },
+        expected,
+        TerminalSuffix::Noop,
+    )
+    .ok_or_else(|| String::from("search missed padded guest"))?;
+    let last_output = reconstructed
+        .iter()
+        .rposition(|operation| *operation == LinearOpcode::OutputByte)
+        .ok_or_else(|| String::from("reconstructed guest emits no bytes"))?;
+    if !reconstructed[last_output + 1..reconstructed.len() - 2]
+        .iter()
+        .all(|operation| *operation == LinearOpcode::NoOperation)
+        || last_output + 1 >= reconstructed.len() - 2
+    {
+        return Err(String::from("search did not complete before terminal"));
+    }
+    let _verified = verified_output_stream_layout(
+        profile,
+        &reconstructed,
+        expected,
+        &cells,
+    )
+    .ok_or_else(|| String::from("reconstructed guest failed VM replay"))?;
+    Ok(())
+}

@@ -160,6 +160,11 @@ fn reconstruct_path(
     let mut operations = vec![LinearOpcode::NoOperation; geometry.prefix];
     operations.push(LinearOpcode::RelocateDataPointer);
     operations.extend(suffix);
+    // Once every byte is emitted, remaining body cells may be no-ops.
+    // The final source cells still fix the loader-expanded memory tail.
+    while operations.len() < geometry.source_length.saturating_sub(2) {
+        operations.push(LinearOpcode::NoOperation);
+    }
     operations.extend([terminal.before_halt().0, LinearOpcode::Halt]);
     (operations.len() == geometry.source_length).then_some(operations)
 }
@@ -188,7 +193,8 @@ fn proposed_geometry<const N: usize>(
         predecessor: 0,
     }];
     let mut states = BTreeMap::from([((0usize, 0u32), 0usize)]);
-    // The chosen output/halt or no-op/halt pair fixes the expanded tail.
+    // The chosen terminal/halt pair fixes the expanded memory tail.
+    let target = expected.last().copied()?;
     for position in prefix.saturating_add(1)..source_length.saturating_sub(2) {
         let address =
             relocation.saturating_add(position).saturating_sub(prefix);
@@ -204,6 +210,17 @@ fn proposed_geometry<const N: usize>(
             },
             expected,
         );
+        // No subsequent body instruction needs to change the accumulator
+        // after the output target is complete. No-op padding preserves both
+        // guest bytes and the terminal source seed, and is independently
+        // decoded and replayed before a candidate can be admitted.
+        if let Some((_, &last_index)) = states.iter().find(|(key, _)| {
+            key.0 == target_emitted
+                && (!matches!(terminal, TerminalSuffix::Output)
+                    || matches_byte(key.1, target))
+        }) {
+            return reconstruct_path(&steps, last_index, geometry, terminal);
+        }
         if states.is_empty()
             || states.len() > MAX_STATES_PER_POSITION
             || steps.len() > MAX_STEPS_PER_GEOMETRY
@@ -211,13 +228,7 @@ fn proposed_geometry<const N: usize>(
             return None;
         }
     }
-    let target = expected.last().copied()?;
-    let (_, &last_index) = states.iter().find(|(key, _)| {
-        key.0 == target_emitted
-            && (!matches!(terminal, TerminalSuffix::Output)
-                || matches_byte(key.1, target))
-    })?;
-    reconstruct_path(&steps, last_index, geometry, terminal)
+    None
 }
 
 fn verified_terminal_layout<const N: usize>(
