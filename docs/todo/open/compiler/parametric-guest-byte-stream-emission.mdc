@@ -384,3 +384,16 @@ a compiler capability gap, not a reason to return to N+1.
   publication. This is bounded compile-time C folding; runtime Boolean state,
   impure short-circuiting and the twelve-byte Fibonacci guest layout remain
   unsupported, so P0 is still open.
+
+- A complete three-iteration C recurrence with local state, multiplication,
+  shifts, a conditional and output first refused a pure source-backed logical
+  `!` at the initial declaration. The closed predicate evaluator now checks
+  typed `i32` unary negation over fully proven unsigned comparison and
+  `&&`/`||` trees, including nested and double negation. Three independent
+  branch traces compile into real Malbolge capsules that emit `0x41` in
+  31 normative VM steps under empty and nonempty stdin. Side effects and
+  bitwise-complement mutations refuse without publication; malformed unary
+  AST operation, type, parent and kind metadata also refuse. The existing
+  relational/logical tests still pass. This is bounded compile-time folding,
+  not guest runtime Boolean evaluation; the twelve-byte Fibonacci layout
+  remains unwitnessed and P0 stays pending.

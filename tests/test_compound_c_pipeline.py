@@ -33,6 +33,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -1719,6 +1720,174 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertNotEqual(refused.returncode, 0, label)
                 self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_negated_logical_recurrence_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_negated_logical_recurrence_output.c"
+        )
+        original = source.read_text()
+        condition = "!(((next & 8U) >= 8U) && ((b & 4U) != 0U))"
+        self.assertIn(condition, original)
+        variants = (
+            ("negated-and", condition, [False, True, True]),
+            (
+                "double-negation",
+                "!!(((next & 8U) < 8U) && ((b & 4U) != 0U))",
+                [False, True, False],
+            ),
+            (
+                "nested-not",
+                "!(((next & 8U) >= 8U) || !((b & 4U) != 0U))",
+                [False, True, False],
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, replacement, expected_branches in variants:
+                a, b = 3, 5
+                branches = []
+                for _ in range(3):
+                    next_value = ((a * b) << 2) & 255
+                    left = (next_value & 8) >= 8
+                    right = (b & 4) != 0
+                    if label == "negated-and":
+                        selected = not (left and right)
+                    elif label == "double-negation":
+                        selected = (not left) and right
+                    else:
+                        selected = not (left or (not right))
+                    branches.append(selected)
+                    a = ((next_value >> 3) ^ 1) if selected else next_value - 1
+                    b = next_value
+                self.assertEqual(branches, expected_branches, label)
+                self.assertLessEqual(a, 255)
+                changed = original.replace(condition, replacement).replace(
+                    "a ^ 88U", f"a ^ {a ^ 65}U"
+                )
+                candidate = Path(scratch) / f"negated-{label}.c"
+                candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/negated-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, (label, compiled.stderr))
+                self.assertTrue(guest.is_file())
+                for data in (b"", bytes((255, 0, 128))):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=data,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"A", label)
+                    self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+            for label, changed in {
+                "increment": original.replace("b & 4U", "b++ & 4U"),
+                "impure-call": original.replace(
+                    "(b & 4U) != 0U", "(putchar(70) & 4U) != 0U"
+                ),
+                "bitwise-complement": original.replace("if (!(", "if (~(", 1),
+            }.items():
+                candidate = Path(scratch) / f"rejected-negated-{label}.c"
+                candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/negated-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_negated_logical_ast_mutations_refuse_publication(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_negated_logical_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/negated-ast-mutations-v1",
+                str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        normalized = json.loads(frontend.stdout)
+        unary_positions = [
+            index
+            for index, node in enumerate(normalized["nodes"])
+            if node["kind"] == "unary-expression" and node.get("operation") == "!"
+        ]
+        self.assertEqual(len(unary_positions), 1)
+        index = unary_positions[0]
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, field, value in (
+                ("wrong-operation", "operation", "~"),
+                ("wrong-type", "type", "u32"),
+                ("wrong-parent", "parent", 0),
+                ("wrong-kind", "kind", "binary-expression"),
+            ):
+                altered = json.loads(frontend.stdout)
+                altered["nodes"][index][field] = value
+                guest = Path(scratch) / f"rejected-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(altered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
                 self.assertFalse(guest.exists(), label)
 
     def test_unsigned_shift_recurrence_reaches_real_guest(self) -> None:

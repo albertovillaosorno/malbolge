@@ -862,3 +862,29 @@ publication.
 No runtime Malbolge Boolean evaluation, general short-circuit effects, dynamic
 state or arbitrary byte-stream synthesis is claimed. The original twelve-byte
 Fibonacci program still fails closed at guest layout; P0 remains pending.
+
+### Source-backed pure logical negation
+
+A further complete three-iteration C recurrence uses local state, checked
+multiplication and shifts, a nested logical predicate inside a loop, both
+conditional assignment arms, and an expression-derived final `putchar`. The
+first pinned-Clang compiler attempt refused at the first declaration because
+the closed Boolean evaluator did not handle the source-proven unary `!` node.
+The revised evaluator consumes an `i32` `!` over a fully proven pure predicate,
+requires exact Clang parentage and typed expression spans, and reuses the
+existing closed unsigned-comparison and `&&`/`||` rules. Both operands of every
+logical binary subtree are checked, even if C would short-circuit one.
+
+The tracked source `local_negated_logical_recurrence_output.c` produces the
+independently calculated branch trace false/true/true. Double-negation and
+nested-negation variants prove other branch traces through the full pinned
+pipeline. The resulting actual Malbolge capsules each emit `0x41` in 31
+normative VM steps for both empty and nonempty stdin. Source mutations that
+introduce an increment, an impure call or bitwise complement fail before
+guest publication; separately corrupted unary AST operation, type, parent or
+kind metadata are rejected by the canonical adapter. The end-to-end and
+adversarial regressions live in `tests/test_compound_c_pipeline.py`.
+
+This is source-backed **compile-time** C constant evaluation, not runtime
+Malbolge Boolean execution or short-circuit side effects. The original twelve-
+byte Fibonacci stream remains blocked at guest layout, so P0 remains open.

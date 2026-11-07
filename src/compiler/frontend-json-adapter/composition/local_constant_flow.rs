@@ -109,7 +109,7 @@ impl<'node> Flow<'node> {
         Some((assignment.span.end.byte, value_source))
     }
 
-    /// Prove a pure C Boolean tree over exact unsigned comparisons.
+    /// Prove a pure C Boolean tree, including negated comparisons.
     /// Both operands are proven even when `&&`/`||` would short-circuit;
     /// the admitted subtree contains no side effects or undefined operations.
     fn condition(&mut self, statement: &Node) -> Option<(bool, &'node Node)> {
@@ -141,13 +141,27 @@ impl<'node> Flow<'node> {
             }
             return Some((value, grouped));
         }
+        if self.peek()?.kind == "unary-expression" {
+            let negation = self.take(parent, "unary-expression")?;
+            let (value, operand) =
+                self.condition_expression(negation.id, depth.checked_add(1)?)?;
+            if negation.operation.as_deref() != Some("!")
+                || !clean_i32_operator(negation)
+                || !span_within(&negation.span, &operand.span)
+                || negation.span.begin.byte >= operand.span.begin.byte
+                || negation.span.end.byte != operand.span.end.byte
+            {
+                return None;
+            }
+            return Some((!value, negation));
+        }
         let comparison = self.take(parent, "binary-expression")?;
         if matches!(comparison.operation.as_deref(), Some("&&" | "||")) {
             let (left_value, left) = self
                 .condition_expression(comparison.id, depth.checked_add(1)?)?;
             let (right_value, right) = self
                 .condition_expression(comparison.id, depth.checked_add(1)?)?;
-            if !clean_i32_binary(comparison)
+            if !clean_i32_operator(comparison)
                 || !ordered_binary_spans(comparison, left, right)
             {
                 return None;
@@ -639,8 +653,8 @@ fn typed_less_than(node: &Node) -> bool {
         && node.storage_duration.is_none()
 }
 
-/// Accept no instruction metadata other than an i32 binary operator.
-fn clean_i32_binary(node: &Node) -> bool {
+/// Accept no extraneous metadata on an i32 unary or binary operator.
+fn clean_i32_operator(node: &Node) -> bool {
     node.type_name.as_deref() == Some("i32")
         && node.operation.is_some()
         && node.name.is_none()
@@ -661,7 +675,7 @@ fn checked_condition_comparison(
     left: u32,
     right: u32,
 ) -> Option<bool> {
-    if !clean_i32_binary(node) {
+    if !clean_i32_operator(node) {
         return None;
     }
     Some(match node.operation.as_deref()? {
