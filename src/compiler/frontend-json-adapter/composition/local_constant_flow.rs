@@ -692,13 +692,13 @@ const fn ordered_ternary_spans(
         && else_expression.span.end.byte == expression.span.end.byte
 }
 
-/// Evaluate only exact unsigned-C operators after both source operands
-/// have been independently checked. State narrowing happens at stores.
+/// Evaluate exact unsigned-C operators after both source operands are proven.
+/// C `unsigned` arithmetic wraps modulo 2^32; narrowing happens at stores.
 fn checked_u32_binary(operator: &str, left: u32, right: u32) -> Option<u32> {
     match operator {
-        "+" => left.checked_add(right),
-        "-" => left.checked_sub(right),
-        "*" => left.checked_mul(right),
+        "+" => Some(left.wrapping_add(right)),
+        "-" => Some(left.wrapping_sub(right)),
+        "*" => Some(left.wrapping_mul(right)),
         "/" => left.checked_div(right),
         "%" => left.checked_rem(right),
         // C unsigned shifts discard high bits; counts must be below 32.

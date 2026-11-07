@@ -1040,3 +1040,33 @@ This implements **source-backed compile-time** C constant propagation only.
 The guest runs the output instructions, not the C multiplication, branching or
 bitwise operations. The original twelve-byte Fibonacci output still lacks an
 independently verified general layout, so the P0 remains pending.
+
+### Source-proven modulo-2^32 arithmetic in a four-byte C stream
+
+The complete four-iteration source program
+`local_wrapping_recurrence_stream.c` exposed another real semantic gap:
+`unsigned` subtraction, multiplication, and addition were incorrectly
+restricted to nonoverflowing intermediate values. The first pinned Clang
+compilation refused the declaration and published no guest. C defines these
+operations modulo 2^32 for the pinned `wasm32` unsigned-int target, even when
+an intermediate is much larger than a byte. The multi-local expression
+checker now proves the original `u32` operand tree, typed operator, Clang
+ancestry and source order before applying `wrapping_sub`, `wrapping_mul` or
+`wrapping_add`. It still narrows only on source-proven masks/stores and
+refuses unsupported conversions, effects and undefined operations.
+
+Each iteration reconstructs a Fibonacci state update using
+`((0U - (a + b)) * 255U) & 255U`, then restores the same byte through
+`((~next + 1U) + (next * 2U)) & 255U`. The unsigned subtraction wraps for
+all four iterations; the product and final addition also exceed 2^32 - 1
+before modulo reduction. A separately calculated 32-bit modular arithmetic
+oracle yields the state sequence `2, 3, 5, 8` and source-selected output
+`35 c0 09 e3`. The full pinned C/JSON/typed/ternary/layout pipeline produces
+a real Malbolge capsule whose normative VM emits exactly those four bytes on
+both empty and nonempty stdin. Division-by-zero, source increments, and a
+signed complement mutation refuse without an artifact.
+
+This is **compile-time** folding of a bounded, fully known C recurrence. It
+does not implement runtime C integers or dynamic guest loops, and it does not
+solve the original `02 59 5f 08` prefix or the twelve-byte Fibonacci layout.
+The generalized byte-stream P0 remains pending.

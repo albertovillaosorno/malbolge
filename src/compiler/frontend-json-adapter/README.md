@@ -545,14 +545,14 @@ A separate straight-line multi-local route admits two through eight distinct
 source-bound automatic `u32` locals initialized from byte constants or
 previously defined locals, with checked `+`, `-`, and XOR expressions and
 up to 16 ordered definitions/writes. Materialized locals must fit a byte;
-source-proven, nonwrapping `u32` intermediate additions can temporarily exceed
-255 if an enclosing expression reduces them to a byte. Every read is resolved
+source-proven `u32` intermediate additions can temporarily exceed
+255 or wrap modulo 2^32 if an enclosing expression reduces them to a byte. Every read is resolved
 to the exact declared Clang symbol, with checked ancestry, types, source order, and spans; the final typed `u8` constant
 retains its last defining expression's provenance. Exactly one source-backed
 `putchar` reads a proven local or evaluates a fully checked argument.
 The tracked three-local program computes
 `(60 + 8) ^ 3 - 6` and emits `0x41` in 31 normative VM steps. Unknown reads,
-new effects, wrapping arithmetic, loops and general runtime state
+new effects, unproven arithmetic, loops and general runtime state
 remain unsupported. The adapter never computes these arithmetic operations
 inside Malbolge; only its output effect executes in the guest VM.
 
@@ -639,12 +639,12 @@ inside the loop still require a verified general byte-stream backend.
 `local_multiplicative_recurrence_output.c` exercises three source-proven
 iterations with two unsigned locals, multiplication, masking, an odd/even
 conditional assignment, and a final expression-derived `putchar`.
-The closed expression walker now admits `u32` multiplication only when
-`checked_mul` succeeds. It retains a product larger than 255 through `& 255U`
+The closed expression walker now admits source-proven `u32` multiplication
+with C modulo-2^32 semantics. It retains a product larger than 255 through `& 255U`
 and narrows only at a local store or output. The independent recurrence
 visits `15, 210, 22`, finishes with `a = 23`, and emits `23 ^ 86 = 65`.
 The normative VM outputs `0x41` in 31 steps, including with nonempty input.
-Unchecked overflow and extra effects still reject without a guest.
+Unproven operations and extra effects still reject without a guest.
 This is **compile-time evaluation**, not Malbolge multiplication or C runtime
 state. The full twelve-byte Fibonacci target still fails at guest layout.
 
@@ -752,3 +752,16 @@ so unsupported or effectful skipped expressions reject instead of being
 silently discarded. Selected loop branch arms are folded at compile time;
 the actual guest executes only the verified output byte. This is not runtime
 C logical short-circuit execution or unrestricted C control flow.
+
+### Complete C recurrence with defined unsigned wraparound
+
+`local_wrapping_recurrence_stream.c` proves a complete four-iteration loop
+whose source-defined unsigned intermediates overflow 32 bits before explicit
+byte masks. The closed `u32` evaluator now uses modulo-2^32 addition,
+subtraction and multiplication, after the existing full Clang AST proof;
+source-bound local stores and `putchar` arguments must still fit a byte.
+An independent arithmetic oracle yields output `35 c0 09 e3`, which the
+normative Malbolge VM emits from the complete pinned compilation on both empty
+and nonempty input. Side-effecting, signed and undefined source mutations
+refuse without guest publication. This does not lower runtime C arithmetic,
+and the original twelve-byte Fibonacci stream remains layout-blocked.

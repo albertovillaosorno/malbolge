@@ -359,6 +359,96 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Unsupported", refused.stderr)
             self.assertFalse(refused_guest.exists())
 
+    def test_wrapping_unsigned_recurrence_four_outputs_reach_guest(self) -> None:
+        """Source C's unsigned +, - and * wrap at 32 bits before masking."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_wrapping_recurrence_stream.c"
+        )
+        original = source.read_text()
+        self.assertIn("(0U - (a + b)) * 255U", original)
+        self.assertIn("(~next + 1U) + (next * 2U)", original)
+        a, b = 1, 1
+        expected = bytearray()
+        for _ in range(4):
+            following = a + b
+            negated = (0 - following) & 0xFFFF_FFFF
+            multiplied = negated * 255
+            next_value = (multiplied & 0xFFFF_FFFF) & 255
+            complement = ((~next_value) + 1) & 0xFFFF_FFFF
+            sum_value = complement + (next_value * 2)
+            restored = (sum_value & 0xFFFF_FFFF) & 255
+            self.assertGreater(negated, 255)
+            self.assertGreater(multiplied, 0xFFFF_FFFF)
+            self.assertGreater(sum_value, 0xFFFF_FFFF)
+            self.assertEqual((next_value, restored), (following, following))
+            expected.append(
+                ((restored * 29 + 251) & 255)
+                if restored % 2 == 0
+                else (((restored // 2) * 73 + 119) & 255)
+            )
+            a, b = b, restored
+        self.assertEqual(bytes(expected), bytes.fromhex("35c009e3"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "wrapping-recurrence.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/unsigned-wrapping-four-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for data in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=data,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            for label, changed in {
+                "unmasked-wide-local": original.replace(
+                    "unsigned next = ((0U - (a + b)) * 255U) & 255U;",
+                    "unsigned next = ((0U - (a + b)) * 255U);",
+                ),
+                "undefined-divisor": original.replace(
+                    "restored / 2U", "restored / 0U"
+                ),
+                "side-effect": original.replace(
+                    "(restored & 1U)", "(restored++ & 1U)"
+                ),
+                "unproven-signed-cast": original.replace(
+                    "~next + 1U", "~(int)next + 1U"
+                ),
+            }.items():
+                altered = Path(scratch) / f"wrapping-invalid-{label}.c"
+                _ = altered.write_text(changed)
+                refused_guest = altered.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [*command[:-2], str(refused_guest), str(altered)],
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(refused_guest.exists(), label)
+
     def test_wide_conditional_loop_four_outputs_reach_guest(self) -> None:
         """Divide/multiply/mask in C, then prove four real guest bytes."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
@@ -2481,8 +2571,8 @@ class CompoundCPipelineTests(unittest.TestCase):
                     original.replace("<< 2U", f"<< {left_shift}U")
                     .replace(">> 3U", f">> {right_shift}U")
                     .replace("a ^ 88U", f"a ^ {xor_key}U")
-                    # An unreachable unsigned subtraction underflow is outside
-                    # the current checked-subtraction projection.
+                    # Both conditional arms must produce byte-sized local
+                    # stores, including the unselected unsigned underflow.
                     .replace(
                         "next - 1U",
                         "next + 1U" if left_shift == 31 else "next - 1U",
@@ -2665,14 +2755,13 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertEqual(executed.stdout, b"A")
                 self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
             original = source.read_text()
-            # Shifts are outside the closed evaluator. An unsigned overflow
-            # would be defined by C, but is deliberately outside this checked
-            # (nonwrapping) constant-propagation slice.
+            # Unsigned arithmetic wraps, but undefined division or an
+            # unproven signed cast must still refuse without a guest.
             invalid = {
-                "shift": original.replace("a * b", "a >> b"),
-                "overflow": original.replace("a = 3U", "a = 255U")
-                .replace("b = 5U", "b = 255U")
-                .replace("(a * b) & 255U", "(((a * b) * (a * b)) * a) & 255U"),
+                "zero-divisor": original.replace(
+                    "(a * b) & 255U", "((a * b) / 0U) & 255U"
+                ),
+                "signed-cast": original.replace("a * b", "a * (int)b"),
             }
             for label, changed in invalid.items():
                 altered = Path(scratch) / f"{label}-recurrence.c"

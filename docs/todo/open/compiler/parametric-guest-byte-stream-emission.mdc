@@ -472,3 +472,14 @@ a compiler capability gap, not a reason to return to N+1.
   This remains bounded compiler-time constant folding, not guest runtime
   unsigned arithmetic, and the original twelve-byte Fibonacci layout P0
   remains pending.
+
+- A full four-iteration Fibonacci-style C loop now proves defined `u32`
+  wraparound for `+`, `-` and `*` across source-backed expression trees. The
+  pinned C pipeline initially rejected its first declaration because the
+  bounded evaluator used checked operations even though unsigned C arithmetic
+  is modulo 2^32. With wrapping operations, the independent modular oracle
+  reconstructs state `2, 3, 5, 8` and output `35 c0 09 e3`; the actual
+  Malbolge capsule emits exactly those four bytes on both stdin variants.
+  Undefined division, source increments and a signed complement reject
+  without publication. C state is still compile-time folded; the original
+  four-byte Fibonacci prefix and general guest layout remain unimplemented.
