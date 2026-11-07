@@ -1876,3 +1876,86 @@ fn longer_relocated_guest_with_rotate_terminal_is_recovered()
     );
     Ok(())
 }
+
+#[test]
+fn long_noop_tail_reconstructs_twelve_byte_guest() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional source cells"))?;
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0..12 {
+        if [1, 3, 5, 7].contains(&index) {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if index % 4 == 0 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.extend([LinearOpcode::NoOperation, LinearOpcode::Halt]);
+    assert_eq!(operations.len(), 39);
+    let original = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("no-op terminal encoding: {error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, original.source(), Vec::new())
+            .map_err(|error| format!("no-op terminal load: {error:?}"))?;
+    assert!(matches!(
+        vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()
+    ));
+    let expected: [u8; 12] = vm
+        .output()
+        .try_into()
+        .map_err(|_error| String::from("guest output count changed"))?;
+    assert_eq!(expected, [
+        163, 16, 48, 16, 42, 17, 44, 17, 162, 1, 166, 252,
+    ]);
+    let mut nonempty =
+        ProfileMachine::from_source(profile, original.source(), vec![
+            0, 255, 1,
+        ])
+        .map_err(|error| format!("no-op terminal nonempty load: {error:?}"))?;
+    assert!(matches!(
+        nonempty.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()
+    ));
+    assert_eq!(nonempty.output(), expected);
+    assert_eq!(nonempty.input_consumed(), 0);
+    assert_eq!(original.data_write_positions().iter().flatten().count(), 12);
+    let mut changed_tail = operations.clone();
+    changed_tail[operations.len() - 2] = LinearOpcode::RotateData;
+    assert_ne!(
+        proposed_output_stream::<12>(&changed_tail, &cells),
+        Some(expected),
+        "changing the source tail reused the no-op loader seed",
+    );
+    assert_eq!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .as_ref()
+            .map(LinearLayout::source),
+        Some(original.source()),
+    );
+    let recovered = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| {
+            format!("bounded search missed no-op tail: {expected:?}")
+        })?;
+    assert!((37..=39).contains(&recovered.source().len()));
+    assert_eq!(
+        recovered.source().get(recovered.source().len() - 2),
+        cells
+            .get(recovered.source().len() - 2)
+            .and_then(|cell| cell.get(0)),
+    );
+    let mut forged = expected;
+    forged[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}

@@ -62,6 +62,8 @@ INTERLEAVED = bytes([62, 9, 13, 13, 40, 46, 19, 61, 10, 46, 10, 61])
 INTERLEAVED_SOURCE = " ".join(f"putchar({value});" for value in INTERLEAVED)
 WIDER_TERMINAL = bytes([181, 79, 66, 61, 51, 8, 80, 35, 180, 77, 93, 49])
 WIDER_TERMINAL_SOURCE = " ".join(f"putchar({value});" for value in WIDER_TERMINAL)
+NOOP_TAIL = bytes([163, 16, 48, 16, 42, 17, 44, 17, 162, 1, 166, 252])
+NOOP_TAIL_SOURCE = " ".join(f"putchar({value});" for value in NOOP_TAIL)
 SOURCE = (
     "putchar(81); putchar(55); putchar(52); putchar(56); "
     "putchar(251); putchar(206); putchar(159); putchar(152); "
@@ -231,6 +233,36 @@ class TwelveDistinctGuestLiteralTests(unittest.TestCase):
                 directory,
                 "wider-guest-extra",
                 WIDER_TERMINAL_SOURCE + " putchar(1);",
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertFalse(absent.exists())
+
+    def test_noop_tail_guest_stream_from_actual_c(self) -> None:
+        # The no-op source tail seeds 39-cell expanded memory differently
+        # from the previously admitted output, crazy, and rotate terminals.
+        # Each literal output must still be proven by the C adapter and the
+        # resulting guest must perform its own writes and output effects.
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:
+            directory = Path(temp)
+            compiled, artifact = self.compile(
+                directory, "noop-tail-guest", NOOP_TAIL_SOURCE
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            for guest_input in (b"", b"\x00\xff\x80"):
+                with self.subTest(stdin=guest_input):
+                    executed = subprocess.run(
+                        [str(VM), str(artifact), "--input-stdin", "--report-steps"],
+                        input=guest_input,
+                        capture_output=True,
+                        check=False,
+                        timeout=60,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, NOOP_TAIL)
+                    self.assertEqual(executed.stderr, b"malbolge-steps-v1:39\n")
+            refused, absent = self.compile(
+                directory, "noop-tail-extra", NOOP_TAIL_SOURCE + " putchar(1);"
             )
             self.assertNotEqual(refused.returncode, 0)
             self.assertFalse(absent.exists())

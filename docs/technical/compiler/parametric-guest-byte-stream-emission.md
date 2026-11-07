@@ -1820,3 +1820,15 @@ thirteen disjoint writes remain outside the source, and a forged expected
 first byte is rejected. The added fallback has observable search cost, so it
 is restricted to twelve-effect searches only. This is not a general source C
 runtime or a witness for the original Fibonacci outputs; P0 stays open.
+
+- A red-first 39-instruction relocated guest with twelve arithmetic-derived
+  outputs and a final output-neutral no-op exposed a missing long-tail loader
+  seed. Its normative VM output is `a3 10 30 10 2a 11 2c 11 a2 01 a6 fc`.
+  The public 37-to-39-cell fallback previously searched output, crazy and
+  rotate terminals but not no-op, and rejected this independently proven
+  stream. Adding the no-op seed after the existing priorities recovers the
+  full guest with unchanged eight-prefix and 2,048-history caps. Independent
+  positional admission, both-input VM replay, forged-output refusal and a
+  pinned C-to-Malbolge source with twelve ordered `putchar` effects pass.
+  The original conditional Fibonacci C source still fails closed at layout;
+  this is bounded guest synthesis, not general runtime C state or P0 closure.

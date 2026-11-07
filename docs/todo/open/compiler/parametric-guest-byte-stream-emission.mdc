@@ -795,3 +795,12 @@ a compiler capability gap, not a reason to return to N+1.
   independently replays the recovered guest under empty/nonempty input.
   Forged bytes refuse. Original twelve-output Fibonacci remains unsupported
   at layout; source C runtime state and general synthesis are still pending.
+- A red-first 39-instruction relocated guest with a no-op terminal emits
+  `a3 10 30 10 2a 11 2c 11 a2 01 a6 fc` through twelve real arithmetic
+  writes and outputs. The bounded production fallback previously omitted the
+  37-to-39-cell no-op loader seed and returned no guest despite independent
+  positional/VM proof. The restored seed preserves all existing search
+  priorities and limits. The pinned Clang C pipeline now emits this stream
+  with normative VM parity under empty and nonempty input, rejects an extra
+  source output and a forged guest byte, while the original Fibonacci still
+  refuses safely at layout. General synthesis and P0 remain pending.

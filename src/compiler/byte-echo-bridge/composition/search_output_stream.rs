@@ -747,13 +747,14 @@ pub(super) fn verified_short_output_layout<const N: usize>(
             // Additional source positions can create different loader
             // words; bound this wider fallback more tightly than the
             // established 36-cell proposals.
-            // A final data write changes the loader source seed without
-            // producing another byte. Preserve the established output and
-            // crazy-tail priorities before trying the rotation seed.
+            // A source-side terminal no-op also seeds distinct expanded
+            // memory at these lengths. Preserve the established output,
+            // crazy and rotation priorities before trying that seed.
             [
                 TerminalSuffix::Output,
                 TerminalSuffix::Crazy,
                 TerminalSuffix::Rotate,
+                TerminalSuffix::Noop,
             ]
             .into_iter()
             .find_map(|terminal| {
