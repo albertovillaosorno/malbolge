@@ -1895,6 +1895,183 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", refused.stderr)
                 self.assertFalse(guest.exists(), label)
 
+    def test_unsigned_complement_recurrence_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_complement_recurrence_output.c"
+        )
+        original = source.read_text()
+        self.assertIn("(~next) & 255U", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, variant, xor_key, trace in (
+                (
+                    "single",
+                    original,
+                    88,
+                    [(60, True, 195), (208, False, 27), (192, False, 25)],
+                ),
+                (
+                    "double",
+                    original.replace("~next", "~~next").replace("^ 88U", "^ 64U"),
+                    64,
+                    [(60, True, 60), (64, False, 9), (0, False, 1)],
+                ),
+            ):
+                a, b = 3, 5
+                observed: list[tuple[int, bool, int]] = []
+                for _ in range(3):
+                    following = ((a * b) << 2) & 255
+                    take_then = (following & 8) != 0
+                    if take_then:
+                        complement = (~following) & 0xFFFF_FFFF
+                        if label == "double":
+                            complement = (~complement) & 0xFFFF_FFFF
+                        a = complement & 255
+                    else:
+                        a = (following >> 3) ^ 1
+                    b = following
+                    observed.append((following, take_then, a))
+                self.assertEqual(observed, trace)
+                self.assertEqual(a ^ xor_key, 65)
+                candidate = Path(scratch) / f"complement-{label}.c"
+                _ = candidate.write_text(variant)
+                guest = candidate.with_suffix(".malbolge")
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/complement-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                self.assertTrue(guest.is_file())
+                for guest_input in (b"", bytes((255, 0, 128))):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=guest_input,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"A")
+                    self.assertRegex(
+                        executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                    )
+
+            for label, changed in {
+                "increment": original.replace("~next", "~next++"),
+                "assignment": original.replace("~next", "~(next += 1U)"),
+                "undefined": original.replace("~next", "~(next / (b - b))"),
+                "signed": original.replace("~next", "~(int)next"),
+                "unsupported-minus": original.replace("~next", "-next"),
+            }.items():
+                candidate = Path(scratch) / f"invalid-complement-{label}.c"
+                _ = candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/complement-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_unsigned_complement_ast_mutations_fail_closed(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_complement_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/complement-ast-v1",
+                str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        parsed = cast(dict[str, object], json.loads(frontend.stdout))
+        nodes = cast(list[dict[str, object]], parsed["nodes"])
+        unary = [
+            node
+            for node in nodes
+            if node["kind"] == "unary-expression" and node.get("operation") == "~"
+        ]
+        self.assertEqual(len(unary), 1)
+        expression = unary[0]
+        expression_id = expression["id"]
+        self.assertIsInstance(expression_id, int)
+        operands = [node for node in nodes if node["parent"] == expression_id]
+        self.assertEqual(len(operands), 1)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, node_id, field, value in (
+                ("operation", expression_id, "operation", "-"),
+                ("result-type", expression_id, "type", "i32"),
+                ("foreign-parent", expression_id, "parent", 0),
+                ("extra-metadata", expression_id, "literal", "0"),
+                ("operand-kind", operands[0]["id"], "kind", "call-expression"),
+                ("operand-type", operands[0]["id"], "type", "i32"),
+            ):
+                assert isinstance(node_id, int)
+                tampered = cast(dict[str, object], json.loads(frontend.stdout))
+                changed_nodes = cast(list[dict[str, object]], tampered["nodes"])
+                changed_nodes[node_id - 1][field] = value
+                guest = Path(scratch) / f"invalid-complement-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
     def test_conditional_expression_recurrence_reaches_real_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

@@ -109,6 +109,48 @@ impl<'node> Flow<'node> {
         Some((assignment.span.end.byte, value_source))
     }
 
+    /// Prove both operands of a pure, checked `u32` binary operator.
+    fn binary_expression(
+        &mut self,
+        parent: u32,
+        depth: usize,
+    ) -> Option<(u32, &'node Node)> {
+        let expression = self.take(parent, "binary-expression")?;
+        let operation = expression.operation.as_deref()?;
+        if !typed_operator(expression, operation) {
+            return None;
+        }
+        let child_depth = depth.checked_add(1)?;
+        let (left_value, left) = self.expression(expression.id, child_depth)?;
+        let (right_value, right) =
+            self.expression(expression.id, child_depth)?;
+        if !ordered_binary_spans(expression, left, right) {
+            return None;
+        }
+        let value = checked_u32_binary(operation, left_value, right_value)?;
+        Some((value, expression))
+    }
+
+    /// Prove a pure unsigned `~` over an entire checked expression subtree.
+    /// C complements all 32 unsigned bits; any later `& 255U` narrows it.
+    fn complement_expression(
+        &mut self,
+        parent: u32,
+        depth: usize,
+    ) -> Option<(u32, &'node Node)> {
+        let complement = self.take(parent, "unary-expression")?;
+        let (value, operand) =
+            self.expression(complement.id, depth.checked_add(1)?)?;
+        if !typed_operator(complement, "~")
+            || !span_within(&complement.span, &operand.span)
+            || complement.span.begin.byte >= operand.span.begin.byte
+            || complement.span.end.byte != operand.span.end.byte
+        {
+            return None;
+        }
+        Some((!value, complement))
+    }
+
     /// Prove a pure C Boolean tree, including negated comparisons.
     /// Both operands are proven even when `&&`/`||` would short-circuit;
     /// the admitted subtree contains no side effects or undefined operations.
@@ -344,10 +386,6 @@ impl<'node> Flow<'node> {
 
     /// Evaluate checked `u32` temporaries; narrow only at local stores/output.
     /// Consume the complete exact Clang expression subtree, never a prefix.
-    #[expect(
-        clippy::cognitive_complexity,
-        reason = "bounded AST expression proof"
-    )]
     fn expression(
         &mut self,
         parent: u32,
@@ -393,24 +431,8 @@ impl<'node> Flow<'node> {
             "conditional-expression" => {
                 self.conditional_expression(parent, depth)
             },
-            "binary-expression" => {
-                let expression = self.take(parent, "binary-expression")?;
-                let operation = expression.operation.as_deref()?;
-                if !typed_operator(expression, operation) {
-                    return None;
-                }
-                let child_depth = depth.checked_add(1)?;
-                let (left_value, left) =
-                    self.expression(expression.id, child_depth)?;
-                let (right_value, right) =
-                    self.expression(expression.id, child_depth)?;
-                if !ordered_binary_spans(expression, left, right) {
-                    return None;
-                }
-                let value =
-                    checked_u32_binary(operation, left_value, right_value)?;
-                Some((value, expression))
-            },
+            "unary-expression" => self.complement_expression(parent, depth),
+            "binary-expression" => self.binary_expression(parent, depth),
             _ => None,
         }
     }

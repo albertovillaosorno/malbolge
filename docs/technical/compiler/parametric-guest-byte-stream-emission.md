@@ -1011,3 +1011,32 @@ The unmodified original four-byte Fibonacci prefix `02 59 5f 08` still
 exhausts the expanded bounded grammar without a verified guest. This
 search-space expansion is not generalized byte-stream synthesis, dynamic
 C state or runtime control flow; the P0 remains open.
+
+### Source-proven unsigned bitwise complement in a stateful recurrence
+
+A complete three-iteration C recurrence first refused its first declaration
+when a conditional expression used `(~next) & 255U` in one branch. The closed
+unsigned expression evaluator previously supported binary operators and pure
+conditional values, but not unary `~`. It now proves the full Clang-backed
+`u32` unary subtree, including operation, type, ancestry, exact operand span
+and clean metadata. It computes the complement at the full 32-bit unsigned
+width before narrowing with the source-proven mask; a bitwise complement is
+not an eight-bit operation until the C expression explicitly makes it one.
+
+The tracked `local_complement_recurrence_output.c` uses checked multiplication,
+shifts, automatic state updates, a source-proven loop, both conditional arms,
+and one final output. Its independent three-step oracle visits `60, 208, 192`
+for `next`, takes true/false/false, ends at `a = 25`, and emits
+`25 ^ 88 = 65` (`0x41`). A double-complement source variant checks nested
+unary ancestry and unsigned width, visiting `60, 64, 0` and emitting
+`1 ^ 64 = 65`.
+
+Both reach actual normative Malbolge guest output under empty and nonempty
+input. Side-effecting or undefined operands, signed complement, unsupported
+unary minus and forged AST metadata reject without publishing a guest
+artifact. Tests cover actual guest stdout and adapter refusal.
+
+This implements **source-backed compile-time** C constant propagation only.
+The guest runs the output instructions, not the C multiplication, branching or
+bitwise operations. The original twelve-byte Fibonacci output still lacks an
+independently verified general layout, so the P0 remains pending.

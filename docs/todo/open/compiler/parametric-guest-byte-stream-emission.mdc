@@ -455,3 +455,20 @@ a compiler capability gap, not a reason to return to N+1.
   24-step layout, so this parity is not evidence that the expanded bound
   was needed by C lowering. The original `02 59 5f 08` four-byte prefix
   still lacks a witness; the twelve-byte P0 remains blocked.
+
+- A complete three-iteration C recurrence with automatic unsigned locals,
+  checked multiplication, shifting, conditional expression selection and a
+  masked bitwise complement first refused at the adapter's declaration.
+  The closed `u32` expression walker now proves the entire source-backed
+  unary `~` operand, its type, exact span, parent and metadata before taking
+  a 32-bit unsigned complement. The independent state trace for the active
+  complement variant visits `60, 208, 192`, selects true/false/false and
+  derives final output `25 ^ 88 = 65`. A nested double-complement variant
+  independently visits `60, 64, 0` and also emits `0x41`. Both complete C
+  variants reach real normative Malbolge VM output under empty and nonempty
+  input. Side-effecting increments, assignments, undefined division, signed
+  complement and unary-minus source mutations, plus forged unary AST type,
+  operation, parent, operand and metadata, refuse without guest publication.
+  This remains bounded compiler-time constant folding, not guest runtime
+  unsigned arithmetic, and the original twelve-byte Fibonacci layout P0
+  remains pending.
