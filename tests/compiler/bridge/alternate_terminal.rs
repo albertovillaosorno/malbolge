@@ -598,3 +598,62 @@ fn straight_write_search_reconstructs_nonfixture_twelve_byte_guest()
     }
     Ok(())
 }
+
+#[test]
+fn twelve_output_interleaved_repeated_guest_is_reconstructed() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    let prefix = 8;
+    let mut operations = vec![LinearOpcode::NoOperation; prefix];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0..12 {
+        if index != 3 {
+            operations.push(if index == 2 || index == 5 || index == 9 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            });
+        }
+        operations.push(LinearOpcode::OutputByte);
+    }
+    operations.extend([LinearOpcode::NoOperation, LinearOpcode::Halt]);
+    let expected = proposed_output_stream::<12>(&operations, &cells)
+        .ok_or_else(|| String::from("seed guest cannot execute"))?;
+    let source = verified_output_stream_layout(profile, &operations, expected, &cells)
+        .ok_or_else(|| String::from("independent guest rejected seed"))?;
+    if source.source().len() != 34 {
+        return Err(String::from("source-dependent seed length changed"));
+    }
+    let relocation = usize::from(cells[prefix][1]);
+    let mut altered_cells = cells.clone();
+    for cell in &mut altered_cells {
+        cell[4] = cell[0];
+    }
+    let mut tails = BTreeMap::new();
+    let memory = cached_output_tail(
+        &altered_cells, &mut tails, operations.len(), relocation + operations.len()
+    ).ok_or_else(|| String::from("missing guest seed"))?;
+    let proposal = proposed_geometry(
+        &cells,
+        &SearchGeometry {
+            memory,
+            prefix,
+            prefix_outputs: 0,
+            source_length: operations.len(),
+        },
+        expected,
+        TerminalSuffix::Noop,
+    ).ok_or_else(|| String::from("guest search missed proven repeated trace"))?;
+    let verified = verified_output_stream_layout(profile, &proposal, expected, &cells)
+        .ok_or_else(|| String::from("reconstructed trace fails VM proof"))?;
+    if verified.source().is_empty() {
+        return Err(String::from("verified guest is empty"));
+    }
+    let searched = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| String::from("bounded search missed guest"))?;
+    if searched.source().is_empty() {
+        return Err(String::from("bounded search returned no guest"));
+    }
+    Ok(())
+}

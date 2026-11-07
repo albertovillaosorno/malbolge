@@ -3211,6 +3211,11 @@ pub fn encode_distinct_literal_twelve(
         return search_output_stream::verified_straight_write_output_layout(
             profile, expected, &cells,
         )
+        .or_else(|| {
+            search_output_stream::verified_short_output_layout(
+                profile, expected, &cells,
+            )
+        })
         .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let mut operations = vec![LinearOpcode::NoOperation];

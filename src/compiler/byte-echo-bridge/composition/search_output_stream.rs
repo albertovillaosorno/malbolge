@@ -144,6 +144,16 @@ fn append_successors<const N: usize>(
                 successors.insert((count, candidate_accumulator), index);
         }
     }
+    // For longer streams, retain diverse low-byte accumulator states at
+    // each output progress level. This is a deterministic proposal beam,
+    // not an equivalence proof: discarded high-word states may have distinct
+    // successors, and every completed guest still needs independent replay.
+    if target_emitted >= 8 {
+        let mut byte_representatives = std::collections::BTreeSet::new();
+        successors.retain(|&(emitted, accumulator), _| {
+            byte_representatives.insert((emitted, accumulator & 255))
+        });
+    }
     successors
 }
 
@@ -254,6 +264,8 @@ fn verified_terminal_layout<const N: usize>(
     expected: [u8; N],
     source_cells: &[[u8; 6]],
     terminal: TerminalSuffix,
+    maximum_length: usize,
+    maximum_prefix: usize,
 ) -> Option<LinearLayout> {
     let mut tails = BTreeMap::new();
     // Only the last two source cells seed expansion beyond source.
@@ -268,8 +280,10 @@ fn verified_terminal_layout<const N: usize>(
         }
     }
     let leading_zeros = expected.iter().take_while(|&&byte| byte == 0).count();
-    for length in N.saturating_add(4)..=MAX_SOURCE_LENGTH {
-        let max_prefix = length.saturating_sub(N.saturating_add(3)).min(30);
+    for length in N.saturating_add(4)..=maximum_length.min(MAX_SOURCE_LENGTH) {
+        let max_prefix = length
+            .saturating_sub(N.saturating_add(3))
+            .min(maximum_prefix);
         for prefix in 0..=max_prefix {
             let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
             if relocation < length || relocation.saturating_add(length) >= 4096
@@ -433,12 +447,33 @@ pub(super) fn verified_state_space_output_layout<const N: usize>(
         TerminalSuffix::Rotate,
     ] {
         if let Some(layout) =
-            verified_terminal_layout(profile, expected, source_cells, terminal)
+            verified_terminal_layout(
+                profile, expected, source_cells, terminal, MAX_SOURCE_LENGTH, 30,
+            )
         {
             return Some(layout);
         }
     }
     None
+}
+
+/// Try short multi-effect guest traces without extending hostile-input cost.
+///
+/// Unlike a fixed `p`/output ladder, this bounded beam admits repeated
+/// outputs and intervening arithmetic and no-op strides. The beam may miss
+/// valid guests; its proposals never bypass independent positional and VM
+/// verification. Longer geometries remain future linker work.
+pub(super) fn verified_short_output_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if N == 0 || N > 12 {
+        return None;
+    }
+    verified_terminal_layout(
+        profile, expected, source_cells, TerminalSuffix::Noop, 36, 12,
+    )
 }
 
 #[cfg(test)]

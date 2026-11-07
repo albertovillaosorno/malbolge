@@ -618,3 +618,13 @@ a compiler capability gap, not a reason to return to N+1.
   original Fibonacci `02 59 5f 08 57 4f 22 6d 03 90 b3 23` still refuses
   without an artifact. This is not dynamic guest arithmetic or C control
   flow, and P0 remains pending.
+
+- A twelve-effect C literal stream previously failed at guest layout because
+  its repeated value requires output without a new arithmetic write. A short
+  bounded state-space beam now reconstructs a 34-step positional guest for
+  `3e 09 0d 0d 28 2e 13 3d 0a 2e 0a 3d` after independent Clang/SSA proof.
+  The real current-profile VM emits exactly those bytes on empty/nonempty
+  stdin, while a thirteenth output refuses without publication. The beam
+  prunes only proposals; the independent layout/VM checker still admits
+  every output. Original twelve-byte Fibonacci layout remains unsupported,
+  so generalized P0 acceptance stays pending.

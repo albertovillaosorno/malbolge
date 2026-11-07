@@ -1380,3 +1380,23 @@ without an artifact; the historical 27-step twelve-byte guest remains
 unchanged. The original twelve-byte Fibonacci trace remains unsupported
 by this bounded search, and P0 is still open. This is a compiler-time
 constant byte stream, not dynamic guest execution of C state or branches.
+
+### Interleaved repeated-output guest layout
+
+A nonfixture twelve-effect literal C program initially passed Clang-backed
+source admission but refused at `Layout(UnsupportedEffectTrace)`. The stream
+`3e 09 0d 0d 28 2e 13 3d 0a 2e 0a 3d` requires a repeated guest output
+without another arithmetic write, plus mixed `p` and `*` instructions. A
+source-independent 34-instruction seed was independently decoded and run in
+the normative VM, then reconstructed by a bounded accumulator-state beam.
+The beam preserves one deterministic representative per progress/low-byte
+class; this is a proposal heuristic, not a proof of high-word equivalence.
+A short (at most 36-cell, at most 12-prefix) search now supplements the
+straight-write twelve-byte grammar; every proposal must pass full positional
+admission, disjoint-write checks and VM replays before publication.
+
+The complete C-to-Malbolge pipeline emits that exact binary stream in 34
+real guest steps under empty and nonempty stdin. An extra selected C output
+refuses without an artifact. The original Fibonacci stream
+`02 59 5f 08 57 4f 22 6d 03 90 b3 23` still lacks a guest witness,
+and neither dynamic C state nor general byte-stream synthesis is implemented.

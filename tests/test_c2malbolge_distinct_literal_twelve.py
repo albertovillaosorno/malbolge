@@ -58,6 +58,8 @@ EXPECTED = bytes(
 )
 ALTERNATE = bytes([81, 55, 52, 56, 80, 139, 207, 185, 178, 186, 206, 157])
 ALTERNATE_SOURCE = " ".join(f"putchar({value});" for value in ALTERNATE)
+INTERLEAVED = bytes([62, 9, 13, 13, 40, 46, 19, 61, 10, 46, 10, 61])
+INTERLEAVED_SOURCE = " ".join(f"putchar({value});" for value in INTERLEAVED)
 SOURCE = (
     "putchar(81); putchar(55); putchar(52); putchar(56); "
     "putchar(251); putchar(206); putchar(159); putchar(152); "
@@ -168,6 +170,35 @@ class TwelveDistinctGuestLiteralTests(unittest.TestCase):
             altered = ALTERNATE_SOURCE + " putchar(1);"
             refused, absent = self.compile(directory, "extra-output", altered)
             self.assertNotEqual(refused.returncode, 0)
+            self.assertFalse(absent.exists())
+
+    def test_interleaved_repeated_outputs_are_executed_by_guest(self) -> None:
+        # The fourth C output repeats the third distinct SSA definition's
+        # value, without introducing another guest arithmetic write. The
+        # original single-write-per-output grammar refused this full source.
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:
+            directory = Path(temp)
+            compiled, artifact = self.compile(
+                directory, "interleaved-twelve", INTERLEAVED_SOURCE
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            for guest_input in (b"", b"\x00\xff\x80"):
+                with self.subTest(stdin=guest_input):
+                    result = subprocess.run(
+                        [str(VM), str(artifact), "--input-stdin", "--report-steps"],
+                        input=guest_input,
+                        capture_output=True,
+                        check=False,
+                        timeout=60,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, INTERLEAVED)
+                    self.assertEqual(result.stderr, b"malbolge-steps-v1:34\n")
+            extra, absent = self.compile(
+                directory, "interleaved-extra", INTERLEAVED_SOURCE + " putchar(1);"
+            )
+            self.assertNotEqual(extra.returncode, 0)
             self.assertFalse(absent.exists())
 
     def test_unproved_twelve_byte_values_and_short_prefixes_refuse(self) -> None:
