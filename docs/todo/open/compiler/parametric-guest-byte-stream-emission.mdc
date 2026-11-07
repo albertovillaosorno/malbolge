@@ -685,3 +685,15 @@ a compiler capability gap, not a reason to return to N+1.
   only retained reconstruction records. Focused regressions and the
   independent twelve-byte interleaved guest still pass. The original
   Fibonacci stream remains without a guest layout and P0 stays open.
+
+- A red-first three-step guest-continuation regression proved that fixed
+  immediate/delayed/two-write beam priorities can discard a middle full
+  accumulator word. With future loader words `1, 2, 2`, only word 259 among
+  `3, 259, 515` reaches pending byte 54 through three genuine `p` writes.
+  The bounded beam now ranks shortest matching paths of up to three
+  `p`/no-op steps using actual loader words, retaining at most eight full
+  words per progress/byte group. Changed-third-word and remaining-capacity
+  negative controls, sixteen focused bridge tests, independent interleaved
+  twelve-byte guest reconstruction and full source-C/VM parity pass. The
+  original Fibonacci layout remains unwitnessed; dynamic guest C state and
+  general byte-stream synthesis are still unimplemented. P0 stays open.

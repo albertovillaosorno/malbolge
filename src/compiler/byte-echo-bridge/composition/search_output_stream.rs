@@ -68,17 +68,43 @@ struct SearchWord {
     value: u32,
     next_value: u32,
     next_next_value: u32,
+    next_next_next_value: u32,
 }
 
 struct BeamRepresentatives {
     smallest: u32,
     largest: u32,
-    next_smallest: Option<u32>,
-    next_largest: Option<u32>,
-    delayed_smallest: Option<u32>,
-    delayed_largest: Option<u32>,
-    two_write_smallest: Option<u32>,
-    two_write_largest: Option<u32>,
+    reachable: [Option<(u32, u32)>; 3],
+}
+
+/// The only instructions that distinguish full accumulator words are p and
+/// no-op: * replaces the accumulator with a value independent of its past.
+/// Look ahead through real future loader words, bounded to three cells and
+/// leaving one cell for the pending output instruction. These are beam hints,
+/// not a claim that words with the same low byte are equivalent.
+fn reachable_next_byte(
+    accumulator: u32,
+    future: [u32; 3],
+    remaining: usize,
+    target: u8,
+) -> Option<usize> {
+    let mut words = [accumulator; 8];
+    let mut count = 1usize;
+    for (offset, data) in future
+        .into_iter()
+        .take(remaining.saturating_sub(1).min(3))
+        .enumerate()
+    {
+        for index in 0..count {
+            let changed = malbolge::profile_crazy(data, words[index], 15);
+            if matches_byte(changed, target) {
+                return Some(offset + 1);
+            }
+            words[count + index] = changed;
+        }
+        count *= 2;
+    }
+    None
 }
 
 #[derive(Clone, Copy)]
@@ -141,6 +167,7 @@ fn append_successors<const N: usize>(
         value,
         next_value,
         next_next_value,
+        next_next_next_value,
         remaining,
         target_emitted,
     } = word;
@@ -189,14 +216,9 @@ fn append_successors<const N: usize>(
                 });
         }
     }
-    // The low byte determines an output effect, but p observes the entire
-    // fifteen-trit accumulator. In addition to the extreme full words,
-    // preserve extreme words whose next p write reaches the pending byte.
-    // Also preserve states that require one no-op before that write: the
-    // next loader word can miss a byte which the word after it can reach.
-    // Two consecutive p writes can reach a byte that neither individual
-    // data word reaches from the original accumulator. The beam still
-    // cannot prove general multi-step or non-linear guest synthesis.
+    // Keep full-word extremes plus two representatives for each shortest
+    // reachable-byte distance. This avoids privileging one hard-coded
+    // sequence of p and no-op operations while retaining a finite beam.
     if target_emitted >= 8 {
         let mut representatives =
             BTreeMap::<(usize, u8), BeamRepresentatives>::new();
@@ -206,67 +228,24 @@ fn append_successors<const N: usize>(
                 .or_insert(BeamRepresentatives {
                     smallest: accumulator,
                     largest: accumulator,
-                    next_smallest: None,
-                    next_largest: None,
-                    delayed_smallest: None,
-                    delayed_largest: None,
-                    two_write_smallest: None,
-                    two_write_largest: None,
+                    reachable: [None; 3],
                 });
             group.largest = accumulator;
-            if expected.get(emitted).is_some_and(|&byte| {
-                byte != accumulator as u8
-                    && matches_byte(
-                        malbolge::profile_crazy(next_value, accumulator, 15),
-                        byte,
-                    )
-            }) {
-                let _previous = group.next_smallest.get_or_insert(accumulator);
-                group.next_largest = Some(accumulator);
-            }
-            // After this instruction, a no-op and p must still leave an
-            // instruction for the requested output. No-op advances D
-            // without changing A, so use the actual later loader word.
-            if remaining >= 3
-                && expected.get(emitted).is_some_and(|&byte| {
-                    byte != accumulator as u8
-                        && matches_byte(
-                            malbolge::profile_crazy(
-                                next_next_value,
-                                accumulator,
-                                15,
-                            ),
-                            byte,
-                        )
-                })
-            {
-                let _previous =
-                    group.delayed_smallest.get_or_insert(accumulator);
-                group.delayed_largest = Some(accumulator);
-            }
-            // Both p writes advance D. The current candidate has already
-            // consumed its instruction, so the first reads next_value and
-            // the second reads next_next_value from the real loader tail.
-            if remaining >= 3
-                && expected.get(emitted).is_some_and(|&byte| {
-                    byte != accumulator as u8
-                        && matches_byte(
-                            malbolge::profile_crazy(
-                                next_next_value,
-                                malbolge::profile_crazy(
-                                    next_value,
-                                    accumulator,
-                                    15,
-                                ),
-                                15,
-                            ),
-                            byte,
-                        )
-                })
-            {
-                let _previous =
-                    group.two_write_smallest.get_or_insert(accumulator);
-                group.two_write_largest = Some(accumulator);
+            if let Some(&target) = expected.get(emitted) {
+                if target != accumulator as u8 {
+                    if let Some(distance) = reachable_next_byte(
+                        accumulator,
+                        [next_value, next_next_value, next_next_next_value],
+                        remaining,
+                        target,
+                    ) {
+                        let slot = &mut group.reachable[distance - 1];
+                        match slot {
+                            Some((_, largest)) => *largest = accumulator,
+                            None => *slot = Some((accumulator, accumulator)),
+                        }
+                    }
+                }
             }
         }
         proposals.retain(|&(emitted, accumulator), _| {
@@ -275,12 +254,12 @@ fn append_successors<const N: usize>(
                 .is_some_and(|group| {
                     accumulator == group.smallest
                         || accumulator == group.largest
-                        || group.next_smallest == Some(accumulator)
-                        || group.next_largest == Some(accumulator)
-                        || group.delayed_smallest == Some(accumulator)
-                        || group.delayed_largest == Some(accumulator)
-                        || group.two_write_smallest == Some(accumulator)
-                        || group.two_write_largest == Some(accumulator)
+                        || group.reachable.iter().flatten().any(
+                            |&(smallest, largest)| {
+                                accumulator == smallest
+                                    || accumulator == largest
+                            },
+                        )
                 })
         });
     }
@@ -375,6 +354,7 @@ fn proposed_geometry<const N: usize>(
                 value: *memory.get(address)?,
                 next_value: *memory.get(address.checked_add(1)?)?,
                 next_next_value: *memory.get(address.checked_add(2)?)?,
+                next_next_next_value: *memory.get(address.checked_add(3)?)?,
             },
             expected,
         );

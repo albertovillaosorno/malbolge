@@ -1549,3 +1549,31 @@ interleaved guest remains accepted; the original Fibonacci trace still
 fails closed at layout. Longer write sequences and alternative guest
 control flow may require a different search grammar. No proposal is
 published without positional, write-disjointness, and normative VM proof.
+
+### Bounded multi-step guest-byte continuation
+
+The original complete Fibonacci C program still reaches typed byte effects but
+has no accepted guest layout. A red-first successor experiment then exposed a
+more general loss in the long-stream accumulator beam: words 3, 259 and 515
+share output byte 3, but with subsequent loader words 1, 2, 2 only word 259
+can reach byte 54 within three physical `p` instructions. The prior beam kept
+only extrema and fixed immediate, delayed and two-write patterns, so it
+discarded that valid middle-word continuation.
+
+The proposal search now looks ahead through up to three **actual** future
+loader words, considering `p` and no-op at each position. A rotation erases
+prior accumulator identity, so it cannot distinguish grouped full words. For
+each pending-byte class the beam keeps full-word extrema plus up to two
+representatives for each shortest matching lookahead distance. The output
+instruction consumes a further cell; insufficient remaining capacity prevents
+false retention. This replaces the separate short-pattern selectors without
+increasing the maximum eight retained words per progress/low-byte class.
+
+The red-first three-write path, changed-third-word negative control and
+instruction-capacity limit now pass. All sixteen focused bridge search tests,
+independent twelve-byte interleaved guest reconstruction, and full pinned C
+interleaved guest/VM parity pass. The original twelve-byte Fibonacci program
+still refuses with `Layout(UnsupportedEffectTrace)` and no guest artifact.
+The beam remains a bounded proposal heuristic: a valid fourth-step path or a
+non-extremal full word may still be missed. The independent layout decoder and
+normative empty/nonempty-input VM replay remain mandatory for every publication.

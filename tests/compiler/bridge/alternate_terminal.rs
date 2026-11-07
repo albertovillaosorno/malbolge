@@ -702,6 +702,7 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 14,
             target_emitted: 8,
         },
@@ -716,6 +717,7 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 13,
             target_emitted: 8,
         },
@@ -741,6 +743,7 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 22,
             target_emitted: 8,
         },
@@ -758,6 +761,7 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 21,
             target_emitted: 8,
         },
@@ -774,6 +778,7 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 20,
             target_emitted: 8,
         },
@@ -806,6 +811,7 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 22,
             target_emitted: 8,
         },
@@ -822,6 +828,7 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
             value: 0,
             next_value: 2,
             next_next_value: 2,
+            next_next_next_value: 2,
             remaining: 22,
             target_emitted: 8,
         },
@@ -835,6 +842,7 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 21,
             target_emitted: 8,
         },
@@ -862,6 +870,7 @@ fn guest_output_beam_records_only_retained_predecessors() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 30,
             target_emitted: 8,
         },
@@ -896,6 +905,7 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
             value: 0,
             next_value: 2,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 22,
             target_emitted: 8,
         },
@@ -913,6 +923,7 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
             value: 2,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 21,
             target_emitted: 8,
         },
@@ -925,6 +936,7 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 20,
             target_emitted: 8,
         },
@@ -943,6 +955,7 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
             value: 0,
             next_value: 2,
             next_next_value: 2,
+            next_next_next_value: 2,
             remaining: 22,
             target_emitted: 8,
         },
@@ -973,6 +986,7 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
             value: 0,
             next_value: 2,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 22,
             target_emitted: 8,
         },
@@ -1000,6 +1014,7 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
             value: 2,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 21,
             target_emitted: 8,
         },
@@ -1012,6 +1027,7 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
             value: 0,
             next_value: 0,
             next_next_value: 0,
+            next_next_next_value: 0,
             remaining: 20,
             target_emitted: 8,
         },
@@ -1028,10 +1044,107 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
             value: 0,
             next_value: 2,
             next_next_value: 2,
+            next_next_next_value: 1,
             remaining: 22,
             target_emitted: 8,
         },
         expected,
     );
     assert!(!negative.contains_key(&(1, 259)));
+}
+
+#[test]
+fn guest_output_beam_preserves_three_step_guest_byte_reachability() {
+    // Three states with the same current byte can agree on every short
+    // continuation but differ after three consecutive real crazy writes.
+    // For future loader words [1, 2, 2], only the middle state reaches 54.
+    let states = BTreeMap::from([
+        ((0, 3u32), 0usize),
+        ((0, 259u32), 0usize),
+        ((0, 515u32), 0usize),
+    ]);
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let expected = [3, 54, 54, 54, 54, 54, 54, 54];
+    let first = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 1,
+            next_next_value: 2,
+            next_next_next_value: 2,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(first.contains_key(&(1, 259)), "lost three-step path");
+    let first_write = malbolge::profile_crazy(1, 259, 15);
+    let second_write = malbolge::profile_crazy(2, first_write, 15);
+    let third_write = malbolge::profile_crazy(2, second_write, 15);
+    assert_eq!(third_write & 255, 54);
+    let second = append_successors(
+        &first,
+        &mut steps,
+        SearchWord {
+            value: 1,
+            next_value: 2,
+            next_next_value: 2,
+            next_next_next_value: 0,
+            remaining: 21,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(second.contains_key(&(1, first_write)));
+    let third = append_successors(
+        &second,
+        &mut steps,
+        SearchWord {
+            value: 2,
+            next_value: 2,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 20,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(third.contains_key(&(1, second_write)));
+    let fourth = append_successors(
+        &third,
+        &mut steps,
+        SearchWord {
+            value: 2,
+            next_value: 0,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 19,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(fourth.contains_key(&(1, third_write)));
+
+    // The changed third loader word has no matching short continuation.
+    let negative = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 1,
+            next_next_value: 2,
+            next_next_next_value: 0,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(!negative.contains_key(&(1, 259)));
+    // Three writes still need a fourth instruction for the actual output.
+    assert_eq!(reachable_next_byte(259, [1, 2, 2], 4, 54), Some(3));
+    assert_eq!(reachable_next_byte(259, [1, 2, 2], 3, 54), None);
 }
