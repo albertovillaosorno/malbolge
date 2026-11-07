@@ -637,3 +637,14 @@ a compiler capability gap, not a reason to return to N+1.
   independent positional/VM verification, and the source-C Fibonacci program
   still refuses without publication. These exact feasibility bounds prune
   impossible geometries but do not complete generalized P0 synthesis.
+
+- A red-first search regression exposed distinct full-word guest states with
+  the same low output byte: accumulator 3 and 259 can both emit 3, but the
+  following crazy operation with word zero yields 50 and 53 respectively.
+  The bounded beam now preserves both minimum and maximum full words per
+  output-progress/byte class rather than only the first representative.
+  A second regression exposed 46 reconstruction records for 16 surviving
+  successor states; only retained predecessors now consume history budget.
+  The independently replayed twelve-byte interleaved guest and full pinned
+  C pipeline still work. The original Fibonacci program still refuses at
+  layout, so the P0 general emission acceptance remains pending.

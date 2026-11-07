@@ -1431,3 +1431,32 @@ source-external writes, and replayed on the normative VM under empty and
 nonempty input. The original twelve-byte Fibonacci target remains open;
 no guest runtime implementation of general C state or control flow follows
 from this pruning.
+
+### Preserving bounded high-word guest continuations
+
+Reattempting the complete twelve-iteration Fibonacci C program after exact
+capacity pruning still reached typed source admission but refused at
+`Layout(UnsupportedEffectTrace)`. The long-stream search had a separate
+false-negative mechanism: it retained only the smallest fifteen-trit
+accumulator word for each `(emitted effects, low output byte)` group, although
+`p` uses the full word when computing the next accumulator. A red-first
+successor regression shows that words 3 and 259 both emit byte 3 but a
+subsequent crazy operation with data word zero yields bytes 50 and 53,
+respectively. Discarding 259 loses the latter valid continuation.
+
+For traces of at least eight effects, the proposal beam now retains the
+smallest and largest **full accumulator words** per output-progress/low-byte
+group. It still enforces finite source, state and work budgets. An additional
+red-first test showed that the search previously recorded discarded
+predecessors as permanent reconstruction steps (46 records for 16 surviving
+successors). It now materializes only the retained predecessor steps,
+keeping history growth aligned with live search paths. Shorter traces keep
+their established deterministic search behavior.
+
+The known twelve-byte interleaved source-independent witness remains
+independently decoded and replayed in the normative guest VM; the complete
+Clang-to-Malbolge C regression still emits its exact 34-step binary stream
+on empty and nonempty input. The original Fibonacci stream still has no
+admitted guest layout. Keeping two extreme words does not prove equivalence
+of discarded middle states, and neither static C replay nor this heuristic
+search implements arbitrary guest runtime arithmetic or control flow.

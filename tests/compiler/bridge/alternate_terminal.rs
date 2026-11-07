@@ -719,3 +719,82 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
     );
     assert!(!impossible.contains_key(&(1, 0)));
 }
+
+#[test]
+fn guest_output_search_retains_distinct_high_word_continuations() {
+    // Equal output bytes do not imply equivalent guest state: the next
+    // crazy operation observes all fifteen trits, not just the low byte.
+    let states = BTreeMap::from([((0, 3u32), 0usize), ((0, 259u32), 0usize)]);
+    let expected = [3, 53, 53, 53, 53, 53, 53, 53];
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let after_first = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(after_first.contains_key(&(1, 3)));
+    assert!(after_first.contains_key(&(1, 259)));
+
+    // The second state reaches 53; the first reaches 50. Dropping the
+    // high-word alternative loses an otherwise admissible output path.
+    let after_write = append_successors(
+        &after_first,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            remaining: 21,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    let second_word = malbolge::profile_crazy(0, 259, 15);
+    assert_eq!(second_word & 255, 53);
+    assert_eq!(malbolge::profile_crazy(0, 3, 15) & 255, 50);
+    assert!(after_write.contains_key(&(1, second_word)));
+    let after_second = append_successors(
+        &after_write,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            remaining: 20,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(after_second.contains_key(&(2, second_word)));
+}
+
+#[test]
+fn guest_output_beam_records_only_retained_predecessors() {
+    let states = (0u32..16)
+        .map(|high| ((0usize, high * 256), 0usize))
+        .collect::<BTreeMap<_, _>>();
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let prior_steps = steps.len();
+    let successors = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            remaining: 30,
+            target_emitted: 8,
+        },
+        [0; 8],
+    );
+    assert!(!successors.is_empty());
+    // Discarded high-word proposals must not consume the reconstruction
+    // history or prematurely exhaust its bounded memory budget.
+    assert_eq!(steps.len() - prior_steps, successors.len());
+    assert!(successors.values().all(|&index| index < steps.len()));
+}

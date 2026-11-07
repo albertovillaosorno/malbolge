@@ -129,7 +129,7 @@ fn append_successors<const N: usize>(
         remaining,
         target_emitted,
     } = word;
-    let mut successors = BTreeMap::new();
+    let mut proposals = BTreeMap::new();
     let rotated = value
         .div_euclid(3)
         .saturating_add(value.rem_euclid(3).saturating_mul(HIGH_TRIT_WEIGHT));
@@ -163,25 +163,43 @@ fn append_successors<const N: usize>(
                     candidate_accumulator as u8,
                     pending,
                 ))
-                || successors.contains_key(&(count, candidate_accumulator))
+                || proposals.contains_key(&(count, candidate_accumulator))
             {
                 continue;
             }
-            let index = steps.len();
-            steps.push(SearchStep { operation, predecessor });
             let _previous =
-                successors.insert((count, candidate_accumulator), index);
+                proposals.insert((count, candidate_accumulator), SearchStep {
+                    operation,
+                    predecessor,
+                });
         }
     }
-    // For longer streams, retain diverse low-byte accumulator states at
-    // each output progress level. This is a deterministic proposal beam,
-    // not an equivalence proof: discarded high-word states may have distinct
-    // successors, and every completed guest still needs independent replay.
+    // The low byte determines an output effect, but p observes the entire
+    // fifteen-trit accumulator. Preserve both extreme high-word states for
+    // each output progress/byte bucket, instead of discarding every state
+    // except the smallest word. This is still a bounded proposal beam, not
+    // an equivalence proof; intermediate words may lead to other effects.
     if target_emitted >= 8 {
-        let mut byte_representatives = std::collections::BTreeSet::new();
-        successors.retain(|&(emitted, accumulator), _| {
-            byte_representatives.insert((emitted, accumulator & 255))
+        let mut extremes = BTreeMap::<(usize, u8), (u32, u32)>::new();
+        for &(emitted, accumulator) in proposals.keys() {
+            let _representative = extremes
+                .entry((emitted, accumulator as u8))
+                .and_modify(|pair| pair.1 = accumulator)
+                .or_insert((accumulator, accumulator));
+        }
+        proposals.retain(|&(emitted, accumulator), _| {
+            extremes.get(&(emitted, accumulator as u8)).is_some_and(
+                |&(low, high)| accumulator == low || accumulator == high,
+            )
         });
+    }
+    // Record only retained paths: candidate fan-out is not a completed
+    // search step, and discards must not exhaust the history budget.
+    let mut successors = BTreeMap::new();
+    for (key, step) in proposals {
+        let index = steps.len();
+        steps.push(step);
+        let _previous = successors.insert(key, index);
     }
     successors
 }
