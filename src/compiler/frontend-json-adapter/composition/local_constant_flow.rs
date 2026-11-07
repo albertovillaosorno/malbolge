@@ -169,6 +169,14 @@ impl<'node> Flow<'node> {
         if depth > MAX_EXPRESSION_DEPTH {
             return None;
         }
+        // C conditions test whether a scalar is zero, not just the result
+        // of an explicit comparison. Admit only a complete source-proven
+        // unsigned expression; the ordinary walker rejects side effects,
+        // unsupported casts and undefined operations in every subtree.
+        if self.peek()?.type_name.as_deref() == Some("u32") {
+            let (value, expression) = self.expression(parent, depth)?;
+            return Some((value != 0, expression));
+        }
         if self.peek()?.kind == "parenthesized-expression" {
             return self.grouped_condition(parent, depth);
         }

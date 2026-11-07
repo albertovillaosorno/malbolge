@@ -1070,3 +1070,27 @@ This is **compile-time** folding of a bounded, fully known C recurrence. It
 does not implement runtime C integers or dynamic guest loops, and it does not
 solve the original `02 59 5f 08` prefix or the twelve-byte Fibonacci layout.
 The generalized byte-stream P0 remains pending.
+
+### Source-proven unsigned zero/nonzero predicates
+
+A complete three-iteration C recurrence with automatic unsigned state,
+checked multiplication, left/right shifts, an `if/else` and final output
+initially refused at the first declaration for `if ((next & 8U))`. The
+pinned Clang AST reports an unsigned scalar expression as the condition,
+not an `i32` comparison. The bounded constant-flow proof now consumes a
+complete `u32` expression and selects the arm when its evaluated value is
+nonzero, following C scalar truth semantics. The existing expression walker
+checks Clang ancestry, exact types and spans, and pure defined arithmetic;
+side effects and unsupported casts cannot be discarded.
+
+For `next = ((a * b) << 2U) & 255U`, starting from `a=3`, `b=5`,
+the independent recurrence visits `60`, `160`, `128`. Masked truth selects
+then/else/else, producing final `a=127` and `127 ^ 62 = 65` (`0x41`).
+The complete pinned C-to-Malbolge pipeline emitted this byte in 31 real
+normative VM steps. The source test also covers direct unsigned-local
+truthiness; mutated C side effects, zero division, signed casts and forged
+Clang operator/type/ancestry/metadata must refuse without publication.
+
+This is bounded **compile-time** condition selection over already known
+unsigned values; it adds neither guest runtime branching nor a general
+byte-stream layout. The original twelve-byte Fibonacci P0 remains open.

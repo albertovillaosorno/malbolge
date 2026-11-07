@@ -1832,11 +1832,18 @@ class CompoundCPipelineTests(unittest.TestCase):
                     capture_output=True,
                     timeout=90,
                 )
-                self.assertEqual(compiled.returncode, 0, (label, compiled.stderr))
+                self.assertEqual(
+                    compiled.returncode, 0, (label, compiled.stderr)
+                )
                 self.assertTrue(guest.is_file())
                 for data in (b"", bytes((255, 0, 128))):
                     executed = subprocess.run(
-                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        [
+                            str(VM),
+                            str(guest),
+                            "--input-stdin",
+                            "--report-steps",
+                        ],
                         input=data,
                         check=False,
                         capture_output=True,
@@ -1874,6 +1881,177 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 self.assertNotEqual(refused.returncode, 0, label)
                 self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_unsigned_truthy_conditions_reach_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_truthy_condition_recurrence_output.c"
+        )
+        original = source.read_text()
+        self.assertIn("if ((next & 8U))", original)
+        variants = (
+            ("masked", "(next & 8U)", [True, False, False]),
+            ("bare", "next", [True, True, True]),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, condition, expected_branches in variants:
+                a, b = 3, 5
+                branches = []
+                for _ in range(3):
+                    next_value = ((a * b) << 2) & 255
+                    selected = (
+                        (next_value & 8) != 0
+                        if label == "masked"
+                        else next_value != 0
+                    )
+                    branches.append(selected)
+                    a = ((next_value >> 3) ^ 1) if selected else next_value - 1
+                    b = next_value
+                self.assertEqual(branches, expected_branches, label)
+                self.assertLessEqual(a, 255)
+                changed = original.replace("(next & 8U)", condition, 1).replace(
+                    "a ^ 62U", f"a ^ {a ^ 65}U"
+                )
+                candidate = Path(scratch) / f"truthy-{label}.c"
+                candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/truthy-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, (label, compiled.stderr))
+                self.assertTrue(guest.is_file())
+                for data in (b"", bytes((255, 0, 128))):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=data,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"A", label)
+                    self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+            for label, changed in {
+                "increment": original.replace("next & 8U", "next++ & 8U", 1),
+                "impure-call": original.replace(
+                    "next & 8U", "putchar(70) & 8U", 1
+                ),
+                "undefined-divisor": original.replace(
+                    "next & 8U", "(next & 8U) / 0U", 1
+                ),
+                "signed-cast": original.replace(
+                    "if ((next & 8U))", "if ((int)(next & 8U))", 1
+                ),
+            }.items():
+                candidate = Path(scratch) / f"invalid-truthy-{label}.c"
+                candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/truthy-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_unsigned_truthy_ast_mutations_refuse_publication(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_truthy_condition_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/truthy-ast-v1",
+                str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        parsed = cast(dict[str, object], json.loads(frontend.stdout))
+        nodes = cast(list[dict[str, object]], parsed["nodes"])
+        branch = next(node for node in nodes if node["kind"] == "if-statement")
+        grouped = next(
+            node
+            for node in nodes
+            if node["parent"] == branch["id"]
+            and node["kind"] == "parenthesized-expression"
+        )
+        condition = next(
+            node
+            for node in nodes
+            if node["parent"] == grouped["id"]
+            and node["kind"] == "binary-expression"
+            and node.get("operation") == "&"
+        )
+        condition_id = condition["id"]
+        self.assertIsInstance(condition_id, int)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, field, value in (
+                ("operator", "operation", "||"),
+                ("type", "type", "i32"),
+                ("parent", "parent", 0),
+                ("literal", "literal", "1"),
+            ):
+                tampered = cast(dict[str, object], json.loads(frontend.stdout))
+                changed_nodes = cast(list[dict[str, object]], tampered["nodes"])
+                changed_nodes[condition_id - 1][field] = value
+                guest = Path(scratch) / f"invalid-truthy-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
                 self.assertFalse(guest.exists(), label)
 
     def test_negated_logical_recurrence_reaches_real_guest(self) -> None:

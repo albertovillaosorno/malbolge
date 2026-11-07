@@ -483,3 +483,12 @@ a compiler capability gap, not a reason to return to N+1.
   Undefined division, source increments and a signed complement reject
   without publication. C state is still compile-time folded; the original
   four-byte Fibonacci prefix and general guest layout remain unimplemented.
+
+- A full three-iteration C recurrence exposed refusal of the ordinary
+  `if ((next & 8U))` unsigned-zero test. The source-checked predicate
+  evaluator now proves the entire pure `u32` expression before applying
+  C zero/nonzero truth semantics. Independent state values `60, 160, 128`
+  select then/else/else, and the pinned C-to-Malbolge pipeline emits
+  `0x41` in 31 normative VM steps. Direct unsigned-local predicate and
+  hostile source/AST variants are regression targets. This remains
+  compiler-time state folding and does not unblock the twelve-byte layout.
