@@ -410,14 +410,8 @@ fn verified_terminal_layout<const N: usize>(
             *cell.get_mut(4)? = encoded;
         }
     }
-    // Once body output is complete, this proposal pads with no-ops.
-    // Thus no arithmetic write separates the last two output effects.
-    if N >= 8
-        && matches!(terminal, TerminalSuffix::Output)
-        && expected[N - 1] != expected[N - 2]
-    {
-        return None;
-    }
+    // The body can end in a real data write before the terminal output.
+    // Therefore the final output need not equal the previous body output.
     let leading_zeros = expected.iter().take_while(|&&byte| byte == 0).count();
     // Source length must hold N output instructions, at least one j and v,
     // the necessary changes from initial accumulator zero, and the fixed
@@ -650,14 +644,15 @@ pub(super) fn verified_short_output_layout<const N: usize>(
     if N == 0 || N > 12 {
         return None;
     }
-    // The final non-output opcode selects the two loader seed words, so a
-    // no-op or crazy terminal cannot represent every valid short stream.
-    // Keep the established order first; admit the rotate seed only through
-    // independent positional decoding and normative VM checks.
+    // The final source opcode selects the loader seed. A real output can
+    // follow a final body write, and need not repeat the preceding byte.
+    // Preserve earlier witness order; every seed still needs independent
+    // positional decoding and normative VM admission.
     [
         TerminalSuffix::Noop,
         TerminalSuffix::Crazy,
         TerminalSuffix::Rotate,
+        TerminalSuffix::Output,
     ]
     .into_iter()
     .find_map(|terminal| {

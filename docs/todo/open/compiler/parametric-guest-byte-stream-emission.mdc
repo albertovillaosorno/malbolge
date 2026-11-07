@@ -717,3 +717,13 @@ a compiler capability gap, not a reason to return to N+1.
   36-cell/12-prefix search bounds recovers the proven stream and rejects
   a forged first output byte. The original Fibonacci twelve-byte C
   source still refuses safely at layout; generalized P0 remains pending.
+- A red-first 34-instruction guest exposed a false negative for the final
+  loader-source output instruction: a real preceding crazy write changes
+  the twelfth byte from the eleventh, contradicting the prior equality
+  guard. Its independent normative VM execution emits
+  `59 3f 2c 48 50 1b 59 3f 2c 48 50 1b`. The direct and production
+  short searches now admit this output-tail seed under the existing
+  36-cell geometry, positional decode, disjoint-write and guest replay
+  checks. The full original Fibonacci C program still refuses at layout
+  without an artifact; a separate nested-conditional C probe also refuses
+  at frontend admission. P0 remains pending.

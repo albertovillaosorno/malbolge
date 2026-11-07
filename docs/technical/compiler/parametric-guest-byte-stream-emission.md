@@ -1621,3 +1621,31 @@ byte is rejected against the independently reconstructed source. The full
 original Fibonacci C program still refuses at guest layout without
 publishing an artifact; this is one real guest search capability, not
 runtime C control flow or arbitrary byte-stream synthesis.
+
+### Changed-byte output at the final source instruction
+
+Retrying the original twelve-iteration Fibonacci program still reached the
+source-proven twelve-byte effects but refused at guest layout, without an
+artifact. A separate red-first, source-independent guest exposed a false
+negative in the terminal search: the final body instruction can be a real
+crazy-data write, immediately followed by an output instruction and halt.
+The preceding output and that terminal output need not have equal bytes.
+The search had discarded this entire terminal shape for traces of at least
+eight effects, and the production 36-cell short search never considered an
+output opcode as the final loader-source seed.
+
+A complete 34-instruction guest with twelve real crazy-data writes and twelve
+output instructions produces `59 3f 2c 48 50 1b 59 3f 2c 48 50 1b`. Its
+independent positional source encoding, disjoint data writes and normative
+VM replay were established before the search fix. The direct terminal search
+and the bounded production short search now both reconstruct a verified
+layout. The search retains its 36-cell and twelve-prefix bounds, preserves
+existing seed precedence and never authorizes publication from cached loader
+memory or predicted output bytes alone.
+
+This removes a structural false-negative assumption, not the need for a
+witness for any particular C output trace. The original Fibonacci output
+`02 59 5f 08 57 4f 22 6d 03 90 b3 23` still lacks an admitted layout;
+no guest runtime C arithmetic or dynamic branching is established. A separate
+C probe with nested conditional expressions and a loop failed at frontend
+admission and produced no guest, so it supplies no additional C coverage.

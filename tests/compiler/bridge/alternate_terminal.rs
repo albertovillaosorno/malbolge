@@ -1245,3 +1245,49 @@ fn rotated_tail_recovers_independently_proved_twelve_byte_guest()
     );
     Ok(())
 }
+
+#[test]
+fn differing_final_output_can_follow_a_guest_write() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for _ in 0..11 {
+        operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    }
+    operations.extend([
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    assert_eq!(operations.len(), 34);
+    let expected = proposed_output_stream::<12>(&operations, &cells)
+        .ok_or_else(|| String::from("seeded guest cannot output"))?;
+    assert_eq!(expected, [89, 63, 44, 72, 80, 27, 89, 63, 44, 72, 80, 27],);
+    assert_ne!(expected[10], expected[11]);
+    let original =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or_else(|| String::from("independent VM rejected seed"))?;
+    assert_eq!(original.source().len(), 34);
+    let recovered = verified_terminal_layout(
+        profile,
+        expected,
+        &cells,
+        TerminalSuffix::Output,
+        34,
+        8,
+    )
+    .ok_or_else(|| {
+        format!("output terminal missed valid guest {expected:?}")
+    })?;
+    assert_eq!(recovered.source().len(), 34);
+    assert_eq!(recovered.source().get(32), cells[32].get(4));
+    assert!(recovered.data_write_positions().iter().flatten().count() >= 12);
+    let public = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| {
+            format!("bounded search missed output-tail guest {expected:?}")
+        })?;
+    assert!(public.source().len() <= 36);
+    Ok(())
+}
