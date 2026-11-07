@@ -641,6 +641,51 @@ impl<'node> Flow<'node> {
         Some(statement.span.end.byte)
     }
 
+    /// Replay a source-proven `while (predicate) { ... }` over known locals.
+    /// Each condition is re-evaluated after the checked body mutates state;
+    /// unsupported bodies and loops without an observed bounded exit refuse.
+    fn static_while(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
+        let statement = self.take(body.id, "while-statement")?;
+        if !clean(statement)
+            || !span_within(&body.span, &statement.span)
+            || previous_end > statement.span.begin.byte
+            || self.loop_counter.is_some()
+        {
+            return None;
+        }
+        let condition_start = self.position;
+        let outer_len = self.locals.len();
+        let mut body_end = None;
+        for iteration in 0..=MAX_STATIC_LOOP_ITERATIONS {
+            self.position = condition_start;
+            let (continue_loop, condition) = self.condition(statement)?;
+            let loop_body = self.take(statement.id, "compound-statement")?;
+            if !clean(loop_body)
+                || !span_within(&statement.span, &loop_body.span)
+                || condition.span.end.byte >= loop_body.span.begin.byte
+                || loop_body.span.end.byte != statement.span.end.byte
+            {
+                return None;
+            }
+            if !continue_loop {
+                // Zero-trip loops have no proven body and fail on `None`.
+                self.position = body_end?;
+                return Some(statement.span.end.byte);
+            }
+            if iteration == MAX_STATIC_LOOP_ITERATIONS {
+                return None;
+            }
+            self.loop_body(loop_body)?;
+            if body_end.is_some_and(|end| self.position != end) {
+                return None;
+            }
+            body_end = Some(self.position);
+            // Locals declared in the braces never escape an iteration.
+            self.locals.truncate(outer_len);
+        }
+        None
+    }
+
     fn take(&mut self, parent: u32, kind: &str) -> Option<&'node Node> {
         let node = self.peek()?;
         let id = u32::try_from(self.position).ok()?.checked_add(1)?;
@@ -986,6 +1031,11 @@ pub(super) fn canonical_multi_local_output(
             "for-statement" => {
                 last_end = flow
                     .static_for(body, last_end)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+            },
+            "while-statement" => {
+                last_end = flow
+                    .static_while(body, last_end)
                     .ok_or(FrontendJsonError::Unsupported)?;
             },
             "if-statement" if remaining_writes >= 2 => {

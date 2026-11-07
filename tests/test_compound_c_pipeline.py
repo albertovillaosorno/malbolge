@@ -2990,6 +2990,184 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertEqual(executed.stdout, b"A")
             self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
 
+    def test_bounded_while_state_and_branch_stream_reach_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_while_recurrence_output.c"
+        )
+        original = source.read_text()
+        self.assertIn("while (i < 3U)", original)
+        a, b = 3, 5
+        taken = []
+        for _ in range(3):
+            following = ((a * b) << 2) & 255
+            selected = (following & 8) != 0
+            taken.append(selected)
+            a = ((following >> 3) ^ 1) if selected else following - 1
+            b = following
+        self.assertEqual(taken, [True, False, False])
+        self.assertEqual(a, 127)
+        self.assertEqual(a ^ 62, 65)
+
+        # The same while replay must preserve distinct selected output
+        # effects, not merely a single final byte of compile-time state.
+        pair_source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        ).read_text()
+        self.assertIn("for (unsigned i = 0U; i < 2U; ++i)", pair_source)
+        pair_source = pair_source.replace(
+            "for (unsigned i = 0U; i < 2U; ++i) {",
+            "unsigned i = 0U;\n    while (i < 2U) {",
+        ).replace("        b = next;\n", "        b = next;\n        i = i + 1U;\n")
+        previous, current = 1, 1
+        expected_pair = bytearray()
+        for _ in range(2):
+            following = (previous + current) & 255
+            expected_pair.append(following ^ (83 if following % 2 == 0 else 45))
+            previous, current = current, following
+        self.assertEqual(bytes(expected_pair), b"Q.")
+
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            pair = Path(scratch) / "while-pair.c"
+            pair.write_text(pair_source)
+            for label, candidate, expected in (
+                ("state", source, b"A"),
+                ("stream", pair, bytes(expected_pair)),
+            ):
+                guest = Path(scratch) / f"while-{label}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/while-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=100,
+                )
+                self.assertEqual(compiled.returncode, 0, (label, compiled.stderr))
+                self.assertTrue(guest.is_file(), label)
+                for guest_input in (b"", bytes((255, 0, 128))):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=guest_input,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected, label)
+                    self.assertRegex(
+                        executed.stderr,
+                        rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                    )
+
+            for label, changed in {
+                "nonterminating": original.replace("i = i + 1U", "i = i + 0U"),
+                "beyond-bound": original.replace("i < 3U", "i < 13U"),
+                "zero-iterations": original.replace("i < 3U", "i < 0U"),
+                "side-effecting-test": original.replace("i < 3U", "i++ < 3U"),
+                "undefined-test": original.replace("i < 3U", "(i / 0U) < 3U"),
+                "nested-loop": original.replace(
+                    "i = i + 1U;", "while (i < 3U) { i = i + 1U; }"
+                ),
+            }.items():
+                candidate = Path(scratch) / f"rejected-while-{label}.c"
+                candidate.write_text(changed)
+                guest = Path(scratch) / f"rejected-while-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/while-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|FRONTEND-")
+                self.assertFalse(guest.exists(), label)
+
+    def test_bounded_while_forged_ast_refuses_publication(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_while_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/while-ast-v1",
+                str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        parsed = cast(dict[str, object], json.loads(frontend.stdout))
+        nodes = cast(list[dict[str, object]], parsed["nodes"])
+        loop = next(node for node in nodes if node["kind"] == "while-statement")
+        children = [node for node in nodes if node["parent"] == loop["id"]]
+        condition = next(
+            node for node in children if node["kind"] == "binary-expression"
+        )
+        body = next(node for node in children if node["kind"] == "compound-statement")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, node_id, field, value in (
+                ("wrong-loop-kind", loop["id"], "kind", "for-statement"),
+                ("foreign-loop-parent", loop["id"], "parent", 0),
+                ("loop-extra-operation", loop["id"], "operation", "++"),
+                ("condition-operation", condition["id"], "operation", ">="),
+                ("condition-type", condition["id"], "type", "u32"),
+                ("body-parent", body["id"], "parent", 0),
+            ):
+                assert isinstance(node_id, int)
+                tampered = cast(
+                    dict[str, list[dict[str, object]]],
+                    json.loads(frontend.stdout),
+                )
+                tampered["nodes"][node_id - 1][field] = value
+                guest = Path(scratch) / f"while-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
 
 if __name__ == "__main__":
     _ = unittest.main()

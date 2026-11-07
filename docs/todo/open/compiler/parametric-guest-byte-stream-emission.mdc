@@ -492,3 +492,14 @@ a compiler capability gap, not a reason to return to N+1.
   `0x41` in 31 normative VM steps. Direct unsigned-local predicate and
   hostile source/AST variants are regression targets. This remains
   compiler-time state folding and does not unblock the twelve-byte layout.
+
+- A complete source-C `while` recurrence with unsigned state, arithmetic,
+  branches and a mutable loop counter was initially refused by the JSON
+  adapter. Bounded source-checked loop replay now re-evaluates the condition
+  after each body, preserving C state and lexical scoping until a proven
+  false condition (1–12 iterations). The independently calculated final
+  state emits `0x41` in 31 real guest steps; a separate two-iteration
+  stateful `while` stream produces actual `Q.` in eight steps. Infinite,
+  zero-trip, over-budget, impure and forged-AST loops reject without guest
+  publication. The `while` still executes at compile time, not inside the
+  guest. The twelve-byte Fibonacci P0 remains blocked on general layout.

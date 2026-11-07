@@ -1094,3 +1094,32 @@ Clang operator/type/ancestry/metadata must refuse without publication.
 This is bounded **compile-time** condition selection over already known
 unsigned values; it adds neither guest runtime branching nor a general
 byte-stream layout. The original twelve-byte Fibonacci P0 remains open.
+
+### Bounded source-backed `while` control flow
+
+A complete C recurrence with automatic unsigned local state, multiplication,
+shifts, a conditional with both arms, and a mutable loop counter was first
+attempted through the pinned compiler and refused at its first declaration.
+The closed JSON adapter now accepts a source-proven `while (condition) { ... }`
+when the condition and every executed body effect are completely evaluable
+from current local constants. Unlike the earlier fixed-bound `for` proof,
+the `while` condition is re-evaluated **after each body execution** against
+updated local state. The full canonical Clang subtree, exact source spans,
+node ancestry, pure condition and body effects are checked on each replay.
+Iteration-local declarations are discarded at the end of each execution.
+
+The evaluator requires at least one executed iteration and an observed false
+condition after at most twelve iterations. Zero-trip loops are conservatively
+unsupported because the skipped body would not be proved. Infinite loops,
+side-effecting or undefined conditions, nested loops and unrecognized effects
+fail without publication. Loop evaluation is compile-time only; it does not
+claim general C control flow or mutable Malbolge guest state.
+
+`local_while_recurrence_output.c` visits the independent unsigned values
+`60, 160, 128`, takes true/false/false branches and derives the final byte
+`127 ^ 62 = 65`. The generated current-profile Malbolge capsule emits
+`0x41` in 31 normative VM steps. A separate two-iteration `while`-converted
+Fibonacci branch program emits two independently derived bytes `Q.` in eight
+actual guest steps. The real VM, not the host C program, produces both output
+traces. The original twelve-byte Fibonacci P0 still requires generalized
+guest byte-stream layout and remains open.
