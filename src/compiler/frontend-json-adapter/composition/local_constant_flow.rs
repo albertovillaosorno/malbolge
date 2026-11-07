@@ -201,6 +201,45 @@ impl<'node> Flow<'node> {
         Some(statement.span.end.byte)
     }
 
+    /// Prove a source-ordered conditional, including the unselected pure arm.
+    fn conditional_expression(
+        &mut self,
+        parent: u32,
+        depth: usize,
+    ) -> Option<(u32, &'node Node)> {
+        let conditional = self.take(parent, "conditional-expression")?;
+        if !bare_typed_node(conditional)
+            || conditional.type_name.as_deref() != Some("u32")
+        {
+            return None;
+        }
+        let child_depth = depth.checked_add(1)?;
+        let (take_then, condition) =
+            self.condition_expression(conditional.id, child_depth)?;
+        let (then_value, then_expression) =
+            self.expression(conditional.id, child_depth)?;
+        let (else_value, else_expression) =
+            self.expression(conditional.id, child_depth)?;
+        if !ordered_ternary_spans(
+            conditional,
+            condition,
+            then_expression,
+            else_expression,
+        ) {
+            return None;
+        }
+        // Both alternatives must be pure and defined, even if the
+        // C conditional selects only one at runtime.
+        Some((
+            if take_then {
+                then_value
+            } else {
+                else_value
+            },
+            conditional,
+        ))
+    }
+
     /// Check both branches of a source-constant conditional output, retaining
     /// exactly the selected `putchar` effect for each loop iteration.
     fn conditional_output(
@@ -350,6 +389,9 @@ impl<'node> Flow<'node> {
                     return None;
                 }
                 Some((u32::from(self.referenced(read)?.0), load))
+            },
+            "conditional-expression" => {
+                self.conditional_expression(parent, depth)
             },
             "binary-expression" => {
                 let expression = self.take(parent, "binary-expression")?;
@@ -609,6 +651,23 @@ const fn ordered_binary_spans(
         && expression.span.begin.byte == left.span.begin.byte
         && left.span.end.byte < right.span.begin.byte
         && right.span.end.byte == expression.span.end.byte
+}
+
+/// Require all three operands of `condition ? then : else` in exact C
+/// lexical order, including the complete selected and unselected subtrees.
+const fn ordered_ternary_spans(
+    expression: &Node,
+    condition: &Node,
+    then_expression: &Node,
+    else_expression: &Node,
+) -> bool {
+    span_within(&expression.span, &condition.span)
+        && span_within(&expression.span, &then_expression.span)
+        && span_within(&expression.span, &else_expression.span)
+        && expression.span.begin.byte == condition.span.begin.byte
+        && condition.span.end.byte < then_expression.span.begin.byte
+        && then_expression.span.end.byte < else_expression.span.begin.byte
+        && else_expression.span.end.byte == expression.span.end.byte
 }
 
 /// Evaluate only exact unsigned-C operators after both source operands

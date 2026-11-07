@@ -410,3 +410,15 @@ a compiler capability gap, not a reason to return to N+1.
   metadata reject without guest publication. This remains compile-time C
   evaluation with one final guest output, not guest runtime state, arbitrary
   byte streams or completion of the twelve-byte Fibonacci P0.
+
+- A new complete three-iteration C recurrence exposed the missing `?:`
+  expression in the closed unsigned local evaluator. Its Clang-backed proof
+  now validates an `i32` comparison condition and both source-ordered,
+  side-effect-free `u32` alternatives before retaining the selected value.
+  The independent three-step trace visits `60, 160, 128`, takes true/false/
+  false arms, and computes `127 ^ 62 = 65`. The compiled real Malbolge
+  guest emits `0x41` for empty and nonempty input; impure and undefined
+  unselected alternatives and forged Clang AST metadata fail closed without
+  publication. Conditional selection remains compile-time C evaluation,
+  not guest runtime control flow. The twelve-byte Fibonacci layout and the
+  P0 generalized byte-stream acceptance remain outstanding.

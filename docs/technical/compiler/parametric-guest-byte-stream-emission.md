@@ -917,3 +917,31 @@ The checked-in source and regressions are
 guest runtime arithmetic, branches or control-flow execution. The original
 twelve-byte Fibonacci trace still lacks a positional guest layout witness;
 P0 remains pending.
+
+### Source-backed conditional expressions inside unsigned recurrences
+
+A complete three-iteration C recurrence now uses the source-proven
+`condition ? then : else` expression to select an unsigned local's next
+value inside a loop. The initial pinned Clang-to-guest attempt refused at
+the first declaration, because the closed `u32` expression walker did not
+admit the `conditional-expression` node. The repaired adapter requires an
+exactly typed `u32` result, a fully proven pure `i32` condition, two complete
+checked unsigned alternatives and their exact source-ordered Clang spans.
+It proves **both** alternatives even though C executes only the selected
+one; an unselected side effect or undefined operation is conservatively
+rejected, not silently dropped.
+
+The checked-in source `local_conditional_expression_recurrence_output.c`
+visits unsigned `next` values `60, 160, 128` and selects the true, false,
+false alternatives. The separately computed final state is `a = 127` and
+`a ^ 62 = 65`. The complete pinned compiler emits a real current-profile
+Malbolge capsule; the normative VM outputs `0x41` under both empty and
+nonempty input. Negative source variations with increment side effects,
+zero division or unproven conversions refuse without an artifact; forged
+conditional node/arm operation, kind, parent or type metadata also reject.
+The complete acceptance and mutation regressions live in
+`tests/test_compound_c_pipeline.py`.
+
+This is bounded source-constant folding, **not** guest runtime selection,
+C control flow or arbitrary byte-stream synthesis. The original twelve-byte
+Fibonacci output remains blocked by positional guest layout; P0 is open.

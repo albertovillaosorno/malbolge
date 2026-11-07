@@ -39,6 +39,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "tests/compiler/c-frontend/accepted/conditional_fibonacci.c"
@@ -1831,6 +1832,160 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", refused.stderr)
                 self.assertFalse(guest.exists(), label)
 
+    def test_conditional_expression_recurrence_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_conditional_expression_recurrence_output.c"
+        )
+        original = source.read_text()
+        self.assertIn("(next & 8U) != 0U", original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            a, b = 3, 5
+            branches: list[bool] = []
+            for _ in range(3):
+                following = ((a * b) << 2) & 255
+                take_then = (following & 8) != 0
+                branches.append(take_then)
+                a = ((following >> 3) ^ 1) if take_then else following - 1
+                b = following
+            self.assertEqual(branches, [True, False, False])
+            self.assertEqual(a, 127)
+            self.assertEqual(a ^ 62, 65)
+            guest = Path(scratch) / "conditional.malbolge"
+            compiled = subprocess.run(
+                [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    "tests/conditional-expression-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=90,
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for guest_input in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=guest_input,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, b"A")
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            for label, changed in {
+                "impure-condition": original.replace("next & 8U", "next++ & 8U"),
+                "impure-unselected-arm": original.replace("next - 1U", "next++ - 1U"),
+                "undefined-unselected-arm": original.replace(
+                    "next - 1U", "next / (b - b)"
+                ),
+                "unsupported-unsigned-arm": original.replace(
+                    "next - 1U", "(unsigned)(next > 1U)"
+                ),
+            }.items():
+                candidate = Path(scratch) / f"invalid-conditional-{label}.c"
+                _ = candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/conditional-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_conditional_expression_ast_mutations_fail_closed(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_conditional_expression_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/conditional-ast-mutation-v1",
+                str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        nodes = cast(list[dict[str, object]], json.loads(frontend.stdout)["nodes"])
+        conditional = [
+            node for node in nodes if node["kind"] == "conditional-expression"
+        ]
+        self.assertEqual(len(conditional), 1)
+        expression = conditional[0]
+        expression_id = expression["id"]
+        self.assertIsInstance(expression_id, int)
+        arms = [node for node in nodes if node["parent"] == expression_id]
+        self.assertEqual(len(arms), 3)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, node_id, field, value in (
+                ("conditional-type", expression_id, "type", "i32"),
+                ("conditional-operation", expression_id, "operation", "!"),
+                ("condition-parent", arms[0]["id"], "parent", 0),
+                ("true-arm-kind", arms[1]["id"], "kind", "call-expression"),
+                ("false-arm-type", arms[2]["id"], "type", "i32"),
+            ):
+                assert isinstance(node_id, int)
+                tampered = cast(
+                    dict[str, list[dict[str, object]]],
+                    json.loads(frontend.stdout),
+                )
+                tampered["nodes"][node_id - 1][field] = value
+                guest = Path(scratch) / f"conditional-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
     def test_computed_unsigned_comparison_reaches_real_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
@@ -1867,10 +2022,16 @@ class CompoundCPipelineTests(unittest.TestCase):
                 guest = candidate.with_suffix(".malbolge")
                 compiled = subprocess.run(
                     [
-                        sys.executable, "-B", str(DRIVER),
-                        "--repository-tools", "--source-id",
-                        f"tests/computed-{label}-v1", "--capsule",
-                        "--output", str(guest), str(candidate),
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/computed-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
                     ],
                     check=False,
                     capture_output=True,
@@ -1903,10 +2064,16 @@ class CompoundCPipelineTests(unittest.TestCase):
                 guest = candidate.with_suffix(".malbolge")
                 refused = subprocess.run(
                     [
-                        sys.executable, "-B", str(DRIVER),
-                        "--repository-tools", "--source-id",
-                        f"tests/computed-invalid-{label}-v1", "--capsule",
-                        "--output", str(guest), str(candidate),
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/computed-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
                     ],
                     check=False,
                     capture_output=True,
@@ -1925,9 +2092,14 @@ class CompoundCPipelineTests(unittest.TestCase):
         )
         frontend = subprocess.run(
             [
-                str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
-                "--resource-dir", str(RESOURCE),
-                "--source-id", "tests/computed-ast-mutation-v1", str(source),
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/computed-ast-mutation-v1",
+                str(source),
             ],
             check=False,
             capture_output=True,
@@ -1936,14 +2108,15 @@ class CompoundCPipelineTests(unittest.TestCase):
         self.assertEqual(frontend.returncode, 0, frontend.stderr)
         canonical = json.loads(frontend.stdout)
         comparisons = [
-            node for node in canonical["nodes"]
-            if node["kind"] == "binary-expression"
-            and node.get("operation") == ">="
+            node
+            for node in canonical["nodes"]
+            if node["kind"] == "binary-expression" and node.get("operation") == ">="
         ]
         self.assertEqual(len(comparisons), 1)
         comparison = comparisons[0]
         right = next(
-            node for node in canonical["nodes"]
+            node
+            for node in canonical["nodes"]
             if node["parent"] == comparison["id"]
             and node["kind"] == "parenthesized-expression"
             and node["span"]["begin"]["byte"] > comparison["span"]["begin"]["byte"]
@@ -1959,8 +2132,12 @@ class CompoundCPipelineTests(unittest.TestCase):
                 guest = Path(scratch) / f"computed-ast-{label}.malbolge"
                 refused = subprocess.run(
                     [
-                        str(ADAPTER), "--layout-backend", str(LAYOUT),
-                        "--output", str(guest), "--capsule",
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
                     ],
                     input=json.dumps(tampered).encode(),
                     check=False,
