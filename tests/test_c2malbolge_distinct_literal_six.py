@@ -72,13 +72,19 @@ class SixDistinctGuestLiteralTests(unittest.TestCase):
             self.skipTest("pinned compiler and normative VM required")
 
     def compile(
-        self, directory: Path, stem: str, source: str, *, capsule: bool = True
+        self,
+        directory: Path,
+        stem: str,
+        source: str,
+        *,
+        capsule: bool = True,
+        complete_source: bool = False,
     ) -> tuple[subprocess.CompletedProcess[bytes], Path]:
         file = directory / f"{stem}.c"
         guest = directory / f"{stem}.malbolge"
         _ = file.write_text(
-            "#include <stdio.h>\nvoid emit(void) { " + source + " }\n",
-            encoding="ascii",
+            source if complete_source else "#include <stdio.h>\nvoid emit(void) { " + source + " }\n",
+            encoding="utf-8",
         )
         result = subprocess.run(
             [
@@ -132,6 +138,45 @@ class SixDistinctGuestLiteralTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(result.stdout, EXPECTED)
                     self.assertEqual(result.stderr, b"malbolge-steps-v1:15\n")
+
+    def test_two_trip_conditional_source_outputs_six_guest_bytes(self) -> None:
+        tracked = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_zero_prefix_six_stream.c"
+        ).read_text(encoding="utf-8")
+        expected = bytes([0, 81, 34, 27, 55, 57])
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:
+            directory = Path(temp)
+            compiled, artifact = self.compile(
+                directory, "six-stateful", tracked, complete_source=True
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            for stdin in (b"", b"\x00\x80\xff"):
+                with self.subTest(stdin=stdin):
+                    result = subprocess.run(
+                        [str(VM), str(artifact), "--report-steps"],
+                        input=stdin,
+                        capture_output=True,
+                        check=False,
+                        timeout=60,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, expected)
+                    self.assertEqual(result.stderr, b"malbolge-steps-v1:23\n")
+            # An extra call in the selected branch changes the effect count
+            # and must fail before any seven-byte artifact is published.
+            altered = tracked.replace(
+                "            putchar((int)b);",
+                "            putchar((int)b); putchar((int)b);",
+                1,
+            )
+            self.assertNotEqual(altered, tracked)
+            rejected, output = self.compile(
+                directory, "six-extra-call", altered, complete_source=True
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertFalse(output.exists())
 
     def test_unproved_six_byte_values_and_short_prefixes_refuse(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:

@@ -582,3 +582,15 @@ a compiler capability gap, not a reason to return to N+1.
   inner cases, hostile C operations and forged AST ancestry are tested.
   All C state remains folded at compile time; the generalized guest
   byte-stream layout and original twelve-byte Fibonacci P0 stay open.
+
+- A source-backed two-trip C `while` loop with three automatic unsigned
+  locals, branch-selected output triples and ordered local writes now
+  compiles to six actual guest bytes `00 51 22 1b 37 39` in 23 normative
+  VM steps, on empty and nonempty stdin. The old six-effect typed adapter
+  rejected non-fixed bytes; its projection now uses the already-proven
+  source-distinct SSA checker. A zero-first bounded guest search and exact
+  independent verifier replace only that fixed-value gate, preserving the
+  historical 15-step six-output witness. Extra output calls, stale SSA and
+  unproved nonzero prefixes refuse publication. State remains compiler-time
+  C evaluation; P0 general byte-stream and original twelve-byte Fibonacci
+  parity remain open.

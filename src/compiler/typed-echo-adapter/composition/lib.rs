@@ -523,56 +523,6 @@ fn project_source_distinct_literal_effects(
     Ok(result)
 }
 
-// Six exact byte constants, each with its own source-derived SSA value.
-fn project_literal_six_effects(
-    module: &Module,
-    original: &[typed::LocatedInstruction],
-) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
-    let (pairs, remainder) = original.as_chunks::<2>();
-    if pairs.len() != 6 || !remainder.is_empty() {
-        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-    }
-    let mut instructions = Vec::with_capacity(12);
-    let mut ids = BTreeSet::new();
-    for (index, [constant, output]) in pairs.iter().enumerate() {
-        let (
-            Instruction::ConstantInteger {
-                constant: literal,
-                result: id,
-                type_id,
-            },
-            Instruction::ByteOutput { value },
-        ) = (constant.instruction(), output.instruction())
-        else {
-            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-        };
-        if !is_byte_type(module, *type_id)
-            || literal.bit_width() != 8
-            || id != value
-            || !ids.insert(*id)
-            || literal.little_endian()
-                != b"Q\x1cO\x1dP\x1b"
-                    .get(index)
-                    .map(std::slice::from_ref)
-                    .unwrap_or(&[])
-        {
-            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-        }
-        instructions.push(InputInstruction::ConstantInteger {
-            bit_width: 8,
-            little_endian: literal.little_endian().to_vec(),
-            result: id.value(),
-            span: project_span(constant.span()),
-            type_kind: InputScalarType::U8,
-        });
-        instructions.push(InputInstruction::ByteOutput {
-            span: project_span(output.span()),
-            value: value.value(),
-        });
-    }
-    Ok(instructions)
-}
-
 // Seven exact byte constants, each with its own source-derived SSA value.
 fn project_literal_seven_effects(
     module: &Module,
@@ -2881,7 +2831,11 @@ fn project_byte_trace(
             )?
         }
         ByteTraceMode::DistinctLiteralSix => {
-            project_literal_six_effects(module, block.instructions())?
+            project_source_distinct_literal_effects(
+                module,
+                block.instructions(),
+                6,
+            )?
         }
         ByteTraceMode::DistinctLiteralSeven => {
             project_literal_seven_effects(module, block.instructions())?

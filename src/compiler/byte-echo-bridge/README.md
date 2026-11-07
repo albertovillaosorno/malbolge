@@ -496,15 +496,21 @@ publication. This does not implement arbitrary C strings or runtime C I/O.
 
 ### Six distinct guest-computed bytes (bounded binary witness)
 
-The opt-in `--distinct-literal-six` path admits the exact current-profile
-source byte trace `51 1c 4f 1d 50 1b` (hex). Six independent source-bound
-`u8` SSA definitions and output uses survive canonical typed/MCTR admission.
-A single inert prefix and data-pointer relocation precede six guest
-`CrazyData` writes and six byte outputs, all outside the source region.
-The normative VM independently emits all six binary bytes in 15 steps with
-no consumed input. Both raw and capsule publishers recheck this witness;
-unsupported values, partial prefixes, extra output, or stale SSA fail closed.
-This does not implement general C string output or the guest C runtime.
+The opt-in `--distinct-literal-six` path retains the original current-profile
+source byte trace `51 1c 4f 1d 50 1b` (hex), with six guest `CrazyData` writes
+and six outputs in 15 normative VM steps. It also admits bounded zero-first
+six-effect streams through the source-independent, position-sensitive search.
+The pinned Clang compiler now proves two iterations of a C `while` loop with
+selected conditional output triples and three intervening local writes.
+Its independently derived output `00 51 22 1b 37 39` is emitted by actual
+guest instructions in 23 steps with no consumed input. The search uses an
+initial real zero output, then five relocated guest data writes; no host
+stdout substitutes for their effects. Canonical typed/MCTR identity, six
+separate source-bound SSA definitions, disjoint guest data writes, complete
+positional layout proof and normative VM replay remain mandatory. Unsupported
+nonzero prefixes, unverified bytes, altered effects and stale SSA refuse
+without publication. This is finite compiler-time C control-flow folding,
+not general guest runtime arithmetic, branching or arbitrary C string output.
 
 ### Seven distinct guest-computed bytes (bounded binary witness)
 

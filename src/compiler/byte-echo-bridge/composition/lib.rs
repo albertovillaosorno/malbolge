@@ -2629,7 +2629,8 @@ pub fn encode_distinct_literal_six(
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let mut ids = BTreeSet::new();
-    for (index, [constant, output]) in pairs.iter().enumerate() {
+    let mut expected = [0u8; 6];
+    for (slot, [constant, output]) in expected.iter_mut().zip(pairs) {
         let (
             TernaryOperation::MaterializeU8 { result, scalar, .. },
             TernaryOperation::ByteOutput { value, .. },
@@ -2637,12 +2638,24 @@ pub fn encode_distinct_literal_six(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value
-            || !ids.insert(*result)
-            || scalar.bits() != b"Q\x1cO\x1dP\x1b"[index]
-        {
+        if result != value || !ids.insert(*result) {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
+        *slot = scalar.bits();
+    }
+    if expected != *b"Q\x1cO\x1dP\x1b" {
+        // The guest begins with accumulator zero before any data write.
+        // Only source-independent, bounded proposals with an independently
+        // verified layout and real VM byte parity can pass this path.
+        if expected[0] != 0 {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+        let cells = pair_source_cells(profile)
+            .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        return search_output_stream::verified_state_space_output_layout(
+            profile, expected, &cells,
+        )
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let mut operations = vec![LinearOpcode::NoOperation; 1];
     operations.push(LinearOpcode::RelocateDataPointer);

@@ -4235,7 +4235,9 @@ fn verify_distinct_literal_six(
     artifact: &VerifiedSource,
     bytes: [u8; 6],
 ) -> Result<(), String> {
-    if bytes != *b"Q\x1cO\x1dP\x1b" || artifact.steps != 15 {
+    if !(bytes == *b"Q\x1cO\x1dP\x1b" && artifact.steps == 15
+        || bytes[0] == 0 && (2..=126).contains(&artifact.steps))
+    {
         return Err(String::from("distinct-literal six has no guest witness"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {
