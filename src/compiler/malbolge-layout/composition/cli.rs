@@ -4410,7 +4410,10 @@ fn verify_distinct_literal_twelve(
     artifact: &VerifiedSource,
     bytes: [u8; 12],
 ) -> Result<(), String> {
-    if bytes != *b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd" || artifact.steps != 27
+    // Source-independent, bounded twelve-output proposals have already
+    // passed the bridge's disjoint-write check and normative VM replay.
+    // Reopen the actual claimed bytes instead of retaining a fixture gate.
+    if !(26..=126).contains(&artifact.steps)
     {
         return Err(String::from(
             "distinct-literal twelve has no guest witness",

@@ -548,3 +548,53 @@ fn five_source_bytes_with_initial_zero_are_recovered() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn straight_write_search_reconstructs_nonfixture_twelve_byte_guest()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    let mut operations = vec![LinearOpcode::NoOperation];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0..12 {
+        operations.extend([
+            if index == 5 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let seeded = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("seeded twelve layout: {error:?}"))?;
+    let mut guest =
+        ProfileMachine::from_source(profile, seeded.source(), Vec::new())
+            .map_err(|error| format!("seeded twelve load: {error:?}"))?;
+    assert!(matches!(
+        guest.run(operations.len()),
+        Ok(RunOutcome::Terminated { .. })
+    ));
+    let expected: [u8; 12] = guest
+        .output()
+        .try_into()
+        .map_err(|_error| String::from("seeded output length differs"))?;
+    assert_ne!(expected, *b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd");
+    let searched =
+        verified_straight_write_output_layout(profile, expected, &cells)
+            .ok_or_else(|| format!("search missed guest {expected:?}"))?;
+    for input in [Vec::new(), vec![0, 255, 128]] {
+        let mut vm =
+            ProfileMachine::from_source(profile, searched.source(), input)
+                .map_err(|error| format!("searched twelve load: {error:?}"))?;
+        assert!(matches!(
+            vm.run(searched.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.output(), expected);
+    }
+    Ok(())
+}

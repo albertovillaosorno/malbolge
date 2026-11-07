@@ -3157,16 +3157,17 @@ pub fn encode_distinct_literal_eleven(
     Ok(layout)
 }
 
-/// Emit one independently VM-witnessed twelve-distinct-byte C trace.
+/// Emit twelve source-distinct bytes using independently verified guest code.
 ///
-/// The guest executes eleven relocated `p` writes, one relocated `*` write,
-/// and twelve output instructions. Several output bytes are outside ASCII;
-/// this is a binary output contract, not a text literal convention.
+/// The historical positional witness is retained. Other twelve-byte traces
+/// use a bounded crazy/rotate search with early byte-prefix pruning; every
+/// proposal must still pass disjoint-write admission and normative VM replay.
+/// This finite straight-line grammar cannot emit arbitrary byte streams.
 ///
 /// # Errors
 ///
-/// Rejects arbitrary twelve-byte traces, stale SSA, foreign profiles and
-/// normative VM disagreement before the source can be published.
+/// Rejects unproved SSA, foreign profiles, unwitnessed guest bytes, unsafe
+/// layouts or normative VM disagreement before publication.
 pub fn encode_distinct_literal_twelve(
     program: &TernaryProgram,
     profile: &'static ProfileDescriptor,
@@ -3190,6 +3191,7 @@ pub fn encode_distinct_literal_twelve(
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let mut ids = BTreeSet::new();
+    let mut expected = [0u8; 12];
     for (index, [constant, output]) in pairs.iter().enumerate() {
         let (
             TernaryOperation::MaterializeU8 { result, scalar, .. },
@@ -3198,12 +3200,18 @@ pub fn encode_distinct_literal_twelve(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value
-            || !ids.insert(*result)
-            || scalar.bits() != b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd"[index]
-        {
+        if result != value || !ids.insert(*result) {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
+        expected[index] = scalar.bits();
+    }
+    if expected != *b"Q748\xfb\xce\x9f\x98\xb8\xb4\x83\xcd" {
+        let cells = pair_source_cells(profile)
+            .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        return search_output_stream::verified_straight_write_output_layout(
+            profile, expected, &cells,
+        )
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let mut operations = vec![LinearOpcode::NoOperation];
     operations.push(LinearOpcode::RelocateDataPointer);

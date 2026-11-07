@@ -27,7 +27,7 @@
 # - Usage:
 #   - python3 -B -m unittest tests.test_c2malbolge_distinct_literal_twelve -v
 # - Defaults:
-#   - No other twelve-byte source trace is supported by this witness.
+#   - Only independently verified twelve-byte guest traces are supported.
 
 """Pinned Clang C-to-Malbolge pipeline for twelve guest-computed binary bytes."""
 
@@ -56,6 +56,8 @@ VM = BIN_ROOT / "malbolge"
 EXPECTED = bytes(
     [0x51, 0x37, 0x34, 0x38, 0xFB, 0xCE, 0x9F, 0x98, 0xB8, 0xB4, 0x83, 0xCD]
 )
+ALTERNATE = bytes([81, 55, 52, 56, 80, 139, 207, 185, 178, 186, 206, 157])
+ALTERNATE_SOURCE = " ".join(f"putchar({value});" for value in ALTERNATE)
 SOURCE = (
     "putchar(81); putchar(55); putchar(52); putchar(56); "
     "putchar(251); putchar(206); putchar(159); putchar(152); "
@@ -138,6 +140,35 @@ class TwelveDistinctGuestLiteralTests(unittest.TestCase):
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertEqual(result.stdout, EXPECTED)
                     self.assertEqual(result.stderr, b"malbolge-steps-v1:27\n")
+
+    def test_nonfixture_twelve_byte_guest_output_is_independently_replayed(self) -> None:
+        # The oracle comes from an independently encoded twelve-write VM
+        # program: one rotation at output six, rather than the fixed witness's
+        # rotation at output five. The source adapter must prove each call.
+        self.assertNotEqual(ALTERNATE, EXPECTED)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:
+            directory = Path(temp)
+            compiled, artifact = self.compile(
+                directory, "twelve-nonfixture", ALTERNATE_SOURCE
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            for stdin in (b"", b"\x00\xff\x80"):
+                with self.subTest(stdin=stdin):
+                    result = subprocess.run(
+                        [str(VM), str(artifact), "--report-steps"],
+                        input=stdin,
+                        capture_output=True,
+                        check=False,
+                        timeout=60,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, ALTERNATE)
+                    self.assertEqual(result.stderr, b"malbolge-steps-v1:27\n")
+            altered = ALTERNATE_SOURCE + " putchar(1);"
+            refused, absent = self.compile(directory, "extra-output", altered)
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertFalse(absent.exists())
 
     def test_unproved_twelve_byte_values_and_short_prefixes_refuse(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:

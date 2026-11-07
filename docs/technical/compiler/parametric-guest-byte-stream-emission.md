@@ -1355,3 +1355,28 @@ control flow into checked constants; the guest executes physical arithmetic
 and output, not general C storage, branching or loops. The full twelve-byte
 Fibonacci acceptance target still fails at the layout witness boundary and
 P0 remains pending.
+
+### Source-independent twelve-byte positional search
+
+A complete twelve-call C output experiment demonstrated that its typed
+SSA values were valid, but the bridge and publisher accepted only the
+historical twelve-byte fixture. A direct attempt to use the larger
+state-space solver for the original Fibonacci trace exceeded a 75-second
+bound without a guest witness. Search exhaustion is not impossibility.
+
+The new finite twelve-effect search examines at most 94 relocation phases
+with one real `p` or `*` arithmetic write immediately before each output.
+It prunes partial paths as soon as their accumulator byte differs from
+the source-proven expectation. The cached loader tail proposes candidates
+only; the existing independent layout admission checks disjoint writes
+outside source, and the normative VM checks exact output, termination and
+no consumed input on both empty and nonempty stdin before publication.
+
+An independently encoded guest using eleven `p` writes and one `*` write
+at output six emits `51 37 34 38 50 8b cf b9 b2 ba ce 9d` in 27 steps.
+The pinned Clang C-to-Malbolge pipeline emits that same binary stream
+from twelve source-backed `putchar` calls. An extra output effect refuses
+without an artifact; the historical 27-step twelve-byte guest remains
+unchanged. The original twelve-byte Fibonacci trace remains unsupported
+by this bounded search, and P0 is still open. This is a compiler-time
+constant byte stream, not dynamic guest execution of C state or branches.

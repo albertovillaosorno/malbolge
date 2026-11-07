@@ -605,3 +605,16 @@ a compiler capability gap, not a reason to return to N+1.
   extra selected output call refuses without publication. Source C control
   flow is still statically projected. General byte-stream synthesis and the
   original twelve-byte Fibonacci P0 guest parity remain unsupported.
+
+- A non-fixture twelve-effect guest experiment retains the existing pinned
+  source witness but replaces its byte-identity gate with a bounded
+  prefix-pruned positional arithmetic proposal. The independent guest seed
+  uses eleven `p` writes and one `*` write at output six, emitting
+  `51 37 34 38 50 8b cf b9 b2 ba ce 9d` in 27 normative VM steps.
+  All twelve literal C calls are Clang-source-proven, projected as fresh
+  SSA effects, and verified in the actual guest on empty/nonempty stdin.
+  An extra selected output call refuses without publication. Arbitrary
+  twelve-byte effects still require a matching bounded guest layout; the
+  original Fibonacci `02 59 5f 08 57 4f 22 6d 03 90 b3 23` still refuses
+  without an artifact. This is not dynamic guest arithmetic or C control
+  flow, and P0 remains pending.

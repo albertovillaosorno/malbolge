@@ -317,6 +317,102 @@ fn verified_terminal_layout<const N: usize>(
     None
 }
 
+/// Search a bounded straight-through arithmetic grammar for proven bytes.
+///
+/// Unlike the state-space search, this finite preview explores at most twelve
+/// distinct guest writes with one output immediately after each write. Only
+/// the source tail is cached; every successful proposal still goes through
+/// independent positional admission and two normative VM executions.
+pub(super) fn verified_straight_write_output_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if N == 0 || N > 12 {
+        return None;
+    }
+    let mut tails = BTreeMap::new();
+    let width = N.checked_mul(2)?.checked_add(2)?;
+    for prefix in 0usize..94 {
+        let length = prefix.checked_add(width)?;
+        if length > source_cells.len() {
+            break;
+        }
+        let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
+        if relocation < length || relocation.checked_add(width)? >= 4096 {
+            continue;
+        }
+        let memory = cached_output_tail(
+            source_cells,
+            &mut tails,
+            length,
+            relocation.checked_add(width)?,
+        )?;
+        let writes = (0..N)
+            .map(|index| {
+                memory.get(relocation.checked_add(1 + 2 * index)?).copied()
+            })
+            .collect::<Option<Vec<_>>>()?;
+        // Expand only byte-matching prefixes. The original bitmask scan
+        // repeatedly recalculated the same first guest write thousands of
+        // times, even after that first output had already mismatched.
+        let mut candidates = vec![(0u32, 0usize)];
+        for (index, (&word, &target)) in
+            writes.iter().zip(&expected).enumerate()
+        {
+            let mut next = Vec::new();
+            let rotated = word.div_euclid(3).saturating_add(
+                word.rem_euclid(3).saturating_mul(HIGH_TRIT_WEIGHT),
+            );
+            for &(accumulator, mask) in &candidates {
+                let crazy = malbolge::profile_crazy(word, accumulator, 15);
+                for (candidate, rotated_bit) in
+                    [(crazy, false), (rotated, true)]
+                {
+                    if matches_byte(candidate, target) {
+                        next.push((
+                            candidate,
+                            if rotated_bit {
+                                mask | (1 << index)
+                            } else {
+                                mask
+                            },
+                        ));
+                    }
+                }
+            }
+            candidates = next;
+            if candidates.is_empty() {
+                break;
+            }
+        }
+        for (_, mask) in candidates {
+            let mut operations = vec![LinearOpcode::NoOperation; prefix];
+            operations.push(LinearOpcode::RelocateDataPointer);
+            for index in 0..N {
+                operations.extend([
+                    if mask & (1 << index) == 0 {
+                        LinearOpcode::CrazyData
+                    } else {
+                        LinearOpcode::RotateData
+                    },
+                    LinearOpcode::OutputByte,
+                ]);
+            }
+            operations.push(LinearOpcode::Halt);
+            if let Some(layout) = verified_output_stream_layout(
+                profile,
+                &operations,
+                expected,
+                source_cells,
+            ) {
+                return Some(layout);
+            }
+        }
+    }
+    None
+}
+
 /// Try a complete output stream with no count-specific hard-coded bytes.
 ///
 /// This is only a proposal grammar: all accepted code is independently

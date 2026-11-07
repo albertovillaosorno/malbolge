@@ -1398,12 +1398,10 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                     .get(..witnessed.len())
                     .is_some_and(|prefix| witnessed == prefix)
                 && DISTINCT_ELEVEN_BYTES.get(witnessed.len()) == Some(&byte);
+            // Source and AST prove the byte values; the twelve-effect guest
+            // search, not this historical byte prefix, decides realizability.
             let next_twelve = witnessed.len() == calls.len()
-                && witnessed.len() < DISTINCT_TWELVE_BYTES.len()
-                && DISTINCT_TWELVE_BYTES
-                    .get(..witnessed.len())
-                    .is_some_and(|prefix| witnessed == prefix)
-                && DISTINCT_TWELVE_BYTES.get(witnessed.len()) == Some(&byte);
+                && witnessed.len() < DISTINCT_TWELVE_BYTES.len();
             let next_thirteen = witnessed.len() == calls.len()
                 && witnessed.len() < DISTINCT_THIRTEEN_BYTES.len()
                 && DISTINCT_THIRTEEN_BYTES
@@ -2458,6 +2456,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
     }
     // No strict proper prefix of the forty-eight source is independently proved.
     if (2..48).contains(&observed.len())
+        && !(observed.len() == 12 && observed == DISTINCT_TWELVE_BYTES)
         && DISTINCT_FORTY_EIGHT_BYTES
             .get(..observed.len())
             .is_some_and(|prefix| observed == prefix)
