@@ -1180,3 +1180,27 @@ without publication.
 This is bounded compile-time selection of C state, not guest runtime branching
 or a general byte-stream emitter. The original twelve-byte Fibonacci layout
 remains unsupported and P0 is still pending.
+
+### Source-proven zero-trip `while` with discarded effects
+
+A complete C program combining a `while` that is false at entry, a guarded
+state update and `putchar` in that skipped body, and a subsequent three-step
+`do…while` recurrence initially refused at the first local declaration. The
+bounded evaluator now still proves the entire skipped body against shadow
+local state, checks its branch and putchar AST, then discards all speculative
+state and output effects. An executed `while` still reuses its previously
+proven body and requires a source-proven false exit within twelve iterations.
+The admitted zero-trip subset is deliberately conservative: undefined or
+unsupported expressions in a skipped body still refuse compilation, even
+though C would not evaluate those expressions at runtime.
+
+The independent C oracle verifies that the first loop executes zero times;
+the following three iterations visit `60, 160, 128` and derive `127 ^ 62 =
+65`. A source variant swaps the unreachable branch selector so both shadow
+branch outcomes are exercised. Both complete programs emit only `0x41` in the
+normative Malbolge guest VM on empty and nonempty input, with no output from
+the skipped `putchar`. Impure guards, unsupported skipped effects, undefined
+expressions and tampered loop/body/guard/output AST reject without artifacts.
+This proves a finite source-constant C control-flow slice, not runtime guest
+state or a general guest byte-stream layout. The original twelve-byte
+Fibonacci P0 remains open.

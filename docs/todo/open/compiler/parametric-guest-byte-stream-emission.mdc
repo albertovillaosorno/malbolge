@@ -525,3 +525,15 @@ a compiler capability gap, not a reason to return to N+1.
   arithmetic, unbounded loops and hostile AST structures refuse publication.
   This is compiler-time C state replay and does not implement dynamic guest
   branches or the original twelve-byte Fibonacci layout. P0 remains open.
+
+- A complete source-C program now proves a zero-trip `while` before a
+  three-iteration `do…while` with mutable unsigned state, a conditional and
+  a final guest `putchar`. The previously rejected zero-trip guard now admits
+  only a fully verified skipped body evaluated on shadow state; writes and
+  skipped output effects are discarded. The independent oracle visits
+  `60, 160, 128` after the skipped loop and derives `0x41`, which the actual
+  normative Malbolge VM emits on both stdin variants. Two source variants,
+  four source refusals and five forged-AST cases check the boundary. Undefined
+  or unsupported operations in skipped code still fail conservatively; this
+  is compile-time replay, not dynamic guest control flow. The original
+  twelve-byte Fibonacci output still lacks a general guest-layout witness.

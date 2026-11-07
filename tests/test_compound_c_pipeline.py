@@ -3073,7 +3073,6 @@ class CompoundCPipelineTests(unittest.TestCase):
             for label, changed in {
                 "nonterminating": original.replace("i = i + 1U", "i = i + 0U"),
                 "beyond-bound": original.replace("i < 3U", "i < 13U"),
-                "zero-iterations": original.replace("i < 3U", "i < 0U"),
                 "side-effecting-test": original.replace("i < 3U", "i++ < 3U"),
                 "undefined-test": original.replace("i < 3U", "(i / 0U) < 3U"),
                 "nested-loop": original.replace(
@@ -3565,6 +3564,207 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 tampered["nodes"][node_id - 1][field] = value
                 guest = Path(scratch) / f"no-else-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
+
+    def test_zero_trip_while_skips_checked_body_and_reaches_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_zero_trip_while_recurrence_output.c"
+        ).read_text()
+        self.assertIn("while (i < 3U)", original)
+        self.assertIn("putchar((int)(next ^ 1U));", original)
+
+        # Independently evaluate the C order: the first loop skips its
+        # output and mutations; the second executes three complete trips.
+        def oracle() -> tuple[bytes, list[int], int]:
+            a, b, i = 3, 5, 3
+            skipped = 0
+            while i < 3:
+                skipped += 1
+                next_value = ((a * b) << 2) & 255
+                a = ((next_value >> 3) ^ 1) if next_value & 8 else next_value - 1
+                b = next_value
+                i += 1
+            visited: list[int] = []
+            while True:
+                next_value = ((a * b) << 2) & 255
+                visited.append(next_value)
+                a = ((next_value >> 3) ^ 1) if next_value & 8 else next_value - 1
+                b = next_value
+                i += 1
+                if i >= 6:
+                    break
+            return bytes((a ^ 62,)), visited, skipped
+
+        expected, visited, skipped = oracle()
+        self.assertEqual((expected, visited, skipped), (b"A", [60, 160, 128], 0))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source in (
+                ("true-shadow", original),
+                ("false-shadow", original.replace("next & 8U", "next & 2U", 1)),
+            ):
+                candidate = Path(scratch) / f"zero-trip-{label}.c"
+                candidate.write_text(source)
+                guest = Path(scratch) / f"zero-trip-{label}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/zero-trip-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=100,
+                )
+                self.assertEqual(compiled.returncode, 0, (label, compiled.stderr))
+                self.assertTrue(guest.is_file(), label)
+                for guest_input in (b"", b"\xff\x00\x80"):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=guest_input,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected, label)
+                    self.assertRegex(
+                        executed.stderr,
+                        rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                    )
+
+    def test_zero_trip_while_unproved_source_refuses_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        original = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_zero_trip_while_recurrence_output.c"
+        ).read_text()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed in {
+                "impure-guard": original.replace("while (i < 3U)", "while (i++ < 3U)"),
+                "undefined-skipped-expression": original.replace(
+                    "putchar((int)(next ^ 1U));", "putchar((int)(next / 0U));"
+                ),
+                "unproved-skipped-effect": original.replace(
+                    "putchar((int)(next ^ 1U));", "next++;"
+                ),
+                "nested-skipped-loop": original.replace(
+                    "putchar((int)(next ^ 1U));",
+                    "while (next & 8U) { next = next - 1U; }",
+                ),
+            }.items():
+                source = Path(scratch) / f"invalid-zero-trip-{label}.c"
+                source.write_text(changed)
+                guest = Path(scratch) / f"invalid-zero-trip-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/invalid-zero-trip-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(source),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=40,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|FRONTEND-")
+                self.assertFalse(guest.exists(), label)
+
+    def test_zero_trip_while_forged_skipped_ast_refuses_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_zero_trip_while_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/zero-trip-ast-v1",
+                str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        parsed = cast(dict[str, object], json.loads(frontend.stdout))
+        nodes = cast(list[dict[str, object]], parsed["nodes"])
+        zero_loop = next(node for node in nodes if node["kind"] == "while-statement")
+        children = [node for node in nodes if node["parent"] == zero_loop["id"]]
+        condition = next(
+            node for node in children if node["kind"] == "binary-expression"
+        )
+        body = next(node for node in children if node["kind"] == "compound-statement")
+        skipped_call = next(
+            node
+            for node in nodes
+            if node["kind"] == "call-expression"
+            and cast(dict[str, dict[str, int]], node["span"])["begin"]["byte"]
+            < cast(dict[str, dict[str, int]], body["span"])["end"]["byte"]
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, node_id, field, value in (
+                ("loop-parent", zero_loop["id"], "parent", 0),
+                ("guard-type", condition["id"], "type", "u32"),
+                ("skipped-body-parent", body["id"], "parent", 0),
+                ("skipped-body-operation", body["id"], "operation", "++"),
+                (
+                    "skipped-output-callee",
+                    skipped_call["id"],
+                    "reference",
+                    "external:puts",
+                ),
+            ):
+                assert isinstance(node_id, int)
+                tampered = cast(
+                    dict[str, list[dict[str, object]]],
+                    json.loads(frontend.stdout),
+                )
+                tampered["nodes"][node_id - 1][field] = value
+                guest = Path(scratch) / f"zero-trip-ast-{label}.malbolge"
                 refused = subprocess.run(
                     [
                         str(ADAPTER),

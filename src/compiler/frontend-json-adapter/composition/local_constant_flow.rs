@@ -655,8 +655,9 @@ impl<'node> Flow<'node> {
     }
 
     /// Replay a source-proven `while (predicate) { ... }` over known locals.
-    /// Each condition is re-evaluated after the checked body mutates state;
-    /// unsupported bodies and loops without an observed bounded exit refuse.
+    /// Recheck each condition after a body execution, or validate a skipped
+    /// body on shadow state without publishing its writes or output effects.
+    /// Unsupported bodies and unbounded loops refuse.
     fn static_while(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
         let statement = self.take(body.id, "while-statement")?;
         if !clean(statement)
@@ -681,8 +682,18 @@ impl<'node> Flow<'node> {
                 return None;
             }
             if !continue_loop {
-                // Zero-trip loops have no proven body and fail on `None`.
-                self.position = body_end?;
+                if let Some(end) = body_end {
+                    self.position = end;
+                } else {
+                    // A skipped body is still a complete Clang subtree.
+                    // Prove it against shadow state, then discard every
+                    // speculative local write and guest output effect.
+                    let starting_locals = self.locals.clone();
+                    let starting_outputs = self.outputs.len();
+                    self.loop_body(loop_body)?;
+                    self.locals = starting_locals;
+                    self.outputs.truncate(starting_outputs);
+                }
                 return Some(statement.span.end.byte);
             }
             if iteration == MAX_STATIC_LOOP_ITERATIONS {
