@@ -1831,6 +1831,146 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", refused.stderr)
                 self.assertFalse(guest.exists(), label)
 
+    def test_computed_unsigned_comparison_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_computed_condition_recurrence_output.c"
+        )
+        original = source.read_text()
+        comparison = "((next & 31U) + (a & 7U)) >= ((b ^ 2U) + 3U)"
+        self.assertIn(comparison, original)
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, operator, expected_branches in (
+                ("greater-equal", ">=", [True, False, False]),
+                ("less-than", "<", [False, True, True]),
+            ):
+                a, b = 3, 5
+                branches = []
+                for _ in range(3):
+                    following = ((a * b) << 2) & 255
+                    lhs = (following & 31) + (a & 7)
+                    rhs = (b ^ 2) + 3
+                    take_then = lhs >= rhs if operator == ">=" else lhs < rhs
+                    branches.append(take_then)
+                    a = ((following >> 3) ^ 1) if take_then else following - 1
+                    b = following
+                self.assertEqual(branches, expected_branches, label)
+                self.assertLessEqual(a, 255)
+                variant = original.replace(
+                    comparison,
+                    comparison.replace(">=", operator),
+                ).replace("a ^ 62U", f"a ^ {a ^ 65}U")
+                candidate = Path(scratch) / f"computed-{label}.c"
+                _written = candidate.write_text(variant)
+                guest = candidate.with_suffix(".malbolge")
+                compiled = subprocess.run(
+                    [
+                        sys.executable, "-B", str(DRIVER),
+                        "--repository-tools", "--source-id",
+                        f"tests/computed-{label}-v1", "--capsule",
+                        "--output", str(guest), str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, (label, compiled.stderr))
+                self.assertTrue(guest.is_file())
+                for guest_input in (b"", bytes((255, 0, 128))):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=guest_input,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"A", label)
+                    self.assertRegex(
+                        executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                    )
+            for label, changed in {
+                "impure-left": original.replace("a & 7U", "a++ & 7U"),
+                "undefined-right": original.replace(
+                    "(b ^ 2U) + 3U", "(b ^ 2U) / (b - b)"
+                ),
+                "logical-condition": original.replace(">= ((b", "|| ((b"),
+            }.items():
+                candidate = Path(scratch) / f"rejected-computed-{label}.c"
+                _written = candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable, "-B", str(DRIVER),
+                        "--repository-tools", "--source-id",
+                        f"tests/computed-invalid-{label}-v1", "--capsule",
+                        "--output", str(guest), str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_computed_unsigned_comparison_ast_mutations_fail_closed(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/"
+            "local_computed_condition_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND), "--guest-include", str(GUEST_INCLUDE),
+                "--resource-dir", str(RESOURCE),
+                "--source-id", "tests/computed-ast-mutation-v1", str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        canonical = json.loads(frontend.stdout)
+        comparisons = [
+            node for node in canonical["nodes"]
+            if node["kind"] == "binary-expression"
+            and node.get("operation") == ">="
+        ]
+        self.assertEqual(len(comparisons), 1)
+        comparison = comparisons[0]
+        right = next(
+            node for node in canonical["nodes"]
+            if node["parent"] == comparison["id"]
+            and node["kind"] == "parenthesized-expression"
+            and node["span"]["begin"]["byte"] > comparison["span"]["begin"]["byte"]
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, field, value in (
+                ("bad-rhs-type", "type", "i32"),
+                ("bad-rhs-parent", "parent", 0),
+                ("bad-rhs-kind", "kind", "call-expression"),
+            ):
+                tampered = json.loads(frontend.stdout)
+                tampered["nodes"][right["id"] - 1][field] = value
+                guest = Path(scratch) / f"computed-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER), "--layout-backend", str(LAYOUT),
+                        "--output", str(guest), "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
     def test_negated_logical_ast_mutations_refuse_publication(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
             self.skipTest("pinned C compiler binaries are not built")

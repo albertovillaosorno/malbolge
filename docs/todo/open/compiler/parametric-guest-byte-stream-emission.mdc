@@ -4,7 +4,7 @@ status: "pending"
 lane: "10"
 priority: "p0"
 area: "compiler"
-task: "Generalize guest byte-stream emission instead of emit-N fixtures"
+task: "TODO - Generalize guest byte-stream emission instead of emit-N fixtures"
 contract: "docs/technical/compiler/parametric-guest-byte-stream-emission.md"
 depends_on:
 adr_paths:
@@ -397,3 +397,16 @@ a compiler capability gap, not a reason to return to N+1.
   relational/logical tests still pass. This is bounded compile-time folding,
   not guest runtime Boolean evaluation; the twelve-byte Fibonacci layout
   remains unwitnessed and P0 stays pending.
+
+- A full three-iteration, source-backed C recurrence with a condition
+  comparing two computed unsigned expressions initially refused at the first
+  declaration. The bounded Boolean evaluator now independently proves each
+  operand as a complete `u32` expression, retaining exact Clang ancestry,
+  source spans, checked arithmetic and the `i32` comparison result. Independent
+  `>=` and `<` state traces visit both conditional arms and end in distinct
+  checked XOR constants; both complete pinned C programs emit `0x41` on the
+  real normative Malbolge VM under empty and nonempty stdin. Source increments,
+  division by zero, unsupported logical mutation and forged right-hand AST
+  metadata reject without guest publication. This remains compile-time C
+  evaluation with one final guest output, not guest runtime state, arbitrary
+  byte streams or completion of the twelve-byte Fibonacci P0.

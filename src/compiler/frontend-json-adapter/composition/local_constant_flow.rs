@@ -153,7 +153,7 @@ impl<'node> Flow<'node> {
                 comparison,
             ));
         }
-        self.masked_comparison(comparison)
+        self.unsigned_comparison(comparison)
     }
 
     /// Parse both arms completely, but retain only the proven selected state.
@@ -436,36 +436,6 @@ impl<'node> Flow<'node> {
         Some(end)
     }
 
-    fn masked_comparison(
-        &mut self,
-        comparison: &'node Node,
-    ) -> Option<(bool, &'node Node)> {
-        let parentheses =
-            self.take(comparison.id, "parenthesized-expression")?;
-        let (left, expression) = self.expression(parentheses.id, 0)?;
-        let right = self.take(comparison.id, "integer-literal")?;
-        let right_value = literal_byte(right)?;
-        let selected = checked_condition_comparison(
-            comparison,
-            left,
-            u32::from(right_value),
-        )?;
-        if parentheses.type_name.as_deref() != Some("u32")
-            || !bare_typed_node(parentheses)
-            || !span_within(&comparison.span, &parentheses.span)
-            || !span_within(&parentheses.span, &expression.span)
-            || expression.operation.as_deref() != Some("&")
-            || !span_within(&comparison.span, &right.span)
-            || comparison.span.begin.byte != parentheses.span.begin.byte
-            || parentheses.span.begin.byte >= expression.span.begin.byte
-            || expression.span.end.byte >= parentheses.span.end.byte
-            || !ordered_binary_spans(comparison, parentheses, right)
-        {
-            return None;
-        }
-        Some((selected, comparison))
-    }
-
     /// Prove one pure `!` operand against its complete source-backed subtree.
     fn negated_condition(
         &mut self,
@@ -607,6 +577,23 @@ impl<'node> Flow<'node> {
         }
         self.position = self.position.checked_add(1)?;
         Some(node)
+    }
+
+    /// Prove both C unsigned comparison operands as complete pure expressions.
+    /// Their source order, checked arithmetic, and exact Clang types are
+    /// required even when a branch is determined at compile time.
+    fn unsigned_comparison(
+        &mut self,
+        comparison: &'node Node,
+    ) -> Option<(bool, &'node Node)> {
+        let (left_value, left) = self.expression(comparison.id, 0)?;
+        let (right_value, right) = self.expression(comparison.id, 0)?;
+        if !ordered_binary_spans(comparison, left, right) {
+            return None;
+        }
+        let selected =
+            checked_condition_comparison(comparison, left_value, right_value)?;
+        Some((selected, comparison))
     }
 }
 

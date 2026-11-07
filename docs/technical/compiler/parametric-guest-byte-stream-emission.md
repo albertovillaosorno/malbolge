@@ -888,3 +888,32 @@ adversarial regressions live in `tests/test_compound_c_pipeline.py`.
 This is source-backed **compile-time** C constant evaluation, not runtime
 Malbolge Boolean execution or short-circuit side effects. The original twelve-
 byte Fibonacci stream remains blocked at guest layout, so P0 remains open.
+
+### Computed unsigned operands in source-proven comparisons
+
+A full three-iteration C recurrence now compares **two independently computed
+unsigned expressions** within its loop's branch. The condition combines
+masked local values on the left with an XOR and addition derived from a second
+local on the right. The first pinned C-to-guest run refused the declaration:
+the closed Boolean evaluator only admitted one parenthesized masked expression
+compared against a byte literal.
+
+The evaluator now proves each complete `u32` comparison operand through the
+existing bounded, source-ordered expression walker. It requires exact Clang
+parentage and operand spans before computing the `i32` Boolean comparison
+result from the two unsigned values. For `>=`, the independent
+three-iteration oracle selects true/false/false; for `<`, it selects
+false/true/true.
+
+Both complete C variants reach actual Malbolge execution, emitting `0x41`
+with empty and nonempty stdin. Side-effecting increments,
+a zero-divisor expression, and an unsupported logical-operand mutation refuse
+without publication. Forged right-hand AST kind, type and parent also reject.
+
+The checked-in source and regressions are
+`local_computed_condition_recurrence_output.c` and
+`test_computed_unsigned_comparison_*` in
+`tests/test_compound_c_pipeline.py`. This is pure compile-time C folding, not
+guest runtime arithmetic, branches or control-flow execution. The original
+twelve-byte Fibonacci trace still lacks a positional guest layout witness;
+P0 remains pending.
