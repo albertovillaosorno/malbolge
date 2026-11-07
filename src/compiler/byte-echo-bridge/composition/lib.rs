@@ -2495,11 +2495,12 @@ pub fn encode_distinct_literal_quad(
     .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)
 }
 
-/// Emit one independently VM-witnessed five-distinct-byte C trace.
+/// Emit five source-distinct bytes through independently verified guest code.
 ///
-/// The exact observed guest program performs five separate relocated `p`
-/// writes, followed by five independent output instructions. One byte is ESC;
-/// this is a binary output contract, not a text literal convention.
+/// The historical five-write `Q"\x1b79` source remains pinned. A separate
+/// bounded search can realize an initial zero before guest data relocation,
+/// followed by four arithmetic-derived output bytes; every proposed source
+/// is independently re-admitted and executed by the normative VM.
 ///
 /// # Errors
 ///
@@ -2528,7 +2529,8 @@ pub fn encode_distinct_literal_quint(
         return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let mut ids = BTreeSet::new();
-    for (index, [constant, output]) in pairs.iter().enumerate() {
+    let mut expected = [0u8; 5];
+    for (slot, [constant, output]) in expected.iter_mut().zip(pairs) {
         let (
             TernaryOperation::MaterializeU8 { result, scalar, .. },
             TernaryOperation::ByteOutput { value, .. },
@@ -2536,12 +2538,23 @@ pub fn encode_distinct_literal_quint(
         else {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         };
-        if result != value
-            || !ids.insert(*result)
-            || scalar.bits() != b"Q\"\x1b79"[index]
-        {
+        if result != value || !ids.insert(*result) {
             return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
         }
+        *slot = scalar.bits();
+    }
+    if expected != *b"Q\"\x1b79" {
+        // A leading zero can be emitted by the real initial accumulator
+        // before relocation, followed by independently verified guest writes.
+        if expected[0] != 0 {
+            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
+        }
+        let cells = pair_source_cells(profile)
+            .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
+        return search_output_stream::verified_state_space_output_layout(
+            profile, expected, &cells,
+        )
+        .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace);
     }
     let mut operations = vec![LinearOpcode::NoOperation; 11];
     operations.push(LinearOpcode::RelocateDataPointer);

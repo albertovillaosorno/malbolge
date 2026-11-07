@@ -1733,6 +1733,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 if !matches!(
                     (selected_byte, mixed_byte, third_byte, byte),
                     (Some(b'T'), Some(b'='), Some(b'4'), b'>')
+                        | (Some(0), Some(b'T'), Some(b'='), b'4')
                         | (Some(b'T'), Some(b'='), Some(141), 209)
                         | (Some(b'Q'), Some(b'"'), Some(27), b'7')
                         | (Some(b'Q'), Some(b'"'), Some(253), 206)
@@ -1747,6 +1748,7 @@ fn admit_literal_output_nodes(nodes: &[Node]) -> Result<LiteralOutputNodes<'_>, 
                 if !matches!(
                     (selected_byte, mixed_byte, third_byte, fourth_byte, byte),
                     (Some(b'Q'), Some(b'"'), Some(27), Some(b'7'), b'9')
+                        | (Some(0), Some(b'T'), Some(b'='), Some(b'4'), b'>')
                         | (Some(b'Q'), Some(28), Some(b'O'), Some(29), b'P')
                         | (Some(b'6'), Some(b'>'), Some(b'5'), Some(2), b'T')
                         | (Some(b'S'), Some(32), Some(23), Some(b'<'), b'6')

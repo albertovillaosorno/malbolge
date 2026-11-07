@@ -55,6 +55,10 @@ VM = BIN_ROOT / "malbolge"
 
 OUTPUT = b'Q"\x1b79'
 SOURCE = "putchar('Q'); putchar('\\\"'); putchar(27); putchar('7'); putchar('9');"
+ZERO_PREFIX_OUTPUT = b"\x00T=4>"
+ZERO_PREFIX_SOURCE = (
+    "putchar(0); putchar('T'); putchar('='); putchar('4'); putchar('>');"
+)
 
 
 @final
@@ -123,6 +127,36 @@ class DistinctLiteralQuintSourceTests(unittest.TestCase):
             self.assertEqual(guest.returncode, 0, guest.stderr)
             self.assertEqual(guest.stdout, OUTPUT)
             self.assertEqual(guest.stderr, b"malbolge-steps-v1:23\n")
+
+    def test_zero_prefixed_five_source_effects_execute_in_guest(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as name:
+            directory = Path(name)
+            compiled, artifact = self.compile(
+                directory, "zero-prefixed-five", ZERO_PREFIX_SOURCE
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            for stdin in (b"", b"\xff\x00\x80"):
+                guest = subprocess.run(
+                    [str(VM), str(artifact), "--report-steps"],
+                    input=stdin,
+                    capture_output=True,
+                    check=False,
+                    timeout=60,
+                )
+                self.assertEqual(guest.returncode, 0, guest.stderr)
+                self.assertEqual(guest.stdout, ZERO_PREFIX_OUTPUT)
+                self.assertRegex(guest.stderr, rb"^malbolge-steps-v1:[0-9]+\n$")
+
+    def test_nonzero_prefix_of_five_source_effects_refuses(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as name:
+            compiled, artifact = self.compile(
+                Path(name),
+                "nonzero-prefix-five",
+                ZERO_PREFIX_SOURCE.replace("putchar(0)", "putchar(1)"),
+            )
+            self.assertNotEqual(compiled.returncode, 0)
+            self.assertFalse(artifact.exists())
 
     def test_raw_profile_matches_capsule_binary_guest_output(self) -> None:
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as name:

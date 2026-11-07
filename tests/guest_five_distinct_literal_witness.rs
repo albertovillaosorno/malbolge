@@ -183,6 +183,54 @@ fn canonical_five_byte_bridge_matches_independently_executed_layout() -> Result<
 #[test]
 #[expect(
     clippy::panic_in_result_fn,
+    reason = "source-independent guest VM verifies dynamic five-byte layout"
+)]
+fn zero_prefixed_five_byte_bridge_executes_real_guest() -> Result<(), String> {
+    let expected = *b"\0T=4>";
+    let compiled = encode_distinct_literal_quint(
+        &source_quint(expected, false)?,
+        current_profile(),
+    )
+    .map_err(|error| format!("zero-prefixed bridge: {error:?}"))?;
+    let steps = compiled.executed_code_positions().len();
+    let writes: Vec<_> = compiled
+        .data_write_positions()
+        .iter()
+        .flatten()
+        .copied()
+        .collect();
+    assert!(steps <= 126);
+    assert!(writes.len() >= 4);
+    assert_eq!(
+        writes.iter().copied().collect::<BTreeSet<_>>().len(),
+        writes.len()
+    );
+    for input in [Vec::new(), vec![0, 128, 255]] {
+        let mut vm = ProfileMachine::from_source(
+            current_profile(),
+            compiled.source(),
+            input,
+        )
+        .map_err(|error| format!("guest load: {error:?}"))?;
+        assert!(matches!(vm.run(steps),
+            Ok(RunOutcome::Terminated { steps: actual, .. }) if actual == steps));
+        assert_eq!(vm.input_consumed(), 0);
+        assert_eq!(vm.output(), expected);
+    }
+    assert!(matches!(
+        encode_distinct_literal_quint(
+            &source_quint(*b"\x01T=4>", false)?,
+            current_profile(),
+        ),
+        Err(ByteEchoBridgeError::UnsupportedEffectTrace)
+    ));
+    Ok(())
+}
+
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
     reason = "assertions check independent bridge fail-closed behavior"
 )]
 fn unproved_or_stale_five_byte_ir_refuses() -> Result<(), String> {

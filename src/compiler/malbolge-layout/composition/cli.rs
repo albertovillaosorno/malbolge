@@ -4203,7 +4203,9 @@ fn verify_distinct_literal_quint(
     artifact: &VerifiedSource,
     bytes: [u8; 5],
 ) -> Result<(), String> {
-    if bytes != *b"Q\"\x1b79" || artifact.steps != 23 {
+    if !(bytes == *b"Q\"\x1b79" && artifact.steps == 23
+        || bytes[0] == 0 && (2..=126).contains(&artifact.steps))
+    {
         return Err(String::from(
             "distinct-literal quint has no guest witness",
         ));

@@ -478,14 +478,21 @@ general C string-output implementation.
 
 ### Five distinct guest-computed bytes (bounded binary witness)
 
-The opt-in `--distinct-literal-quint` mode admits five source-proven byte
-constants only for `51 22 1b 37 39` (hex: `Q`, quote, ESC, `7`, `9`).
-The eleven-nop relocated target performs five disjoint guest `CrazyData`
-writes and executes five actual byte outputs in 23 normative VM steps.
-Canonical typed/MCTR identity, all five SSA bindings, profile, input-free
-execution, and the raw/capsule publisher are independently rechecked.
-Incomplete prefixes, different five-byte outputs, and additional effects
-fail without output; this witness is not general C string compilation.
+The opt-in `--distinct-literal-quint` mode retains its historical source
+witness `51 22 1b 37 39` (hex: `Q`, quote, ESC, `7`, `9`). Its eleven-nop
+relocated target performs five disjoint guest `CrazyData` writes and five
+byte outputs in 23 normative VM steps. A separate source-independent
+state-space search now accepts an initial zero output before relocation,
+then four arithmetic-derived byte outputs. A complete source-C probe with
+five separate `putchar` effects emits `00 54 3d 34 3e` (`NUL T=4>`) under
+the normative guest VM on both empty and nonempty input. The pinned Clang
+adapter still restricts this source path to the exact witnessed zero-first
+sequence; the lower bridge searches other zero-first traces but publishes
+only independently verified layouts within its finite source-state budget.
+Canonical typed/MCTR identity, five distinct SSA bindings, relocated writes,
+no input consumption and raw/capsule replay remain mandatory. Other source
+traces, stale SSA, extra effects and unwitnessed guest layouts refuse without
+publication. This does not implement arbitrary C strings or runtime C I/O.
 
 ### Six distinct guest-computed bytes (bounded binary witness)
 

@@ -523,56 +523,6 @@ fn project_source_distinct_literal_effects(
     Ok(result)
 }
 
-// Five exact byte constants, each with its own source-derived SSA value.
-fn project_literal_quint_effects(
-    module: &Module,
-    original: &[typed::LocatedInstruction],
-) -> Result<Vec<InputInstruction>, TypedEchoAdapterError> {
-    let (pairs, remainder) = original.as_chunks::<2>();
-    if pairs.len() != 5 || !remainder.is_empty() {
-        return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-    }
-    let mut instructions = Vec::with_capacity(10);
-    let mut ids = BTreeSet::new();
-    for (index, [constant, output]) in pairs.iter().enumerate() {
-        let (
-            Instruction::ConstantInteger {
-                constant: literal,
-                result: id,
-                type_id,
-            },
-            Instruction::ByteOutput { value },
-        ) = (constant.instruction(), output.instruction())
-        else {
-            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-        };
-        if !is_byte_type(module, *type_id)
-            || literal.bit_width() != 8
-            || id != value
-            || !ids.insert(*id)
-            || literal.little_endian()
-                != b"Q\"\x1b79"
-                    .get(index)
-                    .map(std::slice::from_ref)
-                    .unwrap_or(&[])
-        {
-            return Err(TypedEchoAdapterError::UnsupportedTypedIr);
-        }
-        instructions.push(InputInstruction::ConstantInteger {
-            bit_width: 8,
-            little_endian: literal.little_endian().to_vec(),
-            result: id.value(),
-            span: project_span(constant.span()),
-            type_kind: InputScalarType::U8,
-        });
-        instructions.push(InputInstruction::ByteOutput {
-            span: project_span(output.span()),
-            value: value.value(),
-        });
-    }
-    Ok(instructions)
-}
-
 // Six exact byte constants, each with its own source-derived SSA value.
 fn project_literal_six_effects(
     module: &Module,
@@ -2924,7 +2874,11 @@ fn project_byte_trace(
             )?
         }
         ByteTraceMode::DistinctLiteralQuint => {
-            project_literal_quint_effects(module, block.instructions())?
+            project_source_distinct_literal_effects(
+                module,
+                block.instructions(),
+                5,
+            )?
         }
         ByteTraceMode::DistinctLiteralSix => {
             project_literal_six_effects(module, block.instructions())?
@@ -3461,7 +3415,7 @@ pub fn compile_canonical_typed_distinct_literal_triple(
     compile_byte_trace(canonical, profile, ByteTraceMode::DistinctLiteralTriple)
 }
 
-/// Compile five distinct guest bytes `Q`, `"`, ESC, `7`, `9`.
+/// Compile five source-distinct bytes when a guest layout is verified.
 ///
 /// # Errors
 ///

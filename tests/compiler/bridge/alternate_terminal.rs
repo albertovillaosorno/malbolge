@@ -497,3 +497,54 @@ fn maximum_graphical_relocation_reconstructs_guest() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn five_source_bytes_with_initial_zero_are_recovered() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    let mut operations = vec![LinearOpcode::OutputByte];
+    operations.resize(11, LinearOpcode::NoOperation);
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for _ in 0..4 {
+        operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let independent = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("seeded layout failed: {error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, independent.source(), Vec::new())
+            .map_err(|error| format!("seeded VM failed: {error:?}"))?;
+    if !matches!(vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+    {
+        return Err(String::from("seeded guest did not terminate"));
+    }
+    let expected: [u8; 5] = vm
+        .output()
+        .try_into()
+        .map_err(|_error| String::from("not five guest bytes"))?;
+    assert_eq!(expected[0], 0);
+    assert_eq!(expected, *b"\0T=4>");
+    let recovered =
+        verified_state_space_output_layout(profile, expected, &cells)
+            .ok_or_else(|| {
+                format!("five-byte search missed guest {expected:?}")
+            })?;
+    if recovered.data_write_positions().iter().flatten().count() < 4 {
+        return Err(String::from("search dropped guest arithmetic effects"));
+    }
+    let mut guest =
+        ProfileMachine::from_source(profile, recovered.source(), vec![
+            255, 0, 128,
+        ])
+        .map_err(|error| format!("recovered VM failed: {error:?}"))?;
+    if !matches!(
+        guest.run(recovered.executed_code_positions().len()),
+        Ok(RunOutcome::Terminated { .. })
+    ) || guest.output() != expected
+    {
+        return Err(String::from("recovered five-byte guest disagreed"));
+    }
+    Ok(())
+}
