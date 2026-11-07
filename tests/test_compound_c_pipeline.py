@@ -296,6 +296,69 @@ class CompoundCPipelineTests(unittest.TestCase):
             self.assertIn(b"Layout(UnsupportedEffectTrace)", compiled.stderr)
             self.assertFalse(guest.exists(), "unwitnessed program published a guest")
 
+    def test_zero_prefix_conditional_loop_reaches_guest(self) -> None:
+        """Real guest output may precede data relocation without host I/O."""
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_zero_prefix_conditional_stream.c"
+        )
+        previous, current = 1, 1
+        expected = bytearray()
+        for _ in range(4):
+            following = (previous + current) & 255
+            if following % 2 == 0:
+                expected.append(0 if following == 2 else 63)
+            else:
+                expected.append(84 if following == 3 else 178)
+            previous, current = current, following
+        self.assertEqual(bytes(expected), bytes.fromhex("0054b23f"))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            guest = Path(scratch) / "zero-prefix.malbolge"
+            command = [
+                sys.executable,
+                "-B",
+                str(DRIVER),
+                "--repository-tools",
+                "--source-id",
+                "tests/zero-prefix-conditional-stream-v1",
+                "--capsule",
+                "--output",
+                str(guest),
+                str(source),
+            ]
+            compiled = subprocess.run(
+                command, check=False, capture_output=True, timeout=180
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(guest.is_file())
+            for guest_input in (b"", bytes((255, 0, 128))):
+                executed = subprocess.run(
+                    [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                    input=guest_input,
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertEqual(executed.returncode, 0, executed.stderr)
+                self.assertEqual(executed.stdout, expected)
+                self.assertRegex(executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$")
+            altered = Path(scratch) / "zero-prefix-unsupported.c"
+            original = source.read_text()
+            self.assertIn("next == 3U", original)
+            altered.write_text(original.replace("next == 3U", "next++ == 3U"))
+            refused_guest = Path(scratch) / "zero-prefix-unsupported.malbolge"
+            refused = subprocess.run(
+                [*command[:-2], str(refused_guest), str(altered)],
+                check=False,
+                capture_output=True,
+                timeout=180,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"Unsupported", refused.stderr)
+            self.assertFalse(refused_guest.exists())
+
     def test_wide_conditional_loop_four_outputs_reach_guest(self) -> None:
         """Divide/multiply/mask in C, then prove four real guest bytes."""
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):

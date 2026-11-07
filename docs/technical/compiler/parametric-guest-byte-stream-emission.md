@@ -945,3 +945,33 @@ The complete acceptance and mutation regressions live in
 This is bounded source-constant folding, **not** guest runtime selection,
 C control flow or arbitrary byte-stream synthesis. The original twelve-byte
 Fibonacci output remains blocked by positional guest layout; P0 is open.
+
+### Verified zero-prefixed guest output before data relocation
+
+A complete four-iteration C recurrence with automatic unsigned state, a
+masked Fibonacci update, source-proven `if/else`, pure `?:` expressions, and
+four `putchar` effects initially reached the quad layout publisher but
+failed at `distinct-literal quad geometry disagrees`. Its independently
+computed output is `00 54 b2 3f`; no guest artifact was published.
+
+The bounded state-space proposer now considers one or more real initial-zero
+output instructions before the data-pointer relocation. Its source-independent
+preview counts those bytes rather than silently omitting them, and still
+models all subsequent `p`/`*` writes on loader-expanded guest memory.
+The independent quad publisher now re-decodes these prefix effects and
+permits an output, no-op, or arithmetic instruction before the final halt.
+It still requires exactly four outputs, a single early relocation, at least
+one guest arithmetic write, distinct out-of-source data writes, exact
+positional source admission, and normative VM replay with both empty and
+nonempty input. The maximum prefix, source length, and write count remain
+bounded; no unverified byte stream is accepted.
+
+The tracked `local_zero_prefix_conditional_stream.c` program now compiles
+through the pinned Clang/JSON/typed/ternary/layout pipeline, and the real
+guest emits `00 54 b2 3f` under both input cases. A side-effecting C
+comparison mutation fails without publication. The source-independent
+seeded-layout regression proves the actual first guest instruction outputs
+zero before relocation; a forged preview must not authorize a source.
+These are source-constant-folded C values with real guest output, not guest
+runtime C arithmetic or general byte-stream synthesis. The original
+12-byte Fibonacci acceptance remains unsupported, so P0 remains open.

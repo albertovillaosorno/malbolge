@@ -26,6 +26,7 @@
 //! Bounded, deterministic proposals for relocated linear guest byte streams.
 
 use std::collections::BTreeMap;
+use std::iter::repeat_n;
 
 use super::{
     HIGH_TRIT_WEIGHT, LinearLayout, LinearOpcode, ProfileDescriptor,
@@ -52,6 +53,7 @@ type SearchStates = BTreeMap<(usize, u32), usize>;
 struct SearchGeometry<'memory> {
     memory: &'memory [u32],
     prefix: usize,
+    prefix_outputs: usize,
     source_length: usize,
 }
 
@@ -157,7 +159,12 @@ fn reconstruct_path(
         cursor = step.predecessor;
     }
     suffix.reverse();
-    let mut operations = vec![LinearOpcode::NoOperation; geometry.prefix];
+    let mut operations =
+        vec![LinearOpcode::OutputByte; geometry.prefix_outputs];
+    operations.extend(repeat_n(
+        LinearOpcode::NoOperation,
+        geometry.prefix.checked_sub(geometry.prefix_outputs)?,
+    ));
     operations.push(LinearOpcode::RelocateDataPointer);
     operations.extend(suffix);
     // Once every byte is emitted, remaining body cells may be no-ops.
@@ -178,9 +185,16 @@ fn proposed_geometry<const N: usize>(
     let SearchGeometry {
         memory,
         prefix,
+        prefix_outputs,
         source_length,
     } = *geometry;
     let target_emitted = terminal.emitted_before_tail(N);
+    if prefix_outputs > prefix
+        || prefix_outputs > target_emitted
+        || expected[..prefix_outputs].iter().any(|&byte| byte != 0)
+    {
+        return None;
+    }
     let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
     if relocation < source_length
         || relocation.saturating_add(source_length) >= 4096
@@ -192,7 +206,7 @@ fn proposed_geometry<const N: usize>(
         operation: LinearOpcode::NoOperation,
         predecessor: 0,
     }];
-    let mut states = BTreeMap::from([((0usize, 0u32), 0usize)]);
+    let mut states = BTreeMap::from([((prefix_outputs, 0u32), 0usize)]);
     // The chosen terminal/halt pair fixes the expanded memory tail.
     let target = expected.last().copied()?;
     for position in prefix.saturating_add(1)..source_length.saturating_sub(2) {
@@ -249,6 +263,7 @@ fn verified_terminal_layout<const N: usize>(
             *cell.get_mut(4)? = encoded;
         }
     }
+    let leading_zeros = expected.iter().take_while(|&&byte| byte == 0).count();
     for length in N.saturating_add(4)..=MAX_SOURCE_LENGTH {
         let max_prefix = length.saturating_sub(N.saturating_add(3)).min(30);
         for prefix in 0..=max_prefix {
@@ -263,25 +278,35 @@ fn verified_terminal_layout<const N: usize>(
                 length,
                 relocation.saturating_add(length),
             )?;
-            let Some(operations) = proposed_geometry(
-                source_cells,
-                &SearchGeometry {
-                    memory,
-                    prefix,
-                    source_length: length,
-                },
-                expected,
-                terminal,
-            ) else {
-                continue;
-            };
-            if let Some(layout) = verified_output_stream_layout(
-                profile,
-                &operations,
-                expected,
-                source_cells,
-            ) {
-                return Some(layout);
+            // A graphical output before j emits the known initial zero.
+            // Try maximal useful zero prefixes first, preserving the
+            // historical all-no-op prefix as the last candidate.
+            let max_prefix_outputs = leading_zeros
+                .min(prefix)
+                .min(terminal.emitted_before_tail(N));
+            let verified =
+                (0..=max_prefix_outputs).rev().find_map(|prefix_outputs| {
+                    let geometry = SearchGeometry {
+                        memory,
+                        prefix,
+                        prefix_outputs,
+                        source_length: length,
+                    };
+                    let operations = proposed_geometry(
+                        source_cells,
+                        &geometry,
+                        expected,
+                        terminal,
+                    )?;
+                    verified_output_stream_layout(
+                        profile,
+                        &operations,
+                        expected,
+                        source_cells,
+                    )
+                });
+            if verified.is_some() {
+                return verified;
             }
         }
     }

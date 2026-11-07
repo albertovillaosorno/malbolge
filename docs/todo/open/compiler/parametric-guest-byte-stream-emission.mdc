@@ -422,3 +422,14 @@ a compiler capability gap, not a reason to return to N+1.
   publication. Conditional selection remains compile-time C evaluation,
   not guest runtime control flow. The twelve-byte Fibonacci layout and the
   P0 generalized byte-stream acceptance remain outstanding.
+
+- A new four-iteration source-backed Fibonacci-style C loop selects the
+  independently computed `00 54 b2 3f` output using pure conditional
+  expressions inside `if/else` arms. It first failed at the independent
+  quad layout publisher despite a valid bounded proposal. The search now
+  counts genuine initial-zero outputs before guest data relocation, and the
+  publisher independently re-decodes that prefix and alternate terminal
+  instructions while retaining disjoint-write proof and normative VM replay.
+  The complete pinned C-to-Malbolge pipeline emits the four bytes under
+  empty and nonempty stdin; an impure source mutation refuses publication.
+  The original twelve-byte Fibonacci stream remains unsupported and P0 is open.

@@ -1551,6 +1551,15 @@ fn proposed_output_stream<const N: usize>(
     let mut accumulator = 0u32;
     let mut address = relocated + 1;
     let mut output = Vec::with_capacity(N);
+    // Before relocation D follows C, and A is still zero. Emitting zero
+    // here has a real guest effect but does not change the later data tail.
+    for operation in &operations[..relocation] {
+        match operation {
+            LinearOpcode::OutputByte => output.push(0),
+            LinearOpcode::NoOperation => {},
+            _ => return None,
+        }
+    }
     for operation in operations.iter().skip(relocation + 1) {
         match operation {
             LinearOpcode::CrazyData => {

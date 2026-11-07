@@ -5599,13 +5599,26 @@ fn decode_distinct_quad_operations(
         })
         .collect::<Option<Vec<_>>>()
         .ok_or("distinct-literal quad decode disagrees")?;
-    let prefix = decoded.iter().take_while(|&&op| op == b'o').count();
+    let prefix = decoded
+        .iter()
+        .position(|&op| op == b'j')
+        .ok_or("distinct-literal quad has no relocation")?;
+    // Before j, the accumulator is zero. Early output instructions are
+    // real observable effects; all other prefix cells must be inert.
+    // After j, independently admitted writes are disjoint from the source.
+    let terminal = decoded.get(decoded.len().saturating_sub(2)).copied();
     if prefix > 30
         || source.len() > 94
-        || decoded.get(prefix) != Some(&b'j')
+        || !decoded.get(..prefix).is_some_and(|prefix_bytes| {
+            prefix_bytes.iter().all(|&op| {
+                op == b'o' || op == profile.output_instruction()
+            })
+        })
         || decoded.last() != Some(&b'v')
-        || decoded.get(decoded.len().saturating_sub(2))
-            != Some(&profile.output_instruction())
+        || !terminal.is_some_and(|op| {
+            matches!(op, b'o' | b'p' | b'*')
+                || op == profile.output_instruction()
+        })
     {
         return Err(String::from("distinct-literal quad geometry disagrees"));
     }
@@ -5637,7 +5650,7 @@ fn decode_distinct_quad_operations(
         };
         operations.push(operation);
     }
-    if outputs != 4 || !(4..=32).contains(&writes) {
+    if outputs != 4 || !(1..=32).contains(&writes) {
         return Err(String::from("distinct-literal quad effect disagrees"));
     }
     Ok(operations)
@@ -5671,7 +5684,7 @@ fn verify_distinct_literal_quad(
         .collect();
     let source_limit = u32::try_from(artifact.source.len())
         .map_err(|error| format!("quad source geometry: {error:?}"))?;
-    if !(4..=32).contains(&writes.len())
+    if !(1..=32).contains(&writes.len())
         || writes.iter().copied().collect::<BTreeSet<_>>().len() != writes.len()
         || writes.iter().any(|&position| position < source_limit)
         || layout.executed_code_positions().len() != artifact.steps
