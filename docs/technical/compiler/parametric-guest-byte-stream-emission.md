@@ -1749,3 +1749,30 @@ remains unchanged. The lookahead remains a bounded search heuristic: candidate
 source publication still requires independent positional decoding, disjoint
 guest data writes and normative VM replay under two inputs. This fixes one
 pruning false negative, not the full Fibonacci layout or runtime C state.
+
+### Wider bounded source geometry for twelve-byte streams
+
+The complete original Fibonacci C program still reaches the guest layout
+stage without a verified twelve-byte source and refuses without publication.
+A separate source-independent thirty-nine-instruction guest demonstrated an
+avoidable 36-cell search boundary: eight initial no-ops, one relocation,
+twelve crazy/rotate data writes separated by five no-op data strides, twelve
+real output instructions and a final halt. Its VM output is
+`b5 4f 42 3d 33 08 50 23 b4 4d 5d 31` under empty and nonempty input.
+The original positional source independently passes disjoint-write and
+normative-VM verification, while the previous short search returned no guest.
+
+A separate, effort-capped fallback now searches 37 through 39 source cells
+with an output instruction immediately before halt, at most eight prefix
+cells and a 2,048-step history stop threshold per geometry. It tries longer
+sources and prefixes first to reach a viable witness without traversing
+all earlier high-cost geometries. The established 36-cell search retains its
+original order and 700,000-step cap; the wider path never overrides its
+witnesses. The 39-cell guest is reconstructed and independently re-admitted,
+and the pinned C frontend can emit these same twelve source-proven bytes as a
+real guest capsule. A forged expected output fails the original guest proof
+and an extra thirteenth source output refuses without artifact publication.
+
+This is a finite additional verified source geometry, not arbitrary stream
+synthesis, guest runtime arithmetic or completed P0 acceptance. The exact
+Fibonacci stream `02 59 5f 08 57 4f 22 6d 03 90 b3 23` remains unsupported.

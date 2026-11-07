@@ -763,3 +763,14 @@ a compiler capability gap, not a reason to return to N+1.
   bounded-state cap are tested; independent guest verification remains the
   publication gate. The original twelve-byte Fibonacci C source still
   refuses safely at layout, so generalized P0 remains pending.
+
+- A 39-instruction, source-independent relocated guest with twelve outputs,
+  twelve disjoint crazy/rotate writes and five interleaved data no-ops emits
+  `b5 4f 42 3d 33 08 50 23 b4 4d 5d 31` in the normative VM. The prior
+  36-cell public search missed it despite independent positional proof.
+  A bounded 37-to-39-cell output-terminal fallback now recovers it with with a
+  2,048-step history stop threshold per geometry, preserving the old search
+  order and larger baseline work cap. Real pinned source-C compilation and
+  VM replay, forged-byte refusal and no-extra-effect publication checks
+  cover the extension. Original Fibonacci still refuses safely at guest
+  layout; general byte streams and guest runtime state remain pending.

@@ -327,11 +327,12 @@ fn reconstruct_path(
     (operations.len() == geometry.source_length).then_some(operations)
 }
 
-fn proposed_geometry<const N: usize>(
+fn proposed_geometry_with_budget<const N: usize>(
     source_cells: &[[u8; 6]],
     geometry: &SearchGeometry<'_>,
     expected: [u8; N],
     terminal: TerminalSuffix,
+    step_budget: usize,
 ) -> Option<Vec<LinearOpcode>> {
     let SearchGeometry {
         memory,
@@ -391,7 +392,7 @@ fn proposed_geometry<const N: usize>(
         }
         if states.is_empty()
             || states.len() > MAX_STATES_PER_POSITION
-            || steps.len() > MAX_STEPS_PER_GEOMETRY
+            || steps.len() > step_budget
         {
             return None;
         }
@@ -399,13 +400,31 @@ fn proposed_geometry<const N: usize>(
     None
 }
 
-fn verified_terminal_layout<const N: usize>(
+#[cfg(test)]
+fn proposed_geometry<const N: usize>(
+    source_cells: &[[u8; 6]],
+    geometry: &SearchGeometry<'_>,
+    expected: [u8; N],
+    terminal: TerminalSuffix,
+) -> Option<Vec<LinearOpcode>> {
+    proposed_geometry_with_budget(
+        source_cells,
+        geometry,
+        expected,
+        terminal,
+        MAX_STEPS_PER_GEOMETRY,
+    )
+}
+
+fn verified_terminal_layout_range<const N: usize>(
     profile: &'static ProfileDescriptor,
     expected: [u8; N],
     source_cells: &[[u8; 6]],
     terminal: TerminalSuffix,
+    length_floor: usize,
     maximum_length: usize,
     maximum_prefix: usize,
+    step_budget: usize,
 ) -> Option<LinearLayout> {
     let mut tails = BTreeMap::new();
     // Only the last two source cells seed expansion beyond source.
@@ -440,7 +459,15 @@ fn verified_terminal_layout<const N: usize>(
     } else {
         N.saturating_add(4)
     };
-    for length in initial_length..=maximum_length.min(MAX_SOURCE_LENGTH) {
+    let mut lengths = (initial_length.max(length_floor)
+        ..=maximum_length.min(MAX_SOURCE_LENGTH))
+        .collect::<Vec<_>>();
+    if length_floor > 0 {
+        // More room and later positional phases are preferred in a
+        // separately bounded extension; preserve the baseline ordering.
+        lengths.reverse();
+    }
+    for length in lengths {
         // Source-side leading zeros consume prefix cells instead of body
         // cells. The remaining body must hold every non-prefix output plus
         // its necessary accumulator changes, including any final output
@@ -456,7 +483,11 @@ fn verified_terminal_layout<const N: usize>(
         let max_prefix = length
             .saturating_sub(min_body_slots.saturating_add(3))
             .min(maximum_prefix);
-        for prefix in 0..=max_prefix {
+        let mut prefixes = (0..=max_prefix).collect::<Vec<_>>();
+        if length_floor > 0 {
+            prefixes.reverse();
+        }
+        for prefix in prefixes {
             // The prefix and fixed j/tail/v consume prefix + 3 cells.
             // Source-encoded initial-zero outputs may occupy prefix cells;
             // all other effects and required writes must fit in the body.
@@ -503,11 +534,12 @@ fn verified_terminal_layout<const N: usize>(
                         prefix_outputs,
                         source_length: length,
                     };
-                    let operations = proposed_geometry(
+                    let operations = proposed_geometry_with_budget(
                         source_cells,
                         &geometry,
                         expected,
                         terminal,
+                        step_budget,
                     )?;
                     verified_output_stream_layout(
                         profile,
@@ -522,6 +554,26 @@ fn verified_terminal_layout<const N: usize>(
         }
     }
     None
+}
+
+fn verified_terminal_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+    terminal: TerminalSuffix,
+    maximum_length: usize,
+    maximum_prefix: usize,
+) -> Option<LinearLayout> {
+    verified_terminal_layout_range(
+        profile,
+        expected,
+        source_cells,
+        terminal,
+        0,
+        maximum_length,
+        maximum_prefix,
+        MAX_STEPS_PER_GEOMETRY,
+    )
 }
 
 /// Search a bounded straight-through arithmetic grammar for proven bytes.
@@ -689,6 +741,25 @@ pub(super) fn verified_short_output_layout<const N: usize>(
             36,
             12,
         )
+    })
+    .or_else(|| {
+        if N == 12 {
+            // Additional source positions can create different loader
+            // words; bound this wider fallback more tightly than the
+            // established 36-cell proposals.
+            verified_terminal_layout_range(
+                profile,
+                expected,
+                source_cells,
+                TerminalSuffix::Output,
+                37,
+                39,
+                8,
+                2_048,
+            )
+        } else {
+            None
+        }
     })
 }
 

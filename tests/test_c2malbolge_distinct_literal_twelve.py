@@ -60,6 +60,8 @@ ALTERNATE = bytes([81, 55, 52, 56, 80, 139, 207, 185, 178, 186, 206, 157])
 ALTERNATE_SOURCE = " ".join(f"putchar({value});" for value in ALTERNATE)
 INTERLEAVED = bytes([62, 9, 13, 13, 40, 46, 19, 61, 10, 46, 10, 61])
 INTERLEAVED_SOURCE = " ".join(f"putchar({value});" for value in INTERLEAVED)
+WIDER_TERMINAL = bytes([181, 79, 66, 61, 51, 8, 80, 35, 180, 77, 93, 49])
+WIDER_TERMINAL_SOURCE = " ".join(f"putchar({value});" for value in WIDER_TERMINAL)
 SOURCE = (
     "putchar(81); putchar(55); putchar(52); putchar(56); "
     "putchar(251); putchar(206); putchar(159); putchar(152); "
@@ -199,6 +201,38 @@ class TwelveDistinctGuestLiteralTests(unittest.TestCase):
                 directory, "interleaved-extra", INTERLEAVED_SOURCE + " putchar(1);"
             )
             self.assertNotEqual(extra.returncode, 0)
+            self.assertFalse(absent.exists())
+
+    def test_wider_terminal_guest_stream_from_actual_c(self) -> None:
+        # This stream comes from a 39-cell relocated VM program with
+        # interleaved no-op data strides. The original 36-cell search cannot
+        # recover its output, but the independently verified wider geometry
+        # must publish a real guest rather than synthesize host stdout.
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:
+            directory = Path(temp)
+            compiled, artifact = self.compile(
+                directory, "wider-guest", WIDER_TERMINAL_SOURCE
+            )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            for stdin in (b"", b"\xff\x00\x80"):
+                with self.subTest(stdin=stdin):
+                    executed = subprocess.run(
+                        [str(VM), str(artifact), "--input-stdin", "--report-steps"],
+                        input=stdin,
+                        capture_output=True,
+                        check=False,
+                        timeout=60,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, WIDER_TERMINAL)
+                    self.assertEqual(executed.stderr, b"malbolge-steps-v1:39\n")
+            refused, absent = self.compile(
+                directory,
+                "wider-guest-extra",
+                WIDER_TERMINAL_SOURCE + " putchar(1);",
+            )
+            self.assertNotEqual(refused.returncode, 0)
             self.assertFalse(absent.exists())
 
     def test_unproved_twelve_byte_values_and_short_prefixes_refuse(self) -> None:

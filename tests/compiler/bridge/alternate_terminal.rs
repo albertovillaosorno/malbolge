@@ -1662,3 +1662,51 @@ fn final_relocation_loader_seed_admits_independent_guest() -> Result<(), String>
     );
     Ok(())
 }
+
+#[test]
+fn longer_relocated_guest_exposes_wider_source_geometry() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional source cells"))?;
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0..12 {
+        if [1, 3, 5, 7, 9].contains(&index) {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if index % 4 == 0 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.push(LinearOpcode::Halt);
+    assert_eq!(operations.len(), 39);
+    let expected = proposed_output_stream::<12>(&operations, &cells)
+        .ok_or_else(|| String::from("seeded guest has no output"))?;
+    assert_eq!(expected, [181, 79, 66, 61, 51, 8, 80, 35, 180, 77, 93, 49]);
+    let original =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or_else(|| {
+            String::from("seeded source lacks independent VM proof")
+        })?;
+    assert_eq!(original.data_write_positions().iter().flatten().count(), 12);
+    let recovered = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| String::from("bounded search missed long guest"))?;
+    assert!((37..=39).contains(&recovered.source().len()));
+    assert_eq!(
+        recovered.data_write_positions().iter().flatten().count(),
+        12
+    );
+    let mut forged = expected;
+    forged[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells,)
+            .is_none()
+    );
+    Ok(())
+}
