@@ -128,32 +128,10 @@ impl<'node> Flow<'node> {
             return None;
         }
         if self.peek()?.kind == "parenthesized-expression" {
-            let grouped = self.take(parent, "parenthesized-expression")?;
-            let (value, expression) =
-                self.condition_expression(grouped.id, depth.checked_add(1)?)?;
-            if grouped.type_name.as_deref() != Some("i32")
-                || !bare_typed_node(grouped)
-                || !span_within(&grouped.span, &expression.span)
-                || grouped.span.begin.byte >= expression.span.begin.byte
-                || expression.span.end.byte >= grouped.span.end.byte
-            {
-                return None;
-            }
-            return Some((value, grouped));
+            return self.grouped_condition(parent, depth);
         }
         if self.peek()?.kind == "unary-expression" {
-            let negation = self.take(parent, "unary-expression")?;
-            let (value, operand) =
-                self.condition_expression(negation.id, depth.checked_add(1)?)?;
-            if negation.operation.as_deref() != Some("!")
-                || !clean_i32_operator(negation)
-                || !span_within(&negation.span, &operand.span)
-                || negation.span.begin.byte >= operand.span.begin.byte
-                || negation.span.end.byte != operand.span.end.byte
-            {
-                return None;
-            }
-            return Some((!value, negation));
+            return self.negated_condition(parent, depth);
         }
         let comparison = self.take(parent, "binary-expression")?;
         if matches!(comparison.operation.as_deref(), Some("&&" | "||")) {
@@ -395,6 +373,26 @@ impl<'node> Flow<'node> {
         }
     }
 
+    /// Prove grouping around a complete pure Boolean expression.
+    fn grouped_condition(
+        &mut self,
+        parent: u32,
+        depth: usize,
+    ) -> Option<(bool, &'node Node)> {
+        let grouped = self.take(parent, "parenthesized-expression")?;
+        let (value, expression) =
+            self.condition_expression(grouped.id, depth.checked_add(1)?)?;
+        if grouped.type_name.as_deref() != Some("i32")
+            || !bare_typed_node(grouped)
+            || !span_within(&grouped.span, &expression.span)
+            || grouped.span.begin.byte >= expression.span.begin.byte
+            || expression.span.end.byte >= grouped.span.end.byte
+        {
+            return None;
+        }
+        Some((value, grouped))
+    }
+
     /// Replay a closed loop body with checked state and selected outputs.
     /// Each lexical inner declaration dies at the end of its iteration.
     fn loop_body(&mut self, body: &Node) -> Option<()> {
@@ -466,6 +464,26 @@ impl<'node> Flow<'node> {
             return None;
         }
         Some((selected, comparison))
+    }
+
+    /// Prove one pure `!` operand against its complete source-backed subtree.
+    fn negated_condition(
+        &mut self,
+        parent: u32,
+        depth: usize,
+    ) -> Option<(bool, &'node Node)> {
+        let negation = self.take(parent, "unary-expression")?;
+        let (value, operand) =
+            self.condition_expression(negation.id, depth.checked_add(1)?)?;
+        if negation.operation.as_deref() != Some("!")
+            || !clean_i32_operator(negation)
+            || !span_within(&negation.span, &operand.span)
+            || negation.span.begin.byte >= operand.span.begin.byte
+            || negation.span.end.byte != operand.span.end.byte
+        {
+            return None;
+        }
+        Some((!value, negation))
     }
 
     fn peek(&self) -> Option<&'node Node> {
