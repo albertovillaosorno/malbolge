@@ -4235,9 +4235,11 @@ fn verify_distinct_literal_six(
     artifact: &VerifiedSource,
     bytes: [u8; 6],
 ) -> Result<(), String> {
-    if !(bytes == *b"Q\x1cO\x1dP\x1b" && artifact.steps == 15
-        || bytes[0] == 0 && (2..=126).contains(&artifact.steps))
-    {
+    // The bridge admits a source-independent state-space proposal only
+    // after re-encoding, proving disjoint guest writes and replaying the VM.
+    // The publisher must not reintroduce a literal-byte whitelist: it
+    // independently checks this exact six-effect byte claim below.
+    if !(10..=126).contains(&artifact.steps) {
         return Err(String::from("distinct-literal six has no guest witness"));
     }
     for input in [Vec::new(), vec![255, 0, 128]] {

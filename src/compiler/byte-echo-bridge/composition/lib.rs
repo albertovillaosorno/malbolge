@@ -2644,12 +2644,10 @@ pub fn encode_distinct_literal_six(
         *slot = scalar.bits();
     }
     if expected != *b"Q\x1cO\x1dP\x1b" {
-        // The guest begins with accumulator zero before any data write.
-        // Only source-independent, bounded proposals with an independently
-        // verified layout and real VM byte parity can pass this path.
-        if expected[0] != 0 {
-            return Err(ByteEchoBridgeError::UnsupportedEffectTrace);
-        }
+        // The initial accumulator is zero, but relocated guest arithmetic
+        // can produce a nonzero first byte and later emit an interior zero.
+        // Only source-independent bounded proposals independently decoded
+        // and replayed by the normative VM can pass this path.
         let cells = pair_source_cells(profile)
             .ok_or(ByteEchoBridgeError::UnsupportedEffectTrace)?;
         return search_output_stream::verified_state_space_output_layout(

@@ -594,3 +594,14 @@ a compiler capability gap, not a reason to return to N+1.
   unproved nonzero prefixes refuse publication. State remains compiler-time
   C evaluation; P0 general byte-stream and original twelve-byte Fibonacci
   parity remain open.
+
+- A red-first six-effect experiment exposed a literal gate refusing all
+  nonhistorical nonzero-leading output, despite an independently valid guest
+  arithmetic candidate. The existing bounded source-independent solver now
+  admits real `35 36 35 00 50 1b`, with repeated `0x35` and an interior NUL,
+  through exact bridge and publisher VM replays. A complete two-trip C loop
+  with branch-selected triples, three mutable locals and independent oracle
+  emits the same bytes in 19 guest steps for empty and nonempty input; an
+  extra selected output call refuses without publication. Source C control
+  flow is still statically projected. General byte-stream synthesis and the
+  original twelve-byte Fibonacci P0 guest parity remain unsupported.

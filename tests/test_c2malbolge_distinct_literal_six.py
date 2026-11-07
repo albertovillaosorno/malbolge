@@ -178,29 +178,55 @@ class SixDistinctGuestLiteralTests(unittest.TestCase):
             self.assertNotEqual(rejected.returncode, 0)
             self.assertFalse(output.exists())
 
-    def test_unproved_six_byte_values_and_short_prefixes_refuse(self) -> None:
+    def test_nonzero_leading_two_trip_c_loop_emits_binary_guest_stream(self) -> None:
+        tracked = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_nonzero_prefix_six_stream.c"
+        ).read_text(encoding="utf-8")
+        # Independent unsigned-C state trace: 53,54,53 then 0,80,27.
+        expected = bytes([53, 54, 53, 0, 80, 27])
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:
             directory = Path(temp)
-            invalid = [
-                (f"prefix-{count}", " ".join(SOURCE.split()[:count]))
-                for count in range(2, 6)
-            ]
-            invalid.extend(
-                [
-                    ("wrong-sixth", SOURCE.replace("putchar(27);", "putchar(26);")),
-                    ("wrong-second", SOURCE.replace("putchar(28);", "putchar(30);")),
-                    ("duplicate-fifth", SOURCE.replace("putchar(80);", "putchar(79);")),
-                    (
-                        "reordered-third",
-                        SOURCE.replace(
-                            "putchar(79); putchar(29);",
-                            "putchar(29); putchar(79);",
-                        ),
-                    ),
-                    ("arithmetic", SOURCE.replace("putchar(28);", "putchar(27 + 1);")),
-                    ("extra", SOURCE + " putchar(55);"),
-                ]
+            compiled, artifact = self.compile(
+                directory, "six-nonzero", tracked, complete_source=True
             )
+            self.assertEqual(compiled.returncode, 0, compiled.stderr)
+            self.assertTrue(artifact.is_file())
+            for stdin in (b"", b"\x00\x80\xff"):
+                with self.subTest(stdin=stdin):
+                    result = subprocess.run(
+                        [str(VM), str(artifact), "--report-steps"],
+                        input=stdin,
+                        capture_output=True,
+                        check=False,
+                        timeout=60,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout, expected)
+                    self.assertEqual(result.stderr, b"malbolge-steps-v1:19\n")
+            # Source admission, not a byte oracle, must reject unproved C.
+            invalid = tracked.replace(
+                "            putchar((int)b);",
+                "            putchar((int)b); putchar((int)b);",
+                1,
+            )
+            self.assertNotEqual(invalid, tracked)
+            rejected, absent = self.compile(
+                directory, "six-unproved-arithmetic", invalid, complete_source=True
+            )
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertFalse(absent.exists())
+
+    def test_unproved_six_byte_effects_refuse_without_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as temp:
+            directory = Path(temp)
+            # Different literal values and repeated bytes are legitimate
+            # search candidates now. Reject only unproved source effects.
+            invalid = [
+                ("extra", SOURCE + " putchar(55);"),
+                ("input", SOURCE.replace("putchar(28);", "putchar(getchar());")),
+                ("invalid-call", SOURCE.replace("putchar(28);", "putchar(28, 29);")),
+            ]
             for name, source in invalid:
                 with self.subTest(name=name):
                     compiled, artifact = self.compile(directory, name, source)

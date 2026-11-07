@@ -601,15 +601,23 @@ fail without output; this witness is not general C string compilation.
 
 ### Six distinct guest-computed bytes (bounded binary witness)
 
-The opt-in `--distinct-literal-six` path admits the exact current-profile
-source byte trace `51 1c 4f 1d 50 1b` (hex). Six independent source-bound
-`u8` SSA definitions and output uses survive canonical typed/MCTR admission.
-A single inert prefix and data-pointer relocation precede six guest
-`CrazyData` writes and six byte outputs, all outside the source region.
-The normative VM independently emits all six binary bytes in 15 steps with
-no consumed input. Both raw and capsule publishers recheck this witness;
-unsupported values, partial prefixes, extra output, or stale SSA fail closed.
-This does not implement general C string output or the guest C runtime.
+The opt-in `--distinct-literal-six` bridge retains its original
+current-profile `51 1c 4f 1d 50 1b` 15-step guest witness. A finite,
+source-independent state-space solver now admits independently validated
+nonhistorical six-effect streams with **either** zero or nonzero leading
+bytes. The pinned Clang pipeline proves a complete two-trip C `while`
+recurrence with branch-selected output triples and intervening local writes.
+Its independent source oracle is `35 36 35 00 50 1b`, including an
+interior NUL and repeated byte; actual normative VM execution emits that
+stream in 19 steps for empty and nonempty input. The older zero-prefix
+`00 51 22 1b 37 39` 23-step witness is also preserved.
+
+Every admitted C effect remains bound to distinct source/SSA identities.
+The compiler re-admits typed/MCTR and graphical source, validates safe
+relocated guest data writes and exact output bytes in the normative VM,
+and publishes no artifact if any stage fails. The search is bounded, not a
+proof that arbitrary output sequences are synthesizable. C branches and
+state are evaluated at compile time, not executed as guest control flow.
 
 ### Seven distinct guest-computed bytes (bounded binary witness)
 

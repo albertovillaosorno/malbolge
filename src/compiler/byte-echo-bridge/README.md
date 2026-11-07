@@ -496,21 +496,23 @@ publication. This does not implement arbitrary C strings or runtime C I/O.
 
 ### Six distinct guest-computed bytes (bounded binary witness)
 
-The opt-in `--distinct-literal-six` path retains the original current-profile
-source byte trace `51 1c 4f 1d 50 1b` (hex), with six guest `CrazyData` writes
-and six outputs in 15 normative VM steps. It also admits bounded zero-first
-six-effect streams through the source-independent, position-sensitive search.
-The pinned Clang compiler now proves two iterations of a C `while` loop with
-selected conditional output triples and three intervening local writes.
-Its independently derived output `00 51 22 1b 37 39` is emitted by actual
-guest instructions in 23 steps with no consumed input. The search uses an
-initial real zero output, then five relocated guest data writes; no host
-stdout substitutes for their effects. Canonical typed/MCTR identity, six
-separate source-bound SSA definitions, disjoint guest data writes, complete
-positional layout proof and normative VM replay remain mandatory. Unsupported
-nonzero prefixes, unverified bytes, altered effects and stale SSA refuse
-without publication. This is finite compiler-time C control-flow folding,
-not general guest runtime arithmetic, branching or arbitrary C string output.
+The opt-in `--distinct-literal-six` bridge retains its original
+current-profile `51 1c 4f 1d 50 1b` 15-step guest witness. A finite,
+source-independent state-space solver now admits independently validated
+nonhistorical six-effect streams with **either** zero or nonzero leading
+bytes. The pinned Clang pipeline proves a complete two-trip C `while`
+recurrence with branch-selected output triples and intervening local writes.
+Its independent source oracle is `35 36 35 00 50 1b`, including an
+interior NUL and repeated byte; actual normative VM execution emits that
+stream in 19 steps for empty and nonempty input. The older zero-prefix
+`00 51 22 1b 37 39` 23-step witness is also preserved.
+
+Every admitted C effect remains bound to distinct source/SSA identities.
+The compiler re-admits typed/MCTR and graphical source, validates safe
+relocated guest data writes and exact output bytes in the normative VM,
+and publishes no artifact if any stage fails. The search is bounded, not a
+proof that arbitrary output sequences are synthesizable. C branches and
+state are evaluated at compile time, not executed as guest control flow.
 
 ### Seven distinct guest-computed bytes (bounded binary witness)
 

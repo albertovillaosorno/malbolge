@@ -1326,3 +1326,32 @@ This proves only closed compile-time local-state and branch replay followed by
 six physical guest outputs. It does not lower general runtime C control flow
 or arbitrary byte streams, and the original nonzero twelve-byte Fibonacci
 P0 acceptance target remains unsupported by the bounded layout grammar.
+
+### Nonzero-leading, source-proven six-effect stream
+
+The existing six-effect search rejected any nonhistorical stream beginning
+with a nonzero byte, even when its positional guest arithmetic grammar could
+reconstruct the exact target. A red-first standalone VM experiment used a
+source-independent six-write guest to derive `35 36 35 00 50 1b` (ASCII
+`535`, NUL, `P`, ESC). The bridge first rejected its complete source-distinct
+SSA projection; removing only the zero-first restriction permitted the
+bounded state-space solver to reproduce the guest sequence. Its output and
+real out-of-source data writes are independently decoded and VM-verified.
+
+A second full pinned C experiment uses a two-trip `while` loop, branching and
+state transfers between three automatic unsigned locals. It emits the first
+three source-backed values `53, 54, 53`, updates them to `0, 80, 27`, and
+emits the latter three on the next branch. The source-derived reference is
+therefore exactly `35 36 35 00 50 1b`, without a host output substitute.
+The final publisher no longer demands a leading zero or literal fixture
+identity: it still independently reopens the admitted graphical source and
+checks normative VM termination, complete bytes and no input consumption on
+empty and nonempty input. The result is an actual 19-step Malbolge guest.
+An extra selected C output effect is rejected without publication.
+
+This is a new output-identity boundary (nonzero first byte, repeated byte and
+interior NUL), not a new byte-count milestone. Compilation still folds C
+control flow into checked constants; the guest executes physical arithmetic
+and output, not general C storage, branching or loops. The full twelve-byte
+Fibonacci acceptance target still fails at the layout witness boundary and
+P0 remains pending.

@@ -247,21 +247,68 @@ fn zero_prefix_and_five_guest_writes_are_a_six_byte_stream()
         ),
         Err(ByteEchoBridgeError::UnsupportedEffectTrace)
     ));
-    let mut nonzero_prefix = ZERO_PREFIXED;
-    nonzero_prefix[0] = 1;
-    assert!(matches!(
-        encode_distinct_literal_six(
-            &source_six(nonzero_prefix, false)?,
-            current_profile()
-        ),
-        Err(ByteEchoBridgeError::UnsupportedEffectTrace)
-    ));
+    // Nonzero-leading streams now have their own VM-parity regression;
+    // source-distinct SSA and profile drift are still rejected here.
     assert!(matches!(
         encode_distinct_literal_six(
             &source_six(ZERO_PREFIXED, false)?,
             malbolge::historical_profile()
         ),
         Err(ByteEchoBridgeError::ProfileMismatch)
+    ));
+    Ok(())
+}
+
+#[test]
+#[expect(
+    clippy::panic_in_result_fn,
+    reason = "guest-output experiment checks independently encoded source"
+)]
+fn nonzero_leading_six_byte_guest_stream_is_not_a_fixed_fixture()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut operations = vec![LinearOpcode::NoOperation; 11];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for _ in 0..6 {
+        operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    }
+    operations.push(LinearOpcode::Halt);
+    let independent = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("seeded layout: {error:?}"))?;
+    let mut vm = ProfileMachine::from_source(
+        profile,
+        independent.source(),
+        Vec::new(),
+    )
+    .map_err(|error| format!("seeded load: {error:?}"))?;
+    let outcome = vm.run(operations.len())
+        .map_err(|error| format!("seeded run: {error:?}"))?;
+    assert!(matches!(outcome, RunOutcome::Terminated { .. }));
+    let expected: [u8; 6] = vm.output().try_into()
+        .map_err(|_error| String::from("seeded output was not six bytes"))?;
+    assert_eq!(expected, [53, 54, 53, 0, 80, 27]);
+    assert_ne!(expected, EXPECTED);
+    let compiled = encode_distinct_literal_six(
+        &source_six(expected, false)?,
+        profile,
+    )
+    .map_err(|error| format!("nonzero-prefix search {expected:?}: {error:?}"))?;
+    for input in [Vec::new(), vec![0, 128, 255]] {
+        let mut guest = ProfileMachine::from_source(profile, compiled.source(), input)
+            .map_err(|error| format!("compiled load: {error:?}"))?;
+        assert!(matches!(
+            guest.run(compiled.executed_code_positions().len()),
+            Ok(RunOutcome::Terminated { .. })
+        ));
+        assert_eq!(guest.input_consumed(), 0);
+        assert_eq!(guest.output(), expected);
+    }
+    assert!(matches!(
+        encode_distinct_literal_six(
+            &source_six(expected, true)?,
+            profile,
+        ),
+        Err(ByteEchoBridgeError::UnsupportedEffectTrace)
     ));
     Ok(())
 }
