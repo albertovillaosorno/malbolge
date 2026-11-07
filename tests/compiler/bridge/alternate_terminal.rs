@@ -1789,3 +1789,90 @@ fn longer_relocated_guest_with_crazy_terminal_is_recovered()
     );
     Ok(())
 }
+
+#[test]
+fn longer_relocated_guest_with_rotate_terminal_is_recovered()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional source cells"))?;
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0..12 {
+        if [1, 3, 5, 7].contains(&index) {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if index % 4 == 0 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.extend([LinearOpcode::RotateData, LinearOpcode::Halt]);
+    assert_eq!(operations.len(), 39);
+    let original = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("rotate-tail encoding: {error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, original.source(), Vec::new())
+            .map_err(|error| format!("rotate-tail load: {error:?}"))?;
+    assert!(matches!(
+        vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()
+    ));
+    let expected: [u8; 12] = vm
+        .output()
+        .try_into()
+        .map_err(|_error| String::from("guest output count changed"))?;
+    assert_eq!(expected, [
+        177, 138, 183, 136, 177, 138, 180, 136, 176, 136, 179, 130,
+    ]);
+    let mut wrong_tail = operations.clone();
+    wrong_tail[operations.len() - 2] = LinearOpcode::NoOperation;
+    assert_ne!(
+        proposed_output_stream::<12>(&wrong_tail, &cells),
+        Some(expected),
+        "changing the rotated source tail reused the loader seed",
+    );
+    let mut nonempty =
+        ProfileMachine::from_source(profile, original.source(), vec![
+            0, 255, 1,
+        ])
+        .map_err(|error| format!("rotate-tail nonempty load: {error:?}"))?;
+    assert!(matches!(
+        nonempty.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()
+    ));
+    assert_eq!(nonempty.output(), expected);
+    assert_eq!(nonempty.input_consumed(), 0);
+    assert_eq!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .as_ref()
+            .map(LinearLayout::source),
+        Some(original.source()),
+    );
+    let recovered = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| {
+            format!("bounded search missed long rotate seed: {expected:?}")
+        })?;
+    assert!((37..=39).contains(&recovered.source().len()));
+    assert_eq!(
+        recovered.data_write_positions().iter().flatten().count(),
+        13,
+    );
+    assert_eq!(
+        recovered.source().get(recovered.source().len() - 2),
+        cells
+            .get(recovered.source().len() - 2)
+            .and_then(|cell| cell.get(3)),
+    );
+    let mut forged = expected;
+    forged[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}

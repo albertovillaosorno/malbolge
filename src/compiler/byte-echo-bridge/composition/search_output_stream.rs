@@ -747,23 +747,27 @@ pub(super) fn verified_short_output_layout<const N: usize>(
             // Additional source positions can create different loader
             // words; bound this wider fallback more tightly than the
             // established 36-cell proposals.
-            // A final crazy-data write changes the loader source seed
-            // without producing another byte. Preserve the original
-            // output-tail priority before trying this alternate shape.
-            [TerminalSuffix::Output, TerminalSuffix::Crazy]
-                .into_iter()
-                .find_map(|terminal| {
-                    verified_terminal_layout_range(
-                        profile,
-                        expected,
-                        source_cells,
-                        terminal,
-                        37,
-                        39,
-                        8,
-                        2_048,
-                    )
-                })
+            // A final data write changes the loader source seed without
+            // producing another byte. Preserve the established output and
+            // crazy-tail priorities before trying the rotation seed.
+            [
+                TerminalSuffix::Output,
+                TerminalSuffix::Crazy,
+                TerminalSuffix::Rotate,
+            ]
+            .into_iter()
+            .find_map(|terminal| {
+                verified_terminal_layout_range(
+                    profile,
+                    expected,
+                    source_cells,
+                    terminal,
+                    37,
+                    39,
+                    8,
+                    2_048,
+                )
+            })
         } else {
             None
         }

@@ -1798,3 +1798,25 @@ independently decoded and replayed before admission. A forged first output
 byte fails verification. This does not establish an arbitrary output stream,
 source-level C loop support, guest runtime state or the original Fibonacci
 acceptance; P0 remains open.
+
+### Longer rotated loader tail admits a verified twelve-byte stream
+
+An attempted full twelve-iteration Fibonacci C compilation still reaches the
+bounded guest layout search and refuses without an artifact. The same search
+had a concrete additional false negative: a 39-instruction relocated program
+with twelve separate guest outputs, twelve interleaved crazy/rotate writes,
+four data-pointer no-op strides and a final output-neutral **rotation** before
+halt. The exact normative guest output is
+`b1 8a b7 88 b1 8a b4 88 b0 88 b3 82`, with no consumed input. The
+existing 36-cell search and the wider output/crazy-tail fallbacks could not
+reconstruct it, even though independent positional encoding and normative VM
+execution under empty and nonempty inputs proved the complete program.
+
+A red-first test now exercises the missed trace. The 37-to-39-cell fallback
+searches the distinct rotated loader seed after its established output and
+crazy priorities, with the same eight-prefix and 2,048-history-step caps per
+geometry. The recovered source is independently re-decoded and replayed, its
+thirteen disjoint writes remain outside the source, and a forged expected
+first byte is rejected. The added fallback has observable search cost, so it
+is restricted to twelve-effect searches only. This is not a general source C
+runtime or a witness for the original Fibonacci outputs; P0 stays open.

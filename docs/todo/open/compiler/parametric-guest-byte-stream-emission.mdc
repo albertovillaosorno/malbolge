@@ -784,3 +784,14 @@ a compiler capability gap, not a reason to return to N+1.
   source with disjoint writes and replay under both input streams; forged
   output still rejects. The original 12-byte Fibonacci program continues to
   refuse safely at layout, and P0 remains pending.
+
+- A red-first source-independent 39-instruction relocated guest emits
+  `b1 8a b7 88 b1 8a b4 88 b0 88 b3 82` in the normative VM after twelve
+  actual crazy/rotate arithmetic writes and four no-op data strides; a final
+  rotation changes the loader expansion without another output. The old
+  36-cell search and 37-to-39 output/crazy-terminal fallback missed this
+  independently executable trace. The bounded search now considers a
+  rotation terminal with unchanged eight-prefix and 2,048-history caps and
+  independently replays the recovered guest under empty/nonempty input.
+  Forged bytes refuse. Original twelve-output Fibonacci remains unsupported
+  at layout; source C runtime state and general synthesis are still pending.
