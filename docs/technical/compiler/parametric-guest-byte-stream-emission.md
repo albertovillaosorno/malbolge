@@ -1577,3 +1577,26 @@ still refuses with `Layout(UnsupportedEffectTrace)` and no guest artifact.
 The beam remains a bounded proposal heuristic: a valid fourth-step path or a
 non-extremal full word may still be missed. The independent layout decoder and
 normative empty/nonempty-input VM replay remain mandatory for every publication.
+
+### Alternate short-stream terminal seeds
+
+A twelve-output source-independent guest exposed a distinct layout false
+negative: the short-stream search modeled only a no-op immediately before
+halt. The actual loader derives its expanded memory from the final two
+source cells, so replacing that no-op with a genuine `p` or `*` changes
+all earlier relocated data words. This is not merely a harmless terminal
+padding choice. A red-first complete guest trace ending in `p` reproduced
+the omission even though the independent positional encoder and normative
+VM admitted its 34-instruction source.
+
+The bounded short-stream search now tries no-op and crazy terminal
+shapes, retaining the previous no-op-first choice and the same 36-cell,
+12-prefix geometry bounds. Every proposed variant remains subject to
+independent positional decoding, source-disjoint write checks and empty/
+nonempty-input normative VM replay. A changed-tail control checks that
+the original byte trace cannot simply borrow the no-op loader seed.
+
+This closes one source-seed false negative, not general byte-stream
+synthesis. The complete original Fibonacci source still lacks an admitted
+guest layout; no dynamic guest C loop, arithmetic or branching is inferred
+from a source-proven static byte projection. P0 remains pending.

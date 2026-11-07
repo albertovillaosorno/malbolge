@@ -697,3 +697,12 @@ a compiler capability gap, not a reason to return to N+1.
   twelve-byte guest reconstruction and full source-C/VM parity pass. The
   original Fibonacci layout remains unwitnessed; dynamic guest C state and
   general byte-stream synthesis are still unimplemented. P0 stays open.
+
+- A red-first twelve-output guest demonstrated that the short source search
+  was silently restricted to a no-op terminal seed. Its actual 34-step
+  crazy-terminal source is independently positionally encoded and executed
+  by the normative VM, but the public bounded search initially failed to
+  recover it. The proposal now tries no-op and crazy source tails
+  under the existing 36-cell/12-prefix bounds, with the unchanged independent
+  verifier and a negative changed-tail memory control. The original full
+  Fibonacci program still refuses at layout; P0 remains open.

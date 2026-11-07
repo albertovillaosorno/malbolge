@@ -1148,3 +1148,52 @@ fn guest_output_beam_preserves_three_step_guest_byte_reachability() {
     assert_eq!(reachable_next_byte(259, [1, 2, 2], 4, 54), Some(3));
     assert_eq!(reachable_next_byte(259, [1, 2, 2], 3, 54), None);
 }
+
+#[test]
+fn twelve_output_crazy_terminal_requires_its_own_loader_seed()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional source cells"))?;
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0..12 {
+        if index != 3 {
+            operations.push(if index == 2 || index == 5 || index == 9 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            });
+        }
+        operations.push(LinearOpcode::OutputByte);
+    }
+    operations.extend([LinearOpcode::CrazyData, LinearOpcode::Halt]);
+    let expected = proposed_output_stream::<12>(&operations, &cells)
+        .ok_or_else(|| String::from("seeded source cannot emit"))?;
+    let mut wrong_tail = operations.clone();
+    wrong_tail[operations.len() - 2] = LinearOpcode::NoOperation;
+    assert_ne!(
+        proposed_output_stream::<12>(&wrong_tail, &cells),
+        Some(expected),
+        "changing the source tail cannot reuse its loader seed",
+    );
+    let seeded =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or_else(|| String::from("seeded source lacks VM proof"))?;
+    assert_eq!(seeded.source().len(), 34);
+    let recovered = verified_terminal_layout(
+        profile,
+        expected,
+        &cells,
+        TerminalSuffix::Crazy,
+        34,
+        8,
+    )
+    .ok_or_else(|| String::from("search missed valid crazy terminal"))?;
+    assert_eq!(recovered.source().len(), 34);
+    // The public bounded search previously locked its source tail to a no-op.
+    let public = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| String::from("public search omitted crazy terminal"))?;
+    assert_eq!(public.source().len(), 34);
+    Ok(())
+}
