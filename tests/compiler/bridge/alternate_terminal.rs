@@ -1197,3 +1197,51 @@ fn twelve_output_crazy_terminal_requires_its_own_loader_seed()
     assert_eq!(public.source().len(), 34);
     Ok(())
 }
+
+#[test]
+fn rotated_tail_recovers_independently_proved_twelve_byte_guest()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    let mut operations = vec![LinearOpcode::NoOperation; 4];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0..12 {
+        if index != 0 && index % 2 == 0 {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if index % 3 == 0 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.extend([LinearOpcode::RotateData, LinearOpcode::Halt]);
+    assert_eq!(operations.len(), 36);
+    let expected = proposed_output_stream::<12>(&operations, &cells)
+        .ok_or_else(|| String::from("source cannot produce twelve bytes"))?;
+    assert_eq!(expected, [
+        136, 176, 133, 182, 139, 188, 182, 136, 176, 136, 200, 136
+    ],);
+    let _independent =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or_else(|| String::from("original guest failed normative VM"))?;
+    let recovered = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| {
+            String::from("short search missed valid rotated-tail guest")
+        })?;
+    if recovered.data_write_positions().iter().flatten().count() == 0 {
+        return Err(String::from("reconstructed guest omitted writes"));
+    }
+    let mut altered = expected;
+    altered[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, altered, &cells)
+            .is_none(),
+        "altered byte was accepted against independent guest",
+    );
+    Ok(())
+}

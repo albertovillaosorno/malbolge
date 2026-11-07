@@ -651,21 +651,25 @@ pub(super) fn verified_short_output_layout<const N: usize>(
         return None;
     }
     // The final non-output opcode selects the two loader seed words, so a
-    // no-op terminal cannot represent every otherwise valid short stream.
-    // Keep the established no-op search first and admit alternative seed
-    // shapes only through the same positional and normative VM checks.
-    [TerminalSuffix::Noop, TerminalSuffix::Crazy]
-        .into_iter()
-        .find_map(|terminal| {
-            verified_terminal_layout(
-                profile,
-                expected,
-                source_cells,
-                terminal,
-                36,
-                12,
-            )
-        })
+    // no-op or crazy terminal cannot represent every valid short stream.
+    // Keep the established order first; admit the rotate seed only through
+    // independent positional decoding and normative VM checks.
+    [
+        TerminalSuffix::Noop,
+        TerminalSuffix::Crazy,
+        TerminalSuffix::Rotate,
+    ]
+    .into_iter()
+    .find_map(|terminal| {
+        verified_terminal_layout(
+            profile,
+            expected,
+            source_cells,
+            terminal,
+            36,
+            12,
+        )
+    })
 }
 
 #[cfg(test)]

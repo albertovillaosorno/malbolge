@@ -706,3 +706,14 @@ a compiler capability gap, not a reason to return to N+1.
   under the existing 36-cell/12-prefix bounds, with the unchanged independent
   verifier and a negative changed-tail memory control. The original full
   Fibonacci program still refuses at layout; P0 remains open.
+
+- A source-independent 36-instruction guest with interleaved `p` and `*`
+  arithmetic, twelve effects, and a final `*` before halt emits exact bytes
+  `88 b0 85 b6 8b bc b6 88 b0 88 c8 88` in the normative VM. The
+  original short-stream search had no matching layout even though the
+  source independently passed positional decoding, disjoint write checks
+  and empty/nonempty-input VM replay. A red-first regression established
+  the false negative. Adding a rotate terminal seed under the unchanged
+  36-cell/12-prefix search bounds recovers the proven stream and rejects
+  a forged first output byte. The original Fibonacci twelve-byte C
+  source still refuses safely at layout; generalized P0 remains pending.

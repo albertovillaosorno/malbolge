@@ -1600,3 +1600,24 @@ This closes one source-seed false negative, not general byte-stream
 synthesis. The complete original Fibonacci source still lacks an admitted
 guest layout; no dynamic guest C loop, arithmetic or branching is inferred
 from a source-proven static byte projection. P0 remains pending.
+
+### Rotating short-stream terminal seed
+
+A complete 36-instruction guest, including a bounded interleaving of real
+crazy/rotation writes and twelve outputs, exposed another loader-tail
+false negative. Its initial relocation and output source decode correctly,
+and both empty-input and nonempty-input normative VM executions yield
+`88 b0 85 b6 8b bc b6 88 b0 88 c8 88`. The final source instruction
+before halt is a rotation (`*`), not a no-op or crazy write. Because the
+loader derives its expanded data words from those source cells, neither
+of the two previously searched terminal seeds reconstructs this stream
+within the 36-cell, 12-prefix short-search bound.
+
+The red-first test first confirmed that the complete source passes the
+independent positional and VM checks while the short-search entrypoint
+returns no layout. Adding the rotation seed admits a verified proposal
+under the same geometric bounds and acceptance checks. A changed expected
+byte is rejected against the independently reconstructed source. The full
+original Fibonacci C program still refuses at guest layout without
+publishing an artifact; this is one real guest search capability, not
+runtime C control flow or arbitrary byte-stream synthesis.
