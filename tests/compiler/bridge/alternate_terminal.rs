@@ -348,3 +348,72 @@ fn zero_prefix_before_relocation_reconstructs_guest_output()
     }
     Ok(())
 }
+
+#[test]
+fn extended_decoder_phase_reconstructs_real_guest() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    // This complete relocated program crosses the first 94-cell code phase.
+    // Its output is obtained from guest operations, not a compiler fixture.
+    let mut seeded = vec![LinearOpcode::NoOperation; PREFIX];
+    seeded.push(LinearOpcode::RelocateDataPointer);
+    for _ in 0..4 {
+        seeded.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    }
+    seeded.resize(99, LinearOpcode::NoOperation);
+    seeded.push(LinearOpcode::Halt);
+    let expected = proposed_output_stream::<4>(&seeded, &cells)
+        .ok_or_else(|| String::from("extended seed has no output"))?;
+    if expected != [62, 63, 44, 18] {
+        return Err(format!("unexpected extended guest bytes {expected:?}"));
+    }
+    let relocation = usize::from(cells[PREFIX][1]);
+    if relocation < seeded.len() {
+        return Err(String::from("extended source aliases relocated data"));
+    }
+    let mut preview_cells = cells.clone();
+    for cell in &mut preview_cells {
+        cell[4] = cell[0];
+    }
+    let memory = cached_output_tail(
+        &preview_cells,
+        &mut BTreeMap::new(),
+        seeded.len(),
+        relocation.saturating_add(seeded.len()),
+    )
+    .ok_or_else(|| String::from("missing extended loader memory"))?
+    .to_vec();
+    let reconstructed = proposed_geometry(
+        &cells,
+        &SearchGeometry {
+            memory: &memory,
+            prefix: PREFIX,
+            prefix_outputs: 0,
+            source_length: seeded.len(),
+        },
+        expected,
+        TerminalSuffix::Noop,
+    )
+    .ok_or_else(|| String::from("extended source phase was not recovered"))?;
+    let guest = verified_output_stream_layout(
+        profile,
+        &reconstructed,
+        expected,
+        &cells,
+    )
+    .ok_or_else(|| {
+        String::from("extended guest failed independent VM replay")
+    })?;
+    if guest.source().len() != 100 || guest.source().len() <= 94 {
+        return Err(String::from("extended source phase was not retained"));
+    }
+    let mut forged = expected;
+    forged[0] ^= 1;
+    if verified_output_stream_layout(profile, &reconstructed, forged, &cells)
+        .is_some()
+    {
+        return Err(String::from("forged extended output passed verification"));
+    }
+    Ok(())
+}

@@ -433,3 +433,13 @@ a compiler capability gap, not a reason to return to N+1.
   The complete pinned C-to-Malbolge pipeline emits the four bytes under
   empty and nonempty stdin; an impure source mutation refuses publication.
   The original twelve-byte Fibonacci stream remains unsupported and P0 is open.
+
+- A subsequent positional guest-layout experiment extends the finite search
+  budget from 94 to 104 source cells. A 100-cell, source-independent guest
+  crosses the first decode-phase wrap and produces `3e 3f 2c 12` from
+  relocated arithmetic writes and four actual outputs. A bounded state-space
+  proposal reconstructs that guest; independent re-encoding, disjoint-write
+  admission and current-profile VM replay on empty and nonempty input pass.
+  Forging its output fails verification. The original four-byte Fibonacci
+  prefix `02 59 5f 08` was retried and still refuses without publication;
+  the full twelve-byte program and generalized guest streams remain pending.

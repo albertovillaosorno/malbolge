@@ -751,12 +751,23 @@ VM twice before publication. A five-write/four-output regression is outside
 the older four-write grammar but passes all checks. The historical `T=4>`
 source remains admitted.
 
-The new search is bounded to 94 source cells, a 30-cell prefix and explicit
-state/node limits. Exhaustion does not establish target-language
-impossibility. The original unmodified four-output Fibonacci prefix
-`02 59 5f 08` and the complete twelve-output Fibonacci program still refuse
-at layout without publication. C state and arithmetic here execute during
-compilation, not as runtime guest C operations. P0 remains pending.
+The original search covered at most 94 source cells, a 30-cell prefix and
+explicit state/node limits. A later bounded extension covers up to 104 source
+cells, including ten cells after the first 94-phase positional decode cycle.
+The `extended_decoder_phase_reconstructs_real_guest` regression starts with a
+100-cell relocated guest, recovers its `3e 3f 2c 12` output using actual
+15-trit accumulator transitions, and independently re-encodes and replays the
+guest twice. A forged expected byte fails verification. The current search
+still uses finite per-geometry state/node limits and a 104-cell budget, below
+the graphical relocation operand ceiling of 126. This is a source-independent
+layout witness; it does not prove that the compiler needs more than 94 cells
+to produce that particular output.
+
+Search exhaustion does not establish target-language impossibility. A renewed
+real C-to-guest attempt still refuses the unmodified four-output Fibonacci
+prefix `02 59 5f 08` at layout without publication, as does the complete
+twelve-output program. C state and arithmetic here execute during compilation,
+not as runtime guest C operations. P0 remains pending.
 
 ### Alternate terminal source geometry
 
