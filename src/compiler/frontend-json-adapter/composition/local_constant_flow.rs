@@ -220,7 +220,7 @@ impl<'node> Flow<'node> {
                 return None;
             }
             last_end = self.assignment(body, last_end)?.0;
-            writes += 1;
+            writes = writes.checked_add(1)?;
         }
         (writes > 0 && last_end < body.span.end.byte).then_some(())
     }
