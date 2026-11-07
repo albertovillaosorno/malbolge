@@ -686,6 +686,63 @@ impl<'node> Flow<'node> {
         None
     }
 
+    /// Prove C `do { ... } while (predicate);`: the body executes first,
+    /// and its pure condition is evaluated against each updated state.
+    /// Reject only after a complete source-backed bounded exit is witnessed.
+    fn static_do_while(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+    ) -> Option<u32> {
+        let statement = self.take(body.id, "do-statement")?;
+        if !clean(statement)
+            || !span_within(&body.span, &statement.span)
+            || previous_end > statement.span.begin.byte
+            || self.loop_counter.is_some()
+        {
+            return None;
+        }
+        let loop_body = self.take(statement.id, "compound-statement")?;
+        if !clean(loop_body)
+            || !span_within(&statement.span, &loop_body.span)
+            || statement.span.begin.byte >= loop_body.span.begin.byte
+        {
+            return None;
+        }
+        let body_start = self.position;
+        let outer_len = self.locals.len();
+        let mut body_end = None;
+        let mut condition_end = None;
+        for _ in 0..MAX_STATIC_LOOP_ITERATIONS {
+            self.position = body_start;
+            self.loop_body(loop_body)?;
+            if body_end.is_some_and(|end| self.position != end) {
+                return None;
+            }
+            body_end = Some(self.position);
+            // Braced declarations are not visible to the trailing test.
+            self.locals.truncate(outer_len);
+            let (continue_loop, condition) = self.condition(statement)?;
+            if !span_within(&statement.span, &condition.span)
+                || loop_body.span.end.byte >= condition.span.begin.byte
+                || statement
+                    .span
+                    .end
+                    .byte
+                    .checked_sub(condition.span.end.byte)?
+                    != 1
+                || condition_end.is_some_and(|end| self.position != end)
+            {
+                return None;
+            }
+            condition_end = Some(self.position);
+            if !continue_loop {
+                return Some(statement.span.end.byte);
+            }
+        }
+        None
+    }
+
     fn take(&mut self, parent: u32, kind: &str) -> Option<&'node Node> {
         let node = self.peek()?;
         let id = u32::try_from(self.position).ok()?.checked_add(1)?;
@@ -1036,6 +1093,11 @@ pub(super) fn canonical_multi_local_output(
             "while-statement" => {
                 last_end = flow
                     .static_while(body, last_end)
+                    .ok_or(FrontendJsonError::Unsupported)?;
+            },
+            "do-statement" => {
+                last_end = flow
+                    .static_do_while(body, last_end)
                     .ok_or(FrontendJsonError::Unsupported)?;
             },
             "if-statement" if remaining_writes >= 2 => {

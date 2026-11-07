@@ -503,3 +503,13 @@ a compiler capability gap, not a reason to return to N+1.
   zero-trip, over-budget, impure and forged-AST loops reject without guest
   publication. The `while` still executes at compile time, not inside the
   guest. The twelve-byte Fibonacci P0 remains blocked on general layout.
+
+- A complete source-C `do…while` recurrence first refused at the JSON
+  adapter. Bounded replay now proves body-before-condition ordering and a
+  false trailing test within twelve iterations, while retaining scoped
+  unsigned state and selected guest output effects. The independent
+  three-step state oracle yields `0x41`; a mandatory-first-trip variant
+  starts with a false predicate yet executes once; a two-output Fibonacci
+  variant emits `Q.`. Normative VM parity on empty and nonempty input and
+  negative source/AST checks cover this static projection. General guest
+  C control flow and the twelve-byte byte-stream layout remain open.

@@ -576,9 +576,10 @@ closed at layout, so the P0 acceptance remains pending.
 The three-iteration Fibonacci-like C loop from the nonadjacent-repeat probe
 was compiled again with both branch expressions changed to
 `(next - next) + 56U`. All three loop iterations still prove the C local
-state, chosen branch, and actual `putchar` call effect. The independent arithmetic oracle
-is `38 38 38`. Before the repair, the frontend merged all observations into
-one SSA constant; the finite single-constant backend refused the trace.
+state, chosen branch, and actual `putchar` call effect. The independent
+arithmetic oracle is `38 38 38`. Before the repair, the frontend merged
+all observations into one SSA constant; the finite single-constant
+backend refused the trace.
 A red-first complete pipeline regression reproduced the missing artifact.
 
 When two or three nonzero equal-valued effects use different C call spans,
@@ -1123,3 +1124,34 @@ Fibonacci branch program emits two independently derived bytes `Q.` in eight
 actual guest steps. The real VM, not the host C program, produces both output
 traces. The original twelve-byte Fibonacci P0 still requires generalized
 guest byte-stream layout and remains open.
+
+### Bounded source-backed `do…while` control flow
+
+A complete C recurrence with automatic unsigned state, multiplication,
+shifts, a two-arm branch, and a mutable counter exposed another missing
+control-flow boundary: `do { ... } while (condition);`. The pinned Clang
+frontend already emits `do-statement` with the compound body **before** the
+trailing condition; the JSON adapter initially refused the first local and
+published no guest artifact. The closed evaluator now consumes that exact
+node order and checks the whole loop body before the condition on each pass.
+It replays both from the same Clang subtree, re-evaluates pure checked
+predicates against updated state, and drops iteration-local declarations
+before evaluating the trailing predicate. It requires a source-proven false
+condition within twelve body executions; neither nested loops nor unbounded,
+impure, undefined or unsupported effects are admitted.
+
+The independent three-iteration trace reaches `60, 160, 128`, takes the
+true/false/false branches and produces `127 ^ 62 = 65` (`0x41`). A distinct
+source variant starts with `i = 3U` so the test is already false **before**
+the first body; C still executes one body and yields `(60 >> 3) ^ 1 = 6`,
+then `6 ^ 71 = 65`. A two-iteration converted Fibonacci conditional stream
+retains two real guest outputs `Q.`. Tests check actual normative VM stdout
+against independent C arithmetic for empty and nonempty guest input.
+Unsupported sources and malformed or unsupported AST structures must refuse
+without a guest artifact. As elsewhere in the bounded frontend, normalized
+Clang input is trusted evidence; its digest is not an independent proof that
+an adversarially rewritten but still valid AST operator matches original C.
+
+This is compile-time replay of a proven finite C program, not dynamic guest
+control flow. The original twelve-byte Fibonacci P0 remains blocked by
+generalized byte-stream layout.

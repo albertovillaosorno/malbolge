@@ -3169,5 +3169,220 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertFalse(guest.exists(), label)
 
 
+    def _check_bounded_do_while_guest(self, selected_label: str) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_do_while_recurrence_output.c"
+        )
+        original = source.read_text()
+        self.assertIn("} while (i < 3U);", original)
+        # Independently replay C's body-before-test semantics.
+        a, b, i = 3, 5, 0
+        taken = []
+        while True:
+            next_value = ((a * b) << 2) & 255
+            branch = (next_value & 8) != 0
+            taken.append(branch)
+            a = ((next_value >> 3) ^ 1) if branch else next_value - 1
+            b = next_value
+            i += 1
+            if not i < 3:
+                break
+        self.assertEqual(taken, [True, False, False])
+        self.assertEqual(a ^ 62, 65)
+        one_next = ((3 * 5) << 2) & 255
+        one_a = (one_next >> 3) ^ 1
+        self.assertEqual(one_a ^ 71, 65)
+        pair_source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_loop_distinct_output.c"
+        ).read_text()
+        self.assertIn("for (unsigned i = 0U; i < 2U; ++i)", pair_source)
+        pair_source = (
+            pair_source.replace(
+                "for (unsigned i = 0U; i < 2U; ++i) {",
+                "unsigned i = 0U;\n    do {",
+            )
+            .replace("        b = next;\n", "        b = next;\n        i = i + 1U;\n")
+            .replace("    }\n}\n", "    } while (i < 2U);\n}\n")
+        )
+        previous, current = 1, 1
+        expected_pair = bytearray()
+        for _ in range(2):
+            following = (previous + current) & 255
+            expected_pair.append(following ^ (83 if following % 2 == 0 else 45))
+            previous, current = current, following
+        self.assertEqual(bytes(expected_pair), b"Q.")
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed, expected in (
+                ("three-trips", original, b"A"),
+                ("branch-stream", pair_source, bytes(expected_pair)),
+                # This test starts false, yet a do-loop executes once.
+                (
+                    "mandatory-first-trip",
+                    original.replace("unsigned i = 0U;", "unsigned i = 3U;").replace(
+                        "a ^ 62U", "a ^ 71U"
+                    ),
+                    b"A",
+                ),
+            ):
+                if label != selected_label:
+                    continue
+                candidate = Path(scratch) / f"do-{label}.c"
+                candidate.write_text(changed)
+                guest = Path(scratch) / f"do-{label}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/do-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=180,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                self.assertTrue(guest.is_file())
+                for guest_input in (b"", bytes((0, 255, 128))):
+                    execution = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=guest_input,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(execution.returncode, 0, execution.stderr)
+                    self.assertEqual(execution.stdout, expected)
+                    self.assertRegex(
+                        execution.stderr,
+                        rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                    )
+
+    def test_bounded_do_while_three_trips_reaches_guest(self) -> None:
+        self._check_bounded_do_while_guest("three-trips")
+
+    def test_bounded_do_while_branch_stream_reaches_guest(self) -> None:
+        self._check_bounded_do_while_guest("branch-stream")
+
+    def test_bounded_do_while_mandatory_first_trip_reaches_guest(self) -> None:
+        self._check_bounded_do_while_guest("mandatory-first-trip")
+
+    def test_bounded_do_while_source_refusals(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_do_while_recurrence_output.c"
+        )
+        original = source.read_text()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed in {
+                "nonterminating": original.replace("i = i + 1U", "i = i + 0U"),
+                "beyond-bound": original.replace("i < 3U", "i < 13U"),
+                "side-effecting-test": original.replace("i < 3U", "i++ < 3U"),
+                "undefined-test": original.replace("i < 3U", "(i / 0U) < 3U"),
+                "nested-loop": original.replace(
+                    "i = i + 1U;", "while (i < 3U) { i = i + 1U; }"
+                ),
+            }.items():
+                candidate = Path(scratch) / f"reject-do-{label}.c"
+                candidate.write_text(changed)
+                guest = Path(scratch) / f"reject-do-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/do-reject-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=45,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|FRONTEND-")
+                self.assertFalse(guest.exists(), label)
+
+    def test_bounded_do_while_forged_ast_refuses_publication(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_do_while_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/do-ast-v1",
+                str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        parsed = cast(dict[str, object], json.loads(frontend.stdout))
+        nodes = cast(list[dict[str, object]], parsed["nodes"])
+        loop = next(node for node in nodes if node["kind"] == "do-statement")
+        children = [node for node in nodes if node["parent"] == loop["id"]]
+        body = next(node for node in children if node["kind"] == "compound-statement")
+        condition = next(
+            node for node in children if node["kind"] == "binary-expression"
+        )
+        self.assertLess(cast(int, body["id"]), cast(int, condition["id"]))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, node_id, field, value in (
+                ("wrong-kind", loop["id"], "kind", "while-statement"),
+                ("wrong-parent", loop["id"], "parent", 0),
+                ("extra-operation", loop["id"], "operation", "++"),
+                ("unsupported-condition", condition["id"], "operation", "%"),
+                ("condition-type", condition["id"], "type", "u32"),
+                ("body-parent", body["id"], "parent", 0),
+            ):
+                assert isinstance(node_id, int)
+                tampered = cast(
+                    dict[str, list[dict[str, object]]],
+                    json.loads(frontend.stdout),
+                )
+                tampered["nodes"][node_id - 1][field] = value
+                guest = Path(scratch) / f"do-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
+
 if __name__ == "__main__":
     _ = unittest.main()
