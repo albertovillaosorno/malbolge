@@ -331,3 +331,13 @@ a compiler capability gap, not a reason to return to N+1.
   division-by-zero source mutation refuses without publication. The original
   four-byte prefix `02 59 5f 08` and twelve-byte P0 oracle remain uncompiled;
   this is compiler-time C state folding, not runtime guest C arithmetic.
+
+- A later bounded state-space experiment retried the complete original
+  Fibonacci C program and its four-byte prefix. Both still refuse safely
+  at guest layout, including after testing larger graphical source lengths.
+  A different terminal shape now proposes real guest output before a final
+  no-op/halt pair, rather than requiring output/halt in the last two cells.
+  The independent publisher decodes and executes the result under both
+  empty and nonempty input, with negative-output mutation refusal. A pinned
+  four-byte witness `5c 3f 11 42` proves the additional search shape; the
+  original `02 59 5f 08` prefix remains unwitnessed. The P0 stays open.

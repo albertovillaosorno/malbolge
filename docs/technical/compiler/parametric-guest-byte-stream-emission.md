@@ -757,3 +757,16 @@ impossibility. The original unmodified four-output Fibonacci prefix
 `02 59 5f 08` and the complete twelve-output Fibonacci program still refuse
 at layout without publication. C state and arithmetic here execute during
 compilation, not as runtime guest C operations. P0 remains pending.
+
+### Alternate terminal source geometry
+
+The four-output state-space proposal now also explores code with an extra
+no-op immediately before `halt`, moving the fourth real output earlier. That
+changes the two graphical words seeding the loader-expanded memory beyond the
+source. The proposal cache substitutes the positional no-op cell only when
+computing that memory tail; the actual published source is still produced,
+independently decoded, checked for out-of-source writes and replayed in the
+normative guest VM under empty and nonempty input. The verified four-byte
+`5c 3f 11 42` guest is a geometry witness, not evidence of general C state
+or unrestricted byte-stream synthesis. The original twelve-output Fibonacci
+program and its four-byte prefix still lack guest layouts.
