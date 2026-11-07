@@ -422,11 +422,18 @@ fn validate_shape(
     let relocation = operations
         .iter()
         .position(|op| *op == LinearOpcode::RelocateDataPointer);
-    let second_relocation = relocation.is_some_and(|position| {
+    // A second j is safe only immediately before halt. It changes D but
+    // leaves no following output or data mutation; its loader operand is
+    // proved separately from the original source, not from code memory.
+    let second_relocation = relocation.is_some_and(|first| {
         operations
             .iter()
-            .skip(position.saturating_add(1))
-            .any(|op| *op == LinearOpcode::RelocateDataPointer)
+            .enumerate()
+            .skip(first.saturating_add(1))
+            .any(|(position, op)| {
+                *op == LinearOpcode::RelocateDataPointer
+                    && position != before_last.saturating_sub(1)
+            })
     });
     let unplaced_arithmetic = operations.iter().enumerate().any(|(position, op)| {
         matches!(op, LinearOpcode::CrazyData | LinearOpcode::RotateData)
@@ -528,17 +535,52 @@ fn planned_data_write(
     Ok(Some(data_address))
 }
 
+/// The one optional terminal second j reads a fresh, as-yet-unwritten
+/// loader-expanded word. Source code cells are encrypted during execution,
+/// but loader expansion happened before that encryption and depends on the
+/// original final two graphical bytes.
+fn terminal_loader_word(
+    source: &[u8],
+    address: usize,
+    profile: &ProfileDescriptor,
+) -> Result<u32, LinearLayoutError> {
+    if address < source.len()
+        || address >= usize::try_from(profile.memory_words()).unwrap_or(0)
+    {
+        return Err(LinearLayoutError::UnsafeDataPlacement);
+    }
+    let mut previous = u32::from(
+        *source
+            .get(source.len().saturating_sub(2))
+            .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
+    );
+    let mut latest = u32::from(
+        *source
+            .last()
+            .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
+    );
+    for _ in source.len()..=address {
+        let next =
+            malbolge::profile_crazy(previous, latest, profile.word_trits());
+        previous = latest;
+        latest = next;
+    }
+    Ok(latest)
+}
+
 fn derive_execution_positions(
     operations: &[LinearOpcode],
     source: &[u8],
+    profile: &ProfileDescriptor,
 ) -> Result<DerivedExecutionPositions, LinearLayoutError> {
     let mut data = Vec::new();
     let mut executed = Vec::new();
     let mut encrypted = Vec::new();
     let mut writes = Vec::new();
-    // Every jump and the sole relocation read a source-addressed data cell.
-    // After relocation all further operations are linear and never inspect
-    // memory contents for code control flow. Arithmetic cannot alias source.
+    // Jumps and the first relocation read exact source-memory cells.
+    // Following arithmetic has disjoint, monotonically increasing data
+    // addresses. Only the optional penultimate j reads expanded loader data;
+    // no instruction after it can write or emit before the final halt.
     let mut code_cells: Vec<u32> = source.iter().copied().map(u32::from).collect();
     let mut data_pointer = 0usize;
     let mut position = 0usize;
@@ -565,17 +607,32 @@ fn derive_execution_positions(
             | LinearOpcode::RotateData => (position, position.saturating_add(1)),
             LinearOpcode::Halt => return Err(LinearLayoutError::EarlyHalt { position }),
         };
-        let next_data_pointer = if *operation == LinearOpcode::RelocateDataPointer {
-            let data_word = usize::try_from(
-                *code_cells
-                    .get(data_pointer)
-                    .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
-            )
-            .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?;
-            if data_word < source.len() {
+        let next_data_pointer = if *operation
+            == LinearOpcode::RelocateDataPointer
+        {
+            let final_relocation = data_pointer >= source.len()
+                && position == operations.len().saturating_sub(2);
+            let data_word = if final_relocation {
+                usize::try_from(terminal_loader_word(
+                    source,
+                    data_pointer,
+                    profile,
+                )?)
+                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
+            } else {
+                usize::try_from(
+                    *code_cells
+                        .get(data_pointer)
+                        .ok_or(LinearLayoutError::UnsafeDataPlacement)?,
+                )
+                .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
+            };
+            if !final_relocation && data_word < source.len() {
                 return Err(LinearLayoutError::UnsafeDataPlacement);
             }
             data_word.saturating_add(1)
+                % usize::try_from(profile.memory_words())
+                    .map_err(|_error| LinearLayoutError::UnsafeDataPlacement)?
         } else {
             data_pointer.saturating_add(1)
         };
@@ -622,7 +679,7 @@ pub fn admit_linear_layout(
             return Err(LinearLayoutError::DecodeMismatch { position });
         }
     }
-    let path = derive_execution_positions(operations, source)?;
+    let path = derive_execution_positions(operations, source, profile)?;
     Ok(LinearLayout {
         data_pointer_positions: path.data,
         data_write_positions: path.writes,

@@ -125,6 +125,7 @@ enum TerminalSuffix {
     Crazy,
     Noop,
     Output,
+    Relocate,
     Rotate,
 }
 
@@ -135,13 +136,14 @@ impl TerminalSuffix {
             Self::Noop => (LinearOpcode::NoOperation, 0),
             Self::Crazy => (LinearOpcode::CrazyData, 2),
             Self::Rotate => (LinearOpcode::RotateData, 3),
+            Self::Relocate => (LinearOpcode::RelocateDataPointer, 1),
         }
     }
 
     const fn emitted_before_tail(self, total: usize) -> usize {
         match self {
             Self::Output => total.saturating_sub(1),
-            Self::Noop | Self::Crazy | Self::Rotate => total,
+            Self::Noop | Self::Crazy | Self::Rotate | Self::Relocate => total,
         }
     }
 }
@@ -615,6 +617,7 @@ pub(super) fn verified_state_space_output_layout<const N: usize>(
         TerminalSuffix::Noop,
         TerminalSuffix::Crazy,
         TerminalSuffix::Rotate,
+        TerminalSuffix::Relocate,
     ] {
         if let Some(layout) = verified_terminal_layout(
             profile,
@@ -653,6 +656,7 @@ pub(super) fn verified_short_output_layout<const N: usize>(
         TerminalSuffix::Crazy,
         TerminalSuffix::Rotate,
         TerminalSuffix::Output,
+        TerminalSuffix::Relocate,
     ]
     .into_iter()
     .find_map(|terminal| {

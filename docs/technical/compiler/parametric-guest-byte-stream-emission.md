@@ -1649,3 +1649,31 @@ witness for any particular C output trace. The original Fibonacci output
 no guest runtime C arithmetic or dynamic branching is established. A separate
 C probe with nested conditional expressions and a loop failed at frontend
 admission and produced no guest, so it supplies no additional C coverage.
+
+### Terminal data-pointer relocation seed
+
+The original complete twelve-iteration Fibonacci C program was retried and
+still refused at verified guest layout without publishing source. A red-first,
+source-independent 35-instruction guest then exposed an additional false
+negative in the layout/search boundary. Its 12 real crazy-data writes emit
+`3f 0a 2b 14 35 00 3f 0a 2b 14 35 00` in the normative VM, followed by
+a second `j` immediately before halt. The previous layout validator rejected
+all second data-pointer relocations, even this output-neutral final move.
+The final `j` also changes the last loader source seed, which the bounded
+output-stream search had not considered.
+
+The linear checker now admits **only** a second `j` as the penultimate source
+instruction. It reconstructs the as-yet-unwritten expanded loader operand
+from the original final source bytes and proves the exact resulting D pointer
+with profile-width wraparound. Any nonterminal second relocation and any
+third relocation still reject, as do aliased arithmetic writes. The bridge
+preview models the terminal move only, and the source search tries the new
+seed after the established earlier choices. Actual positional encoding,
+disjoint-write checks and both empty/nonempty-input normative VM executions
+remain mandatory for admission. The independent 35-step guest and the bounded
+production search now pass their original red-first regression.
+
+This establishes a narrowly safe extra guest loader seed, not general
+relocation or arbitrary byte-stream synthesis. The original Fibonacci
+`02 59 5f 08 57 4f 22 6d 03 90 b3 23` still lacks a verified layout,
+and runtime C arithmetic and dynamic control flow remain out of scope.

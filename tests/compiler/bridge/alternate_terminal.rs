@@ -1291,3 +1291,73 @@ fn differing_final_output_can_follow_a_guest_write() -> Result<(), String> {
     assert!(public.source().len() <= 36);
     Ok(())
 }
+
+#[test]
+fn final_relocation_loader_seed_admits_independent_guest() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for _ in 0..12 {
+        operations.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    }
+    operations.extend([LinearOpcode::RelocateDataPointer, LinearOpcode::Halt]);
+    assert_eq!(operations.len(), 35);
+    // Construct source independently of the linear-layout checker, which
+    // historically rejected all second data-pointer relocations.
+    let source = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &operation)| {
+            let slot = super::super::pair_opcode_slot(operation)?;
+            cells.get(position).and_then(|cell| cell.get(slot)).copied()
+        })
+        .collect::<Option<Vec<u8>>>()
+        .ok_or_else(|| String::from("missing encoded guest cell"))?;
+    let mut vm = ProfileMachine::from_source(profile, &source, Vec::new())
+        .map_err(|error| format!("seeded guest load: {error:?}"))?;
+    assert!(matches!(
+        vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()
+    ));
+    let expected: [u8; 12] = vm
+        .output()
+        .try_into()
+        .map_err(|_error| String::from("seeded guest output length"))?;
+    assert_eq!(expected, [63, 10, 43, 20, 53, 0, 63, 10, 43, 20, 53, 0]);
+    let proved =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or_else(|| {
+                format!("terminal relocate guest failed proof {expected:?}")
+            })?;
+    assert_eq!(proved.source(), source);
+    assert_eq!(proved.data_write_positions().iter().flatten().count(), 12);
+    let reconstructed = verified_terminal_layout(
+        profile,
+        expected,
+        &cells,
+        TerminalSuffix::Relocate,
+        35,
+        8,
+    )
+    .ok_or_else(|| String::from("terminal j seed missed complete guest"))?;
+    let tail_position = reconstructed.source().len() - 2;
+    assert_eq!(
+        reconstructed.source().get(tail_position),
+        cells.get(tail_position).and_then(|cell| cell.get(1))
+    );
+    let public = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| {
+            String::from("bounded production missed terminal j guest")
+        })?;
+    assert!(public.source().len() <= 36);
+    let mut forged = expected;
+    forged[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}

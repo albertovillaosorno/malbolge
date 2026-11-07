@@ -24,8 +24,9 @@ This document governs the following declared TODO scope:
 
 `src/compiler/malbolge-layout/composition/lib.rs` owns a bounded position-
 sensitive source encoder for profile `InputWord`, `OutputByte`, `NoOperation`,
-`RotateData`, `CrazyData`, one optional `RelocateDataPointer` after the
-jump-free or forward-jump prefix, and terminal `Halt`. The encoder
+`RotateData`, `CrazyData`, one optional initial `RelocateDataPointer` after
+jump-free or forward-jump code, an optional second `RelocateDataPointer`
+**only immediately before halt**, and terminal `Halt`. The encoder
 assigns code positions from zero and inverts the normative VM instruction
 decoder over all 94 graphical source bytes,
 requires exactly one encoding at each address, and independently re-admits
@@ -40,8 +41,15 @@ relocation base is read from the **current data-pointer memory cell**, not
 the original encoded `j` source byte. The verifier replays prior XLAT2
 mutation of source-memory cells before checking that the resulting base is
 at least the complete emitted source length. This exact bound keeps all
-later rotate/crazy writes disjoint from source code. Later jumps, duplicate
-or unreachable relocations, early arithmetic, and overlapping bases reject.
+later rotate/crazy writes disjoint from source code. Later jumps,
+nonterminal duplicate or unreachable relocations, early arithmetic, and
+overlapping bases reject. The penultimate second relocation
+reads the fresh expanded-loader word at its exact post-first-relocation data
+address; the checker derives this word from the original final source cells,
+not encrypted source memory. After that `j`, only halt remains, so its moved
+pointer cannot alias any subsequent data write. The verifier retains its
+exact D-pointer witness, including profile-memory wraparound. The automatic
+forward-padding planner remains stricter and does not create second moves.
 
 A real VM boundary regression selects a later inverse-decode phase with a
 greater encoded data address than position zero, admits a longer safe layout

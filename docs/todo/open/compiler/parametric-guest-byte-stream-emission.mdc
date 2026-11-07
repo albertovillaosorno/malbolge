@@ -727,3 +727,11 @@ a compiler capability gap, not a reason to return to N+1.
   checks. The full original Fibonacci C program still refuses at layout
   without an artifact; a separate nested-conditional C probe also refuses
   at frontend admission. P0 remains pending.
+- A red-first independent 35-step guest proves a second `j` is safe when
+  it is immediately before halt, after twelve real crazy-data/output
+  pairs. The guest emits `3f 0a 2b 14 35 00` twice. The linear checker
+  derives the final expanded-loader data word and D-pointer wraparound;
+  nonterminal second and third `j` instructions still reject. The bounded
+  search now tries this terminal loader seed under unchanged short bounds
+  and independent normative VM proof. The original complete Fibonacci C
+  program still refuses at layout without publication; P0 remains open.

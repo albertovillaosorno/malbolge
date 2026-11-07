@@ -1560,7 +1560,9 @@ fn proposed_output_stream<const N: usize>(
             _ => return None,
         }
     }
-    for operation in operations.iter().skip(relocation + 1) {
+    for (position, operation) in
+        operations.iter().enumerate().skip(relocation + 1)
+    {
         match operation {
             LinearOpcode::CrazyData => {
                 accumulator = malbolge::profile_crazy(
@@ -1577,6 +1579,10 @@ fn proposed_output_stream<const N: usize>(
             },
             LinearOpcode::OutputByte => output.push(accumulator as u8),
             LinearOpcode::NoOperation | LinearOpcode::Halt => {},
+            // A second relocation in the penultimate source cell changes
+            // only D. No later data operation or output can observe it.
+            LinearOpcode::RelocateDataPointer
+                if position == operations.len().saturating_sub(2) => {},
             _ => return None,
         }
         address += 1;

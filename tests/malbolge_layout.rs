@@ -583,6 +583,7 @@ fn relocation_proofs_reject_aliases_and_unplaced_arithmetic() {
                 LinearOpcode::NoOperation,
                 LinearOpcode::RelocateDataPointer,
                 LinearOpcode::RelocateDataPointer,
+                LinearOpcode::NoOperation,
                 LinearOpcode::Halt,
             ]
         ),
@@ -2089,5 +2090,42 @@ fn auto_relocate_first_fit_matches_all_profile_decoder_phases_and_suffix_sizes()
     assert!(accepted > 0);
     assert!(rejected > 0);
     assert_eq!(accepted.saturating_add(rejected), 655);
+    Ok(())
+}
+
+#[test]
+fn second_relocation_is_admitted_only_immediately_before_halt()
+-> Result<(), String> {
+    let profile = current_profile();
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    operations.extend([
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::Halt,
+    ]);
+    let admitted = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("terminal relocation layout: {error:?}"))?;
+    assert_eq!(admitted.data_write_positions().iter().flatten().count(), 1);
+    let mut vm =
+        ProfileMachine::from_source(profile, admitted.source(), Vec::new())
+            .map_err(|error| format!("terminal relocation VM: {error:?}"))?;
+    verify_execution_witness(&mut vm, &admitted)?;
+    assert_eq!(vm.output().len(), 1);
+
+    let mut unsafe_operations = operations.clone();
+    unsafe_operations
+        .insert(unsafe_operations.len() - 1, LinearOpcode::NoOperation);
+    assert_eq!(
+        encode_linear_layout(profile, &unsafe_operations),
+        Err(LinearLayoutError::UnsafeDataPlacement),
+    );
+    let mut triple = operations;
+    triple.insert(9, LinearOpcode::RelocateDataPointer);
+    assert_eq!(
+        encode_linear_layout(profile, &triple),
+        Err(LinearLayoutError::UnsafeDataPlacement),
+    );
     Ok(())
 }
