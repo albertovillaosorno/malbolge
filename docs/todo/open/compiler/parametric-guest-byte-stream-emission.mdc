@@ -628,3 +628,12 @@ a compiler capability gap, not a reason to return to N+1.
   prunes only proposals; the independent layout/VM checker still admits
   every output. Original twelve-byte Fibonacci layout remains unsupported,
   so generalized P0 acceptance stays pending.
+
+- The long-stream guest search now applies necessary instruction-capacity
+  checks before exploring source lengths, relocation prefixes or individual
+  successor states. Each output needs a guest `<`, and each change of the
+  accumulator low byte needs a `p` or `*`; repeats may reuse the accumulator.
+  The source-independent 34-step interleaved guest still reconstructs under
+  independent positional/VM verification, and the source-C Fibonacci program
+  still refuses without publication. These exact feasibility bounds prune
+  impossible geometries but do not complete generalized P0 synthesis.

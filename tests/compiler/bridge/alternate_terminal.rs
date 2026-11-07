@@ -600,7 +600,8 @@ fn straight_write_search_reconstructs_nonfixture_twelve_byte_guest()
 }
 
 #[test]
-fn twelve_output_interleaved_repeated_guest_is_reconstructed() -> Result<(), String> {
+fn twelve_output_interleaved_repeated_guest_is_reconstructed()
+-> Result<(), String> {
     let profile = malbolge::current_profile();
     let cells = pair_source_cells(profile)
         .ok_or_else(|| String::from("missing positional encodings"))?;
@@ -620,8 +621,9 @@ fn twelve_output_interleaved_repeated_guest_is_reconstructed() -> Result<(), Str
     operations.extend([LinearOpcode::NoOperation, LinearOpcode::Halt]);
     let expected = proposed_output_stream::<12>(&operations, &cells)
         .ok_or_else(|| String::from("seed guest cannot execute"))?;
-    let source = verified_output_stream_layout(profile, &operations, expected, &cells)
-        .ok_or_else(|| String::from("independent guest rejected seed"))?;
+    let source =
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .ok_or_else(|| String::from("independent guest rejected seed"))?;
     if source.source().len() != 34 {
         return Err(String::from("source-dependent seed length changed"));
     }
@@ -632,8 +634,12 @@ fn twelve_output_interleaved_repeated_guest_is_reconstructed() -> Result<(), Str
     }
     let mut tails = BTreeMap::new();
     let memory = cached_output_tail(
-        &altered_cells, &mut tails, operations.len(), relocation + operations.len()
-    ).ok_or_else(|| String::from("missing guest seed"))?;
+        &altered_cells,
+        &mut tails,
+        operations.len(),
+        relocation + operations.len(),
+    )
+    .ok_or_else(|| String::from("missing guest seed"))?;
     let proposal = proposed_geometry(
         &cells,
         &SearchGeometry {
@@ -644,9 +650,13 @@ fn twelve_output_interleaved_repeated_guest_is_reconstructed() -> Result<(), Str
         },
         expected,
         TerminalSuffix::Noop,
-    ).ok_or_else(|| String::from("guest search missed proven repeated trace"))?;
-    let verified = verified_output_stream_layout(profile, &proposal, expected, &cells)
-        .ok_or_else(|| String::from("reconstructed trace fails VM proof"))?;
+    )
+    .ok_or_else(|| String::from("guest search missed proven repeated trace"))?;
+    let verified =
+        verified_output_stream_layout(profile, &proposal, expected, &cells)
+            .ok_or_else(|| {
+                String::from("reconstructed trace fails VM proof")
+            })?;
     if verified.source().is_empty() {
         return Err(String::from("verified guest is empty"));
     }
@@ -656,4 +666,56 @@ fn twelve_output_interleaved_repeated_guest_is_reconstructed() -> Result<(), Str
         return Err(String::from("bounded search returned no guest"));
     }
     Ok(())
+}
+
+#[test]
+fn guest_output_write_lower_bound_preserves_repeated_effects() {
+    // The accumulator starts at zero; an initial zero needs no write.
+    assert_eq!(required_writes(0, &[0, 0, 2, 2, 3]), 2);
+    assert_eq!(required_writes(2, &[2, 5, 5, 2]), 2);
+    // The compound C acceptance stream changes on every output.
+    assert_eq!(required_writes(0, &[2, 89, 95, 8, 87, 79]), 6);
+    // One adjacent repeat in the 34-step, 12-output guest.
+    let interleaved = [62, 9, 13, 13, 40, 46, 19, 61, 10, 46, 10, 61];
+    assert_eq!(required_writes(0, &interleaved), 11);
+    // The known 34-cell witness has an eight-cell prefix, j and two
+    // terminal cells: exactly 23 body slots for 12 outputs and 11 writes.
+    assert!(can_fit_effects(34 - 8 - 3, 0, &interleaved));
+    assert!(!can_fit_effects(34 - 9 - 3, 0, &interleaved));
+    assert!(!can_fit_effects(4, 0, &[0, 0, 2, 2]));
+    assert!(can_fit_effects(5, 0, &[0, 0, 2, 2]));
+}
+
+#[test]
+fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
+    let states = BTreeMap::from([((0, 0u32), 0usize)]);
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    // Output zero now; seven later output changes need fourteen body
+    // instructions (seven p/* writes and seven outputs).
+    let viable = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            remaining: 14,
+            target_emitted: 8,
+        },
+        [0, 1, 2, 3, 4, 5, 6, 7],
+    );
+    assert!(viable.contains_key(&(1, 0)));
+    // Thirteen body positions cannot realize seven further changes.
+    let impossible = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            remaining: 13,
+            target_emitted: 8,
+        },
+        [0, 1, 2, 3, 4, 5, 6, 7],
+    );
+    assert!(!impossible.contains_key(&(1, 0)));
 }

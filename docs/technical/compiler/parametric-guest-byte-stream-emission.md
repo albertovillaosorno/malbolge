@@ -1400,3 +1400,34 @@ real guest steps under empty and nonempty stdin. An extra selected C output
 refuses without an artifact. The original Fibonacci stream
 `02 59 5f 08 57 4f 22 6d 03 90 b3 23` still lacks a guest witness,
 and neither dynamic C state nor general byte-stream synthesis is implemented.
+
+### Exact capacity pruning for bounded guest search
+
+The interleaved twelve-byte search originally spent significant time on
+geometries that could not possibly emit their requested byte effects. Every
+source-backed output needs one physical guest `<` instruction, and every
+change from the prior accumulator low byte (initially zero) needs at least
+one real `p` or `*` instruction. Repeated bytes can share an accumulator
+value. These are **necessary** instruction-count bounds, not full synthesis
+or a replacement for verification.
+
+For longer traces (at least eight effects), the search now rejects an
+impossible source length, relocation prefix, or partial accumulator state
+when its remaining body has too few cells for the
+unemitted output effects **plus** their unavoidable byte transitions.
+Initial zero outputs before relocation count toward the prefix rather than
+body; a final output suffix is handled separately. The current terminal
+output proposal pads completed body effects only with no-ops, so two final
+unequal bytes cannot use that shape. The valid 34-cell interleaved guest has
+an eight-cell prefix and precisely 23 body cells for twelve outputs and
+eleven byte changes. The following prefix would leave only 22 cells and is
+provably impossible within this layout grammar. Shorter streams retain
+existing deterministic witness-selection order.
+
+The proposal beam still discards high-word alternatives, and its finite
+length, prefix and geometry budgets can miss valid guests. Every accepted
+candidate is independently positionally decoded, checked for disjoint
+source-external writes, and replayed on the normative VM under empty and
+nonempty input. The original twelve-byte Fibonacci target remains open;
+no guest runtime implementation of general C state or control flow follows
+from this pruning.

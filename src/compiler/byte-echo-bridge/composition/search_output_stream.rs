@@ -98,6 +98,26 @@ fn matches_byte(accumulator: u32, expected: u8) -> bool {
     u8::try_from(accumulator & 255).ok() == Some(expected)
 }
 
+/// A change of output byte needs at least one genuine guest arithmetic write.
+/// Repeated outputs may reuse the accumulator, including its initial zero.
+fn required_writes(mut previous: u8, outputs: &[u8]) -> usize {
+    let mut writes = 0;
+    for &byte in outputs {
+        if byte != previous {
+            writes += 1;
+            previous = byte;
+        }
+    }
+    writes
+}
+
+fn can_fit_effects(available: usize, accumulator: u8, outputs: &[u8]) -> bool {
+    outputs
+        .len()
+        .saturating_add(required_writes(accumulator, outputs))
+        <= available
+}
+
 fn append_successors<const N: usize>(
     states: &SearchStates,
     steps: &mut Vec<SearchStep>,
@@ -133,7 +153,16 @@ fn append_successors<const N: usize>(
             {
                 continue;
             }
-            if count.saturating_add(remaining) < target_emitted
+            // For long streams, every remaining output costs one instruction;
+            // each byte transition costs an additional p/* write.
+            // A shortage is impossible to repair with padding or high trits.
+            let pending = &expected[count..target_emitted];
+            if (target_emitted >= 8
+                && !can_fit_effects(
+                    remaining,
+                    candidate_accumulator as u8,
+                    pending,
+                ))
                 || successors.contains_key(&(count, candidate_accumulator))
             {
                 continue;
@@ -279,12 +308,52 @@ fn verified_terminal_layout<const N: usize>(
             *cell.get_mut(4)? = encoded;
         }
     }
+    // Once body output is complete, this proposal pads with no-ops.
+    // Thus no arithmetic write separates the last two output effects.
+    if N >= 8
+        && matches!(terminal, TerminalSuffix::Output)
+        && expected[N - 1] != expected[N - 2]
+    {
+        return None;
+    }
     let leading_zeros = expected.iter().take_while(|&&byte| byte == 0).count();
-    for length in N.saturating_add(4)..=maximum_length.min(MAX_SOURCE_LENGTH) {
+    // Source length must hold N output instructions, at least one j and v,
+    // the necessary changes from initial accumulator zero, and the fixed
+    // terminal instruction (unless it is already the final output).
+    let minimum_length = N
+        .saturating_add(required_writes(0, &expected))
+        .saturating_add(2)
+        .saturating_add(usize::from(!matches!(
+            terminal,
+            TerminalSuffix::Output
+        )));
+    // Retain the established short-stream witness-selection order.
+    let initial_length = if N >= 8 {
+        minimum_length.max(N.saturating_add(4))
+    } else {
+        N.saturating_add(4)
+    };
+    for length in initial_length..=maximum_length.min(MAX_SOURCE_LENGTH) {
         let max_prefix = length
             .saturating_sub(N.saturating_add(3))
             .min(maximum_prefix);
         for prefix in 0..=max_prefix {
+            // The prefix and fixed j/tail/v consume prefix + 3 cells.
+            // Source-encoded initial-zero outputs may occupy prefix cells;
+            // all other effects and required writes must fit in the body.
+            let body_slots = length.checked_sub(prefix.checked_add(3)?)?;
+            let target_emitted = terminal.emitted_before_tail(N);
+            let max_prefix_outputs =
+                leading_zeros.min(prefix).min(target_emitted);
+            if N >= 8
+                && !can_fit_effects(
+                    body_slots,
+                    0,
+                    &expected[max_prefix_outputs..target_emitted],
+                )
+            {
+                continue;
+            }
             let relocation = usize::from(*source_cells.get(prefix)?.get(1)?);
             if relocation < length || relocation.saturating_add(length) >= 4096
             {
@@ -296,14 +365,19 @@ fn verified_terminal_layout<const N: usize>(
                 length,
                 relocation.saturating_add(length),
             )?;
-            // A graphical output before j emits the known initial zero.
-            // Try maximal useful zero prefixes first, preserving the
-            // historical all-no-op prefix as the last candidate.
-            let max_prefix_outputs = leading_zeros
-                .min(prefix)
-                .min(terminal.emitted_before_tail(N));
+            // Try maximal useful initial-zero outputs first, preserving
+            // the historical all-no-op prefix as the last candidate.
             let verified =
                 (0..=max_prefix_outputs).rev().find_map(|prefix_outputs| {
+                    if N >= 8
+                        && !can_fit_effects(
+                            body_slots,
+                            0,
+                            &expected[prefix_outputs..target_emitted],
+                        )
+                    {
+                        return None;
+                    }
                     let geometry = SearchGeometry {
                         memory,
                         prefix,
@@ -446,11 +520,14 @@ pub(super) fn verified_state_space_output_layout<const N: usize>(
         TerminalSuffix::Crazy,
         TerminalSuffix::Rotate,
     ] {
-        if let Some(layout) =
-            verified_terminal_layout(
-                profile, expected, source_cells, terminal, MAX_SOURCE_LENGTH, 30,
-            )
-        {
+        if let Some(layout) = verified_terminal_layout(
+            profile,
+            expected,
+            source_cells,
+            terminal,
+            MAX_SOURCE_LENGTH,
+            30,
+        ) {
             return Some(layout);
         }
     }
@@ -472,7 +549,12 @@ pub(super) fn verified_short_output_layout<const N: usize>(
         return None;
     }
     verified_terminal_layout(
-        profile, expected, source_cells, TerminalSuffix::Noop, 36, 12,
+        profile,
+        expected,
+        source_cells,
+        TerminalSuffix::Noop,
+        36,
+        12,
     )
 }
 
