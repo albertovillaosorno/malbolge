@@ -458,14 +458,14 @@ fn conditional_foreign_reads_metadata_and_unproven_branches_reject() {
         (15, "kind", json!("for-statement")),
         (16, "operation", json!("!=")),
         (17, "type", json!("i32")),
-        (18, "operation", json!("|")),
+        (18, "operation", json!("||")),
         (20, "reference", json!("a@999")),
         (22, "type", json!("i32")),
         (23, "reference", json!("result@1194")),
         (24, "parent", json!(2)),
-        (26, "operation", json!(">>")),
+        (26, "operation", json!("&&")),
         (30, "kind", json!("call-expression")),
-        (33, "operation", json!(">>")),
+        (33, "operation", json!("&&")),
         (36, "reference", json!("result@999")),
     ] {
         let mut altered = original.clone();

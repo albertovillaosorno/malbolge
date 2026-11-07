@@ -59,13 +59,27 @@ fn fixture_namespace() -> String {
     format!("{}-{:?}", id(), thread::current().id())
 }
 
+fn repository_root() -> PathBuf {
+    let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+    manifest
+        .ancestors()
+        .find(|ancestor| ancestor.join("malbolge.json").is_file())
+        .unwrap_or(manifest)
+        .to_path_buf()
+}
+
 fn repository_python() -> PathBuf {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let root = repository_root();
     if cfg!(windows) {
-        root.join(".dependencies/python/3.14.7/python.exe")
+        root.join(".dependencies/python/3.14.7/venv/Scripts/python.exe")
     } else {
-        root.join(".dependencies/python/3.14.7/bin/python")
+        root.join(".dependencies/python/3.14.7/venv/bin/python")
     }
+}
+
+#[test]
+fn pinned_inspector_python_is_available_from_workspace() {
+    assert!(repository_python().is_file());
 }
 
 fn run_fixture(
@@ -265,7 +279,7 @@ fn success_kills_redirected_stdio_descendant() -> Result<(), String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("fixture clock failed: {error}"))?
         .as_nanos();
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp");
+    let root = repository_root().join(".temp");
     let marker =
         root.join(format!("inspector-success-orphan-{}-{nonce}.txt", id()));
     let ready =
@@ -322,7 +336,7 @@ fn kills_inherited_stdout_holder_after_rejected_diagnostics()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("fixture clock failed: {error}"))?
         .as_nanos();
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp");
+    let root = repository_root().join(".temp");
     let marker = root.join(format!(
         "inspector-diagnostic-descendant-{}-{nonce}.txt",
         id()
@@ -394,7 +408,7 @@ fn kills_inherited_pipe_descendant_after_deadline() -> Result<(), String> {
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("fixture clock failed: {error}"))?
         .as_nanos();
-    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(".temp");
+    let root = repository_root().join(".temp");
     let marker =
         root.join(format!("inspector-descendant-{}-{nonce}.txt", id()));
     let ready = root.join(format!("inspector-launched-{}-{nonce}.txt", id()));
@@ -456,6 +470,29 @@ fn zero_deadline_rejects_without_child_creation() {
 }
 
 #[cfg(target_os = "linux")]
+fn relative_repository_python() -> Result<PathBuf, String> {
+    // The venv symlink warns on a noncanonical parent path, and inspector
+    // transport correctly rejects stderr. Use the pinned executable target.
+    let executable = repository_python()
+        .canonicalize()
+        .map_err(|error| format!("canonicalize pinned Python: {error}"))?;
+    let working = std::env::current_dir()
+        .map_err(|error| format!("read package working directory: {error}"))?;
+    let mut ancestor = working.as_path();
+    let mut relative = PathBuf::from(".");
+    while !executable.starts_with(ancestor) {
+        ancestor = ancestor
+            .parent()
+            .ok_or_else(|| String::from("no common interpreter ancestor"))?;
+        relative.push("..");
+    }
+    let suffix = executable
+        .strip_prefix(ancestor)
+        .map_err(|error| format!("interpreter relative suffix: {error}"))?;
+    Ok(relative.join(suffix))
+}
+
+#[cfg(target_os = "linux")]
 #[test]
 fn admits_directory_qualified_relative_interpreter() -> Result<(), String> {
     let next = NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed);
@@ -466,11 +503,12 @@ fn admits_directory_qualified_relative_interpreter() -> Result<(), String> {
         "import sys\nsys.stdout.buffer.write(b'qualified')\n",
     )
     .map_err(|error| format!("write inspector fixture: {error}"))?;
+    let relative_interpreter = relative_repository_python()?;
     let observed = extract_with_limits(
         ExtractRequest {
             codec: "compiler.test-state-v1",
             inspector: &script,
-            interpreter: Path::new("./.dependencies/python/3.14.7/bin/python"),
+            interpreter: &relative_interpreter,
             progress: Path::new("unread-progress.json"),
         },
         limits(1024, 1024, Duration::from_secs(5)),
@@ -480,7 +518,11 @@ fn admits_directory_qualified_relative_interpreter() -> Result<(), String> {
     if observed == Ok(b"qualified".to_vec()) {
         Ok(())
     } else {
-        Err(format!("relative interpreter was rejected: {observed:?}"))
+        Err(format!(
+            "relative interpreter was rejected: {observed:?}; cwd={:?}; path={:?}",
+            std::env::current_dir(),
+            relative_interpreter,
+        ))
     }
 }
 

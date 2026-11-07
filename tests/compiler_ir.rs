@@ -313,9 +313,9 @@ raise SystemExit(93)
 fn repository_python() -> PathBuf {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     if cfg!(windows) {
-        root.join(".dependencies/python/3.14.7/python.exe")
+        root.join(".dependencies/python/3.14.7/venv/Scripts/python.exe")
     } else {
-        root.join(".dependencies/python/3.14.7/bin/python")
+        root.join(".dependencies/python/3.14.7/venv/bin/python")
     }
 }
 
