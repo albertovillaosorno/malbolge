@@ -701,6 +701,7 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
         SearchWord {
             value: 0,
             next_value: 0,
+            next_next_value: 0,
             remaining: 14,
             target_emitted: 8,
         },
@@ -714,6 +715,7 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
         SearchWord {
             value: 0,
             next_value: 0,
+            next_next_value: 0,
             remaining: 13,
             target_emitted: 8,
         },
@@ -738,6 +740,7 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         SearchWord {
             value: 0,
             next_value: 0,
+            next_next_value: 0,
             remaining: 22,
             target_emitted: 8,
         },
@@ -754,6 +757,7 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         SearchWord {
             value: 0,
             next_value: 0,
+            next_next_value: 0,
             remaining: 21,
             target_emitted: 8,
         },
@@ -769,6 +773,7 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         SearchWord {
             value: 0,
             next_value: 0,
+            next_next_value: 0,
             remaining: 20,
             target_emitted: 8,
         },
@@ -800,14 +805,15 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
         SearchWord {
             value: 0,
             next_value: 0,
+            next_next_value: 0,
             remaining: 22,
             target_emitted: 8,
         },
         expected,
     );
     assert!(after_first.contains_key(&(1, 259)));
-    // A different actual next memory word must not falsely retain 259:
-    // crazy(2, 259) emits 55, not the requested 53.
+    // If both next loader words differ, neither immediate nor delayed
+    // p reaches 53; crazy(2, 259) emits 55 instead.
     assert_eq!(malbolge::profile_crazy(2, 259, 15) & 255, 55);
     let without_match = append_successors(
         &states,
@@ -815,6 +821,7 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
         SearchWord {
             value: 0,
             next_value: 2,
+            next_next_value: 2,
             remaining: 22,
             target_emitted: 8,
         },
@@ -827,6 +834,7 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
         SearchWord {
             value: 0,
             next_value: 0,
+            next_next_value: 0,
             remaining: 21,
             target_emitted: 8,
         },
@@ -853,6 +861,7 @@ fn guest_output_beam_records_only_retained_predecessors() {
         SearchWord {
             value: 0,
             next_value: 0,
+            next_next_value: 0,
             remaining: 30,
             target_emitted: 8,
         },
@@ -863,4 +872,81 @@ fn guest_output_beam_records_only_retained_predecessors() {
     // history or prematurely exhaust its bounded memory budget.
     assert_eq!(steps.len() - prior_steps, successors.len());
     assert!(successors.values().all(|&index| index < steps.len()));
+}
+
+#[test]
+fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
+    // The next guest word is 2, so no state reaches byte 53 at that
+    // position. A no-op advances D to the following word zero: only
+    // the middle word 259 then produces 53, not the extremes 3/515.
+    let states = BTreeMap::from([
+        ((0, 3u32), 0usize),
+        ((0, 259u32), 0usize),
+        ((0, 515u32), 0usize),
+    ]);
+    let expected = [3, 53, 53, 53, 53, 53, 53, 53];
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let first = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 2,
+            next_next_value: 0,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert_eq!(malbolge::profile_crazy(2, 259, 15) & 255, 55);
+    assert_eq!(malbolge::profile_crazy(0, 259, 15) & 255, 53);
+    assert_eq!(malbolge::profile_crazy(0, 3, 15) & 255, 50);
+    assert_eq!(malbolge::profile_crazy(0, 515, 15) & 255, 38);
+    assert!(first.contains_key(&(1, 259)), "lost delayed continuation");
+    let after_noop = append_successors(
+        &first,
+        &mut steps,
+        SearchWord {
+            value: 2,
+            next_value: 0,
+            next_next_value: 0,
+            remaining: 21,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    let after_crazy = append_successors(
+        &after_noop,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            remaining: 20,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(
+        after_crazy.contains_key(&(1, malbolge::profile_crazy(0, 259, 15)))
+    );
+
+    // A changed future data word must not preserve a false match.
+    assert_ne!(malbolge::profile_crazy(2, 259, 15) & 255, 53);
+    let negative = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 2,
+            next_next_value: 2,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(!negative.contains_key(&(1, 259)));
 }

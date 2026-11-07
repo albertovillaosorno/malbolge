@@ -67,6 +67,7 @@ struct SearchWord {
     target_emitted: usize,
     value: u32,
     next_value: u32,
+    next_next_value: u32,
 }
 
 struct BeamRepresentatives {
@@ -74,6 +75,8 @@ struct BeamRepresentatives {
     largest: u32,
     next_smallest: Option<u32>,
     next_largest: Option<u32>,
+    delayed_smallest: Option<u32>,
+    delayed_largest: Option<u32>,
 }
 
 #[derive(Clone, Copy)]
@@ -135,6 +138,7 @@ fn append_successors<const N: usize>(
     let SearchWord {
         value,
         next_value,
+        next_next_value,
         remaining,
         target_emitted,
     } = word;
@@ -185,10 +189,10 @@ fn append_successors<const N: usize>(
     }
     // The low byte determines an output effect, but p observes the entire
     // fifteen-trit accumulator. In addition to the extreme full words,
-    // preserve extreme words whose *next* p write reaches the pending byte.
-    // A middle word can be the only viable continuation even when both
-    // extremes emit the same present byte. This remains a bounded beam:
-    // unselected middle words and longer lookahead may still be missed.
+    // preserve extreme words whose next p write reaches the pending byte.
+    // Also preserve states that require one no-op before that write: the
+    // next loader word can miss a byte which the word after it can reach.
+    // The beam remains bounded and can miss longer or multi-write paths.
     if target_emitted >= 8 {
         let mut representatives =
             BTreeMap::<(usize, u8), BeamRepresentatives>::new();
@@ -200,6 +204,8 @@ fn append_successors<const N: usize>(
                     largest: accumulator,
                     next_smallest: None,
                     next_largest: None,
+                    delayed_smallest: None,
+                    delayed_largest: None,
                 });
             group.largest = accumulator;
             if expected.get(emitted).is_some_and(|&byte| {
@@ -212,6 +218,26 @@ fn append_successors<const N: usize>(
                 let _previous = group.next_smallest.get_or_insert(accumulator);
                 group.next_largest = Some(accumulator);
             }
+            // After this instruction, a no-op and p must still leave an
+            // instruction for the requested output. No-op advances D
+            // without changing A, so use the actual later loader word.
+            if remaining >= 3
+                && expected.get(emitted).is_some_and(|&byte| {
+                    byte != accumulator as u8
+                        && matches_byte(
+                            malbolge::profile_crazy(
+                                next_next_value,
+                                accumulator,
+                                15,
+                            ),
+                            byte,
+                        )
+                })
+            {
+                let _previous =
+                    group.delayed_smallest.get_or_insert(accumulator);
+                group.delayed_largest = Some(accumulator);
+            }
         }
         proposals.retain(|&(emitted, accumulator), _| {
             representatives
@@ -221,6 +247,8 @@ fn append_successors<const N: usize>(
                         || accumulator == group.largest
                         || group.next_smallest == Some(accumulator)
                         || group.next_largest == Some(accumulator)
+                        || group.delayed_smallest == Some(accumulator)
+                        || group.delayed_largest == Some(accumulator)
                 })
         });
     }
@@ -314,6 +342,7 @@ fn proposed_geometry<const N: usize>(
                 target_emitted,
                 value: *memory.get(address)?,
                 next_value: *memory.get(address.checked_add(1)?)?,
+                next_next_value: *memory.get(address.checked_add(2)?)?,
             },
             expected,
         );

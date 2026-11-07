@@ -659,3 +659,17 @@ a compiler capability gap, not a reason to return to N+1.
   guest still reconstructs under independent positional/VM verification.
   The original twelve-output Fibonacci C still fails closed at layout,
   and P0 remains pending.
+
+
+- A red-first search test found a distinct delayed-reachability loss:
+  accumulator words 3, 259, 515 emit the same current low byte, but
+  when the next guest data word is 2, only the middle word 259 reaches
+  the requested 53 after a no-op and `p` on the following word zero.
+  The long-stream beam now retains up to two delayed-byte-reachable
+  full-word representatives using the actual next-next loader cell,
+  with a three-instruction capacity guard and negative changed-word
+  control. At most six representatives survive per progress/byte group.
+  Existing six beam tests, independently verified twelve-byte guest
+  reconstruction, and real source-C twelve-byte interleaved VM parity
+  pass; the original Fibonacci source still refuses without publication.
+  This remains bounded proposal search, not general guest synthesis.

@@ -1485,3 +1485,38 @@ artifact. One-step reachability is only a deterministic beam priority;
 longer-term alternative word states, runtime C state, and arbitrary stream
 synthesis remain unimplemented. All published layouts still require exact
 independent decoder, disjoint-write and normative-VM verification.
+
+
+### Two-step byte-reachable high-word retention
+
+The complete twelve-iteration Fibonacci program was retried after the
+one-step search improvement and still refused at the verified guest-layout
+boundary without publication. A separate red-first successor regression
+exposed another deterministic beam false negative. Accumulator words 3,
+259 and 515 all emit byte 3.
+
+With the next loader word 2, the first `p` opportunity cannot emit the
+pending byte 53 from word 259: it yields 55. Yet a guest no-op advances
+the data pointer to the following loader word 0, where `p(0, 259)` yields
+exactly 53. The minimum and maximum full words yield 50 and 38 there,
+so the old beam lost the middle word.
+
+For streams of at least eight effects, the proposal now inspects two
+actual consecutive loader-tail words after each successor. Alongside
+full-word extremes and immediate-byte-reachable extremes, it retains up
+to two additional representatives that can match after one no-op then
+one crazy write. This delayed match is considered only when at least
+three body instructions remain for the no-op, write and output.
+
+A negative control changes the later word to 2, for which 259 no longer
+matches 53; the older immediate-word negative control also excludes a
+delayed match. At most six representatives survive per progress/low-byte
+group, and discarded candidates consume no reconstruction records.
+
+The independent twelve-byte interleaved search and complete pinned C
+pipeline continue to produce actual normatively verified Malbolge on
+empty and nonempty input, while the original Fibonacci twelve-byte
+stream still refuses at layout. This bounded two-step prioritization is
+not a complete beam, arbitrary guest byte-stream synthesis, or runtime
+C arithmetic and control flow. Every accepted candidate remains subject
+to the existing decoder, disjoint-write and normative VM checks.
