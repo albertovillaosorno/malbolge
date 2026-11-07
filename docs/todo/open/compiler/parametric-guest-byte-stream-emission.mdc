@@ -513,3 +513,15 @@ a compiler capability gap, not a reason to return to N+1.
   variant emits `Q.`. Normative VM parity on empty and nonempty input and
   negative source/AST checks cover this static projection. General guest
   C control flow and the twelve-byte byte-stream layout remain open.
+
+- A complete three-iteration C `do…while` recurrence exposed the missing
+  single-arm `if (condition) { assignment; }` case. The adapter now proves
+  that the sole braced arm ends at the `if` span, consumes exactly one
+  source-backed assignment and preserves unchanged state on false tests.
+  The independent recurrence visits `60, 160, 0` and selects true/false/false,
+  producing `6 ^ 71 = 65`; an all-skipped variant retains `a = 3` and
+  produces `3 ^ 66 = 65`. Actual normative VM stdout for empty/nonempty input
+  matches both `0x41` oracles. Extra effects, unbraced arms, undefined
+  arithmetic, unbounded loops and hostile AST structures refuse publication.
+  This is compiler-time C state replay and does not implement dynamic guest
+  branches or the original twelve-byte Fibonacci layout. P0 remains open.

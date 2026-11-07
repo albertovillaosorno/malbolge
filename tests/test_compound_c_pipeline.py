@@ -2023,7 +2023,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             and node["kind"] == "binary-expression"
             and node.get("operation") == "&"
         )
-        condition_id = condition["id"]
+        condition_id = cast(int, condition["id"])
         self.assertIsInstance(condition_id, int)
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
             for label, field, value in (
@@ -3365,6 +3365,206 @@ class CompoundCPipelineTests(unittest.TestCase):
                 )
                 tampered["nodes"][node_id - 1][field] = value
                 guest = Path(scratch) / f"do-ast-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        str(ADAPTER),
+                        "--layout-backend",
+                        str(LAYOUT),
+                        "--output",
+                        str(guest),
+                        "--capsule",
+                    ],
+                    input=json.dumps(tampered).encode(),
+                    check=False,
+                    capture_output=True,
+                    timeout=30,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
+                self.assertFalse(guest.exists(), label)
+
+
+    def test_bounded_if_without_else_reaches_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_if_without_else_recurrence_output.c"
+        ).read_text()
+        self.assertIn("if (next & 8U) {", source)
+
+        def oracle(mask: int, xor: int) -> tuple[bytes, list[bool]]:
+            a, b, i = 3, 5, 0
+            branches: list[bool] = []
+            while True:
+                following = ((a * b) << 2) & 255
+                taken = bool(following & mask)
+                branches.append(taken)
+                if taken:
+                    a = (following >> 3) ^ 1
+                b = following
+                i += 1
+                if i == 3:
+                    break
+            return bytes((a ^ xor,)), branches
+
+        self.assertEqual(oracle(8, 71), (b"A", [True, False, False]))
+        self.assertEqual(oracle(2, 66), (b"A", [False, False, False]))
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed, expected in (
+                ("taken-and-skipped", source, oracle(8, 71)[0]),
+                (
+                    "always-skipped",
+                    source.replace("next & 8U", "next & 2U").replace(
+                        "a ^ 71U", "a ^ 66U"
+                    ),
+                    oracle(2, 66)[0],
+                ),
+            ):
+                candidate = Path(scratch) / f"no-else-{label}.c"
+                _ = candidate.write_text(changed)
+                guest = Path(scratch) / f"no-else-{label}.malbolge"
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/no-else-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=100,
+                )
+                self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                self.assertTrue(guest.is_file())
+                for guest_input in (b"", b"\xff\x00\x80"):
+                    executed = subprocess.run(
+                        [
+                            str(VM),
+                            str(guest),
+                            "--input-stdin",
+                            "--report-steps",
+                        ],
+                        input=guest_input,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, expected)
+                    self.assertRegex(
+                        executed.stderr,
+                        rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                    )
+
+    def test_bounded_if_without_else_source_refusals(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_if_without_else_recurrence_output.c"
+        ).read_text()
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, changed in {
+                "extra-assignment": source.replace(
+                    "a = (next >> 3U) ^ 1U;",
+                    "a = (next >> 3U) ^ 1U;\n            b = 0U;",
+                ),
+                "hidden-effect": source.replace(
+                    "a = (next >> 3U) ^ 1U;",
+                    "a = (next >> 3U) ^ 1U;\n            putchar((int)next);",
+                ),
+                "missing-braces": source.replace(
+                    "if (next & 8U) {\n"
+                    + "            a = (next >> 3U) ^ 1U;\n        }",
+                    "if (next & 8U) a = (next >> 3U) ^ 1U;",
+                ),
+                "undefined-arithmetic": source.replace(
+                    "a = (next >> 3U) ^ 1U;", "a = next / 0U;"
+                ),
+                "unbounded": source.replace("i < 3U", "i < 13U"),
+            }.items():
+                candidate = Path(scratch) / f"reject-no-else-{label}.c"
+                _ = candidate.write_text(changed)
+                guest = Path(scratch) / f"reject-no-else-{label}.malbolge"
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/no-else-reject-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=40,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertRegex(refused.stderr, rb"Unsupported|FRONTEND-")
+                self.assertFalse(guest.exists(), label)
+
+    def test_bounded_if_without_else_forged_ast_refuses(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_if_without_else_recurrence_output.c"
+        )
+        frontend = subprocess.run(
+            [
+                str(FRONTEND),
+                "--guest-include",
+                str(GUEST_INCLUDE),
+                "--resource-dir",
+                str(RESOURCE),
+                "--source-id",
+                "tests/no-else-ast-v1",
+                str(source),
+            ],
+            check=False,
+            capture_output=True,
+            timeout=30,
+        )
+        self.assertEqual(frontend.returncode, 0, frontend.stderr)
+        parsed = cast(dict[str, object], json.loads(frontend.stdout))
+        nodes = cast(list[dict[str, object]], parsed["nodes"])
+        branch = next(node for node in nodes if node["kind"] == "if-statement")
+        children = [node for node in nodes if node["parent"] == branch["id"]]
+        body = next(
+            node for node in children if node["kind"] == "compound-statement"
+        )
+        body_span = cast(dict[str, object], body["span"])
+        branch_span = cast(dict[str, object], branch["span"])
+        self.assertEqual(body_span["end"], branch_span["end"])
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, node_id, field, value in (
+                ("wrong-kind", branch["id"], "kind", "while-statement"),
+                ("wrong-parent", branch["id"], "parent", 0),
+                ("extra-operation", branch["id"], "operation", "!"),
+                ("body-parent", body["id"], "parent", 0),
+                ("body-kind", body["id"], "kind", "declaration-statement"),
+            ):
+                assert isinstance(node_id, int)
+                tampered = cast(
+                    dict[str, list[dict[str, object]]],
+                    json.loads(frontend.stdout),
+                )
+                tampered["nodes"][node_id - 1][field] = value
+                guest = Path(scratch) / f"no-else-ast-{label}.malbolge"
                 refused = subprocess.run(
                     [
                         str(ADAPTER),

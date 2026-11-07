@@ -206,7 +206,7 @@ impl<'node> Flow<'node> {
         self.unsigned_comparison(comparison)
     }
 
-    /// Parse both arms completely, but retain only the proven selected state.
+    /// Prove a single braced arm or both arms before selecting local state.
     /// No output, declarations or nested control flow are discarded.
     fn conditional(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
         let statement = self.take(body.id, "if-statement")?;
@@ -232,6 +232,19 @@ impl<'node> Flow<'node> {
         }
         let then_state = self.locals.clone();
         self.locals = starting;
+        // An if without else ends at its sole braced arm. Prove no
+        // further child is hidden inside the arm before selecting state.
+        if then_body.span.end.byte == statement.span.end.byte {
+            if self.peek().is_some_and(|node| {
+                node.span.begin.byte < then_body.span.end.byte
+            }) {
+                return None;
+            }
+            if take_then {
+                self.locals = then_state;
+            }
+            return Some(statement.span.end.byte);
+        }
         let else_body = self.take(statement.id, "compound-statement")?;
         if !clean(else_body)
             || !span_within(&statement.span, &else_body.span)

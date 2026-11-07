@@ -1155,3 +1155,28 @@ an adversarially rewritten but still valid AST operator matches original C.
 This is compile-time replay of a proven finite C program, not dynamic guest
 control flow. The original twelve-byte Fibonacci P0 remains blocked by
 generalized byte-stream layout.
+
+### Source-proven `if` without `else` in bounded C recurrences
+
+A complete three-iteration unsigned C recurrence with a `do…while` loop,
+checked multiplication and shifting, mutable state and a conditional update
+without an `else` first failed at the JSON adapter and published no guest.
+The closed conditional proof formerly required two braced arms. It now admits
+an exact source-backed single braced assignment only when that arm ends at
+the `if` statement's own end and there are no unconsumed child nodes within
+its span. It proves the assignment even when the condition is false, then
+retains the prior local state for a skipped arm. A true condition commits the
+source-proven assignment. Existing two-arm selection is unchanged.
+
+The independent source oracle visits masked products `60, 160, 0`, takes the
+first assignment and skips the remaining two, then derives `6 ^ 71 = 65`.
+A second source variant checks an always-false mask and preserves `a = 3`,
+so its final `3 ^ 66` also yields `0x41`. Both variants are checked against
+actual output from the normative Malbolge VM on empty and nonempty input.
+Extra assignments or outputs inside the sole arm, unbraced statements,
+undefined division, out-of-budget loops and forged AST nodes are rejected
+without publication.
+
+This is bounded compile-time selection of C state, not guest runtime branching
+or a general byte-stream emitter. The original twelve-byte Fibonacci layout
+remains unsupported and P0 is still pending.
