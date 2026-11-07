@@ -1776,3 +1776,25 @@ and an extra thirteenth source output refuses without artifact publication.
 This is a finite additional verified source geometry, not arbitrary stream
 synthesis, guest runtime arithmetic or completed P0 acceptance. The exact
 Fibonacci stream `02 59 5f 08 57 4f 22 6d 03 90 b3 23` remains unsupported.
+
+### Wider source layout with an arithmetic loader tail
+
+The original twelve-iteration Fibonacci C source still reaches layout and
+refuses to publish an unwitnessed guest. A source-independent 39-instruction
+Malbolge program exposed a separate missed layout: an eight-cell prefix,
+relocation, twelve crazy/rotate writes and their outputs, four interleaved
+no-op strides, and a **final crazy write before halt**. The final write
+changes the loader expansion seed without adding a thirteenth output. Its
+normative guest bytes under empty and nonempty input are
+`a1 11 2c 0b 28 10 2d 0a a1 ff a3 ff`. The previous 36-cell search and
+the 37-to-39-cell **output-terminal-only** fallback both missed that guest.
+
+The wider fallback now considers the crazy-terminal source seed after its
+established output-terminal priority, retaining the 37-to-39-cell geometry,
+eight-prefix limit and 2,048-history-step cap per geometry. A red-first
+source-independent regression proves the source's positional encoding, exact
+VM output and disjoint guest data writes; the recovered guest is again
+independently decoded and replayed before admission. A forged first output
+byte fails verification. This does not establish an arbitrary output stream,
+source-level C loop support, guest runtime state or the original Fibonacci
+acceptance; P0 remains open.

@@ -774,3 +774,13 @@ a compiler capability gap, not a reason to return to N+1.
   VM replay, forged-byte refusal and no-extra-effect publication checks
   cover the extension. Original Fibonacci still refuses safely at guest
   layout; general byte streams and guest runtime state remain pending.
+- A new independent 39-instruction Malbolge guest exposed a missed alternate
+  loader seed beyond the 36-cell search: twelve changing output bytes
+  `a1 11 2c 0b 28 10 2d 0a a1 ff a3 ff` follow relocated arithmetic
+  writes and data no-ops, with one final output-neutral crazy write before
+  halt. The prior 37-to-39-cell output-terminal fallback could not recover
+  its independently verified normative VM trace. A red-first regression and
+  a separately effort-capped crazy-terminal fallback recover a verified
+  source with disjoint writes and replay under both input streams; forged
+  output still rejects. The original 12-byte Fibonacci program continues to
+  refuse safely at layout, and P0 remains pending.

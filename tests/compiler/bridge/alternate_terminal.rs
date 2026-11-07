@@ -1710,3 +1710,82 @@ fn longer_relocated_guest_exposes_wider_source_geometry() -> Result<(), String>
     );
     Ok(())
 }
+
+#[test]
+fn longer_relocated_guest_with_crazy_terminal_is_recovered()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional source cells"))?;
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.push(LinearOpcode::RelocateDataPointer);
+    for index in 0..12 {
+        if [1, 3, 5, 7].contains(&index) {
+            operations.push(LinearOpcode::NoOperation);
+        }
+        operations.extend([
+            if index % 4 == 0 {
+                LinearOpcode::RotateData
+            } else {
+                LinearOpcode::CrazyData
+            },
+            LinearOpcode::OutputByte,
+        ]);
+    }
+    operations.extend([LinearOpcode::CrazyData, LinearOpcode::Halt]);
+    assert_eq!(operations.len(), 39);
+    let original = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("independent guest encoding: {error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, original.source(), Vec::new())
+            .map_err(|error| format!("normative load: {error:?}"))?;
+    assert!(matches!(
+        vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()
+    ));
+    let expected: [u8; 12] = vm
+        .output()
+        .try_into()
+        .map_err(|_error| String::from("guest did not emit twelve bytes"))?;
+    assert_eq!(expected, [
+        161, 17, 44, 11, 40, 16, 45, 10, 161, 255, 163, 255
+    ]);
+    let mut nonempty =
+        ProfileMachine::from_source(profile, original.source(), vec![
+            0, 255, 1,
+        ])
+        .map_err(|error| format!("nonempty input: {error:?}"))?;
+    assert!(matches!(
+        nonempty.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len()
+    ));
+    assert_eq!(nonempty.output(), expected);
+    assert_eq!(
+        verified_output_stream_layout(profile, &operations, expected, &cells)
+            .as_ref()
+            .map(LinearLayout::source),
+        Some(original.source()),
+    );
+    let recovered = verified_short_output_layout(profile, expected, &cells)
+        .ok_or_else(|| {
+            format!("bounded search missed long crazy seed: {expected:?}")
+        })?;
+    assert!((37..=39).contains(&recovered.source().len()));
+    assert!(
+        recovered.data_write_positions().iter().flatten().count() >= 13,
+        "twelve changing outputs and a terminal crazy write need data writes",
+    );
+    assert_eq!(
+        recovered.source().get(recovered.source().len() - 2),
+        cells
+            .get(recovered.source().len() - 2)
+            .and_then(|cell| cell.get(2)),
+    );
+    let mut forged = expected;
+    forged[0] ^= 1;
+    assert!(
+        verified_output_stream_layout(profile, &operations, forged, &cells)
+            .is_none()
+    );
+    Ok(())
+}
