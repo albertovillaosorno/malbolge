@@ -1705,3 +1705,25 @@ typed and ternary admission but refuses at guest layout without publishing
 a source artifact. The 36-cell short-stream geometry remains bounded; this
 search correctness fix does not establish an arbitrary byte-stream backend,
 runtime guest C arithmetic, state or dynamic control flow. P0 stays open.
+
+### Leading-zero guest outputs before relocation
+
+The complete twelve-iteration Fibonacci C program was rerun and still refused
+at verified guest layout without publishing an artifact. An independent
+11-instruction guest exposed a separate bounded-search false negative: seven
+real zero-byte outputs can occur **before** the single data-pointer relocation,
+followed by a crazy write and a final nonzero output immediately before halt.
+The canonical source encoding and normative VM agree on all eight output
+instructions with no input consumed, but the old search started at `N + 4`
+source cells and limited relocation prefixes to `length - (N + 3)`.
+Both exclusions are invalid when initial output effects occupy prefix cells.
+
+For streams of at least eight effects, the search now starts at the necessary
+instruction lower bound and permits the longest prefix with at least one body
+instruction. Existing per-geometry body-capacity checks still subtract
+source-encoded zero outputs, and every accepted candidate passes independent
+positional decoding, disjoint-write checks and normative empty/nonempty-input
+VM replay. The red-first eleven-cell source now reconstructs an independently
+admitted guest; a forged final byte still rejects. This broadens one valid
+source geometry, not runtime guest C state or unbounded synthesis. The
+original Fibonacci stream remains unsupported and P0 stays open.

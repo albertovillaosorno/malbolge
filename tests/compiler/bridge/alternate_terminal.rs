@@ -499,6 +499,91 @@ fn maximum_graphical_relocation_reconstructs_guest() -> Result<(), String> {
 }
 
 #[test]
+fn long_zero_output_prefix_reconstructs_exact_guest_geometry()
+-> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    // Seven source-side outputs need no data writes. The fixed j/p/< /v
+    // suffix is four cells: counting all eight outputs as *body*
+    // instructions incorrectly excludes this fully valid relocation.
+    let mut operations = vec![LinearOpcode::OutputByte; 7];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::Halt,
+    ]);
+    let source = encode_linear_layout(profile, &operations)
+        .map_err(|error| format!("zero-prefix seed failed: {error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, source.source(), vec![7, 255, 0])
+            .map_err(|error| {
+                format!("zero-prefix VM load failed: {error:?}")
+            })?;
+    if !matches!(vm.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+    {
+        return Err(String::from("zero-prefix VM did not halt"));
+    }
+    let expected: [u8; 8] = vm
+        .output()
+        .try_into()
+        .map_err(|_error| String::from("seed did not output eight bytes"))?;
+    if expected[..7] != [0; 7] || expected[7] == 0 || vm.input_consumed() != 0 {
+        return Err(format!("unexpected zero-prefix guest trace {expected:?}"));
+    }
+    if proposed_output_stream::<8>(&operations, &cells) != Some(expected) {
+        return Err(String::from("proposal disagrees with independent VM"));
+    }
+    if required_writes(0, &expected) != 1 || operations.len() != 11 {
+        return Err(String::from("zero-prefix guest geometry changed"));
+    }
+    let original = verified_output_stream_layout(
+        profile,
+        &operations,
+        expected,
+        &cells,
+    )
+    .ok_or_else(|| String::from("seed failed independent guest proof"))?;
+    if original.source() != source.source() {
+        return Err(String::from("independent source bytes differ"));
+    }
+    // Seven output positions before relocation fit in eleven source
+    // cells; the old N+3 prefix cap and N+4 minimum omit this guest.
+    let recovered = verified_terminal_layout(
+        profile,
+        expected,
+        &cells,
+        TerminalSuffix::Output,
+        operations.len(),
+        7,
+    )
+    .ok_or_else(|| String::from("search discarded valid zero prefix"))?;
+    if recovered.source().len() != operations.len() {
+        return Err(String::from("search added unwanted source cells"));
+    }
+    let mut replay =
+        ProfileMachine::from_source(profile, recovered.source(), Vec::new())
+            .map_err(|error| format!("recovered VM load failed: {error:?}"))?;
+    if !matches!(
+        replay.run(recovered.executed_code_positions().len()),
+        Ok(RunOutcome::Terminated { .. })
+    ) || replay.output() != expected
+    {
+        return Err(String::from("recovered guest output disagrees"));
+    }
+    let mut forged = expected;
+    forged[7] ^= 1;
+    if verified_output_stream_layout(profile, &operations, forged, &cells)
+        .is_some()
+    {
+        return Err(String::from("forged terminal byte passed VM proof"));
+    }
+    Ok(())
+}
+
+#[test]
 fn five_source_bytes_with_initial_zero_are_recovered() -> Result<(), String> {
     let profile = malbolge::current_profile();
     let cells = pair_source_cells(profile)

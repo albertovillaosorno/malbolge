@@ -427,15 +427,29 @@ fn verified_terminal_layout<const N: usize>(
             terminal,
             TerminalSuffix::Output
         )));
-    // Retain the established short-stream witness-selection order.
+    // Long zero-prefixed streams may fit in N+3 cells when the final
+    // output is the terminal source instruction. Keep the historical
+    // shorter-stream witness order, but do not exclude that valid layout.
     let initial_length = if N >= 8 {
-        minimum_length.max(N.saturating_add(4))
+        minimum_length
     } else {
         N.saturating_add(4)
     };
     for length in initial_length..=maximum_length.min(MAX_SOURCE_LENGTH) {
+        // Source-side leading zeros consume prefix cells instead of body
+        // cells. The remaining body must hold every non-prefix output plus
+        // its necessary accumulator changes, including any final output
+        // supplied by the terminal opcode. Reserve a body cell even when
+        // those effects fit entirely before relocation.
+        let prefixable_zeros =
+            leading_zeros.min(terminal.emitted_before_tail(N));
+        let min_body_slots = terminal
+            .emitted_before_tail(N)
+            .saturating_sub(prefixable_zeros)
+            .saturating_add(required_writes(0, &expected[prefixable_zeros..]))
+            .max(1);
         let max_prefix = length
-            .saturating_sub(N.saturating_add(3))
+            .saturating_sub(min_body_slots.saturating_add(3))
             .min(maximum_prefix);
         for prefix in 0..=max_prefix {
             // The prefix and fixed j/tail/v consume prefix + 3 cells.

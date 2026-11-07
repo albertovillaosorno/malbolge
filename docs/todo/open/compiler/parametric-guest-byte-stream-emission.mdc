@@ -746,3 +746,10 @@ a compiler capability gap, not a reason to return to N+1.
   weakening independent layout or normative VM admission. The original
   twelve-output Fibonacci program still refuses safely at guest layout;
   runtime C state and generalized guest stream synthesis remain pending.
+- A source-independent eleven-instruction guest exposed an invalid long-stream
+  `N + 4` length floor and `length - (N + 3)` relocation-prefix bound: seven
+  initial zero outputs can execute before `j`, followed by `p`, final `<` and
+  halt. Red-first normative VM proof and the bounded search now recover this
+  exact-length guest under source-disjoint write and both-input verification;
+  forged output rejects. The original full Fibonacci C program still refuses
+  at layout without an artifact, and P0 remains pending.
