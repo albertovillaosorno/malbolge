@@ -1520,3 +1520,32 @@ stream still refuses at layout. This bounded two-step prioritization is
 not a complete beam, arbitrary guest byte-stream synthesis, or runtime
 C arithmetic and control flow. Every accepted candidate remains subject
 to the existing decoder, disjoint-write and normative VM checks.
+
+### Two-consecutive-write byte reachability
+
+The complete twelve-iteration Fibonacci C program remains source/typed
+admitted, but its original `02 59 5f 08 57 4f 22 6d 03 90 b3 23` trace
+still has no verified guest layout. A red-first search regression exposed
+another false-negative beam equivalence: full words 3, 259 and 515 all
+emit byte 3, but only the middle word 259 reaches byte 255 after two
+successive real crazy writes with loader words 2 and 0. The first write
+produces low byte 55; the second produces 255. The extreme words yield
+3 and 14, and neither a single write nor a no-op followed by a write
+reaches 255 from the middle word.
+
+The bounded long-stream proposal now retains minimum and maximum full
+words reaching the pending output byte by this two-write sequence, in
+addition to its existing full-word, immediate-write, and delayed-write
+representatives. It reads both actual future loader-tail cells, requires
+at least three remaining body instructions for the two writes and output,
+and caps retained representatives at eight per progress/low-byte group.
+Changing the later loader word from 0 to 2 removes the middle match in
+an explicit negative control. Discarded proposals still consume no
+reconstruction history.
+
+This is a deterministic pruning improvement, not an arbitrary-stream
+solver. The independently decoded and VM-replayed twelve-output
+interleaved guest remains accepted; the original Fibonacci trace still
+fails closed at layout. Longer write sequences and alternative guest
+control flow may require a different search grammar. No proposal is
+published without positional, write-disjointness, and normative VM proof.

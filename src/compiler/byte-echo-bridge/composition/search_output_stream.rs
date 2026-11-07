@@ -77,6 +77,8 @@ struct BeamRepresentatives {
     next_largest: Option<u32>,
     delayed_smallest: Option<u32>,
     delayed_largest: Option<u32>,
+    two_write_smallest: Option<u32>,
+    two_write_largest: Option<u32>,
 }
 
 #[derive(Clone, Copy)]
@@ -192,7 +194,9 @@ fn append_successors<const N: usize>(
     // preserve extreme words whose next p write reaches the pending byte.
     // Also preserve states that require one no-op before that write: the
     // next loader word can miss a byte which the word after it can reach.
-    // The beam remains bounded and can miss longer or multi-write paths.
+    // Two consecutive p writes can reach a byte that neither individual
+    // data word reaches from the original accumulator. The beam still
+    // cannot prove general multi-step or non-linear guest synthesis.
     if target_emitted >= 8 {
         let mut representatives =
             BTreeMap::<(usize, u8), BeamRepresentatives>::new();
@@ -206,6 +210,8 @@ fn append_successors<const N: usize>(
                     next_largest: None,
                     delayed_smallest: None,
                     delayed_largest: None,
+                    two_write_smallest: None,
+                    two_write_largest: None,
                 });
             group.largest = accumulator;
             if expected.get(emitted).is_some_and(|&byte| {
@@ -238,6 +244,30 @@ fn append_successors<const N: usize>(
                     group.delayed_smallest.get_or_insert(accumulator);
                 group.delayed_largest = Some(accumulator);
             }
+            // Both p writes advance D. The current candidate has already
+            // consumed its instruction, so the first reads next_value and
+            // the second reads next_next_value from the real loader tail.
+            if remaining >= 3
+                && expected.get(emitted).is_some_and(|&byte| {
+                    byte != accumulator as u8
+                        && matches_byte(
+                            malbolge::profile_crazy(
+                                next_next_value,
+                                malbolge::profile_crazy(
+                                    next_value,
+                                    accumulator,
+                                    15,
+                                ),
+                                15,
+                            ),
+                            byte,
+                        )
+                })
+            {
+                let _previous =
+                    group.two_write_smallest.get_or_insert(accumulator);
+                group.two_write_largest = Some(accumulator);
+            }
         }
         proposals.retain(|&(emitted, accumulator), _| {
             representatives
@@ -249,6 +279,8 @@ fn append_successors<const N: usize>(
                         || group.next_largest == Some(accumulator)
                         || group.delayed_smallest == Some(accumulator)
                         || group.delayed_largest == Some(accumulator)
+                        || group.two_write_smallest == Some(accumulator)
+                        || group.two_write_largest == Some(accumulator)
                 })
         });
     }

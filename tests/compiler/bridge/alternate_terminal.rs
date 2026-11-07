@@ -950,3 +950,88 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
     );
     assert!(!negative.contains_key(&(1, 259)));
 }
+
+#[test]
+fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
+    // Words 3, 259 and 515 all emit byte 3. The middle full word is
+    // needed to reach 255 through p(2, A), p(0, A), then output;
+    // neither extreme nor one p after a no-op reaches that byte.
+    let states = BTreeMap::from([
+        ((0, 3u32), 0usize),
+        ((0, 259u32), 0usize),
+        ((0, 515u32), 0usize),
+    ]);
+    let expected = [3, 255, 255, 255, 255, 255, 255, 255];
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let first = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 2,
+            next_next_value: 0,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    let first_write = malbolge::profile_crazy(2, 259, 15);
+    let second_write = malbolge::profile_crazy(0, first_write, 15);
+    assert_eq!(first_write & 255, 55);
+    assert_eq!(second_write & 255, 255);
+    for other in [3, 515] {
+        assert_ne!(
+            malbolge::profile_crazy(
+                0,
+                malbolge::profile_crazy(2, other, 15),
+                15,
+            ) & 255,
+            255,
+        );
+    }
+    assert!(first.contains_key(&(1, 259)), "lost two-write path");
+    let after_first_write = append_successors(
+        &first,
+        &mut steps,
+        SearchWord {
+            value: 2,
+            next_value: 0,
+            next_next_value: 0,
+            remaining: 21,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    let after_second_write = append_successors(
+        &after_first_write,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            remaining: 20,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(after_second_write.contains_key(&(1, second_write)));
+
+    // Changing the second real loader word changes p/p semantics.
+    assert_ne!(malbolge::profile_crazy(2, first_write, 15) & 255, 255,);
+    let negative = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 2,
+            next_next_value: 2,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(!negative.contains_key(&(1, 259)));
+}

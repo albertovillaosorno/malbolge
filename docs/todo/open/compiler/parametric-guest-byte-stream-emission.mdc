@@ -673,3 +673,15 @@ a compiler capability gap, not a reason to return to N+1.
   reconstruction, and real source-C twelve-byte interleaved VM parity
   pass; the original Fibonacci source still refuses without publication.
   This remains bounded proposal search, not general guest synthesis.
+
+- A further red-first guest-search regression found that states with
+  equal low output byte can require two **consecutive** `p` operations
+  to reach the next byte: full word 259 yields low byte 255 after
+  `p(2, 259)` then `p(0, result)`, while words 3 and 515 cannot.
+  The long-stream beam now preserves up to two two-write-reachable
+  full-word states with exact future loader-tail words, a three-cell
+  capacity guard and a changed-second-word negative control. At most
+  eight representatives survive per progress/low-byte group, with
+  only retained reconstruction records. Focused regressions and the
+  independent twelve-byte interleaved guest still pass. The original
+  Fibonacci stream remains without a guest layout and P0 stays open.
