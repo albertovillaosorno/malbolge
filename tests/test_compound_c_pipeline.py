@@ -4429,7 +4429,9 @@ class CompoundCPipelineTests(unittest.TestCase):
         self.assertEqual(source.count(outer_else), 1)
         self.assertEqual(source.count(nested_else), 1)
 
-        def oracle(*, outer_else_enabled: bool, inner_else_enabled: bool) -> bytes:
+        def oracle(
+            *, outer_else_enabled: bool, inner_else_enabled: bool
+        ) -> bytes:
             a, b, i = 1, 1, 0
             result = bytearray()
             while i < 2:
@@ -4502,13 +4504,20 @@ class CompoundCPipelineTests(unittest.TestCase):
                     self.assertTrue(guest.is_file())
                     for guest_input in (b"", b"\xff\x00\x80"):
                         executed = subprocess.run(
-                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            [
+                                str(VM),
+                                str(guest),
+                                "--input-stdin",
+                                "--report-steps",
+                            ],
                             input=guest_input,
                             check=False,
                             capture_output=True,
                             timeout=30,
                         )
-                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(
+                            executed.returncode, 0, executed.stderr
+                        )
                         self.assertEqual(
                             executed.stdout,
                             oracle(
@@ -4613,7 +4622,10 @@ class CompoundCPipelineTests(unittest.TestCase):
             arm = next(
                 n
                 for n in nodes
-                if n["kind"] == "compound-statement" and n["parent"] == first["id"]
+                if (
+                    n["kind"] == "compound-statement"
+                    and n["parent"] == first["id"]
+                )
             )
             write = next(
                 n
