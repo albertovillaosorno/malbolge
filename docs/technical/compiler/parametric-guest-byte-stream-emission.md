@@ -986,3 +986,28 @@ zero before relocation; a forged preview must not authorize a source.
 These are source-constant-folded C values with real guest output, not guest
 runtime C arithmetic or general byte-stream synthesis. The original
 12-byte Fibonacci acceptance remains unsupported, so P0 remains open.
+
+### Maximum graphical relocation boundary
+
+The bounded state-space quad search now considers source lengths through 126
+cells, the maximum relocation operand representable by a graphical ASCII
+code cell. In particular, the canonical `j` at source position eight has
+encoded byte value 126. A source-independent four-output guest uses that
+relocation and 126 source cells, crosses the 94-phase decoder wrap, and
+performs real disjoint guest arithmetic writes. The pinned current-profile
+VM independently emits `36 14 35 02`; the bounded proposer reconstructs
+the program, and independent layout/VM admission accepts the reconstruction
+while rejecting a forged final output byte. The verification tests preserve
+the full-source length and at least four distinct guest writes.
+
+An additional complete four-iteration C Fibonacci-style loop with unsigned
+state, parity selection, nested conditional expressions and four `putchar`
+effects was compiled through the pinned Clang/typed/ternary/layout pipeline.
+Its independent recurrence oracle was `36 14 35 02`, and its actual capsule
+emitted exactly those bytes with empty and nonempty input in 24 VM steps.
+That C example chose a *shorter* accepted layout: it proves guest-output
+parity, not that the longer search boundary was necessary for that source.
+The unmodified original four-byte Fibonacci prefix `02 59 5f 08` still
+exhausts the expanded bounded grammar without a verified guest. This
+search-space expansion is not generalized byte-stream synthesis, dynamic
+C state or runtime control flow; the P0 remains open.

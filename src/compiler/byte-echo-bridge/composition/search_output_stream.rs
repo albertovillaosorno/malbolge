@@ -38,9 +38,9 @@ use super::{
 // prevent unpredictable negative-case search amplification.
 // Decoder phases wrap after 94 code cells. The second partial phase offers
 // different loader-tail seeds but costs extra work for every rejected stream.
-// Limit exploration to ten further cells, below the graphical relocation
-// operand ceiling (126), while retaining deterministic per-geometry bounds.
-const MAX_SOURCE_LENGTH: usize = 104;
+// Explore the full graphical relocation bound (126 source cells), with
+// deterministic caps on the state search for each layout geometry.
+const MAX_SOURCE_LENGTH: usize = 126;
 const MAX_STATES_PER_POSITION: usize = 16_384;
 const MAX_STEPS_PER_GEOMETRY: usize = 700_000;
 

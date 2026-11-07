@@ -417,3 +417,83 @@ fn extended_decoder_phase_reconstructs_real_guest() -> Result<(), String> {
     }
     Ok(())
 }
+
+#[test]
+fn maximum_graphical_relocation_reconstructs_guest() -> Result<(), String> {
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile)
+        .ok_or_else(|| String::from("missing positional encodings"))?;
+    // At position eight, j is encoded as ASCII 126. This is the longest
+    // possible disjoint source for a relocation that reads its own cell.
+    let relocated = usize::from(cells[PREFIX][1]);
+    if relocated != MAX_SOURCE_LENGTH || MAX_SOURCE_LENGTH != 126 {
+        return Err(String::from("graphical relocation bound changed"));
+    }
+    let mut seeded = vec![LinearOpcode::NoOperation; PREFIX];
+    seeded.push(LinearOpcode::RelocateDataPointer);
+    for _ in 0..4 {
+        seeded.extend([LinearOpcode::CrazyData, LinearOpcode::OutputByte]);
+    }
+    seeded.resize(MAX_SOURCE_LENGTH - 1, LinearOpcode::NoOperation);
+    seeded.push(LinearOpcode::Halt);
+    let canonical = encode_linear_layout(profile, &seeded)
+        .map_err(|error| format!("maximal source refused: {error:?}"))?;
+    let mut vm =
+        ProfileMachine::from_source(profile, canonical.source(), Vec::new())
+            .map_err(|error| {
+                format!("maximal guest loader refused: {error:?}")
+            })?;
+    if !matches!(vm.run(seeded.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == seeded.len())
+    {
+        return Err(String::from("maximal guest did not halt"));
+    }
+    let expected: [u8; 4] = vm.output().try_into().map_err(|_error| {
+        String::from("maximal guest output length changed")
+    })?;
+    if proposed_output_stream::<4>(&seeded, &cells) != Some(expected) {
+        return Err(String::from("independent guest and preview disagree"));
+    }
+    let mut preview_cells = cells.clone();
+    for cell in &mut preview_cells {
+        cell[4] = cell[0];
+    }
+    let memory = cached_output_tail(
+        &preview_cells,
+        &mut BTreeMap::new(),
+        seeded.len(),
+        relocated.saturating_add(seeded.len()),
+    )
+    .ok_or_else(|| String::from("missing maximal loader memory"))?
+    .to_vec();
+    let recovered = proposed_geometry(
+        &cells,
+        &SearchGeometry {
+            memory: &memory,
+            prefix: PREFIX,
+            prefix_outputs: 0,
+            source_length: seeded.len(),
+        },
+        expected,
+        TerminalSuffix::Noop,
+    )
+    .ok_or_else(|| String::from("maximal geometry not reconstructed"))?;
+    let verified =
+        verified_output_stream_layout(profile, &recovered, expected, &cells)
+            .ok_or_else(|| {
+                String::from("independent maximal source proof failed")
+            })?;
+    if verified.source().len() != MAX_SOURCE_LENGTH
+        || verified.data_write_positions().iter().flatten().count() < 4
+    {
+        return Err(String::from("maximal guest lost real writes"));
+    }
+    let mut forged = expected;
+    forged[3] ^= 1;
+    if verified_output_stream_layout(profile, &recovered, forged, &cells)
+        .is_some()
+    {
+        return Err(String::from("forged maximal output passed verification"));
+    }
+    Ok(())
+}

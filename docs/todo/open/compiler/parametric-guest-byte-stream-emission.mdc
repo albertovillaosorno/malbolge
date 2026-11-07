@@ -443,3 +443,15 @@ a compiler capability gap, not a reason to return to N+1.
   Forging its output fails verification. The original four-byte Fibonacci
   prefix `02 59 5f 08` was retried and still refuses without publication;
   the full twelve-byte program and generalized guest streams remain pending.
+
+- The graphical relocation search now reaches its 126-cell source boundary
+  instead of stopping after ten cells into the second decoder phase. A real
+  126-cell guest relocates through source byte 126, writes disjoint guest
+  data and emits `36 14 35 02` under the independent current-profile VM.
+  The source-independent proposer reconstructs it, and the independent
+  layout checker rejects forged expected output. A complete four-iteration
+  source-C conditional Fibonacci variant produces the same output through
+  the pinned pipeline and actual guest VM, but the compiler found a shorter
+  24-step layout, so this parity is not evidence that the expanded bound
+  was needed by C lowering. The original `02 59 5f 08` four-byte prefix
+  still lacks a witness; the twelve-byte P0 remains blocked.
