@@ -4193,5 +4193,214 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertRegex(refused.stderr, rb"Unsupported|Malformed")
                 self.assertFalse(guest.exists(), label)
 
+    def test_mixed_conditional_writes_and_output_reach_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_mixed_conditional_output.c"
+        ).read_text()
+
+        else_arm = (
+            "        } else {\n"
+            "            b = (next + 1U) & 255U;\n"
+            "            putchar((int)(next ^ 45U));\n"
+            "        }"
+        )
+        self.assertEqual(source.count(else_arm), 1)
+        no_else = source.replace(else_arm, "        }")
+
+        def oracle(iterations: int, *, with_else: bool) -> bytes:
+            a, b, index = 1, 1, 0
+            result = bytearray()
+            while index < iterations:
+                following = (a + b) & 255
+                if (index & 1) == 0:
+                    a = following
+                    result.append(following ^ 83)
+                elif with_else:
+                    b = (following + 1) & 255
+                    result.append(following ^ 45)
+                index += 1
+            return bytes(result)
+
+        self.assertEqual(oracle(2, with_else=True), b"Q.")
+        self.assertEqual(oracle(1, with_else=True), b"Q")
+        self.assertEqual(oracle(2, with_else=False), b"Q")
+        cases = (
+            ("both-arms", source, 2, True),
+            ("one-trip", source.replace("i < 2U", "i < 1U"), 1, True),
+            ("no-else", no_else, 2, False),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, text, bound, with_else in cases:
+                with self.subTest(label=label):
+                    candidate = Path(scratch) / f"mixed-{label}.c"
+                    _ = candidate.write_text(text)
+                    guest = Path(scratch) / f"mixed-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/mixed-conditional-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(candidate),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=120,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for guest_input in (b"", bytes((255, 0, 128))):
+                        execution = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=guest_input,
+                            check=False,
+                            capture_output=True,
+                            timeout=30,
+                        )
+                        self.assertEqual(execution.returncode, 0, execution.stderr)
+                        self.assertEqual(
+                            execution.stdout, oracle(bound, with_else=with_else)
+                        )
+                        self.assertRegex(
+                            execution.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
+    def test_mixed_conditional_rejects_unproved_effects(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_mixed_conditional_output.c"
+        ).read_text()
+        variants = {
+            "selected-postincrement": source.replace("a = next;", "a = next++;"),
+            "unselected-postincrement": source.replace(
+                "b = (next + 1U) & 255U;", "b = next++;"
+            ),
+            "unselected-undefined": source.replace("next ^ 45U", "next / 0U"),
+            "unselected-hidden-call": source.replace(
+                "putchar((int)(next ^ 45U));",
+                'putchar((int)(next ^ 45U)); puts("extra");',
+            ),
+            "unselected-nested-branch": source.replace(
+                "b = (next + 1U) & 255U;",
+                "if (next) { b = next; }",
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, altered in variants.items():
+                with self.subTest(label=label):
+                    candidate = Path(scratch) / f"invalid-{label}.c"
+                    _ = candidate.write_text(altered)
+                    guest = Path(scratch) / f"invalid-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/mixed-conditional-invalid-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(candidate),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=45,
+                    )
+                    self.assertNotEqual(compiled.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_mixed_conditional_forged_ast_refuses(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT / "tests/compiler/c-frontend/accepted/local_mixed_conditional_output.c"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/mixed-conditional-ast-v1",
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            branch = next(n for n in nodes if n["kind"] == "if-statement")
+            arms = [
+                n
+                for n in nodes
+                if n["kind"] == "compound-statement" and n["parent"] == branch["id"]
+            ]
+            self.assertEqual(len(arms), 2)
+            calls = [
+                next(
+                    n
+                    for n in nodes
+                    if n["kind"] == "call-expression" and n["parent"] == arm["id"]
+                )
+                for arm in arms
+            ]
+            assignments = [
+                next(
+                    n
+                    for n in nodes
+                    if n["kind"] == "binary-expression"
+                    and n.get("operation") == "="
+                    and n["parent"] == arm["id"]
+                )
+                for arm in arms
+            ]
+            for label, node, field, value in (
+                ("then-call-parent", calls[0], "parent", branch["id"]),
+                ("else-call-parent", calls[1], "parent", branch["id"]),
+                ("else-write-parent", assignments[1], "parent", branch["id"]),
+                ("else-call-kind", calls[1], "kind", "binary-expression"),
+            ):
+                with self.subTest(label=label):
+                    altered = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    node_id = cast(int, node["id"])
+                    altered["nodes"][node_id - 1][field] = value
+                    guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(altered).encode(),
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+
 if __name__ == "__main__":
     _ = unittest.main()

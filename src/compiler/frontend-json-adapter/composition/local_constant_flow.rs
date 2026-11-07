@@ -131,6 +131,34 @@ impl<'node> Flow<'node> {
         Some((value, expression))
     }
 
+    /// Prove every ordered assignment and call in a braced C arm. Calls
+    /// append source-proven guest effects, never host-side output. This
+    /// traverses unselected arms too, so hidden effects cannot be discarded.
+    fn branch_effects(&mut self, body: &Node) -> Option<()> {
+        let mut last_end = body.span.begin.byte;
+        let mut effects = 0;
+        while let Some(node) = self.peek() {
+            if node.span.begin.byte >= body.span.end.byte {
+                break;
+            }
+            let expected_parent = body.id;
+            if node.parent != expected_parent || effects >= MAX_WRITES {
+                return None;
+            }
+            last_end = match node.kind.as_str() {
+                "binary-expression" => self.assignment(body, last_end)?.0,
+                "call-expression" => {
+                    let output = checked_call(self, body, last_end)?;
+                    self.outputs.push(output);
+                    output.call.span.end.byte
+                },
+                _ => return None,
+            };
+            effects = effects.checked_add(1)?;
+        }
+        (effects > 0 && last_end < body.span.end.byte).then_some(())
+    }
+
     /// Prove a pure unsigned `~` over an entire checked expression subtree.
     /// C complements all 32 unsigned bits; any later `& 255U` narrows it.
     fn complement_expression(
@@ -206,27 +234,8 @@ impl<'node> Flow<'node> {
         self.unsigned_comparison(comparison)
     }
 
-    /// Prove each ordered write in a braced C arm, rejecting any other
-    /// effect. Neither a trailing statement nor a nested effect can be
-    /// silently discarded after the selected branch is known.
-    fn branch_assignments(&mut self, body: &Node) -> Option<()> {
-        let mut last_end = body.span.begin.byte;
-        let mut writes = 0;
-        while let Some(node) = self.peek() {
-            if node.span.begin.byte >= body.span.end.byte {
-                break;
-            }
-            if node.parent != body.id || writes >= MAX_WRITES {
-                return None;
-            }
-            last_end = self.assignment(body, last_end)?.0;
-            writes = writes.checked_add(1)?;
-        }
-        (writes > 0 && last_end < body.span.end.byte).then_some(())
-    }
-
-    /// Prove every ordered write in both braced arms before selecting state.
-    /// No output, declarations or nested control flow are discarded.
+    /// Prove ordered effects in both arms against the same incoming state.
+    /// Commit only selected writes and guest output effects.
     fn conditional(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
         let statement = self.take(body.id, "if-statement")?;
         if !clean(statement)
@@ -244,9 +253,12 @@ impl<'node> Flow<'node> {
             return None;
         }
         let starting = self.locals.clone();
-        self.branch_assignments(then_body)?;
+        let output_count = self.outputs.len();
+        self.branch_effects(then_body)?;
         let then_state = self.locals.clone();
+        let then_outputs = self.outputs.get(output_count..)?.to_vec();
         self.locals = starting;
+        self.outputs.truncate(output_count);
         // An if without else ends at its sole braced arm. Prove no
         // further child is hidden inside the arm before selecting state.
         if then_body.span.end.byte == statement.span.end.byte {
@@ -257,6 +269,7 @@ impl<'node> Flow<'node> {
             }
             if take_then {
                 self.locals = then_state;
+                self.outputs.extend(then_outputs);
             }
             return Some(statement.span.end.byte);
         }
@@ -268,9 +281,11 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        self.branch_assignments(else_body)?;
+        self.branch_effects(else_body)?;
         if take_then {
             self.locals = then_state;
+            self.outputs.truncate(output_count);
+            self.outputs.extend(then_outputs);
         }
         Some(statement.span.end.byte)
     }
@@ -311,56 +326,6 @@ impl<'node> Flow<'node> {
                 else_value
             },
             conditional,
-        ))
-    }
-
-    /// Check both branches of a source-constant conditional output, retaining
-    /// exactly the selected `putchar` effect for each loop iteration.
-    fn conditional_output(
-        &mut self,
-        body: &Node,
-        previous_end: u32,
-    ) -> Option<(u32, OutputCall<'node>)> {
-        let statement = self.take(body.id, "if-statement")?;
-        if !clean(statement)
-            || !span_within(&body.span, &statement.span)
-            || previous_end > statement.span.begin.byte
-        {
-            return None;
-        }
-        let (take_then, condition) = self.condition(statement)?;
-        let then_body = self.take(statement.id, "compound-statement")?;
-        if !clean(then_body)
-            || !span_within(&statement.span, &then_body.span)
-            || condition.span.end.byte >= then_body.span.begin.byte
-        {
-            return None;
-        }
-        let then_call =
-            checked_call(self, then_body, then_body.span.begin.byte)?;
-        if then_call.call.span.end.byte >= then_body.span.end.byte {
-            return None;
-        }
-        let else_body = self.take(statement.id, "compound-statement")?;
-        if !clean(else_body)
-            || !span_within(&statement.span, &else_body.span)
-            || then_body.span.end.byte > else_body.span.begin.byte
-            || else_body.span.end.byte != statement.span.end.byte
-        {
-            return None;
-        }
-        let else_call =
-            checked_call(self, else_body, else_body.span.begin.byte)?;
-        if else_call.call.span.end.byte >= else_body.span.end.byte {
-            return None;
-        }
-        Some((
-            statement.span.end.byte,
-            if take_then {
-                then_call
-            } else {
-                else_call
-            },
         ))
     }
 
@@ -505,7 +470,7 @@ impl<'node> Flow<'node> {
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" => self.assignment(body, last_end)?.0,
-                "if-statement" => self.loop_conditional(body, last_end)?,
+                "if-statement" => self.conditional(body, last_end)?,
                 "call-expression" => {
                     let output = checked_call(self, body, last_end)?;
                     let end = output.call.span.end.byte;
@@ -517,19 +482,6 @@ impl<'node> Flow<'node> {
             writes = writes.checked_add(1)?;
         }
         (writes > 0 && last_end < body.span.end.byte).then_some(())
-    }
-
-    fn loop_conditional(&mut self, body: &Node, last_end: u32) -> Option<u32> {
-        let position = self.position;
-        let locals = self.locals.clone();
-        if let Some(end) = self.conditional(body, last_end) {
-            return Some(end);
-        }
-        self.position = position;
-        self.locals = locals;
-        let (end, output) = self.conditional_output(body, last_end)?;
-        self.outputs.push(output);
-        Some(end)
     }
 
     /// Prove one pure `!` operand against its complete source-backed subtree.

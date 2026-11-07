@@ -1248,3 +1248,29 @@ actual guest execution on empty and nonempty stdin; source and forged-AST
 mutations reject without publishing guest artifacts. This finite projection
 still executes C branching at compile time, not in the guest. General runtime
 state and the original twelve-byte nonzero Fibonacci layout remain open.
+
+### Source-proven mixed branch assignments and guest output effects
+
+A complete two-trip C `while` recurrence now mutates a different automatic
+unsigned local in each `if` arm, then calls `putchar` with a value derived
+from the loop state. The previous adapter refused at the first declaration:
+it could prove either branch-local assignments or branch-local output, but
+not their source-ordered combination. The unified bounded arm walker now
+proves every assignment and call in both brace-delimited arms against the
+same incoming state. It snapshots the then-arm state and output effects,
+restores the incoming state for the else-arm proof, and commits only the
+selected state and selected guest outputs. Calls remain independently
+source-checked, and an unselected arm cannot hide other effects.
+
+The independent C oracle starts with `a = b = 1` and visits `next = 2, 3`.
+The first arm updates `a` to 2 and emits `2 ^ 83 = 81` (`Q`); the second
+updates `b` to 4 and emits `3 ^ 45 = 46` (`.`). The real pinned C-to-Malbolge
+compiler and normative guest VM emit `51 2e` (`Q.`) on empty and nonempty
+stdin; a one-trip variant and a two-trip `if` without `else` each emit
+only `51`, proving that skipped calls do not leak. Source mutations involving
+increments, division by zero, unsupported calls and nested branches, plus
+forged Clang node ancestry, refuse without publishing guest artifacts. The
+prior output-only conditional proof is subsumed by the same closed arm
+traversal, not replaced by unchecked host output. C state and branching
+remain compiler-time projections. General Malbolge byte-stream synthesis
+and the original twelve-byte Fibonacci P0 acceptance remain pending.
