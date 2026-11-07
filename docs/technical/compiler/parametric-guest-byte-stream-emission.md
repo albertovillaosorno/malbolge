@@ -1460,3 +1460,28 @@ on empty and nonempty input. The original Fibonacci stream still has no
 admitted guest layout. Keeping two extreme words does not prove equivalence
 of discarded middle states, and neither static C replay nor this heuristic
 search implements arbitrary guest runtime arithmetic or control flow.
+
+### One-step byte-reachable high-word retention
+
+A further red-first successor experiment found that retaining only minimum
+and maximum full accumulator words still loses a valid continuation. The
+three words 3, 259 and 515 all emit byte 3, but with the *next* data word
+zero their subsequent `p` outputs are 50, 53 and 38. Only the discarded
+middle word 259 can produce the next requested byte 53 in one write.
+
+For streams of at least eight effects, the bounded proposal now retains
+both full-word extremes **and** up to two extremes among states whose next
+crazy operation reaches the pending byte. It reads the next guest data word
+from the actual relocation/loader-tail geometry, rather than using the
+current word or a fabricated constant. A changed next word of 2 gives 55
+instead of 53 and must not retain the false continuation. At most four
+representatives survive per output-progress/low-byte group, and only
+surviving predecessors enter the reconstruction history.
+
+The red-first middle-word regression, next-word negative control, and the
+independently decoded twelve-byte interleaved guest pass. The full pinned
+Fibonacci C source still refuses at the guest-layout boundary with no
+artifact. One-step reachability is only a deterministic beam priority;
+longer-term alternative word states, runtime C state, and arbitrary stream
+synthesis remain unimplemented. All published layouts still require exact
+independent decoder, disjoint-write and normative-VM verification.

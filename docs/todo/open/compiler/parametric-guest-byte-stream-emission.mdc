@@ -648,3 +648,14 @@ a compiler capability gap, not a reason to return to N+1.
   The independently replayed twelve-byte interleaved guest and full pinned
   C pipeline still work. The original Fibonacci program still refuses at
   layout, so the P0 general emission acceptance remains pending.
+
+- A red-first high-word continuation regression exposed a third retained-
+  state gap: full accumulator words 3, 259 and 515 all emit byte 3, but
+  only middle word 259 can produce the following 53 through guest `p`
+  with next data word zero. The long-stream beam now keeps its minimum and
+  maximum words plus up to two next-byte-reachable words per progress/byte
+  group, using actual loader-tail memory; the negative next-word case
+  rejects a spurious middle survivor. The known twelve-byte interleaved
+  guest still reconstructs under independent positional/VM verification.
+  The original twelve-output Fibonacci C still fails closed at layout,
+  and P0 remains pending.

@@ -66,6 +66,14 @@ struct SearchWord {
     remaining: usize,
     target_emitted: usize,
     value: u32,
+    next_value: u32,
+}
+
+struct BeamRepresentatives {
+    smallest: u32,
+    largest: u32,
+    next_smallest: Option<u32>,
+    next_largest: Option<u32>,
 }
 
 #[derive(Clone, Copy)]
@@ -126,6 +134,7 @@ fn append_successors<const N: usize>(
 ) -> SearchStates {
     let SearchWord {
         value,
+        next_value,
         remaining,
         target_emitted,
     } = word;
@@ -175,22 +184,44 @@ fn append_successors<const N: usize>(
         }
     }
     // The low byte determines an output effect, but p observes the entire
-    // fifteen-trit accumulator. Preserve both extreme high-word states for
-    // each output progress/byte bucket, instead of discarding every state
-    // except the smallest word. This is still a bounded proposal beam, not
-    // an equivalence proof; intermediate words may lead to other effects.
+    // fifteen-trit accumulator. In addition to the extreme full words,
+    // preserve extreme words whose *next* p write reaches the pending byte.
+    // A middle word can be the only viable continuation even when both
+    // extremes emit the same present byte. This remains a bounded beam:
+    // unselected middle words and longer lookahead may still be missed.
     if target_emitted >= 8 {
-        let mut extremes = BTreeMap::<(usize, u8), (u32, u32)>::new();
+        let mut representatives =
+            BTreeMap::<(usize, u8), BeamRepresentatives>::new();
         for &(emitted, accumulator) in proposals.keys() {
-            let _representative = extremes
+            let group = representatives
                 .entry((emitted, accumulator as u8))
-                .and_modify(|pair| pair.1 = accumulator)
-                .or_insert((accumulator, accumulator));
+                .or_insert(BeamRepresentatives {
+                    smallest: accumulator,
+                    largest: accumulator,
+                    next_smallest: None,
+                    next_largest: None,
+                });
+            group.largest = accumulator;
+            if expected.get(emitted).is_some_and(|&byte| {
+                byte != accumulator as u8
+                    && matches_byte(
+                        malbolge::profile_crazy(next_value, accumulator, 15),
+                        byte,
+                    )
+            }) {
+                let _previous = group.next_smallest.get_or_insert(accumulator);
+                group.next_largest = Some(accumulator);
+            }
         }
         proposals.retain(|&(emitted, accumulator), _| {
-            extremes.get(&(emitted, accumulator as u8)).is_some_and(
-                |&(low, high)| accumulator == low || accumulator == high,
-            )
+            representatives
+                .get(&(emitted, accumulator as u8))
+                .is_some_and(|group| {
+                    accumulator == group.smallest
+                        || accumulator == group.largest
+                        || group.next_smallest == Some(accumulator)
+                        || group.next_largest == Some(accumulator)
+                })
         });
     }
     // Record only retained paths: candidate fan-out is not a completed
@@ -282,6 +313,7 @@ fn proposed_geometry<const N: usize>(
                 remaining,
                 target_emitted,
                 value: *memory.get(address)?,
+                next_value: *memory.get(address.checked_add(1)?)?,
             },
             expected,
         );

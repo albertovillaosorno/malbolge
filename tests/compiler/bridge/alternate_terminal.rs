@@ -700,6 +700,7 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
         &mut steps,
         SearchWord {
             value: 0,
+            next_value: 0,
             remaining: 14,
             target_emitted: 8,
         },
@@ -712,6 +713,7 @@ fn guest_output_successor_bound_keeps_just_sufficient_capacity() {
         &mut steps,
         SearchWord {
             value: 0,
+            next_value: 0,
             remaining: 13,
             target_emitted: 8,
         },
@@ -735,6 +737,7 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         &mut steps,
         SearchWord {
             value: 0,
+            next_value: 0,
             remaining: 22,
             target_emitted: 8,
         },
@@ -750,6 +753,7 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         &mut steps,
         SearchWord {
             value: 0,
+            next_value: 0,
             remaining: 21,
             target_emitted: 8,
         },
@@ -764,12 +768,73 @@ fn guest_output_search_retains_distinct_high_word_continuations() {
         &mut steps,
         SearchWord {
             value: 0,
+            next_value: 0,
             remaining: 20,
             target_emitted: 8,
         },
         expected,
     );
     assert!(after_second.contains_key(&(2, second_word)));
+}
+
+#[test]
+fn guest_output_search_preserves_middle_word_reaching_next_byte() {
+    // Three distinct full words all emit 3. The old min/max beam kept
+    // 3 and 515 but discarded 259, the only word whose next p emits 53.
+    let states = BTreeMap::from([
+        ((0, 3u32), 0usize),
+        ((0, 259u32), 0usize),
+        ((0, 515u32), 0usize),
+    ]);
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let expected = [3, 53, 53, 53, 53, 53, 53, 53];
+    assert_eq!(malbolge::profile_crazy(0, 3, 15) & 255, 50);
+    assert_eq!(malbolge::profile_crazy(0, 259, 15) & 255, 53);
+    assert_eq!(malbolge::profile_crazy(0, 515, 15) & 255, 38);
+    let after_first = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(after_first.contains_key(&(1, 259)));
+    // A different actual next memory word must not falsely retain 259:
+    // crazy(2, 259) emits 55, not the requested 53.
+    assert_eq!(malbolge::profile_crazy(2, 259, 15) & 255, 55);
+    let without_match = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 2,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(!without_match.contains_key(&(1, 259)));
+    let after_write = append_successors(
+        &after_first,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            remaining: 21,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(
+        after_write.contains_key(&(1, malbolge::profile_crazy(0, 259, 15),))
+    );
 }
 
 #[test]
@@ -787,6 +852,7 @@ fn guest_output_beam_records_only_retained_predecessors() {
         &mut steps,
         SearchWord {
             value: 0,
+            next_value: 0,
             remaining: 30,
             target_emitted: 8,
         },
