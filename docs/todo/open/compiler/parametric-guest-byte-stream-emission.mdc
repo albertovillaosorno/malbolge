@@ -735,3 +735,14 @@ a compiler capability gap, not a reason to return to N+1.
   search now tries this terminal loader seed under unchanged short bounds
   and independent normative VM proof. The original complete Fibonacci C
   program still refuses at layout without publication; P0 remains open.
+
+- Sparse bounded state-space search now retains all exact accumulator words
+  when the candidate frontier fits the existing 16,384-state cap; it uses
+  high-word beam representatives only for larger frontiers. A red-first
+  regression proved that accumulator `259` must survive four future guest
+  data words to emit byte `1`, while unconditional three-word lookahead
+  dropped it. A changed-fourth-word negative and dense-cap/history-budget
+  checks pass. This repairs a general proposal false negative without
+  weakening independent layout or normative VM admission. The original
+  twelve-output Fibonacci program still refuses safely at guest layout;
+  runtime C state and generalized guest stream synthesis remain pending.

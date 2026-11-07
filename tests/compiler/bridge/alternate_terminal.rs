@@ -834,7 +834,8 @@ fn guest_output_search_preserves_middle_word_reaching_next_byte() {
         },
         expected,
     );
-    assert!(!without_match.contains_key(&(1, 259)));
+    assert!(without_match.contains_key(&(1, 259)));
+    assert_eq!(reachable_next_byte(259, [2, 2, 2], 22, 53), None);
     let after_write = append_successors(
         &after_first,
         &mut steps,
@@ -961,7 +962,8 @@ fn guest_output_beam_preserves_delayed_crazy_match_after_noop() {
         },
         expected,
     );
-    assert!(!negative.contains_key(&(1, 259)));
+    assert!(negative.contains_key(&(1, 259)));
+    assert_eq!(reachable_next_byte(259, [2, 2, 2], 22, 53), None);
 }
 
 #[test]
@@ -1050,7 +1052,8 @@ fn guest_output_beam_preserves_two_consecutive_crazy_writes() {
         },
         expected,
     );
-    assert!(!negative.contains_key(&(1, 259)));
+    assert!(negative.contains_key(&(1, 259)));
+    assert_eq!(reachable_next_byte(259, [2, 2, 1], 22, 255), None);
 }
 
 #[test]
@@ -1143,10 +1146,128 @@ fn guest_output_beam_preserves_three_step_guest_byte_reachability() {
         },
         expected,
     );
-    assert!(!negative.contains_key(&(1, 259)));
+    assert!(negative.contains_key(&(1, 259)));
+    assert_eq!(reachable_next_byte(259, [1, 2, 0], 22, 54), None);
     // Three writes still need a fourth instruction for the actual output.
     assert_eq!(reachable_next_byte(259, [1, 2, 2], 4, 54), Some(3));
     assert_eq!(reachable_next_byte(259, [1, 2, 2], 3, 54), None);
+}
+
+#[test]
+fn dense_guest_frontier_still_prunes_to_a_bounded_budget() {
+    // A large frontier is not eligible for exact retention. The beam must
+    // continue to discard redundant proposals before writing history.
+    let states = (0u32..8_192)
+        .map(|high| ((0usize, high * 256), 0usize))
+        .collect::<BTreeMap<_, _>>();
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let survivors = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 30,
+            target_emitted: 8,
+        },
+        [0; 8],
+    );
+    assert!(!survivors.is_empty());
+    assert!(survivors.len() < MAX_STATES_PER_POSITION);
+    assert_eq!(steps.len(), survivors.len() + 1);
+}
+
+#[test]
+fn sparse_guest_frontier_preserves_fourth_word_continuation() {
+    // Only the middle full accumulator reaches byte 1 after a later
+    // loader word. Three-word lookahead cannot see this legitimate path.
+    let states = BTreeMap::from([
+        ((0, 3u32), 0usize),
+        ((0, 259u32), 0usize),
+        ((0, 515u32), 0usize),
+    ]);
+    let expected = [3, 1, 1, 1, 1, 1, 1, 1];
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    let first = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 22,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(
+        first.contains_key(&(1, 259)),
+        "exact sparse frontier discarded fourth-word continuation"
+    );
+    let mut current = first;
+    for (index, word) in [0, 0, 0, 2].into_iter().enumerate() {
+        current = append_successors(
+            &current,
+            &mut steps,
+            SearchWord {
+                value: word,
+                next_value: 0,
+                next_next_value: 0,
+                next_next_next_value: 0,
+                remaining: 21 - index,
+                target_emitted: 8,
+            },
+            expected,
+        );
+    }
+    let reached =
+        malbolge::profile_crazy(2, malbolge::profile_crazy(0, 259, 15), 15);
+    assert_eq!(reached & 255, 1);
+    assert!(current.contains_key(&(1, reached)));
+    let output = append_successors(
+        &current,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 16,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(output.contains_key(&(2, reached)));
+    // Changing the fourth future loader word to 1 cannot synthesize that
+    // byte, although the sparse initial state must still survive.
+    let mut altered = BTreeMap::from([((1, 259u32), 0usize)]);
+    for (index, word) in [0, 0, 0, 1].into_iter().enumerate() {
+        altered = append_successors(
+            &altered,
+            &mut steps,
+            SearchWord {
+                value: word,
+                next_value: 0,
+                next_next_value: 0,
+                next_next_next_value: 0,
+                remaining: 21 - index,
+                target_emitted: 8,
+            },
+            expected,
+        );
+    }
+    assert!(altered.keys().all(|&(emitted, accumulator)| {
+        emitted < 2 && accumulator & 255 != 1
+    }));
 }
 
 #[test]
@@ -1330,8 +1451,8 @@ fn final_relocation_loader_seed_admits_independent_guest() -> Result<(), String>
     let proved =
         verified_output_stream_layout(profile, &operations, expected, &cells)
             .ok_or_else(|| {
-                format!("terminal relocate guest failed proof {expected:?}")
-            })?;
+            format!("terminal relocate guest failed proof {expected:?}")
+        })?;
     assert_eq!(proved.source(), source);
     assert_eq!(proved.data_write_positions().iter().flatten().count(), 12);
     let reconstructed = verified_terminal_layout(

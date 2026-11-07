@@ -1677,3 +1677,31 @@ This establishes a narrowly safe extra guest loader seed, not general
 relocation or arbitrary byte-stream synthesis. The original Fibonacci
 `02 59 5f 08 57 4f 22 6d 03 90 b3 23` still lacks a verified layout,
 and runtime C arithmetic and dynamic control flow remain out of scope.
+
+### Sparse guest search frontiers remain exact
+
+A red-first search regression exposed an avoidable loss beyond the beam's
+three-loader-word lookahead. Three full accumulator words (`3`, `259`,
+`515`) all emit byte `3`. Following an output, a future source data-word
+sequence `0, 0, 0, 2` lets the middle word reach byte `1` through guest
+crazy operations and no-op strides, but only at the fourth future word.
+The previous unconditional min/max and short-lookahead pruning discarded
+word `259` even though the frontier had only a few states and therefore
+needed no heuristic reduction. This was a genuine proposal false negative,
+not a verifier rejection or an unsound guest program.
+
+Search now retains every distinct `(emitted output count, exact accumulator)`
+state when its candidate frontier fits the existing 16,384-state cap.
+Only an over-budget frontier invokes the existing bounded high-word beam.
+A separate dense-frontier test proves that the budget and history-record
+limits remain active. A changed fourth guest word cannot produce the same
+byte from the retained middle state. The underlying crazy operations and
+output matching use the canonical profile helpers; no new source encoding
+or bypass of positional decoding, data-write disjointness or normative VM
+replay is authorized by this proposal change.
+
+The original source-backed twelve-iteration Fibonacci program still reaches
+typed and ternary admission but refuses at guest layout without publishing
+a source artifact. The 36-cell short-stream geometry remains bounded; this
+search correctness fix does not establish an arbitrary byte-stream backend,
+runtime guest C arithmetic, state or dynamic control flow. P0 stays open.

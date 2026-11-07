@@ -231,10 +231,12 @@ fn append_successors<const N: usize>(
                 });
         }
     }
-    // Keep full-word extremes plus two representatives for each shortest
-    // reachable-byte distance. This avoids privileging one hard-coded
-    // sequence of p and no-op operations while retaining a finite beam.
-    if target_emitted >= 8 {
+    // An exact frontier below the state cap needs no heuristic pruning.
+    // In particular, a valid next byte may require more than three
+    // loader words, and the lookahead below cannot prove it unreachable.
+    // Use bounded representatives only when the full frontier exceeds the
+    // per-position budget; every resulting proposal is verified later.
+    if target_emitted >= 8 && proposals.len() > MAX_STATES_PER_POSITION {
         let mut representatives =
             BTreeMap::<(usize, u8), BeamRepresentatives>::new();
         for &(emitted, accumulator) in proposals.keys() {
