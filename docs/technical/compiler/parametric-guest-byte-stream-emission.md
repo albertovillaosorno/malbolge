@@ -1274,3 +1274,27 @@ prior output-only conditional proof is subsumed by the same closed arm
 traversal, not replaced by unchecked host output. C state and branching
 remain compiler-time projections. General Malbolge byte-stream synthesis
 and the original twelve-byte Fibonacci P0 acceptance remain pending.
+
+
+### Source-proven nested conditional guest effects
+
+A complete two-trip unsigned C `while` recurrence with `if` statements
+inside both outer conditional arms initially refused at the JSON adapter.
+A bounded arm walker now recursively proves nested, braced `if` statements
+up to three levels, including both selected and unselected inner arms.
+Every inner predicate, write and `putchar` must belong to the exact source-
+backed Clang tree; an unselected branch is checked but cannot leak its
+state or output. Branch-local effects replay in source order.
+
+The independent oracle starts at `a = b = 1`: the first trip sets `a = 2`
+and emits `2 ^ 83 = 81` (`Q`); the second sets `b = 4` and emits
+`3 ^ 45 = 46` (`.`). The full pinned C compiler emits actual Malbolge
+whose normative VM produces `51 2e` in eight steps, including an empty
+input witness. Regressions cover both guest input cases, skipped outer
+`else`, inner `if` without `else`, unsupported source effects and forged
+nested AST ancestry. Previously negative tests for valid nested branches
+were revised to test genuinely unsupported unbraced forms instead.
+
+This remains compiler-time bounded C replay, not dynamic guest branching.
+The original twelve-byte Fibonacci layout remains unsupported and P0 is
+still pending.

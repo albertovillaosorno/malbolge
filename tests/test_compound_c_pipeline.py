@@ -4072,12 +4072,12 @@ class CompoundCPipelineTests(unittest.TestCase):
             "unselected-undefined": original.replace(
                 "b = next ^ 2U;", "b = next / 0U;"
             ),
-            "branch-extra-output": original.replace(
-                "b = next ^ 2U;", "b = next ^ 2U; putchar(65);"
+            "branch-extra-unsupported-call": original.replace(
+                "b = next ^ 2U;", 'b = next ^ 2U; puts("extra");'
             ),
             "else-compound-assignment": original.replace("b = next;", "b += next;"),
-            "nested-branch": original.replace(
-                "b = next;", "if (next & 1U) { b = next; }"
+            "unbraced-nested-branch": original.replace(
+                "b = next;", "if (next & 1U) b = next;"
             ),
             "too-many-writes": original.replace("b = next;", "b = next;" * 17),
         }.items():
@@ -4289,9 +4289,9 @@ class CompoundCPipelineTests(unittest.TestCase):
                 "putchar((int)(next ^ 45U));",
                 'putchar((int)(next ^ 45U)); puts("extra");',
             ),
-            "unselected-nested-branch": source.replace(
+            "unselected-unbraced-branch": source.replace(
                 "b = (next + 1U) & 255U;",
-                "if (next) { b = next; }",
+                "if (next) b = next;",
             ),
         }
         with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
@@ -4384,6 +4384,264 @@ class CompoundCPipelineTests(unittest.TestCase):
                     node_id = cast(int, node["id"])
                     altered["nodes"][node_id - 1][field] = value
                     guest = Path(scratch) / f"forged-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            str(ADAPTER),
+                            "--layout-backend",
+                            str(LAYOUT),
+                            "--output",
+                            str(guest),
+                            "--capsule",
+                        ],
+                        input=json.dumps(altered).encode(),
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_nested_conditional_state_and_guest_output(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_nested_conditional_output.c"
+        ).read_text()
+        outer_else = (
+            "        } else {\n"
+            "            if ((next & 1U) != 0U) {\n"
+            "                b = (next + 1U) & 255U;\n"
+            "                putchar((int)(next ^ 45U));\n"
+            "            } else {\n"
+            "                b = next;\n"
+            "                putchar((int)(next ^ 44U));\n"
+            "            }\n"
+            "        }"
+        )
+        nested_else = (
+            "            } else {\n"
+            "                b = next;\n"
+            "                putchar((int)(next ^ 44U));\n"
+            "            }"
+        )
+        self.assertEqual(source.count(outer_else), 1)
+        self.assertEqual(source.count(nested_else), 1)
+
+        def oracle(*, outer_else_enabled: bool, inner_else_enabled: bool) -> bytes:
+            a, b, i = 1, 1, 0
+            result = bytearray()
+            while i < 2:
+                next_value = (a + b) & 255
+                if (i & 1) == 0:
+                    if (next_value & 1) == 0:
+                        a = next_value
+                        result.append(next_value ^ 83)
+                    else:
+                        a = (next_value + 1) & 255
+                        result.append(next_value ^ 84)
+                elif outer_else_enabled:
+                    if (next_value & 1) != 0:
+                        b = (next_value + 1) & 255
+                        result.append(next_value ^ 45)
+                    elif inner_else_enabled:
+                        b = next_value
+                        result.append(next_value ^ 44)
+                i += 1
+            return bytes(result)
+
+        self.assertEqual(
+            oracle(outer_else_enabled=True, inner_else_enabled=True), b"Q."
+        )
+        self.assertEqual(
+            oracle(outer_else_enabled=False, inner_else_enabled=True), b"Q"
+        )
+        self.assertEqual(
+            oracle(outer_else_enabled=True, inner_else_enabled=False), b"Q."
+        )
+        cases = (
+            ("both-nested-arms", source, True, True),
+            (
+                "skipped-outer-else",
+                source.replace(outer_else, "        }"),
+                False,
+                True,
+            ),
+            (
+                "nested-if-without-else",
+                source.replace(nested_else, "            }"),
+                True,
+                False,
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source_text, use_outer_else, use_inner_else in cases:
+                with self.subTest(label=label):
+                    candidate = Path(scratch) / f"nested-{label}.c"
+                    _ = candidate.write_text(source_text)
+                    guest = Path(scratch) / f"nested-{label}.malbolge"
+                    compiled = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/nested-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(candidate),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=150,
+                    )
+                    self.assertEqual(compiled.returncode, 0, compiled.stderr)
+                    self.assertTrue(guest.is_file())
+                    for guest_input in (b"", b"\xff\x00\x80"):
+                        executed = subprocess.run(
+                            [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                            input=guest_input,
+                            check=False,
+                            capture_output=True,
+                            timeout=30,
+                        )
+                        self.assertEqual(executed.returncode, 0, executed.stderr)
+                        self.assertEqual(
+                            executed.stdout,
+                            oracle(
+                                outer_else_enabled=use_outer_else,
+                                inner_else_enabled=use_inner_else,
+                            ),
+                        )
+                        self.assertRegex(
+                            executed.stderr,
+                            rb"^malbolge-steps-v1:[1-9][0-9]*\n$",
+                        )
+
+    def test_nested_conditional_unproved_source_refuses_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_nested_conditional_output.c"
+        ).read_text()
+        variants = {
+            "selected-increment": source.replace("a = next;", "a = next++;"),
+            "unselected-undefined": source.replace("next ^ 44U", "next / 0U"),
+            "unselected-hidden-increment": source.replace(
+                "b = next;", "b = next; next++;"
+            ),
+            "unselected-unsupported-call": source.replace(
+                "b = next;", 'b = next; puts("hidden");'
+            ),
+            "unbraced-inner": source.replace(
+                "if ((next & 1U) != 0U) {",
+                "if ((next & 1U) != 0U)",
+            ),
+            "too-deep": source.replace(
+                "a = next;",
+                "if (next) { if (next) { if (next) { a = next; } } }",
+            ),
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, source_text in variants.items():
+                with self.subTest(label=label):
+                    candidate = Path(scratch) / f"nested-invalid-{label}.c"
+                    _ = candidate.write_text(source_text)
+                    guest = Path(scratch) / f"nested-invalid-{label}.malbolge"
+                    refused = subprocess.run(
+                        [
+                            sys.executable,
+                            "-B",
+                            str(DRIVER),
+                            "--repository-tools",
+                            "--source-id",
+                            f"tests/nested-invalid-{label}-v1",
+                            "--capsule",
+                            "--output",
+                            str(guest),
+                            str(candidate),
+                        ],
+                        check=False,
+                        capture_output=True,
+                        timeout=50,
+                    )
+                    self.assertNotEqual(refused.returncode, 0, label)
+                    self.assertFalse(guest.exists(), label)
+
+    def test_nested_conditional_forged_ast_refuses_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted"
+            / "local_nested_conditional_output.c"
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            frontend = subprocess.run(
+                [
+                    str(FRONTEND),
+                    "--guest-include",
+                    str(GUEST_INCLUDE),
+                    "--resource-dir",
+                    str(RESOURCE),
+                    "--source-id",
+                    "tests/nested-conditional-ast-v1",
+                    str(source),
+                ],
+                check=False,
+                capture_output=True,
+                timeout=30,
+            )
+            self.assertEqual(frontend.returncode, 0, frontend.stderr)
+            parsed = cast(dict[str, object], json.loads(frontend.stdout))
+            nodes = cast(list[dict[str, object]], parsed["nodes"])
+            nested = [n for n in nodes if n["kind"] == "if-statement"]
+            self.assertEqual(len(nested), 3)
+            outer = nested[0]
+            first = nested[1]
+            self.assertTrue(
+                any(
+                    n["id"] == first["parent"] and n["parent"] == outer["id"]
+                    for n in nodes
+                )
+            )
+            arm = next(
+                n
+                for n in nodes
+                if n["kind"] == "compound-statement" and n["parent"] == first["id"]
+            )
+            write = next(
+                n
+                for n in nodes
+                if n["kind"] == "binary-expression"
+                and n.get("operation") == "="
+                and n["parent"] == arm["id"]
+            )
+            call = next(
+                n
+                for n in nodes
+                if n["kind"] == "call-expression" and n["parent"] == arm["id"]
+            )
+            for label, node, field, value in (
+                ("inner-if-parent", first, "parent", outer["id"]),
+                ("inner-arm-parent", arm, "parent", outer["id"]),
+                ("inner-write-parent", write, "parent", first["id"]),
+                ("inner-output-parent", call, "parent", first["id"]),
+                ("inner-if-metadata", first, "operation", "&&"),
+            ):
+                with self.subTest(label=label):
+                    altered = cast(
+                        dict[str, list[dict[str, object]]],
+                        json.loads(frontend.stdout),
+                    )
+                    node_id = cast(int, node["id"])
+                    altered["nodes"][node_id - 1][field] = value
+                    guest = Path(scratch) / f"nested-forged-{label}.malbolge"
                     refused = subprocess.run(
                         [
                             str(ADAPTER),

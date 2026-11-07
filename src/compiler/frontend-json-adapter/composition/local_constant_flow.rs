@@ -40,6 +40,7 @@ use super::{Artifact, FrontendJsonError, Node, StorageDuration};
 const MAX_LOCALS: usize = 8;
 const MAX_WRITES: usize = 16;
 const MAX_STATIC_LOOP_ITERATIONS: u8 = 12;
+const MAX_NESTED_CONDITIONAL_DEPTH: u8 = 3;
 const MAX_EXPRESSION_DEPTH: usize = 8;
 // Bound the lexical prefix on an explicit source-proven `(int)` cast.
 const MAX_EXPLICIT_CAST_PREFIX_BYTES: u32 = 16;
@@ -134,7 +135,7 @@ impl<'node> Flow<'node> {
     /// Prove every ordered assignment and call in a braced C arm. Calls
     /// append source-proven guest effects, never host-side output. This
     /// traverses unselected arms too, so hidden effects cannot be discarded.
-    fn branch_effects(&mut self, body: &Node) -> Option<()> {
+    fn branch_effects(&mut self, body: &Node, depth: u8) -> Option<()> {
         let mut last_end = body.span.begin.byte;
         let mut effects = 0;
         while let Some(node) = self.peek() {
@@ -147,6 +148,9 @@ impl<'node> Flow<'node> {
             }
             last_end = match node.kind.as_str() {
                 "binary-expression" => self.assignment(body, last_end)?.0,
+                "if-statement" => {
+                    self.conditional(body, last_end, depth.checked_add(1)?)?
+                },
                 "call-expression" => {
                     let output = checked_call(self, body, last_end)?;
                     self.outputs.push(output);
@@ -236,9 +240,15 @@ impl<'node> Flow<'node> {
 
     /// Prove ordered effects in both arms against the same incoming state.
     /// Commit only selected writes and guest output effects.
-    fn conditional(&mut self, body: &Node, previous_end: u32) -> Option<u32> {
+    fn conditional(
+        &mut self,
+        body: &Node,
+        previous_end: u32,
+        depth: u8,
+    ) -> Option<u32> {
         let statement = self.take(body.id, "if-statement")?;
-        if !clean(statement)
+        if depth > MAX_NESTED_CONDITIONAL_DEPTH
+            || !clean(statement)
             || !span_within(&body.span, &statement.span)
             || previous_end > statement.span.begin.byte
         {
@@ -254,7 +264,7 @@ impl<'node> Flow<'node> {
         }
         let starting = self.locals.clone();
         let output_count = self.outputs.len();
-        self.branch_effects(then_body)?;
+        self.branch_effects(then_body, depth)?;
         let then_state = self.locals.clone();
         let then_outputs = self.outputs.get(output_count..)?.to_vec();
         self.locals = starting;
@@ -281,7 +291,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        self.branch_effects(else_body)?;
+        self.branch_effects(else_body, depth)?;
         if take_then {
             self.locals = then_state;
             self.outputs.truncate(output_count);
@@ -470,7 +480,7 @@ impl<'node> Flow<'node> {
             last_end = match node.kind.as_str() {
                 "declaration-statement" => self.declaration(body, last_end)?.0,
                 "binary-expression" => self.assignment(body, last_end)?.0,
-                "if-statement" => self.conditional(body, last_end)?,
+                "if-statement" => self.conditional(body, last_end, 0)?,
                 "call-expression" => {
                     let output = checked_call(self, body, last_end)?;
                     let end = output.call.span.end.byte;
@@ -1099,7 +1109,7 @@ pub(super) fn canonical_multi_local_output(
             },
             "if-statement" if remaining_writes >= 2 => {
                 last_end = flow
-                    .conditional(body, last_end)
+                    .conditional(body, last_end, 0)
                     .ok_or(FrontendJsonError::Unsupported)?;
                 remaining_writes = remaining_writes
                     .checked_sub(1)

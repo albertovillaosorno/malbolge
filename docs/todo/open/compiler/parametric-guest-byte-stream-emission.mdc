@@ -570,3 +570,15 @@ a compiler capability gap, not a reason to return to N+1.
   mutations and forged AST ancestry are covered by regression checks. This
   is compile-time state replay, not dynamic guest control flow. The original
   twelve-byte Fibonacci and general byte-stream layout P0 remain open.
+
+
+- A complete two-trip C `while` recurrence with nested `if` statements
+  in both outer arms originally failed at the JSON adapter. The bounded
+  walker now checks source-backed inner branch predicates, local writes
+  and guest output calls in both paths, with a three-level nesting cap.
+  The independent oracle computes `Q.` (`51 2e`) from state transitions
+  `(a,b) = (1,1) -> (2,1) -> (2,4)`; the normative Malbolge VM emits
+  the same bytes in eight steps. Skipped outer branches and no-else
+  inner cases, hostile C operations and forged AST ancestry are tested.
+  All C state remains folded at compile time; the generalized guest
+  byte-stream layout and original twelve-byte Fibonacci P0 stay open.
