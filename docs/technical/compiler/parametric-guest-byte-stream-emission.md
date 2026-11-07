@@ -832,3 +832,33 @@ Comparison, loop state and branch selection still fold during compilation;
 the guest executes the independently checked byte output, not runtime C
 comparisons. The original 12-byte Fibonacci acceptance still refuses at
 unwitnessed guest layout, so the P0 remains open.
+
+### Source-backed pure logical conditions
+
+A complete three-iteration C recurrence now combines checked multiplication,
+shifts, two automatic unsigned locals, a loop, a branch selected by C logical
+`&&`/`||`, state transfers, and a final output expression. The initial pinned
+Clang-to-guest attempt refused the first declaration because the closed
+constant-flow projection admitted only one masked unsigned comparison.
+
+The evaluator now consumes a bounded tree of source-ordered `i32` logical
+operations over exact source-proven unsigned masked comparisons. It checks
+both operands and both assignment arms, including parentheses, canonical
+Clang ancestry, types, symbol references, spans and absence of effects.
+Both operands are checked before logical selection: this is sound for the
+admitted pure, defined subexpressions, but rejects some otherwise-defined
+short-circuit C programs whose unexecuted right operand is unsupported.
+
+The source fixture `local_logical_recurrence_output.c` evaluates an AND
+condition through three iterations, selecting false, true and false arms.
+An OR variant selects false, true and true; a nested AND/OR variant tests
+source parenthesization and mixed precedence. An independently calculated
+state trace supplies a different final XOR constant to each variant so the
+normative Malbolge guest must emit the same byte `0x41` under empty and
+nonempty input. Side-effecting increments and calls in a logical operand,
+plus unsupported logical-to-bitwise mutations, must refuse before artifact
+publication.
+
+No runtime Malbolge Boolean evaluation, general short-circuit effects, dynamic
+state or arbitrary byte-stream synthesis is claimed. The original twelve-byte
+Fibonacci program still fails closed at guest layout; P0 remains pending.

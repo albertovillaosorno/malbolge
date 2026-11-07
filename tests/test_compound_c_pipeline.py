@@ -1612,6 +1612,115 @@ class CompoundCPipelineTests(unittest.TestCase):
                 self.assertIn(b"Unsupported", refused.stderr)
                 self.assertFalse(guest.exists(), label)
 
+    def test_pure_logical_recurrence_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_logical_recurrence_output.c"
+        )
+        original = source.read_text()
+        condition = "((next & 8U) < 8U) && ((b & 4U) != 0U)"
+        self.assertIn(condition, original)
+        variants = (
+            ("and", condition, [False, True, False]),
+            (
+                "or",
+                "((next & 8U) < 8U) || ((b & 4U) == 0U)",
+                [False, True, True],
+            ),
+            (
+                "mixed",
+                "(" + condition + ") || ((next & 16U) == 16U)",
+                [True, True, False],
+            ),
+        )
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for label, replacement, expected_branches in variants:
+                a, b = 3, 5
+                branches = []
+                for _ in range(3):
+                    next_value = ((a * b) << 2) & 255
+                    left = (next_value & 8) < 8
+                    right = (b & 4) != 0
+                    if label == "and":
+                        selected = left and right
+                    elif label == "or":
+                        selected = left or not right
+                    else:
+                        selected = (left and right) or (next_value & 16) == 16
+                    branches.append(selected)
+                    a = ((next_value >> 3) ^ 1) if selected else next_value - 1
+                    b = next_value
+                self.assertEqual(branches, expected_branches, label)
+                self.assertLessEqual(a, 255)
+                changed = original.replace(condition, replacement).replace(
+                    "a ^ 254U", f"a ^ {a ^ 65}U"
+                )
+                candidate = Path(scratch) / f"logical-{label}.c"
+                candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                compiled = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/logical-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertEqual(compiled.returncode, 0, (label, compiled.stderr))
+                self.assertTrue(guest.is_file())
+                for data in (b"", bytes((255, 0, 128))):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=data,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"A", label)
+                    self.assertEqual(executed.stderr, b"malbolge-steps-v1:31\n")
+            for label, changed in {
+                "side-effect-in-right-operand": original.replace("b & 4U", "b++ & 4U"),
+                "unsupported-bitwise-combine": original.replace(" && ", " & "),
+                "unsupported-call-in-right-operand": original.replace(
+                    "(b & 4U) != 0U", "(putchar(70) & 4U) != 0U"
+                ),
+            }.items():
+                candidate = Path(scratch) / f"invalid-logical-{label}.c"
+                candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/logical-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
     def test_unsigned_shift_recurrence_reaches_real_guest(self) -> None:
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")

@@ -739,3 +739,16 @@ and structural typed/ternary admission but is rejected by the closed
 `--distinct-literal-twelve` guest layout as
 `Layout(UnsupportedEffectTrace)`: its exact nonzero sequence is not
 witnessed. This is neither a general stream backend nor runtime C state.
+
+### Source-proven pure logical predicates
+
+The bounded automatic-local/`for` constant-flow projection now admits
+source-checked `&&` and `||` trees over previously admitted unsigned masked
+comparisons. Each logical node has an exact `i32` type and two ordered,
+independently proven operand subtrees; nested parentheses preserve Clang
+ancestry and byte spans. Only effect-free, fully evaluable operands are
+admitted. The compiler evaluates both sides even when C would short-circuit,
+so unsupported or effectful skipped expressions reject instead of being
+silently discarded. Selected loop branch arms are folded at compile time;
+the actual guest executes only the verified output byte. This is not runtime
+C logical short-circuit execution or unrestricted C control flow.

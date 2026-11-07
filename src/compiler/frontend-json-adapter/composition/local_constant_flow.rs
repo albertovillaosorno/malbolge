@@ -109,36 +109,59 @@ impl<'node> Flow<'node> {
         Some((assignment.span.end.byte, value_source))
     }
 
-    /// Prove the complete `if ((byte & mask) == literal)` condition.
+    /// Prove a pure C Boolean tree over exact unsigned comparisons.
+    /// Both operands are proven even when `&&`/`||` would short-circuit;
+    /// the admitted subtree contains no side effects or undefined operations.
     fn condition(&mut self, statement: &Node) -> Option<(bool, &'node Node)> {
-        let comparison = self.take(statement.id, "binary-expression")?;
-        let parentheses =
-            self.take(comparison.id, "parenthesized-expression")?;
-        let (left, expression) = self.expression(parentheses.id, 0)?;
-        let right = self.take(comparison.id, "integer-literal")?;
-        let right_value = literal_byte(right)?;
-        let separated = parentheses.span.end.byte < right.span.begin.byte;
-        let selected = checked_condition_comparison(
-            comparison,
-            left,
-            u32::from(right_value),
-        )?;
-        if parentheses.type_name.as_deref() != Some("u32")
-            || !bare_typed_node(parentheses)
-            || !span_within(&statement.span, &comparison.span)
-            || !span_within(&comparison.span, &parentheses.span)
-            || !span_within(&parentheses.span, &expression.span)
-            || expression.operation.as_deref() != Some("&")
-            || !span_within(&comparison.span, &right.span)
-            || comparison.span.begin.byte != parentheses.span.begin.byte
-            || parentheses.span.begin.byte >= expression.span.begin.byte
-            || expression.span.end.byte >= parentheses.span.end.byte
-            || !separated
-            || right.span.end.byte != comparison.span.end.byte
-        {
+        let (selected, expression) =
+            self.condition_expression(statement.id, 0)?;
+        span_within(&statement.span, &expression.span)
+            .then_some((selected, expression))
+    }
+
+    fn condition_expression(
+        &mut self,
+        parent: u32,
+        depth: usize,
+    ) -> Option<(bool, &'node Node)> {
+        if depth > MAX_EXPRESSION_DEPTH {
             return None;
         }
-        Some((selected, comparison))
+        if self.peek()?.kind == "parenthesized-expression" {
+            let grouped = self.take(parent, "parenthesized-expression")?;
+            let (value, expression) =
+                self.condition_expression(grouped.id, depth.checked_add(1)?)?;
+            if grouped.type_name.as_deref() != Some("i32")
+                || !bare_typed_node(grouped)
+                || !span_within(&grouped.span, &expression.span)
+                || grouped.span.begin.byte >= expression.span.begin.byte
+                || expression.span.end.byte >= grouped.span.end.byte
+            {
+                return None;
+            }
+            return Some((value, grouped));
+        }
+        let comparison = self.take(parent, "binary-expression")?;
+        if matches!(comparison.operation.as_deref(), Some("&&" | "||")) {
+            let (left_value, left) = self
+                .condition_expression(comparison.id, depth.checked_add(1)?)?;
+            let (right_value, right) = self
+                .condition_expression(comparison.id, depth.checked_add(1)?)?;
+            if !clean_i32_binary(comparison)
+                || !ordered_binary_spans(comparison, left, right)
+            {
+                return None;
+            }
+            return Some((
+                if comparison.operation.as_deref() == Some("&&") {
+                    left_value && right_value
+                } else {
+                    left_value || right_value
+                },
+                comparison,
+            ));
+        }
+        self.masked_comparison(comparison)
     }
 
     /// Parse both arms completely, but retain only the proven selected state.
@@ -401,6 +424,36 @@ impl<'node> Flow<'node> {
         Some(end)
     }
 
+    fn masked_comparison(
+        &mut self,
+        comparison: &'node Node,
+    ) -> Option<(bool, &'node Node)> {
+        let parentheses =
+            self.take(comparison.id, "parenthesized-expression")?;
+        let (left, expression) = self.expression(parentheses.id, 0)?;
+        let right = self.take(comparison.id, "integer-literal")?;
+        let right_value = literal_byte(right)?;
+        let selected = checked_condition_comparison(
+            comparison,
+            left,
+            u32::from(right_value),
+        )?;
+        if parentheses.type_name.as_deref() != Some("u32")
+            || !bare_typed_node(parentheses)
+            || !span_within(&comparison.span, &parentheses.span)
+            || !span_within(&parentheses.span, &expression.span)
+            || expression.operation.as_deref() != Some("&")
+            || !span_within(&comparison.span, &right.span)
+            || comparison.span.begin.byte != parentheses.span.begin.byte
+            || parentheses.span.begin.byte >= expression.span.begin.byte
+            || expression.span.end.byte >= parentheses.span.end.byte
+            || !ordered_binary_spans(comparison, parentheses, right)
+        {
+            return None;
+        }
+        Some((selected, comparison))
+    }
+
     fn peek(&self) -> Option<&'node Node> {
         self.nodes.get(self.position)
     }
@@ -586,6 +639,21 @@ fn typed_less_than(node: &Node) -> bool {
         && node.storage_duration.is_none()
 }
 
+/// Accept no instruction metadata other than an i32 binary operator.
+fn clean_i32_binary(node: &Node) -> bool {
+    node.type_name.as_deref() == Some("i32")
+        && node.operation.is_some()
+        && node.name.is_none()
+        && node.reference.is_none()
+        && node.constant_integer.is_none()
+        && node.literal.is_none()
+        && node.definition.is_none()
+        && node.inline_specified.is_none()
+        && node.linkage.is_none()
+        && node.storage_class.is_none()
+        && node.storage_duration.is_none()
+}
+
 /// Compare source-backed unsigned operands. C comparison results are `int`,
 /// but both checked operands retain their unsigned type and value.
 fn checked_condition_comparison(
@@ -593,17 +661,7 @@ fn checked_condition_comparison(
     left: u32,
     right: u32,
 ) -> Option<bool> {
-    if node.type_name.as_deref() != Some("i32")
-        || node.name.is_some()
-        || node.reference.is_some()
-        || node.constant_integer.is_some()
-        || node.literal.is_some()
-        || node.definition.is_some()
-        || node.inline_specified.is_some()
-        || node.linkage.is_some()
-        || node.storage_class.is_some()
-        || node.storage_duration.is_some()
-    {
+    if !clean_i32_binary(node) {
         return None;
     }
     Some(match node.operation.as_deref()? {

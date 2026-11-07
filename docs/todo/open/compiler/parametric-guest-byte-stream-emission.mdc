@@ -373,3 +373,14 @@ a compiler capability gap, not a reason to return to N+1.
   artifact. This is compile-time C folding, not guest runtime branching;
   the original twelve-byte Fibonacci stream remains blocked at layout and
   P0 stays pending.
+
+- A full three-iteration C recurrence initially refused its first declaration
+  for a logical `&&` predicate over two unsigned masked comparisons. The
+  closed Clang-proven Boolean evaluator now consumes pure `&&`/`||` trees,
+  checking both operand subtrees, source ancestry and all branch effects.
+  End-to-end AND, OR and nested-tree regressions compare independent branch
+  traces and final XOR keys against real Malbolge VM stdout on empty and
+  nonempty input; side effects and unsupported operators fail without guest
+  publication. This is bounded compile-time C folding; runtime Boolean state,
+  impure short-circuiting and the twelve-byte Fibonacci guest layout remain
+  unsupported, so P0 is still open.
