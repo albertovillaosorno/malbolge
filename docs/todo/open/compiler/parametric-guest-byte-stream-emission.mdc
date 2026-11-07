@@ -753,3 +753,13 @@ a compiler capability gap, not a reason to return to N+1.
   exact-length guest under source-disjoint write and both-input verification;
   forged output rejects. The original full Fibonacci C program still refuses
   at layout without an artifact, and P0 remains pending.
+
+- A red-first dense-frontier regression found that an unchanged repeated
+  output byte caused beam pruning to skip future reachability. Accumulator
+  `259` (low byte `3`) must survive an additional `3` output before a
+  crazy write on guest word `0` can emit `53`. The bounded beam now hints
+  toward the next different output, not merely the immediately pending one.
+  The repeated-output continuation, changed-loader-word negative and
+  bounded-state cap are tested; independent guest verification remains the
+  publication gate. The original twelve-byte Fibonacci C source still
+  refuses safely at layout, so generalized P0 remains pending.

@@ -1727,3 +1727,25 @@ VM replay. The red-first eleven-cell source now reconstructs an independently
 admitted guest; a forged final byte still rejects. This broadens one valid
 source geometry, not runtime guest C state or unbounded synthesis. The
 original Fibonacci stream remains unsupported and P0 stays open.
+
+### Dense beam lookahead across repeated effects
+
+The original twelve-iteration Fibonacci C source was rerun and still reached
+layout admission without a verified guest witness or published artifact. A
+red-first dense-frontier regression then exposed another general proposal
+false negative: distinct full accumulator words can have the same low byte
+`3`, so the next output may repeat `3` without changing state. The previous
+beam skipped future-word reachability whenever that immediate expected byte
+already matched, discarding accumulator `259` before a later changed output.
+For the actual next loader word `0`, a subsequent crazy write from `259`
+produces byte `53`; changing the word to `2` removes that short continuation.
+
+The over-budget beam now looks for the next **different** pending output
+byte, including beyond repeated output effects, before choosing reachable
+full-word representatives. A red-first regression checks retention, the real
+repeated-output/crazy/output continuation, the changed-loader-word negative,
+and the 16,384-state budget. Below that budget the complete exact frontier
+remains unchanged. The lookahead remains a bounded search heuristic: candidate
+source publication still requires independent positional decoding, disjoint
+guest data writes and normative VM replay under two inputs. This fixes one
+pruning false negative, not the full Fibonacci layout or runtime C state.

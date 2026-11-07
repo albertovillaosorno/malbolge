@@ -249,12 +249,17 @@ fn append_successors<const N: usize>(
                 },
             );
             group.largest = accumulator;
-            let Some(&target) = expected.get(emitted) else {
+            // Equal pending outputs do not change the accumulator.
+            // Preserve a state that can reach the next *different* byte,
+            // even when one or more output instructions come first.
+            // This is a heuristic hint, not a proof of future reachability.
+            let Some(target) =
+                expected.get(emitted..target_emitted).and_then(|pending| {
+                    pending.iter().copied().find(|&target| target != byte)
+                })
+            else {
                 continue;
             };
-            if target == byte {
-                continue;
-            }
             let Some(distance) = reachable_next_byte(
                 accumulator,
                 [next_value, next_next_value, next_next_next_value],

@@ -1268,6 +1268,101 @@ fn dense_guest_frontier_still_prunes_to_a_bounded_budget() {
 }
 
 #[test]
+fn dense_guest_frontier_retains_future_change_after_repeated_output() {
+    // Every candidate begins with byte 3; the next output repeats it.
+    // Accumulator 259 is necessary for a later p(0, A) to emit 53,
+    // even though the immediately pending byte already matches 3.
+    let states = (0u32..8_192)
+        .map(|high| ((0usize, high * 256 + 3), 0usize))
+        .collect::<BTreeMap<_, _>>();
+    let expected = [3, 3, 53, 53, 53, 53, 53, 53];
+    let mut steps = vec![SearchStep {
+        operation: LinearOpcode::NoOperation,
+        predecessor: 0,
+    }];
+    assert_eq!(malbolge::profile_crazy(0, 259, 15) & 255, 53);
+    let retained = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 30,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(retained.len() < MAX_STATES_PER_POSITION);
+    assert!(
+        retained.contains_key(&(1, 259)),
+        "lost repeated-byte continuation"
+    );
+    let repeated = append_successors(
+        &retained,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 29,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(repeated.contains_key(&(2, 259)));
+    let changed_word = malbolge::profile_crazy(0, 259, 15);
+    let written = append_successors(
+        &repeated,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 28,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(written.contains_key(&(2, changed_word)));
+    let output = append_successors(
+        &written,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 0,
+            next_next_value: 0,
+            next_next_next_value: 0,
+            remaining: 27,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(output.contains_key(&(3, changed_word)));
+
+    // The hint must depend on the real following loader word, not a
+    // coincidental equality of the current and next output bytes.
+    assert_eq!(reachable_next_byte(259, [2, 2, 2], 30, 53), None);
+    let changed = append_successors(
+        &states,
+        &mut steps,
+        SearchWord {
+            value: 0,
+            next_value: 2,
+            next_next_value: 2,
+            next_next_next_value: 2,
+            remaining: 30,
+            target_emitted: 8,
+        },
+        expected,
+    );
+    assert!(!changed.contains_key(&(1, 259)));
+}
+
+#[test]
 fn sparse_guest_frontier_preserves_fourth_word_continuation() {
     // Only the middle full accumulator reaches byte 1 after a later
     // loader word. Three-word lookahead cannot see this legitimate path.
