@@ -71,10 +71,22 @@ struct SearchWord {
     next_next_next_value: u32,
 }
 
+type ReachablePair = Option<(u32, u32)>;
+
 struct BeamRepresentatives {
-    smallest: u32,
     largest: u32,
-    reachable: [Option<(u32, u32)>; 3],
+    reachable: [ReachablePair; 3],
+    smallest: u32,
+}
+
+impl BeamRepresentatives {
+    fn retains(&self, accumulator: u32) -> bool {
+        accumulator == self.smallest
+            || accumulator == self.largest
+            || self.reachable.iter().flatten().any(|&(smallest, largest)| {
+                accumulator == smallest || accumulator == largest
+            })
+    }
 }
 
 /// The only instructions that distinguish full accumulator words are p and
@@ -96,13 +108,14 @@ fn reachable_next_byte(
         .enumerate()
     {
         for index in 0..count {
-            let changed = malbolge::profile_crazy(data, words[index], 15);
+            let previous = *words.get(index)?;
+            let changed = malbolge::profile_crazy(data, previous, 15);
             if matches_byte(changed, target) {
-                return Some(offset + 1);
+                return Some(offset.saturating_add(1));
             }
-            words[count + index] = changed;
+            *words.get_mut(count.saturating_add(index))? = changed;
         }
-        count *= 2;
+        count = count.saturating_mul(2);
     }
     None
 }
@@ -223,44 +236,42 @@ fn append_successors<const N: usize>(
         let mut representatives =
             BTreeMap::<(usize, u8), BeamRepresentatives>::new();
         for &(emitted, accumulator) in proposals.keys() {
-            let group = representatives
-                .entry((emitted, accumulator as u8))
-                .or_insert(BeamRepresentatives {
-                    smallest: accumulator,
+            let byte = malbolge::profile_low_byte(accumulator);
+            let group = representatives.entry((emitted, byte)).or_insert(
+                BeamRepresentatives {
                     largest: accumulator,
                     reachable: [None; 3],
-                });
+                    smallest: accumulator,
+                },
+            );
             group.largest = accumulator;
-            if let Some(&target) = expected.get(emitted) {
-                if target != accumulator as u8 {
-                    if let Some(distance) = reachable_next_byte(
-                        accumulator,
-                        [next_value, next_next_value, next_next_next_value],
-                        remaining,
-                        target,
-                    ) {
-                        let slot = &mut group.reachable[distance - 1];
-                        match slot {
-                            Some((_, largest)) => *largest = accumulator,
-                            None => *slot = Some((accumulator, accumulator)),
-                        }
-                    }
+            let Some(&target) = expected.get(emitted) else {
+                continue;
+            };
+            if target == byte {
+                continue;
+            }
+            let Some(distance) = reachable_next_byte(
+                accumulator,
+                [next_value, next_next_value, next_next_next_value],
+                remaining,
+                target,
+            ) else {
+                continue;
+            };
+            if let Some(slot) =
+                group.reachable.get_mut(distance.saturating_sub(1))
+            {
+                match slot {
+                    Some((_, largest)) => *largest = accumulator,
+                    None => *slot = Some((accumulator, accumulator)),
                 }
             }
         }
         proposals.retain(|&(emitted, accumulator), _| {
             representatives
-                .get(&(emitted, accumulator as u8))
-                .is_some_and(|group| {
-                    accumulator == group.smallest
-                        || accumulator == group.largest
-                        || group.reachable.iter().flatten().any(
-                            |&(smallest, largest)| {
-                                accumulator == smallest
-                                    || accumulator == largest
-                            },
-                        )
-                })
+                .get(&(emitted, malbolge::profile_low_byte(accumulator)))
+                .is_some_and(|group| group.retains(accumulator))
         });
     }
     // Record only retained paths: candidate fan-out is not a completed
