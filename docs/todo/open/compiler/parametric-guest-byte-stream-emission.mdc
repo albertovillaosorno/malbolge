@@ -361,3 +361,15 @@ a compiler capability gap, not a reason to return to N+1.
   state-width mask and a side-effecting read reject without publication.
   All C computation remains compile-time constant propagation. The original
   twelve-byte Fibonacci stream is still blocked at layout and P0 stays open.
+
+- A new full three-iteration C recurrence first refused on its relational
+  condition despite previously supported multiplication, shifts, loop state
+  and output. A closed source-backed `u32` comparison evaluator now admits
+  `==`, `!=`, `<`, `<=`, `>` and `>=` with an `i32` result and both fully
+  checked branches. Six independently calculated branch traces and final
+  XOR keys compile from pinned C into real Malbolge capsules; the normative
+  VM emits `0x41` for empty and nonempty stdin in every case. Logical `&&`,
+  increment side effects and signed-condition mutation refuse without an
+  artifact. This is compile-time C folding, not guest runtime branching;
+  the original twelve-byte Fibonacci stream remains blocked at layout and
+  P0 stays pending.

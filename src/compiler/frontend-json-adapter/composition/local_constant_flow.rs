@@ -118,8 +118,12 @@ impl<'node> Flow<'node> {
         let right = self.take(comparison.id, "integer-literal")?;
         let right_value = literal_byte(right)?;
         let separated = parentheses.span.end.byte < right.span.begin.byte;
-        if !typed_equality(comparison)
-            || parentheses.type_name.as_deref() != Some("u32")
+        let selected = checked_condition_comparison(
+            comparison,
+            left,
+            u32::from(right_value),
+        )?;
+        if parentheses.type_name.as_deref() != Some("u32")
             || !bare_typed_node(parentheses)
             || !span_within(&statement.span, &comparison.span)
             || !span_within(&comparison.span, &parentheses.span)
@@ -134,7 +138,7 @@ impl<'node> Flow<'node> {
         {
             return None;
         }
-        Some((left == u32::from(right_value), comparison))
+        Some((selected, comparison))
     }
 
     /// Parse both arms completely, but retain only the proven selected state.
@@ -582,18 +586,35 @@ fn typed_less_than(node: &Node) -> bool {
         && node.storage_duration.is_none()
 }
 
-fn typed_equality(node: &Node) -> bool {
-    node.type_name.as_deref() == Some("i32")
-        && node.operation.as_deref() == Some("==")
-        && node.name.is_none()
-        && node.reference.is_none()
-        && node.constant_integer.is_none()
-        && node.literal.is_none()
-        && node.definition.is_none()
-        && node.inline_specified.is_none()
-        && node.linkage.is_none()
-        && node.storage_class.is_none()
-        && node.storage_duration.is_none()
+/// Compare source-backed unsigned operands. C comparison results are `int`,
+/// but both checked operands retain their unsigned type and value.
+fn checked_condition_comparison(
+    node: &Node,
+    left: u32,
+    right: u32,
+) -> Option<bool> {
+    if node.type_name.as_deref() != Some("i32")
+        || node.name.is_some()
+        || node.reference.is_some()
+        || node.constant_integer.is_some()
+        || node.literal.is_some()
+        || node.definition.is_some()
+        || node.inline_specified.is_some()
+        || node.linkage.is_some()
+        || node.storage_class.is_some()
+        || node.storage_duration.is_some()
+    {
+        return None;
+    }
+    Some(match node.operation.as_deref()? {
+        "==" => left == right,
+        "!=" => left != right,
+        "<" => left < right,
+        "<=" => left <= right,
+        ">" => left > right,
+        ">=" => left >= right,
+        _ => return None,
+    })
 }
 
 fn symbol_location(declaration: &Node, name: &str, symbol: &str) -> bool {

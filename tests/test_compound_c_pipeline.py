@@ -1404,8 +1404,7 @@ class CompoundCPipelineTests(unittest.TestCase):
         if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
             self.skipTest("pinned C compiler binaries are not built")
         source = (
-            ROOT
-            / "tests/compiler/c-frontend/accepted/local_or_recurrence_output.c"
+            ROOT / "tests/compiler/c-frontend/accepted/local_or_recurrence_output.c"
         )
         original = source.read_text()
         self.assertIn("((a * b) | 16U) & 255U", original)
@@ -1451,9 +1450,7 @@ class CompoundCPipelineTests(unittest.TestCase):
                     capture_output=True,
                     timeout=90,
                 )
-                self.assertEqual(
-                    compiled.returncode, 0, (mask, compiled.stderr)
-                )
+                self.assertEqual(compiled.returncode, 0, (mask, compiled.stderr))
                 self.assertTrue(guest.is_file())
                 for data in (b"", bytes((255, 0, 128))):
                     executed = subprocess.run(
@@ -1497,6 +1494,121 @@ class CompoundCPipelineTests(unittest.TestCase):
                     timeout=90,
                 )
                 self.assertNotEqual(refused.returncode, 0)
+                self.assertIn(b"Unsupported", refused.stderr)
+                self.assertFalse(guest.exists(), label)
+
+    def test_unsigned_relational_recurrence_reaches_real_guest(self) -> None:
+        if not all(path.is_file() for path in (FRONTEND, ADAPTER, LAYOUT, VM)):
+            self.skipTest("pinned C compiler binaries are not built")
+        source = (
+            ROOT
+            / "tests/compiler/c-frontend/accepted/local_relational_recurrence_output.c"
+        )
+        original = source.read_text()
+        self.assertIn("(next & 8U) < 8U", original)
+        relations = {
+            "<": lambda a, b: a < b,
+            "<=": lambda a, b: a <= b,
+            ">": lambda a, b: a > b,
+            ">=": lambda a, b: a >= b,
+            "!=": lambda a, b: a != b,
+            "==": lambda a, b: a == b,
+        }
+        with tempfile.TemporaryDirectory(dir=ROOT / ".temp") as scratch:
+            for operator, threshold, expected_branches in (
+                ("<", 8, [False, True, True]),
+                ("<=", 7, [False, True, True]),
+                (">", 7, [True, False, False]),
+                (">=", 8, [True, False, False]),
+                ("!=", 8, [False, True, True]),
+                ("==", 0, [False, True, True]),
+            ):
+                a, b = 3, 5
+                branches = []
+                for _ in range(3):
+                    next_value = ((a * b) << 2) & 255
+                    selected = relations[operator](next_value & 8, threshold)
+                    branches.append(selected)
+                    a = ((next_value >> 3) ^ 1) if selected else next_value - 1
+                    b = next_value
+                self.assertEqual(branches, expected_branches)
+                self.assertLessEqual(a, 255)
+                xor_key = a ^ 65
+                changed = original.replace(
+                    "(next & 8U) < 8U",
+                    f"(next & 8U) {operator} {threshold}U",
+                ).replace("a ^ 88U", f"a ^ {xor_key}U")
+                relation_name = {
+                    "<": "lt",
+                    "<=": "le",
+                    ">": "gt",
+                    ">=": "ge",
+                    "!=": "ne",
+                    "==": "eq",
+                }[operator]
+                candidate = Path(scratch) / f"relational-{relation_name}.c"
+                candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                command = [
+                    sys.executable,
+                    "-B",
+                    str(DRIVER),
+                    "--repository-tools",
+                    "--source-id",
+                    f"tests/local-relational-{relation_name}-v1",
+                    "--capsule",
+                    "--output",
+                    str(guest),
+                    str(candidate),
+                ]
+                compiled = subprocess.run(
+                    command, check=False, capture_output=True, timeout=90
+                )
+                self.assertEqual(compiled.returncode, 0, (operator, compiled.stderr))
+                self.assertTrue(guest.is_file())
+                for data in (b"", bytes((255, 0, 128))):
+                    executed = subprocess.run(
+                        [str(VM), str(guest), "--input-stdin", "--report-steps"],
+                        input=data,
+                        check=False,
+                        capture_output=True,
+                        timeout=30,
+                    )
+                    self.assertEqual(executed.returncode, 0, executed.stderr)
+                    self.assertEqual(executed.stdout, b"A")
+                    self.assertRegex(
+                        executed.stderr, rb"^malbolge-steps-v1:[1-9][0-9]*\n$"
+                    )
+            for label, changed in {
+                "logical-and": original.replace("< 8U", "&& 8U"),
+                "increment-side-effect": original.replace(
+                    "(next & 8U)", "(next++ & 8U)"
+                ),
+                "signed-conversion": original.replace(
+                    "(next & 8U) < 8U", "((int)(next & 8U)) < 8"
+                ),
+            }.items():
+                candidate = Path(scratch) / f"invalid-{label}.c"
+                candidate.write_text(changed)
+                guest = candidate.with_suffix(".malbolge")
+                refused = subprocess.run(
+                    [
+                        sys.executable,
+                        "-B",
+                        str(DRIVER),
+                        "--repository-tools",
+                        "--source-id",
+                        f"tests/local-relational-invalid-{label}-v1",
+                        "--capsule",
+                        "--output",
+                        str(guest),
+                        str(candidate),
+                    ],
+                    check=False,
+                    capture_output=True,
+                    timeout=90,
+                )
+                self.assertNotEqual(refused.returncode, 0, label)
                 self.assertIn(b"Unsupported", refused.stderr)
                 self.assertFalse(guest.exists(), label)
 
@@ -1579,9 +1691,7 @@ class CompoundCPipelineTests(unittest.TestCase):
             for label, changed in {
                 "left-count-32": original.replace("<< 2U", "<< 32U"),
                 "right-count-32": original.replace(">> 3U", ">> 32U"),
-                "unsupported-logical-and": original.replace(
-                    "next - 1U", "next && 1U"
-                ),
+                "unsupported-logical-and": original.replace("next - 1U", "next && 1U"),
             }.items():
                 invalid = Path(scratch) / f"{label}.c"
                 invalid.write_text(changed)

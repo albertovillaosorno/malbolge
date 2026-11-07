@@ -157,7 +157,7 @@ fn distinct_loop_output_must_prove_both_branches_and_all_symbols() {
     let original: Value = serde_json::from_slice(LOOP_DISTINCT).unwrap();
     for (id, key, replacement) in [
         (16, "constant_integer", json!("13")),
-        (31, "operation", json!("!=")),
+        (31, "operation", json!("&&")),
         (39, "reference", json!("external:puts")),
         (44, "operation", json!(">>")),
         (46, "reference", json!("b@1161")),
@@ -181,7 +181,7 @@ fn distinct_loop_output_must_prove_both_branches_and_all_symbols() {
 fn unsafe_or_nonzero_loop_effects_refuse_promotion() {
     let original: Value = serde_json::from_slice(LOOP_OUTPUT).unwrap();
     for (id, key, value) in [
-        (31, "operation", json!("!=")),
+        (31, "operation", json!("&&")),
         (39, "reference", json!("external:puts")),
         (44, "operation", json!(">>")),
         (50, "reference", json!("external:puts")),
@@ -244,7 +244,7 @@ fn changed_loop_counter_control_and_effects_reject() {
         (17, "reference", json!("a@51")),
         (18, "kind", json!("call-expression")),
         (20, "reference", json!("a@51")),
-        (30, "operation", json!("!=")),
+        (30, "operation", json!("&&")),
         (51, "operation", json!("+=")),
         (55, "operation", json!(">>")),
     ] {

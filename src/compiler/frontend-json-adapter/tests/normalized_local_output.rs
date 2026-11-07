@@ -456,7 +456,7 @@ fn conditional_foreign_reads_metadata_and_unproven_branches_reject() {
     let original: Value = serde_json::from_slice(CONDITIONAL).unwrap();
     for (index, key, value) in [
         (15, "kind", json!("for-statement")),
-        (16, "operation", json!("!=")),
+        (16, "operation", json!("&&")),
         (17, "type", json!("i32")),
         (18, "operation", json!("||")),
         (20, "reference", json!("a@999")),
@@ -583,7 +583,7 @@ fn masked_sum_operator_and_parenthesis_mutations_reject() {
         (12, "operation", json!(">>")),
         (12, "parent", json!(10)),
         (17, "constant_integer", json!("256")),
-        (19, "operation", json!("!=")),
+        (19, "operation", json!("&&")),
     ] {
         let mut changed = original.clone();
         changed["nodes"][index][key] = value;

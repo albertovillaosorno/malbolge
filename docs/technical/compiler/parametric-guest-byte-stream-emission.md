@@ -805,3 +805,30 @@ read refuses without an artifact. The new test is
 This is source-proven, bounded constant evaluation, not guest runtime C OR,
 loop execution or generalized stream synthesis. The original twelve-byte
 Fibonacci program remains rejected at layout, so P0 stays pending.
+
+### Source-backed unsigned relational conditions
+
+A complete three-iteration C program now exercises automatic unsigned locals,
+checked multiplication and shifts, a relational `if` inside a `for` loop,
+source-derived state transfers and a final `putchar`. The first pinned-Clang
+compile refused the initial declaration because the bounded adapter only
+admitted `==` in the conditional expression. The revised closed evaluator
+preserves the exact unsigned `u32` operands and typed `i32` comparison result,
+and selects both source-proven branches with `==`, `!=`, `<`, `<=`,
+`>` or `>=`.
+
+The red-first regression derives the branch sequence and final XOR key
+independently for all six operators. Every full C source now emits a real
+Malbolge capsule that outputs byte `0x41` under the normative VM with empty
+and nonempty stdin. The comparison boundary admits only the existing checked
+`(unsigned_expression & mask) OP byte_literal` condition shape; unsupported
+logical `&&`, a side-effecting increment and a signed cast in that condition
+reject without publication. The checked-in source is
+`tests/compiler/c-frontend/accepted/local_relational_recurrence_output.c`;
+the end-to-end regression is
+`test_unsigned_relational_recurrence_reaches_real_guest`.
+
+Comparison, loop state and branch selection still fold during compilation;
+the guest executes the independently checked byte output, not runtime C
+comparisons. The original 12-byte Fibonacci acceptance still refuses at
+unwitnessed guest layout, so the P0 remains open.
