@@ -630,3 +630,96 @@ fn split_relocation_with_nonpaired_effects_reconstructs_guest()
     }
     Ok(())
 }
+
+#[test]
+fn third_live_relocation_between_nonpaired_byte_effects() -> Result<(), String>
+{
+    let profile = malbolge::current_profile();
+    let cells = pair_source_cells(profile).ok_or("missing source cells")?;
+    // Source-independent guest: repeated outputs and no-op data strides
+    // occur inside three separate live relocation regions.
+    let mut operations = vec![LinearOpcode::NoOperation; 8];
+    operations.extend([
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::RelocateDataPointer,
+        LinearOpcode::RotateData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::CrazyData,
+        LinearOpcode::OutputByte,
+        LinearOpcode::NoOperation,
+        LinearOpcode::Halt,
+    ]);
+    let source = operations
+        .iter()
+        .enumerate()
+        .map(|(position, &opcode)| {
+            cells
+                .get(position)
+                .and_then(|cell| {
+                    cell.get(super::super::pair_opcode_slot(opcode)?)
+                })
+                .copied()
+        })
+        .collect::<Option<Vec<_>>>()
+        .ok_or("guest source decoder")?;
+    let mut guest = ProfileMachine::from_source(profile, &source, vec![255, 0])
+        .map_err(|error| format!("original guest load: {error:?}"))?;
+    if !matches!(guest.run(operations.len()),
+        Ok(RunOutcome::Terminated { steps, .. }) if steps == operations.len())
+    {
+        return Err(String::from("original guest did not halt"));
+    }
+    let expected: [u8; 9] = guest
+        .output()
+        .try_into()
+        .map_err(|error| format!("original output count: {error:?}"))?;
+    assert_eq!(expected, [
+        0x41, 0x41, 0x11, 0x30, 0x17, 0x17, 0x2c, 0x18, 0x35
+    ]);
+    if guest.input_consumed() != 0 {
+        return Err(String::from("original guest consumed supplied input"));
+    }
+    let recovered = verified_three_split_relocation_output_layout(
+        profile, expected, &cells,
+    )
+    .ok_or("bounded three-region fallback did not recover guest")?;
+    let relocations = recovered
+        .source()
+        .iter()
+        .enumerate()
+        .filter(|(position, byte)| {
+            malbolge::decode_profile_instruction(
+                u32::from(**byte),
+                u32::try_from(*position).unwrap_or(u32::MAX),
+            ) == Some(b'j')
+        })
+        .count();
+    if relocations < 3 {
+        return Err(format!(
+            "expected three live relocations, recovered {relocations}"
+        ));
+    }
+    let mut forged = expected;
+    forged[0] ^= 1;
+    if verified_output_stream_layout(profile, &operations, forged, &cells)
+        .is_some()
+    {
+        return Err(String::from("forged output passed independent verifier"));
+    }
+    Ok(())
+}

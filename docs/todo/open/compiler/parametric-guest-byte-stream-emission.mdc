@@ -895,3 +895,13 @@ a compiler capability gap, not a reason to return to N+1.
   empty and supplied input. Forged-byte rejection remains mandatory. This
   does not witness the original Fibonacci trace or guest C runtime state,
   so the P0 remains pending.
+- A source-independent 31-instruction Malbolge guest with three live data
+  relocations, non-paired output effects and no-op strides now has an
+  independently verified three-region beam proposal. Later relocation
+  operands are read from untouched loader words and all traversed data
+  addresses are reserved; a bounded balanced-region fallback publishes only
+  after positional and VM replay checks. A forged transcript refuses.
+  The same nine output bytes also admit a simpler one-relocation guest, so
+  three relocations are a constructive capability, not a necessity claim.
+  The original twelve-output Fibonacci C program still refuses at layout;
+  P0 remains pending on generalized guest synthesis and runtime C semantics.

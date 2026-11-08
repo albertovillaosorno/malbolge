@@ -25,7 +25,7 @@
 
 //! Bounded, deterministic proposals for relocated linear guest byte streams.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::iter::repeat_n;
 
 use super::{
@@ -59,6 +59,14 @@ struct SearchGeometry<'memory> {
     prefix: usize,
     prefix_outputs: usize,
     source_length: usize,
+}
+
+#[derive(Clone, Copy)]
+struct SplitSearchSpec<'geometry, 'memory> {
+    additional_relocations: &'geometry [usize],
+    geometry: &'geometry SearchGeometry<'memory>,
+    step_budget: usize,
+    terminal: TerminalSuffix,
 }
 
 #[derive(Clone, Copy)]
@@ -416,18 +424,18 @@ fn proposed_geometry<const N: usize>(
     )
 }
 
-// A second live relocation re-seeds the remaining data stream from an
-// untouched loader word. Each region may contain arbitrary no-ops, guest
-// arithmetic and outputs; neither region assumes one write per byte.
-fn proposed_split_geometry_with_budget<const N: usize>(
+fn split_unwritten_addresses<const N: usize>(
     profile: &'static ProfileDescriptor,
     source_cells: &[[u8; 6]],
-    geometry: &SearchGeometry<'_>,
-    second_position: usize,
+    spec: &SplitSearchSpec<'_, '_>,
     expected: [u8; N],
-    terminal: TerminalSuffix,
-    step_budget: usize,
-) -> Option<Vec<LinearOpcode>> {
+) -> Option<(Vec<Option<usize>>, Vec<u8>)> {
+    let SplitSearchSpec {
+        geometry,
+        additional_relocations,
+        terminal,
+        ..
+    } = *spec;
     let SearchGeometry {
         prefix,
         prefix_outputs,
@@ -437,68 +445,119 @@ fn proposed_split_geometry_with_budget<const N: usize>(
     let target_emitted = terminal.emitted_before_tail(N);
     if prefix_outputs > prefix
         || prefix_outputs > target_emitted
-        || expected[..prefix_outputs].iter().any(|&byte| byte != 0)
-        || second_position <= prefix.saturating_add(1)
-        || second_position >= source_length.saturating_sub(3)
+        || expected.get(..prefix_outputs)?.iter().any(|&byte| byte != 0)
+        || !(1..=2).contains(&additional_relocations.len())
+        || additional_relocations
+            .first()
+            .is_none_or(|&position| position <= prefix.saturating_add(1))
+        || additional_relocations
+            .last()
+            .is_none_or(|&position| position >= source_length.saturating_sub(3))
+        || additional_relocations
+            .windows(2)
+            .any(|pair| matches!(pair, [first, second] if first.saturating_add(1) >= *second))
     {
         return None;
     }
     let memory_words = usize::try_from(profile.memory_words()).ok()?;
-    let first_base = usize::from(*source_cells.get(prefix)?.get(1)?) + 1;
-    let first_count = second_position.checked_sub(prefix + 1)?;
-    let second_operand = first_base.checked_add(first_count)?;
+    let first_body = prefix.checked_add(1)?;
+    let mut pointer =
+        usize::from(*source_cells.get(prefix)?.get(1)?).checked_add(1)?;
     let (_, tail_slot) = terminal.before_halt();
     let mut source = vec![0u8; source_length];
-    *source.get_mut(source_length.checked_sub(2)?)? =
-        *source_cells.get(source_length - 2)?.get(tail_slot)?;
+    *source.get_mut(source_length.checked_sub(2)?)? = *source_cells
+        .get(source_length.checked_sub(2)?)?
+        .get(tail_slot)?;
     *source.get_mut(source_length.checked_sub(1)?)? =
-        *source_cells.get(source_length - 1)?.get(5)?;
-    let relocated =
-        super::layout::unwritten_loader_word(&source, second_operand, profile)
-            .ok()?;
-    let second_base =
-        usize::try_from(relocated).ok()?.checked_add(1)? % memory_words;
-    let second_count = source_length.checked_sub(second_position + 3)?;
-    // We only search disjoint, source-external, nonwrapping loader regions.
-    // The independent verifier still checks the exact operations and VM.
-    if first_base < source_length
-        || second_base < source_length
-        || second_operand.checked_add(3)? >= memory_words
-        || second_base.checked_add(second_count)?.checked_add(3)?
-            >= memory_words
-        || (second_base <= second_operand
-            && second_base.checked_add(second_count)? >= first_base)
-    {
-        return None;
+        *source_cells.get(source_length.checked_sub(1)?)?.get(5)?;
+    // Conservatively reserve every data address, including no-ops and j
+    // operands. This guarantees that a later j reads an untouched loader
+    // word regardless of which arithmetic paths the beam selects.
+    let mut reserved = BTreeSet::new();
+    let mut addresses = vec![None; source_length];
+    for position in first_body..source_length.saturating_sub(2) {
+        if pointer < source_length
+            || pointer >= memory_words
+            || !reserved.insert(pointer)
+        {
+            return None;
+        }
+        if additional_relocations.binary_search(&position).is_ok() {
+            let operand =
+                super::layout::unwritten_loader_word(&source, pointer, profile)
+                    .ok()?;
+            pointer = usize::try_from(operand)
+                .ok()?
+                .checked_add(1)?
+                .rem_euclid(memory_words);
+        } else {
+            *addresses.get_mut(position)? = Some(pointer);
+            pointer = pointer.checked_add(1)?.rem_euclid(memory_words);
+        }
     }
+    Some((addresses, source))
+}
+
+fn append_relocation_states(
+    states: &SearchStates,
+    steps: &mut Vec<SearchStep>,
+) -> SearchStates {
+    let mut successors = BTreeMap::new();
+    for (&key, &predecessor) in states {
+        let index = steps.len();
+        steps.push(SearchStep {
+            operation: LinearOpcode::RelocateDataPointer,
+            predecessor,
+        });
+        let _previous = successors.insert(key, index);
+    }
+    successors
+}
+
+// Each extra live relocation re-seeds the next data region from an untouched
+// loader word. Regions may contain no-ops, arithmetic and repeated outputs;
+// the synthesis grammar does not assume one arithmetic write per byte effect.
+fn proposed_split_geometry_with_budget<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    source_cells: &[[u8; 6]],
+    spec: SplitSearchSpec<'_, '_>,
+    expected: [u8; N],
+) -> Option<Vec<LinearOpcode>> {
+    let SplitSearchSpec {
+        geometry,
+        additional_relocations,
+        terminal,
+        step_budget,
+    } = spec;
+    let (addresses, source) =
+        split_unwritten_addresses(profile, source_cells, &spec, expected)?;
+    let SearchGeometry {
+        prefix,
+        prefix_outputs,
+        source_length,
+        ..
+    } = *geometry;
+    let first_body = prefix.checked_add(1)?;
+    let target_emitted = terminal.emitted_before_tail(N);
     let mut steps = vec![SearchStep {
         operation: LinearOpcode::NoOperation,
         predecessor: 0,
     }];
     let mut states = BTreeMap::from([((prefix_outputs, 0u32), 0usize)]);
-    for position in (prefix + 1)..source_length.saturating_sub(2) {
-        if position == second_position {
-            let mut successors = BTreeMap::new();
-            for (&key, &predecessor) in &states {
-                let index = steps.len();
-                steps.push(SearchStep {
-                    operation: LinearOpcode::RelocateDataPointer,
-                    predecessor,
-                });
-                let _previous = successors.insert(key, index);
-            }
-            states = successors;
+    for position in first_body..source_length.saturating_sub(2) {
+        if additional_relocations.binary_search(&position).is_ok() {
+            states = append_relocation_states(&states, &mut steps);
             continue;
         }
-        let address = if position < second_position {
-            first_base.checked_add(position.checked_sub(prefix + 1)?)?
-        } else {
-            second_base
-                .checked_add(position.checked_sub(second_position + 1)?)?
-        };
+        let address = (*addresses.get(position)?)?;
         let remaining = source_length
-            .saturating_sub(position + 3)
-            .saturating_sub(usize::from(position < second_position));
+            .saturating_sub(position.saturating_add(3))
+            .saturating_sub(
+                additional_relocations
+                    .iter()
+                    .filter(|&&future| future > position)
+                    .count(),
+            );
         let word = |offset: usize| {
             super::layout::unwritten_loader_word(
                 &source,
@@ -520,16 +579,14 @@ fn proposed_split_geometry_with_budget<const N: usize>(
             },
             expected,
         );
-        if position > second_position {
-            if let Some((_, &last_index)) = states.iter().find(|(key, _)| {
+        if position > *additional_relocations.last()?
+            && let Some((_, &last_index)) = states.iter().find(|(key, _)| {
                 key.0 == target_emitted
                     && (!matches!(terminal, TerminalSuffix::Output)
                         || matches_byte(key.1, *expected.last().unwrap_or(&0)))
-            }) {
-                return reconstruct_path(
-                    &steps, last_index, geometry, terminal,
-                );
-            }
+            })
+        {
+            return reconstruct_path(&steps, last_index, geometry, terminal);
         }
         if states.is_empty()
             || states.len() > MAX_STATES_PER_POSITION
@@ -831,12 +888,16 @@ pub(super) fn verified_state_space_output_layout<const N: usize>(
     verified_two_relocation_write_layout(profile, expected, source_cells)
         .or_else(|| {
             verified_three_relocation_write_layout(
-                profile, expected, source_cells,
+                profile,
+                expected,
+                source_cells,
             )
         })
         .or_else(|| {
             verified_four_relocation_write_layout(
-                profile, expected, source_cells,
+                profile,
+                expected,
+                source_cells,
             )
         })
 }
@@ -881,14 +942,18 @@ fn verified_split_relocation_output_layout<const N: usize>(
                         prefix_outputs: 0,
                         source_length: length,
                     };
+                    let positions = [second_position];
+                    let spec = SplitSearchSpec {
+                        geometry: &geometry,
+                        additional_relocations: &positions,
+                        terminal,
+                        step_budget: 16_384,
+                    };
                     let Some(operations) = proposed_split_geometry_with_budget(
                         profile,
                         source_cells,
-                        &geometry,
-                        second_position,
+                        spec,
                         expected,
-                        terminal,
-                        16_384,
                     ) else {
                         continue;
                     };
@@ -900,6 +965,77 @@ fn verified_split_relocation_output_layout<const N: usize>(
                     ) {
                         return Some(layout);
                     }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Bounded three-region beam fallback for guest streams with intervening
+/// no-ops and repeated outputs. Its fixed geometry budget is a proposal
+/// limit, never an assertion that unmatched streams cannot be implemented.
+fn verified_three_split_relocation_output_layout<const N: usize>(
+    profile: &'static ProfileDescriptor,
+    expected: [u8; N],
+    source_cells: &[[u8; 6]],
+) -> Option<LinearLayout> {
+    if !(8..=12).contains(&N)
+        || profile.id() != malbolge::current_profile().id()
+    {
+        return None;
+    }
+    // Three regions reserve code for their live j operands and for output
+    // effects that may reuse an accumulator between real guest writes.
+    let minimum = N
+        .saturating_add(required_writes(0, &expected))
+        .saturating_add(5);
+    for terminal in [TerminalSuffix::Noop, TerminalSuffix::Output] {
+        for length in [
+            N.checked_mul(3)?.checked_add(4)?,
+            N.checked_mul(3)?.checked_add(2)?,
+        ] {
+            if length < minimum || length > source_cells.len() {
+                continue;
+            }
+            for prefix in [8usize, 0, 4] {
+                if prefix.saturating_add(9) >= length {
+                    continue;
+                }
+                let body = length.checked_sub(prefix)?.checked_sub(3)?;
+                let split_start = prefix.checked_add(1)?;
+                let split_positions = [
+                    split_start.checked_add(body.div_euclid(3))?,
+                    split_start
+                        .checked_add(body.checked_mul(2)?.div_euclid(3))?,
+                ];
+                let geometry = SearchGeometry {
+                    memory: &[],
+                    prefix,
+                    prefix_outputs: 0,
+                    source_length: length,
+                };
+                let spec = SplitSearchSpec {
+                    geometry: &geometry,
+                    additional_relocations: &split_positions,
+                    terminal,
+                    step_budget: 32_768,
+                };
+                let Some(operations) = proposed_split_geometry_with_budget(
+                    profile,
+                    source_cells,
+                    spec,
+                    expected,
+                ) else {
+                    continue;
+                };
+                if let Some(layout) = verified_output_stream_layout(
+                    profile,
+                    &operations,
+                    expected,
+                    source_cells,
+                ) {
+                    return Some(layout);
                 }
             }
         }
@@ -978,17 +1114,28 @@ pub(super) fn verified_short_output_layout<const N: usize>(
         verified_two_relocation_write_layout(profile, expected, source_cells)
             .or_else(|| {
                 verified_three_relocation_write_layout(
-                    profile, expected, source_cells,
+                    profile,
+                    expected,
+                    source_cells,
                 )
             })
             .or_else(|| {
                 verified_four_relocation_write_layout(
-                    profile, expected, source_cells,
+                    profile,
+                    expected,
+                    source_cells,
                 )
             })
     })
     .or_else(|| {
         verified_split_relocation_output_layout(profile, expected, source_cells)
+    })
+    .or_else(|| {
+        verified_three_split_relocation_output_layout(
+            profile,
+            expected,
+            source_cells,
+        )
     })
 }
 
@@ -1035,7 +1182,7 @@ fn verified_two_relocation_write_layout<const N: usize>(
             if second_start < length {
                 continue;
             }
-            let mut written = std::collections::BTreeSet::new();
+            let mut written = BTreeSet::new();
             let mut words = Vec::with_capacity(N);
             for index in 0..N {
                 let address = if index < split {
@@ -1163,7 +1310,7 @@ fn verified_relocated_write_layout<const N: usize>(
                 continue;
             }
             let mut address = (first_base + 1) % memory_words;
-            let mut written = std::collections::BTreeSet::new();
+            let mut written = BTreeSet::new();
             let mut words = Vec::with_capacity(N);
             for index in 0..N {
                 if index > 0 && (splits & (1 << (index - 1))) != 0 {
@@ -1176,8 +1323,8 @@ fn verified_relocated_write_layout<const N: usize>(
                         &source, address, profile,
                     )
                     .ok()?;
-                    address = (usize::try_from(relocated).ok()? + 1)
-                        % memory_words;
+                    address =
+                        (usize::try_from(relocated).ok()? + 1) % memory_words;
                 }
                 if address < length || !written.insert(address) {
                     break;
@@ -1208,7 +1355,11 @@ fn verified_relocated_write_layout<const N: usize>(
                         if matches_byte(value, target) {
                             next.push((
                                 value,
-                                if rotate { mask | (1 << index) } else { mask },
+                                if rotate {
+                                    mask | (1 << index)
+                                } else {
+                                    mask
+                                },
                             ));
                         }
                     }

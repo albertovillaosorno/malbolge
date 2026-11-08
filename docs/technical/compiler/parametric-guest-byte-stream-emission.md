@@ -2031,3 +2031,26 @@ independent test constructs the original machine code without using the
 search under test, checks the real VM bytes, recovers a two-relocation guest,
 and rejects forged expected output. This advances general guest synthesis,
 not runtime C state or the original Fibonacci target; P0 remains open.
+
+### Three live relocations across non-paired guest byte effects
+
+The original twelve-iteration Fibonacci C program was retried before this
+change and still refused safely at guest layout. A separate independently
+encoded Malbolge program has three live `j` relocations, repeated output
+instructions without intervening writes, and no-op data strides. The
+normative current-profile VM executes all 31 source instructions, producing
+nine output bytes (`41 41 11 30 17 17 2c 18 35`) with supplied input
+left unread.
+
+The bounded split-beam proposal now models one or two subsequent live
+relocations after the initial source relocation. It derives each `j` operand
+from an untouched expanded loader word and conservatively reserves every
+data address, including no-ops and relocation reads. A three-region fallback
+explores a small, deterministic set of balanced layouts only after the
+previous cheaper proposals fail. The source-independent test checks that the
+three-relocation proposal is admitted by the separate positional verifier and
+VM replay, and that a forged output transcript refuses admission. The same
+nine bytes can also be realized by a simpler one-relocation guest: the test
+establishes that three live relocations can be **proposed and verified**, not
+that they are necessary for those bytes. This is neither general guest
+byte-stream synthesis nor guest-runtime C state; P0 remains open.
